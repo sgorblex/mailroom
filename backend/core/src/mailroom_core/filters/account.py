@@ -21,11 +21,14 @@ class EMailAccount:
     def _create_connection(self):
         conn = IMAPClient(self._host, self._port, ssl=True)
         conn.login(self._username, self._password)
-        logger.info(f"Connected to {self.name}")
+        logger.info(f"Connected to {self}")
         conn.select_folder('INBOX', readonly=False)
         return conn
 
     def logout(self):
         if self._connection is not None:
             self._connection.logout()
-            logger.info(f"Disconnected from {self.name}")
+            logger.info(f"Disconnected from {self}")
+
+    def __str__(self) -> str:
+        return self.name
