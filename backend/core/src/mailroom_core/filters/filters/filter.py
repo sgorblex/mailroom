@@ -1,7 +1,7 @@
 from imap_thingy.account import EMailAccount
 
 
-class BaseFilter:
+class Filter:
     def __init__(self, accounts: EMailAccount | list[EMailAccount]):
         self.accounts = accounts
 

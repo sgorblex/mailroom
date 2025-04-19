@@ -1,10 +1,10 @@
-from .base_filter import BaseFilter
+from .filter import Filter
 from imap_thingy.account import EMailAccount
 import logging
 logger = logging.getLogger("imap-thingy")
 
 
-class MoveIfFrom(BaseFilter):
+class MoveIfFrom(Filter):
     def __init__(self, account: EMailAccount, sender: str, folder: str, mark_as_read = True):
         super().__init__(account)
         assert isinstance(self.accounts, EMailAccount)
