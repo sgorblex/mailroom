@@ -1,20 +1,8 @@
-import imapclient
-import pyzmail
+import logging
+from custom_filters import FILTERS
 
-def process_mailbox(account):
-    with imapclient.IMAPClient(account["host"], port=account["port"], ssl=True) as client:
-        client.login(account["username"], account["password"])
-        client.select_folder('INBOX', readonly=False)
+logger = logging.getLogger("imap-thingy")
 
-        messages = client.search(['UNSEEN', 'FROM', 'alerts@example.com'])
-
-        for uid in messages:
-            raw_message = client.fetch([uid], ['BODY[]', 'FLAGS'])[uid][b'BODY[]']
-            message = pyzmail.PyzMessage.factory(raw_message)
-            subject = message.get_subject()
-            print(f"[{account['email']}] Processing: {subject}")
-
-            client.add_flags(uid, [b'\\Seen'])
-            client.move([uid], 'Processed')
-
-        client.logout()
+def process_filters(dry_run=False):
+    for filter in FILTERS:
+        filter.apply(dry_run=dry_run)

@@ -1,23 +1,16 @@
 import argparse
-from .config import ACCOUNTS
-from .imap_handler import process_mailbox
+import logging
+
+from imap_thingy import logout_all
+from .imap_handler import process_filters
 
 def main():
-    parser = argparse.ArgumentParser(description="Email automation tool.")
-    parser.add_argument(
-        "--account",
-        type=str,
-        help="Process only one specific account by email",
-    )
-
+    parser = argparse.ArgumentParser(description="imap-thingy: automate email filtering via IMAP")
+    parser.add_argument("--dry-run", action="store_true", help="Print actions instead of executing them")
+    parser.add_argument("--log", type=str, default="INFO", help="Logging level (DEBUG, INFO, WARNING, ERROR)")
     args = parser.parse_args()
 
-    if args.account:
-        acc = next((a for a in ACCOUNTS if a["email"] == args.account), None)
-        if not acc:
-            print("Account not found.")
-            return
-        process_mailbox(acc)
-    else:
-        for acc in ACCOUNTS:
-            process_mailbox(acc)
+    logging.basicConfig(level=getattr(logging, args.log.upper(), None), format='%(asctime)s [%(levelname)s] %(message)s')
+
+    process_filters(dry_run=args.dry_run)
+    logout_all()
