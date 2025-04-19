@@ -20,7 +20,10 @@ def load_all_accounts():
     account_data = load_account_data()
     accounts = {}
     for acc in account_data:
-        accounts[acc["name"]] = EMailAccount(acc["name"], acc["host"], acc["port"], acc["username"], acc["password"], acc["address"])
+        if "address" in acc:
+            accounts[acc["name"]] = EMailAccount(acc["name"], acc["host"], acc["port"], acc["username"], acc["password"], acc["address"])
+        else:
+            accounts[acc["name"]] = EMailAccount(acc["name"], acc["host"], acc["port"], acc["username"], acc["password"])
     return accounts
 
 ACCOUNTS = load_all_accounts()
