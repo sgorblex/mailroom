@@ -108,7 +108,7 @@ def from_is(addr: str):
     return FilterCriterion(lambda msg: addr == msg.get_address('from')[1], imap_query=["FROM", addr])
 
 def to_contains_is(addr: str):
-    return FilterCriterion(lambda msg: any(addr == to for to in msg.get_addresses('to')), imap_query=["TO", addr])
+    return FilterCriterion(lambda msg: any(addr == to[1] for to in msg.get_addresses('to')), imap_query=["TO", addr])
 
 def subject_is(subj: str):
     return FilterCriterion(lambda msg: subj == msg.get_subject(), imap_query=["SUBJECT", subj])
@@ -119,7 +119,7 @@ def from_matches(pattern: str):
     return FilterCriterion(lambda msg: matches(pattern, msg.get_address('from')[1]), ["FROM", ])
 
 def to_contains_matches(pattern: str):
-    return FilterCriterion(lambda msg: any(matches(pattern, to) for to in msg.get_addresses('to')))
+    return FilterCriterion(lambda msg: any(matches(pattern, to[1]) for to in msg.get_addresses('to')))
 
 def subject_matches(pattern: str):
     return FilterCriterion(lambda msg: matches(pattern, msg.get_subject()))
