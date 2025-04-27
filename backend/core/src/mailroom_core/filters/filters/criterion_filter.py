@@ -1,5 +1,6 @@
 import re
 import pyzmail
+from imapclient import imapclient
 
 from imap_thingy.account import EMailAccount
 from imap_thingy.filters.filter_interfaces import OneAccountOneFolderFilter
@@ -131,32 +132,37 @@ class MailAction():
         self.func = func
         self.name = name
 
-    def execute(self, connection, msgids):
+    def execute(self, account, msgids):
         for msg in msgids:
-            self.func(connection, msg)
+            self.func(account, msg)
 
     def __and__(self, other):
-        def newfunc(client, msg):
-            self.func(client, msg)
-            other.func(client, msg)
+        def newfunc(account, msg):
+            self.func(account, msg)
+            other.func(account, msg)
         return MailAction(newfunc, self.name + "; " + other.name)
 
     def __str__(self):
         return self.name
 
 def move_to(folder: str):
-    def func(client, msgids):
-        client.move(msgids, folder)
+    def func(account, msgids):
+        account.connection.move(msgids, folder)
     return MailAction(func, name=f"move to {folder}")
 
+def trash():
+    def func(account, msgids):
+        account.connection.move(msgids, account.connection.find_special_folder(imapclient.TRASH))
+    return MailAction(func, name=f"trash")
+
 def mark_as_read():
-    def func(client, msgids):
-        client.add_flags(msgids, [b'\\Seen'])
+    def func(account, msgids):
+        account.connection.add_flags(msgids, [b'\\Seen'])
     return MailAction(func, name="mark as read")
 
 def mark_as_unread():
-    def func(client, msgids):
-        client.remove_flags(msgids, [b'\\Seen'])
+    def func(account, msgids):
+        account.connection.remove_flags(msgids, [b'\\Seen'])
     return MailAction(func, name="mark as unread")
 
 
@@ -174,5 +180,5 @@ class CriterionFilter(OneAccountOneFolderFilter):
                 logger.info(f"[Dry-Run] Would execute: {self.action}")
             else:
                 logger.info(f"Selected: {msgs}")
-                self.action.execute(self.account.connection,msgs)
+                self.action.execute(self.account,msgs)
                 logger.info(f"Executed: {self.action}")

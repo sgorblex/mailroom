@@ -3,13 +3,14 @@ import logging
 logger = logging.getLogger("imap-thingy")
 
 class EMailAccount:
-    def __init__(self, name: str, host: str, port: int, username: str, password: str, address=None):
+    def __init__(self, name: str, host: str, port: int, username: str, password: str, address=None, subdir_delimiter="."):
         self.name = name
         self._host = host
         self._port = port
         self._username = username
         self._password = password
         self.address = address if address is not None else username
+        self.subdir_delimiter = subdir_delimiter
         self._connection = None
 
     @property
@@ -32,3 +33,8 @@ class EMailAccount:
 
     def __str__(self) -> str:
         return self.name
+
+
+class GMailAccount(EMailAccount):
+    def __init__(self, name: str, username: str, password: str, address=None, host: str = "imap.gmail.com", port: int = 993, subdir_delimiter="/"):
+        super().__init__(name, host, port, username, password, address, subdir_delimiter)
