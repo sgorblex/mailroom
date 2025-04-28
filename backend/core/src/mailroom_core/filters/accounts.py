@@ -1,4 +1,6 @@
 from imapclient import IMAPClient
+import json
+
 import logging
 logger = logging.getLogger("imap-thingy")
 
@@ -38,3 +40,22 @@ class EMailAccount:
 class GMailAccount(EMailAccount):
     def __init__(self, name: str, username: str, password: str, address=None, host: str = "imap.gmail.com", port: int = 993, subdir_delimiter="/"):
         super().__init__(name, host, port, username, password, address, subdir_delimiter)
+
+
+def accounts_from_json(json_path: str):
+    with open(json_path, 'r') as f:
+        account_data = json.load(f)
+        accounts = {}
+        for acc in account_data:
+            email_type = acc["type"] if "type" in acc else "custom"
+            if email_type == "gmail":
+                accounts[acc["name"]] = GMailAccount(acc["name"], acc["username"], acc["password"])
+            elif email_type == "custom":
+                address = acc["address"] if "address" in acc else acc["username"]
+                accounts[acc["name"]] = EMailAccount(acc["name"], acc["host"], acc["port"], acc["username"], acc["password"], address)
+            else: raise NotImplementedError("Unrecognized email preset")
+        return accounts
+
+def logout_all(accounts: dict[str,EMailAccount]):
+    for account in accounts.values():
+        account.logout()

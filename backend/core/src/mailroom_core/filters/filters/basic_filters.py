@@ -1,4 +1,4 @@
-from imap_thingy.account import EMailAccount
+from imap_thingy.accounts import EMailAccount
 from imap_thingy.filters.criterion_filter import CriterionFilter, from_is, mark_as_read, move_to, to_contains_is
 
 

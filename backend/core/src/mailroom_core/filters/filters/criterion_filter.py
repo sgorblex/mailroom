@@ -2,8 +2,8 @@ import re
 import pyzmail
 from imapclient import imapclient
 
-from imap_thingy.account import EMailAccount
-from imap_thingy.filters.filter_interfaces import OneAccountOneFolderFilter
+from imap_thingy.accounts import EMailAccount
+from imap_thingy.filters.interfaces import OneAccountOneFolderFilter
 
 import logging
 logger = logging.getLogger("imap-thingy")

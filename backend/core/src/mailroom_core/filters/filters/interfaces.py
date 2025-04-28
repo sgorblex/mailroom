@@ -1,4 +1,4 @@
-from imap_thingy.account import EMailAccount
+from imap_thingy.accounts import EMailAccount
 
 
 class Filter:
