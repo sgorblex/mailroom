@@ -9,6 +9,6 @@ class MoveIfFromFilter(CriterionFilter):
 
 
 class MoveIfToFilter(CriterionFilter):
-    def __init__(self, account: EMailAccount, sender: str, folder: str, mark_read = True):
+    def __init__(self, account: EMailAccount, correspondant: str, folder: str, mark_read = True):
         action = mark_as_read() & move_to(folder) if mark_read else move_to(folder)
-        super().__init__(account, to_contains_is(sender), action)
+        super().__init__(account, to_contains_is(correspondant), action)
