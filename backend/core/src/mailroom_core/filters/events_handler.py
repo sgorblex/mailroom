@@ -6,37 +6,31 @@ from imap_thingy.filters import Filter
 
 TIMEOUT = 10
 
-class ResponseHandler:
-    def __init__(self, func):
-        self.func = func
-
-    def handle(self, responses: List):
-        self.func(responses)
+class EventsHandler:
+    def __init__(self, account: EMailAccount, handler, folder: str = "INBOX"):
+        self.account = account
+        self.folder = folder
+        self.handle = handler
+        self._thread = threading.Thread(target=self._watch)
 
     def __add__(self, other):
         def func(responses):
-            self.func(responses)
-            other.func(responses)
-        return ResponseHandler(func)
-
-class EventsHandler:
-    def __init__(self, account: EMailAccount, handler: ResponseHandler, folder: str = "INBOX"):
-        self.account = account
-        self.folder = folder
-        self.handler = handler
-        self._stop_event = threading.Event()
-        self._thread = threading.Thread(target=self._watch)
+            self.handle(responses)
+            other.handle(responses)
+        return EventsHandler(self.account, func, self.folder)
 
     def start(self):
         self._conn = self.account.extra_connection(self.folder, readonly = True)
+        self._stop_event = threading.Event()
         self._thread.start()
 
     def _watch(self):
         self._conn.idle()
         while not self._stop_event.is_set():
             responses = self._conn.idle_check(TIMEOUT)
-            self.handler.handle(responses)
+            self.handle(responses)
         self._conn.idle_done()
+        self._conn.logout()
 
     def stop(self):
         self._stop_event.set()
@@ -49,12 +43,12 @@ class EventsHandler:
 def print_responses():
     def func(responses):
         for r in responses: print(r)
-    return ResponseHandler(func)
+    return func
 
 def filter_when_anything(filters: List[Filter]):
     def func(responses):
         apply_filters(filters)
-    return ResponseHandler(func)
+    return func
 
 def filter_when_newmail(filters: List[Filter]):
     def func(responses):
@@ -62,7 +56,7 @@ def filter_when_newmail(filters: List[Filter]):
         for r in responses:
             if r[1] == b'EXISTS': run = True
         if run: apply_filters(filters)
-    return ResponseHandler(func)
+    return func
 
 def filter_when_read(filters: List[Filter]):
     def func(responses):
@@ -70,4 +64,4 @@ def filter_when_read(filters: List[Filter]):
         for r in responses:
             if r[1] == b'FETCH' and r[2] == (b'FLAGS', (b'\\Seen',)): run = True
         if run: apply_filters(filters)
-    return ResponseHandler(func)
+    return func
