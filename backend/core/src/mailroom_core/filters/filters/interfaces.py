@@ -6,7 +6,7 @@ class Filter:
         self.accounts = accounts
 
     def apply(self, dry_run=False):
-        raise NotImplementedError
+        pass
 
 
 class OneAccountFilter(Filter):
@@ -22,5 +22,5 @@ class OneAccountOneFolderFilter(OneAccountFilter):
         self.base_folder = base_folder
 
     def apply(self, dry_run=False):
-        self.account.connection.select_folder(self.base_folder, readonly=False)
         super().apply(dry_run)
+        self.account.connection.select_folder(self.base_folder, readonly=False)

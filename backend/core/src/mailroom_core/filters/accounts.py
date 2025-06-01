@@ -21,12 +21,15 @@ class EMailAccount:
             self._connection = self._create_connection()
         return self._connection
 
-    def _create_connection(self):
+    def _create_connection(self, base_folder="INBOX", readonly = False):
         conn = IMAPClient(self._host, self._port, ssl=True)
         conn.login(self._username, self._password)
         logger.info(f"Connected to {self}")
-        conn.select_folder('INBOX', readonly=False)
+        conn.select_folder(base_folder, readonly=readonly)
         return conn
+
+    def extra_connection(self, base_folder="INBOX", readonly = False):
+        return self._create_connection(base_folder, readonly)
 
     def logout(self):
         if self._connection is not None:

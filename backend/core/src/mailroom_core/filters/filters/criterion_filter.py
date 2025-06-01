@@ -173,6 +173,7 @@ class CriterionFilter(OneAccountOneFolderFilter):
         self.action = action
 
     def apply(self, dry_run=False):
+        super().apply(dry_run)
         msgs = self.criterion.filter(self.account.connection)
         if msgs:
             if dry_run:
