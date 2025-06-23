@@ -1,5 +1,5 @@
 import re
-import pyzmail
+from mailparser import MailParser
 from imapclient import imapclient
 
 from imap_thingy.accounts import EMailAccount
@@ -15,12 +15,13 @@ def get_mail(client, imap_query):
     msg_ids = client.search(imap_query)
     fetched = client.fetch(msg_ids, ['BODY.PEEK[]'])
 
-    pyz_messages = []
+    messages = []
     for msgid, data in fetched.items():
-        msg = pyzmail.PyzMessage.factory(data[b'BODY[]'])
-        pyz_messages.append((msgid, msg))
+        msg = MailParser()
+        msg.parse_from_bytes(data[b'BODY[]'])
+        messages.append((msgid, msg))
 
-    return pyz_messages
+    return messages
 
 def matches(pattern, string):
     return bool(re.fullmatch(pattern, string))
@@ -95,42 +96,42 @@ def select_all():
     return EfficientCriterion(lambda _: True, ["ALL"])
 
 def from_contains(addr: str):
-    return EfficientCriterion(lambda msg: addr in msg.get_address('from')[1], ["FROM", addr])
+    return EfficientCriterion(lambda msg: any(addr in email for name, email in msg.from_), ["FROM", addr])
 
 def to_contains_contains(addr: str):
-    return EfficientCriterion(lambda msg: any(addr in to for to in msg.get_addresses('to')), ["TO", addr])
+    return EfficientCriterion(lambda msg: any(addr in email for name, email in msg.to), ["TO", addr])
 
 def subject_contains(substring: str):
-    return EfficientCriterion(lambda msg: substring in msg.get_subject(), imap_query=["SUBJECT", substring])
+    return EfficientCriterion(lambda msg: substring in (msg.subject or ''), imap_query=["SUBJECT", substring])
 
 
 # semi-efficient
 def from_is(addr: str):
-    return FilterCriterion(lambda msg: addr == msg.get_address('from')[1], imap_query=["FROM", addr])
+    return FilterCriterion(lambda msg: any(addr == email for name, email in msg.from_), imap_query=["FROM", addr])
 
 def to_contains_is(addr: str):
-    return FilterCriterion(lambda msg: any(addr == to[1] for to in msg.get_addresses('to')), imap_query=["TO", addr])
+    return FilterCriterion(lambda msg: any(addr == email for name, email in msg.to), imap_query=["TO", addr])
 
 def cc_contains_is(addr: str):
-    return FilterCriterion(lambda msg: any(addr == cc[1] for cc in msg.get_addresses('cc')), imap_query=["CC", addr])
+    return FilterCriterion(lambda msg: any(addr == email for name, email in msg.cc), imap_query=["CC", addr])
 
 def subject_is(subj: str):
-    return FilterCriterion(lambda msg: subj == msg.get_subject(), imap_query=["SUBJECT", subj])
+    return FilterCriterion(lambda msg: (msg.subject or '') == subj, imap_query=["SUBJECT", subj])
 
 
 # non-efficient
 def from_matches(pattern: str):
-    return FilterCriterion(lambda msg: matches(pattern, msg.get_address('from')[1]), ["FROM", ])
+    return FilterCriterion(lambda msg: any(matches(pattern, email) for name, email in msg.from_), ["FROM", ])
 
 def to_contains_matches(pattern: str, incl_cc: bool = True):
-    criterion = FilterCriterion(lambda msg: any(matches(pattern, to[1]) for to in msg.get_addresses('to')))
+    criterion = FilterCriterion(lambda msg: any(matches(pattern, email) for name, email in msg.to))
     return criterion | cc_contains_matches(pattern) if incl_cc else criterion
 
 def cc_contains_matches(pattern: str):
-    return FilterCriterion(lambda msg: any(matches(pattern, cc[1]) for cc in msg.get_addresses('cc')))
+    return FilterCriterion(lambda msg: any(matches(pattern, email) for name, email in msg.cc))
 
 def subject_matches(pattern: str):
-    return FilterCriterion(lambda msg: matches(pattern, msg.get_subject()))
+    return FilterCriterion(lambda msg: matches(pattern, msg.subject or ''))
 
 
 
