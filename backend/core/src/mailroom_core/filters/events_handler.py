@@ -8,7 +8,9 @@ import logging
 from time import sleep
 import ssl
 import imapclient
+import sys
 
+LOGFILE = "imap_thingy.log"
 IDLE_TIMEOUT = 29*60 # seconds
 
 class EventsHandler:
@@ -30,11 +32,28 @@ class EventsHandler:
     def start(self):
         self._conn = self.account.extra_connection(self.folder, readonly = True)
         self._stop_event = threading.Event()
+        # Set up logging to both stdout and file
+        root_logger = logging.getLogger()
+        root_logger.setLevel(logging.DEBUG)
+        # Remove existing handlers to avoid duplicate logs
+        root_logger.handlers.clear()
+        stream_handler = logging.StreamHandler(sys.stdout)
+        stream_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s'))
+        file_handler = logging.FileHandler(LOGFILE)
+        file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s'))
+        root_logger.addHandler(stream_handler)
+        root_logger.addHandler(file_handler)
+        # Set imapclient debug logging to DEBUG for more details
+        imapclient_logger = logging.getLogger('imapclient')
+        imapclient_logger.setLevel(logging.DEBUG)
         self._thread.start()
 
     def _reconnect(self):
         if self._conn:
-            self._conn.logout()
+            try:
+                self._conn.logout()
+            except Exception as e:
+                logging.debug(f"EventsHandler for {self.account.name}: Exception during logout in reconnect: {e}", exc_info=True)
         self._conn = self.account.extra_connection(self.folder, readonly = True)
 
     def _refresh(self):
@@ -57,7 +76,17 @@ class EventsHandler:
             except (ssl.SSLEOFError, imapclient.exceptions.ProtocolError) as e:
                 if self._stop_event.is_set():
                     break
-                logging.warning(f"EventsHandler for {self.account.name}: Connection error: {e}")
+                logging.warning(f"EventsHandler for {self.account.name}: Connection error: {e}", exc_info=True)
+                if hasattr(self._conn, 'sock') and hasattr(self._conn.sock, 'recv'):
+                    try:
+                        raw = self._conn.sock.recv(4096, 0)
+                        logging.debug(f"EventsHandler for {self.account.name}: Last raw socket data: {raw}")
+                    except Exception as sock_exc:
+                        logging.debug(f"EventsHandler for {self.account.name}: Could not read raw socket data: {sock_exc}")
+                self._reconnect()
+                sleep(5)
+            except Exception as e:
+                logging.error(f"EventsHandler for {self.account.name}: Unexpected error: {e}", exc_info=True)
                 self._reconnect()
                 sleep(5)
 
