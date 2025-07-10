@@ -1,3 +1,4 @@
+from typing import Iterable
 from imapclient import IMAPClient
 import json
 
@@ -13,11 +14,11 @@ class EMailAccount:
         self._password = password
         self.address = address if address is not None else username
         self.subdir_delimiter = subdir_delimiter
-        self._connection = None
+        self._connection: IMAPClient = None
 
     @property
     def connection(self):
-        if self._connection is None:
+        if not self._connection:
             self._connection = self._create_connection()
         return self._connection
 
@@ -59,6 +60,6 @@ def accounts_from_json(json_path: str):
             else: raise NotImplementedError("Unrecognized email preset")
         return accounts
 
-def logout_all(accounts: dict[str,EMailAccount]):
-    for account in accounts.values():
+def logout_all(accounts: Iterable):
+    for account in accounts:
         account.logout()

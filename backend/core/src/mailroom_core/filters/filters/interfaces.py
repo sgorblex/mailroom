@@ -2,7 +2,7 @@ from imap_thingy.accounts import EMailAccount
 
 
 class Filter:
-    def __init__(self, accounts: EMailAccount | list[EMailAccount]):
+    def __init__(self, accounts: list[EMailAccount]):
         self.accounts = accounts
 
     def apply(self, dry_run=False):
@@ -11,10 +11,11 @@ class Filter:
 
 class OneAccountFilter(Filter):
     def __init__(self, account: EMailAccount):
-        super().__init__(account)
-        assert isinstance(account, EMailAccount)
-        self.account = self.accounts
+        super().__init__([account])
 
+    @property
+    def account(self):
+        return self.accounts[0]
 
 class OneAccountOneFolderFilter(OneAccountFilter):
     def __init__(self, account: EMailAccount, base_folder="INBOX"):
