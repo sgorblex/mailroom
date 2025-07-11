@@ -29,32 +29,29 @@ class EventsHandler:
     def signal_handler(self, signum, frame):
         self.stop()
 
-    def start(self):
-        self._conn = self.account.extra_connection(self.folder, readonly = True)
-        self._stop_event = threading.Event()
-        # Set up logging to both stdout and file
-        root_logger = logging.getLogger()
-        root_logger.setLevel(logging.DEBUG)
-        # Remove existing handlers to avoid duplicate logs
-        root_logger.handlers.clear()
-        # Stream handler: INFO and above to stdout
+    def _configure_loggers(self, logger_names):
+        """
+        Configures the given loggers so that debug-level logs go to the logfile, and info-level and above go to stdout.
+        """
+        # Create handlers
         stream_handler = logging.StreamHandler(sys.stdout)
         stream_handler.setLevel(logging.INFO)
         stream_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s'))
-        # File handler: DEBUG and above to logfile
         file_handler = logging.FileHandler(LOGFILE)
         file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s'))
-        root_logger.addHandler(stream_handler)
-        root_logger.addHandler(file_handler)
-        # Set imapclient debug logging to DEBUG for file, INFO for stdout
-        imapclient_logger = logging.getLogger('imapclient')
-        imapclient_logger.setLevel(logging.DEBUG)
-        # Remove any existing handlers from imapclient logger
-        imapclient_logger.handlers.clear()
-        # Add file handler (DEBUG) and stream handler (INFO) to imapclient logger
-        imapclient_logger.addHandler(file_handler)
-        imapclient_logger.addHandler(stream_handler)
+        for name in logger_names:
+            logger = logging.getLogger(name)
+            logger.setLevel(logging.DEBUG)
+            logger.handlers.clear()
+            logger.addHandler(stream_handler)
+            logger.addHandler(file_handler)
+
+    def start(self):
+        self._conn = self.account.extra_connection(self.folder, readonly = True)
+        self._stop_event = threading.Event()
+        # Set up logging to both stdout and file for root and imapclient loggers
+        self._configure_loggers(['', 'imapclient'])
         self._thread.start()
 
     def _reconnect(self):
