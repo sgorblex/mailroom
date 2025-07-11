@@ -37,15 +37,24 @@ class EventsHandler:
         root_logger.setLevel(logging.DEBUG)
         # Remove existing handlers to avoid duplicate logs
         root_logger.handlers.clear()
+        # Stream handler: INFO and above to stdout
         stream_handler = logging.StreamHandler(sys.stdout)
+        stream_handler.setLevel(logging.INFO)
         stream_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s'))
+        # File handler: DEBUG and above to logfile
         file_handler = logging.FileHandler(LOGFILE)
+        file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s'))
         root_logger.addHandler(stream_handler)
         root_logger.addHandler(file_handler)
-        # Set imapclient debug logging to DEBUG for more details
+        # Set imapclient debug logging to DEBUG for file, INFO for stdout
         imapclient_logger = logging.getLogger('imapclient')
         imapclient_logger.setLevel(logging.DEBUG)
+        # Remove any existing handlers from imapclient logger
+        imapclient_logger.handlers.clear()
+        # Add file handler (DEBUG) and stream handler (INFO) to imapclient logger
+        imapclient_logger.addHandler(file_handler)
+        imapclient_logger.addHandler(stream_handler)
         self._thread.start()
 
     def _reconnect(self):
@@ -71,6 +80,7 @@ class EventsHandler:
                     continue
                 self._conn.idle()
                 responses = self._conn.idle_check(IDLE_TIMEOUT)
+                self._conn.idle_done()  # Ensure IDLE is ended before any other command
                 self.handle(responses)
                 self._conn.noop()
             except (ssl.SSLEOFError, imapclient.exceptions.ProtocolError) as e:
