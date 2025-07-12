@@ -1,5 +1,5 @@
 import re
-from mailparser import MailParser
+import mailparser
 from imapclient import imapclient
 
 from imap_thingy.accounts import EMailAccount
@@ -17,8 +17,7 @@ def get_mail(client, imap_query):
 
     messages = []
     for msgid, data in fetched.items():
-        msg = MailParser()
-        msg.parse_from_bytes(data[b'BODY[]'])
+        msg = mailparser.parse_from_bytes(data[b'BODY[]'])
         messages.append((msgid, msg))
 
     return messages
