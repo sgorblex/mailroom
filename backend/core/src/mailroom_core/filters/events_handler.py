@@ -11,7 +11,8 @@ import imapclient
 import sys
 
 LOGFILE = "imap_thingy.log"
-IDLE_TIMEOUT = 29*60 # seconds
+# IDLE_TIMEOUT = 29*60 # seconds
+IDLE_TIMEOUT = 30 # seconds
 
 class EventsHandler:
     def __init__(self, account: EMailAccount, handler, folder: str = "INBOX"):
