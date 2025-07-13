@@ -1,7 +1,7 @@
 from imap_thingy.accounts import EMailAccount, logout_all
 from imap_thingy.filters.utils import all_unique_accounts
 import threading
-from typing import List
+from typing import Any, Callable
 from imap_thingy.filters import apply_filters
 from imap_thingy.filters import Filter
 from logging import getLogger
@@ -13,29 +13,32 @@ LOGFILE = "imap_thingy.log"
 IDLE_TIMEOUT = 25*60 # seconds, max 29 minutes
 # IDLE_TIMEOUT = 30 # seconds, mostly for debugging
 
+# Type alias for IMAP idle responses
+IdleResponse = list[tuple[int, bytes, tuple[bytes, ...] | None]]
+
 class EventsHandler:
-    def __init__(self, account: EMailAccount, handler, folder: str = "INBOX"):
+    def __init__(self, account: EMailAccount, handler: Callable[[IdleResponse], None], folder: str = "INBOX") -> None:
         self.account = account
         self.folder = folder
         self.handle = handler
         self._thread = threading.Thread(target=self._watch)
         self.logger = getLogger(f"EventsHandler.{self.account.name}")
 
-    def __add__(self, other):
-        def func(responses):
+    def __add__(self, other: 'EventsHandler') -> 'EventsHandler':
+        def func(responses: IdleResponse) -> None:
             self.handle(responses)
             other.handle(responses)
         return EventsHandler(self.account, func, self.folder)
 
-    def signal_handler(self, signum, frame):
+    def signal_handler(self, signum: int, frame: Any) -> None:
         self.stop()
 
-    def start(self):
+    def start(self) -> None:
         self._conn = self.account.extra_connection(self.folder, readonly = True)
         self._stop_event = threading.Event()
         self._thread.start()
 
-    def _reconnect(self):
+    def _reconnect(self) -> None:
         if self._conn:
             try:
                 self._conn.logout()
@@ -43,13 +46,13 @@ class EventsHandler:
                 self.logger.debug(f"Exception during logout in reconnect: {e}", exc_info=True)
         self._conn = self.account.extra_connection(self.folder, readonly = True)
 
-    def _refresh(self):
+    def _refresh(self) -> None:
         self.logger.info(f"Refreshing IDLE connection...")
         self._conn.idle_done()
         sleep(1)
         self._conn.idle()
 
-    def _watch(self):
+    def _watch(self) -> None:
         while not self._stop_event.is_set():
             try:
                 if not self._conn:
@@ -78,7 +81,7 @@ class EventsHandler:
                 self._reconnect()
                 sleep(5)
 
-    def stop(self):
+    def stop(self) -> None:
         self.logger.info("Stopping")
         self._stop_event.set()
         try:
@@ -90,37 +93,40 @@ class EventsHandler:
         except ssl.SSLWantReadError:
             pass
 
-    def join(self):
+    def join(self) -> None:
         self._thread.join()
 
 
 ## some simple handlers
-def print_responses():
-    def func(responses):
-        for r in responses: print(r)
+def print_responses() -> Callable[[IdleResponse], None]:
+    def func(responses: IdleResponse) -> None:
+        for r in responses:
+            print(r)
     return func
 
-def filter_when_anything(filters: List[Filter]):
-    def func(responses):
+def filter_when_anything(filters: list[Filter]) -> Callable[[IdleResponse], None]:
+    def func(responses: IdleResponse) -> None:
         apply_filters(filters)
         logout_all(all_unique_accounts(filters))
     return func
 
-def filter_when_newmail(filters: List[Filter]):
-    def func(responses):
+def filter_when_newmail(filters: list[Filter]) -> Callable[[IdleResponse], None]:
+    def func(responses: IdleResponse) -> None:
         run = False
         for r in responses:
-            if r[1] == b'EXISTS': run = True
+            if r[1] == b'EXISTS':
+                run = True
         if run:
             apply_filters(filters)
             logout_all(all_unique_accounts(filters))
     return func
 
-def filter_when_read(filters: List[Filter]):
-    def func(responses):
+def filter_when_read(filters: list[Filter]) -> Callable[[IdleResponse], None]:
+    def func(responses: IdleResponse) -> None:
         run = False
         for r in responses:
-            if r[1] == b'FETCH' and r[2] == (b'FLAGS', (b'\\Seen',)): run = True
+            if r[1] == b'FETCH' and r[2] == (b'FLAGS', (b'\\Seen',)):
+                run = True
         if run:
             apply_filters(filters)
             logout_all(all_unique_accounts(filters))
