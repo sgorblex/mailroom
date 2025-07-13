@@ -3,7 +3,6 @@ from imapclient import IMAPClient
 import json
 
 import logging
-logger = logging.getLogger("imap-thingy")
 
 class EMailAccount:
     def __init__(self, name: str, host: str, port: int, username: str, password: str, address=None, subdir_delimiter="."):
@@ -15,6 +14,7 @@ class EMailAccount:
         self.address = address if address is not None else username
         self.subdir_delimiter = subdir_delimiter
         self._connection: IMAPClient = None
+        self.logger: logging.Logger = logging.getLogger(f"EMailAccount.{self.name}")
 
     @property
     def connection(self):
@@ -25,7 +25,7 @@ class EMailAccount:
     def _create_connection(self, base_folder="INBOX", readonly = False):
         conn = IMAPClient(self._host, self._port, ssl=True)
         conn.login(self._username, self._password)
-        logger.info(f"Connected to {self}")
+        self.logger.info(f"Connected")
         conn.select_folder(base_folder, readonly=readonly)
         return conn
 
@@ -35,7 +35,7 @@ class EMailAccount:
     def logout(self):
         if self._connection is not None:
             self._connection.logout()
-            logger.info(f"Disconnected from {self}")
+            self.logger.info(f"Disconnected")
 
     def __str__(self) -> str:
         return self.name
