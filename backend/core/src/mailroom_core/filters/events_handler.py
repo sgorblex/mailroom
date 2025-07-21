@@ -40,11 +40,11 @@ class EventsHandler:
             try:
                 self._conn.logout()
             except Exception as e:
-                self.logger.debug(f"EventsHandler for {self.account.name}: Exception during logout in reconnect: {e}", exc_info=True)
+                self.logger.debug(f"Exception during logout in reconnect: {e}", exc_info=True)
         self._conn = self.account.extra_connection(self.folder, readonly = True)
 
     def _refresh(self):
-        self.logger.info(f"EventsHandler for {self.account.name}: Refreshing IDLE connection...")
+        self.logger.info(f"Refreshing IDLE connection...")
         self._conn.idle_done()
         sleep(1)
         self._conn.idle()
@@ -64,22 +64,22 @@ class EventsHandler:
             except (ssl.SSLEOFError, imapclient.exceptions.ProtocolError) as e:
                 if self._stop_event.is_set():
                     break
-                self.logger.warning(f"EventsHandler for {self.account.name}: Connection error: {e}", exc_info=True)
+                self.logger.warning(f"Connection error: {e}", exc_info=True)
                 if hasattr(self._conn, 'sock') and hasattr(self._conn.sock, 'recv'):
                     try:
                         raw = self._conn.sock.recv(4096, 0)
-                        self.logger.debug(f"EventsHandler for {self.account.name}: Last raw socket data: {raw}")
+                        self.logger.debug(f"Last raw socket data: {raw}")
                     except Exception as sock_exc:
-                        self.logger.debug(f"EventsHandler for {self.account.name}: Could not read raw socket data: {sock_exc}")
+                        self.logger.debug(f"Could not read raw socket data: {sock_exc}")
                 self._reconnect()
                 sleep(5)
             except Exception as e:
-                self.logger.error(f"EventsHandler for {self.account.name}: Unexpected error: {e}", exc_info=True)
+                self.logger.error(f"Unexpected error: {e}", exc_info=True)
                 self._reconnect()
                 sleep(5)
 
     def stop(self):
-        self.logger.info(f"Stopping EventsHandler for {self.account.name}")
+        self.logger.info("Stopping")
         self._stop_event.set()
         try:
             self._conn.idle_done()
