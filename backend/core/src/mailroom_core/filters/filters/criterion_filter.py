@@ -125,6 +125,9 @@ def subject_is(subj: str):
 def from_matches(pattern: str):
     return FilterCriterion(lambda msg: any(matches(pattern, email) for name, email in msg.from_))
 
+def from_matches_name(pattern: str):
+    return FilterCriterion(lambda msg: any(matches(pattern, name) for name, email in msg.from_))
+
 def to_contains_matches(pattern: str, incl_cc: bool = True, incl_bcc: bool = True):
    criterion = FilterCriterion(lambda msg: any(matches(pattern, email) for name, email in msg.to))
    if incl_cc:
