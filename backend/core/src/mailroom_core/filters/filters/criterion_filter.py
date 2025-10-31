@@ -120,7 +120,7 @@ def subject_is(subj: str):
 
 # non-efficient
 def from_matches(pattern: str):
-    return FilterCriterion(lambda msg: any(matches(pattern, email) for name, email in msg.from_), ["FROM", ])
+    return FilterCriterion(lambda msg: any(matches(pattern, email) for name, email in msg.from_))
 
 def to_contains_matches(pattern: str, incl_cc: bool = True):
     criterion = FilterCriterion(lambda msg: any(matches(pattern, email) for name, email in msg.to))
