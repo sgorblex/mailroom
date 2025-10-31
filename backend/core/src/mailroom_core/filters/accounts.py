@@ -13,12 +13,12 @@ class EMailAccount:
         self._password = password
         self.address = address if address is not None else username
         self.subdir_delimiter = subdir_delimiter
-        self._connection: IMAPClient = None
+        self._connection: IMAPClient | None = None
         self.logger: logging.Logger = logging.getLogger(f"EMailAccount.{self.name}")
 
     @property
     def connection(self):
-        if not self._connection:
+        if not self._connection or self._connection._imap.state == 'LOGOUT':
             self._connection = self._create_connection()
         return self._connection
 
