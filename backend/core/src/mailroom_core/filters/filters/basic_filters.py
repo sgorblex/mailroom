@@ -3,9 +3,9 @@ from imap_thingy.filters.criterion_filter import CriterionFilter, cc_contains_is
 
 
 class MoveIfFromFilter(CriterionFilter):
-    def __init__(self, account: EMailAccount, sender: str, folder: str, mark_read = True):
+    def __init__(self, account: EMailAccount, sender: str, folder: str, mark_read = True, base_folder="INBOX"):
         action = mark_as_read() & move_to(folder) if mark_read else move_to(folder)
-        super().__init__(account, from_is(sender), action)
+        super().__init__(account, from_is(sender), action, base_folder=base_folder)
 
 
 class MoveIfToFilter(CriterionFilter):
