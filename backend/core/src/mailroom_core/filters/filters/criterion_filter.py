@@ -114,6 +114,9 @@ def to_contains_is(addr: str):
 def cc_contains_is(addr: str):
     return FilterCriterion(lambda msg: any(addr == email for name, email in msg.cc), imap_query=["CC", addr])
 
+def bcc_contains_is(addr: str):
+    return FilterCriterion(lambda msg: any(addr == email for name, email in msg.bcc), imap_query=["BCC", addr])
+
 def subject_is(subj: str):
     return FilterCriterion(lambda msg: (msg.subject or '') == subj, imap_query=["SUBJECT", subj])
 
@@ -122,12 +125,19 @@ def subject_is(subj: str):
 def from_matches(pattern: str):
     return FilterCriterion(lambda msg: any(matches(pattern, email) for name, email in msg.from_))
 
-def to_contains_matches(pattern: str, incl_cc: bool = True):
-    criterion = FilterCriterion(lambda msg: any(matches(pattern, email) for name, email in msg.to))
-    return criterion | cc_contains_matches(pattern) if incl_cc else criterion
+def to_contains_matches(pattern: str, incl_cc: bool = True, incl_bcc: bool = True):
+   criterion = FilterCriterion(lambda msg: any(matches(pattern, email) for name, email in msg.to))
+   if incl_cc:
+       criterion |= cc_contains_matches(pattern)
+   if incl_bcc:
+       criterion |= bcc_contains_matches(pattern)
+   return criterion
 
 def cc_contains_matches(pattern: str):
     return FilterCriterion(lambda msg: any(matches(pattern, email) for name, email in msg.cc))
+
+def bcc_contains_matches(pattern: str):
+    return FilterCriterion(lambda msg: any(matches(pattern, email) for name, email in msg.bcc))
 
 def subject_matches(pattern: str):
     return FilterCriterion(lambda msg: matches(pattern, msg.subject or ''))
