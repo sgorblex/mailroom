@@ -68,14 +68,14 @@ class EfficientCriterion(FilterCriterion):
         return connection.search(self.imap_query)
 
     def __and__(self, other):
-        criterion = super(other)
+        criterion = super().__and__(other)
         if isinstance(other, EfficientCriterion):
             return make_efficient(criterion)
         else:
             return criterion
 
     def __or__(self, other):
-        criterion = super(other)
+        criterion = super().__or__(other)
         if isinstance(other, EfficientCriterion):
             return make_efficient(criterion)
         else:
