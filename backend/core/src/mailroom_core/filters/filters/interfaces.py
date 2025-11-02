@@ -17,6 +17,7 @@ class OneAccountFilter(Filter):
     def account(self) -> EMailAccount:
         return self.accounts[0]
 
+
 class OneAccountOneFolderFilter(OneAccountFilter):
     def __init__(self, account: EMailAccount, base_folder: str = "INBOX") -> None:
         super().__init__(account)

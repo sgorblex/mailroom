@@ -10,11 +10,12 @@ import ssl
 import imapclient
 
 LOGFILE = "imap_thingy.log"
-IDLE_TIMEOUT = 25*60 # seconds, max 29 minutes
+IDLE_TIMEOUT = 25 * 60  # seconds, max 29 minutes
 # IDLE_TIMEOUT = 30 # seconds, mostly for debugging
 
 # Type alias for IMAP idle responses
 IdleResponse = list[tuple[int, bytes, tuple[bytes, ...] | None]]
+
 
 class EventsHandler:
     def __init__(self, account: EMailAccount, handler: Callable[[IdleResponse], None], folder: str = "INBOX") -> None:
@@ -24,17 +25,18 @@ class EventsHandler:
         self._thread = threading.Thread(target=self._watch)
         self.logger = getLogger(f"EventsHandler.{self.account.name}")
 
-    def __add__(self, other: 'EventsHandler') -> 'EventsHandler':
+    def __add__(self, other: "EventsHandler") -> "EventsHandler":
         def func(responses: IdleResponse) -> None:
             self.handle(responses)
             other.handle(responses)
+
         return EventsHandler(self.account, func, self.folder)
 
     def signal_handler(self, signum: int, frame: Any) -> None:
         self.stop()
 
     def start(self) -> None:
-        self._conn = self.account.extra_connection(self.folder, readonly = True)
+        self._conn = self.account.extra_connection(self.folder, readonly=True)
         self._stop_event = threading.Event()
         self._thread.start()
 
@@ -44,7 +46,7 @@ class EventsHandler:
                 self._conn.logout()
             except Exception as e:
                 self.logger.debug(f"Exception during logout in reconnect: {e}", exc_info=True)
-        self._conn = self.account.extra_connection(self.folder, readonly = True)
+        self._conn = self.account.extra_connection(self.folder, readonly=True)
 
     def _refresh(self) -> None:
         self.logger.info(f"Refreshing IDLE connection...")
@@ -68,7 +70,7 @@ class EventsHandler:
                 if self._stop_event.is_set():
                     break
                 self.logger.warning(f"Connection error: {e}", exc_info=True)
-                if hasattr(self._conn, 'sock') and hasattr(self._conn.sock, 'recv'):
+                if hasattr(self._conn, "sock") and hasattr(self._conn.sock, "recv"):
                     try:
                         raw = self._conn.sock.recv(4096, 0)
                         self.logger.debug(f"Last raw socket data: {raw}")
@@ -102,32 +104,39 @@ def print_responses() -> Callable[[IdleResponse], None]:
     def func(responses: IdleResponse) -> None:
         for r in responses:
             print(r)
+
     return func
+
 
 def filter_when_anything(filters: list[Filter]) -> Callable[[IdleResponse], None]:
     def func(responses: IdleResponse) -> None:
         apply_filters(filters)
         logout_all(all_unique_accounts(filters))
+
     return func
+
 
 def filter_when_newmail(filters: list[Filter]) -> Callable[[IdleResponse], None]:
     def func(responses: IdleResponse) -> None:
         run = False
         for r in responses:
-            if r[1] == b'EXISTS':
+            if r[1] == b"EXISTS":
                 run = True
         if run:
             apply_filters(filters)
             logout_all(all_unique_accounts(filters))
+
     return func
+
 
 def filter_when_read(filters: list[Filter]) -> Callable[[IdleResponse], None]:
     def func(responses: IdleResponse) -> None:
         run = False
         for r in responses:
-            if r[1] == b'FETCH' and r[2] == (b'FLAGS', (b'\\Seen',)):
+            if r[1] == b"FETCH" and r[2] == (b"FLAGS", (b"\\Seen",)):
                 run = True
         if run:
             apply_filters(filters)
             logout_all(all_unique_accounts(filters))
+
     return func

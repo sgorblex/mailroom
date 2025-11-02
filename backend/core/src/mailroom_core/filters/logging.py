@@ -2,8 +2,9 @@ import logging
 from sys import stdout
 
 LOGFILE = "imap_thingy.log"
-STREAM_LOG_FORMAT = '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
-FILE_LOG_FORMAT = '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+STREAM_LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+FILE_LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+
 
 def setup_logging(
     logfile: str = LOGFILE,

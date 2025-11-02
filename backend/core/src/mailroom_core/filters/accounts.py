@@ -4,6 +4,7 @@ import json
 
 import logging
 
+
 class EMailAccount:
     def __init__(self, name: str, host: str, port: int, username: str, password: str, address: str | None = None, subdir_delimiter: str = ".") -> None:
         self.name = name
@@ -18,7 +19,7 @@ class EMailAccount:
 
     @property
     def connection(self) -> IMAPClient:
-        if not self._connection or self._connection._imap.state == 'LOGOUT':
+        if not self._connection or self._connection._imap.state == "LOGOUT":
             self._connection = self._create_connection()
         return self._connection
 
@@ -47,7 +48,7 @@ class GMailAccount(EMailAccount):
 
 
 def accounts_from_json(json_path: str) -> dict[str, EMailAccount]:
-    with open(json_path, 'r') as f:
+    with open(json_path, "r") as f:
         account_data = json.load(f)
         accounts: dict[str, EMailAccount] = {}
         for acc in account_data:
@@ -57,8 +58,10 @@ def accounts_from_json(json_path: str) -> dict[str, EMailAccount]:
             elif email_type == "custom":
                 address = acc["address"] if "address" in acc else acc["username"]
                 accounts[acc["name"]] = EMailAccount(acc["name"], acc["host"], acc["port"], acc["username"], acc["password"], address)
-            else: raise NotImplementedError("Unrecognized email preset")
+            else:
+                raise NotImplementedError("Unrecognized email preset")
         return accounts
+
 
 def logout_all(accounts: Iterable[EMailAccount]) -> None:
     for account in accounts:
