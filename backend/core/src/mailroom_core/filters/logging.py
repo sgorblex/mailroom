@@ -12,7 +12,9 @@ def setup_logging(
     stream_level: int = logging.INFO,
     file_level: int = logging.DEBUG,
 ) -> None:
-    """Set up logging for the application. This configures the root logger and any external loggers (e.g., 'imapclient').
+    """Set up logging for the application.
+
+    This configures the root logger and any external loggers (e.g., 'imapclient').
     - logfile: path to the log file (default: imap_thingy.log)
     - root_level: level for the root logger (default: DEBUG)
     - stream_level: level for stdout (default: INFO)

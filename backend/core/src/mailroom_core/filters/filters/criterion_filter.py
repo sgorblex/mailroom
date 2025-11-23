@@ -15,7 +15,7 @@ logger = logging.getLogger("imap-thingy")
 ParsedMail = Any  # mailparser doesn't have type stubs
 
 
-def get_mail(client: IMAPClient, imap_query: list[str]) -> list[tuple[int, ParsedMail]]:
+def get_mail(client: IMAPClient, imap_query: list[str | list[Any]]) -> list[tuple[int, ParsedMail]]:
     logger.info(f"Fetching mail with IMAP query {imap_query}")
 
     msg_ids = client.search(imap_query)
@@ -46,18 +46,31 @@ class FilterCriterion:
         return [msgid for msgid, msg in messages if self.func(msg)]
 
     def __and__(self, other: "FilterCriterion") -> "FilterCriterion":
-        func = lambda msg: self.func(msg) & other.func(msg)
-        imap_query = (self.imap_query + other.imap_query) if other.imap_query else self.imap_query
+        def func(msg: ParsedMail) -> bool:
+            return bool(self.func(msg) & other.func(msg))
+
+        # Combine IMAP queries if both exist, otherwise use the one that exists (or None if neither exists)
+        imap_query: list[str | list[Any]] | None
+        if self.imap_query and other.imap_query:
+            imap_query = self.imap_query + other.imap_query
+        else:
+            imap_query = self.imap_query if self.imap_query else other.imap_query
         return FilterCriterion(func, imap_query)
 
     def __or__(self, other: "FilterCriterion") -> "FilterCriterion":
-        func = lambda msg: self.func(msg) | other.func(msg)
-        imap_query = ["OR", self.imap_query, other.imap_query] if other.imap_query else None
+        def func(msg: ParsedMail) -> bool:
+            return bool(self.func(msg) | other.func(msg))
+
+        imap_query: list[str | list[Any]] | None = None
+        if self.imap_query and other.imap_query:
+            imap_query = ["OR", self.imap_query, other.imap_query]
         return FilterCriterion(func, imap_query)
 
     def __invert__(self) -> "FilterCriterion":
-        func = lambda msg: ~self.func(msg)
-        imap_query = ["NOT", self.imap_query] if self.imap_query else None
+        def func(msg: ParsedMail) -> bool:
+            return not self.func(msg)
+
+        imap_query: list[str | list[Any]] | None = ["NOT", self.imap_query] if self.imap_query else None
         return FilterCriterion(func, imap_query)
 
 
@@ -90,6 +103,8 @@ class EfficientCriterion(FilterCriterion):
 
 
 def make_efficient(criterion: FilterCriterion) -> EfficientCriterion:
+    if criterion.imap_query is None:
+        raise ValueError("Cannot make criterion efficient: imap_query is None")
     return EfficientCriterion(criterion.func, criterion.imap_query)
 
 
@@ -167,8 +182,7 @@ class MailAction:
         self.name = name
 
     def execute(self, account: EMailAccount, msgids: list[int]) -> None:
-        for msg in msgids:
-            self.func(account, msg)
+        self.func(account, msgids)
 
     def __and__(self, other: "MailAction") -> "MailAction":
         def newfunc(account: EMailAccount, msg: list[int]) -> None:

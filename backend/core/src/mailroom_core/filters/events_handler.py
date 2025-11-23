@@ -3,7 +3,7 @@ import threading
 from collections.abc import Callable
 from logging import getLogger
 from time import sleep
-from typing import Any
+from types import FrameType
 
 import imapclient
 
@@ -34,7 +34,7 @@ class EventsHandler:
 
         return EventsHandler(self.account, func, self.folder)
 
-    def signal_handler(self, signum: int, frame: Any) -> None:
+    def signal_handler(self, signum: int, frame: FrameType | None) -> None:
         self.stop()
 
     def start(self) -> None:

@@ -9,11 +9,11 @@ class MoveIfFromFilter(CriterionFilter):
 
 
 class MoveIfToFilter(CriterionFilter):
-    def __init__(self, account: EMailAccount, correspondant: str, folder: str, include_CC: bool = True, include_BCC: bool = True, mark_read: bool = True) -> None:
+    def __init__(self, account: EMailAccount, correspondant: str, folder: str, include_cc: bool = True, include_bcc: bool = True, mark_read: bool = True) -> None:
         criterion = to_contains_is(correspondant)
-        if include_CC:
+        if include_cc:
             criterion |= cc_contains_is(correspondant)
-        if include_BCC:
+        if include_bcc:
             criterion |= bcc_contains_is(correspondant)
         action = mark_as_read() & move_to(folder) if mark_read else move_to(folder)
         super().__init__(account, criterion, action)
