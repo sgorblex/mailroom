@@ -1,3 +1,5 @@
+"""IMAP IDLE event handling for real-time email monitoring."""
+
 import ssl
 import threading
 from collections.abc import Callable
@@ -20,7 +22,21 @@ IdleResponse = list[tuple[int, bytes, tuple[bytes, ...] | None]]
 
 
 class EventsHandler:
+    """Handles IMAP IDLE events for real-time email monitoring.
+
+    Monitors an IMAP folder for changes and calls a handler function when events occur.
+    Runs in a separate thread to avoid blocking.
+    """
+
     def __init__(self, account: EMailAccount, handler: Callable[[IdleResponse], None], folder: str = "INBOX") -> None:
+        """Initialize an events handler.
+
+        Args:
+            account: Email account to monitor.
+            handler: Function to call when IMAP events occur.
+            folder: IMAP folder to monitor (default: "INBOX").
+
+        """
         self.account = account
         self.folder = folder
         self.handle = handler
@@ -35,9 +51,11 @@ class EventsHandler:
         return EventsHandler(self.account, func, self.folder)
 
     def signal_handler(self, signum: int, frame: FrameType | None) -> None:
+        """Handle system signals by stopping the event handler."""
         self.stop()
 
     def start(self) -> None:
+        """Start monitoring for IMAP events in a background thread."""
         self._conn = self.account.extra_connection(self.folder, readonly=True)
         self._stop_event = threading.Event()
         self._thread.start()
@@ -86,6 +104,7 @@ class EventsHandler:
                 sleep(5)
 
     def stop(self) -> None:
+        """Stop monitoring and close the IMAP connection."""
         self.logger.info("Stopping")
         self._stop_event.set()
         try:
@@ -98,11 +117,14 @@ class EventsHandler:
             pass
 
     def join(self) -> None:
+        """Wait for the monitoring thread to finish."""
         self._thread.join()
 
 
 ## some simple handlers
 def print_responses() -> Callable[[IdleResponse], None]:
+    """Create a handler that prints all IMAP IDLE responses to stdout."""
+
     def func(responses: IdleResponse) -> None:
         for r in responses:
             print(r)
@@ -111,6 +133,8 @@ def print_responses() -> Callable[[IdleResponse], None]:
 
 
 def filter_when_anything(filters: list[Filter]) -> Callable[[IdleResponse], None]:
+    """Create a handler that applies filters on any IMAP event."""
+
     def func(responses: IdleResponse) -> None:
         apply_filters(filters)
         logout_all(all_unique_accounts(filters))
@@ -119,6 +143,8 @@ def filter_when_anything(filters: list[Filter]) -> Callable[[IdleResponse], None
 
 
 def filter_when_newmail(filters: list[Filter]) -> Callable[[IdleResponse], None]:
+    """Create a handler that applies filters only when new mail arrives."""
+
     def func(responses: IdleResponse) -> None:
         run = False
         for r in responses:
@@ -132,6 +158,8 @@ def filter_when_newmail(filters: list[Filter]) -> Callable[[IdleResponse], None]
 
 
 def filter_when_read(filters: list[Filter]) -> Callable[[IdleResponse], None]:
+    """Create a handler that applies filters when mail is marked as read."""
+
     def func(responses: IdleResponse) -> None:
         run = False
         for r in responses:

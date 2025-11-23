@@ -1,3 +1,5 @@
+"""Logging configuration for the IMAP thingy library."""
+
 import logging
 from sys import stdout
 

@@ -1,3 +1,5 @@
+"""Email account management and IMAP connection handling."""
+
 import json
 import logging
 from collections.abc import Iterable
@@ -6,7 +8,24 @@ from imapclient import IMAPClient
 
 
 class EMailAccount:
+    """Represents an email account with IMAP connection management.
+
+    Handles connection creation, reuse, and cleanup for IMAP operations.
+    """
+
     def __init__(self, name: str, host: str, port: int, username: str, password: str, address: str | None = None, subdir_delimiter: str = ".") -> None:
+        """Initialize an email account.
+
+        Args:
+            name: Display name for the account.
+            host: IMAP server hostname.
+            port: IMAP server port.
+            username: IMAP username.
+            password: IMAP password.
+            address: Email address (defaults to username if not provided).
+            subdir_delimiter: Character used to delimit folder subdirectories (default: ".").
+
+        """
         self.name = name
         self._host = host
         self._port = port
@@ -19,6 +38,10 @@ class EMailAccount:
 
     @property
     def connection(self) -> IMAPClient:
+        """Get or create an IMAP connection.
+
+        Returns a cached connection if available and active, otherwise creates a new one.
+        """
         if not self._connection or self._connection._imap.state == "LOGOUT":
             self._connection = self._create_connection()
         return self._connection
@@ -31,9 +54,22 @@ class EMailAccount:
         return conn
 
     def extra_connection(self, base_folder: str = "INBOX", readonly: bool = False) -> IMAPClient:
+        """Create an additional IMAP connection.
+
+        Useful when you need multiple concurrent connections (e.g., for IDLE operations).
+
+        Args:
+            base_folder: Folder to select after connection (default: "INBOX").
+            readonly: Whether to open folder in readonly mode (default: False).
+
+        Returns:
+            A new IMAPClient connection.
+
+        """
         return self._create_connection(base_folder, readonly)
 
     def logout(self) -> None:
+        """Close the main IMAP connection if it exists."""
         if self._connection is not None:
             self._connection.logout()
             self.logger.info("Disconnected")
@@ -43,11 +79,37 @@ class EMailAccount:
 
 
 class GMailAccount(EMailAccount):
+    """Gmail-specific email account with preconfigured settings."""
+
     def __init__(self, name: str, username: str, password: str, address: str | None = None, host: str = "imap.gmail.com", port: int = 993, subdir_delimiter: str = "/") -> None:
+        """Initialize a Gmail account.
+
+        Args:
+            name: Display name for the account.
+            username: Gmail username (email address).
+            password: Gmail app password.
+            address: Email address (defaults to username if not provided).
+            host: IMAP server hostname (default: "imap.gmail.com").
+            port: IMAP server port (default: 993).
+            subdir_delimiter: Character used to delimit folder subdirectories (default: "/" for Gmail).
+
+        """
         super().__init__(name, host, port, username, password, address, subdir_delimiter)
 
 
 def accounts_from_json(json_path: str) -> dict[str, EMailAccount]:
+    """Load email accounts from a JSON configuration file.
+
+    Args:
+        json_path: Path to JSON file containing account configurations.
+
+    Returns:
+        Dictionary mapping account names to EMailAccount instances.
+
+    Raises:
+        NotImplementedError: If an unrecognized email type is specified.
+
+    """
     with open(json_path) as f:
         account_data = json.load(f)
         accounts: dict[str, EMailAccount] = {}
@@ -64,5 +126,6 @@ def accounts_from_json(json_path: str) -> dict[str, EMailAccount]:
 
 
 def logout_all(accounts: Iterable[EMailAccount]) -> None:
+    """Log out from all provided email accounts."""
     for account in accounts:
         account.logout()
