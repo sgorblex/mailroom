@@ -1,12 +1,13 @@
+import logging
 import re
+from collections.abc import Callable
+from typing import Any
+
 import mailparser
-from imapclient import imapclient, IMAPClient
-from typing import Any, Callable
+from imapclient import IMAPClient, imapclient
 
 from imap_thingy.accounts import EMailAccount
 from imap_thingy.filters.interfaces import OneAccountOneFolderFilter
-
-import logging
 
 logger = logging.getLogger("imap-thingy")
 
@@ -33,9 +34,7 @@ def matches(pattern: str, string: str) -> bool:
 
 
 class FilterCriterion:
-    """
-    imap_query is a preliminary filter applied when the first IMAP query is performed. This allows to limit client-side filtering, if an appropriate query is given by the user.
-    """
+    """imap_query is a preliminary filter applied when the first IMAP query is performed. This allows to limit client-side filtering, if an appropriate query is given by the user."""
 
     def __init__(self, func: Callable[[ParsedMail], bool], imap_query: list[str | list[Any]] | None = None) -> None:
         self.func = func
@@ -63,9 +62,7 @@ class FilterCriterion:
 
 
 class EfficientCriterion(FilterCriterion):
-    """
-    If the criterion only needs information obtainable via an IMAP query, there is no need to fetch the messages at all, so it can be performed more efficiently.
-    """
+    """If the criterion only needs information obtainable via an IMAP query, there is no need to fetch the messages at all, so it can be performed more efficiently."""
 
     def __init__(self, func: Callable[[ParsedMail], bool], imap_query: list[str | list[Any]]) -> None:
         super().__init__(func, imap_query)
@@ -195,7 +192,7 @@ def trash() -> MailAction:
     def func(account: EMailAccount, msgids: list[int]) -> None:
         account.connection.move(msgids, account.connection.find_special_folder(imapclient.TRASH))
 
-    return MailAction(func, name=f"trash")
+    return MailAction(func, name="trash")
 
 
 def mark_as_read() -> MailAction:

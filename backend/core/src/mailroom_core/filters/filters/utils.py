@@ -1,4 +1,5 @@
-from typing import Iterable
+from collections.abc import Iterable
+
 from imap_thingy.accounts import EMailAccount
 from imap_thingy.filters.interfaces import Filter
 

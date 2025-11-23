@@ -1,13 +1,15 @@
-from imap_thingy.accounts import EMailAccount, logout_all
-from imap_thingy.filters.utils import all_unique_accounts
+import ssl
 import threading
-from typing import Any, Callable
-from imap_thingy.filters import apply_filters
-from imap_thingy.filters import Filter
+from collections.abc import Callable
 from logging import getLogger
 from time import sleep
-import ssl
+from typing import Any
+
 import imapclient
+
+from imap_thingy.accounts import EMailAccount, logout_all
+from imap_thingy.filters import Filter, apply_filters
+from imap_thingy.filters.utils import all_unique_accounts
 
 LOGFILE = "imap_thingy.log"
 IDLE_TIMEOUT = 25 * 60  # seconds, max 29 minutes
@@ -49,7 +51,7 @@ class EventsHandler:
         self._conn = self.account.extra_connection(self.folder, readonly=True)
 
     def _refresh(self) -> None:
-        self.logger.info(f"Refreshing IDLE connection...")
+        self.logger.info("Refreshing IDLE connection...")
         self._conn.idle_done()
         sleep(1)
         self._conn.idle()

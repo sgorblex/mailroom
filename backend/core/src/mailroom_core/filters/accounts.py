@@ -1,8 +1,8 @@
-from typing import Iterable
-from imapclient import IMAPClient
 import json
-
 import logging
+from collections.abc import Iterable
+
+from imapclient import IMAPClient
 
 
 class EMailAccount:
@@ -26,7 +26,7 @@ class EMailAccount:
     def _create_connection(self, base_folder: str = "INBOX", readonly: bool = False) -> IMAPClient:
         conn = IMAPClient(self._host, self._port, ssl=True)
         conn.login(self._username, self._password)
-        self.logger.info(f"Connected")
+        self.logger.info("Connected")
         conn.select_folder(base_folder, readonly=readonly)
         return conn
 
@@ -36,7 +36,7 @@ class EMailAccount:
     def logout(self) -> None:
         if self._connection is not None:
             self._connection.logout()
-            self.logger.info(f"Disconnected")
+            self.logger.info("Disconnected")
 
     def __str__(self) -> str:
         return self.name
@@ -48,7 +48,7 @@ class GMailAccount(EMailAccount):
 
 
 def accounts_from_json(json_path: str) -> dict[str, EMailAccount]:
-    with open(json_path, "r") as f:
+    with open(json_path) as f:
         account_data = json.load(f)
         accounts: dict[str, EMailAccount] = {}
         for acc in account_data:

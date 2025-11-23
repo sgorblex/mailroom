@@ -1,5 +1,5 @@
 from imap_thingy.accounts import EMailAccount
-from imap_thingy.filters.criterion_filter import CriterionFilter, cc_contains_is, from_is, mark_as_read, move_to, to_contains_is, bcc_contains_is
+from imap_thingy.filters.criterion_filter import CriterionFilter, bcc_contains_is, cc_contains_is, from_is, mark_as_read, move_to, to_contains_is
 
 
 class MoveIfFromFilter(CriterionFilter):
