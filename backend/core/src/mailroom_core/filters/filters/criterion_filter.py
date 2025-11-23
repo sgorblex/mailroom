@@ -77,7 +77,6 @@ class FilterCriterion:
         def func(msg: ParsedMail) -> bool:
             return bool(self.func(msg) & other.func(msg))
 
-        # Combine IMAP queries if both exist, otherwise use the one that exists (or None if neither exists)
         imap_query: list[str | list[Any]] | None
         if self.imap_query and other.imap_query:
             imap_query = self.imap_query + other.imap_query
@@ -156,7 +155,7 @@ def _make_efficient(criterion: FilterCriterion) -> EfficientCriterion:
     return EfficientCriterion(criterion.func, criterion.imap_query)
 
 
-# efficient
+# Efficient criteria: Can be evaluated entirely server-side via IMAP queries
 def select_all() -> EfficientCriterion:
     """Create a criterion that matches all messages."""
     return EfficientCriterion(lambda _: True, ["ALL"])
@@ -177,7 +176,7 @@ def subject_contains(substring: str) -> EfficientCriterion:
     return EfficientCriterion(lambda msg: substring in (msg.subject or ""), imap_query=["SUBJECT", substring])
 
 
-# semi-efficient
+# Semi-efficient criteria: Use IMAP queries for pre-filtering but require message parsing for exact matching
 def from_is(addr: str) -> FilterCriterion:
     """Create a criterion that matches messages from the exact email address."""
     return FilterCriterion(lambda msg: any(addr == email for name, email in msg.from_), imap_query=["FROM", addr])
@@ -203,7 +202,7 @@ def subject_is(subj: str) -> FilterCriterion:
     return FilterCriterion(lambda msg: (msg.subject or "") == subj, imap_query=["SUBJECT", subj])
 
 
-# non-efficient
+# Non-efficient criteria: Require full message parsing (no IMAP query optimization possible)
 def from_matches(pattern: str) -> FilterCriterion:
     """Create a criterion that matches messages from addresses matching the regex pattern."""
     return FilterCriterion(lambda msg: any(_matches(pattern, email) for name, email in msg.from_))

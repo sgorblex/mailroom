@@ -15,7 +15,6 @@ from imap_thingy.filters.utils import all_unique_accounts
 
 LOGFILE = "imap_thingy.log"
 IDLE_TIMEOUT = 25 * 60  # seconds, max 29 minutes
-# IDLE_TIMEOUT = 30 # seconds, mostly for debugging
 
 # Type alias for IMAP idle responses
 IdleResponse = list[tuple[int, bytes, tuple[bytes, ...] | None]]
@@ -83,7 +82,7 @@ class EventsHandler:
                     continue
                 self._conn.idle()
                 responses = self._conn.idle_check(IDLE_TIMEOUT)
-                self._conn.idle_done()  # Ensure IDLE is ended before any other command
+                self._conn.idle_done()
                 self.handle(responses)
                 self._conn.noop()
             except (ssl.SSLEOFError, imapclient.exceptions.ProtocolError) as e:
@@ -121,7 +120,7 @@ class EventsHandler:
         self._thread.join()
 
 
-## some simple handlers
+# Handler functions for IMAP IDLE events
 def print_responses() -> Callable[[IdleResponse], None]:
     """Create a handler that prints all IMAP IDLE responses to stdout."""
 
