@@ -109,10 +109,12 @@ class EventsHandler:
         try:
             self._conn.idle_done()
         except ssl.SSLWantReadError:
+            # Safe to ignore: occurs if connection is already closed or in non-blocking state.
             pass
         try:
             self._conn.logout()
         except ssl.SSLWantReadError:
+            # Safe to ignore: occurs if connection is already closed or in non-blocking state.
             pass
 
     def join(self) -> None:
