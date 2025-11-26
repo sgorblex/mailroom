@@ -75,7 +75,7 @@ class FilterCriterion:
 
     def __and__(self, other: "FilterCriterion") -> "FilterCriterion":
         def func(msg: ParsedMail) -> bool:
-            return bool(self.func(msg) & other.func(msg))
+            return self.func(msg) and other.func(msg)
 
         imap_query: list[str | list[Any]] | None
         if self.imap_query and other.imap_query:
@@ -86,7 +86,7 @@ class FilterCriterion:
 
     def __or__(self, other: "FilterCriterion") -> "FilterCriterion":
         def func(msg: ParsedMail) -> bool:
-            return bool(self.func(msg) | other.func(msg))
+            return self.func(msg) or other.func(msg)
 
         imap_query: list[str | list[Any]] | None = None
         if self.imap_query and other.imap_query:
