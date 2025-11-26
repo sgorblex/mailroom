@@ -96,7 +96,7 @@ class DuplicateCriterion(FilterCriterion):
 
                 duplicates_to_remove.extend(duplicate_msgids)
 
-                logger.info(f"Found {len(group)} duplicates (key: {key[:50]}...). Keeping message {keep_msgid}, marking {duplicate_msgids} for removal")
+                logger.info(f"Found {len(group)} duplicates (key: {key if len(key) <= 50 else key[:50] + '...'}). Keeping message {keep_msgid}, marking {duplicate_msgids} for removal")
 
         if duplicates_to_remove:
             logger.info(f"Found {len(duplicates_to_remove)} duplicate emails to remove")
