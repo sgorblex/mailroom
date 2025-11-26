@@ -49,7 +49,11 @@ class EventsHandler:
         return EventsHandler(self.account, func, self.folder)
 
     def signal_handler(self, signum: int, frame: FrameType | None) -> None:
-        """Handle system signals by stopping the event handler."""
+        """Handle system signals by stopping the event handler.
+
+        Note: This method must be registered with Python's signal module to be called.
+        Example: signal.signal(signal.SIGINT, handler.signal_handler)
+        """
         self.stop()
 
     def start(self) -> None:
