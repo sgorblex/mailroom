@@ -4,8 +4,7 @@ import logging
 from sys import stdout
 
 LOGFILE = "imap_thingy.log"
-STREAM_LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-FILE_LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 
 
 def setup_logging(
@@ -28,9 +27,9 @@ def setup_logging(
     root_logger.setLevel(root_level)
     stream_handler = logging.StreamHandler(stdout)
     stream_handler.setLevel(stream_level)
-    stream_handler.setFormatter(logging.Formatter(STREAM_LOG_FORMAT))
+    stream_handler.setFormatter(logging.Formatter(LOG_FORMAT))
     file_handler = logging.FileHandler(logfile)
     file_handler.setLevel(file_level)
-    file_handler.setFormatter(logging.Formatter(FILE_LOG_FORMAT))
+    file_handler.setFormatter(logging.Formatter(LOG_FORMAT))
     root_logger.addHandler(stream_handler)
     root_logger.addHandler(file_handler)
