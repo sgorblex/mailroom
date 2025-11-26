@@ -11,5 +11,5 @@ def apply_filters(filters: list[Filter], dry_run: bool = False) -> None:
         dry_run: If True, log actions without executing them (default: False).
 
     """
-    for filter in filters:
-        filter.apply(dry_run=dry_run)
+    for filt in filters:
+        filt.apply(dry_run=dry_run)
