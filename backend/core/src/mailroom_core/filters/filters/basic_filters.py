@@ -25,22 +25,22 @@ class MoveIfFromFilter(CriterionFilter):
 class MoveIfToFilter(CriterionFilter):
     """Filter that moves emails addressed to a specific recipient to a folder."""
 
-    def __init__(self, account: EMailAccount, correspondant: str, folder: str, include_cc: bool = True, include_bcc: bool = True, mark_read: bool = True) -> None:
+    def __init__(self, account: EMailAccount, correspondent: str, folder: str, include_cc: bool = True, include_bcc: bool = True, mark_read: bool = True) -> None:
         """Initialize a move-if-to filter.
 
         Args:
             account: Email account to filter.
-            correspondant: Email address to match in To, CC, or BCC fields.
+            correspondent: Email address to match in To, CC, or BCC fields.
             folder: Destination folder name.
             include_cc: Whether to check CC field (default: True).
             include_bcc: Whether to check BCC field (default: True).
             mark_read: Whether to mark emails as read before moving (default: True).
 
         """
-        criterion = to_contains_is(correspondant)
+        criterion = to_contains_is(correspondent)
         if include_cc:
-            criterion |= cc_contains_is(correspondant)
+            criterion |= cc_contains_is(correspondent)
         if include_bcc:
-            criterion |= bcc_contains_is(correspondant)
+            criterion |= bcc_contains_is(correspondent)
         action = mark_as_read() & move_to(folder) if mark_read else move_to(folder)
         super().__init__(account, criterion, action)
