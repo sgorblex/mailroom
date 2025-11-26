@@ -13,7 +13,6 @@ from imap_thingy.accounts import EMailAccount, logout_all
 from imap_thingy.filters import Filter, apply_filters
 from imap_thingy.filters.utils import all_unique_accounts
 
-LOGFILE = "imap_thingy.log"
 IDLE_TIMEOUT = 25 * 60  # seconds, max 29 minutes
 
 # Type alias for IMAP idle responses
@@ -66,12 +65,6 @@ class EventsHandler:
             except Exception as e:
                 self.logger.debug(f"Exception during logout in reconnect: {e}", exc_info=True)
         self._conn = self.account.extra_connection(self.folder, readonly=True)
-
-    def _refresh(self) -> None:
-        self.logger.info("Refreshing IDLE connection...")
-        self._conn.idle_done()
-        sleep(1)
-        self._conn.idle()
 
     def _watch(self) -> None:
         while not self._stop_event.is_set():
