@@ -20,11 +20,11 @@ def setup_logging(
     - logfile: path to the log file (default: imap_thingy.log)
     - root_level: level for the root logger (default: DEBUG)
     - stream_level: level for stdout (default: INFO)
+    - file_level: level for the file handler (default: DEBUG)
     """
     root_logger = logging.getLogger()
     if root_logger.hasHandlers():
         return
-    root_logger.handlers.clear()
     root_logger.setLevel(root_level)
     stream_handler = logging.StreamHandler(stdout)
     stream_handler.setLevel(stream_level)
