@@ -100,6 +100,37 @@ class GMailAccount(EMailAccount):
 def accounts_from_json(json_path: str) -> dict[str, EMailAccount]:
     """Load email accounts from a JSON configuration file.
 
+    The JSON file should be an array of account objects. Each account object must have:
+    - "name": Account name (string, required)
+    - "type": Account type, either "gmail" or "custom" (string, optional, defaults to "custom")
+    - "username": Email username/address (string, required)
+    - "password": Email password (string, required)
+
+    For "gmail" type accounts, only the above fields are needed.
+
+    For "custom" type accounts, additional fields are required:
+    - "host": IMAP server hostname (string, required)
+    - "port": IMAP server port (integer, required)
+    - "address": Email address, if different from username (string, optional)
+
+    Example JSON format:
+        [
+          {
+            "name": "my gmail account",
+            "type": "gmail",
+            "username": "user@gmail.com",
+            "password": "app_password"
+          },
+          {
+            "name": "custom account",
+            "type": "custom",
+            "host": "mail.example.com",
+            "port": 993,
+            "username": "user@example.com",
+            "password": "password"
+          }
+        ]
+
     Args:
         json_path: Path to JSON file containing account configurations.
 
