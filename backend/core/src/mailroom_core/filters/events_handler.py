@@ -40,6 +40,7 @@ class EventsHandler:
         self.handle = handler
         self._thread = threading.Thread(target=self._watch)
         self.logger = getLogger(f"EventsHandler.{self.account.name}")
+        self._conn_lock = threading.Lock()
 
     def __add__(self, other: "EventsHandler") -> "EventsHandler":
         def func(responses: IdleResponse) -> None:
@@ -63,25 +64,28 @@ class EventsHandler:
         self._thread.start()
 
     def _reconnect(self) -> None:
-        if self._conn:
-            try:
-                self._conn.logout()
-            except Exception as e:
-                self.logger.debug(f"Exception during logout in reconnect: {e}", exc_info=True)
-        self._conn = self.account.extra_connection(self.folder, readonly=True)
+        with self._conn_lock:
+            if self._conn:
+                try:
+                    self._conn.logout()
+                except Exception as e:
+                    self.logger.debug(f"Exception during logout in reconnect: {e}", exc_info=True)
+            self._conn = self.account.extra_connection(self.folder, readonly=True)
 
     def _watch(self) -> None:
         while not self._stop_event.is_set():
             try:
-                if not self._conn:
+                with self._conn_lock:
+                    conn = self._conn
+                if not conn:
                     self._reconnect()
                     sleep(5)
                     continue
-                self._conn.idle()
-                responses = self._conn.idle_check(IDLE_TIMEOUT)
-                self._conn.idle_done()
+                conn.idle()
+                responses = conn.idle_check(IDLE_TIMEOUT)
+                conn.idle_done()
                 self.handle(responses)
-                self._conn.noop()
+                conn.noop()
             except (ssl.SSLEOFError, imapclient.exceptions.ProtocolError) as e:
                 if self._stop_event.is_set():
                     break
@@ -103,16 +107,19 @@ class EventsHandler:
         """Stop monitoring and close the IMAP connection."""
         self.logger.info("Stopping")
         self._stop_event.set()
-        try:
-            self._conn.idle_done()
-        except ssl.SSLWantReadError:
-            # Safe to ignore: occurs if connection is already closed or in non-blocking state.
-            pass
-        try:
-            self._conn.logout()
-        except ssl.SSLWantReadError:
-            # Safe to ignore: occurs if connection is already closed or in non-blocking state.
-            pass
+        with self._conn_lock:
+            conn = self._conn
+        if conn:
+            try:
+                conn.idle_done()
+            except ssl.SSLWantReadError:
+                # Safe to ignore: occurs if connection is already closed or in non-blocking state.
+                pass
+            try:
+                conn.logout()
+            except ssl.SSLWantReadError:
+                # Safe to ignore: occurs if connection is already closed or in non-blocking state.
+                pass
 
     def join(self) -> None:
         """Wait for the monitoring thread to finish."""
