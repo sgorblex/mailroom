@@ -13,7 +13,7 @@ import mailparser
 from imapclient import IMAPClient, imapclient
 
 from imap_thingy.accounts import EMailAccount
-from imap_thingy.filters.interfaces import OneAccountOneFolderFilter
+from imap_thingy.filters.interfaces import OneAccountFilter
 
 logger = logging.getLogger("imap-thingy")
 
@@ -324,7 +324,7 @@ def mark_as_unread() -> MailAction:
     return MailAction(func, name="mark as unread")
 
 
-class CriterionFilter(OneAccountOneFolderFilter):
+class CriterionFilter(OneAccountFilter):
     """Filter that applies an action to messages matching a criterion."""
 
     def __init__(self, account: EMailAccount, criterion: FilterCriterion, action: MailAction, base_folder: str = "INBOX") -> None:
@@ -337,7 +337,8 @@ class CriterionFilter(OneAccountOneFolderFilter):
             base_folder: Folder to search in (default: "INBOX").
 
         """
-        super().__init__(account, base_folder)
+        super().__init__(account)
+        self.base_folder = base_folder
         self.criterion = criterion
         self.action = action
 
@@ -348,7 +349,7 @@ class CriterionFilter(OneAccountOneFolderFilter):
             dry_run: If True, log actions without executing them (default: False).
 
         """
-        super().apply(dry_run)
+        self.account.connection.select_folder(self.base_folder, readonly=False)
         msgs = self.criterion.filter(self.account.connection)
         if msgs:
             if dry_run:

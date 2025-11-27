@@ -1,9 +1,11 @@
 """Base filter interfaces and abstract classes."""
 
+from abc import ABC, abstractmethod
+
 from imap_thingy.accounts import EMailAccount
 
 
-class Filter:
+class Filter(ABC):
     """Base class for all email filters.
 
     Filters operate on one or more email accounts and can be applied to perform
@@ -19,6 +21,7 @@ class Filter:
         """
         self.accounts = accounts
 
+    @abstractmethod
     def apply(self, dry_run: bool = False) -> None:
         """Apply the filter to its accounts.
 
@@ -46,27 +49,12 @@ class OneAccountFilter(Filter):
         """Get the email account this filter operates on."""
         return self.accounts[0]
 
-
-class OneAccountOneFolderFilter(OneAccountFilter):
-    """Base class for filters that operate on a single account and folder."""
-
-    def __init__(self, account: EMailAccount, base_folder: str = "INBOX") -> None:
-        """Initialize a single-account, single-folder filter.
-
-        Args:
-            account: Email account this filter operates on.
-            base_folder: IMAP folder to operate on (default: "INBOX").
-
-        """
-        super().__init__(account)
-        self.base_folder = base_folder
-
+    @abstractmethod
     def apply(self, dry_run: bool = False) -> None:
-        """Apply the filter, selecting the base folder first.
+        """Apply the filter to its account.
 
         Args:
             dry_run: If True, log actions without executing them (default: False).
 
         """
-        super().apply(dry_run)
-        self.account.connection.select_folder(self.base_folder, readonly=False)
+        pass
