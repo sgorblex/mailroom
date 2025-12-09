@@ -7,6 +7,7 @@ and actions. Criteria can be combined with boolean operators and actions can be 
 import logging
 import re
 from collections.abc import Callable
+from datetime import date, datetime
 from typing import Any
 
 import mailparser
@@ -174,6 +175,44 @@ def to_contains_contains(addr: str) -> EfficientCriterion:
 def subject_contains(substring: str) -> EfficientCriterion:
     """Create a criterion that matches messages with subject containing the given substring."""
     return EfficientCriterion(lambda msg: substring in (msg.subject or ""), imap_query=["SUBJECT", substring])
+
+
+def older_than(cutoff_date: date | datetime | str) -> EfficientCriterion:
+    """Create a criterion that matches messages older than the given date.
+
+    Args:
+        cutoff_date: Date to compare against. Can be a datetime.date, datetime.datetime, or
+                     a string in format 'DD-MMM-YYYY' (e.g., '01-Jan-2025').
+
+    Returns:
+        An EfficientCriterion that matches messages sent before the cutoff date.
+
+    """
+    if isinstance(cutoff_date, str):
+        cutoff_date = datetime.strptime(cutoff_date, "%d-%b-%Y").date()
+    elif isinstance(cutoff_date, datetime):
+        cutoff_date = cutoff_date.date()
+
+    imap_date_str = cutoff_date.strftime("%d-%b-%Y")
+
+    def func(msg: ParsedMail) -> bool:
+        msg_date = getattr(msg, "date", None)
+        if msg_date is None:
+            return False
+        if isinstance(msg_date, datetime):
+            msg_date = msg_date.date()
+        elif isinstance(msg_date, date):
+            pass
+        elif isinstance(msg_date, str):
+            try:
+                msg_date = datetime.strptime(msg_date, "%d-%b-%Y").date()
+            except (ValueError, TypeError):
+                return False
+        else:
+            return False
+        return msg_date < cutoff_date
+
+    return EfficientCriterion(func, imap_query=["SENTBEFORE", imap_date_str])
 
 
 # Semi-efficient criteria: Use IMAP queries for pre-filtering but require message parsing for exact matching
