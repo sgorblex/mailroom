@@ -1,4 +1,4 @@
-"""Filter for detecting and removing duplicate emails."""
+"""Duplicate email detection criteria."""
 
 import logging
 from collections import defaultdict
@@ -6,8 +6,7 @@ from collections import defaultdict
 import mailparser
 from imapclient import IMAPClient
 
-from imap_thingy.accounts import EMailAccount
-from imap_thingy.filters.criterion_filter import CriterionFilter, FilterCriterion, ParsedMail, trash
+from imap_thingy.filters.criteria.base import Criterion, ParsedMail
 
 logger = logging.getLogger("imap-thingy")
 
@@ -36,7 +35,7 @@ def _get_duplicate_key(msg: ParsedMail) -> str:
     return f"fallback:{subject}|{from_addr}|{date}"
 
 
-class DuplicateCriterion(FilterCriterion):
+class DuplicateCriterion(Criterion):
     """Criterion that selects duplicate emails (keeping the first one in each group).
 
     Duplicates are identified by:
@@ -52,7 +51,6 @@ class DuplicateCriterion(FilterCriterion):
 
         No IMAP query optimization is possible - we need to see all messages
         to identify duplicates.
-
         """
         super().__init__(lambda msg: False, imap_query=None)
 
@@ -104,39 +102,3 @@ class DuplicateCriterion(FilterCriterion):
             logger.info("No duplicate emails found")
 
         return duplicates_to_remove
-
-
-def duplicates() -> DuplicateCriterion:
-    """Create a criterion that selects duplicate emails.
-
-    Returns a FilterCriterion that identifies duplicate emails based on
-    Message-ID (primary) or Subject+From+Date (fallback). For each group
-    of duplicates, the first email is kept and the rest are selected.
-
-    Returns:
-        A criterion that selects duplicate emails.
-
-    """
-    return DuplicateCriterion()
-
-
-class DuplicateFilter(CriterionFilter):
-    """Filter that removes duplicate emails, keeping only one copy.
-
-    Duplicates are identified by:
-    1. Message-ID header (primary method, most reliable)
-    2. Subject + From + Date (fallback if Message-ID is missing)
-
-    For each group of duplicates, the first email encountered is kept,
-    and the rest are moved to trash.
-    """
-
-    def __init__(self, account: EMailAccount, base_folder: str = "INBOX") -> None:
-        """Initialize a duplicate filter.
-
-        Args:
-            account: Email account to filter.
-            base_folder: Source folder to search in (default: "INBOX").
-
-        """
-        super().__init__(account, duplicates(), trash(), base_folder=base_folder)

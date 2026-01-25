@@ -1,15 +1,67 @@
 """Filter application and management."""
 
-from .interfaces import Filter
+from imap_thingy.filters.actions import Action, MarkAsRead, MarkAsUnread, MoveTo, Trash
+from imap_thingy.filters.basic_filters import MoveIfFromFilter, MoveIfToFilter
+from imap_thingy.filters.criteria import (
+    BccContains,
+    BccIs,
+    BccMatches,
+    CcContains,
+    CcIs,
+    CcMatches,
+    Criterion,
+    DuplicateCriterion,
+    EfficientCriterion,
+    FromContains,
+    FromIs,
+    FromMatches,
+    FromMatchesName,
+    OlderThan,
+    SelectAll,
+    SubjectContains,
+    SubjectIs,
+    SubjectMatches,
+    ToContains,
+    ToIs,
+    ToMatches,
+)
+from imap_thingy.filters.criterion import CriterionFilter
+from imap_thingy.filters.duplicate import DuplicateFilter
+from imap_thingy.filters.interfaces import Filter, OneAccountFilter
+from imap_thingy.filters.utils import apply_filters
 
-
-def apply_filters(filters: list[Filter], dry_run: bool = False) -> None:
-    """Apply a list of filters to their respective accounts.
-
-    Args:
-        filters: List of filter objects to apply.
-        dry_run: If True, log actions without executing them (default: False).
-
-    """
-    for filt in filters:
-        filt.apply(dry_run=dry_run)
+__all__ = [
+    "Filter",
+    "OneAccountFilter",
+    "CriterionFilter",
+    "DuplicateFilter",
+    "MoveIfFromFilter",
+    "MoveIfToFilter",
+    "apply_filters",
+    "Criterion",
+    "EfficientCriterion",
+    "SelectAll",
+    "FromContains",
+    "FromIs",
+    "FromMatches",
+    "FromMatchesName",
+    "ToContains",
+    "ToIs",
+    "ToMatches",
+    "CcContains",
+    "CcIs",
+    "CcMatches",
+    "BccContains",
+    "BccIs",
+    "BccMatches",
+    "SubjectContains",
+    "SubjectIs",
+    "SubjectMatches",
+    "OlderThan",
+    "DuplicateCriterion",
+    "Action",
+    "MoveTo",
+    "Trash",
+    "MarkAsRead",
+    "MarkAsUnread",
+]

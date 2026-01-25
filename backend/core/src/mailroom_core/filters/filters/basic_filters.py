@@ -1,7 +1,10 @@
 """Pre-built filter classes for common use cases."""
 
 from imap_thingy.accounts import EMailAccount
-from imap_thingy.filters.criterion_filter import CriterionFilter, bcc_contains_is, cc_contains_is, from_is, mark_as_read, move_to, to_contains_is
+from imap_thingy.filters.actions.imap import MarkAsRead, MoveTo
+from imap_thingy.filters.criteria.address import BccIs, CcIs, FromIs, ToIs
+from imap_thingy.filters.criteria.base import Criterion
+from imap_thingy.filters.criterion import CriterionFilter
 
 
 class MoveIfFromFilter(CriterionFilter):
@@ -18,8 +21,8 @@ class MoveIfFromFilter(CriterionFilter):
             base_folder: Source folder to search in (default: "INBOX").
 
         """
-        action = mark_as_read() & move_to(folder) if mark_read else move_to(folder)
-        super().__init__(account, from_is(sender), action, base_folder=base_folder)
+        action = MarkAsRead() & MoveTo(folder) if mark_read else MoveTo(folder)
+        super().__init__(account, FromIs(sender), action, base_folder=base_folder)
 
 
 class MoveIfToFilter(CriterionFilter):
@@ -37,10 +40,10 @@ class MoveIfToFilter(CriterionFilter):
             mark_read: Whether to mark emails as read before moving (default: True).
 
         """
-        criterion = to_contains_is(correspondent)
+        criterion: Criterion = ToIs(correspondent)
         if include_cc:
-            criterion |= cc_contains_is(correspondent)
+            criterion |= CcIs(correspondent)
         if include_bcc:
-            criterion |= bcc_contains_is(correspondent)
-        action = mark_as_read() & move_to(folder) if mark_read else move_to(folder)
+            criterion |= BccIs(correspondent)
+        action = MarkAsRead() & MoveTo(folder) if mark_read else MoveTo(folder)
         super().__init__(account, criterion, action)
