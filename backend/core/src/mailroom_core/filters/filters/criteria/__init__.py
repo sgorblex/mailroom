@@ -18,7 +18,7 @@ from imap_thingy.filters.criteria.address import (
 from imap_thingy.filters.criteria.base import Criterion, EfficientCriterion, SelectAll
 from imap_thingy.filters.criteria.date import OlderThan
 from imap_thingy.filters.criteria.duplicate import DuplicateCriterion
-from imap_thingy.filters.criteria.flags import IsRead, IsUnread
+from imap_thingy.filters.criteria.flags import IsRead, IsStarred, IsUnread, IsUnstarred
 from imap_thingy.filters.criteria.subject import SubjectContains, SubjectIs, SubjectMatches
 
 __all__ = [
@@ -45,4 +45,6 @@ __all__ = [
     "DuplicateCriterion",
     "IsRead",
     "IsUnread",
+    "IsStarred",
+    "IsUnstarred",
 ]

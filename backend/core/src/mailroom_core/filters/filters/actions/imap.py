@@ -57,3 +57,27 @@ class MarkAsUnread(Action):
             account.connection.remove_flags(msgids, [b"\\Seen"])
 
         super().__init__(func, name="mark as unread")
+
+
+class Star(Action):
+    """Action that stars messages."""
+
+    def __init__(self) -> None:
+        """Initialize a Star action."""
+
+        def func(account: EMailAccount, msgids: list[int]) -> None:
+            account.connection.add_flags(msgids, [b"\\Flagged"])
+
+        super().__init__(func, name="star")
+
+
+class Unstar(Action):
+    """Action that unstars messages."""
+
+    def __init__(self) -> None:
+        """Initialize an Unstar action."""
+
+        def func(account: EMailAccount, msgids: list[int]) -> None:
+            account.connection.remove_flags(msgids, [b"\\Flagged"])
+
+        super().__init__(func, name="unstar")

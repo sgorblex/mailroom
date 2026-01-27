@@ -27,3 +27,29 @@ class IsUnread(EfficientCriterion):
             return b"\\Seen" not in flags
 
         super().__init__(func, imap_query=["UNSEEN"])
+
+
+class IsStarred(EfficientCriterion):
+    """Matches messages that are starred."""
+
+    def __init__(self) -> None:
+        """Initialize an IsStarred criterion."""
+
+        def func(msg: ParsedMail) -> bool:
+            flags = getattr(msg, "_imap_flags", [])
+            return b"\\Flagged" in flags
+
+        super().__init__(func, imap_query=["FLAGGED"])
+
+
+class IsUnstarred(EfficientCriterion):
+    """Matches messages that are not starred."""
+
+    def __init__(self) -> None:
+        """Initialize an IsUnstarred criterion."""
+
+        def func(msg: ParsedMail) -> bool:
+            flags = getattr(msg, "_imap_flags", [])
+            return b"\\Flagged" not in flags
+
+        super().__init__(func, imap_query=["UNFLAGGED"])
