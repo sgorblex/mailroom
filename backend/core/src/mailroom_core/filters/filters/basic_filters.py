@@ -1,9 +1,11 @@
 """Pre-built filter classes for common use cases."""
 
 from imap_thingy.accounts import EMailAccount
-from imap_thingy.filters.actions.imap import MarkAsRead, MoveTo
+from imap_thingy.filters.actions.base import Action
+from imap_thingy.filters.actions.imap import MarkAsRead, MoveTo, Unstar
 from imap_thingy.filters.criteria.address import BccIs, CcIs, FromIs, ToIs
 from imap_thingy.filters.criteria.base import Criterion
+from imap_thingy.filters.criteria.flags import IsStarred
 from imap_thingy.filters.criterion import CriterionFilter
 
 
@@ -47,3 +49,25 @@ class MoveIfToFilter(CriterionFilter):
             criterion |= BccIs(correspondent)
         action = MarkAsRead() & MoveTo(folder) if mark_read else MoveTo(folder)
         super().__init__(account, criterion, action)
+
+
+class ProcessHandledFilter(CriterionFilter):
+    """Filter that processes handled (starred) mail and unstars it afterwards.
+
+    This filter is designed for workflows where emails are starred to mark them as
+    handled, then processed (e.g., moved to a folder) and unstarred.
+    """
+
+    def __init__(self, account: EMailAccount, criterion: Criterion, action: Action, base_folder: str = "INBOX") -> None:
+        """Initialize a process handled filter.
+
+        Args:
+            account: Email account to filter.
+            criterion: Criterion (condition) to match messages.
+            action: Action to perform on matching handled (starred) messages.
+            base_folder: Folder to search in (default: "INBOX").
+
+        """
+        combined_criterion = criterion & IsStarred()
+        combined_action = action & Unstar()
+        super().__init__(account, combined_criterion, combined_action, base_folder=base_folder)

@@ -1,7 +1,7 @@
 """Filter application and management."""
 
 from imap_thingy.filters.actions import Action, MarkAsRead, MarkAsUnread, MoveTo, Trash
-from imap_thingy.filters.basic_filters import MoveIfFromFilter, MoveIfToFilter
+from imap_thingy.filters.basic_filters import MoveIfFromFilter, MoveIfToFilter, ProcessHandledFilter
 from imap_thingy.filters.criteria import (
     BccContains,
     BccIs,
@@ -17,7 +17,9 @@ from imap_thingy.filters.criteria import (
     FromMatches,
     FromMatchesName,
     IsRead,
+    IsStarred,
     IsUnread,
+    IsUnstarred,
     OlderThan,
     SelectAll,
     SubjectContains,
@@ -39,6 +41,7 @@ __all__ = [
     "DuplicateFilter",
     "MoveIfFromFilter",
     "MoveIfToFilter",
+    "ProcessHandledFilter",
     "apply_filters",
     "Criterion",
     "EfficientCriterion",
@@ -48,7 +51,9 @@ __all__ = [
     "FromMatches",
     "FromMatchesName",
     "IsRead",
+    "IsStarred",
     "IsUnread",
+    "IsUnstarred",
     "ToContains",
     "ToIs",
     "ToMatches",
