@@ -30,8 +30,19 @@ def _get_mail(client: IMAPClient, imap_query: list[str | list[Any]]) -> list[tup
 
     messages: list[tuple[int, ParsedMail]] = []
     for msgid, data in fetched.items():
-        msg = mailparser.parse_from_bytes(data[b"BODY[]"])
-        messages.append((msgid, msg))
+        body_data = data.get(b"BODY[]")
+        if not body_data:
+            logger.warning(f"Message {msgid} has no or empty body data, skipping")
+            continue
+
+        try:
+            msg = mailparser.parse_from_bytes(body_data)
+            messages.append((msgid, msg))
+        except BaseException as e:
+            if isinstance(e, (KeyboardInterrupt, SystemExit)):
+                raise
+            logger.warning(f"Failed to parse message {msgid}: {e}, skipping")
+            continue
 
     return messages
 

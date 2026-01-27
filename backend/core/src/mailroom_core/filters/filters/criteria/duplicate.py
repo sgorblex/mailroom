@@ -3,10 +3,9 @@
 import logging
 from collections import defaultdict
 
-import mailparser
 from imapclient import IMAPClient
 
-from imap_thingy.filters.criteria.base import Criterion, ParsedMail
+from imap_thingy.filters.criteria.base import Criterion, ParsedMail, _get_mail
 
 logger = logging.getLogger("imap-thingy")
 
@@ -66,14 +65,7 @@ class DuplicateCriterion(Criterion):
         """
         logger.info("Scanning for duplicate emails...")
 
-        logger.info("Fetching mail with IMAP query ['ALL']")
-        msg_ids = connection.search(["ALL"])
-        fetched = connection.fetch(msg_ids, ["BODY.PEEK[]"])
-
-        messages: list[tuple[int, ParsedMail]] = []
-        for msgid, data in fetched.items():
-            msg = mailparser.parse_from_bytes(data[b"BODY[]"])
-            messages.append((msgid, msg))
+        messages = _get_mail(connection, ["ALL"])
 
         if not messages:
             logger.info("No emails found in folder")
