@@ -9,17 +9,22 @@ LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 
 def setup_logging(
     logfile: str = LOGFILE,
-    root_level: int = logging.DEBUG,
+    root_level: int = logging.INFO,
     stream_level: int = logging.INFO,
-    file_level: int = logging.DEBUG,
+    file_level: int = logging.INFO,
 ) -> None:
     """Set up logging for the application.
 
-    This configures the root logger and any external loggers (e.g., 'imapclient').
-    - logfile: path to the log file (default: imap_thingy.log)
-    - root_level: level for the root logger (default: DEBUG)
-    - stream_level: level for stdout (default: INFO)
-    - file_level: level for the file handler (default: DEBUG)
+    This configures the root logger with both stream (stdout) and file handlers.
+    If the root logger already has handlers configured, this function does nothing.
+    The logging format includes timestamp, level, logger name, and message.
+
+    Args:
+        logfile: Path to the log file (default: "imap_thingy.log").
+        root_level: Logging level for the root logger (default: logging.INFO).
+        stream_level: Logging level for stdout stream handler (default: logging.INFO).
+        file_level: Logging level for the file handler (default: logging.INFO).
+
     """
     root_logger = logging.getLogger()
     if root_logger.hasHandlers():
