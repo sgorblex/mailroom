@@ -21,12 +21,13 @@ def _get_mail(client: IMAPClient, imap_query: list[str | list[Any]]) -> list[tup
 
     Returns:
         List of tuples (message_id, parsed_message).
+        The parsed message objects have an _imap_flags attribute containing the message flags.
 
     """
     logger.info(f"Fetching mail with IMAP query {imap_query}")
 
     msg_ids = client.search(imap_query)
-    fetched = client.fetch(msg_ids, ["BODY.PEEK[]"])
+    fetched = client.fetch(msg_ids, ["BODY.PEEK[]", "FLAGS"])
 
     messages: list[tuple[int, ParsedMail]] = []
     for msgid, data in fetched.items():
@@ -37,6 +38,8 @@ def _get_mail(client: IMAPClient, imap_query: list[str | list[Any]]) -> list[tup
 
         try:
             msg = mailparser.parse_from_bytes(body_data)
+            flags = data.get(b"FLAGS", [])
+            msg._imap_flags = flags
             messages.append((msgid, msg))
         except BaseException as e:
             if isinstance(e, (KeyboardInterrupt, SystemExit)):
