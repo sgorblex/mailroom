@@ -53,3 +53,29 @@ class IsUnstarred(EfficientCriterion):
             return b"\\Flagged" not in flags
 
         super().__init__(func, imap_query=["UNFLAGGED"])
+
+
+class IsAnswered(EfficientCriterion):
+    """Matches messages that have been answered."""
+
+    def __init__(self) -> None:
+        """Initialize an IsAnswered criterion."""
+
+        def func(msg: ParsedMail) -> bool:
+            flags = getattr(msg, "_imap_flags", [])
+            return b"\\Answered" in flags
+
+        super().__init__(func, imap_query=["ANSWERED"])
+
+
+class IsUnanswered(EfficientCriterion):
+    """Matches messages that have not been answered."""
+
+    def __init__(self) -> None:
+        """Initialize an IsUnanswered criterion."""
+
+        def func(msg: ParsedMail) -> bool:
+            flags = getattr(msg, "_imap_flags", [])
+            return b"\\Answered" not in flags
+
+        super().__init__(func, imap_query=["UNANSWERED"])

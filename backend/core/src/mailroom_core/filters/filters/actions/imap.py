@@ -81,3 +81,27 @@ class Unstar(Action):
             account.connection.remove_flags(msgids, [b"\\Flagged"])
 
         super().__init__(func, name="unstar")
+
+
+class MarkAsAnswered(Action):
+    """Action that marks messages as answered."""
+
+    def __init__(self) -> None:
+        """Initialize a MarkAsAnswered action."""
+
+        def func(account: EMailAccount, msgids: list[int]) -> None:
+            account.connection.add_flags(msgids, [b"\\Answered"])
+
+        super().__init__(func, name="mark as answered")
+
+
+class MarkAsUnanswered(Action):
+    """Action that marks messages as unanswered."""
+
+    def __init__(self) -> None:
+        """Initialize a MarkAsUnanswered action."""
+
+        def func(account: EMailAccount, msgids: list[int]) -> None:
+            account.connection.remove_flags(msgids, [b"\\Answered"])
+
+        super().__init__(func, name="mark as unanswered")
