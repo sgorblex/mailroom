@@ -1,6 +1,6 @@
 """Filter application and management."""
 
-from imap_thingy.filters.actions import Action, MarkAsAnswered, MarkAsRead, MarkAsUnanswered, MarkAsUnread, MoveTo, Trash
+from imap_thingy.filters.actions import Action, Delete, MarkAsAnswered, MarkAsRead, MarkAsUnanswered, MarkAsUnread, MoveTo, Trash
 from imap_thingy.filters.basic_filters import MoveIfFromFilter, MoveIfToFilter, ProcessHandledFilter
 from imap_thingy.filters.criteria import (
     BccContains,
@@ -75,6 +75,7 @@ __all__ = [
     "Action",
     "MoveTo",
     "Trash",
+    "Delete",
     "MarkAsAnswered",
     "MarkAsRead",
     "MarkAsUnanswered",

@@ -105,3 +105,16 @@ class MarkAsUnanswered(Action):
             account.connection.remove_flags(msgids, [b"\\Answered"])
 
         super().__init__(func, name="mark as unanswered")
+
+
+class Delete(Action):
+    """Action that permanently deletes messages."""
+
+    def __init__(self) -> None:
+        """Initialize a Delete action."""
+
+        def func(account: EMailAccount, msgids: list[int]) -> None:
+            account.connection.add_flags(msgids, [b"\\Deleted"])
+            account.connection.expunge(msgids)
+
+        super().__init__(func, name="delete")
