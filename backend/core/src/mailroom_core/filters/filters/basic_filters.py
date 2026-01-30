@@ -53,10 +53,10 @@ class MoveIfToFilter(CriterionFilter):
 
 
 class ProcessHandledFilter(CriterionFilter):
-    """Filter that processes handled (starred) mail and unstars it afterwards.
+    """Filter that processes handled (starred) mail and unstars it first.
 
     This filter is designed for workflows where emails are starred to mark them as
-    handled, then processed (e.g., moved to a folder) and unstarred.
+    handled, then unstarred (while still in the source folder) and processed (e.g., moved).
     """
 
     def __init__(self, account: EMailAccount, criterion: Criterion, action: Action, base_folder: str = "INBOX") -> None:
@@ -70,5 +70,5 @@ class ProcessHandledFilter(CriterionFilter):
 
         """
         combined_criterion = criterion & IsStarred()
-        combined_action = action & Unstar()
+        combined_action = Unstar() & action
         super().__init__(account, combined_criterion, combined_action, base_folder=base_folder)

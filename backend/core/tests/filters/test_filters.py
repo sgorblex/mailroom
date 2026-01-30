@@ -116,7 +116,7 @@ class TestBasicFilters:
         criterion = SelectAll()
         action = MoveTo("Processed")
         filter_obj = ProcessHandledFilter(mock_account, criterion, action)
-        assert "unstar" in filter_obj.action.name
+        assert filter_obj.action.name.startswith("unstar; ")
 
     def test_duplicate_filter_creation(self, mock_account: EMailAccount) -> None:
         """Test DuplicateFilter creation."""
