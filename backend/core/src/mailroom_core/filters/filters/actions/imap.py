@@ -1,6 +1,6 @@
 """IMAP-based email actions."""
 
-import imapclient
+from imapclient.imapclient import TRASH
 
 from imap_thingy.accounts import EMailAccount
 from imap_thingy.filters.actions.base import Action
@@ -30,7 +30,7 @@ class Trash(Action):
         """Initialize a Trash action."""
 
         def func(account: EMailAccount, msgids: list[int]) -> None:
-            account.connection.move(msgids, account.connection.find_special_folder(imapclient.TRASH))
+            account.connection.move(msgids, account.connection.find_special_folder(TRASH))
 
         super().__init__(func, name="trash")
 

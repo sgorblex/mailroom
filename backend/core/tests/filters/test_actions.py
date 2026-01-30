@@ -137,8 +137,7 @@ class TestActionExecution:
         mock_account.connection.move = MagicMock()
         action = Trash()
 
-        with patch("imap_thingy.filters.actions.imap.imapclient") as mock_imapclient:
-            mock_imapclient.TRASH = "TRASH"
+        with patch("imap_thingy.filters.actions.imap.TRASH", "TRASH"):
             action.execute(mock_account, [1, 2, 3])
 
         mock_account.connection.find_special_folder.assert_called_once()
