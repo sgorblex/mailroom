@@ -84,6 +84,7 @@ class TestBasicFilters:
         """Test MoveIfToFilter creation."""
         filter_obj = MoveIfToFilter(mock_account, "recipient@example.com", "Folder")
         assert isinstance(filter_obj, CriterionFilter)
+        assert filter_obj.criterion.imap_query == ["TO", "recipient@example.com"]
 
     def test_move_if_to_filter_with_cc_bcc(self, mock_account: EMailAccount) -> None:
         """Test MoveIfToFilter with CC and BCC options."""

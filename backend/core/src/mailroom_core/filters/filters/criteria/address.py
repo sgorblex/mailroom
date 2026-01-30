@@ -96,37 +96,57 @@ class FromMatchesName(Criterion):
 
 
 class ToContains(EfficientCriterion):
-    """Matches messages to addresses containing the given string."""
+    """Matches messages to addresses containing the given string.
 
-    def __init__(self, addr: str) -> None:
+    Can optionally include CC and BCC fields in the match.
+    """
+
+    def __init__(self, addr: str, incl_cc: bool = False, incl_bcc: bool = False) -> None:
         """Initialize a ToContains criterion.
 
         Args:
             addr: String to search for in recipient addresses.
+            incl_cc: Whether to also check CC field (default: False).
+            incl_bcc: Whether to also check BCC field (default: False).
 
         """
 
         def func(msg: ParsedMail) -> bool:
             return any(addr in email for name, email in _extract_emails(msg, "to"))
 
-        super().__init__(func, ["TO", addr])
+        criterion = Criterion(func, ["TO", addr])
+        if incl_cc:
+            criterion |= CcContains(addr)
+        if incl_bcc:
+            criterion |= BccContains(addr)
+        super().__init__(criterion.func, criterion.imap_query or ["TO", addr])
 
 
 class ToIs(Criterion):
-    """Matches messages to the exact email address."""
+    """Matches messages to the exact email address.
 
-    def __init__(self, addr: str) -> None:
+    Can optionally include CC and BCC fields in the match.
+    """
+
+    def __init__(self, addr: str, incl_cc: bool = False, incl_bcc: bool = False) -> None:
         """Initialize a ToIs criterion.
 
         Args:
             addr: Exact email address to match.
+            incl_cc: Whether to also check CC field (default: False).
+            incl_bcc: Whether to also check BCC field (default: False).
 
         """
 
         def func(msg: ParsedMail) -> bool:
             return any(addr == email for name, email in _extract_emails(msg, "to"))
 
-        super().__init__(func, imap_query=["TO", addr])
+        criterion = Criterion(func, imap_query=["TO", addr])
+        if incl_cc:
+            criterion |= CcIs(addr)
+        if incl_bcc:
+            criterion |= BccIs(addr)
+        super().__init__(criterion.func, criterion.imap_query)
 
 
 class CcContains(EfficientCriterion):
@@ -237,13 +257,13 @@ class ToMatches(Criterion):
     Can optionally include CC and BCC fields in the match.
     """
 
-    def __init__(self, pattern: str, incl_cc: bool = True, incl_bcc: bool = True) -> None:
+    def __init__(self, pattern: str, incl_cc: bool = False, incl_bcc: bool = False) -> None:
         """Initialize a ToMatches criterion.
 
         Args:
             pattern: Regular expression pattern to match against email addresses.
-            incl_cc: Whether to also check CC field (default: True).
-            incl_bcc: Whether to also check BCC field (default: True).
+            incl_cc: Whether to also check CC field (default: False).
+            incl_bcc: Whether to also check BCC field (default: False).
 
         """
 

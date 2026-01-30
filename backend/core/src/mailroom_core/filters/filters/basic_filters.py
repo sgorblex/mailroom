@@ -3,7 +3,7 @@
 from imap_thingy.accounts import EMailAccount
 from imap_thingy.filters.actions.base import Action
 from imap_thingy.filters.actions.imap import MarkAsRead, MoveTo, Unstar
-from imap_thingy.filters.criteria.address import BccIs, CcIs, FromIs, ToIs
+from imap_thingy.filters.criteria.address import FromIs, ToIs
 from imap_thingy.filters.criteria.base import Criterion
 from imap_thingy.filters.criteria.flags import IsStarred
 from imap_thingy.filters.criterion import CriterionFilter
@@ -30,24 +30,20 @@ class MoveIfFromFilter(CriterionFilter):
 class MoveIfToFilter(CriterionFilter):
     """Filter that moves emails addressed to a specific recipient to a folder."""
 
-    def __init__(self, account: EMailAccount, correspondent: str, folder: str, include_cc: bool = True, include_bcc: bool = True, mark_read: bool = True, base_folder: str = "INBOX") -> None:
+    def __init__(self, account: EMailAccount, correspondent: str, folder: str, include_cc: bool = False, include_bcc: bool = False, mark_read: bool = True, base_folder: str = "INBOX") -> None:
         """Initialize a move-if-to filter.
 
         Args:
             account: Email account to filter.
-            correspondent: Email address to match in To, CC, or BCC fields.
+            correspondent: Email address to match in To field (and optionally CC/BCC).
             folder: Destination folder name.
-            include_cc: Whether to check CC field (default: True).
-            include_bcc: Whether to check BCC field (default: True).
+            include_cc: Whether to check CC field (default: False).
+            include_bcc: Whether to check BCC field (default: False).
             mark_read: Whether to mark emails as read before moving (default: True).
             base_folder: Source folder to search in (default: "INBOX").
 
         """
-        criterion: Criterion = ToIs(correspondent)
-        if include_cc:
-            criterion |= CcIs(correspondent)
-        if include_bcc:
-            criterion |= BccIs(correspondent)
+        criterion: Criterion = ToIs(correspondent, incl_cc=include_cc, incl_bcc=include_bcc)
         action = MarkAsRead() & MoveTo(folder) if mark_read else MoveTo(folder)
         super().__init__(account, criterion, action, base_folder=base_folder)
 

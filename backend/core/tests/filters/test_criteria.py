@@ -1,5 +1,6 @@
 """Tests for criteria classes."""
 
+from collections.abc import Iterator
 from datetime import date, datetime
 from unittest.mock import MagicMock
 
@@ -32,6 +33,14 @@ from imap_thingy.filters.criteria import (
     ToIs,
     ToMatches,
 )
+
+
+def _query_atoms(q: object) -> Iterator[object]:
+    if isinstance(q, list):
+        for x in q:
+            yield from _query_atoms(x)
+    else:
+        yield q
 
 
 class TestCriteriaCombination:
@@ -73,6 +82,22 @@ class TestAddressCriteria:
         assert isinstance(criterion, Criterion)
         assert criterion.imap_query == ["TO", "test@example.com"]
 
+    def test_to_is_without_cc_bcc(self) -> None:
+        """Test ToIs criterion without CC and BCC."""
+        criterion = ToIs("test@example.com", incl_cc=False, incl_bcc=False)
+        assert isinstance(criterion, Criterion)
+        assert criterion.imap_query == ["TO", "test@example.com"]
+
+    def test_to_is_with_cc_bcc(self) -> None:
+        """Test ToIs criterion with CC and BCC enabled."""
+        criterion = ToIs("test@example.com", incl_cc=True, incl_bcc=True)
+        assert isinstance(criterion, Criterion)
+        assert criterion.imap_query is not None
+        atoms = list(_query_atoms(criterion.imap_query))
+        assert "TO" in atoms
+        assert "CC" in atoms
+        assert "BCC" in atoms
+
     def test_cc_is_creation(self) -> None:
         """Test CcIs criterion creation."""
         criterion = CcIs("test@example.com")
@@ -103,11 +128,36 @@ class TestAddressCriteria:
         assert isinstance(criterion, Criterion)
         assert criterion.imap_query == ["TO", "example.com"]
 
+    def test_to_contains_without_cc_bcc(self) -> None:
+        """Test ToContains criterion without CC and BCC."""
+        criterion = ToContains("example.com", incl_cc=False, incl_bcc=False)
+        assert isinstance(criterion, Criterion)
+        assert criterion.imap_query == ["TO", "example.com"]
+
+    def test_to_contains_with_cc_bcc(self) -> None:
+        """Test ToContains criterion with CC and BCC enabled."""
+        criterion = ToContains("example.com", incl_cc=True, incl_bcc=True)
+        assert isinstance(criterion, Criterion)
+        assert criterion.imap_query is not None
+        atoms = list(_query_atoms(criterion.imap_query))
+        assert "TO" in atoms
+        assert "CC" in atoms
+        assert "BCC" in atoms
+
     def test_to_matches_creation(self) -> None:
         """Test ToMatches criterion creation."""
         criterion = ToMatches(r".*@example\.com")
         assert isinstance(criterion, Criterion)
         assert criterion.imap_query is None
+
+    def test_to_matches_default_does_not_include_cc_bcc(self) -> None:
+        """Test ToMatches default excludes CC and BCC."""
+        msg = MagicMock()
+        msg.to = []
+        msg.cc = [("Name", "cc@example.com")]
+        msg.bcc = [("Name", "bcc@example.com")]
+        criterion = ToMatches(r".*@example\.com")
+        assert criterion.func(msg) is False
 
     def test_cc_contains_creation(self) -> None:
         """Test CcContains criterion creation."""
