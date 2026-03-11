@@ -36,7 +36,7 @@ class OlderThan(Criterion):
             elif isinstance(msg_date, str):
                 try:
                     msg_date = datetime.strptime(msg_date, "%d-%b-%Y").date()
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     return False
             else:
                 return False
