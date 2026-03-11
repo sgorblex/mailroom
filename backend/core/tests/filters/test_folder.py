@@ -1,9 +1,10 @@
 """Tests for Folder (path + account) and run API."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from imap_thingy.accounts import Account, Folder, Path
-from imap_thingy.filters import Anything, Filter, MoveTo
+from imap_thingy.core import Message
+from imap_thingy.filters import Anything, Filter, MoveTo, SubjectMatches
 from tests.conftest import MockEMailAccount
 
 
@@ -90,3 +91,31 @@ class TestFolderRun:
         conn.logout.assert_called_once()
         assert conn.search.call_count == 2
         assert conn.move.call_count == 2
+
+    def test_folder_run_fetch_cache_two_non_efficient_filters(self, mock_account: MockEMailAccount) -> None:
+        folder = mock_account / "INBOX"
+        conn = mock_account.connect.return_value
+        conn.move = MagicMock()
+
+        fetch_calls: list[list[int]] = []
+
+        def record_fetch(client: object, msg_ids: list[int]) -> dict[int, Message]:
+            fetch_calls.append(list(msg_ids))
+            result: dict[int, Message] = {}
+            for mid in msg_ids:
+                parsed = MagicMock()
+                parsed.subject = "one" if mid == 1 else ("four" if mid == 4 else "other")
+                result[mid] = Message(id=mid, parsed=parsed, flags=[])
+            return result
+
+        with (
+            patch("imap_thingy.accounts.account.search_mail", side_effect=[[1, 2, 3], [2, 3, 4]]),
+            patch("imap_thingy.accounts.account.fetch_mail", side_effect=record_fetch),
+        ):
+            f1 = Filter(SubjectMatches("one"), MoveTo(Path("D1")))
+            f2 = Filter(SubjectMatches("four"), MoveTo(Path("D2")))
+            folder.run([f1, f2], dry_run=False)
+
+        assert len(fetch_calls) == 2
+        assert fetch_calls[0] == [1, 2, 3]
+        assert fetch_calls[1] == [4]

@@ -7,7 +7,7 @@ from collections.abc import Iterable
 
 from imapclient import IMAPClient
 
-from imap_thingy.core import Path
+from imap_thingy.core import Message, Path
 from imap_thingy.filters.filter import Filter
 from imap_thingy.get_mail import fetch_mail, search_mail
 
@@ -52,15 +52,24 @@ class Folder:
         Because the connection is shared, actions executed by earlier filters
         can affect subsequent filters via changes to server or session state
         (for example, moving messages to other folders).
+
+        Criteria with is_efficient=True (e.g. FromIs, ToIs, SubjectContains)
+        use IMAP SEARCH only and do not fetch message bodies. Criteria that
+        are not fully expressible in IMAP (e.g. SubjectMatches with regex) use
+        a best-effort per-run fetch cache: messages are fetched once when first
+        needed and kept in memory until evicted. Messages that were acted on
+        are evicted after each action and may be fetched again later in the
+        same run if selected by another filter.
         """
         filters = [filter_or_filters] if isinstance(filter_or_filters, Filter) else list(filter_or_filters)
         if not filters:
             return
         conn = self.connect()
+        fetched: dict[int, Message] = {}
         self.log.info("running %s filter(s)", len(filters))
         try:
             for f in filters:
-                self._run_one(f, dry_run, conn)
+                self._run_one(f, dry_run, conn, fetched)
         finally:
             try:
                 conn.logout()
@@ -68,11 +77,35 @@ class Folder:
             except Exception as exc:
                 self.log.debug("Logout failed: %s", exc, exc_info=True)
 
-    def _run_one(self, f: Filter, dry_run: bool, conn: IMAPClient) -> None:
+    def _run_one(self, f: Filter, dry_run: bool, conn: IMAPClient, fetched: dict[int, Message]) -> None:
         selected_msg_ids = search_mail(conn, f.criterion.imap_query)
+        if f.criterion.is_efficient and selected_msg_ids:
+            self.log.debug("IMAP-only (efficient), no fetch for %s message(s)", len(selected_msg_ids))
         if not f.criterion.is_efficient:
-            messages = fetch_mail(conn, selected_msg_ids)
-            selected_msg_ids = list(f.criterion.select(messages).keys())
+            to_fetch = [i for i in selected_msg_ids if i not in fetched]
+            self.log.debug(
+                "cache: %s candidates, %s in cache, fetching %s",
+                len(selected_msg_ids),
+                len(selected_msg_ids) - len(to_fetch),
+                len(to_fetch),
+            )
+            if to_fetch:
+                added = fetch_mail(conn, to_fetch)
+                fetched.update(added)
+                self.log.debug("fetched %s message(s), cache size %s", len(added), len(fetched))
+            messages_this = {i: fetched[i] for i in selected_msg_ids if i in fetched}
+            if len(messages_this) < len(selected_msg_ids):
+                missing_ids = [i for i in selected_msg_ids if i not in messages_this]
+                sample_size = 10
+                sample = missing_ids[:sample_size]
+                truncated = " (first 10 shown)" if len(missing_ids) > sample_size else ""
+                self.log.warning(
+                    "Skipping %s message(s) that could not be fetched or parsed%s. Sample: %s",
+                    len(missing_ids),
+                    truncated,
+                    sample,
+                )
+            selected_msg_ids = list(f.criterion.select(messages_this).keys())
         if selected_msg_ids:
             _sample_size = 10
             _sample = selected_msg_ids[:_sample_size]
@@ -98,6 +131,16 @@ class Folder:
                     delimiter=self.account.delimiter,
                 )
                 self.log.info("executed %s", f.action)
+                evicted_count = 0
+                for i in selected_msg_ids:
+                    if fetched.pop(i, None) is not None:
+                        evicted_count += 1
+                if evicted_count:
+                    self.log.debug(
+                        "evicted %s message(s) from cache (acted on), cache size %s",
+                        evicted_count,
+                        len(fetched),
+                    )
         else:
             self.log.debug("no messages matched for action %s", f.action)
 
