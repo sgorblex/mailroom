@@ -1,6 +1,11 @@
-"""Logging configuration for the IMAP thingy library."""
+"""Deprecated logging helper kept for backward compatibility.
+
+This module previously configured the root logger with stream and file handlers.
+It is no longer recommended; configure logging in your own application instead.
+"""
 
 import logging
+import warnings
 from sys import stdout
 
 LOGFILE = "imap_thingy.log"
@@ -15,17 +20,14 @@ def setup_logging(
 ) -> None:
     """Set up logging for the application.
 
-    This configures the root logger with both stream (stdout) and file handlers.
-    If the root logger already has handlers configured, this function does nothing.
-    The logging format includes timestamp, level, logger name, and message.
-
-    Args:
-        logfile: Path to the log file (default: "imap_thingy.log").
-        root_level: Logging level for the root logger (default: logging.INFO).
-        stream_level: Logging level for stdout stream handler (default: logging.INFO).
-        file_level: Logging level for the file handler (default: logging.INFO).
-
+    .. deprecated::
+        Use ``logging.basicConfig()`` or your own logging configuration instead.
     """
+    warnings.warn(
+        "imap_thingy.logging.setup_logging() is deprecated. Configure logging in your application directly (e.g. logging.basicConfig()).",
+        FutureWarning,
+        stacklevel=2,
+    )
     root_logger = logging.getLogger()
     if root_logger.hasHandlers():
         return

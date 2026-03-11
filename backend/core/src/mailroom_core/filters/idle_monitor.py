@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 import ssl
 import threading
 from collections.abc import Callable, Iterable
-from logging import getLogger
 from time import sleep
 from types import FrameType
 from typing import Any
@@ -75,7 +75,7 @@ class IdleMonitor:
         self.handler = handler
         self._thread: threading.Thread | None = None
         self._started = False
-        self.logger = getLogger(f"IdleMonitor.{self.folder}")
+        self.log = logging.getLogger(__name__).getChild(str(self.folder))
         self._conn_lock = threading.Lock()
         self._conn = None
 
@@ -90,21 +90,20 @@ class IdleMonitor:
             raise RuntimeError("monitor already started")
         self._started = True
         self._conn = self.folder.connect(readonly=True)
+        self.log.info("Started watching")
         self._stop_event = threading.Event()
         self._thread = threading.Thread(target=self._watch)
         self._thread.start()
         return self
 
     def _reconnect(self) -> None:
+        self.log.info("Reconnecting")
         with self._conn_lock:
             if self._conn:
                 try:
                     self._conn.logout()
                 except Exception as e:
-                    self.logger.debug(
-                        f"Exception during logout in reconnect: {e}",
-                        exc_info=True,
-                    )
+                    self.log.debug("Logout during reconnect failed: %s", e, exc_info=True)
             self._conn = self.folder.connect(readonly=True)
 
     def _watch(self) -> None:
@@ -124,24 +123,24 @@ class IdleMonitor:
             except (ssl.SSLEOFError, imapclient.exceptions.ProtocolError) as e:
                 if self._stop_event.is_set():
                     break
-                self.logger.warning(f"Connection error: {e}", exc_info=True)
+                self.log.warning("IDLE connection error: %s", e, exc_info=True)
                 conn = self._conn
                 if conn is not None and hasattr(conn, "sock") and hasattr(conn.sock, "recv"):
                     try:
                         raw = conn.sock.recv(4096, 0)
-                        self.logger.debug(f"Last raw socket data: {raw}")
+                        self.log.debug("Last raw socket data: %s", raw)
                     except Exception as sock_exc:
-                        self.logger.debug(f"Could not read raw socket data: {sock_exc}")
+                        self.log.debug("Could not read raw socket data: %s", sock_exc)
                 self._reconnect()
                 sleep(5)
             except Exception as e:
-                self.logger.error(f"Unexpected error: {e}", exc_info=True)
+                self.log.error("IDLE unexpected error: %s", e, exc_info=True)
                 self._reconnect()
                 sleep(5)
 
     def stop(self) -> None:
         """Stop watching and close the IDLE connection."""
-        self.logger.info("Stopping")
+        self.log.info("Stopping")
         self._stop_event.set()
         with self._conn_lock:
             conn = self._conn
@@ -149,11 +148,12 @@ class IdleMonitor:
                 try:
                     conn.idle_done()
                 except ssl.SSLWantReadError:
-                    pass  # connection already closed or buffer empty during stop
+                    pass
                 try:
                     conn.logout()
                 except ssl.SSLWantReadError:
-                    pass  # same when closing
+                    pass
+                self.log.debug("Disconnected from %s:%s", self.account.host, self.account.port)
 
     def join(self) -> None:
         """Wait for the monitoring thread to finish."""

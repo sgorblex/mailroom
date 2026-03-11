@@ -11,8 +11,6 @@ from imap_thingy.core import Path
 from imap_thingy.filters.filter import Filter
 from imap_thingy.get_mail import fetch_mail, search_mail
 
-_logger = logging.getLogger("imap-thingy")
-
 
 class Folder:
     """An account plus a folder path; supports run(filter) and path navigation."""
@@ -24,6 +22,7 @@ class Folder:
         """Build a Folder from an account and a path."""
         self.path = path
         self.account = account
+        self.log = account.log.getChild(self.imap_name())
 
     def imap_name(self) -> str:
         """Return the IMAP folder name (e.g. INBOX or delimiter-joined path)."""
@@ -58,14 +57,16 @@ class Folder:
         if not filters:
             return
         conn = self.connect()
+        self.log.info("running %s filter(s)", len(filters))
         try:
             for f in filters:
                 self._run_one(f, dry_run, conn)
         finally:
             try:
                 conn.logout()
+                self.log.debug("Disconnected from %s:%s", self.account.host, self.account.port)
             except Exception as exc:
-                self.account.logger.debug("Error during IMAP logout for %s: %s", self, exc, exc_info=True)
+                self.log.debug("Logout failed: %s", exc, exc_info=True)
 
     def _run_one(self, f: Filter, dry_run: bool, conn: IMAPClient) -> None:
         selected_msg_ids = search_mail(conn, f.criterion.imap_query)
@@ -73,17 +74,32 @@ class Folder:
             messages = fetch_mail(conn, selected_msg_ids)
             selected_msg_ids = list(f.criterion.select(messages).keys())
         if selected_msg_ids:
+            _sample_size = 10
+            _sample = selected_msg_ids[:_sample_size]
+            _truncated = f" (first {len(_sample)} shown)" if len(selected_msg_ids) > _sample_size else ""
             if dry_run:
-                _logger.info(f"[Dry-Run] Would select: {selected_msg_ids}")
-                _logger.info(f"[Dry-Run] Would execute: {f.action}")
+                self.log.info(
+                    "[Dry-Run] would select %s message(s)%s and execute %s: %s",
+                    len(selected_msg_ids),
+                    _truncated,
+                    f.action,
+                    _sample,
+                )
             else:
-                _logger.info(f"Selected: {selected_msg_ids}")
+                self.log.info(
+                    "selected %s message(s)%s: %s",
+                    len(selected_msg_ids),
+                    _truncated,
+                    _sample,
+                )
                 f.action.execute(
                     conn,
                     selected_msg_ids,
                     delimiter=self.account.delimiter,
                 )
-                _logger.info(f"Executed: {f.action}")
+                self.log.info("executed %s", f.action)
+        else:
+            self.log.debug("no messages matched for action %s", f.action)
 
     def __truediv__(self, path: str) -> Folder:
         return Folder(self.account, (self.path / path))
@@ -115,14 +131,14 @@ class Account:
         self.password = password
         self.address = address if address is not None else username
         self.delimiter = delimiter
-        self.logger: logging.Logger = logging.getLogger(f"Account.{self.name}")
+        self.log: logging.Logger = logging.getLogger(__name__).getChild(self.name)
         self.inbox = Folder(self, Path([]))
 
     def connect(self) -> IMAPClient:
         """Create a new IMAP connection. Caller must call conn.logout() when done."""
         conn = IMAPClient(self.host, self.port, ssl=True)
         conn.login(self.username, self.password)
-        self.logger.info("Connected")
+        self.log.debug("Connected to %s:%s", self.host, self.port)
         return conn
 
     def __truediv__(self, path: str | Path) -> Folder:

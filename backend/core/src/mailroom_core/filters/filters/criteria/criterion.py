@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
 
 from imap_thingy.core import All, IMAPQuery, Message
-
-logger = logging.getLogger("imap-thingy")
 
 
 class Criterion:
