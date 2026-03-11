@@ -66,6 +66,7 @@ class TestFolderRun:
         folder.run(f, dry_run=False)
 
         mock_account.connect.assert_called_once_with()
+        conn.logout.assert_called_once()
         conn.search.assert_called_once()
         conn.move.assert_called_once_with([1], "Dest")
 
@@ -85,6 +86,7 @@ class TestFolderRun:
         f2 = Filter(Anything(), MoveTo(Path("D2")))
         folder.run([f1, f2], dry_run=False)
 
-        assert mock_account.connect.call_count == 2
+        assert mock_account.connect.call_count == 1
+        conn.logout.assert_called_once()
         assert conn.search.call_count == 2
         assert conn.move.call_count == 2

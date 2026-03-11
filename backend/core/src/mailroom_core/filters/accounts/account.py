@@ -43,38 +43,47 @@ class Folder:
         filter_or_filters: Filter | Iterable[Filter],
         dry_run: bool = False,
     ) -> None:
-        """Run filter(s) on this folder.
+        """Run one or more filters on this folder using a shared IMAP connection.
 
-        Each filter is run with its own IMAP connection, so actions cannot
-        affect subsequent filters by mutating connection state.
+        A single IMAP connection is opened and this folder is selected once per
+        call to run(). All filters passed in filter_or_filters are then executed
+        sequentially using that same connection and session state, before the
+        connection is logged out.
+
+        Because the connection is shared, actions executed by earlier filters
+        can affect subsequent filters via changes to server or session state
+        (for example, moving messages to other folders).
         """
         filters = [filter_or_filters] if isinstance(filter_or_filters, Filter) else list(filter_or_filters)
         if not filters:
             return
-        for f in filters:
-            self._run_one(f, dry_run)
-
-    def _run_one(self, f: Filter, dry_run: bool) -> None:
         conn = self.connect()
         try:
-            selected_msg_ids = search_mail(conn, f.criterion.imap_query)
-            if not f.criterion.is_efficient:
-                messages = fetch_mail(conn, selected_msg_ids)
-                selected_msg_ids = list(f.criterion.select(messages).keys())
-            if selected_msg_ids:
-                if dry_run:
-                    _logger.info(f"[Dry-Run] Would select: {selected_msg_ids}")
-                    _logger.info(f"[Dry-Run] Would execute: {f.action}")
-                else:
-                    _logger.info(f"Selected: {selected_msg_ids}")
-                    f.action.execute(
-                        conn,
-                        selected_msg_ids,
-                        delimiter=self.account.delimiter,
-                    )
-                    _logger.info(f"Executed: {f.action}")
+            for f in filters:
+                self._run_one(f, dry_run, conn)
         finally:
-            conn.logout()
+            try:
+                conn.logout()
+            except Exception as exc:
+                self.account.logger.debug("Error during IMAP logout for %s: %s", self, exc, exc_info=True)
+
+    def _run_one(self, f: Filter, dry_run: bool, conn: IMAPClient) -> None:
+        selected_msg_ids = search_mail(conn, f.criterion.imap_query)
+        if not f.criterion.is_efficient:
+            messages = fetch_mail(conn, selected_msg_ids)
+            selected_msg_ids = list(f.criterion.select(messages).keys())
+        if selected_msg_ids:
+            if dry_run:
+                _logger.info(f"[Dry-Run] Would select: {selected_msg_ids}")
+                _logger.info(f"[Dry-Run] Would execute: {f.action}")
+            else:
+                _logger.info(f"Selected: {selected_msg_ids}")
+                f.action.execute(
+                    conn,
+                    selected_msg_ids,
+                    delimiter=self.account.delimiter,
+                )
+                _logger.info(f"Executed: {f.action}")
 
     def __truediv__(self, path: str) -> Folder:
         return Folder(self.account, (self.path / path))
