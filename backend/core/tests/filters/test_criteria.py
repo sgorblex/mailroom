@@ -4,8 +4,8 @@ from collections.abc import Iterator
 from datetime import date, datetime
 from unittest.mock import MagicMock
 
-from imap_thingy.accounts import EMailAccount
 from imap_thingy.filters.criteria import (
+    Anything,
     BccContains,
     BccIs,
     BccMatches,
@@ -13,7 +13,6 @@ from imap_thingy.filters.criteria import (
     CcIs,
     CcMatches,
     Criterion,
-    DuplicateCriterion,
     FromContains,
     FromIs,
     FromMatches,
@@ -25,7 +24,6 @@ from imap_thingy.filters.criteria import (
     IsUnread,
     IsUnstarred,
     OlderThan,
-    SelectAll,
     SubjectContains,
     SubjectIs,
     SubjectMatches,
@@ -36,8 +34,13 @@ from imap_thingy.filters.criteria import (
 
 
 def _query_atoms(q: object) -> Iterator[object]:
-    if isinstance(q, list):
+    if hasattr(q, "build"):
+        yield from _query_atoms(q.build())
+    elif isinstance(q, list):
         for x in q:
+            yield from _query_atoms(x)
+    elif isinstance(q, tuple) and len(q) >= 1 and q[0] in ("OR", "NOT"):
+        for x in q[1:]:
             yield from _query_atoms(x)
     else:
         yield q
@@ -66,6 +69,18 @@ class TestCriteriaCombination:
         negated = ~criterion
         assert isinstance(negated, Criterion)
 
+    def test_if_then_returns_filter(self) -> None:
+        """Test If(c).then(action) returns Filter."""
+        from imap_thingy.accounts import Path
+        from imap_thingy.filters import Filter, If, MoveTo
+
+        c = FromIs("a@x.com")
+        a = MoveTo(Path("Dest"))
+        f = If(c).then(a)
+        assert isinstance(f, Filter)
+        assert f.criterion is c
+        assert f.action is a
+
 
 class TestAddressCriteria:
     """Test address-based criteria."""
@@ -74,19 +89,19 @@ class TestAddressCriteria:
         """Test FromIs criterion creation."""
         criterion = FromIs("test@example.com")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query == ["FROM", "test@example.com"]
+        assert criterion.imap_query.build() == ("FROM", "test@example.com")
 
     def test_to_is_creation(self) -> None:
         """Test ToIs criterion creation."""
         criterion = ToIs("test@example.com")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query == ["TO", "test@example.com"]
+        assert criterion.imap_query.build() == ("TO", "test@example.com")
 
     def test_to_is_without_cc_bcc(self) -> None:
         """Test ToIs criterion without CC and BCC."""
         criterion = ToIs("test@example.com", incl_cc=False, incl_bcc=False)
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query == ["TO", "test@example.com"]
+        assert criterion.imap_query.build() == ("TO", "test@example.com")
 
     def test_to_is_with_cc_bcc(self) -> None:
         """Test ToIs criterion with CC and BCC enabled."""
@@ -94,45 +109,45 @@ class TestAddressCriteria:
         assert isinstance(criterion, Criterion)
         assert criterion.imap_query is not None
         atoms = list(_query_atoms(criterion.imap_query))
-        assert "TO" in atoms
-        assert "CC" in atoms
-        assert "BCC" in atoms
+        assert ("TO", "test@example.com") in atoms
+        assert ("CC", "test@example.com") in atoms
+        assert ("BCC", "test@example.com") in atoms
 
     def test_cc_is_creation(self) -> None:
         """Test CcIs criterion creation."""
         criterion = CcIs("test@example.com")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query == ["CC", "test@example.com"]
+        assert criterion.imap_query.build() == ("CC", "test@example.com")
 
     def test_bcc_is_creation(self) -> None:
         """Test BccIs criterion creation."""
         criterion = BccIs("test@example.com")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query == ["BCC", "test@example.com"]
+        assert criterion.imap_query.build() == ("BCC", "test@example.com")
 
     def test_from_matches_creation(self) -> None:
         """Test FromMatches criterion creation."""
         criterion = FromMatches(r".*@example\.com")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query is None
+        assert criterion.imap_query.build() == "ALL"
 
     def test_from_contains_creation(self) -> None:
         """Test FromContains criterion creation."""
         criterion = FromContains("example.com")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query == ["FROM", "example.com"]
+        assert criterion.imap_query.build() == ("FROM", "example.com")
 
     def test_to_contains_creation(self) -> None:
         """Test ToContains criterion creation."""
         criterion = ToContains("example.com")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query == ["TO", "example.com"]
+        assert criterion.imap_query.build() == ("TO", "example.com")
 
     def test_to_contains_without_cc_bcc(self) -> None:
         """Test ToContains criterion without CC and BCC."""
         criterion = ToContains("example.com", incl_cc=False, incl_bcc=False)
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query == ["TO", "example.com"]
+        assert criterion.imap_query.build() == ("TO", "example.com")
 
     def test_to_contains_with_cc_bcc(self) -> None:
         """Test ToContains criterion with CC and BCC enabled."""
@@ -140,22 +155,25 @@ class TestAddressCriteria:
         assert isinstance(criterion, Criterion)
         assert criterion.imap_query is not None
         atoms = list(_query_atoms(criterion.imap_query))
-        assert "TO" in atoms
-        assert "CC" in atoms
-        assert "BCC" in atoms
+        assert ("TO", "example.com") in atoms
+        assert ("CC", "example.com") in atoms
+        assert ("BCC", "example.com") in atoms
 
     def test_to_matches_creation(self) -> None:
         """Test ToMatches criterion creation."""
         criterion = ToMatches(r".*@example\.com")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query is None
+        assert criterion.imap_query.build() == "ALL"
 
     def test_to_matches_default_does_not_include_cc_bcc(self) -> None:
         """Test ToMatches default excludes CC and BCC."""
-        msg = MagicMock()
-        msg.to = []
-        msg.cc = [("Name", "cc@example.com")]
-        msg.bcc = [("Name", "bcc@example.com")]
+        from imap_thingy.core import Message
+
+        parsed = MagicMock()
+        parsed.to = []
+        parsed.cc = [("Name", "cc@example.com")]
+        parsed.bcc = [("Name", "bcc@example.com")]
+        msg = Message(0, parsed, [])
         criterion = ToMatches(r".*@example\.com")
         assert criterion.func(msg) is False
 
@@ -163,31 +181,31 @@ class TestAddressCriteria:
         """Test CcContains criterion creation."""
         criterion = CcContains("example.com")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query == ["CC", "example.com"]
+        assert criterion.imap_query.build() == ("CC", "example.com")
 
     def test_cc_matches_creation(self) -> None:
         """Test CcMatches criterion creation."""
         criterion = CcMatches(r".*@example\.com")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query is None
+        assert criterion.imap_query.build() == "ALL"
 
     def test_bcc_contains_creation(self) -> None:
         """Test BccContains criterion creation."""
         criterion = BccContains("example.com")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query == ["BCC", "example.com"]
+        assert criterion.imap_query.build() == ("BCC", "example.com")
 
     def test_bcc_matches_creation(self) -> None:
         """Test BccMatches criterion creation."""
         criterion = BccMatches(r".*@example\.com")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query is None
+        assert criterion.imap_query.build() == "ALL"
 
     def test_from_matches_name_creation(self) -> None:
         """Test FromMatchesName criterion creation."""
         criterion = FromMatchesName(r"John.*")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query is None
+        assert criterion.imap_query.build() == "ALL"
 
     def test_to_matches_with_options(self) -> None:
         """Test ToMatches criterion with incl_cc and incl_bcc options."""
@@ -207,19 +225,19 @@ class TestSubjectCriteria:
         """Test SubjectContains criterion creation."""
         criterion = SubjectContains("Important")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query == ["SUBJECT", "Important"]
+        assert criterion.imap_query.build() == ("SUBJECT", "Important")
 
     def test_subject_is_creation(self) -> None:
         """Test SubjectIs criterion creation."""
         criterion = SubjectIs("Exact Subject")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query == ["SUBJECT", "Exact Subject"]
+        assert criterion.imap_query.build() == ("SUBJECT", "Exact Subject")
 
     def test_subject_matches_creation(self) -> None:
         """Test SubjectMatches criterion creation."""
         criterion = SubjectMatches(r"^\[.*\]")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query is None
+        assert criterion.imap_query.build() == "ALL"
 
 
 class TestDateCriteria:
@@ -230,20 +248,20 @@ class TestDateCriteria:
         cutoff = date(2025, 1, 1)
         criterion = OlderThan(cutoff)
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query == ["SENTBEFORE", "01-Jan-2025"]
+        assert criterion.imap_query.build() == ("SENTBEFORE", "01-Jan-2025")
 
     def test_older_than_with_datetime(self) -> None:
         """Test OlderThan with datetime object."""
         cutoff = datetime(2025, 1, 1, 12, 0, 0)
         criterion = OlderThan(cutoff)
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query == ["SENTBEFORE", "01-Jan-2025"]
+        assert criterion.imap_query.build() == ("SENTBEFORE", "01-Jan-2025")
 
     def test_older_than_with_string(self) -> None:
         """Test OlderThan with string date."""
         criterion = OlderThan("01-Jan-2025")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query == ["SENTBEFORE", "01-Jan-2025"]
+        assert criterion.imap_query.build() == ("SENTBEFORE", "01-Jan-2025")
 
 
 class TestFlagCriteria:
@@ -253,131 +271,66 @@ class TestFlagCriteria:
         """Test IsRead criterion creation."""
         criterion = IsRead()
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query == ["SEEN"]
+        assert criterion.imap_query.build() == "SEEN"
 
     def test_is_unread_creation(self) -> None:
         """Test IsUnread criterion creation."""
         criterion = IsUnread()
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query == ["UNSEEN"]
+        assert criterion.imap_query.build() == "UNSEEN"
 
     def test_is_starred_creation(self) -> None:
         """Test IsStarred criterion creation."""
         criterion = IsStarred()
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query == ["FLAGGED"]
+        assert criterion.imap_query.build() == "FLAGGED"
 
     def test_is_unstarred_creation(self) -> None:
         """Test IsUnstarred criterion creation."""
         criterion = IsUnstarred()
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query == ["UNFLAGGED"]
+        assert criterion.imap_query.build() == "UNFLAGGED"
 
     def test_is_answered_creation(self) -> None:
         """Test IsAnswered criterion creation."""
         criterion = IsAnswered()
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query == ["ANSWERED"]
+        assert criterion.imap_query.build() == "ANSWERED"
 
     def test_is_unanswered_creation(self) -> None:
         """Test IsUnanswered criterion creation."""
         criterion = IsUnanswered()
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query == ["UNANSWERED"]
-
-
-class TestDuplicateCriterion:
-    """Test DuplicateCriterion."""
-
-    def test_duplicate_criterion_creation(self) -> None:
-        """Test DuplicateCriterion creation."""
-        criterion = DuplicateCriterion()
-        assert isinstance(criterion, Criterion)
-        assert criterion.imap_query is None
-
-    def test_duplicate_criterion_filter_no_duplicates(self, mock_account: EMailAccount) -> None:
-        """Test DuplicateCriterion with no duplicates."""
-        from unittest.mock import patch
-
-        mock_msg1 = MagicMock()
-        mock_msg1.message_id = "msg1@example.com"
-        mock_msg1.subject = "Subject 1"
-        mock_msg1.from_ = [("Name", "from1@example.com")]
-        mock_msg1.date = "2025-01-01"
-
-        mock_msg2 = MagicMock()
-        mock_msg2.message_id = "msg2@example.com"
-        mock_msg2.subject = "Subject 2"
-        mock_msg2.from_ = [("Name", "from2@example.com")]
-        mock_msg2.date = "2025-01-02"
-
-        mock_account.connection.search = MagicMock(return_value=[1, 2])
-        mock_account.connection.fetch = MagicMock(
-            return_value={
-                1: {b"BODY[]": b"Message 1", b"FLAGS": []},
-                2: {b"BODY[]": b"Message 2", b"FLAGS": []},
-            }
-        )
-
-        with patch("imap_thingy.filters.criteria.base.mailparser") as mock_mailparser:
-            mock_mailparser.parse_from_bytes.side_effect = [mock_msg1, mock_msg2]
-            criterion = DuplicateCriterion()
-            result = criterion.filter(mock_account.connection)
-            assert result == []
-
-    def test_duplicate_criterion_filter_with_duplicates(self, mock_account: EMailAccount) -> None:
-        """Test DuplicateCriterion with duplicate messages."""
-        from unittest.mock import patch
-
-        mock_msg1 = MagicMock()
-        mock_msg1.message_id = "<duplicate@example.com>"
-        mock_msg1.subject = "Test"
-        mock_msg1.from_ = [("Name", "test@example.com")]
-        mock_msg1.date = "2025-01-01"
-
-        mock_msg2 = MagicMock()
-        mock_msg2.message_id = "<duplicate@example.com>"
-        mock_msg2.subject = "Test"
-        mock_msg2.from_ = [("Name", "test@example.com")]
-        mock_msg2.date = "2025-01-01"
-
-        mock_account.connection.search = MagicMock(return_value=[1, 2])
-        mock_account.connection.fetch = MagicMock(
-            return_value={
-                1: {b"BODY[]": b"Message 1", b"FLAGS": []},
-                2: {b"BODY[]": b"Message 2", b"FLAGS": []},
-            }
-        )
-
-        with patch("imap_thingy.filters.criteria.base.mailparser") as mock_mailparser:
-            mock_mailparser.parse_from_bytes.side_effect = [mock_msg1, mock_msg2]
-            criterion = DuplicateCriterion()
-            result = criterion.filter(mock_account.connection)
-            assert len(result) == 1
-            assert result[0] == 2
+        assert criterion.imap_query.build() == "UNANSWERED"
 
 
 class TestSpecialCriteria:
     """Test special criteria."""
 
-    def test_select_all_creation(self) -> None:
-        """Test SelectAll criterion creation."""
-        criterion = SelectAll()
+    def test_anything_creation(self) -> None:
+        """Test Anything criterion creation."""
+        criterion = Anything()
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query == ["ALL"]
+        assert criterion.imap_query.build() == "ALL"
 
 
 class TestCriteriaFiltering:
     """Test actual filtering logic with mocked messages."""
 
-    def test_efficient_criterion_uses_search(self, mock_account: EMailAccount) -> None:
-        """Test that EfficientCriterion uses search instead of fetch."""
-        mock_account.connection.search = MagicMock(return_value=[1, 2, 3])
-        criterion = SelectAll()
-        result = criterion.filter(mock_account.connection)
-        assert result == [1, 2, 3]
-        mock_account.connection.search.assert_called_once_with(["ALL"])
-        mock_account.connection.fetch.assert_not_called()
+    def test_anything_select_returns_all_messages(self) -> None:
+        """Test that Anything().select(messages) returns all messages."""
+        from mailparser.core import MailParser
+
+        from imap_thingy.core import Message
+
+        criterion = Anything()
+        p1 = MagicMock(spec=MailParser)
+        p2 = MagicMock(spec=MailParser)
+        messages = {1: Message(1, p1, []), 2: Message(2, p2, [])}
+        result = criterion.select(messages)
+        assert len(result) == 2
+        assert result[1].parsed is p1 and result[2].parsed is p2
+        assert criterion.imap_query.build() == "ALL"
 
     def test_criteria_and_combination_imap_query(self) -> None:
         """Test that AND combination merges IMAP queries."""
@@ -385,8 +338,9 @@ class TestCriteriaFiltering:
         criterion2 = SubjectContains("Important")
         combined = criterion1 & criterion2
         assert combined.imap_query is not None
-        assert "FROM" in combined.imap_query
-        assert "SUBJECT" in combined.imap_query
+        atoms = list(_query_atoms(combined.imap_query))
+        assert ("FROM", "sender@example.com") in atoms
+        assert ("SUBJECT", "Important") in atoms
 
     def test_criteria_or_combination_imap_query(self) -> None:
         """Test that OR combination creates OR query."""
@@ -394,11 +348,15 @@ class TestCriteriaFiltering:
         criterion2 = FromIs("sender2@example.com")
         combined = criterion1 | criterion2
         assert combined.imap_query is not None
-        assert combined.imap_query[0] == "OR"
+        b = combined.imap_query.build()
+        first_key = b[0] if isinstance(b, list) else b
+        assert first_key[0] == "OR"
 
     def test_criteria_negation_imap_query(self) -> None:
         """Test that negation creates NOT query."""
         criterion = FromIs("sender@example.com")
         negated = ~criterion
         assert negated.imap_query is not None
-        assert negated.imap_query[0] == "NOT"
+        b = negated.imap_query.build()
+        first_key = b[0] if isinstance(b, list) else b
+        assert first_key[0] == "NOT"

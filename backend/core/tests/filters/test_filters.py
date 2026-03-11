@@ -2,146 +2,96 @@
 
 from unittest.mock import MagicMock, patch
 
-from imap_thingy.accounts import EMailAccount
-from imap_thingy.filters import CriterionFilter, DuplicateFilter, MoveTo
-from imap_thingy.filters.basic_filters import MoveIfFromFilter, MoveIfToFilter, ProcessHandledFilter
-from imap_thingy.filters.criteria import SelectAll
+from imap_thingy.accounts import Account, Path
+from imap_thingy.filters import Anything, Filter, FromIs, If, MarkAsRead, MoveTo, SubjectMatches, ToIs
+from tests.conftest import MockEMailAccount
 
 
-class TestCriterionFilter:
-    """Test CriterionFilter class."""
+def test_readme_imports_and_usage() -> None:
+    """README example imports and filter construction work."""
+    from imap_thingy.accounts import Path, accounts_from_json
+    from imap_thingy.filters import Filter, MoveTo
 
-    def test_criterion_filter_creation(self, mock_account: EMailAccount) -> None:
-        """Test CriterionFilter creation."""
-        criterion = SelectAll()
-        action = MoveTo("TestFolder")
-        filter_obj = CriterionFilter(mock_account, criterion, action)
-        assert filter_obj.account == mock_account
+    _ = Path("INBOX")
+    _ = accounts_from_json
+    f = Filter(ToIs("members@boringassociation.org"), MarkAsRead() + MoveTo(Path("Boring Association")))
+    assert f.criterion is not None
+    assert f.action is not None
+    f2 = If(FromIs("x@y.edu") & SubjectMatches(r"List Digest")).then(MarkAsRead() + MoveTo(Path("List")))
+    assert f2.criterion is not None
+    assert f2.action is not None
+
+
+class TestFilter:
+    """Test Filter (criterion + action, run on folder)."""
+
+    def test_filter_creation(self, mock_account: Account) -> None:
+        criterion = Anything()
+        action = MoveTo(Path("TestFolder"))
+        filter_obj = Filter(criterion, action)
         assert filter_obj.criterion == criterion
         assert filter_obj.action == action
-        assert filter_obj.base_folder == "INBOX"
 
-    def test_criterion_filter_with_custom_folder(self, mock_account: EMailAccount) -> None:
-        """Test CriterionFilter with custom base folder."""
-        criterion = SelectAll()
-        action = MoveTo("TestFolder")
-        filter_obj = CriterionFilter(mock_account, criterion, action, base_folder="Archive")
-        assert filter_obj.base_folder == "Archive"
+    def test_filter_run_dry_run(self, mock_account: MockEMailAccount) -> None:
+        folder = mock_account / "INBOX"
+        mock_account.connect.return_value.search = MagicMock(return_value=[1, 2, 3])
 
-    def test_criterion_filter_dry_run(self, mock_account: EMailAccount) -> None:
-        """Test CriterionFilter in dry-run mode."""
-        mock_account.connection.select_folder = MagicMock()
-        mock_account.connection.search = MagicMock(return_value=[1, 2, 3])
-
-        criterion = SelectAll()
-        action = MoveTo("TestFolder")
-        filter_obj = CriterionFilter(mock_account, criterion, action)
+        criterion = Anything()
+        action = MoveTo(Path("TestFolder"))
+        filter_obj = Filter(criterion, action)
 
         with patch.object(action, "execute", new_callable=MagicMock) as mock_execute:
-            filter_obj.apply(dry_run=True)
+            folder.run(filter_obj, dry_run=True)
 
-            mock_account.connection.select_folder.assert_called_once_with("INBOX", readonly=False)
-            mock_account.connection.search.assert_called_once()
+            mock_account.connect.assert_called_once_with()
+            mock_account.connect.return_value.search.assert_called_once()
             mock_execute.assert_not_called()
 
-    def test_criterion_filter_execution(self, mock_account: EMailAccount) -> None:
-        """Test CriterionFilter execution (non-dry-run)."""
-        mock_account.connection.select_folder = MagicMock()
-        mock_account.connection.search = MagicMock(return_value=[1, 2, 3])
-        mock_account.connection.move = MagicMock()
+    def test_filter_run_execution(self, mock_account: MockEMailAccount) -> None:
+        folder = mock_account / "INBOX"
+        conn = mock_account.connect.return_value
+        conn.search = MagicMock(return_value=[1, 2, 3])
+        conn.fetch = MagicMock(
+            return_value={
+                1: {b"BODY[]": b"From: a@b.com\r\n\r\n", b"FLAGS": []},
+                2: {b"BODY[]": b"From: c@d.com\r\n\r\n", b"FLAGS": []},
+                3: {b"BODY[]": b"From: e@f.com\r\n\r\n", b"FLAGS": []},
+            }
+        )
+        conn.move = MagicMock()
 
-        criterion = SelectAll()
-        action = MoveTo("TestFolder")
-        filter_obj = CriterionFilter(mock_account, criterion, action)
+        criterion = Anything()
+        action = MoveTo(Path("TestFolder"))
+        filter_obj = Filter(criterion, action)
 
-        filter_obj.apply(dry_run=False)
+        folder.run(filter_obj, dry_run=False)
 
-        mock_account.connection.select_folder.assert_called_once_with("INBOX", readonly=False)
-        mock_account.connection.search.assert_called_once()
-        mock_account.connection.move.assert_called_once_with([1, 2, 3], "TestFolder")
+        mock_account.connect.assert_called_once_with()
+        conn.search.assert_called_once()
+        conn.move.assert_called_once_with([1, 2, 3], "TestFolder")
 
+    def test_filter_run_empty_results(self, mock_account: MockEMailAccount) -> None:
+        folder = mock_account / "INBOX"
+        mock_account.connect.return_value.search = MagicMock(return_value=[])
 
-class TestBasicFilters:
-    """Test basic filter classes."""
-
-    def test_move_if_from_filter_creation(self, mock_account: EMailAccount) -> None:
-        """Test MoveIfFromFilter creation."""
-        filter_obj = MoveIfFromFilter(mock_account, "sender@example.com", "Folder")
-        assert isinstance(filter_obj, CriterionFilter)
-        assert filter_obj.base_folder == "INBOX"
-
-    def test_move_if_from_filter_with_mark_read(self, mock_account: EMailAccount) -> None:
-        """Test MoveIfFromFilter with mark_read option."""
-        filter_obj = MoveIfFromFilter(mock_account, "sender@example.com", "Folder", mark_read=True)
-        assert "mark as read" in filter_obj.action.name
-
-    def test_move_if_from_filter_without_mark_read(self, mock_account: EMailAccount) -> None:
-        """Test MoveIfFromFilter without mark_read."""
-        filter_obj = MoveIfFromFilter(mock_account, "sender@example.com", "Folder", mark_read=False)
-        assert "mark as read" not in filter_obj.action.name
-
-    def test_move_if_to_filter_creation(self, mock_account: EMailAccount) -> None:
-        """Test MoveIfToFilter creation."""
-        filter_obj = MoveIfToFilter(mock_account, "recipient@example.com", "Folder")
-        assert isinstance(filter_obj, CriterionFilter)
-        assert filter_obj.criterion.imap_query == ["TO", "recipient@example.com"]
-
-    def test_move_if_to_filter_with_cc_bcc(self, mock_account: EMailAccount) -> None:
-        """Test MoveIfToFilter with CC and BCC options."""
-        filter_obj = MoveIfToFilter(mock_account, "recipient@example.com", "Folder", include_cc=True, include_bcc=True)
-        assert isinstance(filter_obj, CriterionFilter)
-
-    def test_move_if_to_filter_with_mark_read(self, mock_account: EMailAccount) -> None:
-        """Test MoveIfToFilter with mark_read option."""
-        filter_obj = MoveIfToFilter(mock_account, "recipient@example.com", "Folder", mark_read=True)
-        assert "mark as read" in filter_obj.action.name
-
-    def test_move_if_to_filter_without_mark_read(self, mock_account: EMailAccount) -> None:
-        """Test MoveIfToFilter without mark_read."""
-        filter_obj = MoveIfToFilter(mock_account, "recipient@example.com", "Folder", mark_read=False)
-        assert "mark as read" not in filter_obj.action.name
-
-    def test_process_handled_filter_creation(self, mock_account: EMailAccount) -> None:
-        """Test ProcessHandledFilter creation."""
-
-        criterion = SelectAll()
-        action = MoveTo("Processed")
-        filter_obj = ProcessHandledFilter(mock_account, criterion, action)
-        assert isinstance(filter_obj, CriterionFilter)
-        assert filter_obj.criterion.imap_query is not None
-        assert "FLAGGED" in filter_obj.criterion.imap_query
-
-    def test_process_handled_filter_unstars(self, mock_account: EMailAccount) -> None:
-        """Test that ProcessHandledFilter unstars messages."""
-
-        criterion = SelectAll()
-        action = MoveTo("Processed")
-        filter_obj = ProcessHandledFilter(mock_account, criterion, action)
-        assert filter_obj.action.name.startswith("unstar; ")
-
-    def test_duplicate_filter_creation(self, mock_account: EMailAccount) -> None:
-        """Test DuplicateFilter creation."""
-        filter_obj = DuplicateFilter(mock_account)
-        assert isinstance(filter_obj, CriterionFilter)
-        assert filter_obj.base_folder == "INBOX"
-
-    def test_duplicate_filter_with_custom_folder(self, mock_account: EMailAccount) -> None:
-        """Test DuplicateFilter with custom base folder."""
-        filter_obj = DuplicateFilter(mock_account, base_folder="Archive")
-        assert filter_obj.base_folder == "Archive"
-
-    def test_criterion_filter_empty_results(self, mock_account: EMailAccount) -> None:
-        """Test CriterionFilter with no matching messages."""
-        mock_account.connection.select_folder = MagicMock()
-        mock_account.connection.search = MagicMock(return_value=[])
-
-        criterion = SelectAll()
-        action = MoveTo("TestFolder")
-        filter_obj = CriterionFilter(mock_account, criterion, action)
+        criterion = Anything()
+        action = MoveTo(Path("TestFolder"))
+        filter_obj = Filter(criterion, action)
 
         with patch.object(action, "execute", new_callable=MagicMock) as mock_execute:
-            filter_obj.apply(dry_run=False)
+            folder.run(filter_obj, dry_run=False)
 
-            mock_account.connection.select_folder.assert_called_once_with("INBOX", readonly=False)
-            mock_account.connection.search.assert_called_once()
+            mock_account.connect.assert_called_once_with()
+            mock_account.connect.return_value.search.assert_called_once()
             mock_execute.assert_not_called()
+
+    def test_filter_with_chained_action(self, mock_account: Account) -> None:
+        """Test Filter(criterion, action1 + action2) builds filter with chained action."""
+
+        criterion = Anything()
+        action1 = MoveTo(Path("D1"))
+        action2 = MarkAsRead()
+        f = Filter(criterion, action1 + action2)
+        assert isinstance(f, Filter)
+        assert f.criterion is criterion
+        assert "MarkAsRead" in f.action.name

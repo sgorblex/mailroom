@@ -34,8 +34,6 @@ pytest tests/test_criteria.py::TestCriteriaCombination::test_criteria_and_combin
 - `test_criteria.py` - Tests for criteria classes
 - `test_actions.py` - Tests for action classes
 - `test_filters.py` - Tests for filter classes
-- `test_utils.py` - Tests for utility functions
-
 ## Fixtures
 
 - `mock_account` - A mock email account for testing

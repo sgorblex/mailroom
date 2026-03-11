@@ -1,81 +1,94 @@
 """Flag-based email filtering criteria."""
 
-from imap_thingy.filters.criteria.base import EfficientCriterion, ParsedMail
+from __future__ import annotations
+
+from imap_thingy.core import Flag, Message, Q
+from imap_thingy.filters.criteria.criterion import Criterion
 
 
-class IsRead(EfficientCriterion):
-    """Matches messages that have been read."""
+class HasFlag(Criterion):
+    """Criterion that matches messages that have the given IMAP flag."""
 
-    def __init__(self) -> None:
-        """Initialize an IsRead criterion."""
+    def __init__(self, flag: Flag) -> None:
+        r"""Initialize a HasFlag criterion.
 
-        def func(msg: ParsedMail) -> bool:
-            flags = getattr(msg, "_imap_flags", [])
-            return b"\\Seen" in flags
+        Args:
+            flag: A Flag enum member (e.g. Flag.SEEN). Uses efficient SEARCH keys
+                (SEEN, FLAGGED, ANSWERED).
 
-        super().__init__(func, imap_query=["SEEN"])
+        """
+        flagname = flag.value.flagname
+        imap_key = flag.value.imap_true
 
+        def func(msg: Message) -> bool:
+            return flagname in msg.flags
 
-class IsUnread(EfficientCriterion):
-    """Matches messages that are unread."""
-
-    def __init__(self) -> None:
-        """Initialize an IsUnread criterion."""
-
-        def func(msg: ParsedMail) -> bool:
-            flags = getattr(msg, "_imap_flags", [])
-            return b"\\Seen" not in flags
-
-        super().__init__(func, imap_query=["UNSEEN"])
+        super().__init__(func, Q(imap_key), is_efficient=True)
 
 
-class IsStarred(EfficientCriterion):
-    """Matches messages that are starred."""
+class LacksFlag(Criterion):
+    """Criterion that matches messages that do not have the given IMAP flag."""
 
-    def __init__(self) -> None:
-        """Initialize an IsStarred criterion."""
+    def __init__(self, flag: Flag) -> None:
+        r"""Initialize a LacksFlag criterion.
 
-        def func(msg: ParsedMail) -> bool:
-            flags = getattr(msg, "_imap_flags", [])
-            return b"\\Flagged" in flags
+        Args:
+            flag: A Flag enum member. Uses efficient SEARCH keys
+                (UNSEEN, UNFLAGGED, UNANSWERED).
 
-        super().__init__(func, imap_query=["FLAGGED"])
+        """
+        flagname = flag.value.flagname
+        imap_key = flag.value.imap_false
 
+        def func(msg: Message) -> bool:
+            return flagname not in msg.flags
 
-class IsUnstarred(EfficientCriterion):
-    """Matches messages that are not starred."""
-
-    def __init__(self) -> None:
-        """Initialize an IsUnstarred criterion."""
-
-        def func(msg: ParsedMail) -> bool:
-            flags = getattr(msg, "_imap_flags", [])
-            return b"\\Flagged" not in flags
-
-        super().__init__(func, imap_query=["UNFLAGGED"])
+        super().__init__(func, Q(imap_key), is_efficient=True)
 
 
-class IsAnswered(EfficientCriterion):
-    """Matches messages that have been answered."""
+class IsRead(HasFlag):
+    """Match messages that have been read."""
 
     def __init__(self) -> None:
-        """Initialize an IsAnswered criterion."""
-
-        def func(msg: ParsedMail) -> bool:
-            flags = getattr(msg, "_imap_flags", [])
-            return b"\\Answered" in flags
-
-        super().__init__(func, imap_query=["ANSWERED"])
+        r"""Match \Seen."""
+        super().__init__(Flag.SEEN)
 
 
-class IsUnanswered(EfficientCriterion):
-    """Matches messages that have not been answered."""
+class IsUnread(LacksFlag):
+    """Match messages that are unread."""
 
     def __init__(self) -> None:
-        """Initialize an IsUnanswered criterion."""
+        r"""Match absence of \Seen."""
+        super().__init__(Flag.SEEN)
 
-        def func(msg: ParsedMail) -> bool:
-            flags = getattr(msg, "_imap_flags", [])
-            return b"\\Answered" not in flags
 
-        super().__init__(func, imap_query=["UNANSWERED"])
+class IsStarred(HasFlag):
+    """Match messages that are starred."""
+
+    def __init__(self) -> None:
+        r"""Match \Flagged."""
+        super().__init__(Flag.FLAGGED)
+
+
+class IsUnstarred(LacksFlag):
+    """Match messages that are not starred."""
+
+    def __init__(self) -> None:
+        r"""Match absence of \Flagged."""
+        super().__init__(Flag.FLAGGED)
+
+
+class IsAnswered(HasFlag):
+    """Match messages that have been answered."""
+
+    def __init__(self) -> None:
+        r"""Match \Answered."""
+        super().__init__(Flag.ANSWERED)
+
+
+class IsUnanswered(LacksFlag):
+    """Match messages that have not been answered."""
+
+    def __init__(self) -> None:
+        r"""Match absence of \Answered."""
+        super().__init__(Flag.ANSWERED)

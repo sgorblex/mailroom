@@ -2,10 +2,11 @@
 
 from datetime import date, datetime
 
-from imap_thingy.filters.criteria.base import EfficientCriterion, ParsedMail
+from imap_thingy.core import Message, Q
+from imap_thingy.filters.criteria.criterion import Criterion
 
 
-class OlderThan(EfficientCriterion):
+class OlderThan(Criterion):
     """Matches messages older than the given date."""
 
     def __init__(self, cutoff_date: date | datetime | str) -> None:
@@ -24,8 +25,8 @@ class OlderThan(EfficientCriterion):
         self.cutoff_date = cutoff_date
         imap_date_str = cutoff_date.strftime("%d-%b-%Y")
 
-        def func(msg: ParsedMail) -> bool:
-            msg_date = getattr(msg, "date", None)
+        def func(msg: Message) -> bool:
+            msg_date = getattr(msg.parsed, "date", None)
             if msg_date is None:
                 return False
             if isinstance(msg_date, datetime):
@@ -41,4 +42,4 @@ class OlderThan(EfficientCriterion):
                 return False
             return msg_date < cutoff_date
 
-        super().__init__(func, imap_query=["SENTBEFORE", imap_date_str])
+        super().__init__(func, imap_query=Q(("SENTBEFORE", imap_date_str)), is_efficient=True)

@@ -1,16 +1,11 @@
 """Subject-based email filtering criteria."""
 
-import re
-
-from imap_thingy.filters.criteria.base import Criterion, EfficientCriterion, ParsedMail
-
-
-def _matches(pattern: str, string: str) -> bool:
-    """Check if a string fully matches a regex pattern."""
-    return bool(re.fullmatch(pattern, string))
+from imap_thingy.core import Message, Q
+from imap_thingy.filters.criteria.criterion import Criterion
+from imap_thingy.utils import matches
 
 
-class SubjectContains(EfficientCriterion):
+class SubjectContains(Criterion):
     """Matches messages with subject containing the given substring."""
 
     def __init__(self, substring: str) -> None:
@@ -21,10 +16,10 @@ class SubjectContains(EfficientCriterion):
 
         """
 
-        def func(msg: ParsedMail) -> bool:
-            return substring in (msg.subject or "")
+        def func(msg: Message) -> bool:
+            return substring in (msg.parsed.subject or "")
 
-        super().__init__(func, imap_query=["SUBJECT", substring])
+        super().__init__(func, Q(("SUBJECT", substring)), is_efficient=True)
 
 
 class SubjectIs(Criterion):
@@ -38,10 +33,10 @@ class SubjectIs(Criterion):
 
         """
 
-        def func(msg: ParsedMail) -> bool:
-            return (msg.subject or "") == subj
+        def func(msg: Message) -> bool:
+            return (msg.parsed.subject or "") == subj
 
-        super().__init__(func, imap_query=["SUBJECT", subj])
+        super().__init__(func, imap_query=Q(("SUBJECT", subj)), is_efficient=True)
 
 
 class SubjectMatches(Criterion):
@@ -55,7 +50,7 @@ class SubjectMatches(Criterion):
 
         """
 
-        def func(msg: ParsedMail) -> bool:
-            return _matches(pattern, msg.subject or "")
+        def func(msg: Message) -> bool:
+            return matches(pattern, msg.parsed.subject or "")
 
         super().__init__(func)

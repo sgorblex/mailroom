@@ -1,16 +1,13 @@
 """Address-based email filtering criteria (From, To, CC, BCC)."""
 
-import re
+from mailparser.core import MailParser
 
-from imap_thingy.filters.criteria.base import Criterion, EfficientCriterion, ParsedMail
-
-
-def _matches(pattern: str, string: str) -> bool:
-    """Check if a string fully matches a regex pattern."""
-    return bool(re.fullmatch(pattern, string))
+from imap_thingy.core import Message, Q
+from imap_thingy.filters.criteria.criterion import Criterion
+from imap_thingy.utils import matches
 
 
-def _extract_emails(msg: ParsedMail, field: str) -> list[tuple[str, str]]:
+def _extract_emails(msg: MailParser, field: str) -> list[tuple[str, str]]:
     """Extract email addresses from a message field.
 
     Args:
@@ -27,7 +24,7 @@ def _extract_emails(msg: ParsedMail, field: str) -> list[tuple[str, str]]:
     return field_value if isinstance(field_value, list) else [field_value]
 
 
-class FromContains(EfficientCriterion):
+class FromContains(Criterion):
     """Matches messages from addresses containing the given string."""
 
     def __init__(self, addr: str) -> None:
@@ -38,10 +35,10 @@ class FromContains(EfficientCriterion):
 
         """
 
-        def func(msg: ParsedMail) -> bool:
-            return any(addr in email for name, email in _extract_emails(msg, "from_"))
+        def func(msg: Message) -> bool:
+            return any(addr in email for name, email in _extract_emails(msg.parsed, "from_"))
 
-        super().__init__(func, ["FROM", addr])
+        super().__init__(func, Q(("FROM", addr)), is_efficient=True)
 
 
 class FromIs(Criterion):
@@ -55,10 +52,10 @@ class FromIs(Criterion):
 
         """
 
-        def func(msg: ParsedMail) -> bool:
-            return any(addr == email for name, email in _extract_emails(msg, "from_"))
+        def func(msg: Message) -> bool:
+            return any(addr == email for name, email in _extract_emails(msg.parsed, "from_"))
 
-        super().__init__(func, imap_query=["FROM", addr])
+        super().__init__(func, imap_query=Q(("FROM", addr)), is_efficient=True)
 
 
 class FromMatches(Criterion):
@@ -72,8 +69,8 @@ class FromMatches(Criterion):
 
         """
 
-        def func(msg: ParsedMail) -> bool:
-            return any(_matches(pattern, email) for name, email in _extract_emails(msg, "from_"))
+        def func(msg: Message) -> bool:
+            return any(matches(pattern, email) for name, email in _extract_emails(msg.parsed, "from_"))
 
         super().__init__(func)
 
@@ -89,13 +86,13 @@ class FromMatchesName(Criterion):
 
         """
 
-        def func(msg: ParsedMail) -> bool:
-            return any(_matches(pattern, name) for name, email in _extract_emails(msg, "from_"))
+        def func(msg: Message) -> bool:
+            return any(matches(pattern, name) for name, email in _extract_emails(msg.parsed, "from_"))
 
         super().__init__(func)
 
 
-class ToContains(EfficientCriterion):
+class ToContains(Criterion):
     """Matches messages to addresses containing the given string.
 
     Can optionally include CC and BCC fields in the match.
@@ -111,15 +108,15 @@ class ToContains(EfficientCriterion):
 
         """
 
-        def func(msg: ParsedMail) -> bool:
-            return any(addr in email for name, email in _extract_emails(msg, "to"))
+        def func(msg: Message) -> bool:
+            return any(addr in email for name, email in _extract_emails(msg.parsed, "to"))
 
-        criterion = Criterion(func, ["TO", addr])
+        criterion = Criterion(func, Q(("TO", addr)), is_efficient=True)
         if incl_cc:
             criterion |= CcContains(addr)
         if incl_bcc:
             criterion |= BccContains(addr)
-        super().__init__(criterion.func, criterion.imap_query or ["TO", addr])
+        super().__init__(criterion.func, criterion.imap_query, criterion.is_efficient)
 
 
 class ToIs(Criterion):
@@ -138,18 +135,18 @@ class ToIs(Criterion):
 
         """
 
-        def func(msg: ParsedMail) -> bool:
-            return any(addr == email for name, email in _extract_emails(msg, "to"))
+        def func(msg: Message) -> bool:
+            return any(addr == email for name, email in _extract_emails(msg.parsed, "to"))
 
-        criterion = Criterion(func, imap_query=["TO", addr])
+        criterion = Criterion(func, imap_query=Q(("TO", addr)), is_efficient=True)
         if incl_cc:
             criterion |= CcIs(addr)
         if incl_bcc:
             criterion |= BccIs(addr)
-        super().__init__(criterion.func, criterion.imap_query)
+        super().__init__(criterion.func, criterion.imap_query, criterion.is_efficient)
 
 
-class CcContains(EfficientCriterion):
+class CcContains(Criterion):
     """Matches messages CC'd to addresses containing the given string."""
 
     def __init__(self, addr: str) -> None:
@@ -160,10 +157,10 @@ class CcContains(EfficientCriterion):
 
         """
 
-        def func(msg: ParsedMail) -> bool:
-            return any(addr in email for name, email in _extract_emails(msg, "cc"))
+        def func(msg: Message) -> bool:
+            return any(addr in email for name, email in _extract_emails(msg.parsed, "cc"))
 
-        super().__init__(func, ["CC", addr])
+        super().__init__(func, Q(("CC", addr)), is_efficient=True)
 
 
 class CcIs(Criterion):
@@ -177,10 +174,10 @@ class CcIs(Criterion):
 
         """
 
-        def func(msg: ParsedMail) -> bool:
-            return any(addr == email for name, email in _extract_emails(msg, "cc"))
+        def func(msg: Message) -> bool:
+            return any(addr == email for name, email in _extract_emails(msg.parsed, "cc"))
 
-        super().__init__(func, imap_query=["CC", addr])
+        super().__init__(func, imap_query=Q(("CC", addr)), is_efficient=True)
 
 
 class CcMatches(Criterion):
@@ -194,13 +191,13 @@ class CcMatches(Criterion):
 
         """
 
-        def func(msg: ParsedMail) -> bool:
-            return any(_matches(pattern, email) for name, email in _extract_emails(msg, "cc"))
+        def func(msg: Message) -> bool:
+            return any(matches(pattern, email) for name, email in _extract_emails(msg.parsed, "cc"))
 
         super().__init__(func)
 
 
-class BccContains(EfficientCriterion):
+class BccContains(Criterion):
     """Matches messages BCC'd to addresses containing the given string."""
 
     def __init__(self, addr: str) -> None:
@@ -211,10 +208,10 @@ class BccContains(EfficientCriterion):
 
         """
 
-        def func(msg: ParsedMail) -> bool:
-            return any(addr in email for name, email in _extract_emails(msg, "bcc"))
+        def func(msg: Message) -> bool:
+            return any(addr in email for name, email in _extract_emails(msg.parsed, "bcc"))
 
-        super().__init__(func, ["BCC", addr])
+        super().__init__(func, Q(("BCC", addr)), is_efficient=True)
 
 
 class BccIs(Criterion):
@@ -228,10 +225,10 @@ class BccIs(Criterion):
 
         """
 
-        def func(msg: ParsedMail) -> bool:
-            return any(addr == email for name, email in _extract_emails(msg, "bcc"))
+        def func(msg: Message) -> bool:
+            return any(addr == email for name, email in _extract_emails(msg.parsed, "bcc"))
 
-        super().__init__(func, imap_query=["BCC", addr])
+        super().__init__(func, imap_query=Q(("BCC", addr)), is_efficient=True)
 
 
 class BccMatches(Criterion):
@@ -245,8 +242,8 @@ class BccMatches(Criterion):
 
         """
 
-        def func(msg: ParsedMail) -> bool:
-            return any(_matches(pattern, email) for name, email in _extract_emails(msg, "bcc"))
+        def func(msg: Message) -> bool:
+            return any(matches(pattern, email) for name, email in _extract_emails(msg.parsed, "bcc"))
 
         super().__init__(func)
 
@@ -267,8 +264,8 @@ class ToMatches(Criterion):
 
         """
 
-        def func(msg: ParsedMail) -> bool:
-            return any(_matches(pattern, email) for name, email in _extract_emails(msg, "to"))
+        def func(msg: Message) -> bool:
+            return any(matches(pattern, email) for name, email in _extract_emails(msg.parsed, "to"))
 
         criterion = Criterion(func)
         if incl_cc:
