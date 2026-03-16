@@ -19,9 +19,20 @@ class TestFolder:
         folder = Path("Cool") / "Sub"
         assert folder.segments == ["Cool", "Sub"]
 
-    def test_folder_empty_inbox(self) -> None:
+    def test_folder_empty_path_is_root(self) -> None:
         folder = Path([])
         assert folder.segments == []
+        assert folder.as_string() == ""
+
+    def test_folder_empty_string_is_root(self) -> None:
+        folder = Path("")
+        assert folder.segments == []
+        assert folder.as_string() == ""
+
+    def test_folder_inbox_is_inbox(self) -> None:
+        folder = Path("INBOX")
+        assert folder.segments == ["INBOX"]
+        assert folder.as_string() == "INBOX"
 
 
 class TestAccountFolder:
@@ -48,9 +59,14 @@ class TestAccountFolder:
         folder = mock_account / "Cool" / "Sub"
         assert folder.imap_name() == "Cool.Sub"
 
-    def test_account_folder_empty_segments_inbox(self, mock_account: Account) -> None:
+    def test_account_folder_empty_path_is_server_root(self, mock_account: Account) -> None:
         folder = Folder(mock_account, Path([]))
+        assert folder.imap_name() == ""
+
+    def test_account_folder_inbox(self, mock_account: Account) -> None:
+        folder = Folder(mock_account, Path("INBOX"))
         assert folder.imap_name() == "INBOX"
+        assert mock_account.inbox.path.segments == ["INBOX"]
 
 
 class TestFolderRun:

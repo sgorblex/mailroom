@@ -26,7 +26,7 @@ class Folder:
 
     def imap_name(self) -> str:
         """Return the IMAP folder name (e.g. INBOX or delimiter-joined path)."""
-        return self.path.as_string(self.account.delimiter) or "INBOX"
+        return self.path.as_string(self.account.delimiter)
 
     def __str__(self) -> str:
         return f"{self.account.name}.{self.imap_name()}"
@@ -175,7 +175,7 @@ class Account:
         self.address = address if address is not None else username
         self.delimiter = delimiter
         self.log: logging.Logger = logging.getLogger(__name__).getChild(self.name)
-        self.inbox = Folder(self, Path([]))
+        self.inbox = Folder(self, Path("INBOX"))
 
     def connect(self) -> IMAPClient:
         """Create a new IMAP connection. Caller must call conn.logout() when done."""

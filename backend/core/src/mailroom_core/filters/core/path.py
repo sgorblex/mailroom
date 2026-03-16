@@ -1,4 +1,8 @@
-"""Path-only folder representation (segment list, no account)."""
+"""Path-only folder representation (segment list, no account).
+
+An empty path ("" or []) denotes the server root. The inbox is the single
+segment 'INBOX'.
+"""
 
 from __future__ import annotations
 
@@ -15,7 +19,7 @@ class Path:
         self.segments = segments
 
     def as_string(self, delimiter: str = "/") -> str:
-        """Return the path as a string by joining segments with delimiter; empty path is the root."""
+        """Return the path as a string by joining segments with delimiter."""
         return delimiter.join(self.segments)
 
     def __truediv__(self, path: str) -> Path:
