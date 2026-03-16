@@ -12,13 +12,20 @@ log = logging.getLogger(__name__)
 
 def search_mail(client: IMAPClient, imap_query: IMAPQuery) -> list[int]:
     """Run the IMAP query and return matching message IDs."""
-    return client.search(imap_query.build())
+    criteria = imap_query.build()
+    log.debug("IMAP query: %s", criteria)
+    return client.search(criteria)
 
 
 def fetch_mail(client: IMAPClient, msg_ids: list[int]) -> dict[int, Message]:
     """Fetch bodies and flags, parse; return msgid -> Message (parsed + flags)."""
     if not msg_ids:
         return {}
+    if log.isEnabledFor(logging.DEBUG):
+        sample_size = 10
+        sample = msg_ids[:sample_size]
+        truncated = f" (first {len(sample)} shown)" if len(msg_ids) > sample_size else ""
+        log.debug("IMAP FETCH %s msg_id(s)%s (BODY.PEEK[] FLAGS): %s", len(msg_ids), truncated, sample)
     fetched = client.fetch(msg_ids, ["BODY.PEEK[]", "FLAGS"])
     messages: dict[int, Message] = {}
     for msgid, data in fetched.items():
