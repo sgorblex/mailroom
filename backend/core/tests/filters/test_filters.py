@@ -34,7 +34,7 @@ class TestFilter:
 
     def test_filter_run_dry_run(self, mock_account: MockEMailAccount) -> None:
         folder = mock_account / "INBOX"
-        mock_account.connect.return_value.search = MagicMock(return_value=[1, 2, 3])
+        mock_account.connect.return_value._raw_command_untagged = MagicMock(return_value=[b"1 2 3"])
 
         criterion = Anything()
         action = MoveTo(Path("TestFolder"))
@@ -44,13 +44,13 @@ class TestFilter:
             folder.run(filter_obj, dry_run=True)
 
             mock_account.connect.assert_called_once_with()
-            mock_account.connect.return_value.search.assert_called_once()
+            mock_account.connect.return_value._raw_command_untagged.assert_called_once()
             mock_execute.assert_not_called()
 
     def test_filter_run_execution(self, mock_account: MockEMailAccount) -> None:
         folder = mock_account / "INBOX"
         conn = mock_account.connect.return_value
-        conn.search = MagicMock(return_value=[1, 2, 3])
+        conn._raw_command_untagged = MagicMock(return_value=[b"1 2 3"])
         conn.fetch = MagicMock(
             return_value={
                 1: {b"BODY[]": b"From: a@b.com\r\n\r\n", b"FLAGS": []},
@@ -67,12 +67,12 @@ class TestFilter:
         folder.run(filter_obj, dry_run=False)
 
         mock_account.connect.assert_called_once_with()
-        conn.search.assert_called_once()
+        conn._raw_command_untagged.assert_called_once()
         conn.move.assert_called_once_with([1, 2, 3], "TestFolder")
 
     def test_filter_run_empty_results(self, mock_account: MockEMailAccount) -> None:
         folder = mock_account / "INBOX"
-        mock_account.connect.return_value.search = MagicMock(return_value=[])
+        mock_account.connect.return_value._raw_command_untagged = MagicMock(return_value=[b""])
 
         criterion = Anything()
         action = MoveTo(Path("TestFolder"))
@@ -82,7 +82,7 @@ class TestFilter:
             folder.run(filter_obj, dry_run=False)
 
             mock_account.connect.assert_called_once_with()
-            mock_account.connect.return_value.search.assert_called_once()
+            mock_account.connect.return_value._raw_command_untagged.assert_called_once()
             mock_execute.assert_not_called()
 
     def test_filter_with_chained_action(self, mock_account: Account) -> None:

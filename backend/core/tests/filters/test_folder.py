@@ -75,7 +75,7 @@ class TestFolderRun:
     def test_folder_run_single_filter(self, mock_account: MockEMailAccount) -> None:
         folder = mock_account / "INBOX"
         conn = mock_account.connect.return_value
-        conn.search = MagicMock(return_value=[1])
+        conn._raw_command_untagged = MagicMock(return_value=[b"1"])
         conn.move = MagicMock()
 
         f = Filter(Anything(), MoveTo(Path("Dest")))
@@ -83,13 +83,13 @@ class TestFolderRun:
 
         mock_account.connect.assert_called_once_with()
         conn.logout.assert_called_once()
-        conn.search.assert_called_once()
+        conn._raw_command_untagged.assert_called_once()
         conn.move.assert_called_once_with([1], "Dest")
 
     def test_folder_run_iterable_filters(self, mock_account: MockEMailAccount) -> None:
         folder = mock_account / "INBOX"
         conn = mock_account.connect.return_value
-        conn.search = MagicMock(side_effect=[[1], [2]])
+        conn._raw_command_untagged = MagicMock(side_effect=[[b"1"], [b"2"]])
         conn.move = MagicMock()
 
         f1 = Filter(Anything(), MoveTo(Path("D1")))
@@ -98,7 +98,7 @@ class TestFolderRun:
 
         assert mock_account.connect.call_count == 1
         conn.logout.assert_called_once()
-        assert conn.search.call_count == 2
+        assert conn._raw_command_untagged.call_count == 2
         assert conn.move.call_count == 2
 
     def test_folder_run_fetch_cache_two_non_efficient_filters(self, mock_account: MockEMailAccount) -> None:
