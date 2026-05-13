@@ -9,6 +9,8 @@ from imap_thingy.filters.criteria import (
     BccContains,
     BccIs,
     BccMatches,
+    BodyContains,
+    BodyMatches,
     CcContains,
     CcIs,
     CcMatches,
@@ -240,6 +242,24 @@ class TestSubjectCriteria:
         assert criterion.imap_query.build() == "ALL"
 
 
+class TestBodyCriteria:
+    """Test body-based criteria."""
+
+    def test_body_contains_creation(self) -> None:
+        """Test BodyContains criterion creation and IMAP query."""
+        criterion = BodyContains("needle")
+        assert isinstance(criterion, Criterion)
+        assert criterion.imap_query.build() == ("BODY", "needle")
+        assert criterion.is_efficient is True
+
+    def test_body_matches_creation(self) -> None:
+        """Test BodyMatches uses ALL IMAP query and is not efficient."""
+        criterion = BodyMatches(r"foo.*bar")
+        assert isinstance(criterion, Criterion)
+        assert criterion.imap_query.build() == "ALL"
+        assert criterion.is_efficient is False
+
+
 class TestDateCriteria:
     """Test date-based criteria."""
 
@@ -341,6 +361,50 @@ class TestCriteriaFiltering:
         atoms = list(_query_atoms(combined.imap_query))
         assert ("FROM", "sender@example.com") in atoms
         assert ("SUBJECT", "Important") in atoms
+
+    def test_body_contains_select_plain(self) -> None:
+        """BodyContains.select matches substring on normalized plain body."""
+        from mailparser.core import MailParser
+
+        from imap_thingy.core import Message
+
+        p = MagicMock(spec=MailParser)
+        p.text_plain = ["hello invoice"]
+        p.text_html = []
+        messages = {1: Message(1, p, [])}
+        assert BodyContains("invoice").select(messages) == messages
+        assert BodyContains("missing").select(messages) == {}
+
+    def test_body_contains_select_html_fallback(self) -> None:
+        """When plain is empty, body text falls back to HTML parts."""
+        from mailparser.core import MailParser
+
+        from imap_thingy.core import Message
+
+        p = MagicMock(spec=MailParser)
+        p.text_plain = []
+        p.text_html = ["<b>secret</b>"]
+        messages = {1: Message(1, p, [])}
+        assert BodyContains("secret").select(messages) == messages
+
+    def test_body_matches_select_multiline_dotall(self) -> None:
+        """BodyMatches uses re.search with DOTALL across newlines."""
+        from mailparser.core import MailParser
+
+        from imap_thingy.core import Message
+
+        p = MagicMock(spec=MailParser)
+        p.text_plain = ["line1\nline2"]
+        p.text_html = []
+        messages = {1: Message(1, p, [])}
+        assert BodyMatches(r"line1.line2").select(messages) == messages
+
+    def test_body_contains_and_from_imap_query(self) -> None:
+        """AND with BodyContains merges BODY into IMAP query."""
+        combined = FromIs("sender@example.com") & BodyContains("pay")
+        atoms = list(_query_atoms(combined.imap_query))
+        assert ("FROM", "sender@example.com") in atoms
+        assert ("BODY", "pay") in atoms
 
     def test_criteria_or_combination_imap_query(self) -> None:
         """Test that OR combination creates OR query."""

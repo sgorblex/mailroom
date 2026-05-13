@@ -1,4 +1,4 @@
-"""Filter criteria: Criterion, address/subject/date/flags criteria."""
+"""Filter criteria: Criterion, address/body/subject/date/flags criteria."""
 
 from imap_thingy.core import Flag
 from imap_thingy.filters.criteria.address import (
@@ -16,6 +16,7 @@ from imap_thingy.filters.criteria.address import (
     ToIs,
     ToMatches,
 )
+from imap_thingy.filters.criteria.body import BodyContains, BodyMatches
 from imap_thingy.filters.criteria.criterion import Anything, Criterion
 from imap_thingy.filters.criteria.date import OlderThan
 from imap_thingy.filters.criteria.flags import (
@@ -34,6 +35,8 @@ __all__ = [
     "BccContains",
     "BccIs",
     "BccMatches",
+    "BodyContains",
+    "BodyMatches",
     "CcContains",
     "CcIs",
     "CcMatches",
