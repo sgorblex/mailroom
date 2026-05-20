@@ -18,14 +18,22 @@ log = logging.getLogger(__name__)
 type SearchCriteria = str | bytes | int | date | datetime | list["SearchCriteria"] | tuple["SearchCriteria", ...]
 
 
+def _is_simple_search_pair(item: SearchCriteria) -> bool:
+    """Return whether *item* is a 2-element (search-key, value) pair, not an OR/NOT compound."""
+    if not isinstance(item, tuple) or len(item) != 2:
+        return False
+    key = item[0]
+    return isinstance(key, str) and key.upper() not in ("OR", "NOT")
+
+
 def _normalise_search_criteria_utf8(criteria: SearchCriteria, charset: str) -> list[bytes]:
     """Like imapclient's ``_normalise_search_criteria`` but charset-safe for nested criteria.
 
     Upstream omits *charset* on recursive calls (defaulting to ASCII), which breaks
-    non-ASCII string values. It also appends ``)`` to the last inner token; when that
-    token is 8-bit (UTF-8 quoted text), the parenthesis is swallowed into the literal
-    and servers reject the command (e.g. ``Missing ')'``). For an 8-bit last token we
-    append ``)`` as its own atom instead.
+    non-ASCII string values. Simple (key, value) pairs in AND lists are emitted as flat
+    atoms (no parentheses); compound OR/NOT groups are parenthesized. For compound groups,
+    when the last inner token is 8-bit, ``)`` is appended as its own atom instead of
+    merged into the quoted literal.
     """
     if not criteria:
         raise exceptions.InvalidCriteriaError("no criteria specified")
@@ -43,6 +51,9 @@ def _normalise_search_criteria_utf8(criteria: SearchCriteria, charset: str) -> l
         elif isinstance(item, (datetime, date)):
             out.append(format_criteria_date(item))
         elif isinstance(item, (list, tuple)):
+            if _is_simple_search_pair(item):
+                out.extend(_normalise_search_criteria_utf8(item, charset))
+                continue
             inner = _normalise_search_criteria_utf8(item, charset)
             inner[0] = b"(" + inner[0]
             last = inner[-1]

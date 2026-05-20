@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 from imapclient.imapclient import _normalise_search_criteria
 
 from imap_thingy.core import Q
-from imap_thingy.get_mail import _normalise_search_criteria_utf8, search_mail
+from imap_thingy.get_mail import SearchCriteria, _normalise_search_criteria_utf8, search_mail
 
 
 class TestIMAPQueryBuildStructure:
@@ -57,13 +57,30 @@ class TestIMAPQueryBuildStructure:
             assert len(out) >= 1
 
     def test_utf8_criteria_normalises_nested_and_with_euro(self) -> None:
-        """UTF-8 AND must not merge closing paren into an 8-bit quoted atom."""
+        """UTF-8 AND lists flatten simple pairs (no parens around each criterion)."""
         a, b = Q(("FROM", "a")), Q(("SUBJECT", "Price \u20ac99"))
         built = (a & b).build()
         out = _normalise_search_criteria_utf8(built, "UTF-8")
-        assert isinstance(out, list)
-        assert out[-1] == b")"
-        assert not out[-2].endswith(b")")
+        subj = "Price \u20ac99"
+        assert out == [b"FROM", b"a", b"SUBJECT", _normalise_search_criteria_utf8(("SUBJECT", subj), "UTF-8")[1]]
+        assert b"(" not in out
+        assert b")" not in out
+
+    def test_utf8_flagged_and_body_euro_is_flat(self) -> None:
+        body = "Importo: 0,00 \u20ac EUR"
+        built: SearchCriteria = ["FLAGGED", ("BODY", body)]
+        out = _normalise_search_criteria_utf8(built, "UTF-8")
+        assert out == [b"FLAGGED", b"BODY", _normalise_search_criteria_utf8(("BODY", body), "UTF-8")[1]]
+        assert b"(" not in out
+
+    def test_utf8_flagged_and_or_keeps_group_parens(self) -> None:
+        built: SearchCriteria = ["FLAGGED", ("OR", ("TO", "a"), ("CC", "a"))]
+        out = _normalise_search_criteria_utf8(built, "UTF-8")
+        assert out[0] == b"FLAGGED"
+        assert out[1] == b"(OR"
+        assert out[-1] == b"a)"
+        assert b"TO" in out
+        assert b"CC" in out
 
     def test_search_mail_uses_uid_search_path(self) -> None:
         client = MagicMock()
