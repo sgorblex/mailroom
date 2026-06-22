@@ -3,7 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 from imap_thingy.accounts import Account, Path
-from imap_thingy.filters import Anything, Filter, FromIs, If, MarkAsRead, MoveTo, SubjectMatches, ToIs
+from imap_thingy.filters import Anything, Filter, FromIs, If, MarkAsRead, MoveTo, SubjectIs, SubjectMatches, ToIs
 from tests.conftest import MockEMailAccount
 
 
@@ -95,3 +95,51 @@ class TestFilter:
         assert isinstance(f, Filter)
         assert f.criterion is criterion
         assert "MarkAsRead" in f.action.name
+
+    def test_from_and_subject_is_fetches_and_exact_match(self, mock_account: MockEMailAccount) -> None:
+        """FromIs & SubjectIs fetches candidates and applies client-side exact subject match."""
+        folder = mock_account / "INBOX"
+        conn = mock_account.connect.return_value
+        sender = "ice.team@cignahealthcare.com"
+        exact_subject = "Important - Claims settlement Information"
+        conn._raw_command_untagged = MagicMock(return_value=[b"1 2"])
+        conn.fetch = MagicMock(
+            return_value={
+                1: {
+                    b"BODY[]": f"From: {sender}\r\nSubject: {exact_subject}\r\n\r\n".encode(),
+                    b"FLAGS": [],
+                },
+                2: {
+                    b"BODY[]": f"From: {sender}\r\nSubject: Re: {exact_subject}\r\n\r\n".encode(),
+                    b"FLAGS": [],
+                },
+            }
+        )
+        conn.move = MagicMock()
+
+        filter_obj = Filter(FromIs(sender) & SubjectIs(exact_subject), MoveTo(Path("Personal") / "Health"))
+        folder.run(filter_obj, dry_run=False)
+
+        conn.fetch.assert_called_once()
+        conn.move.assert_called_once_with([1], "Personal.Health")
+
+    def test_from_and_subject_is_not_imap_only_efficient_path(self, mock_account: MockEMailAccount) -> None:
+        """SubjectIs must not skip fetch when IMAP returns IDs (unlike old efficient path)."""
+        folder = mock_account / "INBOX"
+        conn = mock_account.connect.return_value
+        conn._raw_command_untagged = MagicMock(return_value=[b"1"])
+        conn.fetch = MagicMock(
+            return_value={
+                1: {
+                    b"BODY[]": b"From: a@b.com\r\nSubject: Exact Subject\r\n\r\n",
+                    b"FLAGS": [],
+                },
+            }
+        )
+
+        filter_obj = Filter(SubjectIs("Exact Subject"), MarkAsRead())
+        with patch.object(filter_obj.action, "execute", new_callable=MagicMock) as mock_execute:
+            folder.run(filter_obj, dry_run=False)
+
+        conn.fetch.assert_called_once()
+        mock_execute.assert_called_once_with(conn, [1], delimiter=mock_account.delimiter)

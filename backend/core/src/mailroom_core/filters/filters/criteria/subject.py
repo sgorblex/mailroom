@@ -36,7 +36,7 @@ class SubjectIs(Criterion):
         def func(msg: Message) -> bool:
             return (msg.parsed.subject or "") == subj
 
-        super().__init__(func, imap_query=Q(("SUBJECT", subj)), is_efficient=True)
+        super().__init__(func, imap_query=Q(("SUBJECT", subj)), is_efficient=False)
 
 
 class SubjectMatches(Criterion):

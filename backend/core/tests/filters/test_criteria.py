@@ -230,10 +230,37 @@ class TestSubjectCriteria:
         assert criterion.imap_query.build() == ("SUBJECT", "Important")
 
     def test_subject_is_creation(self) -> None:
-        """Test SubjectIs criterion creation."""
+        """Test SubjectIs uses SUBJECT IMAP prefilter and is not efficient."""
         criterion = SubjectIs("Exact Subject")
         assert isinstance(criterion, Criterion)
         assert criterion.imap_query.build() == ("SUBJECT", "Exact Subject")
+        assert criterion.is_efficient is False
+
+    def test_subject_is_select_exact_match(self) -> None:
+        """SubjectIs.select matches only when parsed subject equals exactly."""
+        from mailparser.core import MailParser
+
+        from imap_thingy.core import Message
+
+        exact = "Exact Subject"
+        p_match = MagicMock(spec=MailParser)
+        p_match.subject = exact
+        p_substring = MagicMock(spec=MailParser)
+        p_substring.subject = f"Re: {exact}"
+        messages = {
+            1: Message(1, p_match, []),
+            2: Message(2, p_substring, []),
+        }
+        result = SubjectIs(exact).select(messages)
+        assert result == {1: messages[1]}
+
+    def test_from_and_subject_is_imap_query(self) -> None:
+        """FromIs & SubjectIs uses FROM and SUBJECT in IMAP; exact match checked client-side."""
+        combined = FromIs("sender@example.com") & SubjectIs("Exact Subject")
+        assert combined.is_efficient is False
+        atoms = list(_query_atoms(combined.imap_query))
+        assert ("FROM", "sender@example.com") in atoms
+        assert ("SUBJECT", "Exact Subject") in atoms
 
     def test_subject_matches_creation(self) -> None:
         """Test SubjectMatches criterion creation."""

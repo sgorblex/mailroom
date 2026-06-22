@@ -55,8 +55,9 @@ class Folder:
 
         Criteria with is_efficient=True (e.g. FromIs, ToIs, SubjectContains)
         use IMAP SEARCH only and do not fetch message bodies. Criteria that
-        are not fully expressible in IMAP (e.g. SubjectMatches with regex) use
-        a best-effort per-run fetch cache: messages are fetched once when first
+        need parsed headers or bodies (e.g. SubjectIs with SUBJECT prefilter,
+        SubjectMatches with regex, BodyMatches) use a best-effort per-run fetch
+        cache: messages are fetched once when first
         needed and kept in memory until evicted. Messages that were acted on
         are evicted after each action and may be fetched again later in the
         same run if selected by another filter.
