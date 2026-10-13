@@ -6,7 +6,6 @@ import logging
 import ssl
 import threading
 from collections.abc import Callable, Iterable
-from time import sleep
 from types import FrameType
 from typing import Any
 
@@ -17,6 +16,8 @@ from imap_thingy.filters import Filter
 
 IdleResponse = list[tuple[Any, ...]]
 IDLE_TIMEOUT = 25 * 60
+RECONNECT_MIN_BACKOFF = 5.0
+RECONNECT_MAX_BACKOFF = 300.0
 
 
 class IdleTrigger:
@@ -78,6 +79,8 @@ class IdleMonitor:
         self.log = logging.getLogger(__name__).getChild(str(self.folder))
         self._conn_lock = threading.Lock()
         self._conn = None
+        # Delay before the next reconnect attempt; 0 until something fails, reset after a healthy IDLE cycle.
+        self._backoff = 0.0
 
     def start(self) -> IdleMonitor:
         """Start watching.
@@ -97,14 +100,29 @@ class IdleMonitor:
         return self
 
     def _reconnect(self) -> None:
-        self.log.info("Reconnecting")
         with self._conn_lock:
             if self._conn:
                 try:
                     self._conn.logout()
                 except Exception as e:
                     self.log.debug("Logout during reconnect failed: %s", e, exc_info=True)
-            self._conn = self.folder.connect(readonly=True)
+                self._conn = None
+        while not self._stop_event.is_set():
+            if self._backoff:
+                self.log.info("Reconnecting in %.0fs", self._backoff)
+                if self._stop_event.wait(self._backoff):
+                    return
+            else:
+                self.log.info("Reconnecting")
+            self._backoff = min(max(self._backoff * 2, RECONNECT_MIN_BACKOFF), RECONNECT_MAX_BACKOFF)
+            try:
+                conn = self.folder.connect(readonly=True)
+            except Exception as e:
+                self.log.warning("Reconnect attempt failed: %s", e, exc_info=True)
+                continue
+            with self._conn_lock:
+                self._conn = conn
+            return
 
     def _watch(self) -> None:
         while not self._stop_event.is_set():
@@ -113,13 +131,13 @@ class IdleMonitor:
                     conn = self._conn
                 if not conn:
                     self._reconnect()
-                    sleep(5)
                     continue
                 conn.idle()
                 responses = conn.idle_check(IDLE_TIMEOUT)
                 conn.idle_done()
                 self.handler.handle(responses)
                 conn.noop()
+                self._backoff = 0.0
             except (ssl.SSLEOFError, imapclient.exceptions.ProtocolError) as e:
                 if self._stop_event.is_set():
                     break
@@ -132,11 +150,9 @@ class IdleMonitor:
                     except Exception as sock_exc:
                         self.log.debug("Could not read raw socket data: %s", sock_exc)
                 self._reconnect()
-                sleep(5)
             except Exception as e:
                 self.log.error("IDLE unexpected error: %s", e, exc_info=True)
                 self._reconnect()
-                sleep(5)
 
     def stop(self) -> None:
         """Stop watching and close the IDLE connection."""
