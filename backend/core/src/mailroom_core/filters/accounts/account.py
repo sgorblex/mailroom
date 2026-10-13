@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
 from imapclient import IMAPClient
 
 from imap_thingy.core import Message, Path
 from imap_thingy.filters.filter import Filter
 from imap_thingy.get_mail import fetch_mail, search_mail
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 
 class Folder:
@@ -62,7 +65,11 @@ class Folder:
         are evicted after each action and may be fetched again later in the
         same run if selected by another filter.
         """
-        filters = [filter_or_filters] if isinstance(filter_or_filters, Filter) else list(filter_or_filters)
+        filters = (
+            [filter_or_filters]
+            if isinstance(filter_or_filters, Filter)
+            else list(filter_or_filters)
+        )
         if not filters:
             return
         conn = self.connect()
@@ -78,10 +85,14 @@ class Folder:
             except Exception as exc:
                 self.log.debug("Logout failed: %s", exc, exc_info=True)
 
-    def _run_one(self, f: Filter, dry_run: bool, conn: IMAPClient, fetched: dict[int, Message]) -> None:
+    def _run_one(
+        self, f: Filter, dry_run: bool, conn: IMAPClient, fetched: dict[int, Message]
+    ) -> None:
         selected_msg_ids = search_mail(conn, f.criterion.imap_query)
         if f.criterion.is_efficient and selected_msg_ids:
-            self.log.debug("IMAP-only (efficient), no fetch for %s message(s)", len(selected_msg_ids))
+            self.log.debug(
+                "IMAP-only (efficient), no fetch for %s message(s)", len(selected_msg_ids)
+            )
         if not f.criterion.is_efficient:
             to_fetch = [i for i in selected_msg_ids if i not in fetched]
             self.log.debug(
@@ -110,7 +121,9 @@ class Folder:
         if selected_msg_ids:
             _sample_size = 10
             _sample = selected_msg_ids[:_sample_size]
-            _truncated = f" (first {len(_sample)} shown)" if len(selected_msg_ids) > _sample_size else ""
+            _truncated = (
+                f" (first {len(_sample)} shown)" if len(selected_msg_ids) > _sample_size else ""
+            )
             if dry_run:
                 self.log.info(
                     "[Dry-Run] would select %s message(s)%s and execute %s: %s",
@@ -155,7 +168,16 @@ class Account:
     Handles connection creation, reuse, and cleanup for IMAP operations.
     """
 
-    def __init__(self, name: str, host: str, port: int, username: str, password: str, address: str | None = None, delimiter: str = ".") -> None:
+    def __init__(
+        self,
+        name: str,
+        host: str,
+        port: int,
+        username: str,
+        password: str,
+        address: str | None = None,
+        delimiter: str = ".",
+    ) -> None:
         """Initialize an email account.
 
         Args:

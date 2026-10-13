@@ -1,7 +1,7 @@
 """Tests for criteria classes."""
 
-from collections.abc import Iterator
-from datetime import date, datetime
+from datetime import UTC, date, datetime
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from imap_thingy.filters.criteria import (
@@ -33,6 +33,9 @@ from imap_thingy.filters.criteria import (
     ToIs,
     ToMatches,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 def _query_atoms(q: object) -> Iterator[object]:
@@ -299,7 +302,7 @@ class TestDateCriteria:
 
     def test_older_than_with_datetime(self) -> None:
         """Test OlderThan with datetime object."""
-        cutoff = datetime(2025, 1, 1, 12, 0, 0)
+        cutoff = datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC)
         criterion = OlderThan(cutoff)
         assert isinstance(criterion, Criterion)
         assert criterion.imap_query.build() == ("SENTBEFORE", "01-Jan-2025")
@@ -376,7 +379,8 @@ class TestCriteriaFiltering:
         messages = {1: Message(1, p1, []), 2: Message(2, p2, [])}
         result = criterion.select(messages)
         assert len(result) == 2
-        assert result[1].parsed is p1 and result[2].parsed is p2
+        assert result[1].parsed is p1
+        assert result[2].parsed is p2
         assert criterion.imap_query.build() == "ALL"
 
     def test_criteria_and_combination_imap_query(self) -> None:

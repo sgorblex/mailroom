@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import re
-
-from mailparser.core import MailParser
+from typing import TYPE_CHECKING
 
 from imap_thingy.core import Message, Q
 from imap_thingy.filters.criteria.criterion import Criterion
+
+if TYPE_CHECKING:
+    from mailparser.core import MailParser
 
 
 def _parts_to_str(value: object) -> str:

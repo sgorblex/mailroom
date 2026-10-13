@@ -1,6 +1,6 @@
 """Tests for action classes."""
 
-from collections.abc import Iterable
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from imap_thingy.accounts import Path
@@ -17,7 +17,11 @@ from imap_thingy.filters import (
     Trash,
     Unstar,
 )
-from tests.conftest import MockEMailAccount
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from tests.conftest import MockEMailAccount
 
 
 class TestActionCreation:
@@ -145,7 +149,9 @@ class TestActionExecution:
         mock_account.connect.return_value.remove_flags = MagicMock()
         action = MarkAsUnread()
         action.execute(mock_account.connect.return_value, [1, 2, 3])
-        mock_account.connect.return_value.remove_flags.assert_called_once_with([1, 2, 3], [b"\\Seen"])
+        mock_account.connect.return_value.remove_flags.assert_called_once_with(
+            [1, 2, 3], [b"\\Seen"]
+        )
 
     def test_trash_execution(self, mock_account: MockEMailAccount) -> None:
         """Test Trash action execution."""
@@ -166,28 +172,36 @@ class TestActionExecution:
         mock_account.connect.return_value.add_flags = MagicMock()
         action = MarkAsAnswered()
         action.execute(mock_account.connect.return_value, [1, 2, 3])
-        mock_account.connect.return_value.add_flags.assert_called_once_with([1, 2, 3], [b"\\Answered"])
+        mock_account.connect.return_value.add_flags.assert_called_once_with(
+            [1, 2, 3], [b"\\Answered"]
+        )
 
     def test_mark_as_unanswered_execution(self, mock_account: MockEMailAccount) -> None:
         """Test MarkAsUnanswered action execution."""
         mock_account.connect.return_value.remove_flags = MagicMock()
         action = MarkAsUnanswered()
         action.execute(mock_account.connect.return_value, [1, 2, 3])
-        mock_account.connect.return_value.remove_flags.assert_called_once_with([1, 2, 3], [b"\\Answered"])
+        mock_account.connect.return_value.remove_flags.assert_called_once_with(
+            [1, 2, 3], [b"\\Answered"]
+        )
 
     def test_star_execution(self, mock_account: MockEMailAccount) -> None:
         """Test Star action execution."""
         mock_account.connect.return_value.add_flags = MagicMock()
         action = Star()
         action.execute(mock_account.connect.return_value, [1, 2, 3])
-        mock_account.connect.return_value.add_flags.assert_called_once_with([1, 2, 3], [b"\\Flagged"])
+        mock_account.connect.return_value.add_flags.assert_called_once_with(
+            [1, 2, 3], [b"\\Flagged"]
+        )
 
     def test_unstar_execution(self, mock_account: MockEMailAccount) -> None:
         """Test Unstar action execution."""
         mock_account.connect.return_value.remove_flags = MagicMock()
         action = Unstar()
         action.execute(mock_account.connect.return_value, [1, 2, 3])
-        mock_account.connect.return_value.remove_flags.assert_called_once_with([1, 2, 3], [b"\\Flagged"])
+        mock_account.connect.return_value.remove_flags.assert_called_once_with(
+            [1, 2, 3], [b"\\Flagged"]
+        )
 
     def test_delete_execution(self, mock_account: MockEMailAccount) -> None:
         """Test Delete action execution."""
@@ -195,7 +209,9 @@ class TestActionExecution:
         mock_account.connect.return_value.expunge = MagicMock()
         action = Delete()
         action.execute(mock_account.connect.return_value, [1, 2, 3])
-        mock_account.connect.return_value.add_flags.assert_called_once_with([1, 2, 3], [b"\\Deleted"])
+        mock_account.connect.return_value.add_flags.assert_called_once_with(
+            [1, 2, 3], [b"\\Deleted"]
+        )
         mock_account.connect.return_value.expunge.assert_called_once_with([1, 2, 3])
 
     def test_noop_execution(self, mock_account: MockEMailAccount) -> None:

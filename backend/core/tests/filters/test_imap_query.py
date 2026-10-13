@@ -1,4 +1,4 @@
-"""Tests for IMAPQuery build() structure: list (AND), tuple (OR/NOT), str/tuple (single criterion)."""
+"""Tests for IMAPQuery build() structure: list (AND), tuple (OR/NOT), str/tuple (single)."""
 
 from unittest.mock import MagicMock
 
@@ -62,7 +62,12 @@ class TestIMAPQueryBuildStructure:
         built = (a & b).build()
         out = _normalise_search_criteria_utf8(built, "UTF-8")
         subj = "Price \u20ac99"
-        assert out == [b"FROM", b"a", b"SUBJECT", _normalise_search_criteria_utf8(("SUBJECT", subj), "UTF-8")[1]]
+        assert out == [
+            b"FROM",
+            b"a",
+            b"SUBJECT",
+            _normalise_search_criteria_utf8(("SUBJECT", subj), "UTF-8")[1],
+        ]
         assert b"(" not in out
         assert b")" not in out
 
@@ -70,7 +75,11 @@ class TestIMAPQueryBuildStructure:
         body = "Importo: 0,00 \u20ac EUR"
         built: SearchCriteria = ["FLAGGED", ("BODY", body)]
         out = _normalise_search_criteria_utf8(built, "UTF-8")
-        assert out == [b"FLAGGED", b"BODY", _normalise_search_criteria_utf8(("BODY", body), "UTF-8")[1]]
+        assert out == [
+            b"FLAGGED",
+            b"BODY",
+            _normalise_search_criteria_utf8(("BODY", body), "UTF-8")[1],
+        ]
         assert b"(" not in out
 
     def test_utf8_flagged_and_or_keeps_group_parens(self) -> None:

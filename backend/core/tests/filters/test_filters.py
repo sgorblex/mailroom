@@ -1,10 +1,23 @@
 """Tests for filter classes."""
 
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 from imap_thingy.accounts import Account, Path
-from imap_thingy.filters import Anything, Filter, FromIs, If, MarkAsRead, MoveTo, SubjectIs, SubjectMatches, ToIs
-from tests.conftest import MockEMailAccount
+from imap_thingy.filters import (
+    Anything,
+    Filter,
+    FromIs,
+    If,
+    MarkAsRead,
+    MoveTo,
+    SubjectIs,
+    SubjectMatches,
+    ToIs,
+)
+
+if TYPE_CHECKING:
+    from tests.conftest import MockEMailAccount
 
 
 def test_readme_imports_and_usage() -> None:
@@ -14,10 +27,14 @@ def test_readme_imports_and_usage() -> None:
 
     _ = Path("INBOX")
     _ = accounts_from_json
-    f = Filter(ToIs("members@boringassociation.org"), MarkAsRead() + MoveTo(Path("Boring Association")))
+    f = Filter(
+        ToIs("members@boringassociation.org"), MarkAsRead() + MoveTo(Path("Boring Association"))
+    )
     assert f.criterion is not None
     assert f.action is not None
-    f2 = If(FromIs("x@y.edu") & SubjectMatches(r"List Digest")).then(MarkAsRead() + MoveTo(Path("List")))
+    f2 = If(FromIs("x@y.edu") & SubjectMatches(r"List Digest")).then(
+        MarkAsRead() + MoveTo(Path("List"))
+    )
     assert f2.criterion is not None
     assert f2.action is not None
 
@@ -96,7 +113,9 @@ class TestFilter:
         assert f.criterion is criterion
         assert "MarkAsRead" in f.action.name
 
-    def test_from_and_subject_is_fetches_and_exact_match(self, mock_account: MockEMailAccount) -> None:
+    def test_from_and_subject_is_fetches_and_exact_match(
+        self, mock_account: MockEMailAccount
+    ) -> None:
         """FromIs & SubjectIs fetches candidates and applies client-side exact subject match."""
         folder = mock_account / "INBOX"
         conn = mock_account.connect.return_value
@@ -117,13 +136,17 @@ class TestFilter:
         )
         conn.move = MagicMock()
 
-        filter_obj = Filter(FromIs(sender) & SubjectIs(exact_subject), MoveTo(Path("Personal") / "Health"))
+        filter_obj = Filter(
+            FromIs(sender) & SubjectIs(exact_subject), MoveTo(Path("Personal") / "Health")
+        )
         folder.run(filter_obj, dry_run=False)
 
         conn.fetch.assert_called_once()
         conn.move.assert_called_once_with([1], "Personal.Health")
 
-    def test_from_and_subject_is_not_imap_only_efficient_path(self, mock_account: MockEMailAccount) -> None:
+    def test_from_and_subject_is_not_imap_only_efficient_path(
+        self, mock_account: MockEMailAccount
+    ) -> None:
         """SubjectIs must not skip fetch when IMAP returns IDs (unlike old efficient path)."""
         folder = mock_account / "INBOX"
         conn = mock_account.connect.return_value

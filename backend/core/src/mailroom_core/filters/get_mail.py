@@ -15,7 +15,9 @@ from imap_thingy.core import IMAPQuery, Message
 
 log = logging.getLogger(__name__)
 
-type SearchCriteria = str | bytes | int | date | datetime | list["SearchCriteria"] | tuple["SearchCriteria", ...]
+type SearchCriteria = (
+    str | bytes | int | date | datetime | list["SearchCriteria"] | tuple["SearchCriteria", ...]
+)
 
 
 def _is_simple_search_pair(item: SearchCriteria) -> bool:
@@ -42,7 +44,9 @@ def _normalise_search_criteria_utf8(criteria: SearchCriteria, charset: str) -> l
         return [to_bytes(criteria, charset)]
 
     if not isinstance(criteria, (list, tuple)):
-        raise TypeError(f"search criteria must be str, bytes, list, or tuple, got {type(criteria).__name__}")
+        raise TypeError(
+            f"search criteria must be str, bytes, list, or tuple, got {type(criteria).__name__}"
+        )
 
     out: list[bytes] = []
     for item in criteria:
@@ -74,8 +78,9 @@ def search_mail(client: IMAPClient, imap_query: IMAPQuery) -> list[int]:
     args: list[bytes] = [b"CHARSET", to_bytes(charset)]
     args.extend(_normalise_search_criteria_utf8(criteria, charset))
     log.debug("IMAP query: %s", criteria)
-    data = client._raw_command_untagged(b"SEARCH", args)
-    return parse_message_list(data)
+    data = client._raw_command_untagged(b"SEARCH", args)  # noqa: SLF001 -- search() lacks charset-safe nesting
+    ids: list[int] = parse_message_list(data)
+    return ids
 
 
 def fetch_mail(client: IMAPClient, msg_ids: list[int]) -> dict[int, Message]:
@@ -86,7 +91,9 @@ def fetch_mail(client: IMAPClient, msg_ids: list[int]) -> dict[int, Message]:
         sample_size = 10
         sample = msg_ids[:sample_size]
         truncated = f" (first {len(sample)} shown)" if len(msg_ids) > sample_size else ""
-        log.debug("IMAP FETCH %s msg_id(s)%s (BODY.PEEK[] FLAGS): %s", len(msg_ids), truncated, sample)
+        log.debug(
+            "IMAP FETCH %s msg_id(s)%s (BODY.PEEK[] FLAGS): %s", len(msg_ids), truncated, sample
+        )
     fetched = client.fetch(msg_ids, ["BODY.PEEK[]", "FLAGS"])
     messages: dict[int, Message] = {}
     for msgid, data in fetched.items():

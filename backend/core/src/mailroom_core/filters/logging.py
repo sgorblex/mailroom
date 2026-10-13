@@ -24,7 +24,8 @@ def setup_logging(
         Use ``logging.basicConfig()`` or your own logging configuration instead.
     """
     warnings.warn(
-        "imap_thingy.logging.setup_logging() is deprecated. Configure logging in your application directly (e.g. logging.basicConfig()).",
+        "imap_thingy.logging.setup_logging() is deprecated. Configure logging in your "
+        "application directly (e.g. logging.basicConfig()).",
         FutureWarning,
         stacklevel=2,
     )

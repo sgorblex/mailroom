@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
-from datetime import date
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from datetime import date
 
 
 class IMAPQuery:
-    """IMAP search query; supports & (and), | (or), ~ (not). .build() returns list (AND), tuple (OR/NOT), or str/tuple (single criterion) for client.search()."""
+    """IMAP search query; supports & (and), | (or), ~ (not).
+
+    .build() returns list (AND), tuple (OR/NOT), or str/tuple (single criterion) for
+    client.search().
+    """
 
     class And:
         """Logical AND of two IMAP queries."""
@@ -16,10 +23,10 @@ class IMAPQuery:
             self.left = left
             self.right = right
 
-        def _to_list(self, x: list | tuple | str) -> list:
+        def _to_list(self, x: list[Any] | tuple[Any, ...] | str) -> list[Any]:
             return x if isinstance(x, list) else [x]
 
-        def build(self) -> list:
+        def build(self) -> list[Any]:
             """Return the IMAP list for this AND (flat list of criteria keys)."""
             return self._to_list(self.left.build()) + self._to_list(self.right.build())
 
@@ -34,7 +41,7 @@ class IMAPQuery:
             self.left = left
             self.right = right
 
-        def build(self) -> tuple:
+        def build(self) -> tuple[Any, ...]:
             """Return nested binary OR for client.search() (IMAP OR is binary)."""
             return ("OR", self.left.build(), self.right.build())
 
@@ -48,7 +55,7 @@ class IMAPQuery:
             """Store the subquery to negate."""
             self.query = query
 
-        def build(self) -> tuple:
+        def build(self) -> tuple[Any, ...]:
             """Return the NOT as a tuple (single key); AND wraps in list when combining."""
             return ("NOT", self.query.build())
 
@@ -58,7 +65,9 @@ class IMAPQuery:
     class Base:
         r"""A single IMAP criterion (e.g. "ALL", ("FROM", "x"), ("SENTBEFORE", date))."""
 
-        def __init__(self, query: str | tuple[str, str] | tuple[str, int] | tuple[str, date]) -> None:
+        def __init__(
+            self, query: str | tuple[str, str] | tuple[str, int] | tuple[str, date]
+        ) -> None:
             """Store the raw criterion (string or (key, value) tuple)."""
             self.query = query
 
@@ -75,8 +84,11 @@ class IMAPQuery:
         """Wrap an And/Or/Not/Base query node."""
         self.query = query
 
-    def build(self) -> list | tuple | str:
-        r"""Return the IMAP search structure for this query (for use with client.search()). List for AND, tuple for OR/NOT, str or tuple for a single criterion."""
+    def build(self) -> list[Any] | tuple[Any, ...] | str:
+        r"""Return the IMAP search structure for this query (for use with client.search()).
+
+        List for AND, tuple for OR/NOT, str or tuple for a single criterion.
+        """
         return self.query.build()
 
     def __and__(self, other: IMAPQuery) -> IMAPQuery:
@@ -92,7 +104,9 @@ class IMAPQuery:
         return str(self.query)
 
 
-def build_base_query(query: str | tuple[str, str] | tuple[str, int] | tuple[str, date]) -> IMAPQuery:
+def build_base_query(
+    query: str | tuple[str, str] | tuple[str, int] | tuple[str, date],
+) -> IMAPQuery:
     r"""Build an IMAPQuery from a single criterion (e.g. "ALL" or ("FROM", "a@b.com"))."""
     return IMAPQuery(IMAPQuery.Base(query))
 

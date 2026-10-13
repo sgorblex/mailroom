@@ -54,12 +54,14 @@ def accounts_from_json(json_path: str) -> dict[str, Account]:
         account_data = json.load(f)
         accounts: dict[str, Account] = {}
         for acc in account_data:
-            email_type = acc["type"] if "type" in acc else "custom"
+            email_type = acc.get("type", "custom")
             if email_type == "gmail":
                 accounts[acc["name"]] = GMailAccount(acc["name"], acc["username"], acc["password"])
             elif email_type == "custom":
                 address = acc["address"] if "address" in acc else acc["username"]
-                accounts[acc["name"]] = Account(acc["name"], acc["host"], acc["port"], acc["username"], acc["password"], address)
+                accounts[acc["name"]] = Account(
+                    acc["name"], acc["host"], acc["port"], acc["username"], acc["password"], address
+                )
             else:
                 raise NotImplementedError("Unrecognized email preset")
         return accounts

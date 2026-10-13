@@ -12,10 +12,7 @@ class Path:
 
     def __init__(self, path: str | list[str]) -> None:
         """Initialize path from a path string or list of segments."""
-        if isinstance(path, str):
-            segments = [path] if path else []
-        else:
-            segments = list(path)
+        segments = ([path] if path else []) if isinstance(path, str) else list(path)
         self.segments = segments
 
     def as_string(self, delimiter: str = "/") -> str:
@@ -23,7 +20,7 @@ class Path:
         return delimiter.join(self.segments)
 
     def __truediv__(self, path: str) -> Path:
-        return Path(self.segments + [path])
+        return Path([*self.segments, path])
 
     def __repr__(self) -> str:
         return f"Path({self.segments!r})"

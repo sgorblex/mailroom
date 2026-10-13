@@ -2,16 +2,22 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from typing import TYPE_CHECKING
 
-from imapclient import IMAPClient
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
+
+    from imapclient import IMAPClient
 
 
 class Action:
     """Represents an action to perform on email messages."""
 
     def __init__(self, func: Callable[..., None], name: str | None = None) -> None:
-        """Create an action from a function (conn, msgids, *, delimiter) -> None and an optional name."""
+        """Create an action from a function (conn, msgids, *, delimiter) -> None.
+
+        name defaults to the class name.
+        """
         self.func = func
         self.name = name if name is not None else type(self).__name__
 
@@ -22,7 +28,7 @@ class Action:
         *,
         delimiter: str = "/",
     ) -> None:
-        """Run this action. Delimiter is forwarded from the account folder when the filter is applied."""
+        """Run this action; delimiter is forwarded from the account folder the filter runs on."""
         self.func(conn, msgids, delimiter=delimiter)
 
     def __add__(self, other: Action) -> Action:

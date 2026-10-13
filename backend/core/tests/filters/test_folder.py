@@ -1,11 +1,14 @@
 """Tests for Folder (path + account) and run API."""
 
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 from imap_thingy.accounts import Account, Folder, Path
 from imap_thingy.core import Message
 from imap_thingy.filters import Anything, Filter, MarkAsRead, MoveTo, SubjectMatches
-from tests.conftest import MockEMailAccount
+
+if TYPE_CHECKING:
+    from tests.conftest import MockEMailAccount
 
 
 class TestFolder:
@@ -101,7 +104,9 @@ class TestFolderRun:
         assert conn._raw_command_untagged.call_count == 2
         assert conn.move.call_count == 2
 
-    def test_folder_run_fetch_cache_two_non_efficient_filters(self, mock_account: MockEMailAccount) -> None:
+    def test_folder_run_fetch_cache_two_non_efficient_filters(
+        self, mock_account: MockEMailAccount
+    ) -> None:
         folder = mock_account / "INBOX"
         conn = mock_account.connect.return_value
         conn.move = MagicMock()
@@ -153,7 +158,9 @@ class TestFolderRun:
 
         conn.move.assert_called_once_with([1, 3], "Dest")
 
-    def test_eviction_after_efficient_filter_clears_cache_for_acted_on_ids(self, mock_account: MockEMailAccount) -> None:
+    def test_eviction_after_efficient_filter_clears_cache_for_acted_on_ids(
+        self, mock_account: MockEMailAccount
+    ) -> None:
         folder = mock_account / "INBOX"
         conn = mock_account.connect.return_value
         conn.move = MagicMock()

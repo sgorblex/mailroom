@@ -1,10 +1,13 @@
 """Address-based email filtering criteria (From, To, CC, BCC)."""
 
-from mailparser.core import MailParser
+from typing import TYPE_CHECKING
 
 from imap_thingy.core import Message, Q
 from imap_thingy.filters.criteria.criterion import Criterion
 from imap_thingy.utils import matches
+
+if TYPE_CHECKING:
+    from mailparser.core import MailParser
 
 
 def _extract_emails(msg: MailParser, field: str) -> list[tuple[str, str]]:
@@ -70,7 +73,9 @@ class FromMatches(Criterion):
         """
 
         def func(msg: Message) -> bool:
-            return any(matches(pattern, email) for name, email in _extract_emails(msg.parsed, "from_"))
+            return any(
+                matches(pattern, email) for name, email in _extract_emails(msg.parsed, "from_")
+            )
 
         super().__init__(func)
 
@@ -87,7 +92,9 @@ class FromMatchesName(Criterion):
         """
 
         def func(msg: Message) -> bool:
-            return any(matches(pattern, name) for name, email in _extract_emails(msg.parsed, "from_"))
+            return any(
+                matches(pattern, name) for name, email in _extract_emails(msg.parsed, "from_")
+            )
 
         super().__init__(func)
 
@@ -243,7 +250,9 @@ class BccMatches(Criterion):
         """
 
         def func(msg: Message) -> bool:
-            return any(matches(pattern, email) for name, email in _extract_emails(msg.parsed, "bcc"))
+            return any(
+                matches(pattern, email) for name, email in _extract_emails(msg.parsed, "bcc")
+            )
 
         super().__init__(func)
 

@@ -2,18 +2,32 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from imap_thingy.core import All, IMAPQuery, Message
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 
 class Criterion:
-    """Condition on messages; has imap_query for server-side prefilter and select() for client-side filter."""
+    """Condition on messages.
+
+    Has imap_query for the server-side prefilter and select() for the client-side filter.
+    """
 
     func: Callable[[Message], bool]
 
-    def __init__(self, func: Callable[[Message], bool], imap_query: IMAPQuery | None = All, is_efficient: bool = False) -> None:
-        """Build a criterion from a predicate and optional IMAP query; is_efficient marks server-only criteria."""
+    def __init__(
+        self,
+        func: Callable[[Message], bool],
+        imap_query: IMAPQuery | None = All,
+        is_efficient: bool = False,
+    ) -> None:
+        """Build a criterion from a predicate and optional IMAP query.
+
+        is_efficient marks criteria the IMAP query answers exactly (no fetch needed).
+        """
         self.func = func
         self.imap_query = imap_query if imap_query is not None else All
         self.is_efficient = is_efficient

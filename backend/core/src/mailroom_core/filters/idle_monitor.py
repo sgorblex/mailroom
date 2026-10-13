@@ -1,18 +1,21 @@
-"""IMAP IDLE monitoring: watch for events and run a handler, or run folder filters when a trigger fires."""
+"""IMAP IDLE monitoring: run a handler on each event, or folder filters when a trigger fires."""
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import ssl
 import threading
-from collections.abc import Callable, Iterable
-from types import FrameType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import imapclient
 
-from imap_thingy.accounts import Folder
-from imap_thingy.filters import Filter
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
+    from types import FrameType
+
+    from imap_thingy.accounts import Folder
+    from imap_thingy.filters import Filter
 
 IdleResponse = list[tuple[Any, ...]]
 IDLE_TIMEOUT = 25 * 60
@@ -36,7 +39,7 @@ on_any_event = IdleTrigger(lambda r: True)
 on_new_mail = IdleTrigger(lambda r: any(x[1] == b"EXISTS" for x in r))
 
 
-def _flags_contain_seen(item: tuple) -> bool:
+def _flags_contain_seen(item: tuple[Any, ...]) -> bool:
     if len(item) < 3 or item[1] != b"FETCH":
         return False
     part = item[2]
@@ -78,8 +81,9 @@ class IdleMonitor:
         self._started = False
         self.log = logging.getLogger(__name__).getChild(str(self.folder))
         self._conn_lock = threading.Lock()
-        self._conn = None
-        # Delay before the next reconnect attempt; 0 until something fails, reset after a healthy IDLE cycle.
+        self._conn: imapclient.IMAPClient | None = None
+        # Delay before the next reconnect attempt; 0 until something fails,
+        # reset after a healthy IDLE cycle.
         self._backoff = 0.0
 
     def start(self) -> IdleMonitor:
@@ -114,7 +118,9 @@ class IdleMonitor:
                     return
             else:
                 self.log.info("Reconnecting")
-            self._backoff = min(max(self._backoff * 2, RECONNECT_MIN_BACKOFF), RECONNECT_MAX_BACKOFF)
+            self._backoff = min(
+                max(self._backoff * 2, RECONNECT_MIN_BACKOFF), RECONNECT_MAX_BACKOFF
+            )
             try:
                 conn = self.folder.connect(readonly=True)
             except Exception as e:
@@ -161,14 +167,10 @@ class IdleMonitor:
         with self._conn_lock:
             conn = self._conn
             if conn:
-                try:
+                with contextlib.suppress(ssl.SSLWantReadError):
                     conn.idle_done()
-                except ssl.SSLWantReadError:
-                    pass
-                try:
+                with contextlib.suppress(ssl.SSLWantReadError):
                     conn.logout()
-                except ssl.SSLWantReadError:
-                    pass
                 self.log.debug("Disconnected from %s:%s", self.account.host, self.account.port)
 
     def join(self) -> None:

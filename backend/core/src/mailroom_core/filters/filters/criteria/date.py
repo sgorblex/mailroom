@@ -18,7 +18,7 @@ class OlderThan(Criterion):
 
         """
         if isinstance(cutoff_date, str):
-            cutoff_date = datetime.strptime(cutoff_date, "%d-%b-%Y").date()
+            cutoff_date = datetime.strptime(cutoff_date, "%d-%b-%Y").date()  # noqa: DTZ007 -- date only
         elif isinstance(cutoff_date, datetime):
             cutoff_date = cutoff_date.date()
 
@@ -35,7 +35,7 @@ class OlderThan(Criterion):
                 pass
             elif isinstance(msg_date, str):
                 try:
-                    msg_date = datetime.strptime(msg_date, "%d-%b-%Y").date()
+                    msg_date = datetime.strptime(msg_date, "%d-%b-%Y").date()  # noqa: DTZ007 -- date only
                 except ValueError, TypeError:
                     return False
             else:

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
-from imap_thingy.filters.actions import Action
-from imap_thingy.filters.criteria import Criterion
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from imap_thingy.filters.actions import Action
+    from imap_thingy.filters.criteria import Criterion
 
 
 class FilterBuilder:

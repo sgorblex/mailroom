@@ -2,17 +2,25 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
-from imapclient import IMAPClient
 from imapclient.imapclient import TRASH
 
-from imap_thingy.core import Path
 from imap_thingy.filters.actions.action import Action
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from imapclient import IMAPClient
+
+    from imap_thingy.core import Path
 
 
 class MoveTo(Action):
-    """Action that moves messages to the specified folder. Delimiter is forwarded from the account folder when the filter is applied."""
+    """Action that moves messages to the specified folder.
+
+    Delimiter is forwarded from the account folder when the filter is applied.
+    """
 
     def __init__(self, folder: Path) -> None:
         """Initialize a MoveTo action.
@@ -29,13 +37,17 @@ class MoveTo(Action):
 
 
 class Trash(Action):
-    """Action that moves messages to the trash folder. Delimiter is forwarded from the account folder when the filter is applied."""
+    """Action that moves messages to the trash folder.
+
+    Delimiter is forwarded from the account folder when the filter is applied.
+    """
 
     def __init__(self, folder: Path | None = None) -> None:
         """Initialize a Trash action.
 
         Args:
-            folder: Optional trash folder; if None, auto-detect via find_special_folder(TRASH). Resolved with the account's delimiter at run time.
+            folder: Optional trash folder; if None, auto-detect via
+                find_special_folder(TRASH). Resolved with the account's delimiter at run time.
 
         """
         self._folder = folder
@@ -53,5 +65,7 @@ class Trash(Action):
         else:
             dest = conn.find_special_folder(TRASH)
             if dest is None:
-                raise ValueError("Trash folder not found; specify a trash folder via the folder= argument")
+                raise ValueError(
+                    "Trash folder not found; specify a trash folder via the folder= argument"
+                )
         conn.move(msgids, dest)
