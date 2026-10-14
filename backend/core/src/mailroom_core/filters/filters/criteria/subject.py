@@ -8,6 +8,8 @@ from imap_thingy.utils import matches
 class SubjectContains(Criterion):
     """Matches messages with subject containing the given substring."""
 
+    spec_type = "subject_contains"
+
     def __init__(self, substring: str) -> None:
         """Initialize a SubjectContains criterion.
 
@@ -25,6 +27,8 @@ class SubjectContains(Criterion):
 class SubjectIs(Criterion):
     """Matches messages with the exact subject line."""
 
+    spec_type = "subject_is"
+
     def __init__(self, subj: str) -> None:
         """Initialize a SubjectIs criterion.
 
@@ -41,6 +45,8 @@ class SubjectIs(Criterion):
 
 class SubjectMatches(Criterion):
     """Matches messages with subject matching the regex pattern."""
+
+    spec_type = "subject_matches"
 
     def __init__(self, pattern: str) -> None:
         """Initialize a SubjectMatches criterion.

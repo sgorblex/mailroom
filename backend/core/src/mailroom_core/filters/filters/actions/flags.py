@@ -31,6 +31,8 @@ class RemoveFlag(Action):
 class MarkAsRead(AddFlag):
     """Mark messages as read."""
 
+    spec_type = "mark_as_read"
+
     def __init__(self) -> None:
         r"""Add \Seen."""
         super().__init__(Flag.SEEN)
@@ -38,6 +40,8 @@ class MarkAsRead(AddFlag):
 
 class MarkAsUnread(RemoveFlag):
     """Mark messages as unread."""
+
+    spec_type = "mark_as_unread"
 
     def __init__(self) -> None:
         r"""Remove \Seen."""
@@ -47,6 +51,8 @@ class MarkAsUnread(RemoveFlag):
 class Star(AddFlag):
     """Star messages."""
 
+    spec_type = "star"
+
     def __init__(self) -> None:
         r"""Add \Flagged."""
         super().__init__(Flag.FLAGGED)
@@ -54,6 +60,8 @@ class Star(AddFlag):
 
 class Unstar(RemoveFlag):
     """Unstar messages."""
+
+    spec_type = "unstar"
 
     def __init__(self) -> None:
         r"""Remove \Flagged."""
@@ -63,6 +71,8 @@ class Unstar(RemoveFlag):
 class MarkAsAnswered(AddFlag):
     """Mark messages as answered."""
 
+    spec_type = "mark_as_answered"
+
     def __init__(self) -> None:
         r"""Add \Answered."""
         super().__init__(Flag.ANSWERED)
@@ -70,6 +80,8 @@ class MarkAsAnswered(AddFlag):
 
 class MarkAsUnanswered(RemoveFlag):
     """Mark messages as unanswered."""
+
+    spec_type = "mark_as_unanswered"
 
     def __init__(self) -> None:
         r"""Remove \Answered."""

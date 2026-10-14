@@ -15,6 +15,8 @@ if TYPE_CHECKING:
 class Delete(Action):
     """Action that permanently deletes messages."""
 
+    spec_type = "delete"
+
     def __init__(self) -> None:
         """Initialize a Delete action."""
 

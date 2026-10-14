@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 from imap_thingy.core import Flag, Message, Q
+from imap_thingy.core.spec import FLAG, codecs
 from imap_thingy.filters.criteria.criterion import Criterion
 
 
 class HasFlag(Criterion):
     """Criterion that matches messages that have the given IMAP flag."""
+
+    spec_type = "has_flag"
+    spec_codecs = codecs(flag=FLAG)
 
     def __init__(self, flag: Flag) -> None:
         r"""Initialize a HasFlag criterion.
@@ -29,6 +33,9 @@ class HasFlag(Criterion):
 class LacksFlag(Criterion):
     """Criterion that matches messages that do not have the given IMAP flag."""
 
+    spec_type = "lacks_flag"
+    spec_codecs = codecs(flag=FLAG)
+
     def __init__(self, flag: Flag) -> None:
         r"""Initialize a LacksFlag criterion.
 
@@ -49,6 +56,8 @@ class LacksFlag(Criterion):
 class IsRead(HasFlag):
     """Match messages that have been read."""
 
+    spec_type = "is_read"
+
     def __init__(self) -> None:
         r"""Match \Seen."""
         super().__init__(Flag.SEEN)
@@ -56,6 +65,8 @@ class IsRead(HasFlag):
 
 class IsUnread(LacksFlag):
     """Match messages that are unread."""
+
+    spec_type = "is_unread"
 
     def __init__(self) -> None:
         r"""Match absence of \Seen."""
@@ -65,6 +76,8 @@ class IsUnread(LacksFlag):
 class IsStarred(HasFlag):
     """Match messages that are starred."""
 
+    spec_type = "is_starred"
+
     def __init__(self) -> None:
         r"""Match \Flagged."""
         super().__init__(Flag.FLAGGED)
@@ -72,6 +85,8 @@ class IsStarred(HasFlag):
 
 class IsUnstarred(LacksFlag):
     """Match messages that are not starred."""
+
+    spec_type = "is_unstarred"
 
     def __init__(self) -> None:
         r"""Match absence of \Flagged."""
@@ -81,6 +96,8 @@ class IsUnstarred(LacksFlag):
 class IsAnswered(HasFlag):
     """Match messages that have been answered."""
 
+    spec_type = "is_answered"
+
     def __init__(self) -> None:
         r"""Match \Answered."""
         super().__init__(Flag.ANSWERED)
@@ -88,6 +105,8 @@ class IsAnswered(HasFlag):
 
 class IsUnanswered(LacksFlag):
     """Match messages that have not been answered."""
+
+    spec_type = "is_unanswered"
 
     def __init__(self) -> None:
         r"""Match absence of \Answered."""

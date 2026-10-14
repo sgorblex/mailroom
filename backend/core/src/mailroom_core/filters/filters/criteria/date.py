@@ -3,11 +3,15 @@
 from datetime import date, datetime
 
 from imap_thingy.core import Message, Q
+from imap_thingy.core.spec import DATE, as_date, codecs
 from imap_thingy.filters.criteria.criterion import Criterion
 
 
 class OlderThan(Criterion):
     """Matches messages older than the given date."""
+
+    spec_type = "older_than"
+    spec_codecs = codecs(cutoff_date=DATE)
 
     def __init__(self, cutoff_date: date | datetime | str) -> None:
         """Initialize an OlderThan criterion.
@@ -17,11 +21,7 @@ class OlderThan(Criterion):
                          a string in format 'DD-MMM-YYYY' (e.g., '01-Jan-2025').
 
         """
-        if isinstance(cutoff_date, str):
-            cutoff_date = datetime.strptime(cutoff_date, "%d-%b-%Y").date()  # noqa: DTZ007 -- date only
-        elif isinstance(cutoff_date, datetime):
-            cutoff_date = cutoff_date.date()
-
+        cutoff_date = as_date(cutoff_date)
         self.cutoff_date = cutoff_date
         imap_date_str = cutoff_date.strftime("%d-%b-%Y")
 

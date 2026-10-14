@@ -47,6 +47,8 @@ class BodyContains(Criterion):
     parsed mail.
     """
 
+    spec_type = "body_contains"
+
     def __init__(self, substring: str) -> None:
         """Initialize a BodyContains criterion.
 
@@ -72,6 +74,8 @@ class BodyMatches(Criterion):
     Requires fetching message data (not expressible as a single IMAP regex);
     ``imap_query`` defaults to all messages unless combined with other criteria.
     """
+
+    spec_type = "body_matches"
 
     def __init__(self, pattern: str) -> None:
         """Initialize a BodyMatches criterion.

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from imapclient.imapclient import TRASH
 
+from imap_thingy.core.spec import OPTIONAL_PATH, PATH, codecs
 from imap_thingy.filters.actions.action import Action
 
 if TYPE_CHECKING:
@@ -21,6 +22,9 @@ class MoveTo(Action):
 
     Delimiter is forwarded from the account folder when the filter is applied.
     """
+
+    spec_type = "move_to"
+    spec_codecs = codecs(folder=PATH)
 
     def __init__(self, folder: Path) -> None:
         """Initialize a MoveTo action.
@@ -41,6 +45,9 @@ class Trash(Action):
 
     Delimiter is forwarded from the account folder when the filter is applied.
     """
+
+    spec_type = "trash"
+    spec_codecs = codecs(folder=OPTIONAL_PATH)
 
     def __init__(self, folder: Path | None = None) -> None:
         """Initialize a Trash action.

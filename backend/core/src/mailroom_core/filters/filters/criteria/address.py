@@ -30,6 +30,8 @@ def _extract_emails(msg: MailParser, field: str) -> list[tuple[str, str]]:
 class FromContains(Criterion):
     """Matches messages from addresses containing the given string."""
 
+    spec_type = "from_contains"
+
     def __init__(self, addr: str) -> None:
         """Initialize a FromContains criterion.
 
@@ -47,6 +49,8 @@ class FromContains(Criterion):
 class FromIs(Criterion):
     """Matches messages from the exact email address."""
 
+    spec_type = "from_is"
+
     def __init__(self, addr: str) -> None:
         """Initialize a FromIs criterion.
 
@@ -63,6 +67,8 @@ class FromIs(Criterion):
 
 class FromMatches(Criterion):
     """Matches messages from addresses matching the regex pattern."""
+
+    spec_type = "from_matches"
 
     def __init__(self, pattern: str) -> None:
         """Initialize a FromMatches criterion.
@@ -82,6 +88,8 @@ class FromMatches(Criterion):
 
 class FromMatchesName(Criterion):
     """Matches messages from sender names matching the regex pattern."""
+
+    spec_type = "from_matches_name"
 
     def __init__(self, pattern: str) -> None:
         """Initialize a FromMatchesName criterion.
@@ -104,6 +112,8 @@ class ToContains(Criterion):
 
     Can optionally include CC and BCC fields in the match.
     """
+
+    spec_type = "to_contains"
 
     def __init__(self, addr: str, incl_cc: bool = False, incl_bcc: bool = False) -> None:
         """Initialize a ToContains criterion.
@@ -132,6 +142,8 @@ class ToIs(Criterion):
     Can optionally include CC and BCC fields in the match.
     """
 
+    spec_type = "to_is"
+
     def __init__(self, addr: str, incl_cc: bool = False, incl_bcc: bool = False) -> None:
         """Initialize a ToIs criterion.
 
@@ -156,6 +168,8 @@ class ToIs(Criterion):
 class CcContains(Criterion):
     """Matches messages CC'd to addresses containing the given string."""
 
+    spec_type = "cc_contains"
+
     def __init__(self, addr: str) -> None:
         """Initialize a CcContains criterion.
 
@@ -172,6 +186,8 @@ class CcContains(Criterion):
 
 class CcIs(Criterion):
     """Matches messages CC'd to the exact email address."""
+
+    spec_type = "cc_is"
 
     def __init__(self, addr: str) -> None:
         """Initialize a CcIs criterion.
@@ -190,6 +206,8 @@ class CcIs(Criterion):
 class CcMatches(Criterion):
     """Matches messages CC'd to addresses matching the regex pattern."""
 
+    spec_type = "cc_matches"
+
     def __init__(self, pattern: str) -> None:
         """Initialize a CcMatches criterion.
 
@@ -206,6 +224,8 @@ class CcMatches(Criterion):
 
 class BccContains(Criterion):
     """Matches messages BCC'd to addresses containing the given string."""
+
+    spec_type = "bcc_contains"
 
     def __init__(self, addr: str) -> None:
         """Initialize a BccContains criterion.
@@ -224,6 +244,8 @@ class BccContains(Criterion):
 class BccIs(Criterion):
     """Matches messages BCC'd to the exact email address."""
 
+    spec_type = "bcc_is"
+
     def __init__(self, addr: str) -> None:
         """Initialize a BccIs criterion.
 
@@ -240,6 +262,8 @@ class BccIs(Criterion):
 
 class BccMatches(Criterion):
     """Matches messages BCC'd to addresses matching the regex pattern."""
+
+    spec_type = "bcc_matches"
 
     def __init__(self, pattern: str) -> None:
         """Initialize a BccMatches criterion.
@@ -262,6 +286,8 @@ class ToMatches(Criterion):
 
     Can optionally include CC and BCC fields in the match.
     """
+
+    spec_type = "to_matches"
 
     def __init__(self, pattern: str, incl_cc: bool = False, incl_bcc: bool = False) -> None:
         """Initialize a ToMatches criterion.

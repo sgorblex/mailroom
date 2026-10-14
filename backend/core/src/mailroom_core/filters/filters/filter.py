@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from imap_thingy.core.spec import SpecNode
     from imap_thingy.filters.actions import Action
     from imap_thingy.filters.criteria import Criterion
 
@@ -36,3 +37,25 @@ class Filter:
         """Build a filter from a criterion and an action."""
         self.criterion = criterion
         self.action = action
+
+    def to_spec(self) -> SpecNode:
+        """Return ``{"criterion": ..., "action": ...}`` (see :mod:`imap_thingy.spec`).
+
+        Raises:
+            NotSerializableError: The criterion or the action has no data form.
+
+        """
+        return {"criterion": self.criterion.to_spec(), "action": self.action.to_spec()}
+
+    def __eq__(self, other: object) -> bool:
+        """Equal when both criteria and both actions are equal."""
+        if not isinstance(other, Filter):
+            return NotImplemented
+        return self.criterion == other.criterion and self.action == other.action
+
+    def __hash__(self) -> int:
+        """Hash of the criterion and the action."""
+        return hash((self.criterion, self.action))
+
+    def __repr__(self) -> str:
+        return f"Filter({self.criterion!r}, {self.action!r})"

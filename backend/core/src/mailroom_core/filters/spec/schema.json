@@ -1,0 +1,470 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sgorblex/imap-thingy/blob/main/imap_thingy/spec/schema.json",
+  "title": "imap-thingy rule spec",
+  "description": "Data form of imap-thingy filters, criteria and actions (see imap_thingy.spec). The root is a filter.",
+  "$ref": "#/$defs/filter",
+  "$defs": {
+    "filter": {
+      "type": "object",
+      "properties": {
+        "criterion": {
+          "$ref": "#/$defs/criterion"
+        },
+        "action": {
+          "$ref": "#/$defs/action"
+        }
+      },
+      "required": [
+        "criterion",
+        "action"
+      ],
+      "additionalProperties": false
+    },
+    "criterion": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "and": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/criterion"
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "and"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "or": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/criterion"
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "or"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "not": {
+              "$ref": "#/$defs/criterion"
+            }
+          },
+          "required": [
+            "not"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/criterion_leaf"
+        }
+      ]
+    },
+    "criterion_leaf": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "anything",
+                "is_read",
+                "is_unread",
+                "is_starred",
+                "is_unstarred",
+                "is_answered",
+                "is_unanswered"
+              ]
+            },
+            "args": {
+              "type": "object",
+              "maxProperties": 0
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "from_contains",
+                "from_is",
+                "cc_contains",
+                "cc_is",
+                "bcc_contains",
+                "bcc_is"
+              ]
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "addr": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "addr"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "to_contains",
+                "to_is"
+              ]
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "addr": {
+                  "type": "string"
+                },
+                "incl_cc": {
+                  "type": "boolean"
+                },
+                "incl_bcc": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "addr"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "from_matches",
+                "from_matches_name",
+                "cc_matches",
+                "bcc_matches",
+                "subject_matches",
+                "body_matches"
+              ]
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "pattern": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "pattern"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "to_matches"
+              ]
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "pattern": {
+                  "type": "string"
+                },
+                "incl_cc": {
+                  "type": "boolean"
+                },
+                "incl_bcc": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "pattern"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "subject_contains",
+                "body_contains"
+              ]
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "substring": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "substring"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "subject_is"
+              ]
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "subj": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "subj"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "has_flag",
+                "lacks_flag"
+              ]
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "flag": {
+                  "$ref": "#/$defs/flag"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "flag"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "older_than"
+              ]
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "cutoff_date": {
+                  "type": "string",
+                  "format": "date",
+                  "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "cutoff_date"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "args"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "action": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "seq": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/action"
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "seq"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/action_leaf"
+        }
+      ]
+    },
+    "action_leaf": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "delete",
+                "mark_as_answered",
+                "mark_as_read",
+                "mark_as_unanswered",
+                "mark_as_unread",
+                "no_op",
+                "star",
+                "unstar"
+              ]
+            },
+            "args": {
+              "type": "object",
+              "maxProperties": 0
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "move_to"
+              ]
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "folder": {
+                  "$ref": "#/$defs/path"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "folder"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "trash"
+              ]
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "folder": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/path"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "path": {
+      "description": "Folder path as segments, joined with the account's delimiter at run time.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "flag": {
+      "enum": [
+        "SEEN",
+        "FLAGGED",
+        "ANSWERED"
+      ]
+    }
+  }
+}

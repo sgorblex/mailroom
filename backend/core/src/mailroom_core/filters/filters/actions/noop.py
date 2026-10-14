@@ -8,6 +8,8 @@ from imap_thingy.filters.actions.action import Action
 class NoOp(Action):
     """Action that does nothing."""
 
+    spec_type = "no_op"
+
     def __init__(self) -> None:
         """Create a no-op action."""
         super().__init__(lambda conn, msgids, *, delimiter="/": None)
