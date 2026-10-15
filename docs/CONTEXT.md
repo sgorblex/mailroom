@@ -34,8 +34,8 @@ filterd      the owner's personal filter daemon (private), also on imap-thingy;
   ASGI app at `/mcp/<profile>` in its own API process. The MCP keeps its own schema (`mcp`) and
   Alembic history; the app's tables live in schema `app`.
 - **filterd** is the owner's personal rules and daemon, not part of the family's API: the
-  reusable runner (run, IDLE monitor, periodic, starred-sort) moves into imap-thingy, and the app
-  depends on imap-thingy alone. filterd keeps running until the app's worker takes a mailbox
+  reusable runner (run, IDLE monitor, starred-sort) lives in imap-thingy as `imap_thingy.runner`,
+  and the app depends on imap-thingy alone. filterd keeps running until the app's worker takes a mailbox
   over, and only after it stops acting on that mailbox. There is never a double runner.
 - **imap-thingy** stays a general-purpose library on PyPI; the app reads and writes its rules
   through the library's own serialisation, never a private format.

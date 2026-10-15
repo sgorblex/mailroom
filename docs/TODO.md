@@ -4,14 +4,33 @@ The next phases, roughly in order. Not a requirements document — see
 [`REQUIREMENTS.md`](REQUIREMENTS.md) for scope and maturity, and [`IDEAS.md`](IDEAS.md) for
 exploratory work. Once an item is done, remove it.
 
+## Across the family
+
+Mailroom is built on standalone projects, each with its own repository and checklist. As of
+2026-10-15:
+
+- **mailroom-mcp** (`../mailroom-mcp`, GitHub `sgorblex/mailroom-mcp`): the 0.3 Python port is
+  under way; `crypto` (sealed secrets, byte-compatible) is merged, `config` is next. Its own
+  [`docs/TODO.md`](https://github.com/sgorblex/mailroom-mcp/blob/main/docs/TODO.md) *0.3* section
+  is the checklist, in dependency order, with the TypeScript tests as the parity list. The
+  TypeScript server keeps running on the production host until the cutover described there.
+- **imap-thingy** (`../imap-thingy`, GitHub `sgorblex/imap-thingy`): rules as data (`to_spec()`,
+  `imap_thingy.spec`) are released in 0.5.0; the runner (`imap_thingy.runner`: `run_rules`,
+  `starred_only`, the IDLE `monitor`) is merged, and release PR **#42 (0.6.0)** publishes it.
+  filterd then switches to that import and stays the owner's personal daemon until the app
+  replaces it.
+
+The app's own items below can start now; **Component dependencies** waits for a tagged
+`mailroom-core` and imap-thingy 0.6.0.
+
 ## Foundations
 
 - [ ] **Owner login** — single-owner session (password, Argon2id; another project's session-cookie pattern),
       every non-health route behind it, CSRF stance for the cookie SPA.
 - [ ] **Component dependencies** — add mailroom-core, mailroom-mcp and imap-thingy as
       `git+…@<tag>` sources, plus a mise task that switches them to local editable paths for
-      cross-repo work. Waits for the mailroom-mcp Python port's packages and imap-thingy's rule
-      spec and runner.
+      cross-repo work. Waits for the mailroom-mcp Python port's packages and imap-thingy
+      0.6.0.
 - [ ] **Accounts** — `AccountStore` over schema `app`, sealed secrets as mailroom-core seals them,
       settings screens; dev seeding of the dev Dovecot from `mailroom_core.testing`.
 - [ ] **Worker scaffold** — procrastinate (as another project) with `dev-worker` in `mise run dev`, the Quadlet
