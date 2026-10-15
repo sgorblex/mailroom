@@ -1,0 +1,15 @@
+{
+  /* Solution file: it owns no sources, so `tsc -p tsconfig.json` checks nothing and still exits 0.
+     `pnpm run typecheck` (`tsc -b`) builds both real projects below — that is the typecheck.
+     The references are also how ESLint's project service reaches the Vite/Vitest configs. */
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ],
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  }
+}

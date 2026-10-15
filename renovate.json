@@ -1,0 +1,246 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "automerge": true,
+  "automergeStrategy": "squash",
+  "platformAutomerge": true,
+  "dependencyDashboard": true,
+  "dependencyDashboardApproval": true,
+  "description": [
+    "`minimumReleaseAge` must match web/pnpm-workspace.yaml's: pnpm's `minimumReleaseAgeStrict` refuses a younger release, leaving the PR with a stale lock file.",
+    "`dependencyDashboardApproval`, not `prCreation: \"approval\"`, which creates branches without PRs until they fill `branchConcurrentLimit`.",
+    "`platformAutomerge` waits only for the `main` ruleset's required checks, so every PR-reporting Woodpecker pipeline must stay required there."
+  ],
+  "minimumReleaseAge": "7 days",
+  "vulnerabilityAlerts": {
+    "description": "`fix`, not `chore`, so a security update cuts a release (and an image) by itself; they skip dashboard approval, so a person merges them.",
+    "semanticCommitType": "fix",
+    "automerge": false
+  },
+  "lockFileMaintenance": {
+    "enabled": true
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "npx tool versions pinned inside agent skill docs, so instructions cannot drift past the pin they document",
+      "managerFilePatterns": [
+        "/^\\.agents/skills/.+\\.md$/"
+      ],
+      "matchStrings": [
+        "npx (?:-y )?(?<depName>@?[a-z0-9][a-z0-9._/-]*)@(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+[^\\s`\"]*)"
+      ],
+      "datasourceTemplate": "npm",
+      "versioningTemplate": "npm"
+    },
+    {
+      "customType": "regex",
+      "description": "pnpm installed in CI steps and the web image; must match web/package.json packageManager.",
+      "managerFilePatterns": [
+        "/^\\.woodpecker/.+\\.yaml$/",
+        "/^web/Containerfile$/"
+      ],
+      "matchStrings": [
+        "npm install -g (?<depName>pnpm)@(?<currentValue>[0-9][^\\s]*)"
+      ],
+      "datasourceTemplate": "npm",
+      "versioningTemplate": "npm"
+    },
+    {
+      "customType": "regex",
+      "description": "Dev mail images (scripts/images.sh); keep on the same pins as mailroom-mcp.",
+      "managerFilePatterns": [
+        "/^scripts/images\\.sh$/"
+      ],
+      "matchStrings": [
+        "_image=\"(?<depName>[^:\"]+):(?<currentValue>[^@\"]+)@(?<currentDigest>sha256:[a-f0-9]+)\""
+      ],
+      "datasourceTemplate": "docker"
+    }
+  ],
+  "packageRules": [
+    {
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "automerge": false
+    },
+    {
+      "matchManagers": [
+        "dockerfile",
+        "docker-compose",
+        "mise"
+      ],
+      "automerge": false,
+      "description": "Nothing on a PR exercises these, so they never automerge; a group automerges only if every member may."
+    },
+    {
+      "matchManagers": [
+        "mise"
+      ],
+      "groupName": "mise tool versions",
+      "description": "No mise.lock here, so lock file maintenance has nothing to refresh.",
+      "lockFileMaintenance": {
+        "enabled": false
+      }
+    },
+    {
+      "matchManagers": [
+        "woodpecker"
+      ],
+      "pinDigests": true,
+      "groupName": "Woodpecker pipeline images"
+    },
+    {
+      "matchManagers": [
+        "dockerfile",
+        "docker-compose"
+      ],
+      "pinDigests": true,
+      "groupName": "container base images"
+    },
+    {
+      "matchManagers": [
+        "dockerfile",
+        "docker-compose",
+        "woodpecker"
+      ],
+      "matchUpdateTypes": [
+        "digest",
+        "pinDigest"
+      ],
+      "minimumReleaseAge": null,
+      "description": "The soak exists for pnpm (npm-only); a digest update is the same tag rebuilt, usually for a CVE, so it is not held."
+    },
+    {
+      "matchManagers": [
+        "pep621"
+      ],
+      "groupName": "backend Python dependencies (uv)",
+      "description": "Constraints are open `>=`, so upgrades arrive as named PRs touching `uv.lock` alone.",
+      "rangeStrategy": "update-lockfile",
+      "lockFileMaintenance": {
+        "commitMessageAction": "lock file maintenance (backend uv)"
+      }
+    },
+    {
+      "matchManagers": [
+        "pep621"
+      ],
+      "matchPackageNames": [
+        "mypy",
+        "ruff"
+      ],
+      "description": "Kept out of the uv group so new diagnostics are attributable to their PR.",
+      "groupName": "backend lint toolchain (expect new diagnostics)"
+    },
+    {
+      "matchManagers": [
+        "pep621"
+      ],
+      "minimumReleaseAge": null,
+      "description": "`uv lock --upgrade-package` takes no version (renovatebot/renovate#41624), so a soak only fails the run without holding anything back."
+    },
+    {
+      "matchManagers": [
+        "npm"
+      ],
+      "description": "`bump`: pnpm 12 refuses `update --no-save` under `minimumReleaseAgeStrict`, so in-range updates would leave a stale lock file.",
+      "groupName": "web Node dependencies (pnpm)",
+      "rangeStrategy": "bump",
+      "lockFileMaintenance": {
+        "commitMessageAction": "lock file maintenance (web pnpm)"
+      }
+    },
+    {
+      "matchManagers": [
+        "npm"
+      ],
+      "matchPackageNames": [
+        "@eslint/js",
+        "@vitest/eslint-plugin",
+        "eslint",
+        "eslint-plugin-jsx-a11y",
+        "eslint-plugin-react-hooks",
+        "eslint-plugin-react-refresh",
+        "typescript",
+        "typescript-eslint"
+      ],
+      "description": "Each can add lint rules that fail a green branch; fix the new diagnostics in the same PR.",
+      "groupName": "web lint toolchain (expect new diagnostics)"
+    },
+    {
+      "matchManagers": [
+        "npm"
+      ],
+      "matchPackageNames": [
+        "@vitest/coverage-v8",
+        "vitest"
+      ],
+      "description": "`@vitest/coverage-v8` declares an exact `vitest` peer, so the two move together.",
+      "groupName": "vitest and coverage-v8 (exact peer pair)"
+    },
+    {
+      "matchPackageNames": [
+        "chrome-devtools-mcp"
+      ],
+      "groupName": "agent browser (chrome-devtools-mcp)"
+    },
+    {
+      "matchPackageNames": [
+        "pnpm"
+      ],
+      "groupName": "pnpm (mise, packageManager, CI steps)",
+      "description": "One PR for mise.toml, packageManager, and the CI/Containerfile regex."
+    },
+    {
+      "matchPackageNames": [
+        "node",
+        "docker.io/library/node"
+      ],
+      "groupName": "node (mise, images)"
+    },
+    {
+      "matchPackageNames": [
+        "python",
+        "python/cpython",
+        "docker.io/library/python"
+      ],
+      "groupName": "python (mise, .python-version, images)",
+      "description": "`python/cpython` is what mise's entry resolves to; the python3.14 in the uv image tag is not covered."
+    },
+    {
+      "matchPackageNames": [
+        "uv",
+        "astral-sh/uv",
+        "ghcr.io/astral-sh/uv"
+      ],
+      "groupName": "uv (mise, images)",
+      "description": "`astral-sh/uv` is what mise's entry resolves to."
+    },
+    {
+      "matchPackageNames": [
+        "node",
+        "docker.io/library/node",
+        "python",
+        "python/cpython",
+        "docker.io/library/python",
+        "uv",
+        "astral-sh/uv",
+        "ghcr.io/astral-sh/uv"
+      ],
+      "minimumReleaseAge": null,
+      "description": "mise/pyenv report release timestamps and docker does not, so a soak would split each group across versions."
+    },
+    {
+      "matchPackageNames": [
+        "postgres",
+        "docker.io/library/postgres"
+      ],
+      "groupName": "postgres (compose, CI)",
+      "description": "One group across compose.yml (dev) and backend-tests.yaml (CI), so tests never run against a Postgres the developer doesn't."
+    }
+  ]
+}

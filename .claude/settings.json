@@ -1,0 +1,26 @@
+{
+  "worktree": {
+    "bgIsolation": "worktree"
+  },
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true,
+    "andrej-karpathy-skills@karpathy-skills": true,
+    "ponytail@ponytail": true
+  },
+  "enabledMcpjsonServers": ["chrome-devtools"],
+  "permissions": {
+    "allow": ["mcp__chrome-devtools__*"]
+  },
+  "hooks": {
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{ git for-each-ref --merged main --format='%(refname:short)' 'refs/heads/worktree-*' | xargs -r git branch -d; } >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ]
+  }
+}

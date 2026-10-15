@@ -1,0 +1,29 @@
+# `ci:pause` withholds every pipeline's status so the PR can't merge (see SKILL.md).
+when:
+  - event: push
+    branch: main
+  - event: pull_request
+    evaluate: 'not ("ci:pause" in split(CI_COMMIT_PULL_REQUEST_LABELS, ","))'
+
+steps:
+  - name: check
+    image: ghcr.io/astral-sh/uv:0.13.1-python3.14-trixie-slim@sha256:112f89760bd54b63c84d140151ea5f3d849278e54f6f939f2c40a57f3e33d895
+    volumes:
+      - /var/lib/woodpecker-cache/uv:/root/.cache/uv
+    # Filters on the step, not top-level, so a required check always reports; the
+    # Release Please skip must be an `evaluate` (see SKILL.md gotchas).
+    when:
+      - event: push
+        branch: main
+        path:
+          include: &backend-paths ['backend/**', 'mise.toml', '.woodpecker/backend.yaml']
+      - event: pull_request
+        evaluate: 'not (CI_COMMIT_SOURCE_BRANCH startsWith "release-please--")'
+        path:
+          include: *backend-paths
+    commands:
+      - cd backend
+      - uv sync --locked --all-groups
+      - uv run ruff check . -q
+      - uv run ruff format --check . -q
+      - uv run mypy mailroom

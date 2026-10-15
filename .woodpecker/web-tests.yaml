@@ -1,0 +1,26 @@
+# `ci:pause` pauses this pipeline too - see backend.yaml.
+when:
+  - event: push
+    branch: main
+  - event: pull_request
+    evaluate: 'not ("ci:pause" in split(CI_COMMIT_PULL_REQUEST_LABELS, ","))'
+
+steps:
+  - name: test
+    image: node:26-slim@sha256:193fe51b64e77981119c98c2002c9e32a70e2f006fb4d25068ce0558998917f0
+    volumes:
+      - /var/lib/woodpecker-cache/pnpm-store:/root/.local/share/pnpm/store
+    when:
+      - event: push
+        branch: main
+        path:
+          include: &web-paths ['web/**', 'mise.toml', '.woodpecker/web-tests.yaml']
+      - event: pull_request
+        evaluate: 'not (CI_COMMIT_SOURCE_BRANCH startsWith "release-please--")'
+        path:
+          include: *web-paths
+    commands:
+      - npm install -g pnpm@12.10.1
+      - cd web
+      - pnpm install --frozen-lockfile
+      - pnpm run test:run

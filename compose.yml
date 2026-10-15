@@ -1,0 +1,33 @@
+# Compose specification — local PostgreSQL for development only. Production runs the
+# mailroom-api / mailroom-web images against a database outside this file (deploy/quadlet/).
+# https://github.com/compose-spec/compose-spec
+name: ${COMPOSE_PROJECT_NAME:-mailroom}
+
+services:
+  postgres:
+    image: docker.io/library/postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-mailroom}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mailroom}
+      POSTGRES_DB: ${POSTGRES_DB:-mailroom}
+    ports:
+      # 5434, not 5432: another project's and mailroom-mcp's dev databases may run at the same time.
+      - ${POSTGRES_PUBLISH_HOST:-127.0.0.1}:${POSTGRES_PUBLISH_PORT:-5434}:5432
+    volumes:
+      # The volume root, not .../data: Postgres 18+ keeps the cluster in a major-versioned
+      # subdirectory ($PGDATA=/var/lib/postgresql/<major>/docker), so mounting .../data puts
+      # it outside the volume and the entrypoint aborts.
+      - postgres_data:/var/lib/postgresql
+      # Creates mailroom_test on first start only; existing volumes: run CREATE DATABASE manually.
+      - ./scripts/postgres/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d:ro,Z
+    healthcheck:
+      # Without -U, pg_isready uses the container OS user, which may not match a valid DB role.
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  postgres_data:

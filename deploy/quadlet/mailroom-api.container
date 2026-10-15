@@ -1,0 +1,18 @@
+[Unit]
+Description=Mailroom HTTP API (FastAPI)
+Documentation=https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html
+
+[Container]
+Image=localhost/mailroom-api:production
+Label=io.containers.autoupdate=registry
+Pod=mailroom.pod
+EnvironmentFile=-/etc/mailroom/mailroom-api.env
+HealthCmd=.venv/bin/python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=4)"
+HealthInterval=30s
+
+[Service]
+Restart=always
+
+[Install]
+# For systemctl --user, use default.target instead.
+WantedBy=multi-user.target

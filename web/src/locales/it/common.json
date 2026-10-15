@@ -1,0 +1,11 @@
+{
+  "appName": "Mailroom",
+  "health": {
+    "title": "Stato dell'API",
+    "checking": "Controllo dell'API…",
+    "ok": "L'API è attiva.",
+    "failed": "L'API non ha risposto: {{message}}",
+    "unknownError": "errore sconosciuto",
+    "retry": "Controlla di nuovo"
+  }
+}

@@ -1,0 +1,43 @@
+# `ci:pause` pauses this pipeline too - see backend.yaml.
+when:
+  - event: push
+    branch: main
+  - event: pull_request
+    evaluate: 'not ("ci:pause" in split(CI_COMMIT_PULL_REQUEST_LABELS, ","))'
+
+steps:
+  - name: test
+    image: node:26-slim@sha256:193fe51b64e77981119c98c2002c9e32a70e2f006fb4d25068ce0558998917f0
+    when:
+      - event: push
+        branch: main
+        path:
+          include: &scripts-paths ['scripts/lib/**', 'mise.toml', '.woodpecker/scripts.yaml']
+      - event: pull_request
+        evaluate: 'not (CI_COMMIT_SOURCE_BRANCH startsWith "release-please--")'
+        path:
+          include: *scripts-paths
+    commands:
+      - node --test 'scripts/lib/*.test.mjs'
+
+  - name: version-sync
+    image: node:26-slim@sha256:193fe51b64e77981119c98c2002c9e32a70e2f006fb4d25068ce0558998917f0
+    # No release-please skip: its PR is where a version bump that misses a copy shows up.
+    when:
+      - event: push
+        branch: main
+        path:
+          include: &version-sync-paths
+            - 'version.txt'
+            - '.release-please-manifest.json'
+            - 'release-please-config.json'
+            - 'backend/pyproject.toml'
+            - 'backend/uv.lock'
+            - 'web/package.json'
+            - 'scripts/version-sync-validate.mjs'
+            - '.woodpecker/scripts.yaml'
+      - event: pull_request
+        path:
+          include: *version-sync-paths
+    commands:
+      - node scripts/version-sync-validate.mjs

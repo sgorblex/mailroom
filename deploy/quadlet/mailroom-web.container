@@ -1,0 +1,15 @@
+[Unit]
+Description=Mailroom web (nginx + static SPA, proxies /api to the API)
+Documentation=https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html
+
+[Container]
+Image=localhost/mailroom-web:production
+Label=io.containers.autoupdate=registry
+Pod=mailroom.pod
+
+[Service]
+Restart=always
+
+[Install]
+# For systemctl --user, use default.target instead.
+WantedBy=multi-user.target

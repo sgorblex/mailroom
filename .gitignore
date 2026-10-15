@@ -1,0 +1,15 @@
+# Local environment and secrets — never commit
+.env
+.envrc
+mise.local.toml
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Dev mail backends' CA, certificates and state (scripts/dev-mail.sh)
+dev/.state/
+
+# Agent worktrees (Claude Code `bgIsolation: worktree`) and per-machine client settings
+.claude/worktrees/
+.claude/settings.local.json

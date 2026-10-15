@@ -1,0 +1,56 @@
+---
+name: woodpecker
+description: Use when adding, editing, or debugging a `.woodpecker/*.yaml` CI pipeline in this repository, or when asked to add a new path-gated CI check. Covers this repo's multi-file pipeline convention, the gotchas another project found migrating off GitHub Actions self-hosted runners, and the image-pinning workflow.
+---
+
+# Woodpecker CI pipelines
+
+**Woodpecker CI** (`.woodpecker/*.yaml`) is this repo's quality-gate CI. Which pipelines exist, what each runs, and which checks are required: [`docs/requirements/ci-cd.md`](../../../docs/requirements/ci-cd.md) — the source of truth. This skill is *how* to work with the Woodpecker side.
+
+## The multi-file convention
+
+Each file under `.woodpecker/` is an **independently-triggered pipeline** — there is no shared upstream "path filter" job like GitHub Actions' `dorny/paths-filter` + `needs`. Instead, every file gates itself with `when:` blocks — but **path/branch filtering must live on the step(s), not the pipeline's top-level `when`** (see the required-checks gotcha below for why). The top-level `when` only decides *when the pipeline is invoked at all*:
+
+```yaml
+when:
+  - event: push
+    branch: main
+  - event: pull_request
+    evaluate: 'not ("ci:pause" in split(CI_COMMIT_PULL_REQUEST_LABELS, ","))'
+
+steps:
+  - name: check
+    when:
+      - event: push
+        branch: main
+        path:
+          include: ['backend/**', 'mise.toml', '.woodpecker/backend.yaml']
+      - event: pull_request
+        evaluate: 'not (CI_COMMIT_SOURCE_BRANCH startsWith "release-please--")'
+        path:
+          include: ['backend/**', 'mise.toml', '.woodpecker/backend.yaml']
+    commands: [...]
+```
+
+`when` is a list of OR'd condition-sets; keys within one entry are AND'd — the same shape works at both the pipeline level and the step level. Always include the pipeline's own filename in its `path.include` list (so editing the pipeline itself re-triggers it), and always carry the `release-please--*` `evaluate` on the `pull_request` entry — Release Please's integration branch shouldn't need this repo's full check suite to re-run per push. It has to be an `evaluate`; a `branch.exclude` cannot do this job (see the gotcha below). Always carry the `ci:pause` `evaluate` on the **top-level** `pull_request` entry too (see the gotcha below), so one label pauses the whole suite instead of all-but-yours. When a file has multiple steps that all need the same filter, define it once with a YAML anchor on the first step's `when:` and reference it (`when: *anchor-name`) on the rest, like `backend-tests.yaml` does.
+
+**Adding a new gated pipeline:** copy an existing file's `when` shape (top-level *and* step-level), swap the path list, name the file after what it checks. No registration step elsewhere — Woodpecker discovers every file under `.woodpecker/` automatically.
+
+## Steps, services, and images
+
+Steps in one file share a workspace and run **sequentially by default** — no need for `depends_on` unless you actually want parallel steps within a single file (adding `depends_on` to any step switches that whole file to DAG mode). Services (sidecar containers, e.g. Postgres) are reachable directly at their default port via hostname — `postgresql://user:pass@<service-name>:5432/db` — no dynamic port mapping to compute, unlike GitHub Actions' `job.services.<name>.ports[...]`. A `detach: true` **step** works the same way and is addressed by its **step** name; prefer that form when the container needs to be path-gated (see the `services:`-has-no-`when` gotcha below).
+
+Pin every step/service image to a **digest** (`image: tag@sha256:...`) (this repo's SHA-pinning convention). Workflow: add the tag, resolve the digest at implementation time (`docker buildx imagetools inspect <image>`, `skopeo inspect`, or `crane digest`), pin it before merging. After that, Renovate's `woodpecker` manager (configured in `renovate.json`) keeps the digest current automatically.
+
+## Gotchas (found in another project, migrating off GitHub Actions)
+
+- **Never put `path:` (or a branch exclude) on the top-level pipeline `when` if the pipeline is a required GitHub check.** Woodpecker evaluates the top-level `when` *before* creating a run — a miss means no run ever starts, so Woodpecker never posts any commit status for that context on that commit. That's not "skipped," it's *absent*, and GitHub shows an absent required context as permanently "Expected"/pending, blocking merge forever — even on PRs that legitimately don't touch that pipeline's paths. Put path/branch filtering on each step's own `when` instead (see **The multi-file convention** above): the pipeline then always runs and always reports a final status, with irrelevant steps just skipped internally (a skipped step doesn't fail the pipeline). **The one sanctioned use of this behaviour is the `ci:pause` label** — a top-level `when.evaluate` on every PR pipeline's `pull_request` entry, where withholding the status *is* the point: it parks a stacked PR that can't pass until the branch below it merges, and the pending checks are what stop it merging early. Don't "fix" that `evaluate` line; do keep path and branch filters out of the top-level `when` regardless. Mechanism, caveats, and why removing the label needs a push: [`ci-cd.md`](../../../docs/requirements/ci-cd.md) — *Continuous integration*.
+- **`when.branch` matches a pull request's *target* branch, so it can never filter by head branch.** `CI_COMMIT_BRANCH` "equals target branch for pull requests" ([upstream #3560](https://github.com/woodpecker-ci/woodpecker/issues/3560) declined to change this), so `branch: {exclude: ['release-please--*']}` on a `pull_request` entry silently matches `main` and never excludes anything — it was dead config here for as long as it existed, and the full backend and web suites ran on every Release Please force-push. Filter the head branch with `evaluate` over `CI_COMMIT_SOURCE_BRANCH` instead.
+- **An `evaluate` runs even on events the same `when` entry doesn't match, and PR-only variables read as `""` there.** `Constraint.Match` evaluates the expression *unconditionally* — there is no short-circuit when the entry's own `event:` misses — so a `pull_request` entry's expression is also executed on a push to `main`. It doesn't error: Woodpecker passes the environment as `map[string]string`, so under `expr.Env(...)` an unset variable reads as the zero value `""` rather than `nil`, and `"" startsWith "release-please--"` is simply `false`. Write expressions so that the empty case gives the answer you want for the *other* events too (for the exclusions here, "" means "don't exclude", which is correct). Applies to every PR-only variable — `CI_COMMIT_SOURCE_BRANCH`, `CI_COMMIT_PULL_REQUEST_LABELS`, `CI_COMMIT_TARGET_BRANCH`.
+- **`docker:27-cli` has `git` and `ssh` but no `bash`** (busybox `ash` only), and `alpine` has none of the three. Any step invoking one of this repo's `scripts/*.sh` — all `#!/usr/bin/env bash` — must `apk add --no-cache bash` first, or it dies with `env: can't execute 'bash'` and exit `127` before running a single line. Easy to miss when the step's *own* commands are plain `sh`.
+- **No native artifact-upload primitive.** GitHub Actions' `actions/upload-artifact` has no direct Woodpecker equivalent without reaching for a storage plugin. Don't add one speculatively — if nothing consumes the output (this repo's coverage reports don't), just drop the upload and keep the terminal-only report.
+- **`volumes:` (host bind mounts) require the repo to be "trusted" on the Woodpecker server** — an admin-side setting, not something you can turn on from a pipeline file. This affects both dependency-cache mounts (`/var/lib/woodpecker-cache/...`) and anything mounting `/var/run/docker.sock` (e.g. a step that needs to shell out to `docker`/`podman compose`). If a step with a `volumes:` mount is failing mysteriously, check this first before debugging the step itself.
+- **Caching is per-agent only.** Bind-mounting a host cache directory (e.g. `/var/lib/woodpecker-cache/uv:/root/.cache/uv`) persists across builds only on whichever agent happens to run them — no cross-agent sharing. Acceptable default for a small number of agents; if cache misses become a real cost, the upgrade path is a shared/object-storage-backed cache plugin, not more bind mounts.
+- **Don't use `corepack enable` on `node:26-slim`.** Node.js stopped bundling Corepack by default starting with Node 25, and installing it manually (`npm install -g corepack`) doesn't work either: measured on `node:25.9.0-slim`, the latest release required an engine range that Node didn't satisfy, and it collided with a `yarnpkg` binary already present in the image (`EEXIST`). Just install the pinned pnpm directly instead — `npm install -g pnpm@<version>`, which must match `web/package.json`'s `packageManager` field (see `ci-cd.md` — Local vs CI tooling). Renovate tracks this pin through a regex custom manager over `.woodpecker/*.yaml` and `web/Containerfile`, and groups it with `packageManager` and `mise.toml`, so a bump should arrive as one PR covering every location — but if you install pnpm some other way, or add a pin site outside those two globs, it won't match the regex and silently goes untracked.
+- **`services:` entries accept no `when:` — a path-gated database has to be a detached step.** A service entry supports only `name`, `image`, `ports`, `environment`, and `failure`; there is no per-service conditional, so a `services:` Postgres starts on *every* push/PR even when the path filter skips every step that would use it. Since path filtering must live on the steps (see the required-checks gotcha above), the pipeline can't gate it at the top level either. The fix is Woodpecker's documented `detach: true` step — service-like container in the `steps:` list, torn down when the pipeline ends, and it takes a normal step `when:` so it can share the same `&anchor` as its consumers. Two constraints: it must be listed **before** the steps that use it (steps are sequential and `detach` returns immediately), and it must **not** use `depends_on` to express that ordering, since that flips the whole file into DAG mode. `backend-tests.yaml` is the worked example.
+- **Service hostnames aren't loopback — integration-test allowlists may reject them.** This repo's backend test suite (`tests/support/worker_db.py`) only treats `127.0.0.1`/`localhost` as a "safe" `TEST_DATABASE_URL` host by default, to stop a dev from accidentally running integration tests against a real shared database. Woodpecker's `services:` are reached by service name (e.g. `database:5432`), which fails that check and silently skips every integration test. Set `TESTCONTAINERS_HOST_OVERRIDE` to the service name (e.g. `database`) rather than `MAILROOM_INTEGRATION_TESTS_ALLOW_ANY_DATABASE=1` — the latter disables the allowlist check outright and breaks `test_worker_db.py`'s own tests of that check; the override does a narrow exact-hostname match instead and still enforces the `_test`-suffix rule.

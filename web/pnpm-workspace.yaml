@@ -1,0 +1,15 @@
+packages:
+  - '.'
+
+# Keep in sync with the repository-level minimumReleaseAge in renovate.json, which keeps Renovate
+# from offering a release the strict soak below would refuse. Do not silence that with
+# minimumReleaseAgeStrict: false — it lets the release into the lockfile. (Same policy as another project.)
+minimumReleaseAge: 10080
+trustPolicy: no-downgrade
+blockExoticSubdeps: true
+
+# trustPolicy compares publish dates, not semver: a maintenance backport published after a
+# provenance-carrying release reads as a downgrade (semver@6.3.1 landed three days after
+# semver@7.5.4 got provenance). Keep entries version-scoped; drop one once it leaves the lockfile.
+trustPolicyExclude:
+  - semver@6.3.1

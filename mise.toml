@@ -1,0 +1,202 @@
+# Pinned for local dev only — CI pins node/pnpm/python/uv independently via digest-pinned
+# step images in .woodpecker/*.yaml (ghcr.io/astral-sh/uv:…-python…, node:…-slim);
+# keep both in sync by hand. Versions follow another project's pins.
+[tools]
+node = "26.11.1"
+pnpm = "12.10.1"
+python = "3.15.0"
+uv = "0.13.1"
+# Agent browser verification only; installed for local dev, never used by CI.
+"npm:chrome-devtools-mcp" = "1.10.1"
+
+# Dev defaults first, `.env` after: later entries win, so a personal `.env` overrides any of them.
+# Ports are fixed and chosen not to clash with another project (5432/8000/5173) or mailroom-mcp
+# (8080, 32993/32025/8025) running at the same time. There is no per-worktree port registry:
+# every checkout shares this one dev database.
+[env]
+_.python.venv = { path = "backend/.venv", create = true }
+UV_PYTHON = { value = "{{ tools.python.path }}", tools = true }
+UV_NO_PROGRESS = "1"
+MAILROOM_API_PORT = "8100"
+MAILROOM_VITE_PORT = "5180"
+POSTGRES_PUBLISH_PORT = "5434"
+DATABASE_URL = "postgresql://mailroom:mailroom@127.0.0.1:5434/mailroom"
+TEST_DATABASE_URL = "postgresql://mailroom:mailroom@127.0.0.1:5434/mailroom_test"
+_.file = ".env"
+
+[tasks.setup-python]
+hide = true
+description = "Install Python dependencies"
+dir = "backend"
+run = "uv sync --all-groups"
+
+[tasks.setup-node-web]
+hide = true
+description = "Install web/ Node dependencies"
+# Agents run pnpm without a TTY, where the purge prompt cannot be answered and the install fails
+# instead; node_modules is disposable. Passed as a flag rather than set in web/pnpm-workspace.yaml
+# because pnpm 12 rejects the whole file over that setting.
+run = "pnpm install --dir web --config.confirmModulesPurge=false"
+
+[tasks.setup]
+description = "Install Python and Node dependencies"
+depends = ["setup-python", "setup-node-web"]
+
+[tasks.dev-db]
+description = "Start local PostgreSQL (containerized, 127.0.0.1:5434) in the foreground"
+run = "scripts/compose up"
+
+[tasks.dev-db-down]
+description = "Stop local PostgreSQL; the data volume stays"
+run = "scripts/compose down"
+
+[tasks.dev-mail]
+description = "Start the dev Dovecot (IMAPS :33993) and Mailpit (SMTPS :33025, UI :8026)"
+run = "scripts/dev-mail.sh up"
+
+[tasks.dev-mail-down]
+description = "Stop the dev mail backends; their mail stays"
+run = "scripts/dev-mail.sh down"
+
+[tasks.dev-mail-reset]
+description = "Wipe the dev mail, then start the backends again"
+run = "scripts/dev-mail.sh reset"
+
+[tasks.migrate]
+description = "Apply Alembic migrations (upgrade head) to DATABASE_URL"
+dir = "backend"
+run = "uv run python -m mailroom.dev.run_migrate"
+
+[tasks.reset-db]
+description = "Drop and recreate DATABASE_URL's database, then re-apply Alembic migrations — EMPTIES ALL DATA"
+depends = ["setup-python"]
+dir = "backend"
+run = "uv run --no-sync python -m mailroom.dev.reset_database"
+
+[tasks.check-backend]
+description = "Ruff + mypy on backend"
+depends = ["setup-python"]
+dir = "backend"
+run = ["uv run --no-sync ruff check . -q", "uv run --no-sync ruff format --check . -q", "uv run --no-sync mypy mailroom"]
+
+[tasks.check-migrations]
+description = "Verify alembic upgrade head -> downgrade base -> upgrade head on a scratch database"
+depends = ["setup-python"]
+dir = "backend"
+run = "uv run --no-sync python -m mailroom.dev.check_migration_roundtrip"
+
+[tasks.check-version-sync]
+description = "Check every Release Please-owned version copy matches version.txt"
+run = "node scripts/version-sync-validate.mjs"
+
+[tasks.check-scripts]
+description = "Run node --test over scripts/lib"
+run = "node --test 'scripts/lib/*.test.mjs'"
+
+# Installing a browser is an operator step; this task only reports what it finds.
+[tasks.browser-check]
+description = "Report the Chrome/Chromium chrome-devtools-mcp will drive (--launch also starts it headless)"
+run = "node scripts/browser-check.mjs"
+
+[tasks.check-web-types]
+description = "TypeScript only for web — the fast inner loop; `check-web` covers it too"
+depends = ["setup-node-web"]
+dir = "web"
+run = "pnpm --silent run typecheck"
+
+[tasks.check-web]
+description = "ESLint + i18n check + production build for web"
+depends = ["setup-node-web"]
+dir = "web"
+run = ["pnpm --silent run lint", "pnpm --silent run i18n:check", "pnpm --silent run build"]
+
+[tasks.check-all]
+description = "Run every check task (backend, web, migrations, scripts, version sync)"
+depends = ["check-backend", "check-migrations", "check-scripts", "check-version-sync", "check-web"]
+run = "true"
+
+[tasks.test-backend]
+description = "Run backend pytest against TEST_DATABASE_URL (needs `mise run dev-db`)"
+depends = ["setup-python"]
+dir = "backend"
+run = "uv run --no-sync python -m mailroom.dev.wait_for_database --url-env TEST_DATABASE_URL && uv run --no-sync pytest -n auto"
+
+[tasks.test-web]
+description = "Vitest for web (both projects)"
+depends = ["setup-node-web"]
+dir = "web"
+run = "pnpm --silent run test:run"
+
+[tasks.test-web-node]
+description = "Vitest for web, DOM-free files only (fast inner loop)"
+depends = ["setup-node-web"]
+dir = "web"
+run = "pnpm --silent run test:run:node"
+
+[tasks.test-all]
+description = "Run every test task (backend, web)"
+depends = ["test-backend", "test-web"]
+run = "true"
+
+[tasks.fix-backend]
+description = "Ruff auto-fix + format, then mypy (types are not auto-fixed)"
+depends = ["setup-python"]
+dir = "backend"
+run = ["uv run --no-sync ruff check . --fix -q", "uv run --no-sync ruff format . -q", "uv run --no-sync mypy mailroom"]
+
+[tasks.fix-web]
+description = "ESLint with --fix on web"
+depends = ["setup-node-web"]
+dir = "web"
+run = "pnpm --silent run lint:fix"
+
+[tasks.fix]
+description = "Apply auto-fixes (Ruff, ESLint), then mypy on backend"
+depends = ["fix-backend", "fix-web"]
+run = "true"
+
+[tasks.dev-api]
+description = "Wait for Postgres, then start FastAPI (uvicorn, 127.0.0.1:8100, migrates at startup)"
+dir = "backend"
+run = "uv run python -m mailroom.dev.wait_for_database && uv run python -m mailroom.dev.run_uvicorn"
+
+[tasks.dev-api.env]
+MAILROOM_ENV = "development"
+MAILROOM_DEPLOY_ENV = "development"
+
+[tasks.dev-web]
+description = "Start the Vite dev server for web (127.0.0.1:5180, proxies /api to dev-api)"
+dir = "web"
+run = "pnpm run dev"
+
+[tasks.dev]
+description = "Start dev-db, dev-api and dev-web together; Ctrl+C stops them all"
+run = "scripts/dev-all.sh"
+
+[tasks.build-container-api]
+hide = true
+description = "Build the mailroom-api OCI image"
+run = "scripts/container-build.sh api"
+
+[tasks.build-container-web]
+hide = true
+description = "Build the mailroom-web OCI image"
+run = "scripts/container-build.sh web"
+
+[tasks.build-containers]
+description = "Build mailroom-api then mailroom-web (`-- staging` for staging tags)"
+run = "scripts/containers-both.sh"
+
+[tasks.clean-backend]
+hide = true
+description = "Remove backend .venv, caches, and local package metadata"
+run = "node scripts/clean.mjs backend"
+
+[tasks.clean-web]
+hide = true
+description = "Remove web node_modules and Vite build output"
+run = "node scripts/clean.mjs web"
+
+[tasks.clean]
+description = "Remove backend venv/caches and web node_modules/dist"
+depends = ["clean-backend", "clean-web"]

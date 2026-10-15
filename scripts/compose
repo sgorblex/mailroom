@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$root"
+
+podman_available=false
+podman_has_compose=false
+podman_engine_ok=false
+if command -v podman &>/dev/null; then
+  podman_available=true
+  if podman info &>/dev/null; then
+    podman_engine_ok=true
+  fi
+  if podman compose version &>/dev/null; then
+    podman_has_compose=true
+  fi
+fi
+if [[ "$podman_has_compose" == true && "$podman_engine_ok" == true ]]; then
+  exec podman compose "$@"
+fi
+
+docker_has_compose=false
+docker_engine_ok=false
+if docker compose version &>/dev/null; then
+  docker_has_compose=true
+  if docker info &>/dev/null; then
+    docker_engine_ok=true
+  fi
+fi
+if [[ "$docker_has_compose" == true && "$docker_engine_ok" == true ]]; then
+  exec docker compose "$@"
+fi
+
+if [[ "$podman_available" == true && "$podman_engine_ok" == false && "$docker_engine_ok" == false ]]; then
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    podman machine start >&2 || true
+    if podman info &>/dev/null; then
+      podman_engine_ok=true
+    fi
+    if podman compose version &>/dev/null; then
+      podman_has_compose=true
+    fi
+  fi
+fi
+if [[ "$podman_has_compose" == true && "$podman_engine_ok" == true ]]; then
+  exec podman compose "$@"
+fi
+
+printed=false
+if [[ "$podman_has_compose" == true && "$podman_engine_ok" == false ]]; then
+  echo "podman compose is available, but the Podman engine is not running or not reachable." >&2
+  echo "Output from: podman info" >&2
+  podman info >&2 || true
+  printed=true
+fi
+if [[ "$docker_has_compose" == true && "$docker_engine_ok" == false ]]; then
+  echo "docker compose is available, but the Docker engine is not running or not reachable." >&2
+  echo "Output from: docker info" >&2
+  docker info >&2 || true
+  printed=true
+fi
+if [[ "$printed" == true ]]; then
+  exit 1
+fi
+
+echo "Neither podman compose nor docker compose is available (install Compose v2 and ensure it is on PATH)." >&2
+exit 1

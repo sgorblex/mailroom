@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "type": "stdio",
+      "command": "mise",
+      "args": ["exec", "--", "node", "scripts/browser-mcp.mjs"],
+      "timeout": 120000
+    }
+  }
+}

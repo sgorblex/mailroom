@@ -1,0 +1,4 @@
+[Pod]
+# Host port : container port (mailroom-web's nginx listens on 8080 inside the pod, as a non-root
+# user). Bound to loopback: TLS terminates on the host's reverse proxy.
+PublishPort=127.0.0.1:8080:8080
