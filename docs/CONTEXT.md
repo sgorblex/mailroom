@@ -5,7 +5,7 @@
 One person's mail, in one place they run themselves: a **web mail client** over their IMAP/SMTP
 accounts, a **filters UI** for the rules that sort that mail on the server, the **host for the MCP
 server** that lets Claude work with it, and — later — **suggestions** for new filters learned from
-how the owner files mail by hand.
+how the owner files mail by hand. The filters UI comes first; the client follows.
 
 ## Audience
 

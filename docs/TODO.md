@@ -20,7 +20,9 @@ Mailroom is built on standalone projects, each with its own repository and check
   filterd then switches to that import and stays the owner's personal daemon until the app
   replaces it.
 
-The app's own items below can start now; **Component dependencies** waits for a tagged
+**The first goal is the Filters UI.** It needs all of *Foundations*, so its critical path runs
+through the mailroom-mcp port up to a tagged `mailroom-core`: Owner login and the Worker scaffold
+can start now, while **Component dependencies**, and **Accounts** after it, wait for a tagged
 `mailroom-core` and imap-thingy 0.6.0.
 
 ## Foundations
@@ -36,6 +38,11 @@ The app's own items below can start now; **Component dependencies** waits for a 
 - [ ] **Worker scaffold** — procrastinate with `dev-worker` in `mise run dev`, the Quadlet
       worker unit made real.
 
+## Filters
+
+- [ ] **Filters UI** — list, edit, dry run, enable; worker runs them only for mailboxes
+      filterd has released.
+
 ## Client
 
 - [ ] **Tier 1** — folders, message list, message view with the sandboxed HTML iframe and
@@ -45,10 +52,8 @@ The app's own items below can start now; **Component dependencies** waits for a 
 - [ ] **Tier 2** — triage actions and compose (reply, forward, drafts, attachments) through
       mailroom-core's send gate.
 
-## Filters and MCP
+## MCP and suggestions
 
-- [ ] **Filters UI** — list, edit, dry run, enable; worker runs them only for mailboxes
-      filterd has released.
 - [ ] **MCP host** — mount mailroom-mcp at `/mcp/<profile>` with the app's integration points.
 - [ ] **Suggestions** — learn from manual moves, propose filters with evidence and dry run.
 
