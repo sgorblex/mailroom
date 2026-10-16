@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Starts dev-db, dev-api and dev-web together; Ctrl+C stops them all.
 #
-# Not just `mise run dev-db ::: dev-api ::: dev-web`: as another project found, a terminal Ctrl+C under mise's
+# Not just `mise run dev-db ::: dev-api ::: dev-web`: a terminal Ctrl+C under mise's
 # own parallelism reliably stops the API and Vite but not the Postgres container, so the database
 # gets an explicit `compose down` here.
 set -uo pipefail

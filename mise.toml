@@ -1,6 +1,6 @@
 # Pinned for local dev only — CI pins node/pnpm/python/uv independently via digest-pinned
 # step images in .woodpecker/*.yaml (ghcr.io/astral-sh/uv:…-python…, node:…-slim);
-# keep both in sync by hand. Versions follow another project's pins.
+# keep both in sync by hand.
 [tools]
 node = "26.11.1"
 pnpm = "12.10.1"
@@ -10,7 +10,7 @@ uv = "0.13.1"
 "npm:chrome-devtools-mcp" = "1.10.1"
 
 # Dev defaults first, `.env` after: later entries win, so a personal `.env` overrides any of them.
-# Ports are fixed and chosen not to clash with another project (5432/8000/5173) or mailroom-mcp
+# Ports are fixed and chosen not to clash with other local dev stacks (5432/8000/5173) or mailroom-mcp
 # (8080, 32993/32025/8025) running at the same time. There is no per-worktree port registry:
 # every checkout shares this one dev database.
 [env]

@@ -34,7 +34,7 @@ Common mappings: **`uv sync`** → **`mise run setup`**; **`pytest`** → **`mis
 
 Do **not** invoke **`uv`**, **`pnpm`**, **`pytest`**, **`ruff`**, **`mypy`**, or **`alembic`** directly without **`mise run`** or **`mise exec`**.
 
-**Dev environment defaults** (ports, **`DATABASE_URL`**, **`TEST_DATABASE_URL`**) live in **`mise.toml`**'s **`[env]`**, and a root **`.env`** overrides them — so does it override anything you export on the command line. Ports are **fixed** (API **8100**, Vite **5180**, Postgres **5434**, dev Dovecot **33993**, Mailpit **33025** / **8026**), chosen not to clash with another project or mailroom-mcp. There is **no per-worktree registry**: every checkout shares one dev database and one set of ports, so check whether something is already running before you start it, reuse it, and stop only what **you** started.
+**Dev environment defaults** (ports, **`DATABASE_URL`**, **`TEST_DATABASE_URL`**) live in **`mise.toml`**'s **`[env]`**, and a root **`.env`** overrides them — so does it override anything you export on the command line. Ports are **fixed** (API **8100**, Vite **5180**, Postgres **5434**, dev Dovecot **33993**, Mailpit **33025** / **8026**), chosen not to clash with other local dev stacks or mailroom-mcp. There is **no per-worktree registry**: every checkout shares one dev database and one set of ports, so check whether something is already running before you start it, reuse it, and stop only what **you** started.
 
 ## Local quality checks
 
@@ -48,7 +48,7 @@ Clicking through a feature in a real browser uses **`chrome-devtools-mcp`**, con
 
 ## AI-agent skills
 
-Canonical skill content lives under **`.agents/skills/<name>/`**. **`.claude/skills/<name>`** is a **relative symlink** back to it, never a second copy; edit the `.agents/skills` original. Fetched skills are tracked with provenance in **`skills-lock.json`** (today: **`design-taste-frontend`**); locally-authored ones are not lock-tracked. **Fetched skill files are committed on purpose** — the lock records a hash but no ref, and a restore silently returns whatever upstream holds now (measured in another project).
+Canonical skill content lives under **`.agents/skills/<name>/`**. **`.claude/skills/<name>`** is a **relative symlink** back to it, never a second copy; edit the `.agents/skills` original. Fetched skills are tracked with provenance in **`skills-lock.json`** (today: **`design-taste-frontend`**); locally-authored ones are not lock-tracked. **Fetched skill files are committed on purpose** — the lock records a hash but no ref, and a restore silently returns whatever upstream holds now.
 
 ## After you change the repository
 

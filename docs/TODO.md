@@ -25,7 +25,7 @@ The app's own items below can start now; **Component dependencies** waits for a 
 
 ## Foundations
 
-- [ ] **Owner login** — single-owner session (password, Argon2id; another project's session-cookie pattern),
+- [ ] **Owner login** — single-owner session (password, Argon2id, session cookie),
       every non-health route behind it, CSRF stance for the cookie SPA.
 - [ ] **Component dependencies** — add mailroom-core, mailroom-mcp and imap-thingy as
       `git+…@<tag>` sources, plus a mise task that switches them to local editable paths for
@@ -33,7 +33,7 @@ The app's own items below can start now; **Component dependencies** waits for a 
       0.6.0.
 - [ ] **Accounts** — `AccountStore` over schema `app`, sealed secrets as mailroom-core seals them,
       settings screens; dev seeding of the dev Dovecot from `mailroom_core.testing`.
-- [ ] **Worker scaffold** — procrastinate (as another project) with `dev-worker` in `mise run dev`, the Quadlet
+- [ ] **Worker scaffold** — procrastinate with `dev-worker` in `mise run dev`, the Quadlet
       worker unit made real.
 
 ## Client

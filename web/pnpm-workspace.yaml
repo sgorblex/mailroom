@@ -3,7 +3,7 @@ packages:
 
 # Keep in sync with the repository-level minimumReleaseAge in renovate.json, which keeps Renovate
 # from offering a release the strict soak below would refuse. Do not silence that with
-# minimumReleaseAgeStrict: false — it lets the release into the lockfile. (Same policy as another project.)
+# minimumReleaseAgeStrict: false — it lets the release into the lockfile.
 minimumReleaseAge: 10080
 trustPolicy: no-downgrade
 blockExoticSubdeps: true

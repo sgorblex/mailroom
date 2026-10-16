@@ -45,7 +45,7 @@ Woodpecker server.
 
 ## Dependency updates
 
-Renovate (`renovate.json`, trimmed from another project's): dashboard approval, a 7-day soak matching
+Renovate (`renovate.json`): dashboard approval, a 7-day soak matching
 `web/pnpm-workspace.yaml`'s `minimumReleaseAge`, digest-pinned images, and one group per tool
 across its pin sites.
 

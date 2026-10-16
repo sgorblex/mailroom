@@ -1,7 +1,7 @@
 # Mailroom web
 
 React 19 SPA: Vite, TanStack Router, Tailwind 4 + shadcn (`components.json`), i18next (`en`, `it`),
-Zod-validated API calls (`src/api/http.ts`). ESLint `strictTypeChecked`, no Prettier — as another project.
+Zod-validated API calls (`src/api/http.ts`). ESLint `strictTypeChecked`, no Prettier.
 
 - **Dev:** `mise run dev-web` (or `mise run dev` for db + API + web) serves on
   `http://127.0.0.1:5180` and proxies `/api` to the API on `127.0.0.1:8100`; both ports come from

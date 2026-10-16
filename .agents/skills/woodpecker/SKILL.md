@@ -1,6 +1,6 @@
 ---
 name: woodpecker
-description: Use when adding, editing, or debugging a `.woodpecker/*.yaml` CI pipeline in this repository, or when asked to add a new path-gated CI check. Covers this repo's multi-file pipeline convention, the gotchas another project found migrating off GitHub Actions self-hosted runners, and the image-pinning workflow.
+description: Use when adding, editing, or debugging a `.woodpecker/*.yaml` CI pipeline in this repository, or when asked to add a new path-gated CI check. Covers this repo's multi-file pipeline convention, the gotchas of moving to Woodpecker from GitHub Actions self-hosted runners, and the image-pinning workflow.
 ---
 
 # Woodpecker CI pipelines
@@ -42,7 +42,7 @@ Steps in one file share a workspace and run **sequentially by default** — no n
 
 Pin every step/service image to a **digest** (`image: tag@sha256:...`) (this repo's SHA-pinning convention). Workflow: add the tag, resolve the digest at implementation time (`docker buildx imagetools inspect <image>`, `skopeo inspect`, or `crane digest`), pin it before merging. After that, Renovate's `woodpecker` manager (configured in `renovate.json`) keeps the digest current automatically.
 
-## Gotchas (found in another project, migrating off GitHub Actions)
+## Gotchas (for anyone used to GitHub Actions)
 
 - **Never put `path:` (or a branch exclude) on the top-level pipeline `when` if the pipeline is a required GitHub check.** Woodpecker evaluates the top-level `when` *before* creating a run — a miss means no run ever starts, so Woodpecker never posts any commit status for that context on that commit. That's not "skipped," it's *absent*, and GitHub shows an absent required context as permanently "Expected"/pending, blocking merge forever — even on PRs that legitimately don't touch that pipeline's paths. Put path/branch filtering on each step's own `when` instead (see **The multi-file convention** above): the pipeline then always runs and always reports a final status, with irrelevant steps just skipped internally (a skipped step doesn't fail the pipeline). **The one sanctioned use of this behaviour is the `ci:pause` label** — a top-level `when.evaluate` on every PR pipeline's `pull_request` entry, where withholding the status *is* the point: it parks a stacked PR that can't pass until the branch below it merges, and the pending checks are what stop it merging early. Don't "fix" that `evaluate` line; do keep path and branch filters out of the top-level `when` regardless. Mechanism, caveats, and why removing the label needs a push: [`ci-cd.md`](../../../docs/requirements/ci-cd.md) — *Continuous integration*.
 - **`when.branch` matches a pull request's *target* branch, so it can never filter by head branch.** `CI_COMMIT_BRANCH` "equals target branch for pull requests" ([upstream #3560](https://github.com/woodpecker-ci/woodpecker/issues/3560) declined to change this), so `branch: {exclude: ['release-please--*']}` on a `pull_request` entry silently matches `main` and never excludes anything — it was dead config here for as long as it existed, and the full backend and web suites ran on every Release Please force-push. Filter the head branch with `evaluate` over `CI_COMMIT_SOURCE_BRANCH` instead.

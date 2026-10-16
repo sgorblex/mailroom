@@ -19,7 +19,7 @@ in [`docs/TODO.md`](docs/TODO.md).
 | Images | `mailroom-api`, `mailroom-web` (Podman; Quadlet sketch in `deploy/quadlet/`) |
 | CI | Woodpecker (`.woodpecker/`), Release Please, Renovate |
 
-Conventions, layout and tooling follow the owner's other projects; [`AGENTS.md`](AGENTS.md) is the working guide.
+[`AGENTS.md`](AGENTS.md) is the working guide: conventions, layout and tooling.
 
 ## Development
 
@@ -31,7 +31,7 @@ mise run setup        # uv sync + pnpm install
 mise run dev          # Postgres + API + Vite; Ctrl+C stops all three
 ```
 
-Then open <http://127.0.0.1:5180>. Ports are fixed so another project and mailroom-mcp can run alongside:
+Then open <http://127.0.0.1:5180>. Ports are fixed so other local dev stacks and mailroom-mcp can run alongside:
 
 | Service | Address |
 | --- | --- |

@@ -1,7 +1,7 @@
 # Mailroom on Podman Quadlet (sketch)
 
-**Not deployed yet.** These units sketch the shape Mailroom will run in, following another project's layout;
-the first staging deploy turns them into a runbook. Broader context: [`docs/deploy.md`](../../docs/deploy.md).
+**Not deployed yet.** These units sketch the shape Mailroom will run in; the first staging deploy
+turns them into a runbook. Broader context: [`docs/deploy.md`](../../docs/deploy.md).
 
 | Unit | Role |
 | --- | --- |

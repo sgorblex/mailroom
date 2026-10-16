@@ -115,7 +115,7 @@ def _worker_engine() -> Iterator[Engine]:
 
 @pytest.fixture
 def migrated_engine(_worker_engine: Engine) -> Engine:
-    """The worker's migrated database. Per-test transaction isolation (another project's join-the-outer-
+    """The worker's migrated database. Per-test transaction isolation (the join-the-outer-
     transaction recipe) comes with the first table a test writes to."""
     return _worker_engine
 

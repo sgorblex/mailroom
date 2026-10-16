@@ -12,7 +12,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mailroom}
       POSTGRES_DB: ${POSTGRES_DB:-mailroom}
     ports:
-      # 5434, not 5432: another project's and mailroom-mcp's dev databases may run at the same time.
+      # 5434, not 5432: other local dev databases and mailroom-mcp's may run at the same time.
       - ${POSTGRES_PUBLISH_HOST:-127.0.0.1}:${POSTGRES_PUBLISH_PORT:-5434}:5432
     volumes:
       # The volume root, not .../data: Postgres 18+ keeps the cluster in a major-versioned

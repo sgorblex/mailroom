@@ -11,8 +11,8 @@ dependencies = [
   "python-dotenv>=1.0",
   "sqlalchemy>=2.0",
   "uvicorn>=0.34",
-  # The two extras `uvicorn[standard]` would pull in for their own sake, as in another project. `uvloop` keeps
-  # the marker the extra carries: it has no Windows wheel and does not build there.
+  # The two extras `uvicorn[standard]` would pull in for their own sake. `uvloop` keeps the marker
+  # the extra carries: it has no Windows wheel and does not build there.
   "uvloop>=0.21; platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32'",
   "httptools>=0.6",
 ]
