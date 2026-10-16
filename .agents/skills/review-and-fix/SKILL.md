@@ -33,7 +33,7 @@ Three-dot, so an unrestacked parent does not drag its own changes in. Then read 
 - **Size** — a component or file that should be split or extracted further.
 - **Scope and grouping** — do the changes belong in one PR, or are two unrelated features riding together.
 - **Doc obligations** — walk the *After you change the repository* table in [`AGENTS.md`](../../../AGENTS.md), row by row, against this diff. It is the list; do not work from memory of it.
-- **Security** — mail content is untrusted input: HTML mail only ever renders in the sandboxed iframe, no remote content by default, nothing from a message reaches a header, a log line in clear, or an action without the owner's say-so. See [`nonfunctional-requirements.md`](../../../docs/requirements/nonfunctional-requirements.md) — *Security*.
+- **Security** — mail content is untrusted input: HTML mail only ever renders in the sandboxed iframe, no remote content by default, nothing from a message reaches a header, a log line in clear, or an action without the user's say-so. See [`nonfunctional-requirements.md`](../../../docs/requirements/nonfunctional-requirements.md) — *Security*.
 - **Branch ships as one unit** — every commit here squash-merges into one commit on `main` ([`ci-cd.md`](../../../docs/requirements/ci-cd.md) — *Git workflow and commit conventions*). If an earlier commit in this **unmerged** branch added something a later commit makes obsolete, fix it **at the source** with `gt modify`, never with a follow-up revert commit.
 - **mise discipline** — new instructions, scripts, and docs route through **`mise run`** / **`mise exec`**, never bare `uv` / `pnpm` / `pytest` / `ruff` / `alembic`.
 - Anything else worth flagging.

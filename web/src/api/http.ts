@@ -68,16 +68,12 @@ export function apiErrorMessage(error: unknown, fallbackMessage: string): string
   return fallbackMessage
 }
 
-export async function apiGetJson<T>(
+async function apiRequest<T>(
   path: string,
-  options: ApiJsonRequestOptions<T> = {},
+  init: RequestInit,
+  schema: z.ZodType<T> | undefined,
 ): Promise<T> {
-  const { init = {}, schema } = options
-  const response = await fetch(`${getApiBaseUrl()}${path}`, {
-    method: 'GET',
-    ...init,
-    credentials: 'include',
-  })
+  const response = await fetch(`${getApiBaseUrl()}${path}`, { ...init, credentials: 'include' })
   const body = await parseJsonResponse(response)
   if (!response.ok) {
     throw new ApiRequestError(response.status, body, formatErrorMessage(response.status, body))
@@ -86,4 +82,32 @@ export async function apiGetJson<T>(
     return parseResponseBody(body, schema)
   }
   return body as T
+}
+
+export function apiGetJson<T>(path: string, options: ApiJsonRequestOptions<T> = {}): Promise<T> {
+  const { init = {}, schema } = options
+  return apiRequest(path, { method: 'GET', ...init }, schema)
+}
+
+/** POST a JSON body (or none); a 204 resolves to `null` unless a schema says otherwise. */
+export function apiPostJson<T = null>(
+  path: string,
+  body?: unknown,
+  options: ApiJsonRequestOptions<T> = {},
+): Promise<T> {
+  const { init = {}, schema } = options
+  const headers = new Headers(init.headers)
+  if (body !== undefined) {
+    headers.set('Content-Type', 'application/json')
+  }
+  return apiRequest(
+    path,
+    {
+      method: 'POST',
+      ...init,
+      headers,
+      body: body === undefined ? null : JSON.stringify(body),
+    },
+    schema,
+  )
 }

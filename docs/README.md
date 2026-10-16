@@ -1,6 +1,6 @@
 # Documentation
 
-Product documentation for **Mailroom**, a single-owner, self-hosted mail app.
+Product documentation for **Mailroom**, a self-hosted mail app for a few separate users.
 
 **Where to start:** [`CONTEXT.md`](CONTEXT.md), then only the [`REQUIREMENTS.md`](REQUIREMENTS.md)
 section you are changing. Workflow and *which* doc to update after a change:

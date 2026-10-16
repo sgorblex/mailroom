@@ -1,9 +1,9 @@
 # Mailroom
 
-A single-owner, self-hosted mail app: a web mail client (read, triage, compose, over a local index
+A self-hosted mail app for a few separate users: a web mail client (read, triage, compose, over a local index
 with live updates), a web UI for [imap-thingy](https://pypi.org/project/imap-thingy/) filters, the
 host for the **mailroom-mcp** server, and — later — filter **suggestions** learned
-from how the owner files mail. It composes standalone components rather than absorbing them:
+from how each user files mail. It composes standalone components rather than absorbing them:
 [`docs/CONTEXT.md`](docs/CONTEXT.md).
 
 **Status:** scaffold. The API answers `/api/v1/health` and the web app shows it; everything else is
@@ -31,6 +31,9 @@ mise run setup        # uv sync + pnpm install
 mise run dev          # Postgres + API + Vite; Ctrl+C stops all three
 ```
 
+To sign in, create the first user once the database is up (`mise run migrate` if the API has not
+run yet): `mise run create-user <name> --admin`.
+
 Then open <http://127.0.0.1:5180>. Ports are fixed so other local dev stacks and mailroom-mcp can run alongside:
 
 | Service | Address |
@@ -51,6 +54,7 @@ Defaults live in `mise.toml`'s `[env]`; a root `.env` overrides them (see `.env.
 | `dev-api` / `dev-web` | API with reload (migrates at startup) / Vite |
 | `dev-mail` / `dev-mail-down` / `dev-mail-reset` | Dev Dovecot + Mailpit with a local CA (`dev/.state/`) |
 | `migrate` / `reset-db` | Alembic upgrade head / drop, recreate and migrate the dev database |
+| `create-user` | Create a user in `DATABASE_URL` (`<name> [--admin]`; the password is prompted for) |
 | `check-backend` / `check-web-types` / `check-web` | Ruff + mypy / tsc / ESLint + i18n + build |
 | `check-migrations` | Upgrade → downgrade base → upgrade on a scratch database |
 | `check-version-sync` / `check-scripts` | Release Please version copies / `node --test scripts/lib` |

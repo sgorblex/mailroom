@@ -1,8 +1,9 @@
-import { createRootRoute, createRoute, createRouter, Outlet } from '@tanstack/react-router'
+import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
 
+import { RootLayout } from '@/auth/root-layout.tsx'
 import { HealthScreen } from '@/health/health-screen.tsx'
 
-const rootRoute = createRootRoute({ component: Outlet })
+const rootRoute = createRootRoute({ component: RootLayout })
 
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,

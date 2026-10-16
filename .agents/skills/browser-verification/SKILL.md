@@ -52,7 +52,7 @@ Telemetry is off by default: the launcher passes `--no-usage-statistics` and `--
 
 Always drive the **Vite** origin, never the API port directly, so requests stay same-origin as in production.
 
-There is no sign-in yet. When owner login lands, its dev credentials go here.
+**Signing in.** Every page sits behind a username and password, and there are no fixed dev credentials. Never sign in as one of the user's own dev users: create a throwaway one — `echo '<throwaway, 12+ chars>' | mise run create-user agent-<task>` (stdin is read when it is not a terminal) — and remove it when done (`psql "$(mise exec -- printenv DATABASE_URL)" -c "DELETE FROM app.\"user\" WHERE username = 'agent-<task>'"`, with the system `psql`; its sessions go with it). After a wrong password the login throttle makes the next attempt wait a second.
 
 ## Verify
 

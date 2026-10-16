@@ -17,18 +17,18 @@ Mailroom is built on standalone projects, each with its own repository and check
 - **imap-thingy** (`../imap-thingy`, GitHub `sgorblex/imap-thingy`): rules as data (`to_spec()`,
   `imap_thingy.spec`) are released in 0.5.0; the runner (`imap_thingy.runner`: `run_rules`,
   `starred_only`, the IDLE `monitor`) is merged, and release PR **#42 (0.6.0)** publishes it.
-  filterd then switches to that import and stays the owner's personal daemon until the app
+  filterd then switches to that import and stays a personal daemon until the app
   replaces it.
 
 **The first goal is the Filters UI.** It needs all of *Foundations*, so its critical path runs
-through the mailroom-mcp port up to a tagged `mailroom-core`: Owner login and the Worker scaffold
-can start now, while **Component dependencies**, and **Accounts** after it, wait for a tagged
-`mailroom-core` and imap-thingy 0.6.0.
+through the mailroom-mcp port up to a tagged `mailroom-core`: User management and the Worker
+scaffold can start now, while **Component dependencies**, and **Accounts** after it, wait for a tagged `mailroom-core` and
+imap-thingy 0.6.0.
 
 ## Foundations
 
-- [ ] **Owner login** — single-owner session (password, Argon2id, session cookie),
-      every non-health route behind it, CSRF stance for the cookie SPA.
+- [ ] **User management** — an admin screen to add and remove users and reset passwords; every
+      user changes their own password.
 - [ ] **Component dependencies** — add mailroom-core, mailroom-mcp and imap-thingy as
       `git+…@<tag>` sources, plus a mise task that switches them to local editable paths for
       cross-repo work. Waits for the mailroom-mcp Python port's packages and imap-thingy
@@ -55,6 +55,8 @@ can start now, while **Component dependencies**, and **Accounts** after it, wait
 ## MCP and suggestions
 
 - [ ] **MCP host** — mount mailroom-mcp at `/mcp/<profile>` with the app's integration points.
+      Needs those points (`AccountStore`, `OwnerAuth`) to carry the app's user first, a change to
+      mailroom-mcp's design; its `auth` module is not ported yet, so settle it before that.
 - [ ] **Suggestions** — learn from manual moves, propose filters with evidence and dry run.
 
 ## Engineering and operations

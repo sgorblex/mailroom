@@ -7,5 +7,21 @@
     "failed": "L'API non ha risposto: {{message}}",
     "unknownError": "errore sconosciuto",
     "retry": "Controlla di nuovo"
+  },
+  "auth": {
+    "checking": "Verifica della sessione…",
+    "unreachable": "Mailroom non riesce a raggiungere la sua API.",
+    "retry": "Riprova",
+    "signedInAs": "Accesso come {{username}}",
+    "signOut": "Esci",
+    "signOutFailed": "Uscita non riuscita. Riprova."
+  },
+  "login": {
+    "username": "Nome utente",
+    "password": "Password",
+    "signIn": "Accedi",
+    "wrongCredentials": "Nome utente o password errati.",
+    "tooManyAttempts": "Troppi tentativi falliti. Attendi un momento, poi riprova.",
+    "unknownError": "Accesso non riuscito."
   }
 }

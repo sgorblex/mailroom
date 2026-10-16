@@ -2,15 +2,16 @@
 
 ## What Mailroom is
 
-One person's mail, in one place they run themselves: a **web mail client** over their IMAP/SMTP
-accounts, a **filters UI** for the rules that sort that mail on the server, the **host for the MCP
+Mail for a few people, each kept separate, on one instance they run themselves: a **web mail
+client** over each user's IMAP/SMTP accounts, a **filters UI** for the rules that sort that mail on the server, the **host for the MCP
 server** that lets Claude work with it, and — later — **suggestions** for new filters learned from
-how the owner files mail by hand. The filters UI comes first; the client follows.
+how each user files mail by hand. The filters UI comes first; the client follows.
 
 ## Audience
 
-**One owner.** One login; every account belongs to that owner. There are no other users, no
-sharing, no tenants.
+**A few users on one instance.** Each has their own login, and their own mail accounts, filters
+and suggestions, which nobody else sees. An admin creates the users; there is no public sign-up.
+Nothing is shared between users.
 
 ## The component family
 
@@ -24,16 +25,17 @@ Mailroom app (this repo)
   │                       rendering, audit
   └─ imap-thingy     IMAP filter library and runner (PyPI)
 
-filterd      the owner's personal filter daemon (private), also on imap-thingy;
+filterd      a personal filter daemon (private), also on imap-thingy;
                   not a dependency, and expected to be replaced by the app
 ```
 
 - **mailroom-core / mailroom-mcp** stay usable on their own: standalone, mailroom-mcp supplies its
   own account store, owner login, audit sink and settings page. Inside the app, the **app supplies
   each of those** (`AccountStore`, `OwnerAuth`, `AuditSink`, `settings_ui` off) and mounts the MCP's
-  ASGI app at `/mcp/<profile>` in its own API process. The MCP keeps its own schema (`mcp`) and
+  ASGI app at `/mcp/<profile>` in its own API process. Those points assume one owner; serving each
+  app user their own MCP needs them to carry the user, which is open ([`TODO.md`](TODO.md)). The MCP keeps its own schema (`mcp`) and
   Alembic history; the app's tables live in schema `app`.
-- **filterd** is the owner's personal rules and daemon, not part of the family's API: the
+- **filterd** is one person's own rules and daemon, not part of the family's API: the
   reusable runner (run, IDLE monitor, starred-sort) lives in imap-thingy as `imap_thingy.runner`,
   and the app depends on imap-thingy alone. filterd keeps running until the app's worker takes a mailbox
   over, and only after it stops acting on that mailbox. There is never a double runner.
@@ -59,17 +61,17 @@ component.
 
 ## Non-goals (unless requirements say otherwise)
 
-- Multiple users, sharing, delegation, or multi-tenancy.
+- Sharing between users, delegation, or multi-tenancy across instances. Users are separate.
 - A mail server: Mailroom is a client of existing IMAP/SMTP servers. No Sieve management (server-side
   rules stay with imap-thingy).
 - POP3, Exchange/EWS, Microsoft Graph.
 - **Autonomous action.** Nothing Mailroom learns ever moves, flags, deletes or sends mail by itself;
-  it suggests, and the owner decides.
+  it suggests, and the user decides.
 - Marketing, tracking or bulk-mail features.
 
 ## Security posture
 
 Mail is **hostile input**. HTML mail renders only in a **sandboxed iframe** under a **strict CSP**,
-with **no remote content by default**; the app itself is single-owner and private. Detail:
+with **no remote content by default**; the app itself is private, and each user sees only their own mail. Detail:
 [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md) —
 *Security*.

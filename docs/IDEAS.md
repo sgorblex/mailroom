@@ -7,4 +7,4 @@ Exploratory, not scoped, not scheduled, no maturity. Promote to [`TODO.md`](TODO
   senders went to Receipts").
 - **Suggestion quality metrics** — how often accepted suggestions are later edited or disabled.
 - **Unsubscribe helper** — `List-Unsubscribe` one-click, never automatic.
-- **Per-sender remote-content allowlist** for newsletters the owner trusts.
+- **Per-sender remote-content allowlist** for newsletters a user trusts.

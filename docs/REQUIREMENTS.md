@@ -22,12 +22,18 @@ schema `app` with its own version table; the web app's placeholder screen shows 
 through the Vite proxy. Engineering baseline:
 [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md).
 
-## Owner and accounts
+## Users and accounts
 
-**Maturity: Planned**
+**Maturity: Partial** — sign-in is done; managing users and accounts is not started.
 
-- **One owner** signs in (password; passkeys later). Every route except health, readiness and
-  version requires the owner's session.
+- **Users** sign in with a username and password (passkeys later). Every route except health,
+  readiness, version, sign-in, sign-out and the signed-in check requires a
+  [user session](GLOSSARY.md); the web app shows the sign-in form in place of any page until then.
+  How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md)
+  — *Sign-in*.
+- **Users are separate.** Each user's accounts, filters and suggestions are theirs alone; nothing
+  is shared. An [admin](GLOSSARY.md) creates users (the first with `mise run create-user <name> --admin`);
+  there is no public sign-up.
 - **Accounts** (IMAP + SMTP, identities, send mode) come from **mailroom-core**'s model; the app
   implements the `AccountStore` integration point over its own schema, with secrets sealed as
   mailroom-core seals them (byte-compatible with mailroom-mcp, so its data imports unchanged).
@@ -55,24 +61,25 @@ the index and live updates; tier 3 items arrive one at a time.
 - **Dry run** against real mail before saving: which messages a rule would match and what it would
   do.
 - Rules run in the app's worker through **imap-thingy**'s runner — only for a mailbox the
-  owner's filterd daemon no longer acts on (never two runners on one mailbox).
+  filterd daemon no longer acts on (never two runners on one mailbox).
 
 ## Filter suggestions (learning)
 
 **Maturity: Planned**
 
-- Observes the owner's manual moves (and other triage) and proposes **filters** that would have done
+- Observes each user's manual moves (and other triage) and proposes **filters** that would have done
   the same: the rule, the evidence (the messages it is based on), and a dry-run preview.
-- **Suggestions only, never acting.** A suggestion does nothing until the owner accepts it, which
-  creates an ordinary filter the owner can edit; dismissing one is remembered. Nothing learned ever
+- **Suggestions only, never acting.** A suggestion does nothing until its user accepts it, which
+  creates an ordinary filter they can edit; dismissing one is remembered. Nothing learned ever
   moves, flags, deletes or sends mail, or enables a filter, by itself.
 - Learning runs locally; no mail leaves the host for it.
 
 ## MCP host
 
 **Maturity: Planned** — mounts **mailroom-mcp**'s ASGI app at `/mcp/<profile>` in the API process,
-with the app supplying `AccountStore`, `OwnerAuth` (consent and settings use the owner's session)
-and `AuditSink`. The MCP's own schema (`mcp`) and Alembic history stay its own. Standalone
+with the app supplying `AccountStore`, `OwnerAuth` (consent and settings use the app's session)
+and `AuditSink`. **Open:** those points assume one owner; each user getting their own MCP needs
+mailroom-mcp's integration points to carry the user. The MCP's own schema (`mcp`) and Alembic history stay its own. Standalone
 mailroom-mcp keeps working without the app.
 
 ## Non-functional requirements

@@ -36,7 +36,7 @@ export function HealthScreen(): ReactElement {
   }, [])
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-xl flex-col justify-center gap-4 p-6">
+    <main className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center gap-4 p-6">
       <h1 className="text-2xl font-semibold tracking-tight">{t('appName')}</h1>
       <section aria-labelledby="health-title" className="rounded-lg border bg-card p-4">
         <h2 id="health-title" className="text-sm font-medium text-muted-foreground">

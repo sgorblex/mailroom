@@ -21,7 +21,13 @@ if TYPE_CHECKING:
 
     from fastapi import FastAPI
     from sqlalchemy.engine import Engine
+    from sqlalchemy.orm import Session
     from starlette.testclient import TestClient
+
+    from mailroom.models import User
+
+USERNAME = "alice"
+PASSWORD = "correct horse battery staple"
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
@@ -115,9 +121,27 @@ def _worker_engine() -> Iterator[Engine]:
 
 @pytest.fixture
 def migrated_engine(_worker_engine: Engine) -> Engine:
-    """The worker's migrated database. Per-test transaction isolation (the join-the-outer-
-    transaction recipe) comes with the first table a test writes to."""
+    """The worker's migrated database; tests that write go through ``db_session``."""
     return _worker_engine
+
+
+@pytest.fixture
+def db_session(migrated_engine: Engine) -> Iterator[Session]:
+    """A session inside one outer transaction that is rolled back after the test: the code under
+    test commits to savepoints, so nothing it writes outlives the test."""
+    from sqlalchemy.orm import Session
+
+    connection = migrated_engine.connect()
+    outer = connection.begin()
+    session = Session(
+        bind=connection, join_transaction_mode="create_savepoint", expire_on_commit=False
+    )
+    try:
+        yield session
+    finally:
+        session.close()
+        outer.rollback()
+        connection.close()
 
 
 @pytest.fixture(scope="session")
@@ -134,10 +158,49 @@ def _shared_application(_worker_engine: Engine) -> Iterator[FastAPI]:
 
 
 @pytest.fixture
-def api_client(migrated_engine: Engine, _shared_application: FastAPI) -> Iterator[TestClient]:
+def api_client(db_session: Session, _shared_application: FastAPI) -> Iterator[TestClient]:
+    """A client on ``https://testserver``, so ``Secure`` cookies come back, with the routes'
+    database session bound to ``db_session`` and a fresh login throttle."""
     from starlette.testclient import TestClient
 
-    _ = migrated_engine
-    client = TestClient(_shared_application)
-    yield client
-    client.close()
+    from mailroom.api.deps import get_db_session
+    from mailroom.auth.throttle import LoginThrottle
+
+    _shared_application.dependency_overrides[get_db_session] = lambda: db_session
+    _shared_application.state.login_throttle = LoginThrottle()
+    client = TestClient(_shared_application, base_url="https://testserver")
+    try:
+        yield client
+    finally:
+        client.close()
+        _shared_application.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def _cheap_password_hashing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Argon2id with the smallest parameters: the real ones cost 64 MiB and tens of ms a hash."""
+    from argon2 import PasswordHasher
+
+    from mailroom.auth import password
+
+    monkeypatch.setattr(
+        password, "_hasher", PasswordHasher(time_cost=1, memory_cost=8, parallelism=1)
+    )
+    password._dummy_hash.cache_clear()  # noqa: SLF001
+
+
+@pytest.fixture
+def user(db_session: Session) -> User:
+    """``USERNAME``, signing in with ``PASSWORD``; not an admin."""
+    from mailroom.auth.users import create_user
+
+    return create_user(db_session, USERNAME, PASSWORD)
+
+
+@pytest.fixture
+def user_client(api_client: TestClient, db_session: Session, user: User) -> TestClient:
+    """``api_client`` signed in as ``user``: a session minted directly, without the login route."""
+    from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
+
+    api_client.cookies.set(SESSION_COOKIE_NAME, create_session(db_session, user))
+    return api_client

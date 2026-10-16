@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { I18nextProvider } from 'react-i18next'
 import { RouterProvider } from '@tanstack/react-router'
 
+import { AuthProvider } from '@/auth/auth-provider.tsx'
 import i18n, { i18nReady } from '@/i18n/i18n.ts'
 import { router } from '@/router.tsx'
 import './index.css'
@@ -16,7 +17,9 @@ void i18nReady.then(() => {
   createRoot(rootElement).render(
     <StrictMode>
       <I18nextProvider i18n={i18n}>
-        <RouterProvider router={router} />
+        <AuthProvider>
+          <RouterProvider router={router} />
+        </AuthProvider>
       </I18nextProvider>
     </StrictMode>,
   )

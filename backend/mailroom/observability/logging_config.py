@@ -21,6 +21,7 @@ _EXTRA_LOG_KEYS = (
     "job_id",
     "attempt",
     "queue",
+    "user_id",
 )
 
 

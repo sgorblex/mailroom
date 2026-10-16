@@ -7,5 +7,21 @@
     "failed": "The API did not answer: {{message}}",
     "unknownError": "unknown error",
     "retry": "Check again"
+  },
+  "auth": {
+    "checking": "Checking your session…",
+    "unreachable": "Mailroom could not reach its API.",
+    "retry": "Try again",
+    "signedInAs": "Signed in as {{username}}",
+    "signOut": "Sign out",
+    "signOutFailed": "Could not sign out. Try again."
+  },
+  "login": {
+    "username": "Username",
+    "password": "Password",
+    "signIn": "Sign in",
+    "wrongCredentials": "Wrong username or password.",
+    "tooManyAttempts": "Too many failed attempts. Wait a moment, then try again.",
+    "unknownError": "Could not sign in."
   }
 }

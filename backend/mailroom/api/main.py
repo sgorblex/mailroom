@@ -5,7 +5,7 @@ import os
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, FastAPI, Request
+from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import ArgumentError, NoSuchModuleError, SQLAlchemyError
@@ -18,6 +18,11 @@ from mailroom.api.build_info import (
     api_git_branch,
     api_git_sha,
 )
+from mailroom.api.csrf import CrossSiteRequestMiddleware
+from mailroom.api.deps import require_user
+from mailroom.api.routes.auth import auth_router
+from mailroom.auth.throttle import LoginThrottle
+from mailroom.auth.users import user_count
 from mailroom.database_connectivity import CONNECTIVITY_ERRORS
 from mailroom.observability.http_request_logging import CorrelationLoggingMiddleware
 from mailroom.observability.logging_config import configure_logging
@@ -100,6 +105,22 @@ def _initialize_database(application: FastAPI) -> None:
     application.state.session_maker = mailroom_database.create_session_factory(engine)
 
 
+def _warn_if_nobody_can_sign_in(application: FastAPI) -> None:
+    session_maker = application.state.session_maker
+    if session_maker is None:
+        return
+    try:
+        with session_maker() as db:
+            if user_count(db):
+                return
+    except SQLAlchemyError:
+        return
+    logger.warning(
+        "No users yet: create the first with `mise run create-user <name> --admin` "
+        "(in a deployment, see deploy/quadlet/README.md)."
+    )
+
+
 @asynccontextmanager
 async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
     configure_logging()
@@ -107,6 +128,7 @@ async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
     application.state.database_startup_failure = None
     mailroom_db_migrations.apply_startup_migrations_if_configured()
     _initialize_database(application)
+    _warn_if_nobody_can_sign_in(application)
     yield
     application.state.session_maker = None
     shutdown_engine: Engine | None = application.state.database_engine
@@ -121,6 +143,8 @@ def _not_ready(reason: str) -> JSONResponse:
 
 def create_application() -> FastAPI:
     application = FastAPI(title="Mailroom API", lifespan=_lifespan)
+    application.state.login_throttle = LoginThrottle()
+    application.add_middleware(CrossSiteRequestMiddleware)
     application.add_middleware(CorrelationLoggingMiddleware)
 
     @application.get("/healthz", include_in_schema=False)
@@ -160,7 +184,12 @@ def create_application() -> FastAPI:
             return _not_ready("database_unreachable")
         return JSONResponse(content={"status": "ready"})
 
+    public_v1.include_router(auth_router)
     application.include_router(public_v1)
+
+    # Every other route goes here.
+    protected_v1 = APIRouter(prefix="/api/v1", dependencies=[Depends(require_user)])
+    application.include_router(protected_v1)
     return application
 
 

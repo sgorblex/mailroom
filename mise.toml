@@ -73,6 +73,12 @@ depends = ["setup-python"]
 dir = "backend"
 run = "uv run --no-sync python -m mailroom.dev.reset_database"
 
+[tasks.create-user]
+description = "Create a user in DATABASE_URL: `mise run create-user <username> [--admin]`, password prompted"
+depends = ["setup-python"]
+dir = "backend"
+run = "uv run --no-sync python -m mailroom.dev.create_user"
+
 [tasks.check-backend]
 description = "Ruff + mypy on backend"
 depends = ["setup-python"]
