@@ -1,0 +1,51 @@
+name: Assign PR author
+
+on:
+  pull_request_target:
+    types: [opened]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+env:
+  # GitHub answers 403 when an App account is passed as an assignee, so each bot author maps to
+  # the login(s) that own its PRs.
+  BOT_ASSIGNEES: >-
+    {
+      "renovate[bot]": ["sgorblex"]
+    }
+
+jobs:
+  assign:
+    name: Assign author
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assign author
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+
+            if (pr.assignees.length > 0) {
+              return;
+            }
+
+            const botAssignees = JSON.parse(process.env.BOT_ASSIGNEES);
+            const assignees =
+              pr.user.type === 'Bot'
+                ? (botAssignees[pr.user.login] ?? [])
+                : [pr.user.login];
+
+            if (assignees.length === 0) {
+              core.info(`No assignee configured for bot author ${pr.user.login}; skipping.`);
+              return;
+            }
+
+            await github.rest.issues.addAssignees({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              assignees,
+            });

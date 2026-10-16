@@ -40,14 +40,20 @@ reports), Release Please branches skipped by `evaluate`. How to work on them:
 | [`scripts.yaml`](../../.woodpecker/scripts.yaml) | `node --test` over `scripts/lib`; version sync (also on Release Please PRs) | `mise run check-scripts`, `mise run check-version-sync` |
 
 No release, image or staging pipeline yet: they arrive with the first staging deploy
-([`../TODO.md`](../TODO.md)). The repository has **no remote yet**; nothing here has run on a
-Woodpecker server.
+([`../TODO.md`](../TODO.md)).
+
+## Repository automation
+
+**Every PR has an assignee:** [`assignee.yml`](../../.github/workflows/assignee.yml) assigns the
+author when a PR opens. It is a **GitHub Actions** workflow, not a Woodpecker pipeline, because it
+only edits PR metadata: `pull_request_target` gives it a write token without a checkout. It is
+**not a required check**, and it skips Release Please branches.
 
 ## Dependency updates
 
 Renovate (`renovate.json`): dashboard approval, a 7-day soak matching
-`web/pnpm-workspace.yaml`'s `minimumReleaseAge`, digest-pinned images, and one group per tool
-across its pin sites.
+`web/pnpm-workspace.yaml`'s `minimumReleaseAge`, digest-pinned images and GitHub Actions, and one
+group per tool across its pin sites.
 
 ## Container images
 

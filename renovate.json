@@ -71,10 +71,11 @@
       "matchManagers": [
         "dockerfile",
         "docker-compose",
+        "github-actions",
         "mise"
       ],
       "automerge": false,
-      "description": "Nothing on a PR exercises these, so they never automerge; a group automerges only if every member may."
+      "description": "Nothing on a PR exercises these (workflows run from `main`), so they never automerge; a group automerges only if every member may."
     },
     {
       "matchManagers": [
@@ -85,6 +86,13 @@
       "lockFileMaintenance": {
         "enabled": false
       }
+    },
+    {
+      "matchManagers": [
+        "github-actions"
+      ],
+      "pinDigests": true,
+      "groupName": "GitHub Actions"
     },
     {
       "matchManagers": [
@@ -105,7 +113,8 @@
       "matchManagers": [
         "dockerfile",
         "docker-compose",
-        "woodpecker"
+        "woodpecker",
+        "github-actions"
       ],
       "matchUpdateTypes": [
         "digest",
