@@ -30,11 +30,12 @@ filterd      a personal filter daemon (private), also on imap-thingy;
 ```
 
 - **mailroom-core / mailroom-mcp** stay usable on their own: standalone, mailroom-mcp supplies its
-  own account store, owner login, audit sink and settings page. Inside the app, the **app supplies
-  each of those** (`AccountStore`, `OwnerAuth`, `AuditSink`, `settings_ui` off) and mounts the MCP's
-  ASGI app at `/mcp/<profile>` in its own API process. Those points assume one owner; serving each
-  app user their own MCP needs them to carry the user, which is open ([`TODO.md`](TODO.md)). The MCP keeps its own schema (`mcp`) and
-  Alembic history; the app's tables live in schema `app`.
+  own account store, owner login, audit sink and settings page. Inside the app, the **app supplies**
+  `OwnerAuth` and `AuditSink` and turns `settings_ui` off, keeps the accounts in mailroom-core's
+  schema `core` in its own database (`AccountStore`), and mounts the MCP's ASGI app at
+  `/mcp/<profile>` in its own API process. mailroom-mcp learns to serve several users in its 0.4,
+  so each app user gets their own MCP ([`TODO.md`](TODO.md)). Each package keeps its own schema
+  (`core`, `mcp`) and Alembic history; the app's tables live in schema `app`.
 - **filterd** is one person's own rules and daemon, not part of the family's API: the
   reusable runner (run, IDLE monitor, starred-sort) lives in imap-thingy as `imap_thingy.runner`,
   and the app depends on imap-thingy alone. filterd keeps running until the app's worker takes a mailbox

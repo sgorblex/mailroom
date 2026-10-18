@@ -7,7 +7,7 @@ exploratory work. Once an item is done, remove it.
 ## Across the family
 
 Mailroom is built on standalone projects, each with its own repository and checklist. As of
-2026-10-15:
+2026-10-18:
 
 - **mailroom-mcp** (`../mailroom-mcp`, GitHub `sgorblex/mailroom-mcp`): the 0.3 Python port is
   under way; `crypto` (sealed secrets, byte-compatible) is merged, `config` is next. Its own
@@ -16,22 +16,20 @@ Mailroom is built on standalone projects, each with its own repository and check
   TypeScript server keeps running on the production host until the cutover described there.
 - **imap-thingy** (`../imap-thingy`, GitHub `sgorblex/imap-thingy`): rules as data (`to_spec()`,
   `imap_thingy.spec`) are released in 0.5.0; the runner (`imap_thingy.runner`: `run_rules`,
-  `starred_only`, the IDLE `monitor`) is merged, and release PR **#42 (0.6.0)** publishes it.
-  filterd then switches to that import and stays a personal daemon until the app
-  replaces it.
+  `starred_only`, the IDLE `monitor`) is released in 0.6.0. filterd switches to that import
+  and stays a personal daemon until the app replaces it.
 
 **The first goal is the Filters UI.** It needs all of *Foundations*, so its critical path runs
 through the mailroom-mcp port up to a tagged `mailroom-core`: the Worker
-scaffold can start now, while **Component dependencies**, and **Accounts** after it, wait for a tagged `mailroom-core` and
-imap-thingy 0.6.0.
+scaffold can start now, while **Component dependencies**, and **Accounts** after it, wait for
+that tag.
 
 ## Foundations
 
 - [ ] **Component dependencies** — add mailroom-core, mailroom-mcp and imap-thingy as
       `git+…@<tag>` sources, plus a mise task that switches them to local editable paths for
-      cross-repo work. Waits for the mailroom-mcp Python port's packages and imap-thingy
-      0.6.0.
-- [ ] **Accounts** — `AccountStore` over schema `app`, sealed secrets as mailroom-core seals them,
+      cross-repo work. Waits for the mailroom-mcp Python port's packages.
+- [ ] **Accounts** — mailroom-core's `AccountStore` over its schema `core` in the app's database, sealed secrets as mailroom-core seals them,
       settings screens; dev seeding of the dev Dovecot from `mailroom_core.testing`.
 - [ ] **Worker scaffold** — procrastinate with `dev-worker` in `mise run dev`, the Quadlet
       worker unit made real.
@@ -53,8 +51,8 @@ imap-thingy 0.6.0.
 ## MCP and suggestions
 
 - [ ] **MCP host** — mount mailroom-mcp at `/mcp/<profile>` with the app's integration points.
-      Needs those points (`AccountStore`, `OwnerAuth`) to carry the app's user first, a change to
-      mailroom-mcp's design; its `auth` module is not ported yet, so settle it before that.
+      Waits for mailroom-mcp to serve several users (decided for its 0.4: `AccountStore` and
+      `OwnerAuth` carry the user), which its design settles before `auth` is ported.
 - [ ] **Suggestions** — learn from manual moves, propose filters with evidence and dry run.
 
 ## Engineering and operations

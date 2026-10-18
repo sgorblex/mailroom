@@ -36,7 +36,7 @@ through the Vite proxy. Engineering baseline:
   *Users* page (the first admin comes from `mise run create-user <name> --admin`); there is no
   public sign-up. Every user changes their own password on their *Profile* page.
 - **Accounts** (IMAP + SMTP, identities, send mode) come from **mailroom-core**'s model; the app
-  implements the `AccountStore` integration point over its own schema, with secrets sealed as
+  keeps them in mailroom-core's own schema (`core`, its `AccountStore`) in the app's database, with secrets sealed as
   mailroom-core seals them (byte-compatible with mailroom-mcp, so its data imports unchanged).
 - Account management (add, test, edit, remove) lives in the app's settings; the embedded MCP runs
   with its own settings page off.
@@ -78,9 +78,10 @@ the index and live updates; tier 3 items arrive one at a time.
 ## MCP host
 
 **Maturity: Planned** — mounts **mailroom-mcp**'s ASGI app at `/mcp/<profile>` in the API process,
-with the app supplying `AccountStore`, `OwnerAuth` (consent and settings use the app's session)
-and `AuditSink`. **Open:** those points assume one owner; each user getting their own MCP needs
-mailroom-mcp's integration points to carry the user. The MCP's own schema (`mcp`) and Alembic history stay its own. Standalone
+with the app supplying `OwnerAuth` (consent and settings use the app's session) and `AuditSink`,
+and the accounts in mailroom-core's schema `core`. Each user gets their own MCP once mailroom-mcp
+serves several users (decided for its 0.4). The MCP's own schema (`mcp`) and Alembic history stay
+its own. Standalone
 mailroom-mcp keeps working without the app.
 
 ## Non-functional requirements
