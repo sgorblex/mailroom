@@ -1,7 +1,7 @@
 """Create a user: ``create_user <username> [--admin]``, the password prompted for.
 
 Prompts on a terminal; otherwise reads the password from the first line of stdin. The first user
-has to be made this way, as an admin; until the app can manage users, so do the rest.
+has to be made this way, as an admin; admins add the rest in the app.
 """
 
 from __future__ import annotations

@@ -22,6 +22,57 @@
     "signIn": "Sign in",
     "wrongCredentials": "Wrong username or password.",
     "tooManyAttempts": "Too many failed attempts. Wait a moment, then try again.",
-    "unknownError": "Could not sign in."
+    "unknownError": "Could not sign in.",
+    "sessionEnded": "Your session has ended. Sign in again."
+  },
+  "nav": {
+    "label": "Main",
+    "home": "Home",
+    "users": "Users",
+    "profile": "Profile"
+  },
+  "users": {
+    "title": "Users",
+    "loading": "Loading users…",
+    "loadFailed": "Could not load the users.",
+    "adminsOnly": "Only admins manage users.",
+    "admin": "admin",
+    "you": "(you)",
+    "resetPassword": "Reset password",
+    "resetPasswordOf": "Reset the password of {{username}}",
+    "newPasswordFor": "New password for {{username}}",
+    "passwordReset": "Password reset; they are signed out everywhere.",
+    "remove": "Remove",
+    "removeUser": "Remove {{username}}",
+    "confirmRemoval": "Remove {{username}} and all their data?",
+    "confirmRemove": "Remove for good",
+    "save": "Save",
+    "cancel": "Cancel",
+    "actionFailed": "That did not work. Try again.",
+    "add": "Add a user",
+    "addButton": "Add user",
+    "makeAdmin": "Admin: may manage users",
+    "passwordHint_one": "At least {{count}} character.",
+    "passwordHint_other": "At least {{count}} characters."
+  },
+  "profile": {
+    "title": "Profile",
+    "changePassword": "Change your password",
+    "currentPassword": "Current password",
+    "newPassword": "New password",
+    "repeatPassword": "New password again",
+    "save": "Change password",
+    "changed": "Password changed. Your other sessions have been signed out.",
+    "passwordsDiffer": "The new passwords differ.",
+    "unknownError": "Could not change the password."
+  },
+  "errors": {
+    "usernameTaken": "That username is taken.",
+    "usernameInvalid": "A username is 1-64 characters: letters, digits, '.', '_' or '-', starting with a letter or digit.",
+    "passwordLength": "A password is {{min}}-{{max}} characters.",
+    "cannotRemoveSelf": "You cannot remove yourself.",
+    "cannotResetSelf": "Change your own password on your profile.",
+    "removerGone": "You have been removed.",
+    "wrongPassword": "Your current password is wrong."
   }
 }

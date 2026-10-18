@@ -21,6 +21,7 @@ from mailroom.api.build_info import (
 from mailroom.api.csrf import CrossSiteRequestMiddleware
 from mailroom.api.deps import require_user
 from mailroom.api.routes.auth import auth_router
+from mailroom.api.routes.users import own_password_router, users_router
 from mailroom.auth.throttle import LoginThrottle
 from mailroom.auth.users import user_count
 from mailroom.database_connectivity import CONNECTIVITY_ERRORS
@@ -189,6 +190,8 @@ def create_application() -> FastAPI:
 
     # Every other route goes here.
     protected_v1 = APIRouter(prefix="/api/v1", dependencies=[Depends(require_user)])
+    protected_v1.include_router(own_password_router)
+    protected_v1.include_router(users_router)
     application.include_router(protected_v1)
     return application
 

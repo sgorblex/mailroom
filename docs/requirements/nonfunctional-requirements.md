@@ -80,8 +80,23 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   address or an IPv6 /56: the last address the host's reverse proxy appended to `X-Forwarded-For`,
   which the web container's nginx passes on and uvicorn trusts from loopback. In memory, per API
   process.
-- **Logs:** `login_succeeded` (with `user_id`), `login_failed`, `logout`; never the password,
-  the token, or the username tried.
+- **Managing users** (`/api/v1/users`, admins only: 401 signed out, 403 otherwise): add,
+  remove, reset a password. Nobody removes themselves, and a removal locks both users' rows in id
+  order first, so two admins removing each other at once leave one: there is always an admin. A
+  reset ends all of that user's sessions, and is not for the admin's own password; removing a
+  user deletes their sessions with them. A reset lets an admin sign in as that user, so it is
+  logged; a reset that the user must complete themselves is a later option, not a promise.
+- **Own password** (`POST /api/v1/auth/password`): needs the current one, checked through the
+  login throttle (the same per-client counter as sign-in) so a borrowed session cannot guess it;
+  keeps this session and ends the others.
+- **A session ending under the user:** any 401 from the API but a refused sign-in signs the web
+  app out (`onSessionEnded` in `web/src/api/http.ts`), and the sign-in screen says the session
+  has ended.
+- **Refusals** about users answer 400 with `{"detail": {"code", "message"}}`; the web app words
+  each `code` itself, in the reader's language.
+- **Logs:** `login_succeeded` (with `user_id`), `login_failed`, `logout`, `user_created`,
+  `user_removed`, `password_reset` (with `user_id`, the admin, and `target_user_id`),
+  `password_changed`, `password_change_failed`; never a password, a token, or a username.
 
 ## Data persistence & schema migrations
 

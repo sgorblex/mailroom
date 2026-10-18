@@ -22,6 +22,7 @@ _EXTRA_LOG_KEYS = (
     "attempt",
     "queue",
     "user_id",
+    "target_user_id",
 )
 
 

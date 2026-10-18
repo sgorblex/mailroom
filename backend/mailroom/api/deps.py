@@ -37,3 +37,12 @@ def require_user(db: DbSession, session_cookie: SessionCookie = None) -> User:
 
 
 CurrentUser = Annotated[User, Depends(require_user)]
+
+
+def require_admin(user: CurrentUser) -> User:
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admins only")
+    return user
+
+
+CurrentAdmin = Annotated[User, Depends(require_admin)]

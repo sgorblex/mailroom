@@ -1,6 +1,6 @@
 import { useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Outlet } from '@tanstack/react-router'
+import { Link, Outlet } from '@tanstack/react-router'
 
 import { useAuth } from '@/auth/auth-context.ts'
 import { LoginScreen } from '@/auth/login-screen.tsx'
@@ -33,7 +33,12 @@ export function RootLayout(): ReactElement {
   }
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="flex items-center justify-end gap-3 p-3">
+      <header className="flex flex-wrap items-center gap-3 p-3">
+        <nav aria-label={t('nav.label')} className="mr-auto flex gap-3 text-sm">
+          <NavLink to="/">{t('nav.home')}</NavLink>
+          {auth.user.is_admin && <NavLink to="/users">{t('nav.users')}</NavLink>}
+          <NavLink to="/profile">{t('nav.profile')}</NavLink>
+        </nav>
         <p className="text-sm text-muted-foreground">
           {t('auth.signedInAs', { username: auth.user.username })}
         </p>
@@ -41,6 +46,26 @@ export function RootLayout(): ReactElement {
       </header>
       <Outlet />
     </div>
+  )
+}
+
+function NavLink({
+  to,
+  children,
+}: {
+  to: '/' | '/users' | '/profile'
+  children: string
+}): ReactElement {
+  return (
+    <Link
+      to={to}
+      className="hover:text-foreground"
+      inactiveProps={{ className: 'text-muted-foreground' }}
+      activeProps={{ className: 'font-medium text-foreground', 'aria-current': 'page' }}
+      activeOptions={{ exact: true }}
+    >
+      {children}
+    </Link>
   )
 }
 

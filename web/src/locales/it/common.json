@@ -22,6 +22,57 @@
     "signIn": "Accedi",
     "wrongCredentials": "Nome utente o password errati.",
     "tooManyAttempts": "Troppi tentativi falliti. Attendi un momento, poi riprova.",
-    "unknownError": "Accesso non riuscito."
+    "unknownError": "Accesso non riuscito.",
+    "sessionEnded": "La sessione è terminata. Accedi di nuovo."
+  },
+  "nav": {
+    "label": "Principale",
+    "home": "Home",
+    "users": "Utenti",
+    "profile": "Profilo"
+  },
+  "users": {
+    "title": "Utenti",
+    "loading": "Caricamento degli utenti…",
+    "loadFailed": "Impossibile caricare gli utenti.",
+    "adminsOnly": "Solo gli amministratori gestiscono gli utenti.",
+    "admin": "amministratore",
+    "you": "(tu)",
+    "resetPassword": "Reimposta password",
+    "resetPasswordOf": "Reimposta la password di {{username}}",
+    "newPasswordFor": "Nuova password per {{username}}",
+    "passwordReset": "Password reimpostata: tutte le sue sessioni sono state chiuse.",
+    "remove": "Rimuovi",
+    "removeUser": "Rimuovi {{username}}",
+    "confirmRemoval": "Rimuovere {{username}} e tutti i suoi dati?",
+    "confirmRemove": "Rimuovi definitivamente",
+    "save": "Salva",
+    "cancel": "Annulla",
+    "actionFailed": "Operazione non riuscita. Riprova.",
+    "add": "Aggiungi un utente",
+    "addButton": "Aggiungi utente",
+    "makeAdmin": "Amministratore: può gestire gli utenti",
+    "passwordHint_one": "Almeno {{count}} carattere.",
+    "passwordHint_other": "Almeno {{count}} caratteri."
+  },
+  "profile": {
+    "title": "Profilo",
+    "changePassword": "Cambia la tua password",
+    "currentPassword": "Password attuale",
+    "newPassword": "Nuova password",
+    "repeatPassword": "Ripeti la nuova password",
+    "save": "Cambia password",
+    "changed": "Password cambiata. Le altre sessioni sono state chiuse.",
+    "passwordsDiffer": "Le nuove password non coincidono.",
+    "unknownError": "Impossibile cambiare la password."
+  },
+  "errors": {
+    "usernameTaken": "Questo nome utente è già in uso.",
+    "usernameInvalid": "Un nome utente ha da 1 a 64 caratteri: lettere, cifre, '.', '_' o '-', e inizia con una lettera o una cifra.",
+    "passwordLength": "Una password ha da {{min}} a {{max}} caratteri.",
+    "cannotRemoveSelf": "Non puoi rimuovere il tuo stesso utente.",
+    "cannotResetSelf": "Cambia la tua password dal tuo profilo.",
+    "removerGone": "Il tuo utente è stato rimosso.",
+    "wrongPassword": "La password attuale è errata."
   }
 }

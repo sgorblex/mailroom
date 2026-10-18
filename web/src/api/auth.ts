@@ -19,3 +19,11 @@ export function login(username: string, password: string): Promise<User> {
 export function logout(): Promise<null> {
   return apiPostJson('/api/v1/auth/logout')
 }
+
+/** Keeps this session and ends the others. */
+export function changePassword(currentPassword: string, newPassword: string): Promise<null> {
+  return apiPostJson('/api/v1/auth/password', {
+    current_password: currentPassword,
+    new_password: newPassword,
+  })
+}

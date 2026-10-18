@@ -21,14 +21,12 @@ Mailroom is built on standalone projects, each with its own repository and check
   replaces it.
 
 **The first goal is the Filters UI.** It needs all of *Foundations*, so its critical path runs
-through the mailroom-mcp port up to a tagged `mailroom-core`: User management and the Worker
+through the mailroom-mcp port up to a tagged `mailroom-core`: the Worker
 scaffold can start now, while **Component dependencies**, and **Accounts** after it, wait for a tagged `mailroom-core` and
 imap-thingy 0.6.0.
 
 ## Foundations
 
-- [ ] **User management** — an admin screen to add and remove users and reset passwords; every
-      user changes their own password.
 - [ ] **Component dependencies** — add mailroom-core, mailroom-mcp and imap-thingy as
       `git+…@<tag>` sources, plus a mise task that switches them to local editable paths for
       cross-repo work. Waits for the mailroom-mcp Python port's packages and imap-thingy

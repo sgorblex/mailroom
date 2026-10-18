@@ -4,7 +4,8 @@ import type { User } from '@/api/auth.ts'
 
 export type AuthState =
   | { status: 'checking' }
-  | { status: 'signed-out' }
+  /** `ended`: the session ended under the user, so the sign-in screen says why. */
+  | { status: 'signed-out'; ended?: boolean }
   | { status: 'unreachable' }
   | { status: 'signed-in'; user: User }
 

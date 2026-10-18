@@ -9,6 +9,8 @@ import {
 } from '@tanstack/react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { apiGetJson } from '@/api/http.ts'
+
 import { AuthProvider } from './auth-provider.tsx'
 import { RootLayout } from './root-layout.tsx'
 
@@ -17,7 +19,14 @@ function renderApp(): void {
   const homeRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/',
-    component: () => <p>Home page</p>,
+    component: () => (
+      <>
+        <p>Home page</p>
+        <button type="button" onClick={() => void apiGetJson('/api/v1/users').catch(() => null)}>
+          Load users
+        </button>
+      </>
+    ),
   })
   const router = createRouter({
     routeTree: rootRoute.addChildren([homeRoute]),
@@ -60,6 +69,9 @@ function stubApi(initiallySignedIn: boolean): void {
         signedIn = false
         return Promise.resolve(new Response(null, { status: 204 }))
       }
+      if (path === '/api/v1/users') {
+        return Promise.resolve(json(401, { detail: 'Not authenticated' }))
+      }
       return Promise.resolve(json(404, { detail: 'Not Found' }))
     }),
   )
@@ -94,8 +106,20 @@ describe('RootLayout', () => {
     renderApp()
 
     expect(await screen.findByText('Home page')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Profile' })).toHaveAttribute('href', '/profile')
+    expect(screen.queryByRole('link', { name: 'Users' })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Sign out' }))
     expect(await screen.findByLabelText('Password')).toBeInTheDocument()
+  })
+
+  it('signs out and says why when a request finds the session ended', async () => {
+    stubApi(true)
+    renderApp()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Load users' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Your session has ended.')
+    expect(screen.getByLabelText('Password')).toBeInTheDocument()
+    expect(screen.queryByText('Home page')).not.toBeInTheDocument()
   })
 
   it('offers to try again when the API cannot be reached', async () => {

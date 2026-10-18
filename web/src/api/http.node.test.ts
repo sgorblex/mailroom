@@ -1,7 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
-import { ApiRequestError, ApiResponseValidationError, apiGetJson, apiPostJson } from './http.ts'
+import {
+  ApiRequestError,
+  ApiResponseValidationError,
+  apiDelete,
+  apiGetJson,
+  apiPostJson,
+  onSessionEnded,
+} from './http.ts'
 
 function stubFetch(status: number, body: string): void {
   vi.stubGlobal(
@@ -59,5 +66,50 @@ describe('apiPostJson', () => {
     await expect(apiPostJson('/api/v1/auth/login', { password: 'x' })).rejects.toThrow(
       'Wrong password',
     )
+  })
+})
+
+describe('ApiRequestError', () => {
+  it('carries the message and code of a coded error', async () => {
+    stubFetch(400, '{"detail":{"code":"cannot_remove_self","message":"You cannot remove yourself."}}')
+    const error: unknown = await apiDelete('/api/v1/users/1').catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(ApiRequestError)
+    expect((error as ApiRequestError).message).toBe('You cannot remove yourself.')
+    expect((error as ApiRequestError).code).toBe('cannot_remove_self')
+  })
+})
+
+describe('apiDelete', () => {
+  it('sends a DELETE with credentials and resolves a 204 to null', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(apiDelete('/api/v1/users/2')).resolves.toBeNull()
+    const [path, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(path).toBe('/api/v1/users/2')
+    expect(init.method).toBe('DELETE')
+    expect(init.credentials).toBe('include')
+  })
+
+  it('carries the FastAPI detail of an error response', async () => {
+    stubFetch(404, '{"detail":"No such user"}')
+    await expect(apiDelete('/api/v1/users/9')).rejects.toThrow('No such user')
+  })
+})
+
+describe('onSessionEnded', () => {
+  afterEach(() => {
+    onSessionEnded(null)
+  })
+
+  it('is told of a 401, but not of a refused sign-in', async () => {
+    const listener = vi.fn()
+    onSessionEnded(listener)
+    stubFetch(401, '{"detail":"Wrong username or password"}')
+    await expect(apiPostJson('/api/v1/auth/login', {})).rejects.toBeInstanceOf(ApiRequestError)
+    expect(listener).not.toHaveBeenCalled()
+
+    stubFetch(401, '{"detail":"Not authenticated"}')
+    await expect(apiGetJson('/api/v1/users')).rejects.toBeInstanceOf(ApiRequestError)
+    expect(listener).toHaveBeenCalledOnce()
   })
 })

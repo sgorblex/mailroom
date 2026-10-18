@@ -32,7 +32,8 @@ mise run dev          # Postgres + API + Vite; Ctrl+C stops all three
 ```
 
 To sign in, create the first user once the database is up (`mise run migrate` if the API has not
-run yet): `mise run create-user <name> --admin`.
+run yet): `mise run create-user <name> --admin`. That admin adds the rest on the app's *Users*
+page.
 
 Then open <http://127.0.0.1:5180>. Ports are fixed so other local dev stacks and mailroom-mcp can run alongside:
 

@@ -19,7 +19,33 @@ export class ApiRequestError extends Error {
     this.status = status
     this.body = body
   }
+
+  /** The API's name for the case (`{"detail": {"code": …}}`), for wording it in the UI. */
+  get code(): string | undefined {
+    const detail = errorDetail(this.body)
+    if (typeof detail === 'object' && detail !== null && 'code' in detail) {
+      return typeof detail.code === 'string' ? detail.code : undefined
+    }
+    return undefined
+  }
 }
+
+function errorDetail(body: unknown): unknown {
+  return typeof body === 'object' && body !== null && 'detail' in body ? body.detail : undefined
+}
+
+let sessionEndedListener: (() => void) | null = null
+
+/**
+ * Told when a request comes back 401: the session ended under the user (expired, signed out
+ * elsewhere, password reset, user removed). The auth provider listens; a failed sign-in is not
+ * a session ending, so `/auth/login` does not count.
+ */
+export function onSessionEnded(listener: (() => void) | null): void {
+  sessionEndedListener = listener
+}
+
+const LOGIN_PATH = '/api/v1/auth/login'
 
 const MAX_RENDERABLE_ERROR_BODY_LENGTH = 300
 
@@ -40,10 +66,13 @@ function formatErrorMessage(status: number, body: unknown): string {
   if (typeof body === 'string') {
     return isRenderableErrorText(body) ? body : fallback
   }
-  if (typeof body === 'object' && body !== null && 'detail' in body) {
-    const detail = body.detail
-    if (typeof detail === 'string') {
-      return detail
+  const detail = errorDetail(body)
+  if (typeof detail === 'string') {
+    return detail
+  }
+  if (typeof detail === 'object' && detail !== null && 'message' in detail) {
+    if (typeof detail.message === 'string') {
+      return detail.message
     }
   }
   return fallback
@@ -76,6 +105,9 @@ async function apiRequest<T>(
   const response = await fetch(`${getApiBaseUrl()}${path}`, { ...init, credentials: 'include' })
   const body = await parseJsonResponse(response)
   if (!response.ok) {
+    if (response.status === 401 && path !== LOGIN_PATH) {
+      sessionEndedListener?.()
+    }
     throw new ApiRequestError(response.status, body, formatErrorMessage(response.status, body))
   }
   if (schema !== undefined) {
@@ -110,4 +142,10 @@ export function apiPostJson<T = null>(
     },
     schema,
   )
+}
+
+/** DELETE; a 204 resolves to `null`. */
+export function apiDelete(path: string, options: ApiJsonRequestOptions<null> = {}): Promise<null> {
+  const { init = {} } = options
+  return apiRequest(path, { method: 'DELETE', ...init }, undefined)
 }

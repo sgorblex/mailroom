@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from mailroom.models import User
 
 USERNAME = "alice"
+ADMIN_USERNAME = "root"
 PASSWORD = "correct horse battery staple"
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -203,4 +204,21 @@ def user_client(api_client: TestClient, db_session: Session, user: User) -> Test
     from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
 
     api_client.cookies.set(SESSION_COOKIE_NAME, create_session(db_session, user))
+    return api_client
+
+
+@pytest.fixture
+def admin(db_session: Session) -> User:
+    """``ADMIN_USERNAME``, an admin, signing in with ``PASSWORD``."""
+    from mailroom.auth.users import create_user
+
+    return create_user(db_session, ADMIN_USERNAME, PASSWORD, is_admin=True)
+
+
+@pytest.fixture
+def admin_client(api_client: TestClient, db_session: Session, admin: User) -> TestClient:
+    """``api_client`` signed in as ``admin``."""
+    from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
+
+    api_client.cookies.set(SESSION_COOKIE_NAME, create_session(db_session, admin))
     return api_client

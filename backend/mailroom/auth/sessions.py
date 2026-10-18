@@ -41,6 +41,15 @@ def _token_hash(raw_token: str) -> str:
     return hashlib.sha256(raw_token.encode()).hexdigest()
 
 
+def end_user_sessions(db: Session, user: User, *, keep: str | None = None) -> None:
+    """End every session of ``user`` but ``keep`` (a raw token). Leaves the commit to the
+    caller."""
+    ended = delete(UserSession).where(UserSession.user_id == user.id)
+    if keep is not None:
+        ended = ended.where(UserSession.token_hash != _token_hash(keep))
+    db.execute(ended)
+
+
 def create_session(db: Session, user: User) -> str:
     """Start a session for ``user`` and return its raw token. Expired sessions are swept on the
     way."""

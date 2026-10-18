@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react'
 
 import { fetchCurrentUser, login, logout } from '@/api/auth.ts'
+import { onSessionEnded } from '@/api/http.ts'
 import { AuthContext, type AuthContextValue, type AuthState } from '@/auth/auth-context.ts'
 
 /** Asks the API once who this browser is signed in as, then tracks sign-in and sign-out. */
@@ -24,6 +25,17 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
       controller.abort()
     }
   }, [attempt])
+
+  useEffect(() => {
+    onSessionEnded(() => {
+      setState((current) =>
+        current.status === 'signed-in' ? { status: 'signed-out', ended: true } : current,
+      )
+    })
+    return () => {
+      onSessionEnded(null)
+    }
+  }, [])
 
   const signIn = useCallback(async (username: string, password: string) => {
     const user = await login(username, password)

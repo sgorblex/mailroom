@@ -24,7 +24,7 @@ through the Vite proxy. Engineering baseline:
 
 ## Users and accounts
 
-**Maturity: Partial** — sign-in is done; managing users and accounts is not started.
+**Maturity: Partial** — sign-in and managing users are done; accounts are not started.
 
 - **Users** sign in with a username and password (passkeys later). Every route except health,
   readiness, version, sign-in, sign-out and the signed-in check requires a
@@ -32,8 +32,9 @@ through the Vite proxy. Engineering baseline:
   How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md)
   — *Sign-in*.
 - **Users are separate.** Each user's accounts, filters and suggestions are theirs alone; nothing
-  is shared. An [admin](GLOSSARY.md) creates users (the first with `mise run create-user <name> --admin`);
-  there is no public sign-up.
+  is shared. An [admin](GLOSSARY.md) adds and removes users and resets their passwords on the
+  *Users* page (the first admin comes from `mise run create-user <name> --admin`); there is no
+  public sign-up. Every user changes their own password on their *Profile* page.
 - **Accounts** (IMAP + SMTP, identities, send mode) come from **mailroom-core**'s model; the app
   implements the `AccountStore` integration point over its own schema, with secrets sealed as
   mailroom-core seals them (byte-compatible with mailroom-mcp, so its data imports unchanged).
