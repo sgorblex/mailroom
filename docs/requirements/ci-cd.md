@@ -7,6 +7,13 @@ release type, `release-please-config.json`) owns `version.txt`, `CHANGELOG.md`, 
 `backend/pyproject.toml`, `backend/uv.lock` and `web/package.json` (`extra-files`);
 `mise run check-version-sync` asserts they agree. Pre-1.0, a `feat` bumps the minor.
 
+[`release-please.yml`](../../.github/workflows/release-please.yml) runs on every push to `main`
+and keeps a release PR open. Merging it tags `vX.Y.Z`; no pipeline acts on the tag until the
+release pipeline arrives. The workflow signs in with **`RELEASE_PLEASE_TOKEN`** (a fine-grained
+PAT with contents and pull requests read/write on this repository) rather than `GITHUB_TOKEN`,
+because GitHub starts no further workflows or webhooks for a tag pushed with `GITHUB_TOKEN`, and
+the tag must reach Woodpecker.
+
 ## Git workflow and commit conventions
 
 - **Graphite** (**`gt`**) manages branches: **`gt create <type>/<short_name> -m "<type>: …"`**,
