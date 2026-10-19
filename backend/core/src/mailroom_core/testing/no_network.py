@@ -3,6 +3,9 @@
 The example config names real mail servers; a test that reached one would spend a login attempt
 against a production rate limit with a fake password. Same allow-list as
 `src/testing/no-network.ts`.
+
+Database connections are outside the guard: psycopg connects through libpq's own C sockets,
+which this patch of Python's `socket` never sees.
 """
 
 import os

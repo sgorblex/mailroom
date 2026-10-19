@@ -1,8 +1,7 @@
 """Port of `src/crypto/sealed-secrets.test.ts`.
 
 Of its `stored secrets in the config` block, the case that reads the bootstrap is mailroom-mcp's
-(`mcp/tests/test_sealed_secrets.py`); only `are written and cleared with the settings, in one
-save` remains, to port with `store`.
+(`mcp/tests/test_sealed_secrets.py`).
 """
 
 import os
@@ -29,6 +28,7 @@ from mailroom_core.crypto import (
     sealed_secrets,
     secrets_subkey,
 )
+from mailroom_core.store import AccountStore, SecretChanges
 from mailroom_core.testing import config_env, local_config_text
 
 if TYPE_CHECKING:
@@ -159,3 +159,11 @@ def test_leave_out_an_account_whose_stored_secret_is_missing_or_does_not_open_sa
     )
     unkeyed = loaded_core(UTC, settings, None, wrong)
     assert any("needs [auth] secrets_key_env" in warning for warning in unkeyed.warnings)
+
+
+def test_are_written_and_cleared_with_the_settings_in_one_save(core_engine) -> None:
+    store = AccountStore(core_engine)
+    store.save_settings({}, 0, SecretChanges(set={"a": b"x"}))
+    assert store.secrets() == {"a": b"x"}
+    store.save_settings({}, 1, SecretChanges(remove=["a"]))
+    assert store.secrets() == {}
