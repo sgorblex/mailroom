@@ -5,7 +5,8 @@
 One repository, one **SemVer** line for backend and web together. **Release Please** (simple
 release type, `release-please-config.json`) owns `version.txt`, `CHANGELOG.md`, and the copies in
 `backend/pyproject.toml`, `backend/uv.lock` and `web/package.json` (`extra-files`);
-`mise run check-version-sync` asserts they agree. Pre-1.0, a `feat` bumps the minor.
+`mise run check-version-sync` asserts they agree. The first release is 0.1.0 (`initial-version`);
+pre-1.0, a `feat` bumps the minor.
 
 [`release-please.yml`](../../.github/workflows/release-please.yml) runs on every push to `main`
 and keeps a release PR open. Merging it tags `vX.Y.Z`; no pipeline acts on the tag until the

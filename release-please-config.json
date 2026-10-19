@@ -5,6 +5,7 @@
   "packages": {
     ".": {
       "changelog-path": "CHANGELOG.md",
+      "initial-version": "0.1.0",
       "changelog-sections": [
         { "type": "feat", "section": "Features" },
         { "type": "feature", "section": "Features" },
