@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from datetime import date
 
 
@@ -78,10 +79,24 @@ class IMAPQuery:
         def __str__(self) -> str:
             return str(self.query)
 
-    query: And | Or | Not | Base
+    class Deferred:
+        """A query made when built, for criteria relative to the time of the run."""
 
-    def __init__(self, query: And | Or | Not | Base) -> None:
-        """Wrap an And/Or/Not/Base query node."""
+        def __init__(self, make: Callable[[], IMAPQuery]) -> None:
+            """Store the function building the query."""
+            self.make = make
+
+        def build(self) -> list[Any] | tuple[Any, ...] | str:
+            """Build the query make() returns now."""
+            return self.make().build()
+
+        def __str__(self) -> str:
+            return str(self.make())
+
+    query: And | Or | Not | Base | Deferred
+
+    def __init__(self, query: And | Or | Not | Base | Deferred) -> None:
+        """Wrap an And/Or/Not/Base/Deferred query node."""
         self.query = query
 
     def build(self) -> list[Any] | tuple[Any, ...] | str:

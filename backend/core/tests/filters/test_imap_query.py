@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 from imapclient.imapclient import _normalise_search_criteria
 
-from imap_thingy.core import Q
+from imap_thingy.core import IMAPQuery, Q
 from imap_thingy.get_mail import SearchCriteria, _normalise_search_criteria_utf8, search_mail
 
 
@@ -70,6 +70,14 @@ class TestIMAPQueryBuildStructure:
         ]
         assert b"(" not in out
         assert b")" not in out
+
+    def test_utf8_deferred_inside_not_and_or(self) -> None:
+        """A Deferred node normalises like the query it builds."""
+        base = Q(("SENTBEFORE", "01-Mar-2026"))
+        deferred = IMAPQuery(IMAPQuery.Deferred(lambda: base))
+        out = _normalise_search_criteria_utf8((~deferred | Q(("FROM", "a"))).build(), "UTF-8")
+        assert out == _normalise_search_criteria_utf8((~base | Q(("FROM", "a"))).build(), "UTF-8")
+        assert out == [b"OR", b"(NOT", b"SENTBEFORE", b"01-Mar-2026)", b"FROM", b"a"]
 
     def test_utf8_flagged_and_body_euro_is_flat(self) -> None:
         body = "Importo: 0,00 \u20ac EUR"

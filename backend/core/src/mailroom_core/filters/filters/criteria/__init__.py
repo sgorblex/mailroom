@@ -18,7 +18,7 @@ from imap_thingy.filters.criteria.address import (
 )
 from imap_thingy.filters.criteria.body import BodyContains, BodyMatches
 from imap_thingy.filters.criteria.criterion import Anything, Criterion
-from imap_thingy.filters.criteria.date import OlderThan
+from imap_thingy.filters.criteria.date import OlderThan, OlderThanDays
 from imap_thingy.filters.criteria.flags import (
     HasFlag,
     IsAnswered,
@@ -56,6 +56,7 @@ __all__ = [
     "IsUnstarred",
     "LacksFlag",
     "OlderThan",
+    "OlderThanDays",
     "SubjectContains",
     "SubjectIs",
     "SubjectMatches",

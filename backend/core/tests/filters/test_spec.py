@@ -44,6 +44,7 @@ from imap_thingy.filters import (
     MoveTo,
     NoOp,
     OlderThan,
+    OlderThanDays,
     Star,
     SubjectContains,
     SubjectIs,
@@ -86,6 +87,7 @@ CRITERIA: list[Criterion] = [
     IsUnstarred(),
     LacksFlag(Flag.SEEN),
     OlderThan(date(2025, 1, 31)),
+    OlderThanDays(30),
     SubjectContains("Invoice"),
     SubjectIs("Weekly digest"),
     SubjectMatches(r"\[Preview\] .*"),
@@ -119,6 +121,7 @@ COMBINED_CRITERIA: list[Criterion] = [
     ~(FromIs("a@example.com") & IsUnread()),
     (FromIs("a@example.com") | FromIs("b@example.com")) & ~SubjectMatches(r"\[Preview\] .*"),
     BodyMatches("x") & OlderThan("01-Jan-2025") & HasFlag(Flag.ANSWERED),
+    OlderThanDays(7) & ~IsStarred(),
 ]
 
 COMBINED_ACTIONS: list[Action] = [
@@ -412,6 +415,9 @@ class TestLoadErrors:
             {"type": "from_is", "args": {"addr": "a"}, "extra": 1},
             {"type": "has_flag", "args": {"flag": "DELETED"}},
             {"type": "older_than", "args": {"cutoff_date": "31/01/2025"}},
+            {"type": "older_than_days", "args": {"days": -1}},
+            {"type": "older_than_days", "args": {"days": 36501}},
+            {"type": "older_than_days", "args": {"days": "7"}},
             {"and": []},
             {"and": [{"type": "is_read"}], "or": [{"type": "is_read"}]},
             {"seq": [{"type": "star"}]},

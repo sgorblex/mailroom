@@ -1,7 +1,7 @@
 """Tests for Folder (path + account) and run API."""
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
@@ -18,6 +18,7 @@ from imap_thingy.filters import (
     FromIs,
     MarkAsRead,
     MoveTo,
+    OlderThanDays,
     SubjectMatches,
 )
 from imap_thingy.get_mail import summarize_mail
@@ -118,6 +119,24 @@ class TestFolderRun:
         conn.logout.assert_called_once()
         assert conn._raw_command_untagged.call_count == 2
         assert conn.move.call_count == 2
+
+    def test_older_than_days_cutoff_is_taken_at_each_run(
+        self, mock_account: MockEMailAccount
+    ) -> None:
+        folder = mock_account / "INBOX"
+        conn = mock_account.connect.return_value
+        conn._raw_command_untagged = MagicMock(return_value=[b""])
+        f = Filter(OlderThanDays(30), MarkAsRead())
+
+        with patch("imap_thingy.filters.criteria.date._today") as today:
+            today.return_value = date(2026, 3, 31)
+            folder.run(f, dry_run=False)
+            today.return_value = date(2026, 4, 30)
+            folder.run(f, dry_run=False)
+
+        first, second = (c.args[1] for c in conn._raw_command_untagged.call_args_list)
+        assert b"01-Mar-2026" in first
+        assert b"31-Mar-2026" in second
 
     def test_folder_run_fetch_cache_two_non_efficient_filters(
         self, mock_account: MockEMailAccount

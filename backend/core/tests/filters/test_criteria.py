@@ -1,8 +1,11 @@
 """Tests for criteria classes."""
 
 from datetime import UTC, date, datetime
-from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any, cast
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from imap_thingy.filters.criteria import (
     Anything,
@@ -26,6 +29,7 @@ from imap_thingy.filters.criteria import (
     IsUnread,
     IsUnstarred,
     OlderThan,
+    OlderThanDays,
     SubjectContains,
     SubjectIs,
     SubjectMatches,
@@ -312,6 +316,38 @@ class TestDateCriteria:
         criterion = OlderThan("01-Jan-2025")
         assert isinstance(criterion, Criterion)
         assert criterion.imap_query.build() == ("SENTBEFORE", "01-Jan-2025")
+
+    def test_older_than_days_is_evaluated_when_run(self) -> None:
+        """OlderThanDays computes its cutoff each time it is used, not when built."""
+        criterion = OlderThanDays(30)
+        assert criterion.is_efficient is True
+        today_path = "imap_thingy.filters.criteria.date._today"
+        with patch(today_path, return_value=date(2026, 3, 31)) as today:
+            assert criterion.imap_query.build() == ("SENTBEFORE", "01-Mar-2026")
+            assert (criterion & IsRead()).imap_query.build() == [
+                ("SENTBEFORE", "01-Mar-2026"),
+                "SEEN",
+            ]
+            today.return_value = date(2026, 4, 30)
+            assert criterion.imap_query.build() == ("SENTBEFORE", "31-Mar-2026")
+            msg = cast("Any", SimpleNamespace(parsed=SimpleNamespace(date=datetime(2026, 3, 30))))  # noqa: DTZ001
+            assert criterion.func(msg) is True
+            today.return_value = date(2026, 4, 29)
+            assert criterion.func(msg) is False
+
+    def test_older_than_days_zero_is_before_today(self) -> None:
+        """OlderThanDays(0) selects mail sent before today."""
+        with patch("imap_thingy.filters.criteria.date._today", return_value=date(2026, 3, 31)):
+            assert OlderThanDays(0).imap_query.build() == ("SENTBEFORE", "31-Mar-2026")
+
+    @pytest.mark.parametrize(
+        ("days", "error"),
+        [(-1, ValueError), (36501, ValueError), (1.5, TypeError), (True, TypeError)],
+    )
+    def test_older_than_days_rejects_bad_days(self, days: object, error: type[Exception]) -> None:
+        """OlderThanDays takes a non-negative int only."""
+        with pytest.raises(error):
+            OlderThanDays(cast("Any", days))
 
 
 class TestFlagCriteria:

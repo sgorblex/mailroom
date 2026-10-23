@@ -340,6 +340,35 @@
             "args"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "older_than_days"
+              ]
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "days": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 36500
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "days"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "args"
+          ],
+          "additionalProperties": false
         }
       ]
     },
