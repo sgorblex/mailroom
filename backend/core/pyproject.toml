@@ -5,6 +5,7 @@ description = "Mailroom's mail layer: accounts, sealed secrets, IMAP/SMTP, the s
 requires-python = ">=3.14"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
+readme = "README.md"
 dependencies = [
   "alembic>=1.20.0",
   "cryptography>=50.0.2",
@@ -13,6 +14,9 @@ dependencies = [
   "sqlalchemy>=2.1.5",
   "tzdata>=2026.5",
 ]
+
+[project.urls]
+Repository = "https://github.com/sgorblex/mailroom-mcp"
 
 [project.optional-dependencies]
 # mailroom_core.testing, for the packages and the app that test against it.
