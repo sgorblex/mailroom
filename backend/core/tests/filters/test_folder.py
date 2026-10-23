@@ -1,6 +1,7 @@
 """Tests for Folder (path + account) and run API."""
 
 import json
+import ssl
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
@@ -9,7 +10,8 @@ import pytest
 from imapclient.exceptions import IMAPClientError
 from imapclient.response_types import Address, Envelope
 
-from imap_thingy.accounts import Account, Folder, Path
+from imap_thingy.accounts import Account, Folder, Path, accounts_from_json
+from imap_thingy.accounts.presets import GMailAccount
 from imap_thingy.core import Message
 from imap_thingy.filters import (
     Action,
@@ -24,6 +26,8 @@ from imap_thingy.filters import (
 from imap_thingy.get_mail import summarize_mail
 
 if TYPE_CHECKING:
+    import pathlib
+
     from tests.conftest import MockEMailAccount
 
 
@@ -386,3 +390,93 @@ class TestSummarizeMail:
             },
             {"uid": 8, "from": None, "subject": None, "date": None},
         ]
+
+
+class TestAccountConnection:
+    """Test Account.connect options and list_folders."""
+
+    def test_connect_passes_ssl_context(self) -> None:
+        context = ssl.create_default_context()
+        account = Account("a", "imap.example.com", 993, "u", "p", ssl_context=context)
+        with patch("imap_thingy.accounts.account.IMAPClient") as client:
+            conn = account.connect()
+        client.assert_called_once_with(
+            "imap.example.com", 993, ssl=True, ssl_context=context, timeout=None
+        )
+        conn.login.assert_called_once_with("u", "p")
+
+    def test_connect_defaults_to_no_ssl_context_or_timeout(self) -> None:
+        account = Account("a", "imap.example.com", 993, "u", "p")
+        with patch("imap_thingy.accounts.account.IMAPClient") as client:
+            account.connect()
+        assert client.call_args.kwargs["ssl_context"] is None
+        assert client.call_args.kwargs["timeout"] is None
+
+    def test_connect_passes_timeout(self) -> None:
+        account = Account("a", "imap.example.com", 993, "u", "p", timeout=7.5)
+        with patch("imap_thingy.accounts.account.IMAPClient") as client:
+            account.connect()
+        assert client.call_args.kwargs["timeout"] == 7.5
+
+    def test_list_folders_skips_unselectable(self, mock_account: MockEMailAccount) -> None:
+        conn = mock_account.connect.return_value
+        conn.list_folders.return_value = [
+            ((b"\\HasNoChildren",), b".", "INBOX"),
+            ((b"\\HasChildren", b"\\Noselect"), b".", "Lists"),
+            ((b"\\HasNoChildren",), b".", "Lists.Nerds"),
+            ((b"\\NonExistent",), b".", "Gone"),
+            ((), None, "Flat.Name"),
+        ]
+        paths = mock_account.list_folders()
+
+        assert [p.segments for p in paths] == [["INBOX"], ["Lists", "Nerds"], ["Flat.Name"]]
+        assert [(mock_account / p).imap_name() for p in paths] == [
+            "INBOX",
+            "Lists.Nerds",
+            "Flat.Name",
+        ]
+        conn.logout.assert_called_once()
+
+    def test_list_folders_splits_on_account_delimiter(
+        self, mock_account: MockEMailAccount, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        conn = mock_account.connect.return_value
+        conn.list_folders.return_value = [((), b"/", "Lists/Nerds.2026")]
+        paths = mock_account.list_folders()
+
+        assert [p.segments for p in paths] == [["Lists/Nerds", "2026"]]
+        assert "differs from the account's '.'" in caplog.text
+
+    def test_list_folders_logs_out_when_listing_fails(self, mock_account: MockEMailAccount) -> None:
+        conn = mock_account.connect.return_value
+        conn.list_folders.side_effect = IMAPClientError("LIST failed")
+        with pytest.raises(IMAPClientError):
+            mock_account.list_folders()
+        conn.logout.assert_called_once()
+
+    def test_list_folders_ignores_logout_failure(self, mock_account: MockEMailAccount) -> None:
+        conn = mock_account.connect.return_value
+        conn.list_folders.return_value = [((), b".", "INBOX")]
+        conn.logout.side_effect = OSError("gone")
+        assert [p.segments for p in mock_account.list_folders()] == [["INBOX"]]
+
+    def test_gmail_account_passes_ssl_context(self) -> None:
+        context = ssl.create_default_context()
+        assert GMailAccount("g", "u", "p", ssl_context=context).ssl_context is context
+
+    def test_gmail_account_passes_timeout(self) -> None:
+        assert GMailAccount("g", "u", "p", timeout=3).timeout == 3
+
+    def test_accounts_from_json_reads_timeout(self, tmp_path: pathlib.Path) -> None:
+        config = tmp_path / "accounts.json"
+        config.write_text(
+            json.dumps(
+                [
+                    {"name": "g", "type": "gmail", "username": "u", "password": "p", "timeout": 5},
+                    {"name": "c", "host": "h", "port": 993, "username": "u", "password": "p"},
+                ]
+            )
+        )
+        accounts = accounts_from_json(str(config))
+        assert accounts["g"].timeout == 5
+        assert accounts["c"].timeout is None

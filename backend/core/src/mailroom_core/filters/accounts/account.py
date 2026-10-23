@@ -13,10 +13,14 @@ from imap_thingy.filters.filter import Filter
 from imap_thingy.get_mail import fetch_mail, search_mail, summarize_mail
 
 if TYPE_CHECKING:
+    import ssl
     from collections.abc import Iterable
 
     from imap_thingy.core.spec import SpecNode
     from imap_thingy.report import FilterReport, FolderReport
+
+
+_UNSELECTABLE = frozenset({b"\\noselect", b"\\nonexistent"})
 
 
 class Folder:
@@ -230,6 +234,8 @@ class Account:
         password: str,
         address: str | None = None,
         delimiter: str = ".",
+        ssl_context: ssl.SSLContext | None = None,
+        timeout: float | None = None,
     ) -> None:
         """Initialize an email account.
 
@@ -241,6 +247,10 @@ class Account:
             password: IMAP password.
             address: Email address (defaults to username if not provided).
             delimiter: Character used to delimit folder subdirectories (default: ".").
+            ssl_context: TLS settings for the connection, e.g. to trust a private CA
+                (default: imapclient's, which verifies against the system CAs).
+            timeout: Seconds to wait for the connection and for each socket read or
+                write before failing with a socket timeout (default: wait forever).
 
         """
         self.name = name
@@ -250,15 +260,53 @@ class Account:
         self.password = password
         self.address = address if address is not None else username
         self.delimiter = delimiter
+        self.ssl_context = ssl_context
+        self.timeout = timeout
         self.log: logging.Logger = logging.getLogger(__name__).getChild(self.name)
         self.inbox = Folder(self, Path("INBOX"))
 
     def connect(self) -> IMAPClient:
         """Create a new IMAP connection. Caller must call conn.logout() when done."""
-        conn = IMAPClient(self.host, self.port, ssl=True)
+        conn = IMAPClient(
+            self.host, self.port, ssl=True, ssl_context=self.ssl_context, timeout=self.timeout
+        )
         conn.login(self.username, self.password)
         self.log.debug("Connected to %s:%s", self.host, self.port)
         return conn
+
+    def list_folders(self) -> list[Path]:
+        r"""Return the paths of the folders that can hold mail, in the server's order.
+
+        Names are split on the account's ``delimiter``, so ``account / path`` selects the listed
+        folder again; a server reporting another delimiter is logged as a misconfiguration. A
+        folder with no reported delimiter (a flat namespace) is a single segment. Folders flagged
+        ``\Noselect`` or ``\NonExistent`` (e.g. bare parents of other folders) are left out.
+        """
+        conn = self.connect()
+        try:
+            listed = conn.list_folders()
+        finally:
+            try:
+                conn.logout()
+            except Exception as exc:
+                self.log.debug("Logout failed: %s", exc, exc_info=True)
+        paths: list[Path] = []
+        server_delimiters: set[str] = set()
+        for flags, delimiter, name in listed:
+            if {f.lower() for f in flags} & _UNSELECTABLE:
+                continue
+            if delimiter is None:
+                paths.append(Path([name]))
+                continue
+            server_delimiters.add(delimiter.decode())
+            paths.append(Path(name.split(self.delimiter)))
+        if server_delimiters - {self.delimiter}:
+            self.log.warning(
+                "server folder delimiter %s differs from the account's %r",
+                ", ".join(map(repr, sorted(server_delimiters))),
+                self.delimiter,
+            )
+        return paths
 
     def __truediv__(self, path: str | Path) -> Folder:
         return Folder(self, path if isinstance(path, Path) else Path(path))

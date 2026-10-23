@@ -1,6 +1,13 @@
 """Account presets (e.g. GMailAccount) with default host/port/delimiter."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from imap_thingy.accounts.account import Account
+
+if TYPE_CHECKING:
+    import ssl
 
 
 class GMailAccount(Account):
@@ -15,6 +22,8 @@ class GMailAccount(Account):
         host: str = "imap.gmail.com",
         port: int = 993,
         subdir_delimiter: str = "/",
+        ssl_context: ssl.SSLContext | None = None,
+        timeout: float | None = None,
     ) -> None:
         """Initialize a Gmail account.
 
@@ -27,6 +36,19 @@ class GMailAccount(Account):
             port: IMAP server port (default: 993).
             subdir_delimiter: Character used to delimit folder subdirectories
                 (default: "/" for Gmail).
+            ssl_context: TLS settings for the connection (default: imapclient's).
+            timeout: Seconds to wait for the connection and each socket operation
+                (default: wait forever).
 
         """
-        super().__init__(name, host, port, username, password, address, subdir_delimiter)
+        super().__init__(
+            name,
+            host,
+            port,
+            username,
+            password,
+            address,
+            subdir_delimiter,
+            ssl_context=ssl_context,
+            timeout=timeout,
+        )

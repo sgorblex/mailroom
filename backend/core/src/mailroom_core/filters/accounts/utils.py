@@ -14,6 +14,8 @@ def accounts_from_json(json_path: str) -> dict[str, Account]:
     - "type": Account type, either "gmail" or "custom" (string, optional, defaults to "custom")
     - "username": Email username/address (string, required)
     - "password": Email password (string, required)
+    - "timeout": Seconds to wait for the connection and each socket operation
+      (number, optional, defaults to waiting forever)
 
     For "gmail" type accounts, only the above fields are needed.
 
@@ -55,12 +57,21 @@ def accounts_from_json(json_path: str) -> dict[str, Account]:
         accounts: dict[str, Account] = {}
         for acc in account_data:
             email_type = acc.get("type", "custom")
+            timeout = acc.get("timeout")
             if email_type == "gmail":
-                accounts[acc["name"]] = GMailAccount(acc["name"], acc["username"], acc["password"])
+                accounts[acc["name"]] = GMailAccount(
+                    acc["name"], acc["username"], acc["password"], timeout=timeout
+                )
             elif email_type == "custom":
                 address = acc["address"] if "address" in acc else acc["username"]
                 accounts[acc["name"]] = Account(
-                    acc["name"], acc["host"], acc["port"], acc["username"], acc["password"], address
+                    acc["name"],
+                    acc["host"],
+                    acc["port"],
+                    acc["username"],
+                    acc["password"],
+                    address,
+                    timeout=timeout,
                 )
             else:
                 raise NotImplementedError("Unrecognized email preset")
