@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime
+from datetime import UTC, date, datetime
+from email.header import decode_header, make_header
+from typing import TYPE_CHECKING, Any
 
 from imapclient import IMAPClient, exceptions
 from imapclient.imapclient import _is8bit, _quoted, format_criteria_date
@@ -12,6 +14,9 @@ from imapclient.util import to_bytes
 from mailparser import parse_from_bytes
 
 from imap_thingy.core import IMAPQuery, Message
+
+if TYPE_CHECKING:
+    from imap_thingy.report import MessageSummary
 
 log = logging.getLogger(__name__)
 
@@ -110,3 +115,57 @@ def fetch_mail(client: IMAPClient, msg_ids: list[int]) -> dict[int, Message]:
             continue
     log.debug("fetch: requested %s, parsed %s", len(msg_ids), len(messages))
     return messages
+
+
+def _decode_header(value: bytes | str | None) -> str | None:
+    """Decode an RFC 2047 header value from an ENVELOPE; undecodable bytes are replaced."""
+    if value is None:
+        return None
+    text = value.decode("utf-8", "replace") if isinstance(value, bytes) else value
+    try:
+        return str(make_header(decode_header(text)))
+    except Exception:
+        return text
+
+
+def _format_addresses(addresses: tuple[Any, ...] | None) -> str | None:
+    if not addresses:
+        return None
+    out: list[str] = []
+    for a in addresses:
+        mailbox = _decode_header(a.mailbox)
+        host = _decode_header(a.host)
+        address = f"{mailbox}@{host}" if mailbox and host else (mailbox or host or "")
+        name = _decode_header(a.name)
+        out.append(f"{name} <{address}>" if name else address)
+    return ", ".join(out)
+
+
+def summarize_mail(client: IMAPClient, msg_ids: list[int]) -> list[MessageSummary]:
+    """Fetch ENVELOPEs and return each message's UID, From, Subject and Date, in msg_ids order.
+
+    Messages the server returns no envelope for keep their UID with the other fields None, as do
+    all of them when the server rejects the FETCH: the report must not block the action.
+    """
+    if not msg_ids:
+        return []
+    try:
+        fetched = client.fetch(msg_ids, ["ENVELOPE"])
+    except exceptions.IMAPClientError as exc:
+        log.warning("summarize: ENVELOPE fetch failed: %s", exc)
+        fetched = {}
+    summaries: list[MessageSummary] = []
+    for msgid in msg_ids:
+        envelope = fetched.get(msgid, {}).get(b"ENVELOPE")
+        if envelope is None:
+            summaries.append({"uid": msgid, "from": None, "subject": None, "date": None})
+            continue
+        summaries.append(
+            {
+                "uid": msgid,
+                "from": _format_addresses(envelope.from_),
+                "subject": _decode_header(envelope.subject),
+                "date": envelope.date.astimezone(UTC).isoformat() if envelope.date else None,
+            }
+        )
+    return summaries

@@ -8,11 +8,15 @@ from typing import TYPE_CHECKING
 from imapclient import IMAPClient
 
 from imap_thingy.core import Message, Path
+from imap_thingy.core.spec import NotSerializableError
 from imap_thingy.filters.filter import Filter
-from imap_thingy.get_mail import fetch_mail, search_mail
+from imap_thingy.get_mail import fetch_mail, search_mail, summarize_mail
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+    from imap_thingy.core.spec import SpecNode
+    from imap_thingy.report import FilterReport, FolderReport
 
 
 class Folder:
@@ -44,7 +48,7 @@ class Folder:
         self,
         filter_or_filters: Filter | Iterable[Filter],
         dry_run: bool = False,
-    ) -> None:
+    ) -> FolderReport:
         """Run one or more filters on this folder using a shared IMAP connection.
 
         A single IMAP connection is opened and this folder is selected once per
@@ -64,6 +68,41 @@ class Folder:
         needed and kept in memory until evicted. Messages that were acted on
         are evicted after each action and may be fetched again later in the
         same run if selected by another filter.
+
+        A dry run selects the folder read-only and applies no action. Its filters
+        all see the folder as it is, so a message an earlier filter would have
+        moved can also be reported by a later one.
+
+        Returns a report (see :mod:`imap_thingy.report`): per filter its spec,
+        the matched messages (UID, From, Subject, Date, fetched as ENVELOPE)
+        and whether its action was executed. An exception from the server or an
+        action propagates; the report of the filters before it is then lost
+        (``run_into`` keeps it).
+        """
+        report = self.new_report(dry_run)
+        self.run_into(report, filter_or_filters, dry_run=dry_run)
+        return report
+
+    def new_report(self, dry_run: bool) -> FolderReport:
+        """Return an empty report for a run of this folder."""
+        return {
+            "account": self.account.name,
+            "folder": list(self.path.segments),
+            "dry_run": dry_run,
+            "filters": [],
+            "error": None,
+        }
+
+    def run_into(
+        self,
+        report: FolderReport,
+        filter_or_filters: Filter | Iterable[Filter],
+        *,
+        dry_run: bool,
+    ) -> None:
+        """Like run(), appending each filter's report to report as soon as it finishes.
+
+        For callers that need the partial report when the run raises.
         """
         filters = (
             [filter_or_filters]
@@ -72,12 +111,12 @@ class Folder:
         )
         if not filters:
             return
-        conn = self.connect()
+        conn = self.connect(readonly=dry_run)
         fetched: dict[int, Message] = {}
         self.log.info("running %s filter(s)", len(filters))
         try:
             for f in filters:
-                self._run_one(f, dry_run, conn, fetched)
+                report["filters"].append(self._run_one(f, dry_run, conn, fetched))
         finally:
             try:
                 conn.logout()
@@ -87,7 +126,18 @@ class Folder:
 
     def _run_one(
         self, f: Filter, dry_run: bool, conn: IMAPClient, fetched: dict[int, Message]
-    ) -> None:
+    ) -> FilterReport:
+        spec: SpecNode | None
+        try:
+            spec = f.to_spec()
+        except NotSerializableError:
+            spec = None
+        result: FilterReport = {
+            "spec": spec,
+            "action": repr(f.action) if spec is not None else str(f.action),
+            "matched": [],
+            "executed": False,
+        }
         selected_msg_ids = search_mail(conn, f.criterion.imap_query)
         if f.criterion.is_efficient and selected_msg_ids:
             self.log.debug(
@@ -119,6 +169,7 @@ class Folder:
                 )
             selected_msg_ids = list(f.criterion.select(messages_this).keys())
         if selected_msg_ids:
+            result["matched"] = summarize_mail(conn, selected_msg_ids)
             _sample_size = 10
             _sample = selected_msg_ids[:_sample_size]
             _truncated = (
@@ -145,6 +196,7 @@ class Folder:
                     delimiter=self.account.delimiter,
                 )
                 self.log.info("executed %s", f.action)
+                result["executed"] = True
                 evicted_count = 0
                 for i in selected_msg_ids:
                     if fetched.pop(i, None) is not None:
@@ -157,6 +209,7 @@ class Folder:
                     )
         else:
             self.log.debug("no messages matched for action %s", f.action)
+        return result
 
     def __truediv__(self, path: str) -> Folder:
         return Folder(self.account, (self.path / path))

@@ -20,6 +20,11 @@ if TYPE_CHECKING:
     from tests.conftest import MockEMailAccount
 
 
+def _body_fetches(conn: MagicMock) -> int:
+    """Count the message-body fetches (the report's ENVELOPE fetches are not counted)."""
+    return sum(1 for c in conn.fetch.call_args_list if c.args[1] == ["BODY.PEEK[]", "FLAGS"])
+
+
 def test_readme_imports_and_usage() -> None:
     """README example imports and filter construction work."""
     from imap_thingy.accounts import Path, accounts_from_json
@@ -141,7 +146,7 @@ class TestFilter:
         )
         folder.run(filter_obj, dry_run=False)
 
-        conn.fetch.assert_called_once()
+        assert _body_fetches(conn) == 1
         conn.move.assert_called_once_with([1], "Personal.Health")
 
     def test_from_and_subject_is_not_imap_only_efficient_path(
@@ -164,5 +169,5 @@ class TestFilter:
         with patch.object(filter_obj.action, "execute", new_callable=MagicMock) as mock_execute:
             folder.run(filter_obj, dry_run=False)
 
-        conn.fetch.assert_called_once()
+        assert _body_fetches(conn) == 1
         mock_execute.assert_called_once_with(conn, [1], delimiter=mock_account.delimiter)

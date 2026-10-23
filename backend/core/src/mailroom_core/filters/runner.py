@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from types import FrameType
 
     from imap_thingy.idle_monitor import IdleResponse
+    from imap_thingy.report import FolderReport
 
 Rules = list[tuple[Folder, list[Filter]]]
 """Filters grouped by the folder they run on, in order."""
@@ -32,35 +33,52 @@ def starred_only(rules: Rules) -> Rules:
     return out
 
 
-def run_rules(rules: Rules, *, dry_run: bool, parallel: bool = False) -> None:
-    """Run filters for each (folder, filters) group.
+class RunRulesError(RuntimeError):
+    """Raised by ``run_rules(parallel=True)`` when folders failed; carries every folder's report.
 
-    Sequential by default. With parallel=True each folder runs on its own thread; every
-    folder runs even if others fail, then a single RuntimeError lists the failures.
+    ``reports`` has one entry per rule group, in order: failed folders have ``error`` set and
+    the reports of the filters that finished before the failure.
+    """
+
+    def __init__(self, message: str, reports: list[FolderReport]) -> None:
+        """Build the error from its message and the run's reports."""
+        super().__init__(message)
+        self.reports = reports
+
+
+def run_rules(rules: Rules, *, dry_run: bool, parallel: bool = False) -> list[FolderReport]:
+    """Run filters for each (folder, filters) group and return each folder's report, in order.
+
+    Sequential by default: the first failure propagates as raised by ``Folder.run``. With
+    parallel=True each folder runs on its own thread; every folder runs even if others fail,
+    then a single :class:`RunRulesError` (a RuntimeError) lists the failures and carries all
+    the reports, the failed folders' with ``error`` set.
     """
     if not parallel:
-        for folder, filters in rules:
-            folder.run(filters, dry_run=dry_run)
-        return
+        return [folder.run(filters, dry_run=dry_run) for folder, filters in rules]
     if not rules:
-        return
+        return []
+    reports = [folder.new_report(dry_run) for folder, _ in rules]
     failures: list[tuple[Folder, BaseException]] = []
     with ThreadPoolExecutor(max_workers=len(rules)) as executor:
         futures = {
-            executor.submit(folder.run, filters, dry_run=dry_run): (folder, filters)
-            for folder, filters in rules
+            executor.submit(folder.run_into, report, filters, dry_run=dry_run): (folder, report)
+            for (folder, filters), report in zip(rules, reports, strict=True)
         }
         for future in as_completed(futures):
-            folder, _ = futures[future]
+            folder, report = futures[future]
             try:
                 future.result()
             except BaseException as exc:
                 failures.append((folder, exc))
+                report["error"] = str(exc) or type(exc).__name__
                 log.exception("%s: rule run failed", folder)
     if failures:
-        raise RuntimeError(
-            f"{len(failures)} folder(s) failed: " + ", ".join(f"{f!s}: {e!s}" for f, e in failures)
+        raise RunRulesError(
+            f"{len(failures)} folder(s) failed: " + ", ".join(f"{f!s}: {e!s}" for f, e in failures),
+            reports,
         )
+    return reports
 
 
 def _new_mail_handler(

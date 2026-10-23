@@ -1,11 +1,26 @@
 """Tests for Folder (path + account) and run API."""
 
+import json
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
+import pytest
+from imapclient.exceptions import IMAPClientError
+from imapclient.response_types import Address, Envelope
+
 from imap_thingy.accounts import Account, Folder, Path
 from imap_thingy.core import Message
-from imap_thingy.filters import Anything, Filter, MarkAsRead, MoveTo, SubjectMatches
+from imap_thingy.filters import (
+    Action,
+    Anything,
+    Filter,
+    FromIs,
+    MarkAsRead,
+    MoveTo,
+    SubjectMatches,
+)
+from imap_thingy.get_mail import summarize_mail
 
 if TYPE_CHECKING:
     from tests.conftest import MockEMailAccount
@@ -192,3 +207,163 @@ class TestFolderRun:
         assert len(fetch_calls) == 2
         assert fetch_calls[0] == [1, 2, 3]
         assert fetch_calls[1] == [2, 3, 4]
+
+
+_ENVELOPE_DATE = datetime(2026, 5, 4, 12, 30)  # noqa: DTZ001 -- imapclient returns naive local times
+_ENVELOPE_DATE_UTC = _ENVELOPE_DATE.astimezone(UTC).isoformat()
+
+
+def _envelope(subject: bytes, name: bytes | None, mailbox: bytes, host: bytes) -> Envelope:
+    return Envelope(
+        date=_ENVELOPE_DATE,
+        subject=subject,
+        from_=(Address(name, None, mailbox, host),),
+        sender=None,
+        reply_to=None,
+        to=None,
+        cc=None,
+        bcc=None,
+        in_reply_to=b"",
+        message_id=b"",
+    )
+
+
+class TestFolderReport:
+    """Test the report returned by folder.run()."""
+
+    def _conn(self, account: MockEMailAccount, uids: bytes) -> MagicMock:
+        conn: MagicMock = account.connect.return_value
+        conn._raw_command_untagged = MagicMock(return_value=[uids])
+        conn.fetch = MagicMock(
+            return_value={
+                1: {b"ENVELOPE": _envelope(b"Hello", b"Ann", b"ann", b"example.com")},
+                2: {b"ENVELOPE": _envelope(b"Again", None, b"bob", b"example.com")},
+            }
+        )
+        return conn
+
+    def test_real_run_reports_matches_and_execution(self, mock_account: MockEMailAccount) -> None:
+        conn = self._conn(mock_account, b"1 2")
+        f = Filter(FromIs("ann@example.com"), MoveTo(Path("Dest")))
+        report = (mock_account / "INBOX").run(f, dry_run=False)
+
+        conn.select_folder.assert_called_once_with("INBOX", readonly=False)
+        conn.move.assert_called_once_with([1, 2], "Dest")
+        assert report == {
+            "account": "test_account",
+            "folder": ["INBOX"],
+            "dry_run": False,
+            "filters": [
+                {
+                    "spec": f.to_spec(),
+                    "action": "MoveTo(folder=['Dest'])",
+                    "matched": [
+                        {
+                            "uid": 1,
+                            "from": "Ann <ann@example.com>",
+                            "subject": "Hello",
+                            "date": _ENVELOPE_DATE_UTC,
+                        },
+                        {
+                            "uid": 2,
+                            "from": "bob@example.com",
+                            "subject": "Again",
+                            "date": _ENVELOPE_DATE_UTC,
+                        },
+                    ],
+                    "executed": True,
+                }
+            ],
+            "error": None,
+        }
+        assert json.loads(json.dumps(report)) == report
+
+    def test_dry_run_selects_read_only_and_executes_nothing(
+        self, mock_account: MockEMailAccount
+    ) -> None:
+        conn = self._conn(mock_account, b"1")
+        report = (mock_account / "INBOX").run(Filter(Anything(), MoveTo(Path("D"))), dry_run=True)
+
+        conn.select_folder.assert_called_once_with("INBOX", readonly=True)
+        conn.move.assert_not_called()
+        assert report["dry_run"] is True
+        (filter_report,) = report["filters"]
+        assert [m["uid"] for m in filter_report["matched"]] == [1]
+        assert filter_report["executed"] is False
+
+    def test_no_match_fetches_no_envelope(self, mock_account: MockEMailAccount) -> None:
+        conn = self._conn(mock_account, b"")
+        report = (mock_account / "INBOX").run(Filter(Anything(), MarkAsRead()), dry_run=False)
+
+        conn.fetch.assert_not_called()
+        assert report["filters"][0]["matched"] == []
+        assert report["filters"][0]["executed"] is False
+
+    def test_custom_filter_has_no_spec(self, mock_account: MockEMailAccount) -> None:
+        self._conn(mock_account, b"1")
+        action = Action(lambda conn, ids, *, delimiter: None, "custom")
+        report = (mock_account / "INBOX").run(Filter(Anything(), action), dry_run=False)
+
+        assert report["filters"][0]["spec"] is None
+        assert report["filters"][0]["action"] == "custom"
+        assert report["filters"][0]["executed"] is True
+
+    def test_envelope_fetch_failure_does_not_block_action(
+        self, mock_account: MockEMailAccount
+    ) -> None:
+        conn = self._conn(mock_account, b"1")
+        conn.fetch.side_effect = IMAPClientError("FETCH failed")
+        report = (mock_account / "INBOX").run(Filter(Anything(), MoveTo(Path("D"))), dry_run=False)
+
+        conn.move.assert_called_once_with([1], "D")
+        assert report["filters"][0]["matched"] == [
+            {"uid": 1, "from": None, "subject": None, "date": None}
+        ]
+        assert report["filters"][0]["executed"] is True
+
+    def test_run_into_keeps_finished_filters_on_failure(
+        self, mock_account: MockEMailAccount
+    ) -> None:
+        conn = self._conn(mock_account, b"1")
+        conn.move.side_effect = OSError("connection lost")
+        folder = mock_account / "INBOX"
+        report = folder.new_report(dry_run=False)
+        first = Filter(Anything(), MarkAsRead())
+
+        with pytest.raises(OSError, match="connection lost"):
+            folder.run_into(report, [first, Filter(Anything(), MoveTo(Path("D")))], dry_run=False)
+
+        assert [r["spec"] for r in report["filters"]] == [first.to_spec()]
+        conn.logout.assert_called_once()
+
+    def test_empty_filters_report(self, mock_account: MockEMailAccount) -> None:
+        report = (mock_account / "INBOX").run([], dry_run=False)
+
+        mock_account.connect.assert_not_called()
+        assert report["filters"] == []
+
+
+class TestSummarizeMail:
+    """Test summarize_mail's header decoding."""
+
+    def test_decodes_encoded_words_and_keeps_missing(self) -> None:
+        conn = MagicMock()
+        conn.fetch.return_value = {
+            7: {
+                b"ENVELOPE": _envelope(
+                    b"=?utf-8?q?Caff=C3=A8?=", b"=?utf-8?q?Jos=C3=A9?=", b"jose", b"example.com"
+                )
+            }
+        }
+        summaries = summarize_mail(conn, [7, 8])
+
+        conn.fetch.assert_called_once_with([7, 8], ["ENVELOPE"])
+        assert summaries == [
+            {
+                "uid": 7,
+                "from": "José <jose@example.com>",
+                "subject": "Caffè",
+                "date": _ENVELOPE_DATE_UTC,
+            },
+            {"uid": 8, "from": None, "subject": None, "date": None},
+        ]

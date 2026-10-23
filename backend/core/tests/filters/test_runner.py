@@ -11,10 +11,11 @@ import pytest
 
 from imap_thingy.accounts import Folder, Path
 from imap_thingy.filters import Filter, FromIs, IsStarred, MarkAsRead, MoveTo, Unstar
-from imap_thingy.runner import Rules, monitor, run_rules, starred_only
+from imap_thingy.runner import Rules, RunRulesError, monitor, run_rules, starred_only
 
 if TYPE_CHECKING:
     from imap_thingy.idle_monitor import IdleResponse
+    from imap_thingy.report import FolderReport
     from tests.conftest import MockEMailAccount
 
 
@@ -31,10 +32,12 @@ class TestRunRules:
 
     def test_sequential_runs_each_folder_in_order(self, mock_account: MockEMailAccount) -> None:
         rules = _rules(mock_account)
-        with patch.object(Folder, "run", autospec=True) as run:
-            run_rules(rules, dry_run=True)
+        results = [f.new_report(True) for f, _ in rules]
+        with patch.object(Folder, "run", autospec=True, side_effect=results) as run:
+            reports = run_rules(rules, dry_run=True)
         assert [c.args for c in run.call_args_list] == [(f, fs) for f, fs in rules]
         assert all(c.kwargs == {"dry_run": True} for c in run.call_args_list)
+        assert all(r is e for r, e in zip(reports, results, strict=True))
 
     def test_sequential_stops_at_first_failure(self, mock_account: MockEMailAccount) -> None:
         rules = _rules(mock_account)
@@ -46,14 +49,16 @@ class TestRunRules:
 
     def test_parallel_runs_every_folder(self, mock_account: MockEMailAccount) -> None:
         rules = _rules(mock_account)
-        with patch.object(Folder, "run", autospec=True) as run:
-            run_rules(rules, dry_run=False, parallel=True)
+        with patch.object(Folder, "run_into", autospec=True) as run:
+            reports = run_rules(rules, dry_run=False, parallel=True)
         assert sorted(c.args[0].imap_name() for c in run.call_args_list) == [
             "INBOX",
             "Lists",
             "Spam",
         ]
         assert all(c.kwargs == {"dry_run": False} for c in run.call_args_list)
+        assert [r["folder"] for r in reports] == [["INBOX"], ["Lists"], ["Spam"]]
+        assert all(r["error"] is None and r["dry_run"] is False for r in reports)
 
     def test_parallel_failure_does_not_stop_other_folders(
         self, mock_account: MockEMailAccount
@@ -61,21 +66,30 @@ class TestRunRules:
         rules = _rules(mock_account)
         ran: list[str] = []
 
-        def fake_run(folder: Folder, filters: list[Filter], *, dry_run: bool) -> None:
+        def fake_run(
+            folder: Folder, report: FolderReport, filters: list[Filter], *, dry_run: bool
+        ) -> None:
             ran.append(folder.imap_name())
+            report["filters"].append(
+                {"spec": None, "action": "a", "matched": [], "executed": False}
+            )
             if folder.imap_name() == "Lists":
                 raise OSError("connection lost")
 
         with (
-            patch.object(Folder, "run", autospec=True, side_effect=fake_run),
-            pytest.raises(RuntimeError, match=r"^1 folder\(s\) failed: ") as excinfo,
+            patch.object(Folder, "run_into", autospec=True, side_effect=fake_run),
+            pytest.raises(RunRulesError, match=r"^1 folder\(s\) failed: ") as excinfo,
         ):
             run_rules(rules, dry_run=False, parallel=True)
+        assert isinstance(excinfo.value, RuntimeError)
         assert sorted(ran) == ["INBOX", "Lists", "Spam"]
         assert "test_account.Lists: connection lost" in str(excinfo.value)
+        reports = excinfo.value.reports
+        assert [r["error"] for r in reports] == [None, "connection lost", None]
+        assert all(len(r["filters"]) == 1 for r in reports)
 
     def test_parallel_empty_rules(self) -> None:
-        run_rules([], dry_run=False, parallel=True)
+        assert run_rules([], dry_run=False, parallel=True) == []
 
 
 class TestStarredOnly:
