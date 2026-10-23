@@ -2,7 +2,8 @@
 
 import signal
 import threading
-from collections.abc import Callable
+import time
+from collections.abc import Callable, Iterator
 from types import FrameType
 from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
@@ -11,12 +12,21 @@ import pytest
 
 from imap_thingy.accounts import Folder, Path
 from imap_thingy.filters import Filter, FromIs, IsStarred, MarkAsRead, MoveTo, Unstar
+from imap_thingy.idle_monitor import IdleHandler, IdleMonitor
 from imap_thingy.runner import Rules, RunRulesError, monitor, run_rules, starred_only
 
 if TYPE_CHECKING:
     from imap_thingy.idle_monitor import IdleResponse
     from imap_thingy.report import FolderReport
     from tests.conftest import MockEMailAccount
+
+POLL = 0.05
+
+
+@pytest.fixture(autouse=True)
+def _fast_idle_poll() -> Iterator[None]:
+    with patch("imap_thingy.idle_monitor.IDLE_POLL", POLL):
+        yield
 
 
 def _rules(account: MockEMailAccount) -> Rules:
@@ -163,3 +173,106 @@ class TestMonitor:
         assert set(handlers) == {signal.SIGTERM, signal.SIGINT}
         run.assert_called_once_with(folder, filters, dry_run=True)
         conn.logout.assert_called()
+
+    def test_runs_in_a_thread_until_stop_is_set(self, mock_account: MockEMailAccount) -> None:
+        folder = mock_account / "INBOX"
+        filters = [Filter(FromIs("a@example.com"), MarkAsRead())]
+        conn = mock_account.connect.return_value
+        dispatched = threading.Event()
+        responses: list[IdleResponse] = [[(1, b"EXISTS")]]
+
+        def idle_check(timeout: float) -> IdleResponse:
+            if responses:
+                return responses.pop(0)
+            time.sleep(timeout)
+            return []
+
+        conn.idle_check.side_effect = idle_check
+        stop = threading.Event()
+
+        with (
+            patch.object(signal, "signal") as install,
+            patch.object(
+                Folder, "run", autospec=True, side_effect=lambda *a, **k: dispatched.set()
+            ) as run,
+        ):
+            thread = threading.Thread(
+                target=monitor,
+                args=([(folder, filters)],),
+                kwargs={"dry_run": False, "stop": stop, "install_signal_handlers": False},
+            )
+            thread.start()
+            try:
+                assert dispatched.wait(5)
+            finally:
+                stop.set()
+                thread.join(5)
+
+        assert not thread.is_alive()
+        install.assert_not_called()
+        run.assert_called_once_with(folder, filters, dry_run=False)
+        conn.logout.assert_called_once()
+
+    def test_restores_default_when_previous_handler_is_unknown(self) -> None:
+        stop = threading.Event()
+        stop.set()
+        with patch.object(signal, "signal", return_value=None) as install:
+            monitor([], dry_run=True, stop=stop)
+        restored = [c.args for c in install.call_args_list[2:]]
+        assert restored == [(signal.SIGTERM, signal.SIG_DFL), (signal.SIGINT, signal.SIG_DFL)]
+
+    def test_already_stopped_connects_nothing(self, mock_account: MockEMailAccount) -> None:
+        stop = threading.Event()
+        stop.set()
+        monitor(_rules(mock_account), dry_run=True, stop=stop, install_signal_handlers=False)
+        mock_account.connect.assert_not_called()
+
+    def test_restores_previous_signal_handlers(self, mock_account: MockEMailAccount) -> None:
+        stop = threading.Event()
+        stop.set()
+        before = {s: signal.getsignal(s) for s in (signal.SIGTERM, signal.SIGINT)}
+        monitor([], dry_run=True, stop=stop)
+        assert {s: signal.getsignal(s) for s in before} == before
+
+
+class TestIdleMonitorStop:
+    """Test that IdleMonitor.stop() returns promptly and the watcher closes its connection."""
+
+    def test_stop_is_prompt_and_closes_on_the_watcher_thread(
+        self, mock_account: MockEMailAccount
+    ) -> None:
+        conn = mock_account.connect.return_value
+        timeouts: list[float] = []
+        idling = threading.Event()
+        logout_threads: list[threading.Thread] = []
+
+        def idle_check(timeout: float) -> IdleResponse:
+            timeouts.append(timeout)
+            idling.set()
+            time.sleep(timeout)
+            return []
+
+        conn.idle_check.side_effect = idle_check
+        conn.logout.side_effect = lambda: logout_threads.append(threading.current_thread())
+        mon = IdleMonitor(mock_account / "INBOX", IdleHandler(lambda r: None)).start()
+        assert mon._thread is not None
+        try:
+            assert idling.wait(5)
+            started = time.monotonic()
+        finally:
+            mon.stop()
+            mon._thread.join(5)
+
+        assert not mon._thread.is_alive()
+        assert time.monotonic() - started < POLL + 1
+        assert max(timeouts) <= POLL
+        conn.idle_done.assert_called()
+        assert logout_threads == [mon._thread]
+
+    def test_stop_before_start_is_harmless(self, mock_account: MockEMailAccount) -> None:
+        mon = IdleMonitor(mock_account / "INBOX", IdleHandler(lambda r: None))
+        mon.stop()
+        mon.join()
+        with pytest.raises(RuntimeError, match="one-shot"):
+            mon.start()
+        mock_account.connect.assert_not_called()

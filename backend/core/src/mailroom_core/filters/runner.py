@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import logging
 import signal
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from imap_thingy.accounts import Folder
 from imap_thingy.filters import Filter, IsStarred, Unstar
@@ -91,21 +92,44 @@ def _new_mail_handler(
     return handler
 
 
-def monitor(rules: Rules, *, dry_run: bool) -> None:
-    """Run IDLE: apply each folder's filters on new mail, until SIGTERM or SIGINT."""
+def monitor(
+    rules: Rules,
+    *,
+    dry_run: bool,
+    stop: threading.Event | None = None,
+    install_signal_handlers: bool = True,
+) -> None:
+    """Run IDLE: apply each folder's filters on new mail, until stopped.
+
+    Returns once ``stop`` is set (when given) or, with ``install_signal_handlers``, on
+    SIGTERM or SIGINT; the monitors are then stopped and joined. Signal handlers can only be
+    installed from the main thread, and the previous ones are restored on return. With
+    ``install_signal_handlers=False`` it runs in any thread, stopped by setting ``stop``.
+    """
+    stop = stop if stop is not None else threading.Event()
+    previous: dict[signal.Signals, Any] = {}
     monitors: list[IdleMonitor] = []
-    for folder, filters in rules:
-        mon = IdleMonitor(folder, IdleHandler(_new_mail_handler(folder, filters, dry_run)))
-        mon.start()
-        monitors.append(mon)
+    try:
+        if install_signal_handlers:
 
-    def signal_handler(signum: int, frame: FrameType | None) -> None:
-        log.info("Exiting gracefully...")
+            def signal_handler(signum: int, frame: FrameType | None) -> None:
+                log.info("Exiting gracefully...")
+                stop.set()
+
+            for signum in (signal.SIGTERM, signal.SIGINT):
+                previous[signum] = signal.signal(signum, signal_handler)
+        for folder, filters in rules:
+            if stop.is_set():
+                break
+            mon = IdleMonitor(folder, IdleHandler(_new_mail_handler(folder, filters, dry_run)))
+            mon.start()
+            monitors.append(mon)
+        stop.wait()
+    finally:
         for m in monitors:
-            m.signal_handler(signum, frame)
-
-    signal.signal(signal.SIGTERM, signal_handler)
-    signal.signal(signal.SIGINT, signal_handler)
-
-    for m in monitors:
-        m.join()
+            m.stop()
+        for m in monitors:
+            m.join()
+        for signum, handler in previous.items():
+            # None: the previous handler was not installed from Python; fall back to the default.
+            signal.signal(signum, handler if handler is not None else signal.SIG_DFL)
