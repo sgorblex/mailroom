@@ -1,7 +1,5 @@
-# Sketch: the worker module does not exist yet; it arrives with the first background feature
-# (IMAP IDLE, index, filter runner, learning). Do not install this unit before then.
 [Unit]
-Description=Mailroom background worker
+Description=Mailroom background worker (procrastinate)
 Documentation=https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html
 
 [Container]
@@ -9,12 +7,13 @@ Image=localhost/mailroom-api:production
 Label=io.containers.autoupdate=registry
 Pod=mailroom.pod
 EnvironmentFile=-/etc/mailroom/mailroom-api.env
-# The API owns startup migrations; the worker waits for the schema instead.
-Environment=MAILROOM_RUN_STARTUP_MIGRATIONS=0
 Exec=.venv/bin/python -m mailroom.worker
+# Longer than the 60 s the worker gives its jobs to finish.
+StopTimeout=90
 
 [Service]
 Restart=always
+TimeoutStopSec=120
 
 [Install]
 # For systemctl --user, use default.target instead.

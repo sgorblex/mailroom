@@ -27,8 +27,6 @@ Mailroom is built on standalone projects, each with its own repository and check
 
 - [ ] **Accounts** — mailroom-core's `AccountStore` over its schema `core` in the app's database, sealed secrets as mailroom-core seals them,
       settings screens; dev seeding of the dev Dovecot from `mailroom_core.testing`.
-- [ ] **Worker scaffold** — procrastinate with `dev-worker` in `mise run dev`, the Quadlet
-      worker unit made real.
 
 ## Filters
 

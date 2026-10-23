@@ -17,4 +17,4 @@
 | **Dry run** | Evaluating a rule set against real mail and reporting what each filter would match and do, changing nothing. |
 | **Suggestion** | A filter proposed from a user's own triage, with its evidence; inert until that user accepts it. |
 | **Profile** | An MCP connector scope (`/mcp/<profile>`): which tool groups and accounts a client gets. mailroom-mcp's term. |
-| **Worker** | The app's background process: IDLE, indexing, filter runs, learning. Not scaffolded yet. |
+| **Worker** | The app's background process: IDLE, indexing, filter runs, learning. |

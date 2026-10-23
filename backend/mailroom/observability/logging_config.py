@@ -52,6 +52,9 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, ensure_ascii=False)
 
 
+_LIBRARY_LOGGERS = ("procrastinate",)
+"""Libraries whose records go through Mailroom's handler too (not Python's last-resort one)."""
+
 _REQUEST_ID_DISPLAY_LEN = 8
 
 _LEVEL_COLORS = {
@@ -179,6 +182,12 @@ def configure_logging(*, force: bool = False) -> None:
         handler.setFormatter(HumanFormatter(use_color=use_color))
     mailroom_log.addHandler(handler)
     mailroom_log.propagate = False
+    for name in _LIBRARY_LOGGERS:
+        library_log = logging.getLogger(name)
+        library_log.handlers.clear()
+        library_log.setLevel(max(_log_level(), logging.INFO))
+        library_log.addHandler(handler)
+        library_log.propagate = False
     _CONFIGURED = True
 
 
@@ -188,3 +197,7 @@ def reset_logging_configuration_for_tests() -> None:
     mailroom_log = logging.getLogger("mailroom")
     mailroom_log.handlers.clear()
     mailroom_log.propagate = True
+    for name in _LIBRARY_LOGGERS:
+        library_log = logging.getLogger(name)
+        library_log.handlers.clear()
+        library_log.propagate = True

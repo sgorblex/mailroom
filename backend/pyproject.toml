@@ -12,6 +12,8 @@ dependencies = [
   # `mise run deps-local` swaps these two for local editable checkouts (scripts/deps.sh).
   "imap-thingy>=0.7.0",
   "mailroom-core>=0.1.0",
+  # The worker's job queue. Bounded to one minor: see nonfunctional-requirements.md (procrastinate).
+  "procrastinate>=3.10,<3.11",
   "psycopg[binary]>=3.2",
   "python-dotenv>=1.0",
   "sqlalchemy>=2.0",

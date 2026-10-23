@@ -29,6 +29,13 @@ def normalize_sync_database_url(raw: str) -> str:
     return raw
 
 
+def libpq_database_url(database_url: str) -> str:
+    """A database URL as libpq (psycopg itself) takes it: without SQLAlchemy's ``+psycopg``."""
+    if database_url.startswith("postgresql+psycopg://"):
+        return f"postgresql://{database_url.removeprefix('postgresql+psycopg://')}"
+    return database_url
+
+
 def get_sync_database_url() -> str:
     load_local_environment()
     raw = os.environ.get("DATABASE_URL", "").strip()

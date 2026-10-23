@@ -125,3 +125,24 @@ def applied_revisions(engine: Engine) -> set[str]:
             opts={"version_table": ALEMBIC_VERSION_TABLE, "version_table_schema": APP_SCHEMA},
         )
         return set(context.get_current_heads())
+
+
+def wait_for_head(engine: Engine) -> None:
+    """Block until the database is at this checkout's head, for a process that never migrates
+    (the worker) while another (the API) does. Polls as the connectivity wait does."""
+    heads = expected_heads()
+    max_attempts, retry_delay_sec = connectivity_retry_settings()
+    with interruptible_connectivity_wait():
+        for attempt in range(1, max_attempts + 1):
+            if applied_revisions(engine) == heads:
+                return
+            logger.info(
+                "Database not migrated to head yet (attempt %s/%s); retrying in %s s",
+                attempt,
+                max_attempts,
+                retry_delay_sec,
+            )
+            if retry_delay_sec > 0:
+                time.sleep(retry_delay_sec)
+    message = f"database not at head {sorted(heads)} after {max_attempts} attempt(s)"
+    raise RuntimeError(message)

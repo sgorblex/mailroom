@@ -7,6 +7,7 @@ Engineering baseline for Mailroom. Product scope: [`../REQUIREMENTS.md`](../REQU
 | Area | Choice |
 | --- | --- |
 | Backend | Python 3.14+ (dev pin 3.15 via mise), FastAPI, SQLAlchemy 2 (sync) + psycopg 3, Alembic, uv |
+| Worker | procrastinate (psycopg 3) on the app's database, `python -m mailroom.worker` |
 | Web | React 19, Vite, TanStack Router (code-based routes), Tailwind 4 + shadcn (`web/components.json`), i18next, Zod at the API boundary, ESLint `strictTypeChecked` (no Prettier) |
 | Database | PostgreSQL 18 |
 | Tests | pytest (+ xdist, one database per worker cloned from the migrated `mailroom_test`), Vitest (`node` and `jsdom` projects) |
@@ -104,12 +105,20 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   table is **`app.alembic_version`**, so mailroom-mcp's own history (schema `mcp`) can share the
   database without either seeing the other's. `alembic/env.py` creates the schema before Alembic
   writes its version table; autogenerate only looks at `app`.
+- **procrastinate**'s tables live in schema **`procrastinate`**, out of autogenerate. A revision
+  applies procrastinate's own `schema.sql`, frozen beside it (`alembic/versions/sql/`); a later
+  procrastinate release, whose minor `pyproject.toml` bounds, comes with a revision applying its
+  migration files. The worker's connections put that schema on their `search_path`.
 - On the production host the database and role are **`mailroom`**; standalone mailroom-mcp uses **`mailroom_mcp`**.
 - Revisions are **timestamped** (`YYYYMMDDHHMM`, file `<rev>_<slug>.py`) and form one linear chain.
 - Every revision **downgrades**: `mise run check-migrations` runs upgrade → downgrade base →
   upgrade on a scratch database, locally and in CI.
 - The API migrates at startup (`MAILROOM_RUN_STARTUP_MIGRATIONS=1` in the image and in dev); run a
-  single API worker, or migrate externally before scaling.
+  single API worker, or migrate externally before scaling. The worker **never** migrates: it waits
+  until the database is at its head, then starts.
+- **One worker process** at a time: it holds a session advisory lock, and a second one exits. At
+  start it marks failed every job still `doing`, which a stopped worker left (its `lock` would hold
+  back every later job with the same lock). Stopping, it gives running jobs 60 s, then aborts them.
 - An unmerged branch's migrations are edited in place, never followed by a fixing migration;
   merged revisions are immutable.
 

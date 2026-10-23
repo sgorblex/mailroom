@@ -181,13 +181,25 @@ run = "uv run --no-sync python -m mailroom.dev.wait_for_database && uv run --no-
 MAILROOM_ENV = "development"
 MAILROOM_DEPLOY_ENV = "development"
 
+[tasks.dev-worker]
+description = "Wait for the API's migrations, then run the procrastinate worker (no reload: restart it)"
+depends = ["setup-python"]
+dir = "backend"
+run = "uv run --no-sync python -m mailroom.dev.wait_for_database && uv run --no-sync python -m mailroom.worker"
+
+[tasks.dev-worker.env]
+MAILROOM_ENV = "development"
+MAILROOM_DEPLOY_ENV = "development"
+# Long enough for dev-api to migrate a fresh database first.
+MAILROOM_STARTUP_MIGRATION_MAX_ATTEMPTS = "120"
+
 [tasks.dev-web]
 description = "Start the Vite dev server for web (127.0.0.1:5180, proxies /api to dev-api)"
 dir = "web"
 run = "pnpm run dev"
 
 [tasks.dev]
-description = "Start dev-db, dev-api and dev-web together; Ctrl+C stops them all"
+description = "Start dev-db, dev-api, dev-worker and dev-web together; Ctrl+C stops them all"
 run = "scripts/dev-all.sh"
 
 [tasks.build-container-api]

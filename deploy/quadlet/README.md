@@ -8,7 +8,7 @@ turns them into a runbook. Broader context: [`docs/deploy.md`](../../docs/deploy
 | `mailroom.pod` | Pod publishing **127.0.0.1:8080 → 8080** (nginx in `mailroom-web`, non-root). |
 | `mailroom-api.container` | FastAPI + uvicorn on **8000** inside the pod, not published. Runs `alembic upgrade head` at startup (`MAILROOM_RUN_STARTUP_MIGRATIONS=1`, the image default). |
 | `mailroom-web.container` | nginx serves the SPA and proxies `/api/` to `127.0.0.1:8000`. HTTP only; TLS terminates on the host's reverse proxy, which must append the client to `X-Forwarded-For` (login throttling keys on it). |
-| `mailroom-worker.container` | Background worker on the API image. **Placeholder**: the module arrives with the first background feature. Never migrates. |
+| `mailroom-worker.container` | procrastinate worker on the API image (`python -m mailroom.worker`), same environment file. Never migrates: it waits for the API to bring the database to head, then runs jobs. One instance only (a second exits). |
 
 Images are `localhost/mailroom-api` and `localhost/mailroom-web` (`mise run build-containers`), or
 `registry.example.org/mailroom-api` / `mailroom-web` once pushed. **Never** `mailroom`: that name is

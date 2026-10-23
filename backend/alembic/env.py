@@ -46,7 +46,8 @@ target_metadata = Base.metadata
 
 
 def _include_name(name: str | None, type_: str, parent_names: object) -> bool:
-    # Only this app's schema: mailroom-mcp's `mcp` schema has its own Alembic history.
+    # Only this app's schema: mailroom-mcp's `mcp` schema has its own Alembic history, and
+    # `procrastinate` comes from procrastinate's SQL (a revision applies it), not from models.
     if type_ == "schema":
         return name == APP_SCHEMA
     return True

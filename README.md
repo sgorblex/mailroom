@@ -13,7 +13,7 @@ in [`docs/TODO.md`](docs/TODO.md).
 
 | Part | What |
 | --- | --- |
-| `backend/` | Python 3.14+, FastAPI, SQLAlchemy 2 + psycopg 3, Alembic (schema `app`), uv; mailroom-core, imap-thingy |
+| `backend/` | Python 3.14+, FastAPI, SQLAlchemy 2 + psycopg 3, Alembic (schema `app`), procrastinate worker, uv; mailroom-core, imap-thingy |
 | `web/` | React 19, Vite, TanStack Router, Tailwind 4 + shadcn, i18next, Zod, Vitest |
 | Database | PostgreSQL 18 (`compose.yml` for dev) |
 | Images | `mailroom-api`, `mailroom-web` (Podman; Quadlet sketch in `deploy/quadlet/`) |
@@ -28,7 +28,7 @@ in [`docs/TODO.md`](docs/TODO.md).
 ```bash
 mise trust && mise install
 mise run setup        # uv sync + pnpm install
-mise run dev          # Postgres + API + Vite; Ctrl+C stops all three
+mise run dev          # Postgres + API + worker + Vite; Ctrl+C stops them all
 ```
 
 To sign in, create the first user once the database is up (`mise run migrate` if the API has not
@@ -51,9 +51,10 @@ Defaults live in `mise.toml`'s `[env]`; a root `.env` overrides them (see `.env.
 | --- | --- |
 | `setup` | Install Python and Node dependencies |
 | `deps-local` / `deps-pinned` | Swap mailroom-core and imap-thingy for local editable checkouts / back to the pinned ones |
-| `dev` | `dev-db` + `dev-api` + `dev-web` together |
+| `dev` | `dev-db` + `dev-api` + `dev-worker` + `dev-web` together |
 | `dev-db` / `dev-db-down` | Start (foreground) / stop the dev Postgres; data stays |
 | `dev-api` / `dev-web` | API with reload (migrates at startup) / Vite |
+| `dev-worker` | procrastinate worker (waits for the API's migrations; restart it after a change) |
 | `dev-mail` / `dev-mail-down` / `dev-mail-reset` | Dev Dovecot + Mailpit with a local CA (`dev/.state/`) |
 | `migrate` / `reset-db` | Alembic upgrade head / drop, recreate and migrate the dev database |
 | `create-user` | Create a user in `DATABASE_URL` (`<name> [--admin]`; the password is prompted for) |
