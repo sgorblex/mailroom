@@ -7,17 +7,19 @@ exploratory work. Once an item is done, remove it.
 ## Across the family
 
 Mailroom is built on standalone projects, each with its own repository and checklist. As of
-2026-10-18:
+2026-10-20:
 
 - **mailroom-mcp** (`../mailroom-mcp`, GitHub `sgorblex/mailroom-mcp`): the 0.3 Python port is
-  under way; `crypto` (sealed secrets, byte-compatible) is merged, `config` is next. Its own
+  under way; `crypto` (sealed secrets, byte-compatible), `config` and the `store` are ported, and
+  the store is being keyed by user (in progress). Its own
   [`docs/TODO.md`](https://github.com/sgorblex/mailroom-mcp/blob/main/docs/TODO.md) *0.3* section
   is the checklist, in dependency order, with the TypeScript tests as the parity list. The
   TypeScript server keeps running on the production host until the cutover described there.
 - **imap-thingy** (`../imap-thingy`, GitHub `sgorblex/imap-thingy`): rules as data (`to_spec()`,
   `imap_thingy.spec`) are released in 0.5.0; the runner (`imap_thingy.runner`: `run_rules`,
-  `starred_only`, the IDLE `monitor`) is released in 0.6.0. filterd switches to that import
-  and stays a personal daemon until the app replaces it.
+  `starred_only`, the IDLE `monitor`) is released in 0.6.0. Its next release adds run reports
+  (what each filter matched and did, also for a dry run), the `older_than_days` criterion, an SSL
+  context and `list_folders()` on `Account`, and a stoppable `monitor`.
 
 **The first goal is the Filters UI.** It needs all of *Foundations*, so its critical path runs
 through the mailroom-mcp port up to a tagged `mailroom-core`: the Worker
@@ -36,8 +38,9 @@ that tag.
 
 ## Filters
 
-- [ ] **Filters UI** — list, edit, dry run, enable; worker runs them only for mailboxes
-      filterd has released.
+- [ ] **Filters UI** — rule sets, filters, dry run, run now and history
+      ([`requirements/filters.md`](requirements/filters.md)); the worker runs them for accounts
+      with *Run filters* on.
 
 ## Client
 

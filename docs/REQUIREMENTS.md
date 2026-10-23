@@ -55,14 +55,17 @@ the index and live updates; tier 3 items arrive one at a time.
 
 ## Filters UI
 
-**Maturity: Planned**
+**Maturity: Current** — specified in [`requirements/filters.md`](requirements/filters.md); not
+built yet.
 
-- Lists, edits, enables and disables **imap-thingy** rules through the library's own rule
-  serialisation (imap-thingy's rule spec), per account.
-- **Dry run** against real mail before saving: which messages a rule would match and what it would
-  do.
-- Rules run in the app's worker through **imap-thingy**'s runner — only for a mailbox the
-  filterd daemon no longer acts on (never two runners on one mailbox).
+- Per account, **rule sets** of **imap-thingy** filters, one folder each, stored through the
+  library's own rule serialisation, triggered on new mail, on a schedule or by hand, optionally
+  for starred mail only.
+- **Dry run** against real mail before enabling: which messages each filter would match and what it
+  would do.
+- The worker runs them through **imap-thingy**'s runner, only for accounts whose user turned
+  **Run filters** on (off by default), one run at a time per account; each run is kept in
+  the rule set's history.
 
 ## Filter suggestions (learning)
 

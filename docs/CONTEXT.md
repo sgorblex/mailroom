@@ -24,9 +24,6 @@ Mailroom app (this repo)
   │    └─ mailroom-core   accounts, sealed secrets, IMAP/SMTP, send gate,   (same repo, own package)
   │                       rendering, audit
   └─ imap-thingy     IMAP filter library and runner (PyPI)
-
-filterd      a personal filter daemon (private), also on imap-thingy;
-                  not a dependency, and expected to be replaced by the app
 ```
 
 - **mailroom-core / mailroom-mcp** stay usable on their own: standalone, mailroom-mcp supplies its
@@ -36,12 +33,9 @@ filterd      a personal filter daemon (private), also on imap-thingy;
   `/mcp/<profile>` in its own API process. mailroom-mcp learns to serve several users in its 0.4,
   so each app user gets their own MCP ([`TODO.md`](TODO.md)). Each package keeps its own schema
   (`core`, `mcp`) and Alembic history; the app's tables live in schema `app`.
-- **filterd** is one person's own rules and daemon, not part of the family's API: the
-  reusable runner (run, IDLE monitor, starred-sort) lives in imap-thingy as `imap_thingy.runner`,
-  and the app depends on imap-thingy alone. filterd keeps running until the app's worker takes a mailbox
-  over, and only after it stops acting on that mailbox. There is never a double runner.
 - **imap-thingy** stays a general-purpose library on PyPI; the app reads and writes its rules
-  through the library's own serialisation, never a private format.
+  through the library's own serialisation, never a private format, and runs them with its runner
+  (`imap_thingy.runner`: run, IDLE monitor, starred-only).
 - **No component imports the app**, and none learns about it. A need that seems to require that is a
   design question, answered by an integration point in the lower component.
 

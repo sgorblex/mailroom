@@ -21,6 +21,7 @@ section you are changing. Workflow and *which* doc to update after a change:
 
 | Path | Role |
 | --- | --- |
+| [`requirements/filters.md`](requirements/filters.md) | Filters: rule sets, triggers, dry run, data model, API |
 | [`TODO.md`](TODO.md) | Next phases, roughly in order — not committed requirements |
 | [`IDEAS.md`](IDEAS.md) | Exploratory ideas — not scoped, not scheduled |
 | [`../deploy/quadlet/README.md`](../deploy/quadlet/README.md) | Quadlet units (sketch, not deployed) |
