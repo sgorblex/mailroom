@@ -39,8 +39,12 @@ Mailroom app (this repo)
 - **No component imports the app**, and none learns about it. A need that seems to require that is a
   design question, answered by an integration point in the lower component.
 
-Today (scaffold) the app depends on none of them yet; each dependency arrives with the first
-feature that needs it ([`TODO.md`](TODO.md)).
+The backend depends on **mailroom-core** and **imap-thingy**, both from PyPI; **mailroom-mcp** arrives
+with the MCP host ([`TODO.md`](TODO.md)). For a change that spans repositories,
+`mise run deps-local` installs local editable checkouts in their place (the siblings of the main
+checkout, or `MAILROOM_CORE_PATH` / `IMAP_THINGY_PATH`) without touching a tracked file, and
+`mise run deps-pinned` switches back. mailroom-core's pytest plugin (no-network guard, store
+fixtures) loads in the backend's tests.
 
 ## Client scope
 

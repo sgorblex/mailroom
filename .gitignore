@@ -13,3 +13,6 @@ dev/.state/
 # Agent worktrees (Claude Code `bgIsolation: worktree`) and per-machine client settings
 .claude/worktrees/
 .claude/settings.local.json
+
+# `mise run deps-local`: the local checkouts installed in place of the pinned components
+backend/.deps-local

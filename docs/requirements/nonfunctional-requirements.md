@@ -11,7 +11,7 @@ Engineering baseline for Mailroom. Product scope: [`../REQUIREMENTS.md`](../REQU
 | Database | PostgreSQL 18 |
 | Tests | pytest (+ xdist, one database per worker cloned from the migrated `mailroom_test`), Vitest (`node` and `jsdom` projects) |
 | Containers | Podman, `mailroom-api` and `mailroom-web` images; Quadlet for deploy |
-| Component family | mailroom-core, mailroom-mcp, imap-thingy — not yet dependencies ([`../CONTEXT.md`](../CONTEXT.md)) |
+| Component family | mailroom-core and imap-thingy (PyPI); mailroom-mcp not yet ([`../CONTEXT.md`](../CONTEXT.md)) |
 
 Tool pins: `mise.toml` (dev), the digest-pinned `.woodpecker/*.yaml` step images (CI), the
 Containerfiles, `backend/.python-version`, `web/package.json` `packageManager`, and

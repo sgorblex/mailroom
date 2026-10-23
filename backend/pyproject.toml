@@ -9,6 +9,9 @@ dependencies = [
   "alembic>=1.15",
   "argon2-cffi>=25.1",
   "fastapi>=0.115",
+  # `mise run deps-local` swaps these two for local editable checkouts (scripts/deps.sh).
+  "imap-thingy>=0.7.0",
+  "mailroom-core>=0.1.0",
   "psycopg[binary]>=3.2",
   "python-dotenv>=1.0",
   "sqlalchemy>=2.0",
@@ -23,6 +26,9 @@ dependencies = [
 dev = [
   # Starlette's TestClient imports httpx; Starlette does not declare it as a dependency.
   "httpx>=0.28",
+  # mailroom_core.testing's dependencies; its pytest plugin (no-network guard, store fixtures)
+  # loads from the base package.
+  "mailroom-core[testing]",
   # Bounded to one minor for the same reason as `ruff` below.
   "mypy>=2.4,<2.5",
   "pytest>=8.3",

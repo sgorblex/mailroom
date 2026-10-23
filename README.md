@@ -13,7 +13,7 @@ in [`docs/TODO.md`](docs/TODO.md).
 
 | Part | What |
 | --- | --- |
-| `backend/` | Python 3.14+, FastAPI, SQLAlchemy 2 + psycopg 3, Alembic (schema `app`), uv |
+| `backend/` | Python 3.14+, FastAPI, SQLAlchemy 2 + psycopg 3, Alembic (schema `app`), uv; mailroom-core, imap-thingy |
 | `web/` | React 19, Vite, TanStack Router, Tailwind 4 + shadcn, i18next, Zod, Vitest |
 | Database | PostgreSQL 18 (`compose.yml` for dev) |
 | Images | `mailroom-api`, `mailroom-web` (Podman; Quadlet sketch in `deploy/quadlet/`) |
@@ -50,6 +50,7 @@ Defaults live in `mise.toml`'s `[env]`; a root `.env` overrides them (see `.env.
 | Task | Does |
 | --- | --- |
 | `setup` | Install Python and Node dependencies |
+| `deps-local` / `deps-pinned` | Swap mailroom-core and imap-thingy for local editable checkouts / back to the pinned ones |
 | `dev` | `dev-db` + `dev-api` + `dev-web` together |
 | `dev-db` / `dev-db-down` | Start (foreground) / stop the dev Postgres; data stays |
 | `dev-api` / `dev-web` | API with reload (migrates at startup) / Vite |

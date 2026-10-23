@@ -28,7 +28,8 @@ _.file = ".env"
 hide = true
 description = "Install Python dependencies"
 dir = "backend"
-run = "uv sync --all-groups"
+# `uv sync`, leaving the local checkouts in place if `deps-local` chose them (scripts/deps.sh).
+run = "../scripts/deps.sh sync"
 
 [tasks.setup-node-web]
 hide = true
@@ -41,6 +42,14 @@ run = "pnpm install --dir web --config.confirmModulesPurge=false"
 [tasks.setup]
 description = "Install Python and Node dependencies"
 depends = ["setup-python", "setup-node-web"]
+
+[tasks.deps-local]
+description = "Use local editable mailroom-core and imap-thingy (../mailroom-mcp, ../imap-thingy; see scripts/deps.sh)"
+run = "scripts/deps.sh local"
+
+[tasks.deps-pinned]
+description = "Back to the mailroom-core and imap-thingy sources pinned in backend/pyproject.toml"
+run = "scripts/deps.sh pinned"
 
 [tasks.dev-db]
 description = "Start local PostgreSQL (containerized, 127.0.0.1:5434) in the foreground"
@@ -64,8 +73,9 @@ run = "scripts/dev-mail.sh reset"
 
 [tasks.migrate]
 description = "Apply Alembic migrations (upgrade head) to DATABASE_URL"
+depends = ["setup-python"]
 dir = "backend"
-run = "uv run python -m mailroom.dev.run_migrate"
+run = "uv run --no-sync python -m mailroom.dev.run_migrate"
 
 [tasks.reset-db]
 description = "Drop and recreate DATABASE_URL's database, then re-apply Alembic migrations — EMPTIES ALL DATA"
@@ -163,8 +173,9 @@ run = "true"
 
 [tasks.dev-api]
 description = "Wait for Postgres, then start FastAPI (uvicorn, 127.0.0.1:8100, migrates at startup)"
+depends = ["setup-python"]
 dir = "backend"
-run = "uv run python -m mailroom.dev.wait_for_database && uv run python -m mailroom.dev.run_uvicorn"
+run = "uv run --no-sync python -m mailroom.dev.wait_for_database && uv run --no-sync python -m mailroom.dev.run_uvicorn"
 
 [tasks.dev-api.env]
 MAILROOM_ENV = "development"
