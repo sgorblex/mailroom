@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-import re
 from typing import TYPE_CHECKING
 
+import regex
+
 from imap_thingy.core import Message, Q
+from imap_thingy.core.pattern import Pattern
 from imap_thingy.filters.criteria.criterion import Criterion
 
 if TYPE_CHECKING:
@@ -66,10 +68,9 @@ class BodyContains(Criterion):
 class BodyMatches(Criterion):
     r"""Matches messages whose body matches the regex pattern somewhere.
 
-    Unlike :class:`SubjectMatches` and address ``*Matches`` criteria, which use
-    :func:`~imap_thingy.utils.matches` (``re.fullmatch`` on a short string),
-    this criterion uses :func:`re.search` with :data:`re.DOTALL` so patterns can
-    span lines in a typical mail body.
+    Unlike :class:`SubjectMatches` and address ``*Matches`` criteria, which match
+    the whole of a short string, this criterion searches the body with ``DOTALL``
+    so patterns can span lines in a typical mail body.
 
     Requires fetching message data (not expressible as a single IMAP regex);
     ``imap_query`` defaults to all messages unless combined with other criteria.
@@ -85,8 +86,9 @@ class BodyMatches(Criterion):
                 (plain parts, else HTML), with DOTALL enabled.
 
         """
+        compiled = Pattern(pattern, regex.DOTALL)
 
         def func(msg: Message) -> bool:
-            return bool(re.search(pattern, _body_text(msg.parsed), flags=re.DOTALL))
+            return compiled.search(_body_text(msg.parsed))
 
         super().__init__(func)

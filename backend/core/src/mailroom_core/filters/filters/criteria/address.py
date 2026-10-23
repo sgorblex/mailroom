@@ -3,8 +3,8 @@
 from typing import TYPE_CHECKING
 
 from imap_thingy.core import Message, Q
+from imap_thingy.core.pattern import Pattern
 from imap_thingy.filters.criteria.criterion import Criterion
-from imap_thingy.utils import matches
 
 if TYPE_CHECKING:
     from mailparser.core import MailParser
@@ -77,10 +77,11 @@ class FromMatches(Criterion):
             pattern: Regular expression pattern to match against email addresses.
 
         """
+        compiled = Pattern(pattern)
 
         def func(msg: Message) -> bool:
             return any(
-                matches(pattern, email) for name, email in _extract_emails(msg.parsed, "from_")
+                compiled.fullmatch(email) for name, email in _extract_emails(msg.parsed, "from_")
             )
 
         super().__init__(func)
@@ -98,10 +99,11 @@ class FromMatchesName(Criterion):
             pattern: Regular expression pattern to match against sender names.
 
         """
+        compiled = Pattern(pattern)
 
         def func(msg: Message) -> bool:
             return any(
-                matches(pattern, name) for name, email in _extract_emails(msg.parsed, "from_")
+                compiled.fullmatch(name) for name, email in _extract_emails(msg.parsed, "from_")
             )
 
         super().__init__(func)
@@ -215,9 +217,12 @@ class CcMatches(Criterion):
             pattern: Regular expression pattern to match against CC addresses.
 
         """
+        compiled = Pattern(pattern)
 
         def func(msg: Message) -> bool:
-            return any(matches(pattern, email) for name, email in _extract_emails(msg.parsed, "cc"))
+            return any(
+                compiled.fullmatch(email) for name, email in _extract_emails(msg.parsed, "cc")
+            )
 
         super().__init__(func)
 
@@ -272,10 +277,11 @@ class BccMatches(Criterion):
             pattern: Regular expression pattern to match against BCC addresses.
 
         """
+        compiled = Pattern(pattern)
 
         def func(msg: Message) -> bool:
             return any(
-                matches(pattern, email) for name, email in _extract_emails(msg.parsed, "bcc")
+                compiled.fullmatch(email) for name, email in _extract_emails(msg.parsed, "bcc")
             )
 
         super().__init__(func)
@@ -298,9 +304,12 @@ class ToMatches(Criterion):
             incl_bcc: Whether to also check BCC field (default: False).
 
         """
+        compiled = Pattern(pattern)
 
         def func(msg: Message) -> bool:
-            return any(matches(pattern, email) for name, email in _extract_emails(msg.parsed, "to"))
+            return any(
+                compiled.fullmatch(email) for name, email in _extract_emails(msg.parsed, "to")
+            )
 
         criterion = Criterion(func)
         if incl_cc:

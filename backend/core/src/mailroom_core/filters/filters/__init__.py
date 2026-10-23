@@ -1,5 +1,11 @@
 """Filter application and management: Filter, criteria, actions."""
 
+from imap_thingy.core.pattern import (
+    DEFAULT_MATCH_TIMEOUT,
+    MatchTimeoutError,
+    get_match_timeout,
+    set_match_timeout,
+)
 from imap_thingy.filters.actions import (
     Action,
     Delete,
@@ -49,6 +55,7 @@ from imap_thingy.filters.criteria import (
 from imap_thingy.filters.filter import Filter, If
 
 __all__ = [
+    "DEFAULT_MATCH_TIMEOUT",
     "Action",
     "Anything",
     "BccContains",
@@ -80,6 +87,7 @@ __all__ = [
     "MarkAsRead",
     "MarkAsUnanswered",
     "MarkAsUnread",
+    "MatchTimeoutError",
     "MoveTo",
     "NoOp",
     "OlderThan",
@@ -93,4 +101,6 @@ __all__ = [
     "ToMatches",
     "Trash",
     "Unstar",
+    "get_match_timeout",
+    "set_match_timeout",
 ]

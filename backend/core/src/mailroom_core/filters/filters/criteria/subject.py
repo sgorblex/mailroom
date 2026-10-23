@@ -1,8 +1,8 @@
 """Subject-based email filtering criteria."""
 
 from imap_thingy.core import Message, Q
+from imap_thingy.core.pattern import Pattern
 from imap_thingy.filters.criteria.criterion import Criterion
-from imap_thingy.utils import matches
 
 
 class SubjectContains(Criterion):
@@ -55,8 +55,9 @@ class SubjectMatches(Criterion):
             pattern: Regular expression pattern to match against the subject.
 
         """
+        compiled = Pattern(pattern)
 
         def func(msg: Message) -> bool:
-            return matches(pattern, msg.parsed.subject or "")
+            return compiled.fullmatch(msg.parsed.subject or "")
 
         super().__init__(func)
