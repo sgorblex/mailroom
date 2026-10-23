@@ -69,3 +69,7 @@ Defaults live in `mise.toml`'s `[env]`; a root `.env` overrides them (see `.env.
 ## Documentation
 
 [`docs/README.md`](docs/README.md) — what to read, in which order.
+
+## License
+
+[GPL v3](https://www.gnu.org/licenses/gpl-3.0.en.html) or later, like the rest of the Mailroom family. See [`LICENSE`](LICENSE).

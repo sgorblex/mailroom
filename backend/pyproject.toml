@@ -4,6 +4,7 @@ version = "0.0.0"
 description = "Mailroom backend: mail client, filters and MCP host (API and domain logic)"
 readme = "README.md"
 requires-python = ">=3.14"
+license = "GPL-3.0-or-later"
 dependencies = [
   "alembic>=1.15",
   "argon2-cffi>=25.1",
