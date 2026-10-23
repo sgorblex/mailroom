@@ -162,7 +162,7 @@ def test_leave_out_an_account_whose_stored_secret_is_missing_or_does_not_open_sa
 
 
 def test_are_written_and_cleared_with_the_settings_in_one_save(core_engine) -> None:
-    store = AccountStore(core_engine)
+    store = AccountStore(core_engine, "u")
     store.save_settings({}, 0, SecretChanges(set={"a": b"x"}))
     assert store.secrets() == {"a": b"x"}
     store.save_settings({}, 1, SecretChanges(remove=["a"]))

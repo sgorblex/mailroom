@@ -12,6 +12,7 @@ from mailroom_core.store.accounts import (
     SettingsBusy,
     StoredSettings,
     current_settings,
+    forget_user,
     write_settings,
 )
 from mailroom_core.store.database import (
@@ -22,7 +23,7 @@ from mailroom_core.store.database import (
     run_migrations,
     upgrade,
 )
-from mailroom_core.store.schema import CORE_SCHEMA, NAMING_CONVENTION
+from mailroom_core.store.schema import CORE_SCHEMA, NAMING_CONVENTION, STANDALONE_USER
 
 __all__ = [
     "CORE_MIGRATIONS",
@@ -30,6 +31,7 @@ __all__ = [
     "LOCK_TIMEOUT",
     "NAMING_CONVENTION",
     "SETTINGS_HISTORY",
+    "STANDALONE_USER",
     "AccountStore",
     "Json",
     "RevisionConflict",
@@ -41,6 +43,7 @@ __all__ = [
     "current_settings",
     "database_engine",
     "downgrade",
+    "forget_user",
     "migrate",
     "run_migrations",
     "upgrade",
