@@ -10,7 +10,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 
 from mailroom.accounts.store import core_user_id, load_accounts, remove_account
-from mailroom.models import AccountFilterSettings
+from mailroom.models import AccountFilterSettings, RuleSet
 
 if TYPE_CHECKING:
     from mailroom_core.store import AccountStore
@@ -51,6 +51,8 @@ def forget_account(store: AccountStore, db: Session, user_id: int, account_id: s
             AccountFilterSettings.account_id == account_id,
         )
     )
+    # Its rule sets go too, with their filters and runs; a new account may reuse the id.
+    db.execute(delete(RuleSet).where(RuleSet.user_id == user_id, RuleSet.account_id == account_id))
     db.commit()
     remove_account(store, account_id)
 
@@ -61,4 +63,5 @@ def forget_user_accounts(db: Session, user_id: int) -> None:
     history, sealed passwords, send log). Raises ``SettingsBusy`` while a save of their accounts
     holds them."""
     db.execute(delete(AccountFilterSettings).where(AccountFilterSettings.user_id == user_id))
+    db.execute(delete(RuleSet).where(RuleSet.user_id == user_id))
     forget_user(db.connection(), core_user_id(user_id))

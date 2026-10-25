@@ -50,3 +50,26 @@ def test_wait_for_head_gives_up_behind_head(
     monkeypatch.setenv("MAILROOM_STARTUP_MIGRATION_RETRY_SECONDS", "0")
     with pytest.raises(RuntimeError, match="not at head"):
         wait_for_head(migrated_engine)
+
+
+def test_the_models_match_the_migrations(migrated_engine: Engine) -> None:
+    from alembic.autogenerate import compare_metadata
+
+    import mailroom.models  # noqa: F401 -- every model on Base.metadata
+    from mailroom.models.base import Base
+
+    def only_app(name: str | None, type_: str, _parent: object) -> bool:
+        return name == APP_SCHEMA if type_ == "schema" else True
+
+    with migrated_engine.connect() as connection:
+        context = MigrationContext.configure(
+            connection,
+            opts={
+                "include_schemas": True,
+                "include_name": only_app,
+                "compare_type": True,
+                "version_table": ALEMBIC_VERSION_TABLE,
+                "version_table_schema": APP_SCHEMA,
+            },
+        )
+        assert compare_metadata(context, Base.metadata) == []

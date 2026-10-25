@@ -27,6 +27,10 @@ _EXTRA_LOG_KEYS = (
     "outcome",
     "run_filters",
     "password_changed",
+    "rule_set_id",
+    "filter_id",
+    "run_id",
+    "trigger",
 )
 
 

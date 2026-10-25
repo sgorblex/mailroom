@@ -7,8 +7,8 @@ in the browser, tried with a dry run, and run by the worker. Product scope:
 ## Behaviour
 
 - **Run filters**, per account, is **off by default**. Until the user turns it on, the worker runs
-  nothing for that account: no trigger fires and *Run now* is refused. Editing and dry runs work
-  either way.
+  nothing for that account: no trigger fires and *Run now* is refused. Editing, enabling a rule
+  set and dry runs work either way.
 - A **rule set** belongs to one account and one folder, and has a **trigger**:
   - `new_mail` — runs when the folder gets new mail (IMAP IDLE);
   - `scheduled` — runs every `interval_minutes`;
@@ -17,14 +17,19 @@ in the browser, tried with a dry run, and run by the worker. Product scope:
   Any enabled rule set can also be run now. **Starred only** restricts a rule set to starred
   (`\Flagged`) messages, which it unstars once handled (imap-thingy's `starred_only`).
 - A rule set holds **ordered filters**, each an imap-thingy filter spec (criteria plus actions),
-  stored as imap-thingy serialises it and validated with `imap_thingy.spec.load_filter`. Filters
-  run in order; a disabled filter is skipped, by dry runs too. A disabled rule set never runs (no
+  stored as imap-thingy serialises it and validated with `imap_thingy.spec.load_filter`, its JSON
+  Schema, and every `pattern` compiled as a regular expression (with `regex`, the engine
+  imap-thingy matches with). A rule set holds at most 100 filters. Filters run in order; a disabled filter is skipped, by dry runs too. A disabled rule set never runs (no
   trigger fires, *Run now* is refused) but can still be dry-run; a new rule set starts disabled.
 - **Dry run** evaluates the rule set against the folder's real mail and reports, per filter, the
   messages it matches (uid, from, subject, date) and what it would do, changing nothing (the folder
   is selected read-only). Each filter is evaluated against the folder as it is, without the
   earlier filters applied, so a dry run may over-report: a message an earlier filter would move
-  can show up under a later one too.
+  can show up under a later one too. It looks at the folder's newest 500 messages, for about
+  30 s. A user runs one dry run at a time; another one meanwhile is refused.
+- **Patterns are matched under a timeout**: imap-thingy stops a match that takes longer than its
+  match timeout (1 s on one message), and the run — dry or not — fails with the error code
+  `match_timeout` in its history.
 - **Run history**: every run — on new mail, scheduled, run now or dry — records its trigger
   (`manual` for run now and dry runs), start and end, the report (what each filter matched and
   did) and any error.
@@ -39,7 +44,7 @@ Schema `app`; every row belongs to the user who owns the account.
 | --- | --- |
 | `rule_set` | `id`, `user_id`, `account_id`, `folder` (`text[]`, path segments), `name`, `trigger` (`new_mail` \| `scheduled` \| `manual`), `interval_minutes` (`scheduled` only), `starred_only`, `enabled`, timestamps |
 | `filter` | `id`, `rule_set_id`, `position`, `name`, `enabled`, `spec` (`jsonb`, an imap-thingy filter spec), timestamps |
-| `filter_run` | `id`, `rule_set_id`, `trigger`, `started_at`, `finished_at`, `dry_run`, `result` (`jsonb`, imap-thingy's run report), `error` |
+| `filter_run` | `id`, `rule_set_id`, `trigger`, `created_at`, `started_at` (null while queued), `finished_at`, `dry_run`, `result` (`jsonb`, imap-thingy's run report), `error` |
 
 The per-account toggle is `account_filter_settings(user_id, account_id, run_filters bool default
 false)`.
@@ -57,9 +62,21 @@ Under `/api/v1`, signed-in user's own data only (another user's id is a 404).
 | `POST /rule-sets/{id}/filters` | Add a filter (at the end) |
 | `PATCH`, `DELETE /filters/{id}` | Edit, remove a filter |
 | `PUT /rule-sets/{id}/order` | Reorder: the rule set's filter ids, in the new order |
-| `POST /rule-sets/{id}/dry-run` | Dry run, synchronous and bounded; returns the report |
-| `POST /rule-sets/{id}/run` | Run now: enqueues a run, `202` with the run id |
+| `POST /rule-sets/{id}/dry-run` | Dry run, synchronous and bounded; returns the run, with its report |
+| `POST /rule-sets/{id}/run` | Run now: enqueues a run, `202` with the queued run |
 | `GET /rule-sets/{id}/runs` | Run history, newest first |
 
-An invalid spec is a `400` `{"code": "invalid_spec", "message": …}` carrying imap-thingy's
-`SpecError` text.
+An unknown or foreign id is a `404` with a plain `detail` (`"No such rule set"`). Refusals answer
+`{"detail": {"code": …, "message": …}}`:
+
+- `400` `invalid_spec`, carrying imap-thingy's `SpecError` text, the schema's or the regular
+  expression's complaint;
+- `400` `invalid_rule_set` (an `interval_minutes` exactly when `scheduled`), `invalid_order`;
+- adding a filter: `400` `too_many_filters` when the rule set already holds 100;
+- *Run now*: `400` `run_filters_off` while the account's *Run filters* is off, `400`
+  `rule_set_disabled`, `409` `run_pending` while a run of that rule set is still waiting;
+- dry run: `404` `account_not_found`, `400` `invalid_spec` for a stored spec this imap-thingy no
+  longer loads, `400` `match_timeout` when a pattern takes too long on a message, `504`
+  `dry_run_timeout`, `429` `dry_run_busy` while another dry run of the user's is still going (not
+  recorded), `500` `run_failed: <exception type>` for anything else (its text is neither kept nor
+  logged), and mailbox failures as for the account's folder listing.

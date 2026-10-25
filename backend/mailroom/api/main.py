@@ -24,6 +24,7 @@ from mailroom.api.csrf import CrossSiteRequestMiddleware
 from mailroom.api.deps import require_user
 from mailroom.api.routes.accounts import accounts_router
 from mailroom.api.routes.auth import auth_router
+from mailroom.api.routes.filters import filters_router
 from mailroom.api.routes.users import own_password_router, users_router
 from mailroom.auth.throttle import LoginThrottle
 from mailroom.auth.users import user_count
@@ -198,6 +199,7 @@ def create_application() -> FastAPI:
     protected_v1.include_router(own_password_router)
     protected_v1.include_router(users_router)
     protected_v1.include_router(accounts_router)
+    protected_v1.include_router(filters_router)
     application.include_router(protected_v1)
     return application
 

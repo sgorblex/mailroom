@@ -13,11 +13,15 @@ dependencies = [
   # (scripts/deps.sh).
   "imap-thingy>=0.7.0",
   "imapclient>=3.1.0",
+  "jsonschema>=4.23",
   "mailroom-core>=0.1.0",
   # The worker's job queue. Bounded to one minor: see nonfunctional-requirements.md (procrastinate).
   "procrastinate>=3.10,<3.11",
   "psycopg[binary]>=3.2",
   "python-dotenv>=1.0",
+  # The engine imap-thingy matches user patterns with (it can time a match out): the API checks
+  # them with it too.
+  "regex>=2024.11.6",
   "sqlalchemy>=2.0",
   "uvicorn>=0.34",
   # The two extras `uvicorn[standard]` would pull in for their own sake. `uvloop` keeps the marker
@@ -41,6 +45,8 @@ dev = [
   # Bounded to one minor: an open floor lets `lockFileMaintenance` pull new lint rules into a
   # green branch with no dependency PR. Widen deliberately, fixing the new diagnostics.
   "ruff>=0.17,<0.18",
+  "types-jsonschema>=4.23",
+  "types-regex>=2024.11.6",
   # `mailroom.dev.run_uvicorn` reloads on change; the runtime image never watches files.
   "watchfiles>=1.0",
 ]

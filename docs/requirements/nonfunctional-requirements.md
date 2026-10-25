@@ -135,6 +135,47 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   whether something answered. Accepted because only admin-created users sign in;
   revisit before anyone else can.
 
+### Filters
+
+What they do and the route list: [`filters.md`](filters.md). How:
+
+- **Storage** (schema `app`): `rule_set` (by `user_id` and the account's id in schema `core`),
+  `filter` (`position` unique per rule set, deferred so a reorder swaps freely; `spec` as
+  imap-thingy's `load_filter(spec).to_spec()` gives it back), `filter_run`. Removing an account
+  removes its rule sets, and a rule set its filters and runs; removing a user removes all of
+  theirs, with their accounts. Each rule
+  set keeps its newest 100 runs, and every run still queued or in progress. A report is stored
+  without NUL characters (`jsonb` refuses them; a header may decode to one).
+- **Refusals** are 400 `{"detail": {"code", "message"}}`: `invalid_spec` (imap-thingy's
+  `SpecError` text, or the JSON Schema's or the regular expression's complaint, compiled with
+  `regex` as imap-thingy matches it), `invalid_rule_set` (an `interval_minutes` exactly when
+  `scheduled`), `invalid_order` (not every filter once), `too_many_filters` (a rule set holds 100
+  at most), `run_filters_off`, `rule_set_disabled`; 409 `run_pending`.
+- **Regular expressions** are matched by imap-thingy with the `regex` package, each match bounded
+  by its match timeout (`DEFAULT_MATCH_TIMEOUT`, 1 s per message, process-wide): a pattern that
+  backtracks past it raises `MatchTimeoutError`, which fails the run with `match_timeout`.
+- **Dry run** (`POST /rule-sets/{id}/dry-run`), synchronous: the enabled filters, wrapped for
+  starred only, run through imap-thingy's `Folder.run(dry_run=True)` (read-only select) on the
+  folder's newest 500 messages, for about 30 s (then the connection is closed: 504
+  `dry_run_timeout`). A pattern out of time is 400 `match_timeout`. The folder path is joined with
+  the delimiter the server reports. Mailbox failures answer as a folder listing does (502, or 409
+  `password_missing` / `starttls_unsupported`, 503 `secrets_key_missing`); any other failure is 500
+  `run_failed`, its exception's type name only. Either way the run joins the history. One dry run
+  per user at a time, across API processes: a session advisory lock on a connection of its own,
+  taken with `pg_try_advisory_lock`; a second one meanwhile is 429 `dry_run_busy` and not
+  recorded.
+- **Run now** (`POST /rule-sets/{id}/run`, 202) inserts a queued `filter_run` (no `started_at`)
+  and, in the same transaction, the procrastinate job `run_rule_set(run_id)` with `lock`
+  `mailbox:<user id>:<account id>` (one job per mailbox at a time) and `queueing_lock`
+  `rule_set:<id>` (one waiting run per rule set).
+- **A run's `result`** is imap-thingy's folder report, each filter's entry with its `filter_id` and
+  the spec as stored; a dry run's adds `limited_to_newest` (null when the whole folder was looked
+  at). `error` is `<code>: <message>`.
+- **Logs:** `rule_set_added`, `rule_set_changed`, `rule_set_removed`, `filter_added`,
+  `filter_changed`, `filter_removed`, `filters_reordered`, `dry_run` (with `outcome`),
+  `run_requested`, with `user_id` and `rule_set_id`, `filter_id` or `run_id`; never a spec or a
+  message.
+
 ## Data persistence & schema migrations
 
 - All app tables live in PostgreSQL schema **`app`** (`Base.metadata` schema). Alembic's version
