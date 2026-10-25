@@ -144,6 +144,18 @@ export function apiPostJson<T = null>(
   )
 }
 
+/** PUT a JSON body, replacing the resource. */
+export function apiPutJson<T>(
+  path: string,
+  body: unknown,
+  options: ApiJsonRequestOptions<T> = {},
+): Promise<T> {
+  const { init = {}, schema } = options
+  const headers = new Headers(init.headers)
+  headers.set('Content-Type', 'application/json')
+  return apiRequest(path, { method: 'PUT', ...init, headers, body: JSON.stringify(body) }, schema)
+}
+
 /** DELETE; a 204 resolves to `null`. */
 export function apiDelete(path: string, options: ApiJsonRequestOptions<null> = {}): Promise<null> {
   const { init = {} } = options

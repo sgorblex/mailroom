@@ -28,6 +28,7 @@
   "nav": {
     "label": "Main",
     "home": "Home",
+    "accounts": "Accounts",
     "users": "Users",
     "profile": "Profile"
   },
@@ -55,6 +56,62 @@
     "passwordHint_one": "At least {{count}} character.",
     "passwordHint_other": "At least {{count}} characters."
   },
+  "accounts": {
+    "title": "Mail accounts",
+    "loading": "Loading your accounts…",
+    "loadFailed": "Could not load your accounts.",
+    "none": "No accounts yet.",
+    "add": "Add an account",
+    "addButton": "Add account",
+    "editTitle": "Edit {{id}}",
+    "id": "Account id",
+    "idHint": "Lowercase letters, digits and dashes, e.g. work. It cannot change later.",
+    "address": "Email address",
+    "name": "Your name",
+    "nameHint": "Optional: shown to the people you write to.",
+    "login": "Login",
+    "password": "Password",
+    "passwordHint": "The mailbox password or app password. It is stored encrypted and never shown again.",
+    "passwordKeep": "Leave empty to keep the stored password.",
+    "imap": "Incoming mail (IMAP)",
+    "imapHost": "IMAP server",
+    "imapPort": "IMAP port",
+    "imapTls": "IMAP security",
+    "smtp": "Outgoing mail (SMTP)",
+    "smtpHost": "SMTP server",
+    "smtpPort": "SMTP port",
+    "smtpTls": "SMTP security",
+    "tls": {
+      "implicit": "SSL/TLS",
+      "starttls": "STARTTLS"
+    },
+    "sendMode": "Sending",
+    "sendModeHint": "How mail from this account may be sent, once Mailroom sends mail.",
+    "sendModes": {
+      "off": "Off",
+      "drafts": "Drafts only",
+      "approval": "After approval",
+      "direct": "Directly"
+    },
+    "save": "Save",
+    "cancel": "Cancel",
+    "saveFailed": "Could not save the account.",
+    "actionFailed": "That did not work. Try again.",
+    "noPassword": "No stored password: edit the account to enter it.",
+    "test": "Test",
+    "testAccount": "Test the login of {{id}}",
+    "testOk": "The login works.",
+    "testFailed": "The test failed: {{message}}",
+    "edit": "Edit",
+    "remove": "Remove",
+    "removeAccount": "Remove {{id}}",
+    "confirmRemoval": "Remove {{id}} and its filters? The mail on the server stays.",
+    "confirmRemove": "Remove for good",
+    "runFilters": "Run filters",
+    "runFiltersOn": "Run filters on {{id}}",
+    "runFiltersOnHint": "The worker runs this account's filters.",
+    "runFiltersOffHint": "Off: nothing runs on this account until you turn it on."
+  },
   "profile": {
     "title": "Profile",
     "changePassword": "Change your password",
@@ -73,6 +130,19 @@
     "cannotRemoveSelf": "You cannot remove yourself.",
     "cannotResetSelf": "Change your own password on your profile.",
     "removerGone": "You have been removed.",
+    "userAccountsBusy": "Their accounts are being saved. Try again.",
     "wrongPassword": "Your current password is wrong."
+  },
+  "accountErrors": {
+    "accountExists": "There already is an account with that id.",
+    "invalidAccount": "Check the highlighted fields.",
+    "accountsChanged": "Your accounts changed meanwhile. Reload the page and try again.",
+    "accountsBusy": "Your accounts are being saved elsewhere. Try again.",
+    "secretsKeyMissing": "The server has no secrets key (MAILROOM_SECRETS_KEY), so accounts cannot be saved or used.",
+    "loginFailed": "The server refused the login: {{message}}",
+    "unreachable": "Could not reach the server: {{message}}",
+    "tlsFailed": "The server's certificate is not trusted: {{message}}",
+    "starttlsUnsupported": "Only SSL/TLS (IMAPS, usually port 993) is supported for incoming mail.",
+    "passwordMissing": "No stored password works for this account: edit it and enter the password again."
   }
 }

@@ -49,11 +49,14 @@ def get_sync_database_url() -> str:
 
 
 def create_database_engine(url: str, *, pool_size: int = 5, max_overflow: int = 10) -> Engine:
+    # A failed statement's error text would otherwise quote its parameters: account settings,
+    # sealed secrets, report contents.
     return create_engine(
         url,
         pool_pre_ping=True,
         pool_size=pool_size,
         max_overflow=max_overflow,
+        hide_parameters=True,
     )
 
 

@@ -13,6 +13,8 @@ from mailroom.auth.sessions import end_user_sessions
 from mailroom.models import User
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from sqlalchemy.orm import Session
 
 _USERNAME = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")
@@ -101,10 +103,18 @@ def reset_password(db: Session, user: User, password: str, *, by: User) -> None:
     set_password(db, user, password)
 
 
-def remove_user(db: Session, user: User, *, by: User) -> None:
-    """Their sessions go with them. Nobody removes themselves, so the admin doing it remains and
-    there is always one: both rows are locked in id order, so two admins removing each other at
-    once leave the second to find themselves gone."""
+def remove_user(
+    db: Session,
+    user: User,
+    *,
+    by: User,
+    before_delete: Callable[[Session, int], None] | None = None,
+) -> None:
+    """Their sessions go with them, and whatever ``before_delete`` removes in the same
+    transaction (called with the user's id once their row is locked; nothing is removed if it
+    raises). Nobody removes themselves, so the admin doing it remains and there is always one:
+    both rows are locked in id order, so two admins removing each other at once leave the second
+    to find themselves gone."""
     if user.id == by.id:
         msg = "You cannot remove yourself."
         raise UserError(msg, "cannot_remove_self")
@@ -116,5 +126,11 @@ def remove_user(db: Session, user: User, *, by: User) -> None:
         msg = "You have been removed."
         raise UserError(msg, "remover_gone")
     if user.id in locked:  # else someone else removed them first
+        if before_delete is not None:
+            try:
+                before_delete(db, user.id)
+            except BaseException:
+                db.rollback()
+                raise
         db.delete(user)
     db.commit()

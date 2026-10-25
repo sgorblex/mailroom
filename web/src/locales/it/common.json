@@ -28,6 +28,7 @@
   "nav": {
     "label": "Principale",
     "home": "Home",
+    "accounts": "Account",
     "users": "Utenti",
     "profile": "Profilo"
   },
@@ -55,6 +56,62 @@
     "passwordHint_one": "Almeno {{count}} carattere.",
     "passwordHint_other": "Almeno {{count}} caratteri."
   },
+  "accounts": {
+    "title": "Account di posta",
+    "loading": "Caricamento dei tuoi account…",
+    "loadFailed": "Impossibile caricare i tuoi account.",
+    "none": "Ancora nessun account.",
+    "add": "Aggiungi un account",
+    "addButton": "Aggiungi account",
+    "editTitle": "Modifica {{id}}",
+    "id": "Id dell'account",
+    "idHint": "Lettere minuscole, cifre e trattini, per esempio lavoro. Non si può cambiare in seguito.",
+    "address": "Indirizzo email",
+    "name": "Il tuo nome",
+    "nameHint": "Facoltativo: lo vedono le persone a cui scrivi.",
+    "login": "Login",
+    "password": "Password",
+    "passwordHint": "La password della casella o una password per app. Viene conservata cifrata e non viene più mostrata.",
+    "passwordKeep": "Lascia vuoto per tenere la password salvata.",
+    "imap": "Posta in arrivo (IMAP)",
+    "imapHost": "Server IMAP",
+    "imapPort": "Porta IMAP",
+    "imapTls": "Sicurezza IMAP",
+    "smtp": "Posta in uscita (SMTP)",
+    "smtpHost": "Server SMTP",
+    "smtpPort": "Porta SMTP",
+    "smtpTls": "Sicurezza SMTP",
+    "tls": {
+      "implicit": "SSL/TLS",
+      "starttls": "STARTTLS"
+    },
+    "sendMode": "Invio",
+    "sendModeHint": "Come si può inviare posta da questo account, quando Mailroom invierà posta.",
+    "sendModes": {
+      "off": "Disattivato",
+      "drafts": "Solo bozze",
+      "approval": "Dopo approvazione",
+      "direct": "Direttamente"
+    },
+    "save": "Salva",
+    "cancel": "Annulla",
+    "saveFailed": "Impossibile salvare l'account.",
+    "actionFailed": "Operazione non riuscita. Riprova.",
+    "noPassword": "Nessuna password salvata: modifica l'account per inserirla.",
+    "test": "Prova",
+    "testAccount": "Prova l'accesso di {{id}}",
+    "testOk": "L'accesso funziona.",
+    "testFailed": "La prova non è riuscita: {{message}}",
+    "edit": "Modifica",
+    "remove": "Rimuovi",
+    "removeAccount": "Rimuovi {{id}}",
+    "confirmRemoval": "Rimuovere {{id}} e i suoi filtri? La posta sul server resta.",
+    "confirmRemove": "Rimuovi definitivamente",
+    "runFilters": "Esegui i filtri",
+    "runFiltersOn": "Esegui i filtri su {{id}}",
+    "runFiltersOnHint": "Il worker esegue i filtri di questo account.",
+    "runFiltersOffHint": "Disattivato: su questo account non viene eseguito nulla finché non lo attivi."
+  },
   "profile": {
     "title": "Profilo",
     "changePassword": "Cambia la tua password",
@@ -73,6 +130,19 @@
     "cannotRemoveSelf": "Non puoi rimuovere il tuo stesso utente.",
     "cannotResetSelf": "Cambia la tua password dal tuo profilo.",
     "removerGone": "Il tuo utente è stato rimosso.",
+    "userAccountsBusy": "I suoi account sono in salvataggio. Riprova.",
     "wrongPassword": "La password attuale è errata."
+  },
+  "accountErrors": {
+    "accountExists": "Esiste già un account con questo id.",
+    "invalidAccount": "Controlla i campi evidenziati.",
+    "accountsChanged": "I tuoi account sono cambiati nel frattempo. Ricarica la pagina e riprova.",
+    "accountsBusy": "I tuoi account sono in salvataggio altrove. Riprova.",
+    "secretsKeyMissing": "Il server non ha una chiave dei segreti (MAILROOM_SECRETS_KEY), quindi gli account non si possono salvare né usare.",
+    "loginFailed": "Il server ha rifiutato l'accesso: {{message}}",
+    "unreachable": "Impossibile raggiungere il server: {{message}}",
+    "tlsFailed": "Il certificato del server non è attendibile: {{message}}",
+    "starttlsUnsupported": "Per la posta in arrivo è supportato solo SSL/TLS (IMAPS, di solito porta 993).",
+    "passwordMissing": "Nessuna password salvata funziona per questo account: modificalo e reinserisci la password."
   }
 }

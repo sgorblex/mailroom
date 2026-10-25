@@ -7,9 +7,12 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
+from mailroom_core.store import SettingsBusy
 from pydantic import BaseModel, Field
 
+from mailroom.accounts.app_data import forget_user_accounts
 from mailroom.api.deps import CurrentAdmin, CurrentUser, DbSession, SessionCookie, require_admin
+from mailroom.api.refusals import refused
 from mailroom.auth.password import MAX_PASSWORD_LENGTH, password_matches
 from mailroom.auth.throttle import LoginThrottle, client_key
 from mailroom.auth.users import (
@@ -93,11 +96,16 @@ def add_user(body: NewUser, db: DbSession, admin: CurrentAdmin) -> ListedUser:
 
 @users_router.delete("/{user_id}", status_code=204)
 def delete_user(user_id: UserId, db: DbSession, admin: CurrentAdmin) -> None:
+    """Their mail accounts go in the same transaction: mailroom-core's rows (settings, stored
+    passwords, send log) and the app's."""
     user = _target(db, user_id)
     try:
-        remove_user(db, user, by=admin)
+        remove_user(db, user, by=admin, before_delete=forget_user_accounts)
     except UserError as exc:
         raise _refused(exc) from None
+    except SettingsBusy:
+        msg = "Their accounts are being saved: try again."
+        raise refused(503, "user_accounts_busy", msg) from None
     logger.info(
         "user_removed",
         extra={"event": "user_removed", "user_id": admin.id, "target_user_id": user_id},

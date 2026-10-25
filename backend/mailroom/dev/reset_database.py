@@ -1,4 +1,5 @@
-"""Drop and recreate DATABASE_URL's database, then re-apply Alembic migrations (upgrade head).
+"""Drop and recreate DATABASE_URL's database, then migrate it: mailroom-core's schema ``core``,
+then Alembic upgrade head.
 
 Leaves an empty, fully-migrated database — no seed data. For sample data afterwards, run
 ``mise run seed-db``.
@@ -44,7 +45,7 @@ def reset_database() -> None:
     logger.info("Dropping and recreating database %r...", database_name)
     drop_database(base_url, database_name)
     create_database(base_url, database_name)
-    logger.info("Applying Alembic migrations (upgrade head)...")
+    logger.info("Migrating schema core, then Alembic upgrade head...")
     upgrade_head(wait_for_database=False)
     logger.info("Database reset complete: %r is empty and fully migrated.", database_name)
 

@@ -1,5 +1,6 @@
 import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
 
+import { AccountsScreen } from '@/accounts/accounts-screen.tsx'
 import { RootLayout } from '@/auth/root-layout.tsx'
 import { HealthScreen } from '@/health/health-screen.tsx'
 import { ProfileScreen } from '@/profile/profile-screen.tsx'
@@ -19,6 +20,12 @@ const usersRoute = createRoute({
   component: UsersScreen,
 })
 
+const accountsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/accounts',
+  component: AccountsScreen,
+})
+
 const profileRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/profile',
@@ -26,7 +33,7 @@ const profileRoute = createRoute({
 })
 
 export const router = createRouter({
-  routeTree: rootRoute.addChildren([indexRoute, usersRoute, profileRoute]),
+  routeTree: rootRoute.addChildren([indexRoute, accountsRoute, usersRoute, profileRoute]),
 })
 
 declare module '@tanstack/react-router' {

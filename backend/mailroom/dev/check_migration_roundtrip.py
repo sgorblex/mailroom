@@ -7,7 +7,7 @@ from alembic.config import Config
 
 from mailroom.database import load_local_environment, normalize_sync_database_url
 from mailroom.database_connectivity import wait_for_sync_database
-from mailroom.db_migrations import alembic_ini_path
+from mailroom.db_migrations import alembic_ini_path, migrate_core
 from mailroom.dev.db_admin import create_database, database_url_for, drop_database
 
 SCRATCH_DATABASE_NAME = "mailroom_migration_roundtrip_check"
@@ -35,6 +35,9 @@ def main() -> None:
     try:
         os.environ["DATABASE_URL"] = database_url_for(base_url, SCRATCH_DATABASE_NAME)
         config = Config(str(alembic_ini_path()))
+        # mailroom-core's history is its own (and checked there); the app's runs after it.
+        print("schema core (mailroom-core's migrations)...")
+        migrate_core(normalize_sync_database_url(os.environ["DATABASE_URL"]))
         print("alembic upgrade head (scratch database)...")
         command.upgrade(config, "head")
         print("alembic downgrade base...")

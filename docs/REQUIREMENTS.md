@@ -24,7 +24,7 @@ through the Vite proxy. Engineering baseline:
 
 ## Users and accounts
 
-**Maturity: Partial** — sign-in and managing users are done; accounts are not started.
+**Maturity: Done** — sign-in, managing users and each user's mail accounts.
 
 - **Users** sign in with a username and password (passkeys later). Every route except health,
   readiness, version, sign-in, sign-out and the signed-in check requires a
@@ -38,8 +38,13 @@ through the Vite proxy. Engineering baseline:
 - **Accounts** (IMAP + SMTP, identities, send mode) come from **mailroom-core**'s model; the app
   keeps them in mailroom-core's own schema (`core`, its `AccountStore`) in the app's database, with secrets sealed as
   mailroom-core seals them (byte-compatible with mailroom-mcp, so its data imports unchanged).
-- Account management (add, test, edit, remove) lives in the app's settings; the embedded MCP runs
-  with its own settings page off.
+- Each user manages their own accounts on the *Accounts* page: add, edit (the id stays; an empty
+  password keeps the stored one), test the IMAP login, remove (after a confirmation; the mail on
+  the server stays), and a per-account **Run filters** switch, off until turned on. mailroom-core's
+  config models check every change, so a refusal names the field. Removing a user removes their
+  accounts, stored passwords and send log with them. The embedded MCP will run with its own settings page off.
+  How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md)
+  — *Mail accounts*.
 
 ## Mail client
 

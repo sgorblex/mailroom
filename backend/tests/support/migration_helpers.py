@@ -12,6 +12,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import ProgrammingError
 
 from mailroom.database import normalize_sync_database_url
+from mailroom.db_migrations import migrate_core
 from mailroom.models.base import ALEMBIC_VERSION_TABLE, APP_SCHEMA
 
 if TYPE_CHECKING:
@@ -54,16 +55,22 @@ def is_alembic_at_head(engine: Engine, backend_root: Path) -> bool:
 
 
 def run_alembic_upgrade_head(backend_root: Path, database_url: str) -> None:
+    """Schema ``core`` first, as at startup, then the app's history."""
     os.environ["DATABASE_URL"] = database_url
     os.environ["TEST_DATABASE_URL"] = database_url
+    migrate_core(postgres_sqlalchemy_url(database_url))
     command.upgrade(alembic_config(backend_root, quiet=True), "head")
 
 
 def ensure_migrated_database(backend_root: Path, database_url: str) -> None:
     engine = create_engine(postgres_sqlalchemy_url(database_url), pool_pre_ping=True)
     try:
-        if not is_alembic_at_head(engine, backend_root):
-            engine.dispose()
-            run_alembic_upgrade_head(backend_root, database_url)
+        at_head = is_alembic_at_head(engine, backend_root)
     finally:
         engine.dispose()
+    if at_head:
+        # Cheap when there is nothing to do; a database migrated before schema ``core`` existed
+        # still gets it.
+        migrate_core(postgres_sqlalchemy_url(database_url))
+    else:
+        run_alembic_upgrade_head(backend_root, database_url)

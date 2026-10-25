@@ -23,6 +23,10 @@ _EXTRA_LOG_KEYS = (
     "queue",
     "user_id",
     "target_user_id",
+    "account_id",
+    "outcome",
+    "run_filters",
+    "password_changed",
 )
 
 

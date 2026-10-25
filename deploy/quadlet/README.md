@@ -6,7 +6,7 @@ turns them into a runbook. Broader context: [`docs/deploy.md`](../../docs/deploy
 | Unit | Role |
 | --- | --- |
 | `mailroom.pod` | Pod publishing **127.0.0.1:8080 → 8080** (nginx in `mailroom-web`, non-root). |
-| `mailroom-api.container` | FastAPI + uvicorn on **8000** inside the pod, not published. Runs `alembic upgrade head` at startup (`MAILROOM_RUN_STARTUP_MIGRATIONS=1`, the image default). |
+| `mailroom-api.container` | FastAPI + uvicorn on **8000** inside the pod, not published. Migrates at startup (mailroom-core's schema `core`, then `alembic upgrade head`) (`MAILROOM_RUN_STARTUP_MIGRATIONS=1`, the image default). |
 | `mailroom-web.container` | nginx serves the SPA and proxies `/api/` to `127.0.0.1:8000`. HTTP only; TLS terminates on the host's reverse proxy, which must append the client to `X-Forwarded-For` (login throttling keys on it). |
 | `mailroom-worker.container` | procrastinate worker on the API image (`python -m mailroom.worker`), same environment file. Never migrates: it waits for the API to bring the database to head, then runs jobs. One instance only (a second exits). |
 
@@ -17,6 +17,9 @@ the MCP server's image (`registry.example.org/mailroom:production`), which runs 
 The first user, once the API has migrated the database: `podman exec -it systemd-mailroom-api
 .venv/bin/python -m mailroom.dev.create_user <name> --admin` (the password is prompted for). Until the
 app can manage users, every user is made this way.
+
+The environment file needs `MAILROOM_SECRETS_KEY` (`openssl rand -hex 32`): mailbox passwords are
+sealed under it, and a lost or changed key means entering every one again.
 
 Postgres is provided outside the pod (the host's shared `postgres`): database and role `mailroom`.
 Standalone mailroom-mcp uses `mailroom_mcp`; integrated, its tables live in schema `mcp` of

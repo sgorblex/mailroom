@@ -21,12 +21,7 @@ Mailroom is built on standalone projects, each with its own repository and check
   for a dry run), the `older_than_days` criterion, SSL and timeout options and `list_folders()` on
   `Account`, a stoppable `monitor` and regex match timeouts.
 
-**The first goal is the Filters UI.** It needs all of *Foundations*.
-
-## Foundations
-
-- [ ] **Accounts** — mailroom-core's `AccountStore` over its schema `core` in the app's database, sealed secrets as mailroom-core seals them,
-      settings screens; dev seeding of the dev Dovecot from `mailroom_core.testing`.
+**The first goal is the Filters UI.**
 
 ## Filters
 
@@ -48,6 +43,8 @@ Mailroom is built on standalone projects, each with its own repository and check
 - [ ] **MCP host** — mount mailroom-mcp at `/mcp/<profile>` with the app's integration points.
       Waits for mailroom-mcp to serve several users (decided for its 0.4: `AccountStore` and
       `OwnerAuth` carry the user), which its design settles before `auth` is ported.
+      Before it is embedded, the shared `core` settings document must tolerate mailroom-mcp's
+      profile part: the accounts routes check the whole document strictly today.
 - [ ] **Suggestions** — learn from manual moves, propose filters with evidence and dry run.
 
 ## Engineering and operations

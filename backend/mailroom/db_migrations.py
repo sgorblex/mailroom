@@ -10,6 +10,8 @@ from alembic import command
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
+from mailroom_core.store import database_engine
+from mailroom_core.store import migrate as migrate_core_schema
 
 from mailroom.database import get_sync_database_url, load_local_environment
 from mailroom.database_connectivity import (
@@ -55,8 +57,19 @@ def _alembic_config() -> Config:
     return config
 
 
+def migrate_core(database_url: str) -> None:
+    """Bring mailroom-core's schema ``core`` (its own Alembic history and version table) up to
+    date. The app's history runs after it, so its revisions may rely on ``core``."""
+    engine = database_engine(database_url)
+    try:
+        migrate_core_schema(engine)
+    finally:
+        engine.dispose()
+
+
 def upgrade_head(*, wait_for_database: bool = True) -> None:
-    """Run ``alembic upgrade head``, optionally waiting for database connectivity first."""
+    """Migrate schema ``core``, then run ``alembic upgrade head`` on the app's history, optionally
+    waiting for database connectivity first."""
     load_local_environment()
 
     config = _alembic_config()
@@ -71,6 +84,7 @@ def upgrade_head(*, wait_for_database: bool = True) -> None:
     with interruptible_connectivity_wait():
         for attempt in range(1, max_attempts + 1):
             try:
+                migrate_core(database_url)
                 command.upgrade(config, "head")
             except CONNECTIVITY_ERRORS as exc:
                 if attempt >= max_attempts:
@@ -94,7 +108,7 @@ def upgrade_head(*, wait_for_database: bool = True) -> None:
 
 
 def apply_startup_migrations_if_configured() -> None:
-    """Run ``alembic upgrade head`` when ``MAILROOM_RUN_STARTUP_MIGRATIONS`` is truthy.
+    """Run ``upgrade_head`` when ``MAILROOM_RUN_STARTUP_MIGRATIONS`` is truthy.
 
     Retries on transient SQLAlchemy connectivity errors (``OperationalError``, etc.); other
     failures bubble up immediately.
@@ -107,7 +121,7 @@ def apply_startup_migrations_if_configured() -> None:
 
     logger.info(
         "Applying database migrations "
-        "(Alembic upgrade head; MAILROOM_RUN_STARTUP_MIGRATIONS enabled).",
+        "(schema core, then Alembic upgrade head; MAILROOM_RUN_STARTUP_MIGRATIONS enabled).",
     )
     upgrade_head(wait_for_database=True)
 

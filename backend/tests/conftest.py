@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from fastapi import FastAPI
+    from mailroom_core.crypto import SecretsSubkey
     from sqlalchemy.engine import Engine
     from sqlalchemy.orm import Session
     from starlette.testclient import TestClient
@@ -153,6 +154,8 @@ def _shared_application(_worker_engine: Engine) -> Iterator[FastAPI]:
 
     from mailroom.api.main import create_application
 
+    # mise.toml sets a dev key; CI sets none.
+    os.environ.setdefault("MAILROOM_SECRETS_KEY", os.urandom(32).hex())
     application = create_application()
     with TestClient(application):
         yield application
@@ -205,6 +208,19 @@ def user_client(api_client: TestClient, db_session: Session, user: User) -> Test
 
     api_client.cookies.set(SESSION_COOKIE_NAME, create_session(db_session, user))
     return api_client
+
+
+@pytest.fixture
+def application(_shared_application: FastAPI) -> FastAPI:
+    """The app ``api_client`` talks to, to adjust ``application.state`` (with ``monkeypatch``)."""
+    return _shared_application
+
+
+@pytest.fixture
+def secrets_subkey(_shared_application: FastAPI) -> SecretsSubkey:
+    """The key the app seals mailbox passwords under."""
+    subkey: SecretsSubkey = _shared_application.state.secrets_subkey
+    return subkey
 
 
 @pytest.fixture

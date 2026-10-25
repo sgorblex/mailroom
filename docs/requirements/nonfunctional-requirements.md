@@ -52,7 +52,7 @@ and may try to run script, track the reader, phish, or — through the MCP — i
 - The SPA and API are **same-origin** (Vite proxy in dev, nginx in the image), so there is no CORS
   configuration at all.
 - **Secrets** (account passwords, tokens) are sealed at rest as mailroom-core seals them and never
-  appear in logs, errors or API responses.
+  appear in logs, errors or API responses. See *Mail accounts* below.
 - **Destructive actions** never expunge: trash moves to `\Trash`, as in mailroom-mcp.
 - **Learning never acts** ([`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Filter suggestions*).
 
@@ -99,6 +99,42 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   `user_removed`, `password_reset` (with `user_id`, the admin, and `target_user_id`),
   `password_changed`, `password_change_failed`; never a password, a token, or a username.
 
+### Mail accounts
+
+- **Storage:** mailroom-core's `AccountStore(engine, str(user.id))` over its schema `core` in the
+  app's database: one settings document per user (revisions, replaced whole) and the passwords
+  sealed beside it (AES-256-GCM under a subkey of `MAILROOM_SECRETS_KEY`, 64 hex digits, bound to
+  the account id), byte-compatible with mailroom-mcp. Without the key (or with a malformed one)
+  startup warns, the accounts stay listed, and adding, a new password, a test or a folder listing
+  answers 503 `secrets_key_missing`. The app's own `app.account_filter_settings(user_id,
+  account_id, run_filters)` holds the Run filters switch; no row is off.
+- **API** (`/api/v1/accounts`, the signed-in user's own; another user's id is a 404): list, add
+  (`POST`, with the password), edit (`PUT /{id}`, without the id; no password keeps it), remove
+  (`DELETE /{id}`, its switch too), `POST /{id}/test` (an IMAP login and logout:
+  `{"ok", "code", "message"}`), `GET /{id}/folders` (`[{"path": [segments]}]`), `GET`/`PUT
+  /{id}/filter-settings` (`{"run_filters"}`). Responses carry `has_password`, never the password.
+- **Checks:** mailroom-core's config models (`core_settings_or_issues`) validate the whole document
+  before each save; a refusal is 400 `{"detail": {"code": "invalid_account" | "account_exists",
+  "message", "issues": [{"path", "message"}]}}`, `path` inside the account. A save racing another
+  is 409 `accounts_changed` or 503 `accounts_busy`.
+- **IMAP** goes through imap-thingy, implicit TLS only (`starttls_unsupported` otherwise), verified
+  against the system CAs plus `MAILROOM_MAIL_CA_FILE` (the dev mail CA in dev), with a 20 s
+  timeout on connecting and on every read. A failure is reported by kind (`login_failed`,
+  `unreachable`, `timeout`, `tls_failed`, `imap_error`, `password_missing`) with the server's wording, the password masked; a folder
+  listing answers it as 502 (409 for `password_missing` / `starttls_unsupported`).
+- **Logs:** `account_added`, `account_changed`, `account_removed`, `account_tested` (with
+  `outcome`), `run_filters_changed`, each with `user_id` and `account_id`; never a login, a host
+  or a password.
+- **Removing a user** removes, in the same transaction, the app's rows about their accounts and
+  mailroom-core's (`forget_user`: settings with their history, sealed passwords, send log). While
+  a save of their accounts holds them past mailroom-core's lock timeout, nothing is removed: 503
+  `user_accounts_busy`.
+- **Known risk — outbound connections:** a login test or a folder listing connects to whatever
+  host and port the user entered, so any signed-in user can make the server open a TLS connection
+  from its network to any `host:port` (internal services included) and learn from the failure kind
+  whether something answered. Accepted because only admin-created users sign in;
+  revisit before anyone else can.
+
 ## Data persistence & schema migrations
 
 - All app tables live in PostgreSQL schema **`app`** (`Base.metadata` schema). Alembic's version
@@ -109,11 +145,16 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   applies procrastinate's own `schema.sql`, frozen beside it (`alembic/versions/sql/`); a later
   procrastinate release, whose minor `pyproject.toml` bounds, comes with a revision applying its
   migration files. The worker's connections put that schema on their `search_path`.
+- mailroom-core's tables live in schema **`core`**, under its own Alembic history and version
+  table (`core.alembic_version`). Everything that migrates (API startup, `mise run migrate`,
+  `reset-db`, the test databases, `check-migrations`) runs mailroom-core's `migrate` first, then
+  the app's history, so app revisions may rely on `core`.
 - On the production host the database and role are **`mailroom`**; standalone mailroom-mcp uses **`mailroom_mcp`**.
 - Revisions are **timestamped** (`YYYYMMDDHHMM`, file `<rev>_<slug>.py`) and form one linear chain.
 - Every revision **downgrades**: `mise run check-migrations` runs upgrade → downgrade base →
   upgrade on a scratch database, locally and in CI.
-- The API migrates at startup (`MAILROOM_RUN_STARTUP_MIGRATIONS=1` in the image and in dev); run a
+- The API migrates at startup (`MAILROOM_RUN_STARTUP_MIGRATIONS=1` in the image and in dev), schema
+  `core` first; run a
   single API worker, or migrate externally before scaling. The worker **never** migrates: it waits
   until the database is at its head, then starts.
 - **One worker process** at a time: it holds a session advisory lock, and a second one exits. At

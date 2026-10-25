@@ -3,7 +3,7 @@
 # 127.0.0.1:33025, web UI http://localhost:8026), kept between runs. Adapted from mailroom-mcp's
 # copy, on other ports and container names so both dev environments can run at once. Both serve a
 # certificate from a local dev CA (dev/.state/certs/ca.pem): TLS stays verified, as in production.
-# Seeding sample mail comes later, from mailroom_core.testing.
+# `mise run seed-dev-mail <user>` gives a Mailroom user these mailboxes, with sample mail.
 #
 #   up     create the CA once, start (or create) both containers
 #   down   stop both containers; the mail stays

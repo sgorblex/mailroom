@@ -33,7 +33,8 @@ mise run dev          # Postgres + API + worker + Vite; Ctrl+C stops them all
 
 To sign in, create the first user once the database is up (`mise run migrate` if the API has not
 run yet): `mise run create-user <name> --admin`. That admin adds the rest on the app's *Users*
-page.
+page. For mail to try things on, `mise run dev-mail`, then `mise run seed-dev-mail <name>` gives
+that user the dev Dovecot's accounts `dev` and `team` with sample mail.
 
 Then open <http://127.0.0.1:5180>. Ports are fixed so other local dev stacks and mailroom-mcp can run alongside:
 
@@ -56,8 +57,9 @@ Defaults live in `mise.toml`'s `[env]`; a root `.env` overrides them (see `.env.
 | `dev-api` / `dev-web` | API with reload (migrates at startup) / Vite |
 | `dev-worker` | procrastinate worker (waits for the API's migrations; restart it after a change) |
 | `dev-mail` / `dev-mail-down` / `dev-mail-reset` | Dev Dovecot + Mailpit with a local CA (`dev/.state/`) |
-| `migrate` / `reset-db` | Alembic upgrade head / drop, recreate and migrate the dev database |
+| `migrate` / `reset-db` | Schema `core`, then Alembic upgrade head / drop, recreate and migrate the dev database |
 | `create-user` | Create a user in `DATABASE_URL` (`<name> [--admin]`; the password is prompted for) |
+| `seed-dev-mail` | Give a user the dev Dovecot accounts `dev` and `team`, sample mail in each empty INBOX (`<name>`) |
 | `check-backend` / `check-web-types` / `check-web` | Ruff + mypy / tsc / ESLint + i18n + build |
 | `check-migrations` | Upgrade → downgrade base → upgrade on a scratch database |
 | `check-version-sync` / `check-scripts` | Release Please version copies / `node --test scripts/lib` |

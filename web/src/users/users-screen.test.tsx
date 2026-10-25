@@ -13,8 +13,8 @@ function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status })
 }
 
-/** A fake API holding root (id 1) and alice (id 2). */
-function stubApi(): ReturnType<typeof vi.fn> {
+/** A fake API holding root (id 1) and alice (id 2); `refuseRemoval` answers alice's removal. */
+function stubApi(refuseRemoval?: { status: number; code: string }): ReturnType<typeof vi.fn> {
   let users = [
     { id: 2, username: 'alice', is_admin: false, created_at: CREATED },
     { id: 1, username: 'root', is_admin: true, created_at: CREATED },
@@ -38,6 +38,10 @@ function stubApi(): ReturnType<typeof vi.fn> {
       return Promise.resolve(json(201, created))
     }
     if (path === '/api/v1/users/2' && method === 'DELETE') {
+      if (refuseRemoval !== undefined) {
+        const detail = { code: refuseRemoval.code, message: 'Refused.' }
+        return Promise.resolve(json(refuseRemoval.status, { detail }))
+      }
       users = users.filter((user) => user.id !== 2)
       return Promise.resolve(new Response(null, { status: 204 }))
     }
@@ -140,5 +144,17 @@ describe('UsersScreen', () => {
     await vi.waitFor(() => {
       expect(screen.queryByText('alice')).not.toBeInTheDocument()
     })
+  })
+
+  it('words a removal refused while their accounts are being saved', async () => {
+    stubApi({ status: 503, code: 'user_accounts_busy' })
+    renderSignedIn(<UsersScreen />, ROOT)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Remove alice' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Remove for good' }))
+    expect(
+      await screen.findByText('Their accounts are being saved. Try again.'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('alice')).toBeInTheDocument()
   })
 })

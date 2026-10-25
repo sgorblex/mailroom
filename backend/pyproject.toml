@@ -9,8 +9,10 @@ dependencies = [
   "alembic>=1.15",
   "argon2-cffi>=25.1",
   "fastapi>=0.115",
-  # `mise run deps-local` swaps these two for local editable checkouts (scripts/deps.sh).
+  # `mise run deps-local` swaps imap-thingy and mailroom-core for local editable checkouts
+  # (scripts/deps.sh).
   "imap-thingy>=0.7.0",
+  "imapclient>=3.1.0",
   "mailroom-core>=0.1.0",
   # The worker's job queue. Bounded to one minor: see nonfunctional-requirements.md (procrastinate).
   "procrastinate>=3.10,<3.11",
@@ -99,6 +101,11 @@ extra_checks = true
 show_error_codes = true
 pretty = true
 error_summary = false
+
+# Untyped.
+[[tool.mypy.overrides]]
+module = ["imapclient", "imapclient.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

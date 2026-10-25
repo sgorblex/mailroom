@@ -22,6 +22,11 @@ MAILROOM_VITE_PORT = "5180"
 POSTGRES_PUBLISH_PORT = "5434"
 DATABASE_URL = "postgresql://mailroom:mailroom@127.0.0.1:5434/mailroom"
 TEST_DATABASE_URL = "postgresql://mailroom:mailroom@127.0.0.1:5434/mailroom_test"
+# Dev only: seals the dev accounts' mailbox passwords. A deployment generates its own
+# (deploy/quadlet/mailroom-api.env.example).
+MAILROOM_SECRETS_KEY = "f682911c860520aafaa850db9dd3633e4a87c6f93c6aeadc822c87a1bd9476c7"
+# The dev mail backends' CA (`mise run dev-mail` creates it in the checkout that runs it).
+MAILROOM_MAIL_CA_FILE = "{{config_root}}/dev/.state/certs/ca.pem"
 _.file = ".env"
 
 [tasks.setup-python]
@@ -71,14 +76,20 @@ run = "scripts/dev-mail.sh down"
 description = "Wipe the dev mail, then start the backends again"
 run = "scripts/dev-mail.sh reset"
 
+[tasks.seed-dev-mail]
+description = "Give a user the dev Dovecot accounts dev and team, with sample mail: `mise run seed-dev-mail <username>`"
+depends = ["setup-python"]
+dir = "backend"
+run = "uv run --no-sync python -m mailroom.dev.seed_dev_mail"
+
 [tasks.migrate]
-description = "Apply Alembic migrations (upgrade head) to DATABASE_URL"
+description = "Migrate DATABASE_URL: mailroom-core's schema core, then Alembic upgrade head"
 depends = ["setup-python"]
 dir = "backend"
 run = "uv run --no-sync python -m mailroom.dev.run_migrate"
 
 [tasks.reset-db]
-description = "Drop and recreate DATABASE_URL's database, then re-apply Alembic migrations — EMPTIES ALL DATA"
+description = "Drop and recreate DATABASE_URL's database, then migrate it (schema core, then Alembic upgrade head) — EMPTIES ALL DATA"
 depends = ["setup-python"]
 dir = "backend"
 run = "uv run --no-sync python -m mailroom.dev.reset_database"

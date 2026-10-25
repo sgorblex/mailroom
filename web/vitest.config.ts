@@ -19,6 +19,9 @@ export default defineConfig(async () => {
     test: {
       pool: 'threads',
       isolate: true,
+      // A form test types into several fields, rendering on every keystroke: about a second here,
+      // five times that on a busy CI agent, which is Vitest's default limit.
+      testTimeout: 15_000,
       coverage: {
         provider: 'v8',
         reporter: ['text', 'lcov'],

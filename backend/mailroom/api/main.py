@@ -12,6 +12,8 @@ from sqlalchemy.exc import ArgumentError, NoSuchModuleError, SQLAlchemyError
 
 from mailroom import database as mailroom_database
 from mailroom import db_migrations as mailroom_db_migrations
+from mailroom.accounts.mail import mail_ssl_context
+from mailroom.accounts.secrets_key import secrets_subkey_from_env
 from mailroom.api.build_info import (
     api_deploy_env,
     api_distribution_version,
@@ -20,6 +22,7 @@ from mailroom.api.build_info import (
 )
 from mailroom.api.csrf import CrossSiteRequestMiddleware
 from mailroom.api.deps import require_user
+from mailroom.api.routes.accounts import accounts_router
 from mailroom.api.routes.auth import auth_router
 from mailroom.api.routes.users import own_password_router, users_router
 from mailroom.auth.throttle import LoginThrottle
@@ -130,6 +133,8 @@ async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
     mailroom_db_migrations.apply_startup_migrations_if_configured()
     _initialize_database(application)
     _warn_if_nobody_can_sign_in(application)
+    application.state.secrets_subkey = secrets_subkey_from_env()
+    application.state.mail_ssl_context = mail_ssl_context()
     yield
     application.state.session_maker = None
     shutdown_engine: Engine | None = application.state.database_engine
@@ -192,6 +197,7 @@ def create_application() -> FastAPI:
     protected_v1 = APIRouter(prefix="/api/v1", dependencies=[Depends(require_user)])
     protected_v1.include_router(own_password_router)
     protected_v1.include_router(users_router)
+    protected_v1.include_router(accounts_router)
     application.include_router(protected_v1)
     return application
 

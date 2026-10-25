@@ -12,6 +12,7 @@ from urllib.parse import unquote, urlparse, urlunparse
 
 from sqlalchemy import create_engine
 
+from mailroom.db_migrations import migrate_core
 from tests.support.migration_helpers import (
     ensure_migrated_database,
     is_alembic_at_head,
@@ -293,10 +294,13 @@ def provision_worker_database(backend_root: Path, base_database_url: str) -> str
     if database_exists(worker_url):
         engine = create_engine(postgres_sqlalchemy_url(worker_url), pool_pre_ping=True)
         try:
-            if is_alembic_at_head(engine, backend_root):
-                return worker_url
+            at_head = is_alembic_at_head(engine, backend_root)
         finally:
             engine.dispose()
+        if at_head:
+            # A reused worker database still gets schema ``core``'s newer revisions, if any.
+            migrate_core(postgres_sqlalchemy_url(worker_url))
+            return worker_url
         drop_database(worker_url)
 
     create_database_from_template(worker_url, template_database_name=base_name)
