@@ -6,6 +6,7 @@ import {
   ApiResponseValidationError,
   apiDelete,
   apiGetJson,
+  apiPatchJson,
   apiPostJson,
   onSessionEnded,
 } from './http.ts'
@@ -66,6 +67,18 @@ describe('apiPostJson', () => {
     await expect(apiPostJson('/api/v1/auth/login', { password: 'x' })).rejects.toThrow(
       'Wrong password',
     )
+  })
+})
+
+describe('apiPatchJson', () => {
+  it('sends the fields as a JSON PATCH', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response('{"name":"b"}', { status: 200 })))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(apiPatchJson('/api/v1/filters/1', { name: 'b' })).resolves.toEqual({ name: 'b' })
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(init.method).toBe('PATCH')
+    expect(init.body).toBe('{"name":"b"}')
+    expect(new Headers(init.headers).get('Content-Type')).toBe('application/json')
   })
 })
 

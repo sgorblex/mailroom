@@ -161,3 +161,15 @@ export function apiDelete(path: string, options: ApiJsonRequestOptions<null> = {
   const { init = {} } = options
   return apiRequest(path, { method: 'DELETE', ...init }, undefined)
 }
+
+/** PATCH a JSON body: only the fields it carries change. */
+export function apiPatchJson<T>(
+  path: string,
+  body: unknown,
+  options: ApiJsonRequestOptions<T> = {},
+): Promise<T> {
+  const { init = {}, schema } = options
+  const headers = new Headers(init.headers)
+  headers.set('Content-Type', 'application/json')
+  return apiRequest(path, { method: 'PATCH', ...init, headers, body: JSON.stringify(body) }, schema)
+}

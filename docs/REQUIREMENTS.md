@@ -60,8 +60,7 @@ the index and live updates; tier 3 items arrive one at a time.
 
 ## Filters UI
 
-**Maturity: Current** — specified in [`requirements/filters.md`](requirements/filters.md); not
-built yet.
+**Maturity: Done** — as specified in [`requirements/filters.md`](requirements/filters.md).
 
 - Per account, **rule sets** of **imap-thingy** filters, one folder each, stored through the
   library's own rule serialisation, triggered on new mail, on a schedule or by hand, optionally

@@ -258,7 +258,9 @@ clear (hash them, as mailroom-mcp's audit does).
 ## Internationalisation
 
 English is the source language; Italian is kept in parity (`mise run check-web` runs `i18n:check`).
-Locales live in `web/src/locales/<lng>/<namespace>.json`.
+Locales live in `web/src/locales/<lng>/<namespace>.json`. Shared strings are in `common`; a feature
+whose screens load lazily keeps its own namespace (`filters`), added when they load and falling
+back to `common`, so its strings stay out of the first load.
 
 ## CI/CD and releases
 

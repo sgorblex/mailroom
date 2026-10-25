@@ -21,14 +21,6 @@ Mailroom is built on standalone projects, each with its own repository and check
   for a dry run), the `older_than_days` criterion, SSL and timeout options and `list_folders()` on
   `Account`, a stoppable `monitor` and regex match timeouts.
 
-**The first goal is the Filters UI.**
-
-## Filters
-
-- [ ] **Filters UI** — rule sets, filters, dry run, run now and history
-      ([`requirements/filters.md`](requirements/filters.md)); the worker runs them for accounts
-      with *Run filters* on.
-
 ## Client
 
 - [ ] **Tier 1** — folders, message list, message view with the sandboxed HTML iframe and

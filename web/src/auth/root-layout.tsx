@@ -37,6 +37,7 @@ export function RootLayout(): ReactElement {
         <nav aria-label={t('nav.label')} className="mr-auto flex gap-3 text-sm">
           <NavLink to="/">{t('nav.home')}</NavLink>
           <NavLink to="/accounts">{t('nav.accounts')}</NavLink>
+          <NavLink to="/filters">{t('nav.filters')}</NavLink>
           {auth.user.is_admin && <NavLink to="/users">{t('nav.users')}</NavLink>}
           <NavLink to="/profile">{t('nav.profile')}</NavLink>
         </nav>
@@ -54,7 +55,7 @@ function NavLink({
   to,
   children,
 }: {
-  to: '/' | '/accounts' | '/users' | '/profile'
+  to: '/' | '/accounts' | '/filters' | '/users' | '/profile'
   children: string
 }): ReactElement {
   return (
@@ -63,7 +64,8 @@ function NavLink({
       className="hover:text-foreground"
       inactiveProps={{ className: 'text-muted-foreground' }}
       activeProps={{ className: 'font-medium text-foreground', 'aria-current': 'page' }}
-      activeOptions={{ exact: true }}
+      // A rule set's page (/filters/…) still sits under Filters.
+      activeOptions={{ exact: to === '/' }}
     >
       {children}
     </Link>

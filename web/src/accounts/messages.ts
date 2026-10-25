@@ -34,7 +34,7 @@ export function loginTestMessage(t: TFunction, result: LoginTest): string {
   return mailboxMessage(t, result.code ?? undefined, result.message ?? '') ?? t('accounts.testFailed', { message: result.message ?? '' })
 }
 
-function mailboxMessage(t: TFunction, code: string | undefined, message: string): string | null {
+export function mailboxMessage(t: TFunction, code: string | undefined, message: string): string | null {
   switch (code) {
     case 'login_failed':
       return t('accountErrors.loginFailed', { message })

@@ -23,6 +23,8 @@ export const i18nReady: Promise<unknown> = i18n.use(initReactI18next).init({
   supportedLngs: [...SUPPORTED_LANGUAGES],
   ns: ['common'],
   defaultNS: 'common',
+  // A feature's namespace (added when its screens load) still reaches the shared strings.
+  fallbackNS: 'common',
   resources: {
     en: { common: enCommon },
     it: { common: itCommon },
