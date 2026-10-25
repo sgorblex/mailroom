@@ -35,6 +35,12 @@ in the browser, tried with a dry run, and run by the worker. Product scope:
   did) and any error.
 - **One run at a time per account.** The worker never runs two runs on the same account at once;
   a run waits for the one in progress. Dry runs, which change nothing, are not held back.
+- **The worker** checks *Run filters* and the rule set's *enabled* again when a run starts; a run
+  refused then is recorded with its error. A `new_mail` rule set also runs each time the worker
+  (re)connects to its folder, to catch mail that arrived meanwhile, so it runs once at worker
+  start. A failed run keeps the report of the filters that finished. A run's report keeps the
+  first 200 matches per filter, with the total. A run cut short by the worker stopping is closed
+  as `interrupted` when the worker starts again.
 
 ## Data model
 

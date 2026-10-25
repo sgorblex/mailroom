@@ -7,7 +7,7 @@ Engineering baseline for Mailroom. Product scope: [`../REQUIREMENTS.md`](../REQU
 | Area | Choice |
 | --- | --- |
 | Backend | Python 3.14+ (dev pin 3.15 via mise), FastAPI, SQLAlchemy 2 (sync) + psycopg 3, Alembic, uv |
-| Worker | procrastinate (psycopg 3) on the app's database, `python -m mailroom.worker` |
+| Worker | procrastinate (psycopg 3) on the app's database, `python -m mailroom.worker`; it also watches folders over IMAP IDLE |
 | Web | React 19, Vite, TanStack Router (code-based routes), Tailwind 4 + shadcn (`web/components.json`), i18next, Zod at the API boundary, ESLint `strictTypeChecked` (no Prettier) |
 | Database | PostgreSQL 18 |
 | Tests | pytest (+ xdist, one database per worker cloned from the migrated `mailroom_test`), Vitest (`node` and `jsdom` projects) |
@@ -164,17 +164,49 @@ What they do and the route list: [`filters.md`](filters.md). How:
   per user at a time, across API processes: a session advisory lock on a connection of its own,
   taken with `pg_try_advisory_lock`; a second one meanwhile is 429 `dry_run_busy` and not
   recorded.
-- **Run now** (`POST /rule-sets/{id}/run`, 202) inserts a queued `filter_run` (no `started_at`)
-  and, in the same transaction, the procrastinate job `run_rule_set(run_id)` with `lock`
-  `mailbox:<user id>:<account id>` (one job per mailbox at a time) and `queueing_lock`
-  `rule_set:<id>` (one waiting run per rule set).
+- **Queueing a run** — Run now (`POST /rule-sets/{id}/run`, 202), the scheduled dispatcher, new
+  mail — inserts a queued `filter_run` (no `started_at`) and, in the same transaction, the
+  procrastinate job `run_rule_set(run_id)` with `lock` `mailbox:<user id>:<account id>` (one job
+  per mailbox at a time) and `queueing_lock` `rule_set:<id>` (one waiting run per rule set: a
+  trigger meeting a waiting run adds nothing, as that run will see the same mail).
+- **The worker** (`mailroom/worker/`) runs nothing for an account whose Run filters is off, nor for
+  a disabled rule set:
+  - `run_rule_set` checks both again when it starts (else the run's error is `run_filters_off` or
+    `rule_set_disabled`), commits `started_at`, runs the enabled filters (wrapped for starred only)
+    through imap-thingy's `Folder.run_into` with no transaction open, and records `finished_at`,
+    the report and the error (the filters finished so far kept). A pattern out of imap-thingy's
+    match timeout is `match_timeout`, logged by its exception's type only (its text quotes the
+    pattern); anything unexpected is `run_failed`, its exception's type name only.
+    A run removed meanwhile (with its rule set or account) is left alone. A run whose job is
+    neither waiting nor running when the worker starts (its worker stopped during it) is closed
+    with the error `interrupted`.
+  - `dispatch_scheduled`, a procrastinate periodic task every minute, queues each runnable
+    `scheduled` rule set whose last scheduled run was queued at least `interval_minutes` ago
+    (30 s early, for the minute's start), or never.
+  - The **IDLE supervisor**, a thread of the worker process, keeps one imap-thingy `monitor` (on
+    its own thread, stoppable) per (user, account, folder) of the runnable `new_mail` rule sets.
+    Every 30 s it starts and stops watches to match the rule sets and Run filters, restarts one
+    whose account's server, login or password changed, and starts again one that died (its first
+    connection failed): at once, then after 30 s, doubling up to 30 min while it keeps failing
+    without reaching its folder; each new reason is logged once. New mail, and every (re)connection of a watch
+    (for mail that came while unwatched), queues the folder's `new_mail` runs; the IDLE
+    connection itself never acts. Filter edits need no restart: each run loads them.
+  - Jobs run 4 at a time (synchronous tasks, each on a thread); besides being notified of new jobs,
+    the worker looks for them every second, so a run held back by its mailbox's lock starts within
+    a second of the lock freeing. One worker process (below): a second would watch every folder
+    twice, so it exits.
+  - SIGTERM or SIGINT: procrastinate gives the jobs in progress 60 s, then the watches are stopped
+    (each within the 20 s IMAP timeout).
 - **A run's `result`** is imap-thingy's folder report, each filter's entry with its `filter_id` and
   the spec as stored; a dry run's adds `limited_to_newest` (null when the whole folder was looked
-  at). `error` is `<code>: <message>`.
+  at). A real run keeps the first 200 matched messages per filter, with `matched_total` when there
+  were more; when it fails part way, `result` holds the filters finished before the failure and
+  `error` repeats the failure. `error` is `<code>: <message>`.
 - **Logs:** `rule_set_added`, `rule_set_changed`, `rule_set_removed`, `filter_added`,
   `filter_changed`, `filter_removed`, `filters_reordered`, `dry_run` (with `outcome`),
-  `run_requested`, with `user_id` and `rule_set_id`, `filter_id` or `run_id`; never a spec or a
-  message.
+  `run_requested`; from the worker `run_queued` and `rule_set_run` (with `trigger` and `outcome`:
+  `ok`, the error's code, or `gone`); with `user_id` and `rule_set_id`, `filter_id` or `run_id`;
+  never a spec or a message.
 
 ## Data persistence & schema migrations
 

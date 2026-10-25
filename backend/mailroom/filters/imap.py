@@ -56,12 +56,18 @@ class RuleSetFolder(Folder):
                 self.account.delimiter = delimiter
             selected = conn.select_folder(self.imap_name(), readonly=readonly)
         except BaseException:
+            self.untrack(conn)
             with suppress(Exception):
                 conn.logout()
             raise
         exists = selected.get(b"EXISTS")
         self.message_count = exists if isinstance(exists, int) else None
         return conn
+
+    def untrack(self, conn: IMAPClient) -> None:
+        """Leave ``conn`` out of ``abort()``: it is closed elsewhere."""
+        with self._lock, suppress(ValueError):
+            self._connections.remove(conn)
 
     def abort(self) -> None:
         with self._lock:

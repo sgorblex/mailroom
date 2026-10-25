@@ -22,10 +22,11 @@ if TYPE_CHECKING:
     from fastapi import FastAPI
     from mailroom_core.crypto import SecretsSubkey
     from sqlalchemy.engine import Engine
-    from sqlalchemy.orm import Session
+    from sqlalchemy.orm import Session, sessionmaker
     from starlette.testclient import TestClient
 
     from mailroom.models import User
+    from mailroom.worker.context import Mailboxes
 
 USERNAME = "alice"
 ADMIN_USERNAME = "root"
@@ -238,3 +239,24 @@ def admin_client(api_client: TestClient, db_session: Session, admin: User) -> Te
 
     api_client.cookies.set(SESSION_COOKIE_NAME, create_session(db_session, admin))
     return api_client
+
+
+@pytest.fixture
+def sessions(db_session: Session) -> sessionmaker[Session]:
+    """Sessions inside the test's transaction, as the worker opens them."""
+    from sqlalchemy.orm import sessionmaker
+
+    return sessionmaker(
+        bind=db_session.connection(),
+        join_transaction_mode="create_savepoint",
+        expire_on_commit=False,
+    )
+
+
+@pytest.fixture
+def mailboxes(migrated_engine: Engine, secrets_subkey: SecretsSubkey) -> Mailboxes:
+    """The worker's way to the test users' mailboxes."""
+    from mailroom.accounts.mail import mail_ssl_context
+    from mailroom.worker.context import Mailboxes
+
+    return Mailboxes(migrated_engine, secrets_subkey, mail_ssl_context())

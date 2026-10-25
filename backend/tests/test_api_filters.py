@@ -364,10 +364,12 @@ def test_removing_the_user_removes_their_rule_sets(
 
 
 def jobs(db_session: Session) -> list[dict[str, Any]]:
+    """The queued runs' jobs (a real worker in another test may have committed others)."""
     rows = db_session.execute(
         text(
             "SELECT task_name, args, lock, queueing_lock, status "
-            f"FROM {PROCRASTINATE_SCHEMA}.procrastinate_jobs ORDER BY id"
+            f"FROM {PROCRASTINATE_SCHEMA}.procrastinate_jobs "
+            "WHERE task_name = 'run_rule_set' ORDER BY id"
         )
     )
     return [dict(row) for row in rows.mappings()]
