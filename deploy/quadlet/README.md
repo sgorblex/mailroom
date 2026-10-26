@@ -22,5 +22,4 @@ The environment file needs `MAILROOM_SECRETS_KEY` (`openssl rand -hex 32`): mail
 sealed under it, and a lost or changed key means entering every one again.
 
 Postgres is provided outside the pod (the host's shared `postgres`): database and role `mailroom`.
-Standalone mailroom-mcp uses `mailroom_mcp`; integrated, its tables live in schema `mcp` of
-`mailroom`.
+Standalone mailroom-mcp uses `mailroom_mcp`.

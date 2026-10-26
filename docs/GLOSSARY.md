@@ -16,5 +16,8 @@
 | **Run filters** | The per-account switch, off by default, without which the worker runs no rule set of that account. |
 | **Dry run** | Evaluating a rule set against real mail and reporting what each filter would match and do, changing nothing. |
 | **Suggestion** | A filter proposed from a user's own triage, with its evidence; inert until that user accepts it. |
-| **Profile** | An MCP connector scope (`/mcp/<profile>`): which tool groups and accounts a client gets. mailroom-mcp's term. |
+| **Profile** | A user's own page for their password, linked sign-ins and connected apps. (In mailroom-mcp, a connector scope `/mcp/<profile>`; the app has none: its tool groups are instance config.) |
+| **Tool group** | A named set of MCP tools (`filters_read`, `filters_write`, `filters_run`, later the `mail_*` ones) with a status (`stable`, `preview`, `planned`); `MAILROOM_MCP_TOOL_GROUPS` picks which are served. [`requirements/mcp.md`](requirements/mcp.md). |
+| **Connected app** | An MCP client a user approved through the built-in OAuth server (an OAuth grant), listed and revocable on their profile. |
+| **Linked sign-in** | An identity at the SSO provider (issuer and subject) tied to one user, so they can sign in through SSO and, in external mode, use that provider's MCP tokens. |
 | **Worker** | The app's background process: IDLE, indexing, filter runs, learning. |

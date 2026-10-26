@@ -32,11 +32,16 @@ Mailroom is built on standalone projects, each with its own repository and check
 
 ## MCP and suggestions
 
-- [ ] **MCP host** — mount mailroom-mcp at `/mcp/<profile>` with the app's integration points.
-      Waits for mailroom-mcp to serve several users (decided for its 0.4: `AccountStore` and
-      `OwnerAuth` carry the user), which its design settles before `auth` is ported.
-      Before it is embedded, the shared `core` settings document must tolerate mailroom-mcp's
-      profile part: the accounts routes check the whole document strictly today.
+- [ ] **MCP server** ([`requirements/mcp.md`](requirements/mcp.md)), in this order:
+  - [ ] **Filters service layer** — rule-set and filter logic out of the routes, so the API and the
+        MCP share it.
+  - [ ] **Web SSO** — OIDC sign-in for existing users, linked sign-ins on the profile.
+  - [ ] **MCP endpoint and tools** — `/mcp`, the `filters_*` groups, the envelope, the audit line.
+  - [ ] **Built-in OAuth server** — DCR, CIMD, tokens, the `/connect` consent screen.
+  - [ ] **External issuer** — JWTs from Authentik or Keycloak, mapped through linked sign-ins.
+  - [ ] **Connected apps** — list and revoke grants on the profile.
+  - [ ] **Mail tool groups** — once the client reaches parity with mailroom-mcp, turn on
+        `mail_read`, `mail_organize`, `mail_draft` and `mail_send`.
 - [ ] **Suggestions** — learn from manual moves, propose filters with evidence and dry run.
 
 ## Engineering and operations

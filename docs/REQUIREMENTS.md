@@ -42,7 +42,7 @@ through the Vite proxy. Engineering baseline:
   password keeps the stored one), test the IMAP login, remove (after a confirmation; the mail on
   the server stays), and a per-account **Run filters** switch, off until turned on. mailroom-core's
   config models check every change, so a refusal names the field. Removing a user removes their
-  accounts, stored passwords and send log with them. The embedded MCP will run with its own settings page off.
+  accounts, stored passwords and send log with them.
   How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md)
   — *Mail accounts*.
 
@@ -82,14 +82,21 @@ the index and live updates; tier 3 items arrive one at a time.
   moves, flags, deletes or sends mail, or enables a filter, by itself.
 - Learning runs locally; no mail leaves the host for it.
 
-## MCP host
+## MCP server
 
-**Maturity: Planned** — mounts **mailroom-mcp**'s ASGI app at `/mcp/<profile>` in the API process,
-with the app supplying `OwnerAuth` (consent and settings use the app's session) and `AuditSink`,
-and the accounts in mailroom-core's schema `core`. Each user gets their own MCP once mailroom-mcp
-serves several users (decided for its 0.4). The MCP's own schema (`mcp`) and Alembic history stay
-its own. Standalone
-mailroom-mcp keeps working without the app.
+**Maturity: Planned** — as specified in [`requirements/mcp.md`](requirements/mcp.md).
+
+- The app's own MCP server at `/mcp`, for each user's own data: accounts, folders, rule sets,
+  dry runs and runs, in [tool groups](GLOSSARY.md) chosen by instance config. Mail tools come
+  later, hidden until the app matches standalone mailroom-mcp.
+- **Nothing turns on without the user's say:** a rule set created over MCP starts disabled, an
+  enabled one cannot be edited, and enabling, *Run now* and the *Run filters* switch are separate
+  tools marked destructive, so the client asks first.
+- **OAuth:** a built-in authorization server by default (sign in with a Mailroom password or SSO,
+  then approve the client), or tokens from an external issuer such as Authentik; each approval is
+  a [connected app](GLOSSARY.md) the user can revoke.
+- **Web SSO** over OIDC for users an admin created, through a [linked sign-in](GLOSSARY.md);
+  nobody signs up through it.
 
 ## Non-functional requirements
 

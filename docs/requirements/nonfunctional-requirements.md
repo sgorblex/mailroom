@@ -12,7 +12,7 @@ Engineering baseline for Mailroom. Product scope: [`../REQUIREMENTS.md`](../REQU
 | Database | PostgreSQL 18 |
 | Tests | pytest (+ xdist, one database per worker cloned from the migrated `mailroom_test`), Vitest (`node` and `jsdom` projects) |
 | Containers | Podman, `mailroom-api` and `mailroom-web` images; Quadlet for deploy |
-| Component family | mailroom-core and imap-thingy (PyPI); mailroom-mcp not yet ([`../CONTEXT.md`](../CONTEXT.md)) |
+| Component family | mailroom-core and imap-thingy (PyPI); mailroom-mcp stays standalone, not a dependency ([`../CONTEXT.md`](../CONTEXT.md)) |
 
 Tool pins: `mise.toml` (dev), the digest-pinned `.woodpecker/*.yaml` step images (CI), the
 Containerfiles, `backend/.python-version`, `web/package.json` `packageManager`, and
@@ -211,7 +211,7 @@ What they do and the route list: [`filters.md`](filters.md). How:
 ## Data persistence & schema migrations
 
 - All app tables live in PostgreSQL schema **`app`** (`Base.metadata` schema). Alembic's version
-  table is **`app.alembic_version`**, so mailroom-mcp's own history (schema `mcp`) can share the
+  table is **`app.alembic_version`**, so mailroom-core's history (schema `core`) can share the
   database without either seeing the other's. `alembic/env.py` creates the schema before Alembic
   writes its version table; autogenerate only looks at `app`.
 - **procrastinate**'s tables live in schema **`procrastinate`**, out of autogenerate. A revision

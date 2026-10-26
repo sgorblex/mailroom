@@ -1,8 +1,8 @@
 # Mailroom
 
 A self-hosted mail app for a few separate users: a web mail client (read, triage, compose, over a local index
-with live updates), a web UI for [imap-thingy](https://pypi.org/project/imap-thingy/) filters, the
-host for the **mailroom-mcp** server, and — later — filter **suggestions** learned
+with live updates), a web UI for [imap-thingy](https://pypi.org/project/imap-thingy/) filters, its own
+**MCP server**, and — later — filter **suggestions** learned
 from how each user files mail. It composes standalone components rather than absorbing them:
 [`docs/CONTEXT.md`](docs/CONTEXT.md).
 
