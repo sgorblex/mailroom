@@ -2,8 +2,11 @@ import { useState, type ReactElement, type SubmitEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { ApiRequestError, apiErrorMessage } from '@/api/http.ts'
+import { ssoStartUrl } from '@/api/sso.ts'
 import { useAuth } from '@/auth/auth-context.ts'
+import { currentReturnTo, ssoErrorMessage, useSsoConfig, useSsoError } from '@/auth/sso.ts'
 import { Button } from '@/components/ui/button.tsx'
+import { buttonVariants } from '@/components/ui/button-variants.ts'
 import { Input } from '@/components/ui/input.tsx'
 
 /** Shown in place of any page while signed out, so the URL survives signing in. */
@@ -15,6 +18,8 @@ export function LoginScreen(): ReactElement {
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const sso = useSsoConfig()
+  const ssoError = useSsoError()
 
   function failureMessage(failure: unknown): string {
     if (failure instanceof ApiRequestError && failure.status === 401) {
@@ -42,6 +47,11 @@ export function LoginScreen(): ReactElement {
     <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center gap-6 p-6">
       <h1 className="text-2xl font-semibold tracking-tight">{t('appName')}</h1>
       {ended && <p role="status">{t('login.sessionEnded')}</p>}
+      {ssoError !== null && (
+        <p role="alert" className="text-sm text-destructive">
+          {ssoErrorMessage(t, ssoError)}
+        </p>
+      )}
       <form className="flex flex-col gap-3" onSubmit={(event) => void submit(event)}>
         <label htmlFor="login-username" className="text-sm font-medium">
           {t('login.username')}
@@ -84,6 +94,17 @@ export function LoginScreen(): ReactElement {
           {t('login.signIn')}
         </Button>
       </form>
+      {sso?.enabled === true && sso.name !== null && (
+        <>
+          <p className="text-center text-sm text-muted-foreground">{t('sso.or')}</p>
+          <a
+            className={buttonVariants({ variant: 'outline' })}
+            href={ssoStartUrl('login', currentReturnTo())}
+          >
+            {t('sso.signInWith', { name: sso.name })}
+          </a>
+        </>
+      )}
     </main>
   )
 }

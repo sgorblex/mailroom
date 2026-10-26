@@ -5,11 +5,11 @@ import { ChevronRight } from 'lucide-react'
 
 import { listRuns, type Filter, type Run } from '@/api/filters.ts'
 import { Button } from '@/components/ui/button.tsx'
+import { useLoad } from '@/lib/use-load.ts'
 
 import { filterErrorMessage, runErrorMessage } from './messages.ts'
 import { formatDateTime } from './describe.ts'
 import { RunReportView } from './run-report.tsx'
-import { useLoad } from './use-load.ts'
 import type { Vocabulary } from './vocabulary.ts'
 import { FILTERS_NS } from './i18n.ts'
 

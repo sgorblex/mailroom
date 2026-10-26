@@ -152,7 +152,7 @@ workers; expired rows are swept on writes.
 | Table | Columns |
 | --- | --- |
 | `external_identity` | `id`, `user_id` (cascade), `issuer`, `subject`, `created_at`, `last_used_at`; unique `(issuer, subject)` |
-| `sso_login_state` | `state_hash`, `nonce`, `code_verifier`, `intent` (`login` \| `link`), `link_user_id`, `return_to`, `browser_binding_hash`, `expires_at` |
+| `sso_login_state` | `state_hash`, `nonce`, `code_verifier`, `intent` (`login` \| `link`), `link_user_id`, `return_to`, `browser_binding_hash`, `client_key`, `expires_at` |
 | `oauth_client` | `client_id`, `kind` (`dcr` \| `cimd`), `client_name`, `redirect_uris`, `metadata`, `fetched_at`, `created_at`, `last_used_at` |
 | `oauth_authorization_request` | `id_hash`, `client_id`, `params`, `expires_at` |
 | `oauth_authorization_code` | `code_hash`, `client_id`, `user_id`, `grant_id`, `redirect_uri`, `redirect_uri_explicit`, `code_challenge`, `resource`, `scopes`, `expires_at` |

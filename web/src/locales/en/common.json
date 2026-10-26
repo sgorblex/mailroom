@@ -25,6 +25,28 @@
     "unknownError": "Could not sign in.",
     "sessionEnded": "Your session has ended. Sign in again."
   },
+  "sso": {
+    "or": "or",
+    "signInWith": "Sign in with {{name}}",
+    "linkedTitle": "Linked sign-ins",
+    "noneLinked": "None yet: link one to sign in through your identity provider.",
+    "link": "Link {{name}}",
+    "unlink": "Unlink",
+    "unlinkFrom": "Unlink {{name}}",
+    "subject": "Account {{subject}}",
+    "loadFailed": "Could not load your linked sign-ins.",
+    "unlinkFailed": "Could not unlink it. Try again.",
+    "errors": {
+      "notLinked": "That sign-in is not linked to a Mailroom user. Sign in with your password, then link it on your profile.",
+      "stateInvalid": "The sign-in expired or was started in another browser. Try again.",
+      "denied": "The identity provider did not let you in.",
+      "unavailable": "The identity provider cannot be reached. Try again later.",
+      "identityTaken": "That sign-in is already linked to another user.",
+      "signedOut": "Sign in first, then link the sign-in.",
+      "busy": "Too many sign-ins under way. Try again in a few minutes.",
+      "failed": "Signing in through the identity provider failed."
+    }
+  },
   "nav": {
     "label": "Main",
     "home": "Home",

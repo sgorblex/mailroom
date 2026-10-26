@@ -6,7 +6,7 @@ Engineering baseline for Mailroom. Product scope: [`../REQUIREMENTS.md`](../REQU
 
 | Area | Choice |
 | --- | --- |
-| Backend | Python 3.14+ (dev pin 3.15 via mise), FastAPI, SQLAlchemy 2 (sync) + psycopg 3, Alembic, uv |
+| Backend | Python 3.14+ (dev pin 3.15 via mise), FastAPI, SQLAlchemy 2 (sync) + psycopg 3, Alembic, uv; PyJWT and httpx for OIDC |
 | Worker | procrastinate (psycopg 3) on the app's database, `python -m mailroom.worker`; it also watches folders over IMAP IDLE |
 | Web | React 19, Vite, TanStack Router (code-based routes), Tailwind 4 + shadcn (`web/components.json`), i18next, Zod at the API boundary, ESLint `strictTypeChecked` (no Prettier) |
 | Database | PostgreSQL 18 |
@@ -72,8 +72,8 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   cookie `mailroom_session` carries a random token; the database keeps only its SHA-256. An absolute
   lifetime of `MAILROOM_SESSION_TTL_DAYS` (default 14), no sliding renewal; signing out deletes the
   row, and a login sweeps expired ones. Every route but health, readiness, version, login, logout
-  (idempotent, so an expired tab can still sign out) and `auth/me` (which answers `{"user": …}`)
-  depends on `require_user` (`backend/mailroom/api/deps.py`) and answers 401 without a valid
+  (idempotent, so an expired tab can still sign out), `auth/me` (which answers `{"user": …}`) and
+  SSO's `auth/oidc/*` depends on `require_user` (`backend/mailroom/api/deps.py`) and answers 401 without a valid
   session.
 - **Cookie:** `HttpOnly`, `SameSite=Strict`, `Path=/`, and `Secure` except with
   `MAILROOM_ENV=development` (the dev server is plain HTTP).
@@ -101,9 +101,56 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   has ended.
 - **Refusals** about users answer 400 with `{"detail": {"code", "message"}}`; the web app words
   each `code` itself, in the reader's language.
-- **Logs:** `login_succeeded` (with `user_id`), `login_failed`, `logout`, `user_created`,
+- **Logs:** `login_succeeded` (with `user_id`; `via="sso"` through SSO), `login_failed`,
+  `logout`, `user_created`,
   `user_removed`, `password_reset` (with `user_id`, the admin, and `target_user_id`),
-  `password_changed`, `password_change_failed`; never a password, a token, or a username.
+  `password_changed`, `password_change_failed`, `sso_refused` and `sso_failed` (with the
+  `outcome`), `sso_not_linked`, `sso_identity_linked` (with `user_id` and `via`: `profile` or the
+  link claim), `sso_identity_unlinked`; never a password, a token, or a username.
+
+### Single sign-on
+
+- **Off** unless `MAILROOM_PUBLIC_URL` and `MAILROOM_OIDC_ISSUER`, `_CLIENT_ID` and
+  `_CLIENT_SECRET` are all set (a warning names what is missing). `MAILROOM_PUBLIC_URL`
+  (`backend/mailroom/config/public_url.py`) is an origin, `https://` or plain `http://` on loopback,
+  with a valid host (an IP address or an ASCII DNS name: letters, digits, inner hyphens) and the
+  scheme's default port dropped (`:443`, `:80`), parsed once at startup (anything else is ignored
+  with a warning, as if unset); the callback, `{MAILROOM_PUBLIC_URL}/api/v1/auth/oidc/callback`, is
+  never built from a request's `Host`.
+- **Provider** (`backend/mailroom/auth/oidc.py`): discovery (`issuer` must match, a trailing slash
+  aside; every endpoint `https://` or loopback) cached for an hour, the JWKS fetched over `httpx`
+  with no redirects, a 5 s timeout and a 256 KB cap, refetched when a token names an unknown `kid`
+  (at most every 30 s). A failed fetch of either is cached too: not tried again for 30 s, and
+  meanwhile the last good copy (up to a day old) stays in use, with a warning, so a provider
+  outage neither piles requests up behind the fetch nor signs everyone out. A token's header (`alg`,
+  `kid`) is checked before anything is fetched. JWTs (`verify_jwt`, also the MCP server's for an external issuer) are
+  checked with PyJWT: RS256, ES256, PS256 or EdDSA only, **never HS\*** or `none`; `iss`, `aud`,
+  `sub`, `exp` and `iat` required, 60 s of leeway. An ID token also needs the flow's `nonce`, and
+  `azp` equal to the client when it has several audiences or names one.
+- **Flow** (`backend/mailroom/auth/sso.py`): authorization code with PKCE (S256) and a nonce,
+  client secret by HTTP Basic (or in the form when the provider supports only that). `start`
+  stores the flow in `app.sso_login_state` under the SHA-256 of `state` (10 minutes, swept on
+  each start, at most 10 000 at once and 20 per client; a client, by `client_key` as for the
+  login throttle, starts at most 10 a minute, in memory per process: else `busy`) and sets `mailroom_sso_binding`, a random token whose
+  SHA-256 the row keeps: `HttpOnly`, `SameSite=Lax` (it must come back on the provider's
+  cross-site redirect), `Path=/api/v1/auth/oidc`. The callback deletes the row before anything
+  else (single use) and refuses it without the matching cookie, so a callback another browser
+  started is never signed in (login CSRF). `return_to` is a path on this site (`/…`, never
+  `//host`, `/\host`, a scheme or a control character), else `/`.
+- **Who signs in:** the user an `app.external_identity` `(issuer, sub)` links to, deleted with
+  their user. Linking from the *Profile* page (`intent=link`) needs the session, which the
+  `SameSite=Strict` cookie only brings from this site, and refuses a sign-in already linked to
+  someone else. With `MAILROOM_OIDC_LINK_CLAIM=preferred_username` (the only value; anything
+  else, `email` included since a username never holds an `@`, is ignored with a warning) an
+  unlinked sign-in whose `preferred_username` equals an existing username exactly (no case
+  folding or trimming) links on first use, unless that user already has a sign-in linked from
+  the issuer; an existing link never moves. The provider must not let users choose or change
+  their usernames, or one could claim another's account. Nobody is created.
+- **Failures** come back to `return_to` with `sso_error=<code>` (`not_linked`, `state_invalid`,
+  `browser_mismatch`, `denied`, `unavailable`, `failed`, `identity_taken`, `signed_out`,
+  `not_configured`, `busy`), which the web app words.
+- **Routes:** `GET /api/v1/auth/oidc/config` (`{enabled, name}`), `/start`, `/callback`;
+  `GET /api/v1/me/identities` and `DELETE /api/v1/me/identities/{id}` behind the session.
 
 ### Mail accounts
 
@@ -258,6 +305,8 @@ clear (hash them, as mailroom-mcp's audit does).
   binds the routes to it.
 - **Web:** Vitest; `*.node.test.ts(x)` in bare Node, everything else in jsdom with
   `src/test/setup.ts`. Test by accessible role and label.
+- **OIDC** tests run against `mailroom.dev.fake_idp` (also `mise run dev-idp`) through
+  `httpx.MockTransport`, so they never reach the network.
 - No end-to-end browser test framework; browser checks by agents use chrome-devtools-mcp
   (`AGENTS.md` — *Manual / browser-based testing*), not CI.
 

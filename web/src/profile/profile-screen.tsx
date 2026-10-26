@@ -5,6 +5,7 @@ import { changePassword } from '@/api/auth.ts'
 import { ApiRequestError } from '@/api/http.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Input } from '@/components/ui/input.tsx'
+import { LinkedSignIn } from '@/profile/linked-sign-in.tsx'
 import { userErrorMessage } from '@/users/messages.ts'
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@/users/password.ts'
 
@@ -16,7 +17,7 @@ type Outcome =
   | { kind: 'changed' }
   | { kind: 'failed'; message: string; field: Field }
 
-/** The signed-in user's own page: for now, their password. */
+/** The signed-in user's own page: their password and linked sign-ins. */
 export function ProfileScreen(): ReactElement {
   const { t } = useTranslation()
   const [current, setCurrent] = useState('')
@@ -126,6 +127,7 @@ export function ProfileScreen(): ReactElement {
           {t('profile.save')}
         </Button>
       </form>
+      <LinkedSignIn />
     </main>
   )
 }

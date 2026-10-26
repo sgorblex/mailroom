@@ -25,6 +25,28 @@
     "unknownError": "Accesso non riuscito.",
     "sessionEnded": "La sessione è terminata. Accedi di nuovo."
   },
+  "sso": {
+    "or": "oppure",
+    "signInWith": "Accedi con {{name}}",
+    "linkedTitle": "Accessi collegati",
+    "noneLinked": "Ancora nessuno: collegane uno per accedere tramite il tuo provider di identità.",
+    "link": "Collega {{name}}",
+    "unlink": "Scollega",
+    "unlinkFrom": "Scollega {{name}}",
+    "subject": "Account {{subject}}",
+    "loadFailed": "Impossibile caricare i tuoi accessi collegati.",
+    "unlinkFailed": "Impossibile scollegarlo. Riprova.",
+    "errors": {
+      "notLinked": "Questo accesso non è collegato a un utente di Mailroom. Accedi con la password, poi collegalo dal tuo profilo.",
+      "stateInvalid": "L'accesso è scaduto o è stato avviato in un altro browser. Riprova.",
+      "denied": "Il provider di identità non ti ha fatto entrare.",
+      "unavailable": "Il provider di identità non è raggiungibile. Riprova più tardi.",
+      "identityTaken": "Questo accesso è già collegato a un altro utente.",
+      "signedOut": "Accedi prima, poi collega l'accesso.",
+      "busy": "Troppi accessi in corso. Riprova tra qualche minuto.",
+      "failed": "L'accesso tramite il provider di identità non è riuscito."
+    }
+  },
   "nav": {
     "label": "Principale",
     "home": "Home",

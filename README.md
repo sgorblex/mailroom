@@ -34,7 +34,9 @@ mise run dev          # Postgres + API + worker + Vite; Ctrl+C stops them all
 To sign in, create the first user once the database is up (`mise run migrate` if the API has not
 run yet): `mise run create-user <name> --admin`. That admin adds the rest on the app's *Users*
 page. For mail to try things on, `mise run dev-mail`, then `mise run seed-dev-mail <name>` gives
-that user the dev Dovecot's accounts `dev` and `team` with sample mail.
+that user the dev Dovecot's accounts `dev` and `team` with sample mail. To try SSO, run `mise run
+dev-idp` and put `MAILROOM_PUBLIC_URL=http://127.0.0.1:5180` and the `MAILROOM_OIDC_*` lines it
+prints in `.env` (see `.env.example`); open the app at that same origin.
 
 Then open <http://127.0.0.1:5180>. Ports are fixed so other local dev stacks and mailroom-mcp can run alongside:
 
@@ -45,6 +47,7 @@ Then open <http://127.0.0.1:5180>. Ports are fixed so other local dev stacks and
 | Postgres | `127.0.0.1:5434`, user/password/db `mailroom`, tests in `mailroom_test` |
 | Dev Dovecot | IMAPS `127.0.0.1:33993` (`mise run dev-mail`) |
 | Dev Mailpit | SMTPS `127.0.0.1:33025`, UI <http://localhost:8026> |
+| Dev OIDC provider | `http://127.0.0.1:8190` (`mise run dev-idp`) |
 
 Defaults live in `mise.toml`'s `[env]`; a root `.env` overrides them (see `.env.example`).
 
@@ -59,6 +62,7 @@ Defaults live in `mise.toml`'s `[env]`; a root `.env` overrides them (see `.env.
 | `dev-mail` / `dev-mail-down` / `dev-mail-reset` | Dev Dovecot + Mailpit with a local CA (`dev/.state/`) |
 | `migrate` / `reset-db` | Schema `core`, then Alembic upgrade head / drop, recreate and migrate the dev database |
 | `create-user` | Create a user in `DATABASE_URL` (`<name> [--admin]`; the password is prompted for) |
+| `dev-idp` | A fake OpenID Connect provider for trying SSO: approves everyone at once (`--username`, `--subject`; `/mint` for an access token) |
 | `seed-dev-mail` | Give a user the dev Dovecot accounts `dev` and `team`, sample mail in each empty INBOX (`<name>`) |
 | `check-backend` / `check-web-types` / `check-web` | Ruff + mypy / tsc / ESLint + i18n + build |
 | `check-migrations` | Upgrade → downgrade base → upgrade on a scratch database |

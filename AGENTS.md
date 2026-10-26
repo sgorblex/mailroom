@@ -34,7 +34,7 @@ Common mappings: **`uv sync`** → **`mise run setup`**; **`pytest`** → **`mis
 
 Do **not** invoke **`uv`**, **`pnpm`**, **`pytest`**, **`ruff`**, **`mypy`**, or **`alembic`** directly without **`mise run`** or **`mise exec`**.
 
-**Dev environment defaults** (ports, **`DATABASE_URL`**, **`TEST_DATABASE_URL`**) live in **`mise.toml`**'s **`[env]`**, and a root **`.env`** overrides them — so does it override anything you export on the command line. Ports are **fixed** (API **8100**, Vite **5180**, Postgres **5434**, dev Dovecot **33993**, Mailpit **33025** / **8026**), chosen not to clash with other local dev stacks or mailroom-mcp. There is **no per-worktree registry**: every checkout shares one dev database and one set of ports, so check whether something is already running before you start it, reuse it, and stop only what **you** started.
+**Dev environment defaults** (ports, **`DATABASE_URL`**, **`TEST_DATABASE_URL`**) live in **`mise.toml`**'s **`[env]`**, and a root **`.env`** overrides them — so does it override anything you export on the command line. Ports are **fixed** (API **8100**, Vite **5180**, Postgres **5434**, dev Dovecot **33993**, Mailpit **33025** / **8026**, dev OIDC provider **8190**), chosen not to clash with other local dev stacks or mailroom-mcp. There is **no per-worktree registry**: every checkout shares one dev database and one set of ports, so check whether something is already running before you start it, reuse it, and stop only what **you** started.
 
 ## Local quality checks
 

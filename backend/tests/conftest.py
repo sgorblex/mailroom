@@ -165,14 +165,16 @@ def _shared_application(_worker_engine: Engine) -> Iterator[FastAPI]:
 @pytest.fixture
 def api_client(db_session: Session, _shared_application: FastAPI) -> Iterator[TestClient]:
     """A client on ``https://testserver``, so ``Secure`` cookies come back, with the routes'
-    database session bound to ``db_session`` and a fresh login throttle."""
+    database session bound to ``db_session`` and a fresh login throttle and SSO start limit."""
     from starlette.testclient import TestClient
 
     from mailroom.api.deps import get_db_session
+    from mailroom.auth.sso import sso_start_limit
     from mailroom.auth.throttle import LoginThrottle
 
     _shared_application.dependency_overrides[get_db_session] = lambda: db_session
     _shared_application.state.login_throttle = LoginThrottle()
+    _shared_application.state.sso_start_limit = sso_start_limit()
     client = TestClient(_shared_application, base_url="https://testserver")
     try:
         yield client

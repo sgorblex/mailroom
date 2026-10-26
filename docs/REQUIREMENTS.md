@@ -35,6 +35,11 @@ through the Vite proxy. Engineering baseline:
   is shared. An [admin](GLOSSARY.md) adds and removes users and resets their passwords on the
   *Users* page (the first admin comes from `mise run create-user <name> --admin`); there is no
   public sign-up. Every user changes their own password on their *Profile* page.
+- **Single sign-on** (optional): "Sign in with …" an OpenID Connect provider, for users an admin
+  already created; nobody signs up through it. A user links the provider's sign-in on their
+  *Profile* page (and unlinks it there), or, when the instance says so, their first SSO sign-in
+  links by username. How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md)
+  — *Single sign-on*.
 - **Accounts** (IMAP + SMTP, identities, send mode) come from **mailroom-core**'s model; the app
   keeps them in mailroom-core's own schema (`core`, its `AccountStore`) in the app's database, with secrets sealed as
   mailroom-core seals them (byte-compatible with mailroom-mcp, so its data imports unchanged).

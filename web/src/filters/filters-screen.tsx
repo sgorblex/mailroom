@@ -14,13 +14,13 @@ import {
 import { apiErrorMessage } from '@/api/http.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Switch } from '@/components/ui/switch.tsx'
+import { useLoad } from '@/lib/use-load.ts'
 
 import { ConfirmRemoval } from './confirm-removal.tsx'
 import { folderLabel, triggerSummary } from './describe.ts'
 import { useFolders } from './folders.ts'
 import { filterErrorMessage } from './messages.ts'
 import { RuleSetForm } from './rule-set-form.tsx'
-import { useLoad } from './use-load.ts'
 import { FILTERS_NS } from './i18n.ts'
 
 /** The signed-in user's rule sets, account by account; each opens in its own editor. */

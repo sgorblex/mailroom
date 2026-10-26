@@ -7,7 +7,7 @@ from starlette.requests import Request
 
 from mailroom.auth.password import hash_password, password_matches
 from mailroom.auth.sessions import SESSION_TTL_DAYS_ENV, session_ttl
-from mailroom.auth.throttle import MAX_WAIT_SECONDS, LoginThrottle, client_key
+from mailroom.auth.throttle import MAX_WAIT_SECONDS, LoginThrottle, RateLimit, client_key
 from mailroom.auth.users import UserError, normalized_username
 
 
@@ -29,6 +29,27 @@ def test_throttle_doubles_the_wait_up_to_the_cap() -> None:
         clock.now += waits[-1]
     assert waits == [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, MAX_WAIT_SECONDS, MAX_WAIT_SECONDS]
     assert throttle.begin_attempt("b") == 0
+
+
+def test_a_rate_limit_counts_each_client_in_a_sliding_window() -> None:
+    clock = FakeClock()
+    limit = RateLimit(3, 60, clock)
+    for _ in range(3):
+        assert limit.allow("a")
+        clock.now += 10
+    assert not limit.allow("a")
+    assert limit.allow("b")
+    clock.now += 31  # the first hit is a minute old
+    assert limit.allow("a")
+    assert not limit.allow("a")
+
+
+def test_rate_limit_sweeps_a_client_it_never_let_through() -> None:
+    clock = FakeClock()
+    limit = RateLimit(0, 60, clock)
+    assert not limit.allow("a")
+    clock.now += 60
+    assert not limit.allow("b")
 
 
 def test_throttle_forgets_a_client_on_success() -> None:

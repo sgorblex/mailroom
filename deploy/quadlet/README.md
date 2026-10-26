@@ -21,5 +21,8 @@ app can manage users, every user is made this way.
 The environment file needs `MAILROOM_SECRETS_KEY` (`openssl rand -hex 32`): mailbox passwords are
 sealed under it, and a lost or changed key means entering every one again.
 
+SSO needs `MAILROOM_PUBLIC_URL`: setup, and the Authentik runbook, in
+[`docs/deploy.md`](../../docs/deploy.md) — *SSO*.
+
 Postgres is provided outside the pod (the host's shared `postgres`): database and role `mailroom`.
 Standalone mailroom-mcp uses `mailroom_mcp`.

@@ -10,8 +10,18 @@ const ALICE = { username: 'alice', is_admin: false }
 const CURRENT = 'correct horse battery staple'
 const NEXT = 'a brand new passphrase'
 
+const PASSWORD_PATH = '/api/v1/auth/password'
+
+/** Anything but the password change (the linked sign-ins section's requests) finds nothing. */
+function notFound(): Promise<Response> {
+  return Promise.resolve(new Response('{"detail":"Not Found"}', { status: 404 }))
+}
+
 function stubApi(): ReturnType<typeof vi.fn> {
-  const fetchMock = vi.fn((_path: string, init?: RequestInit) => {
+  const fetchMock = vi.fn((path: string, init?: RequestInit) => {
+    if (path !== PASSWORD_PATH) {
+      return notFound()
+    }
     const { current_password } = JSON.parse(init?.body as string) as { current_password: string }
     if (current_password !== CURRENT) {
       return Promise.resolve(
@@ -47,8 +57,10 @@ describe('ProfileScreen', () => {
   it('asks to wait after too many wrong passwords', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(() =>
-        Promise.resolve(new Response('{"detail":"Too many failed attempts"}', { status: 429 })),
+      vi.fn((path: string) =>
+        path === PASSWORD_PATH
+          ? Promise.resolve(new Response('{"detail":"Too many failed attempts"}', { status: 429 }))
+          : notFound(),
       ),
     )
     renderSignedIn(<ProfileScreen />, ALICE)
@@ -61,7 +73,7 @@ describe('ProfileScreen', () => {
     renderSignedIn(<ProfileScreen />, ALICE)
     await fill(CURRENT, NEXT, `${NEXT}!`)
     expect(screen.getByRole('alert')).toHaveTextContent('The new passwords differ.')
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalledWith(PASSWORD_PATH, expect.anything())
   })
 
   it('says when the current password is wrong, then changes it', async () => {
@@ -78,7 +90,7 @@ describe('ProfileScreen', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Password changed.')
     expect(screen.getByLabelText('Current password')).toHaveValue('')
     expect(fetchMock).toHaveBeenLastCalledWith(
-      '/api/v1/auth/password',
+      PASSWORD_PATH,
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ current_password: CURRENT, new_password: NEXT }),

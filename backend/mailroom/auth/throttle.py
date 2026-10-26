@@ -1,5 +1,7 @@
 """Login throttling: after n consecutive failures, a client waits 2^(n-1) s (capped at 15 min)
-before its next attempt is even checked. In memory, per process; a success resets the client."""
+before its next attempt is even checked. In memory, per process; a success resets the client.
+``RateLimit``: at most so many requests per client in a sliding window, for routes anyone may call
+(the SSO start)."""
 
 from __future__ import annotations
 
@@ -7,6 +9,7 @@ import ipaddress
 import math
 import threading
 import time
+from collections import deque
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -69,3 +72,35 @@ class LoginThrottle:
             for key, entry in self._failures.items()
             if now - entry[1] < _FORGET_AFTER_SECONDS
         }
+
+
+class RateLimit:
+    """At most ``limit`` requests per client (``client_key``) in any ``window_seconds``. In memory,
+    per process."""
+
+    def __init__(
+        self, limit: int, window_seconds: float, clock: Callable[[], float] = time.monotonic
+    ) -> None:
+        self.limit = limit
+        self.window = window_seconds
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._hits: dict[str, deque[float]] = {}
+        self._last_sweep = clock()
+
+    def allow(self, client: str) -> bool:
+        """Whether the client may go ahead now; a request let through counts."""
+        now = self._clock()
+        with self._lock:
+            if now - self._last_sweep >= self.window:
+                self._last_sweep = now
+                self._hits = {
+                    k: v for k, v in self._hits.items() if v and now - v[-1] < self.window
+                }
+            hits = self._hits.setdefault(client, deque())
+            while hits and now - hits[0] >= self.window:
+                hits.popleft()
+            if len(hits) >= self.limit:
+                return False
+            hits.append(now)
+            return True

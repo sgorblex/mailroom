@@ -15,6 +15,7 @@ import {
 } from '@/api/filters.ts'
 import { ApiRequestError } from '@/api/http.ts'
 import { Button } from '@/components/ui/button.tsx'
+import { useLoad } from '@/lib/use-load.ts'
 
 import { ConfirmRemoval } from './confirm-removal.tsx'
 import { folderLabel, triggerSummary } from './describe.ts'
@@ -24,7 +25,6 @@ import { filterErrorMessage } from './messages.ts'
 import { RuleSetForm } from './rule-set-form.tsx'
 import { RunHistory } from './run-history.tsx'
 import { RunPanel } from './run-panel.tsx'
-import { useLoad } from './use-load.ts'
 import { readVocabulary, VocabularyError, type Vocabulary } from './vocabulary.ts'
 import { FILTERS_NS } from './i18n.ts'
 

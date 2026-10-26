@@ -27,9 +27,12 @@ from mailroom.api.refusals import http_refusal
 from mailroom.api.routes.accounts import accounts_router
 from mailroom.api.routes.auth import auth_router
 from mailroom.api.routes.filters import filters_router
+from mailroom.api.routes.sso import identities_router, sso_router
 from mailroom.api.routes.users import own_password_router, users_router
+from mailroom.auth.sso import Sso, sso_from_env, sso_start_limit
 from mailroom.auth.throttle import LoginThrottle
 from mailroom.auth.users import user_count
+from mailroom.config.public_url import public_url_from_env
 from mailroom.database_connectivity import CONNECTIVITY_ERRORS
 from mailroom.errors import Refusal
 from mailroom.observability.http_request_logging import CorrelationLoggingMiddleware
@@ -139,7 +142,12 @@ async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
     _warn_if_nobody_can_sign_in(application)
     application.state.secrets_subkey = secrets_subkey_from_env()
     application.state.mail_ssl_context = mail_ssl_context()
+    application.state.public_url = public_url_from_env()
+    application.state.sso = sso_from_env(application.state.public_url)
     yield
+    sso: Sso | None = application.state.sso
+    if sso is not None:
+        sso.provider.close()
     application.state.session_maker = None
     shutdown_engine: Engine | None = application.state.database_engine
     if shutdown_engine is not None:
@@ -162,6 +170,7 @@ def create_application() -> FastAPI:
     application = FastAPI(title="Mailroom API", lifespan=_lifespan)
     application.add_exception_handler(Refusal, _refusal_answer)
     application.state.login_throttle = LoginThrottle()
+    application.state.sso_start_limit = sso_start_limit()
     application.add_middleware(CrossSiteRequestMiddleware)
     application.add_middleware(CorrelationLoggingMiddleware)
 
@@ -203,6 +212,7 @@ def create_application() -> FastAPI:
         return JSONResponse(content={"status": "ready"})
 
     public_v1.include_router(auth_router)
+    public_v1.include_router(sso_router)
     application.include_router(public_v1)
 
     # Every other route goes here.
@@ -211,6 +221,7 @@ def create_application() -> FastAPI:
     protected_v1.include_router(users_router)
     protected_v1.include_router(accounts_router)
     protected_v1.include_router(filters_router)
+    protected_v1.include_router(identities_router)
     application.include_router(protected_v1)
     return application
 
