@@ -389,6 +389,15 @@ def complete(
     return Completed(user=user, intent=intent, return_to=return_to, linked=linked)
 
 
+def linked_user_id(db: Session, issuer: str, subject: str) -> int | None:
+    """The user whose linked sign-in is ``subject`` at ``issuer``, or None when nobody's is."""
+    return db.scalar(
+        select(ExternalIdentity.user_id).where(
+            ExternalIdentity.issuer == issuer, ExternalIdentity.subject == subject
+        )
+    )
+
+
 def user_identities(db: Session, user_id: int) -> list[ExternalIdentity]:
     return list(
         db.scalars(

@@ -53,12 +53,18 @@ does not append it puts every client behind one limit.
 
 ### Authentik
 
+One OAuth2/OpenID application serves both web SSO and, if wanted, external mode, so a user's
+linked sign-in counts for both.
+
 1. In Authentik, create an **OAuth2/OpenID provider** and an **application** for it (slug
    `mailroom`):
    - Client type **Confidential**.
    - **Signing key: an RS256 certificate. Mandatory**: without one Authentik signs with HS256,
      which Mailroom always refuses.
-   - Redirect URI (strict): `https://mail.example.com/api/v1/auth/oidc/callback`.
+   - Redirect URIs (strict):
+     - `https://mail.example.com/api/v1/auth/oidc/callback` (web SSO)
+     - `https://claude.ai/api/mcp/auth_callback` (external mode)
+     - `https://claude.com/api/mcp/auth_callback` (external mode)
    - Scopes `openid`, `profile` and `email`.
 2. Mailroom's environment, from the provider's page (the issuer is per application and ends in a
    slash):
@@ -75,3 +81,28 @@ does not append it puts every client behind one limit.
    `MAILROOM_OIDC_LINK_CLAIM=preferred_username`, [`requirements/mcp.md`](requirements/mcp.md) —
    *Web SSO*: only when Authentik's users cannot choose or change their usernames, since a first
    sign-in whose username equals a Mailroom username, exactly, becomes that user's).
+3. **External mode** (optional: Authentik issues the MCP tokens instead of Mailroom):
+
+   ```bash
+   MAILROOM_MCP_AUTH=external
+   MAILROOM_MCP_OIDC_AUDIENCES=<client id>   # Authentik's aud is the client id
+   # MAILROOM_MCP_OIDC_ISSUER defaults to MAILROOM_OIDC_ISSUER
+   ```
+
+   On the provider, for external mode:
+   - **Scopes: add `authentik default OAuth Mapping: OpenID 'offline_access'`.** MCP clients ask for
+     the scopes the protected-resource metadata advertises, `openid offline_access`; without the
+     mapping Authentik issues no refresh token, and the user has to reconnect each time the access
+     token expires. If `MAILROOM_MCP_OIDC_REQUIRED_SCOPE` is set, add a scope mapping with that
+     scope name too.
+   - **Advanced protocol settings → Access token validity** is how long one token lasts before
+     the connector refreshes it. Keep it short (minutes): Mailroom checks these tokens itself, so
+     revoking one in Authentik takes effect only when it expires (unlinking the user's sign-in in
+     Mailroom stops it at once). **Refresh token validity** is how long a connector may go unused
+     before its user has to reconnect.
+
+   The built-in `/oauth/*` endpoints are then off. In the claude.ai connector's **advanced
+   settings**, enter the same client ID and client secret (Authentik offers no dynamic
+   registration). Only a user who has linked their Authentik sign-in in Mailroom gets in; anyone
+   else's token is a 401. What is still to be checked about external mode is in
+   [`requirements/mcp.md` — *Open questions*](requirements/mcp.md#open-questions).

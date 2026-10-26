@@ -71,7 +71,9 @@ Specification: [`mcp.md`](mcp.md). Code: `mailroom.mcp`.
 - **`/mcp` takes a bearer token only**, never the session cookie, so a browser's ambient
   credentials never reach it. The verifier maps a token to a user id (`AccessToken.subject`) and
   must have issued it for `{MAILROOM_PUBLIC_URL}/mcp`; every tool then goes through the service
-  layer as that user.
+  layer as that user. In external mode the token's `aud` stands for the resource: an
+  external issuer's JWT is checked by `mailroom.auth.oidc` (asymmetric algorithms only) and maps
+  to a user only through a linked sign-in.
 - **DNS rebinding:** `Host` must be `MAILROOM_PUBLIC_URL`'s (421 otherwise) and an `Origin`, when
   sent, its origin (403).
 - **Strict inputs:** each tool's arguments are a Pydantic model with `extra="forbid"` and

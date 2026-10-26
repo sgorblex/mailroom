@@ -30,7 +30,6 @@ from starlette.responses import JSONResponse
 
 from mailroom.api.build_info import api_distribution_version
 from mailroom.mcp.groups import group_names
-from mailroom.mcp.settings import SCOPE
 from mailroom.mcp.tool import UserSlots, call_tool
 from mailroom.mcp.tools import TOOLS
 
@@ -188,12 +187,19 @@ class McpEndpoint:
                 required_scopes=[],
                 resource_metadata_url=AnyHttpUrl(f"{settings.public_url}{METADATA_PATH}"),
             ),
-            backend=BearerAuthBackend(verifier, resource_server_url=AnyHttpUrl(settings.resource)),
+            backend=BearerAuthBackend(
+                verifier,
+                # An external issuer's tokens name the resource by their ``aud`` (the verifier's
+                # check), not by a resource indicator.
+                resource_server_url=(
+                    None if settings.auth == "external" else AnyHttpUrl(settings.resource)
+                ),
+            ),
         )
         [metadata] = create_protected_resource_routes(
             resource_url=AnyHttpUrl(settings.resource),
-            authorization_servers=[AnyHttpUrl(settings.issuer)],
-            scopes_supported=[SCOPE],
+            authorization_servers=[AnyHttpUrl(settings.authorization_server)],
+            scopes_supported=settings.scopes_supported,
             resource_name="Mailroom",
         )
         async with manager.run():

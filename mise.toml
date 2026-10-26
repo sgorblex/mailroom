@@ -78,7 +78,7 @@ description = "Wipe the dev mail, then start the backends again"
 run = "scripts/dev-mail.sh reset"
 
 [tasks.dev-idp]
-description = "Start a fake OpenID Connect provider for SSO (127.0.0.1:8190, signs everyone in as alice)"
+description = "Start a fake OpenID Connect provider for SSO and MCP tokens (127.0.0.1:8190, signs everyone in as alice)"
 depends = ["setup-python"]
 dir = "backend"
 run = "uv run --no-sync python -m mailroom.dev.fake_idp"

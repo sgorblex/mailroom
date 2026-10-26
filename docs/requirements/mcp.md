@@ -112,14 +112,30 @@ interface, not on the app's routes), so it can move to a shared package later.
 
 ### External issuer
 
+`MAILROOM_MCP_AUTH=external`. The built-in authorization server is not mounted (`/oauth/*` and its
+metadata answer 404), and nothing is stored about the client.
+
 - Tokens are JWTs signed with RS256, ES256, PS256 or EdDSA; **HS\* is always refused** (Authentik
   falls back to HS256 without a signing key).
-- Checked: `iss` (`MAILROOM_MCP_OIDC_ISSUER`), `aud` (one of `MAILROOM_MCP_OIDC_AUDIENCES`;
-  Authentik puts the `client_id` there), `exp` and `iat` with 60 s of leeway, and
-  `MAILROOM_MCP_OIDC_REQUIRED_SCOPE` when set.
+- Checked: `iss` (`MAILROOM_MCP_OIDC_ISSUER`, by default `MAILROOM_OIDC_ISSUER`, as its discovery
+  document states it), `aud` (one of `MAILROOM_MCP_OIDC_AUDIENCES`; Authentik puts the
+  `client_id` there), `sub`, `exp` and `iat` with 60 s of leeway, and
+  `MAILROOM_MCP_OIDC_REQUIRED_SCOPE` when set (in `scope`, or a `scp` list).
+- **ID tokens are refused.** Authentik's ID tokens share the access tokens' `aud`, so a token
+  that carries a `nonce` claim is refused, and so is one whose `typ` header is present and is
+  neither `JWT` nor `at+jwt` (case-insensitive, `application/` optional; Authentik's access tokens
+  say `JWT`). An ID token minted without a nonce cannot be told apart this way.
+- `aud` is what binds a token to Mailroom: the provider need not honour the `resource`
+  parameter, so the token's resource indicator is not checked in this mode.
+- The signing keys come from the issuer's JWKS, fetched and cached as for SSO ([Security: Single
+  sign-on](nonfunctional-requirements.md#single-sign-on)).
 - The user is found through a [linked sign-in](../GLOSSARY.md) for `(iss, sub)`; a `sub` linked to
-  no user gets a 401. Nobody is created.
-- The protected-resource metadata names the external issuer in `authorization_servers`; the
+  no user gets a 401. Nobody is created. The audit line's client is the token's `azp` (or
+  `client_id`).
+- Without an issuer or an audience, the MCP server is off, with a warning in the log.
+- The protected-resource metadata names the external issuer in `authorization_servers`, and its
+  `scopes_supported` is what to ask that issuer for: `openid`, `offline_access` (for a refresh
+  token) and `MAILROOM_MCP_OIDC_REQUIRED_SCOPE` when set. Built-in mode advertises `mailroom`. The
   *Connected apps* section says the identity provider manages access.
 - Recommended with Authentik: **one application** for both web SSO and MCP, so a user's linked
   sign-in serves both.
@@ -195,7 +211,8 @@ workers; expired rows are swept on writes.
 - Whether claude.ai discovers an external issuer through the OIDC or the RFC 8414 metadata path,
   and whether it needs the client credentials entered by hand. Settle before calling external mode
   done.
-- Authentik's ID tokens share the access tokens' `aud`, so one could be presented as an access
-  token; refusing tokens that carry `nonce` is the candidate fix, once a real token is seen.
+- Whether a real Authentik access token's header and claims match what the ID-token refusal
+  assumes (`typ` `JWT` or absent, no `nonce`). Check with a real token before calling external
+  mode done.
 - The consent screen's reliance on same-origin requests carrying a `SameSite=Strict` cookie after
   a cross-site navigation needs checking by hand in Firefox and Safari.

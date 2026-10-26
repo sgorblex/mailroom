@@ -31,6 +31,7 @@ from mailroom.api.routes.filters import filters_router
 from mailroom.api.routes.oauth_consent import consent_router, grants_router
 from mailroom.api.routes.sso import identities_router, sso_router
 from mailroom.api.routes.users import own_password_router, users_router
+from mailroom.auth.oidc import OidcProvider
 from mailroom.auth.sso import Sso, sso_from_env, sso_start_limit
 from mailroom.auth.throttle import LoginThrottle, client_key
 from mailroom.auth.users import user_count
@@ -40,7 +41,7 @@ from mailroom.database_connectivity import CONNECTIVITY_ERRORS
 from mailroom.errors import Refusal
 from mailroom.mcp.app import METADATA_PATH, McpEndpoint
 from mailroom.mcp.settings import mcp_settings_from_env
-from mailroom.mcp.verifier import token_verifier
+from mailroom.mcp.verifier import ExternalJwtVerifier, token_verifier
 from mailroom.oauth.config import oauth_settings_from_env
 from mailroom.oauth.server import OAuthServer
 from mailroom.observability.http_request_logging import CorrelationLoggingMiddleware
@@ -51,6 +52,7 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
+    import httpx
     from mcp.server.auth.provider import TokenVerifier
     from sqlalchemy.engine import Engine
 
@@ -143,6 +145,34 @@ def _warn_if_nobody_can_sign_in(application: FastAPI) -> None:
     )
 
 
+def _external_verifier(
+    application: FastAPI, mcp_settings: McpSettings
+) -> tuple[ExternalJwtVerifier | None, OidcProvider | None]:
+    """External mode's verifier, when ``MAILROOM_MCP_AUTH`` is ``external``, and the provider made
+    for it, which the lifespan closes. An issuer that is SSO's shares SSO's provider (one discovery
+    document and JWKS cache), and then none is made; ``mcp_oidc_transport`` only reaches one made
+    for MCP."""
+    external = mcp_settings.external
+    if external is None:
+        return None, None
+    sso: Sso | None = application.state.sso
+    owned = None
+    if sso is not None and sso.provider.issuer == external.issuer:
+        provider = sso.provider
+    else:
+        provider = owned = OidcProvider(
+            external.issuer, transport=application.state.mcp_oidc_transport
+        )
+    verifier = ExternalJwtVerifier(
+        provider,
+        audiences=external.audiences,
+        required_scope=external.required_scope,
+        resource=mcp_settings.resource,
+        session_maker=lambda: application.state.session_maker,
+    )
+    return verifier, owned
+
+
 @asynccontextmanager
 async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
     configure_logging()
@@ -155,19 +185,27 @@ async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
     application.state.sso = sso_from_env(application.state.public_url)
     mcp_settings: McpSettings | None = application.state.mcp_settings
     verifier: TokenVerifier | None = application.state.mcp_verifier
+    mcp_provider = None
     if verifier is None and mcp_settings is not None:
-        verifier = token_verifier(mcp_settings.auth, builtin=application.state.oauth_server)
+        external, mcp_provider = _external_verifier(application, mcp_settings)
+        verifier = token_verifier(
+            mcp_settings.auth, builtin=application.state.oauth_server, external=external
+        )
     mcp: McpEndpoint = application.state.mcp
-    async with mcp.running(mcp_settings, verifier):
-        yield
-    sso: Sso | None = application.state.sso
-    if sso is not None:
-        sso.provider.close()
-    application.state.session_maker = None
-    shutdown_engine: Engine | None = application.state.database_engine
-    if shutdown_engine is not None:
-        shutdown_engine.dispose()
-    application.state.database_engine = None
+    try:
+        async with mcp.running(mcp_settings, verifier):
+            yield
+    finally:
+        if mcp_provider is not None:
+            mcp_provider.close()
+        sso: Sso | None = application.state.sso
+        if sso is not None:
+            sso.provider.close()
+        application.state.session_maker = None
+        shutdown_engine: Engine | None = application.state.database_engine
+        if shutdown_engine is not None:
+            shutdown_engine.dispose()
+        application.state.database_engine = None
 
 
 def _not_ready(reason: str) -> JSONResponse:
@@ -196,10 +234,14 @@ def _builtin_oauth_server(
 
 
 def create_application(
-    *, mcp_settings: McpSettings | None = None, mcp_verifier: TokenVerifier | None = None
+    *,
+    mcp_settings: McpSettings | None = None,
+    mcp_verifier: TokenVerifier | None = None,
+    mcp_oidc_transport: httpx.BaseTransport | None = None,
 ) -> FastAPI:
     """The API. ``mcp_settings`` and ``mcp_verifier`` replace what the environment would choose
-    for the MCP server (tests)."""
+    for the MCP server, and ``mcp_oidc_transport`` carries external mode's requests to its
+    provider (tests)."""
     mailroom_database.load_local_environment()
     public_url = public_url_from_env()
     if mcp_settings is None:
@@ -208,6 +250,7 @@ def create_application(
     application.state.public_url = public_url
     application.state.mcp_settings = mcp_settings
     application.state.mcp_verifier = mcp_verifier
+    application.state.mcp_oidc_transport = mcp_oidc_transport
     mcp = McpEndpoint(lambda: app_context(application.state))
     application.state.mcp = mcp
     application.add_exception_handler(Refusal, _refusal_answer)
