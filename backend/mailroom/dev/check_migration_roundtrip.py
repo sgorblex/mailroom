@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from urllib.parse import urlsplit
 
 from alembic import command
 from alembic.config import Config
@@ -10,7 +11,9 @@ from mailroom.database_connectivity import wait_for_sync_database
 from mailroom.db_migrations import alembic_ini_path, migrate_core
 from mailroom.dev.db_admin import create_database, database_url_for, drop_database
 
-SCRATCH_DATABASE_NAME = "mailroom_migration_roundtrip_check"
+SCRATCH_SUFFIX = "_roundtrip_check"
+# PostgreSQL truncates identifiers at 63 bytes.
+MAX_DATABASE_NAME_LENGTH = 63
 
 
 def _base_database_url() -> str:
@@ -23,17 +26,25 @@ def _base_database_url() -> str:
     return raw
 
 
+def scratch_database_name(base_url: str) -> str:
+    """The scratch database for one ``TEST_DATABASE_URL``, so checkouts with their own test
+    database never share (and drop) each other's scratch database."""
+    base_name = urlsplit(base_url).path.lstrip("/") or "mailroom"
+    return base_name[: MAX_DATABASE_NAME_LENGTH - len(SCRATCH_SUFFIX)] + SCRATCH_SUFFIX
+
+
 def main() -> None:
     # Uses print() rather than logging: alembic's own env.py calls fileConfig() on every
     # command.upgrade()/downgrade(), which re-applies alembic.ini's WARN root-logger level and
     # would silently swallow our own INFO-level status lines after the first alembic call.
     base_url = _base_database_url()
     wait_for_sync_database(normalize_sync_database_url(base_url)).dispose()
+    scratch = scratch_database_name(base_url)
 
-    drop_database(base_url, SCRATCH_DATABASE_NAME)
-    create_database(base_url, SCRATCH_DATABASE_NAME)
+    drop_database(base_url, scratch)
+    create_database(base_url, scratch)
     try:
-        os.environ["DATABASE_URL"] = database_url_for(base_url, SCRATCH_DATABASE_NAME)
+        os.environ["DATABASE_URL"] = database_url_for(base_url, scratch)
         config = Config(str(alembic_ini_path()))
         # mailroom-core's history is its own (and checked there); the app's runs after it.
         print("schema core (mailroom-core's migrations)...")
@@ -54,7 +65,7 @@ def main() -> None:
         command.upgrade(config, "head")
         print("Migration downgrade round-trip check passed.")
     finally:
-        drop_database(base_url, SCRATCH_DATABASE_NAME)
+        drop_database(base_url, scratch)
 
 
 if __name__ == "__main__":

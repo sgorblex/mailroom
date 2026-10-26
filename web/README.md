@@ -5,7 +5,7 @@ Zod-validated API calls (`src/api/http.ts`). ESLint `strictTypeChecked`, no Pret
 
 - **Dev:** `mise run dev-web` (or `mise run dev` for db + API + web) serves on
   `http://127.0.0.1:5180` and proxies `/api` to the API on `127.0.0.1:8100`; both ports come from
-  mise's `[env]` (`MAILROOM_VITE_PORT`, `MAILROOM_API_PORT`), overridable in the root `.env`.
+  mise's `[env]` (`MAILROOM_VITE_PORT`, `MAILROOM_API_PORT`), overridable in a gitignored `mise.local.toml`.
 - **Checks:** `mise run check-web-types` (fast), `mise run check-web` (lint, i18n parity, build),
   `mise run test-web`.
 - **Tests:** a file named `*.node.test.ts(x)` runs in bare Node; every other test runs in jsdom

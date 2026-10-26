@@ -10,6 +10,7 @@ from sqlalchemy import text
 
 from mailroom import db_migrations
 from mailroom.db_migrations import applied_revisions, expected_heads, wait_for_head
+from mailroom.dev.check_migration_roundtrip import scratch_database_name
 from mailroom.models.base import ALEMBIC_VERSION_TABLE, APP_SCHEMA
 
 if TYPE_CHECKING:
@@ -73,3 +74,19 @@ def test_the_models_match_the_migrations(migrated_engine: Engine) -> None:
             },
         )
         assert compare_metadata(context, Base.metadata) == []
+
+
+@pytest.mark.parametrize(
+    ("url", "scratch"),
+    [
+        ("postgresql://u:p@127.0.0.1:5434/mailroom_test", "mailroom_test_roundtrip_check"),
+        (
+            "postgresql://u:p@127.0.0.1:5434/mailroom_fix_web_sso_test",
+            "mailroom_fix_web_sso_test_roundtrip_check",
+        ),
+        (f"postgresql://u:p@h/{'x' * 70}", "x" * 47 + "_roundtrip_check"),
+    ],
+)
+def test_each_test_database_gets_its_own_roundtrip_scratch(url: str, scratch: str) -> None:
+    assert scratch_database_name(url) == scratch
+    assert len(scratch_database_name(url)) <= 63

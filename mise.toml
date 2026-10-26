@@ -9,7 +9,8 @@ uv = "0.13.1"
 # Agent browser verification only; installed for local dev, never used by CI.
 "npm:chrome-devtools-mcp" = "1.10.1"
 
-# Dev defaults first, `.env` after: later entries win, so a personal `.env` overrides any of them.
+# Dev defaults. A key set here wins over the same key in `.env`, which only adds keys this table
+# lacks: override a default in a gitignored `mise.local.toml` (`[env]`), which wins over this file.
 # Ports are fixed and chosen not to clash with other local dev stacks (5432/8000/5173) or mailroom-mcp
 # (8080, 32993/32025/8025) running at the same time. There is no per-worktree port registry:
 # every checkout shares this one dev database.

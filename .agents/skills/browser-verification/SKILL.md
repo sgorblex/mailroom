@@ -48,7 +48,7 @@ Telemetry is off by default: the launcher passes `--no-usage-statistics` and `--
 
 ## The URL
 
-**http://127.0.0.1:5180/** — Vite, with `/api` proxied to the API on `8100` (both from `mise.toml`'s `[env]`; a personal `.env` may override them, so check `MAILROOM_VITE_PORT` there first). Ports are fixed rather than per-worktree, so only **one** checkout's app can be up at a time: confirm the page you drive is this checkout's (`/api/v1/version` reports the git branch in a build, and the dev log shows which worktree started it).
+**http://127.0.0.1:5180/** — Vite, with `/api` proxied to the API on `8100` (both from `mise.toml`'s `[env]`; a personal `mise.local.toml` may override them, so check `mise exec -- printenv MAILROOM_VITE_PORT` first). Ports are fixed rather than per-worktree, so only **one** checkout's app can be up at a time: confirm the page you drive is this checkout's (`/api/v1/version` reports the git branch in a build, and the dev log shows which worktree started it).
 
 Always drive the **Vite** origin, never the API port directly, so requests stay same-origin as in production.
 

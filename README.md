@@ -51,7 +51,7 @@ Then open <http://127.0.0.1:5180>. Ports are fixed so other local dev stacks and
 | Dev Mailpit | SMTPS `127.0.0.1:33025`, UI <http://localhost:8026> |
 | Dev OIDC provider | `http://127.0.0.1:8190` (`mise run dev-idp`) |
 
-Defaults live in `mise.toml`'s `[env]`; a root `.env` overrides them (see `.env.example`).
+Defaults live in `mise.toml`'s `[env]`. To change one, set it in a gitignored `mise.local.toml` under `[env]`; a root `.env` only adds variables `mise.toml` does not set (see `.env.example`).
 
 | Task | Does |
 | --- | --- |
