@@ -6,7 +6,8 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.exception_handlers import http_exception_handler
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy import text
 from sqlalchemy.exc import ArgumentError, NoSuchModuleError, SQLAlchemyError
 
@@ -22,6 +23,7 @@ from mailroom.api.build_info import (
 )
 from mailroom.api.csrf import CrossSiteRequestMiddleware
 from mailroom.api.deps import require_user
+from mailroom.api.refusals import http_refusal
 from mailroom.api.routes.accounts import accounts_router
 from mailroom.api.routes.auth import auth_router
 from mailroom.api.routes.filters import filters_router
@@ -29,6 +31,7 @@ from mailroom.api.routes.users import own_password_router, users_router
 from mailroom.auth.throttle import LoginThrottle
 from mailroom.auth.users import user_count
 from mailroom.database_connectivity import CONNECTIVITY_ERRORS
+from mailroom.errors import Refusal
 from mailroom.observability.http_request_logging import CorrelationLoggingMiddleware
 from mailroom.observability.logging_config import configure_logging
 
@@ -148,8 +151,16 @@ def _not_ready(reason: str) -> JSONResponse:
     return JSONResponse(status_code=503, content={"status": "not_ready", "reason": reason})
 
 
+async def _refusal_answer(request: Request, exc: Exception) -> Response:
+    """A service's ``Refusal``, raised through a route, answered as ``http_refusal`` words it."""
+    if not isinstance(exc, Refusal):  # registered for Refusal only
+        raise exc
+    return await http_exception_handler(request, http_refusal(exc))
+
+
 def create_application() -> FastAPI:
     application = FastAPI(title="Mailroom API", lifespan=_lifespan)
+    application.add_exception_handler(Refusal, _refusal_answer)
     application.state.login_throttle = LoginThrottle()
     application.add_middleware(CrossSiteRequestMiddleware)
     application.add_middleware(CorrelationLoggingMiddleware)

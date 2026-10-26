@@ -31,6 +31,7 @@ _EXTRA_LOG_KEYS = (
     "filter_id",
     "run_id",
     "trigger",
+    "via",
 )
 
 

@@ -9,11 +9,12 @@ from imap_thingy.filters import MatchTimeoutError
 from imap_thingy.spec import json_schema, load_filter
 from sqlalchemy import select, text
 
-from mailroom.api.routes.filters import MAX_FILTERS
 from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
 from mailroom.auth.users import create_user
 from mailroom.filters import runs as filter_runs
-from mailroom.filters.runs import dry_run_slot, labelled_report, prune_runs
+from mailroom.filters import service as filters_service
+from mailroom.filters.runs import RunRefused, dry_run_slot, labelled_report, prune_runs
+from mailroom.filters.service import MAX_FILTERS
 from mailroom.models import Filter, FilterRun, RuleSet
 from mailroom.worker.app import PROCRASTINATE_SCHEMA
 from tests.conftest import PASSWORD
@@ -444,6 +445,24 @@ def test_a_stored_spec_that_no_longer_loads_is_refused(
     assert response.json()["detail"]["code"] == "invalid_spec"
     [run] = user_client.get(f"/api/v1/rule-sets/{rule_set_id}/runs").json()
     assert run["error"].startswith("invalid_spec: ")
+
+
+def test_a_dry_run_whose_account_went_answers_with_its_code(
+    user_client: TestClient, rule_set_id: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The account deleted after the rule set was found: 404 with ``{code, message}``, unlike a
+    missing path id."""
+    add_filter(user_client, rule_set_id, "Shop", SHOP_SPEC)
+
+    def gone(*_args: object, **_kwargs: object) -> None:
+        raise RunRefused("account_not_found", "No such account")
+
+    monkeypatch.setattr(filters_service, "dry_run_result", gone)
+    response = user_client.post(f"/api/v1/rule-sets/{rule_set_id}/dry-run")
+    assert response.status_code == 404
+    assert response.json()["detail"] == {"code": "account_not_found", "message": "No such account"}
+    [run] = user_client.get(f"/api/v1/rule-sets/{rule_set_id}/runs").json()
+    assert run["error"].startswith("account_not_found: ")
 
 
 def test_an_unexpected_dry_run_failure_keeps_its_text_out(

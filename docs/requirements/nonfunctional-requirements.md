@@ -44,6 +44,12 @@ and may try to run script, track the reader, phish, or — through the MCP — i
 - **Separate users.** Every account, filter and suggestion belongs to one user, and every query
   that reads them is scoped to the signed-in user. Admins manage users, not their mail. No sharing.
   See *Sign-in* below.
+- **One service layer.** What a user may do with their accounts and filters (ownership by user id,
+  the checks, the guards) lives in `mailroom.accounts.service` and `mailroom.filters.service`,
+  which refuse with a `mailroom.errors.Refusal` (a kind, a `code`, a safe `message`). The REST
+  routes only map them (`mailroom.api.refusals.http_refusal`: `not_found` 404 with the message
+  alone, `invalid` 400, `conflict` 409, `busy` 429, `mail` 502 or 409, `unavailable` 503,
+  `timeout` 504, `failed` 500), so every front end keeps the same rules.
 - **Strict CSP on the app** (`web/nginx-default.conf`): `script-src 'self'` with no inline script
   (the dark theme follows `prefers-color-scheme` in CSS for that reason), `frame-ancestors 'none'`,
   `object-src 'none'`, `base-uri 'none'`, plus `nosniff` and `Referrer-Policy: no-referrer`.
@@ -123,8 +129,8 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   `unreachable`, `timeout`, `tls_failed`, `imap_error`, `password_missing`) with the server's wording, the password masked; a folder
   listing answers it as 502 (409 for `password_missing` / `starttls_unsupported`).
 - **Logs:** `account_added`, `account_changed`, `account_removed`, `account_tested` (with
-  `outcome`), `run_filters_changed`, each with `user_id` and `account_id`; never a login, a host
-  or a password.
+  `outcome`), `run_filters_changed`, each with `user_id` and `account_id`, and the changes with
+  `via` (`web`, or `mcp` for the MCP server); never a login, a host or a password.
 - **Removing a user** removes, in the same transaction, the app's rows about their accounts and
   mailroom-core's (`forget_user`: settings with their history, sealed passwords, send log). While
   a save of their accounts holds them past mailroom-core's lock timeout, nothing is removed: 503
@@ -205,8 +211,8 @@ What they do and the route list: [`filters.md`](filters.md). How:
 - **Logs:** `rule_set_added`, `rule_set_changed`, `rule_set_removed`, `filter_added`,
   `filter_changed`, `filter_removed`, `filters_reordered`, `dry_run` (with `outcome`),
   `run_requested`; from the worker `run_queued` and `rule_set_run` (with `trigger` and `outcome`:
-  `ok`, the error's code, or `gone`); with `user_id` and `rule_set_id`, `filter_id` or `run_id`;
-  never a spec or a message.
+  `ok`, the error's code, or `gone`); with `user_id` and `rule_set_id`, `filter_id` or `run_id`,
+  and from the API `via` as for accounts; never a spec or a message.
 
 ## Data persistence & schema migrations
 

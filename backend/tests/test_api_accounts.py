@@ -13,6 +13,7 @@ from mailroom_core.crypto import open_secret
 from mailroom_core.store import RevisionConflict, SettingsBusy, forget_user
 from sqlalchemy import text
 
+from mailroom.accounts import service as accounts_service
 from mailroom.accounts.mail import MailFailure, mail_ssl_context
 from mailroom.accounts.store import load_accounts, user_store
 from mailroom.api.routes import accounts as accounts_routes
@@ -188,7 +189,7 @@ def test_a_refused_save_is_worded(
     def save_account(*_args: object, **_kwargs: object) -> None:
         raise error
 
-    monkeypatch.setattr(accounts_routes, "save_account", save_account)
+    monkeypatch.setattr(accounts_service, "save_account", save_account)
     response = user_client.post("/api/v1/accounts", json=new_account())
     assert response.status_code == status
     assert response.json()["detail"]["code"] == code

@@ -8,6 +8,7 @@ from fastapi import Cookie, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from mailroom.auth.sessions import SESSION_COOKIE_NAME, session_user
+from mailroom.context import AppContext, app_context
 from mailroom.models import User
 
 if TYPE_CHECKING:
@@ -25,6 +26,16 @@ def get_db_session(request: Request) -> Iterator[Session]:
 
 
 DbSession = Annotated[Session, Depends(get_db_session)]
+
+
+def get_app_context(request: Request) -> AppContext:
+    context = app_context(request.app.state)
+    if context is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    return context
+
+
+Context = Annotated[AppContext, Depends(get_app_context)]
 SessionCookie = Annotated[str | None, Cookie(alias=SESSION_COOKIE_NAME)]
 
 

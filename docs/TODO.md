@@ -33,7 +33,7 @@ Mailroom is built on standalone projects, each with its own repository and check
 ## MCP and suggestions
 
 - [ ] **MCP server** ([`requirements/mcp.md`](requirements/mcp.md)), in this order:
-  - [ ] **Filters service layer** — rule-set and filter logic out of the routes, so the API and the
+  - [x] **Filters service layer** — rule-set and filter logic out of the routes, so the API and the
         MCP share it.
   - [ ] **Web SSO** — OIDC sign-in for existing users, linked sign-ins on the profile.
   - [ ] **MCP endpoint and tools** — `/mcp`, the `filters_*` groups, the envelope, the audit line.
