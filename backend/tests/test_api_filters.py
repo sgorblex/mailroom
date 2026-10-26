@@ -563,6 +563,22 @@ def test_a_report_carries_no_nul() -> None:
     row = Filter(id=7, rule_set_id=1, position=0, name="x", spec=SHOP_SPEC)
     entry = {"spec": None, "action": "x", "matched": [{"uid": 1, "subject": "a\x00b"}]}
     report: Any = {"folder": ["IN\x00BOX"], "filters": [entry]}
-    labelled = labelled_report(report, [row])
+    labelled = labelled_report(report, [row], [load_filter(SHOP_SPEC)])
     assert labelled["folder"] == ["INBOX"]
     assert labelled["filters"][0]["matched"][0]["subject"] == "ab"
+
+
+def test_a_dry_run_and_a_real_run_name_an_action_alike() -> None:
+    spec = {"criterion": FROM_SHOP, "action": {"type": "star"}}
+    row = Filter(id=7, rule_set_id=1, position=0, name="x", spec=spec)
+    # imap-thingy writes the repr of a filter it can serialise (a real run's) and the name of one
+    # it cannot (a dry run's, bounded to the newest messages).
+    labels = {
+        labelled_report(
+            {"folder": ["INBOX"], "filters": [{"spec": None, "action": written, "matched": []}]},
+            [row],
+            [load_filter(spec)],
+        )["filters"][0]["action"]
+        for written in ("Star()", "Star")
+    }
+    assert labels == {"Star"}

@@ -85,6 +85,8 @@ function ConsentCard({
   const [pending, setPending] = useState<'approve' | 'deny' | null>(null)
   const [leaving, setLeaving] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
+  // Expired or answered meanwhile: nothing left to decide, so no buttons to press again.
+  const [gone, setGone] = useState(false)
   const name = request.client_name ?? t('connect.unnamed')
 
   async function decide(decision: 'approve' | 'deny'): Promise<void> {
@@ -95,11 +97,9 @@ function ConsentCard({
       setLeaving(true)
       leave(target)
     } catch (error) {
-      setFailure(
-        error instanceof ApiRequestError && error.status === 404
-          ? t('connect.gone')
-          : apiErrorMessage(error, t('connect.decideFailed')),
-      )
+      const isGone = error instanceof ApiRequestError && error.status === 404
+      setGone(isGone)
+      setFailure(isGone ? t('connect.gone') : apiErrorMessage(error, t('connect.decideFailed')))
       setPending(null)
     }
   }
@@ -124,11 +124,12 @@ function ConsentCard({
           {failure}
         </p>
       )}
-      {leaving ? (
+      {leaving && (
         <p role="status" className="text-sm">
           {t('connect.leaving', { host: request.redirect_host })}
         </p>
-      ) : (
+      )}
+      {!leaving && !gone && (
         <div className="flex gap-3">
           <Button disabled={pending !== null} onClick={() => void decide('approve')}>
             {t('connect.approve')}

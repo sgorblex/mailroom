@@ -109,6 +109,20 @@ describe('ConnectScreen', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Approve' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('was already answered')
     expect(leave).not.toHaveBeenCalled()
+    // Nothing left to decide.
+    expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Deny' })).not.toBeInTheDocument()
+  })
+
+  it('keeps the buttons when the answer did not reach the API', async () => {
+    const fetchMock = stubApi()
+    renderSignedIn(<ConnectScreen requestId="req-1" leave={vi.fn()} />, ALICE)
+    await screen.findByRole('button', { name: 'Deny' })
+    fetchMock.mockImplementation(() => Promise.reject(new TypeError('Failed to fetch')))
+    await userEvent.click(screen.getByRole('button', { name: 'Deny' }))
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Deny' })).toBeEnabled()
   })
 
   it('signed out, offers the password and the provider, coming back to the request', async () => {

@@ -20,10 +20,11 @@ from mcp.server.auth.middleware.bearer_auth import (
     BearerAuthBackend,
     RequireAuthMiddleware,
 )
-from mcp.server.auth.routes import create_protected_resource_routes
+from mcp.server.auth.routes import cors_middleware
 from mcp.server.lowlevel import Server
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.server.transport_security import TransportSecuritySettings
+from mcp.shared.auth import ProtectedResourceMetadata
 from pydantic import AnyHttpUrl
 from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.responses import JSONResponse
@@ -38,6 +39,7 @@ if TYPE_CHECKING:
 
     from mcp.server.auth.provider import TokenVerifier
     from starlette.requests import Request
+    from starlette.responses import Response
     from starlette.types import ASGIApp, Receive, Scope, Send
 
     from mailroom.context import AppContext
@@ -131,6 +133,26 @@ def mcp_server(
     return server
 
 
+def protected_resource_metadata(settings: McpSettings) -> ASGIApp:
+    """The RFC 9728 metadata app. ``resource`` and ``authorization_servers`` are written exactly
+    as ``settings`` holds them: a client compares an issuer as a plain string (RFC 8414 §3.3), and
+    Pydantic's ``AnyHttpUrl`` would add a slash to a bare origin (while an issuer such as
+    Authentik's keeps the slash it ends with)."""
+    document = ProtectedResourceMetadata(
+        resource=AnyHttpUrl(settings.resource),
+        authorization_servers=[AnyHttpUrl(settings.authorization_server)],
+        scopes_supported=settings.scopes_supported,
+        resource_name="Mailroom",
+    ).model_dump(mode="json", exclude_none=True)
+    document["resource"] = settings.resource
+    document["authorization_servers"] = [settings.authorization_server]
+
+    async def handle(_request: Request) -> Response:
+        return JSONResponse(document, headers={"Cache-Control": "public, max-age=3600"})
+
+    return cors_middleware(handle, ["GET", "OPTIONS"])
+
+
 class Switch:
     """An ASGI app answering as ``target`` while it is set, 404 otherwise. (A class, not a
     function: Starlette's ``Route`` would take a function for a request handler.)"""
@@ -196,14 +218,9 @@ class McpEndpoint:
                 ),
             ),
         )
-        [metadata] = create_protected_resource_routes(
-            resource_url=AnyHttpUrl(settings.resource),
-            authorization_servers=[AnyHttpUrl(settings.authorization_server)],
-            scopes_supported=settings.scopes_supported,
-            resource_name="Mailroom",
-        )
+        metadata = protected_resource_metadata(settings)
         async with manager.run():
-            self.endpoint.target, self.metadata.target = endpoint, metadata.handle
+            self.endpoint.target, self.metadata.target = endpoint, metadata
             self.settings = settings
             logger.info(
                 "MCP server on at %s (auth %s; tool groups %s)",

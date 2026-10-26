@@ -222,6 +222,25 @@ def test_an_expired_access_token_is_refused(
     assert verify(server, tokens["refresh_token"]) is None  # a refresh token is no access token
 
 
+def test_using_an_access_token_touches_its_grant_at_most_once_a_minute(
+    server: OAuthServer, tokens: dict[str, Any], db_session: Session
+) -> None:
+    def last_used() -> datetime | None:
+        db_session.expire_all()
+        return db_session.scalars(select(OAuthGrant.last_used_at)).one()
+
+    exchanged = last_used()
+    assert exchanged is not None
+    assert verify(server, tokens["access_token"]) is not None
+    assert last_used() == exchanged  # within the minute: no write
+    earlier = datetime.now(UTC) - timedelta(minutes=2)
+    db_session.execute(update(OAuthGrant).values(last_used_at=earlier))
+    assert verify(server, tokens["access_token"]) is not None
+    touched = last_used()
+    assert touched is not None
+    assert touched > earlier + timedelta(minutes=1)
+
+
 @pytest.mark.parametrize("which", ["access_token", "refresh_token"])
 def test_revoking_either_token_ends_the_grant(
     client: TestClient, server: OAuthServer, tokens: dict[str, Any], client_id: str, which: str

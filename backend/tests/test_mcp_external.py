@@ -438,13 +438,46 @@ def test_the_metadata_names_the_external_issuer_and_no_builtin_server(
     response = external.get("/.well-known/oauth-protected-resource/mcp")
     assert response.status_code == 200
     assert response.json()["resource"] == RESOURCE
-    # (Pydantic writes a bare origin with a trailing slash; an issuer with a path stays as is.)
-    assert [url.rstrip("/") for url in response.json()["authorization_servers"]] == [ISSUER]
+    assert response.json()["authorization_servers"] == [ISSUER]
     # What to ask the external issuer for, not the built-in server's "mailroom" scope.
     assert response.json()["scopes_supported"] == ["openid", "offline_access"]
     assert external.get("/.well-known/oauth-authorization-server/oauth").status_code == 404
     assert external.post("/oauth/token").status_code in {404, 405}
     assert external.post("/oauth/register", json={}).status_code in {404, 405}
+
+
+@pytest.mark.usefixtures("_worker_engine")
+@pytest.mark.parametrize(
+    "issuer",
+    # A bare origin (Pydantic's ``AnyHttpUrl`` would add a slash) and Authentik's shape, slash kept.
+    ["http://127.0.0.1:8190", "https://idp.example.test/application/o/mailroom/"],
+)
+def test_the_issuer_is_advertised_and_checked_exactly_as_configured(
+    issuer: str,
+    sessions: sessionmaker[Session],
+    db_session: Session,
+    user: User,
+    module_idp: FakeIdp,
+) -> None:
+    idp = FakeIdp(issuer=issuer, client_id=CLIENT, subject=SUBJECT, keys=list(module_idp.keys))
+    link(db_session, user, issuer=issuer)
+    settings = McpSettings(
+        public_url=PUBLIC_URL,
+        auth="external",
+        groups=selected_groups(None),
+        external=ExternalIssuer(issuer=issuer, audiences=(CLIENT,)),
+    )
+    application = create_application(
+        mcp_settings=settings, mcp_oidc_transport=httpx.MockTransport(idp.handle)
+    )
+    with TestClient(application, base_url=PUBLIC_URL) as client:
+        application.state.session_maker = sessions
+        metadata = client.get("/.well-known/oauth-protected-resource/mcp").json()
+        assert metadata["authorization_servers"] == [issuer]
+        assert post(client, LISTING, idp.mint()).status_code == 200
+        # The other slash form is another issuer.
+        other = issuer.removesuffix("/") if issuer.endswith("/") else f"{issuer}/"
+        assert post(client, LISTING, idp.mint({"iss": other})).status_code == 401
 
 
 def test_a_linked_users_token_reaches_their_tools(

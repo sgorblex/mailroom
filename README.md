@@ -44,7 +44,7 @@ Then open <http://127.0.0.1:5180>. Ports are fixed so other local dev stacks and
 
 | Service | Address |
 | --- | --- |
-| Web (Vite) | `127.0.0.1:5180` (proxies `/api`, `/mcp`, `/oauth/`, `/.well-known/oauth-`) |
+| Web (Vite) | `127.0.0.1:5180` (proxies `/api`, `/mcp`, `/oauth/`, `/.well-known/oauth-`, `/.well-known/openid-configuration`) |
 | API | `127.0.0.1:8100` (`/docs` for OpenAPI) |
 | Postgres | `127.0.0.1:5434`, user/password/db `mailroom`, tests in `mailroom_test` |
 | Dev Dovecot | IMAPS `127.0.0.1:33993` (`mise run dev-mail`) |
@@ -64,7 +64,7 @@ Defaults live in `mise.toml`'s `[env]`. To change one, set it in a gitignored `m
 | `dev-mail` / `dev-mail-down` / `dev-mail-reset` | Dev Dovecot + Mailpit with a local CA (`dev/.state/`) |
 | `migrate` / `reset-db` | Schema `core`, then Alembic upgrade head / drop, recreate and migrate the dev database |
 | `create-user` | Create a user in `DATABASE_URL` (`<name> [--admin]`; the password is prompted for) |
-| `dev-idp` | A fake OpenID Connect provider for trying SSO: approves everyone at once (`--username`, `--subject`; `/mint` for an access token) |
+| `dev-idp` | A fake OpenID Connect provider for trying SSO: approves everyone at once (`--username`, `--subject`; `/mint` for an access token, `alg=` RS256, PS256, ES256, EdDSA or HS256) |
 | `seed-dev-mail` | Give a user the dev Dovecot accounts `dev` and `team`, sample mail in each empty INBOX (`<name>`) |
 | `check-backend` / `check-web-types` / `check-web` | Ruff + mypy / tsc / ESLint + i18n + build |
 | `check-migrations` | Upgrade → downgrade base → upgrade on a scratch database |

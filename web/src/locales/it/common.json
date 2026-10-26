@@ -53,7 +53,8 @@
   "connectedApps": {
     "title": "App collegate",
     "none": "Nessuna per ora: qui compare ogni app che colleghi a Mailroom (un client MCP come Claude).",
-    "external": "Le app che possono raggiungere Mailroom le gestisce il tuo provider di identità: revoca lì il loro accesso. Quelle elencate qui erano state collegate prima.",
+    "external": "Le app che possono raggiungere Mailroom le gestisce il tuo provider di identità: revoca lì il loro accesso.",
+    "externalLeftovers": "Quelle elencate qui erano state collegate prima.",
     "unnamed": "Un'app senza nome",
     "connected": "Collegata il {{when}}",
     "lastUsed": "ultimo uso il {{when}}",

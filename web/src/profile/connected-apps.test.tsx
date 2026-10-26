@@ -78,7 +78,7 @@ describe('ConnectedApps', () => {
     expect(within(claude).getByText(/Disconnect Claude\?/)).toBeInTheDocument()
     expect(deleted(fetchMock)).toHaveLength(0)
     const confirm = within(claude).getByRole('button', { name: 'Disconnect' })
-    expect(confirm).toHaveFocus()
+    expect(within(claude).getByRole('button', { name: 'Cancel' })).toHaveFocus()
     await userEvent.click(confirm)
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/v1/oauth/grants/1',
@@ -129,9 +129,20 @@ describe('ConnectedApps', () => {
   it('points to the identity provider with an external issuer', async () => {
     stubApi('external', [app(3, 'Claude')])
     renderSignedIn(<ConnectedApps />, ALICE)
-    expect(await screen.findByText(/Your identity provider manages/)).toBeInTheDocument()
+    expect(await screen.findByText(/Your identity provider manages/)).toHaveTextContent(
+      'Apps listed here were connected before.',
+    )
     // Left from the built-in server, still revocable.
     expect(screen.getByRole('button', { name: 'Disconnect Claude' })).toBeInTheDocument()
+  })
+
+  it('mentions no listed apps with an external issuer when there are none', async () => {
+    stubApi('external', [])
+    renderSignedIn(<ConnectedApps />, ALICE)
+    expect(await screen.findByText(/Your identity provider manages/)).not.toHaveTextContent(
+      'Apps listed here',
+    )
+    expect(screen.queryByRole('list')).not.toBeInTheDocument()
   })
 
   it('stays out of the way while the MCP server is off and nothing is connected', async () => {

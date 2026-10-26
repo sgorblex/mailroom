@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import time
 from typing import TYPE_CHECKING
 
@@ -11,7 +12,7 @@ import jwt
 import pytest
 
 from mailroom.auth.oidc import OidcError, OidcProvider
-from mailroom.dev.fake_idp import FakeIdp
+from mailroom.dev.fake_idp import SIGNING_ALGORITHMS, FakeIdp
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -70,6 +71,32 @@ def test_every_allowed_algorithm_holds(idp: FakeIdp, algorithm: str) -> None:
     key = idp.rotate_key(algorithm)
     provider = provider_for(idp.handle)
     assert provider.verify_jwt(idp.mint(key=key), audiences=[CLIENT])["iss"] == ISSUER
+
+
+def mint_over_http(idp: FakeIdp, query: str) -> tuple[int, dict[str, str]]:
+    status, _, body = idp.respond("GET", f"{ISSUER}/mint?{query}", b"", None)
+    return status, json.loads(body)
+
+
+@pytest.mark.parametrize("algorithm", SIGNING_ALGORITHMS)
+def test_the_fake_provider_mints_with_every_algorithm_it_offers(
+    idp: FakeIdp, algorithm: str
+) -> None:
+    status, document = mint_over_http(idp, f"alg={algorithm}")
+    assert status == 200
+    token = document["access_token"]
+    assert jwt.get_unverified_header(token)["alg"] == algorithm
+    assert provider_for(idp.handle).verify_jwt(token, audiences=[CLIENT])["iss"] == ISSUER
+
+
+def test_the_fake_provider_mints_hs256_with_the_client_secret(idp: FakeIdp) -> None:
+    status, document = mint_over_http(idp, "alg=HS256")
+    assert status == 200
+    claims = jwt.decode(
+        document["access_token"], idp.client_secret, algorithms=["HS256"], audience=CLIENT
+    )
+    assert claims["iss"] == ISSUER
+    assert mint_over_http(idp, "alg=none")[0] == 400
 
 
 @pytest.mark.parametrize("algorithm", ["HS256", "HS384", "HS512"])

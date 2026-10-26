@@ -3,8 +3,9 @@ import { useEffect, useRef, type ReactElement } from 'react'
 import { Button } from '@/components/ui/button.tsx'
 
 /**
- * "Remove …?" with its confirm button, which takes focus when it shows; ignored while `pending`.
- * The caller words it, in its own namespace: the question and both buttons.
+ * "Remove …?" with its confirm button, ignored while `pending`. Cancel takes focus when it shows,
+ * so Enter backs out rather than removes. The caller words it, in its own namespace: the question
+ * and both buttons.
  */
 export function ConfirmRemoval({
   question,
@@ -21,17 +22,16 @@ export function ConfirmRemoval({
   onConfirm: () => void
   onCancel: () => void
 }): ReactElement {
-  const confirm = useRef<HTMLButtonElement>(null)
+  const cancel = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
-    confirm.current?.focus()
+    cancel.current?.focus()
   }, [])
 
   return (
     <div className="flex flex-wrap items-center gap-2">
       <p className="text-sm">{question}</p>
       <Button
-        ref={confirm}
         variant="destructive"
         size="sm"
         aria-disabled={pending}
@@ -44,7 +44,7 @@ export function ConfirmRemoval({
       >
         {confirmLabel}
       </Button>
-      <Button variant="ghost" size="sm" onClick={onCancel}>
+      <Button ref={cancel} variant="ghost" size="sm" onClick={onCancel}>
         {cancelLabel}
       </Button>
     </div>

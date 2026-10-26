@@ -38,6 +38,9 @@ DEFAULT_USERNAME: Final = "alice"
 DEFAULT_CLIENT_ID: Final = "mailroom-dev"
 DEFAULT_CLIENT_SECRET: Final = "mailroom-dev-secret-for-the-fake-provider-only-never-deployed-64"
 
+SIGNING_ALGORITHMS: Final = ("RS256", "PS256", "ES256", "EdDSA")
+"""The asymmetric algorithms the provider signs with; ``HS256`` (the client secret) besides."""
+
 PrivateKey = rsa.RSAPrivateKey | ec.EllipticCurvePrivateKey | ed25519.Ed25519PrivateKey
 
 
@@ -114,12 +117,27 @@ class FakeIdp:
         self.keys = [*self.keys, key] if keep_old else [key]
         return key
 
+    def key_for(self, algorithm: str) -> SigningKey:
+        """The newest key for ``algorithm``, made (and published in the JWKS, behind the signing
+        key) on first use. Raises ``ValueError`` for an algorithm the provider has no key for."""
+        for key in reversed(self.keys):
+            if key.algorithm == algorithm:
+                return key
+        key = new_signing_key(algorithm)
+        self.keys = [key, *self.keys]
+        return key
+
+    @property
+    def _base(self) -> str:
+        """Where the endpoints live: the issuer, without the trailing slash one may end with."""
+        return self.issuer.rstrip("/")
+
     def discovery(self) -> dict[str, Any]:
         return {
             "issuer": self.issuer,
-            "authorization_endpoint": f"{self.issuer}/authorize",
-            "token_endpoint": f"{self.issuer}/token",
-            "jwks_uri": f"{self.issuer}/jwks",
+            "authorization_endpoint": f"{self._base}/authorize",
+            "token_endpoint": f"{self._base}/token",
+            "jwks_uri": f"{self._base}/jwks",
             "response_types_supported": ["code"],
             "subject_types_supported": ["public"],
             "id_token_signing_alg_values_supported": sorted({k.algorithm for k in self.keys}),
@@ -144,7 +162,7 @@ class FakeIdp:
     ) -> str:
         """A JWT from this issuer: ``iss``, ``sub``, ``aud`` (the client by default), ``iat`` and
         ``exp``, then ``claims`` on top. ``algorithm="HS256"`` signs with the client secret, as a
-        provider without a signing key would."""
+        provider without a signing key would; another ``algorithm`` with ``key_for``'s key."""
         now = int(time.time())
         payload: dict[str, Any] = {
             "iss": self.issuer,
@@ -159,7 +177,7 @@ class FakeIdp:
             return jwt.encode(
                 payload, self.client_secret, algorithm=algorithm, headers=dict(headers or {})
             )
-        signer = key or self.signing_key
+        signer = key or (self.signing_key if algorithm is None else self.key_for(algorithm))
         return jwt.encode(
             payload,
             signer.private_key,
@@ -243,7 +261,8 @@ class FakeIdp:
         """One HTTP exchange: ``(status, headers, body)``."""
         parts = urlsplit(url)
         query = dict(parse_qsl(parts.query))
-        path = parts.path
+        # An issuer with a path (Authentik's ``/application/o/<slug>/``) serves under it.
+        path = parts.path.removeprefix(urlsplit(self._base).path)
         status: int
         document: Any
         if method == "GET" and path == "/.well-known/openid-configuration":
@@ -258,23 +277,25 @@ class FakeIdp:
         elif method == "POST" and path == "/token":
             status, document = self.token(dict(parse_qsl(body.decode())), authorization)
         elif method == "GET" and path == "/mint":
-            lifetime = int(query.get("lifetime", "3600"))
-            extra = {"scope": query["scope"]} if "scope" in query else {}
-            status, document = (
-                200,
-                {
-                    "access_token": self.mint(
-                        extra,
-                        subject=query.get("sub"),
-                        audience=query.get("aud"),
-                        lifetime_seconds=lifetime,
-                        algorithm=query.get("alg"),
-                    )
-                },
-            )
+            status, document = self._mint_answer(query)
         else:
             status, document = 404, {"error": "not_found"}
         return status, {"Content-Type": "application/json"}, json.dumps(document).encode()
+
+    def _mint_answer(self, query: Mapping[str, str]) -> tuple[int, dict[str, Any]]:
+        algorithm = query.get("alg")
+        if algorithm is not None and algorithm not in {*SIGNING_ALGORITHMS, "HS256"}:
+            offered = ", ".join((*SIGNING_ALGORITHMS, "HS256"))
+            return 400, {"error": f"alg must be one of {offered}"}
+        extra = {"scope": query["scope"]} if "scope" in query else {}
+        token = self.mint(
+            extra,
+            subject=query.get("sub"),
+            audience=query.get("aud"),
+            lifetime_seconds=int(query.get("lifetime", "3600")),
+            algorithm=algorithm,
+        )
+        return 200, {"access_token": token}
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         """An ``httpx.MockTransport`` handler."""
@@ -329,7 +350,7 @@ def main(argv: list[str] | None = None) -> int:
         f"  MAILROOM_OIDC_ISSUER={idp.issuer}\n"
         f"  MAILROOM_OIDC_CLIENT_ID={idp.client_id}\n"
         f"  MAILROOM_OIDC_CLIENT_SECRET={idp.client_secret}\n"
-        f"An access token: {idp.issuer}/mint?aud=<audience>[&sub=…&scope=…&lifetime=…]",
+        f"An access token: {idp.issuer}/mint?aud=<audience>[&sub=…&scope=…&lifetime=…&alg=…]",
         flush=True,
     )
     with contextlib.suppress(KeyboardInterrupt):

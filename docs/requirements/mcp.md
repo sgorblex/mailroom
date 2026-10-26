@@ -107,7 +107,8 @@ interface, not on the app's routes), so it can move to a shared package later.
 - **Tokens are opaque** and the database keeps only their SHA-256, so revoking takes effect at
   once and there is no signing key to manage.
 - Each approval is a [connected app](../GLOSSARY.md): the user sees and revokes them on their
-  *Profile* page (name, when connected, when last used); revoking ends the grant's tokens at once,
+  *Profile* page (name, when connected, when last used: a token exchange or a call on `/mcp`,
+  recorded at most once a minute); revoking ends the grant's tokens at once,
   so the app's next call is a 401. Removing a user removes their grants.
 
 ### External issuer
@@ -133,10 +134,12 @@ metadata answer 404), and nothing is stored about the client.
   no user gets a 401. Nobody is created. The audit line's client is the token's `azp` (or
   `client_id`).
 - Without an issuer or an audience, the MCP server is off, with a warning in the log.
-- The protected-resource metadata names the external issuer in `authorization_servers`, and its
+- The protected-resource metadata names the external issuer in `authorization_servers` exactly
+  as configured, trailing slash or not (clients compare issuers as strings), and its
   `scopes_supported` is what to ask that issuer for: `openid`, `offline_access` (for a refresh
   token) and `MAILROOM_MCP_OIDC_REQUIRED_SCOPE` when set. Built-in mode advertises `mailroom`. The
-  *Connected apps* section says the identity provider manages access.
+  *Connected apps* section says the identity provider manages access (and, when it lists any,
+  that those apps were connected before).
 - Recommended with Authentik: **one application** for both web SSO and MCP, so a user's linked
   sign-in serves both.
 
@@ -172,8 +175,9 @@ for users an admin has already created. **Nobody signs up through SSO.**
 | `/api/v1/me/identities` | `GET` the user's linked sign-ins; `DELETE /{id}` unlinks one. |
 
 Allowed hosts for the MCP transport come from `MAILROOM_PUBLIC_URL`, never from the request's
-`Host`. The web container's nginx and the Vite dev proxy pass `/mcp`, `/oauth/` and
-`/.well-known/oauth-` to the API.
+`Host`. The web container's nginx and the Vite dev proxy pass `/mcp`, `/oauth/`,
+`/.well-known/oauth-` and `/.well-known/openid-configuration` to the API: a client probing OpenID
+discovery for the built-in server gets the API's 404, not the web app.
 
 ## Data model
 

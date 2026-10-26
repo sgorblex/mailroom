@@ -94,7 +94,9 @@ export default defineConfig(({ mode }) => {
         // The browser's Host is kept: /mcp answers only MAILROOM_PUBLIC_URL's host.
         "^/mcp(?:\\?.*)?$": { target: apiTarget },
         "/oauth/": { target: apiTarget },
-        "/.well-known/oauth-": { target: apiTarget },
+        // OpenID discovery too: a client probes it for the OAuth server, and the API's 404 is the
+        // answer, not the SPA.
+        "^/\\.well-known/(?:oauth-|openid-configuration)": { target: apiTarget },
       },
     },
   };

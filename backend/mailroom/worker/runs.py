@@ -196,7 +196,7 @@ def _run(
         else:
             error = f"{failure.code}: {failure.message}"
         report["error"] = error
-    return _bounded(labelled_report(report, filters)), error
+    return _bounded(labelled_report(report, filters, loaded)), error
 
 
 def _bounded(result: dict[str, Any]) -> dict[str, Any]:

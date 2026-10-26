@@ -82,13 +82,25 @@ def thingy_filters(
     return loaded
 
 
-def labelled_report(report: FolderReport, filters: Sequence[Filter]) -> dict[str, Any]:
-    """``report`` as a run's ``result``: each filter's entry with its ``filter_id`` and the spec
-    as stored (the one run may be wrapped, e.g. for starred only), and no NUL character, which
-    ``jsonb`` refuses (a message header may carry one)."""
+def labelled_report(
+    report: FolderReport, filters: Sequence[Filter], loaded: Sequence[ImapFilter]
+) -> dict[str, Any]:
+    """``report`` as a run's ``result``: each filter's entry with its ``filter_id``, the spec as
+    stored (the one run may be wrapped, e.g. for starred only), the action's name as ``loaded``
+    (what ran) has it, and no NUL character, which ``jsonb`` refuses (a message header may carry
+    one).
+
+    The name is set here because imap-thingy writes a filter's ``repr`` (``Star()``) when it can
+    serialise the filter and its name (``Star``) when not, and a dry run's filters, bounded to the
+    newest messages, cannot be: a dry run and a real run would name one action two ways."""
     entries = [
-        {**_without_nul(entry), "filter_id": row.id, "spec": row.spec}
-        for entry, row in zip(report["filters"], filters, strict=False)
+        {
+            **_without_nul(entry),
+            "filter_id": row.id,
+            "spec": row.spec,
+            "action": _without_nul(str(ran.action)),
+        }
+        for entry, row, ran in zip(report["filters"], filters, loaded, strict=False)
     ]
     return {**_without_nul(report), "filters": entries}
 
@@ -238,7 +250,7 @@ def _dry_run_result(
             raise
         raise RunRefused(mailbox.code, mailbox.message) from None
     return {
-        **labelled_report(outcome.report, filters),
+        **labelled_report(outcome.report, filters, loaded),
         "limited_to_newest": outcome.limited_to_newest,
     }
 

@@ -84,7 +84,7 @@ describe('LinkedSignIn', () => {
     expect(screen.getByText(/Unlink Authentik\?/)).toBeInTheDocument()
     expect(deleted(fetchMock)).toHaveLength(0)
     const confirm = screen.getByRole('button', { name: 'Unlink' })
-    expect(confirm).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus()
     await userEvent.click(confirm)
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/v1/me/identities/1',

@@ -58,7 +58,10 @@ export function ConnectedApps(): ReactElement | null {
       </h2>
       {state.kind === 'failed' && <p role="alert">{state.message}</p>}
       {auth === 'external' && (
-        <p className="text-sm text-muted-foreground">{t('connectedApps.external')}</p>
+        <p className="text-sm text-muted-foreground">
+          {t('connectedApps.external')}
+          {grants.length > 0 && ` ${t('connectedApps.externalLeftovers')}`}
+        </p>
       )}
       {auth === 'builtin' && grants.length === 0 && (
         <p className="text-sm text-muted-foreground">{t('connectedApps.none')}</p>

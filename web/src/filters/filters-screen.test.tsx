@@ -107,7 +107,7 @@ describe('FiltersScreen', () => {
     renderFiltersApp('/filters')
 
     await userEvent.click(await screen.findByRole('button', { name: 'Remove Newsletters' }))
-    expect(screen.getByRole('button', { name: 'Remove for good' })).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus()
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(screen.getByRole('link', { name: 'Newsletters' })).toBeInTheDocument()
 
