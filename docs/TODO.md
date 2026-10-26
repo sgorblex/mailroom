@@ -39,7 +39,7 @@ Mailroom is built on standalone projects, each with its own repository and check
   - [x] **MCP endpoint and tools** — `/mcp`, the `filters_*` groups, the envelope, the audit line.
   - [x] **Built-in OAuth server** — DCR, CIMD, tokens, the `/connect` consent screen.
   - [ ] **External issuer** — JWTs from Authentik or Keycloak, mapped through linked sign-ins.
-  - [ ] **Connected apps** — list and revoke grants on the profile.
+  - [x] **Connected apps** — list and revoke grants on the profile.
   - [ ] **Mail tool groups** — once the client reaches parity with mailroom-mcp, turn on
         `mail_read`, `mail_organize`, `mail_draft` and `mail_send`.
 - [ ] **Suggestions** — learn from manual moves, propose filters with evidence and dry run.

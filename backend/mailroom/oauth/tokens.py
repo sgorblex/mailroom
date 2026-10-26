@@ -320,13 +320,13 @@ def verify_access_token(db: Session, raw_token: str) -> VerifiedAccess | None:
     )
 
 
-def revoke_grant(db: Session, grant_id: int) -> bool:
-    """End a grant and every token of it. Whether one ended."""
-    gone = db.execute(
-        delete(OAuthGrant)
-        .where(OAuthGrant.id == grant_id)
-        .returning(OAuthGrant.user_id, OAuthGrant.client_id)
-    ).first()
+def revoke_grant(db: Session, grant_id: int, *, user_id: int | None = None) -> bool:
+    """End a grant and every token of it. Whether one ended. With ``user_id``, only that user's
+    grant: another user's id ends nothing."""
+    statement = delete(OAuthGrant).where(OAuthGrant.id == grant_id)
+    if user_id is not None:
+        statement = statement.where(OAuthGrant.user_id == user_id)
+    gone = db.execute(statement.returning(OAuthGrant.user_id, OAuthGrant.client_id)).first()
     db.commit()
     if gone is None:
         return False

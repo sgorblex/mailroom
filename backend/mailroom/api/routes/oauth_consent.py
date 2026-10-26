@@ -1,11 +1,12 @@
 """The consent screen's calls: the pending authorization request ``/connect?request=<id>`` shows,
-and the signed-in user's decision on it. Same-origin requests with the session cookie only; the
-POST is a state change under ``/api/``, so a cross-site one is refused before it gets here."""
+and the signed-in user's decision on it; and the user's connected apps (their grants), to list
+and revoke. Same-origin requests with the session cookie only; a POST or DELETE is a state change
+under ``/api/``, so a cross-site one is refused before it gets here."""
 
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, Literal
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, Path, Request, Response
@@ -14,10 +15,18 @@ from pydantic import BaseModel, ConfigDict
 from mailroom.api.deps import CurrentUser, DbSession
 from mailroom.errors import Refusal
 from mailroom.oauth import consent
+from mailroom.oauth.grants import user_grants
 from mailroom.oauth.server import OAuthServer
+from mailroom.oauth.tokens import revoke_grant
+
+if TYPE_CHECKING:
+    from mailroom.mcp.settings import McpSettings
+    from mailroom.mcp.verifier import AuthMode
 
 consent_router = APIRouter(prefix="/oauth/requests")
+grants_router = APIRouter(prefix="/oauth/grants")
 
+GrantId = Annotated[int, Path(ge=1, le=2**63 - 1)]
 RequestId = Annotated[str, Path(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")]
 
 _NO_SUCH_REQUEST = Refusal("not_found", "request_not_found", "No such authorization request")
@@ -94,3 +103,49 @@ def decide(
     if redirect_to is None:
         raise _NO_SUCH_REQUEST
     return Decided(redirect_to=redirect_to)
+
+
+class ConnectedAppOut(BaseModel):
+    id: int
+    client_name: str | None
+    client_host: str | None
+    """As on the consent screen: the host serving a metadata document, else ``None``."""
+    created_at: datetime
+    last_used_at: datetime | None
+
+
+class ConnectedAppsOut(BaseModel):
+    auth: Literal["builtin", "external", "off"]
+    """How MCP clients get tokens: ``external`` means the identity provider manages access, and
+    the grants listed are left from the built-in server."""
+    grants: list[ConnectedAppOut]
+
+
+def _auth_mode(request: Request) -> AuthMode:
+    settings: McpSettings | None = getattr(request.app.state, "mcp_settings", None)
+    return "off" if settings is None else settings.auth
+
+
+@grants_router.get("")
+def connected_apps(request: Request, db: DbSession, user: CurrentUser) -> ConnectedAppsOut:
+    """The user's grants, whatever the mode: ones left from an earlier mode can still be revoked."""
+    return ConnectedAppsOut(
+        auth=_auth_mode(request),
+        grants=[
+            ConnectedAppOut(
+                id=app.grant_id,
+                client_name=app.client_name,
+                client_host=_host(app.client_id) if app.client_kind == "cimd" else None,
+                created_at=app.created_at,
+                last_used_at=app.last_used_at,
+            )
+            for app in user_grants(db, user.id)
+        ],
+    )
+
+
+@grants_router.delete("/{grant_id}", status_code=204)
+def revoke_connected_app(grant_id: GrantId, db: DbSession, user: CurrentUser) -> None:
+    """End the grant and its tokens: the app's next ``/mcp`` call is a 401."""
+    if not revoke_grant(db, grant_id, user_id=user.id):
+        raise Refusal("not_found", "grant_not_found", "No such connected app")

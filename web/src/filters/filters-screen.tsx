@@ -12,11 +12,11 @@ import {
   type RuleSetFields,
 } from '@/api/filters.ts'
 import { apiErrorMessage } from '@/api/http.ts'
+import { ConfirmRemoval } from '@/components/confirm-removal.tsx'
 import { Button } from '@/components/ui/button.tsx'
 import { Switch } from '@/components/ui/switch.tsx'
 import { useLoad } from '@/lib/use-load.ts'
 
-import { ConfirmRemoval } from './confirm-removal.tsx'
 import { folderLabel, triggerSummary } from './describe.ts'
 import { useFolders } from './folders.ts'
 import { filterErrorMessage } from './messages.ts'
@@ -249,6 +249,8 @@ function RuleSetRow({ ruleSet, onRemoved }: { ruleSet: RuleSet; onRemoved: () =>
       {confirming && (
         <ConfirmRemoval
           question={t('filters.ruleSet.confirmRemoval', { name: ruleSet.name })}
+          confirmLabel={t('filters.confirmRemove')}
+          cancelLabel={t('filters.cancel')}
           pending={pending}
           onConfirm={() => void remove()}
           onCancel={() => {

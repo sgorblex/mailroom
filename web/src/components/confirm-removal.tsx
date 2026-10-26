@@ -1,23 +1,26 @@
 import { useEffect, useRef, type ReactElement } from 'react'
-import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button.tsx'
 
-import { FILTERS_NS } from './i18n.ts'
-
-/** "Remove …?" with its confirm button, which takes focus when it shows; ignored while `pending`. */
+/**
+ * "Remove …?" with its confirm button, which takes focus when it shows; ignored while `pending`.
+ * The caller words it, in its own namespace: the question and both buttons.
+ */
 export function ConfirmRemoval({
   question,
+  confirmLabel,
+  cancelLabel,
   pending,
   onConfirm,
   onCancel,
 }: {
   question: string
+  confirmLabel: string
+  cancelLabel: string
   pending: boolean
   onConfirm: () => void
   onCancel: () => void
 }): ReactElement {
-  const { t } = useTranslation(FILTERS_NS)
   const confirm = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
@@ -39,10 +42,10 @@ export function ConfirmRemoval({
           }
         }}
       >
-        {t('filters.confirmRemove')}
+        {confirmLabel}
       </Button>
       <Button variant="ghost" size="sm" onClick={onCancel}>
-        {t('filters.cancel')}
+        {cancelLabel}
       </Button>
     </div>
   )

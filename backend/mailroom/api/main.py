@@ -28,7 +28,7 @@ from mailroom.api.refusals import http_refusal
 from mailroom.api.routes.accounts import accounts_router
 from mailroom.api.routes.auth import auth_router
 from mailroom.api.routes.filters import filters_router
-from mailroom.api.routes.oauth_consent import consent_router
+from mailroom.api.routes.oauth_consent import consent_router, grants_router
 from mailroom.api.routes.sso import identities_router, sso_router
 from mailroom.api.routes.users import own_password_router, users_router
 from mailroom.auth.sso import Sso, sso_from_env, sso_start_limit
@@ -265,6 +265,7 @@ def create_application(
     protected_v1.include_router(filters_router)
     protected_v1.include_router(identities_router)
     protected_v1.include_router(consent_router)
+    protected_v1.include_router(grants_router)
     application.include_router(protected_v1)
 
     # Exact routes: a mount would redirect /mcp to /mcp/.

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { apiGetJson, apiPostJson } from './http.ts'
+import { apiDelete, apiGetJson, apiPostJson } from './http.ts'
 
 export const consentRequestSchema = z.object({
   client_name: z.string().nullable(),
@@ -28,4 +28,30 @@ export async function decideConsentRequest(
 ): Promise<string> {
   const decided = await apiPostJson(requestPath(requestId), { decision }, { schema: decidedSchema })
   return decided.redirect_to
+}
+
+export const connectedAppSchema = z.object({
+  id: z.number(),
+  client_name: z.string().nullable(),
+  client_host: z.string().nullable(),
+  created_at: z.string(),
+  last_used_at: z.string().nullable(),
+})
+export type ConnectedApp = z.infer<typeof connectedAppSchema>
+
+export const connectedAppsSchema = z.object({
+  /** How MCP clients get their tokens: `external` means the identity provider manages access. */
+  auth: z.enum(['builtin', 'external', 'off']),
+  grants: z.array(connectedAppSchema),
+})
+export type ConnectedApps = z.infer<typeof connectedAppsSchema>
+
+/** The apps the user approved through the built-in authorization server. */
+export function listConnectedApps(signal?: AbortSignal): Promise<ConnectedApps> {
+  return apiGetJson('/api/v1/oauth/grants', { init: { signal }, schema: connectedAppsSchema })
+}
+
+/** Disconnect one: its tokens stop working at once. */
+export function revokeConnectedApp(id: number): Promise<null> {
+  return apiDelete(`/api/v1/oauth/grants/${String(id)}`)
 }

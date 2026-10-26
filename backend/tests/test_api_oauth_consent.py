@@ -1,6 +1,7 @@
-"""The consent screen's API, on an app with the built-in authorization server on, end to end: a
-client registers and authorizes, the signed-in user approves through ``/api/v1/oauth/requests``,
-the client exchanges the code and calls ``/mcp`` with the token."""
+"""The consent screen's and the connected apps' API, on an app with the built-in authorization
+server on, end to end: a client registers and authorizes, the signed-in user approves through
+``/api/v1/oauth/requests``, the client exchanges the code and calls ``/mcp`` with the token, and
+revoking under ``/api/v1/oauth/grants`` stops it."""
 
 from __future__ import annotations
 
@@ -267,3 +268,96 @@ def test_without_the_builtin_server_there_are_no_requests(user_client: TestClien
     assert user_client.get("/api/v1/oauth/requests/abc").status_code == 404
     reply = user_client.post("/api/v1/oauth/requests/abc", json={"decision": "approve"})
     assert reply.status_code == 404
+
+
+# Connected apps
+
+
+def _grants(flow: Flow) -> httpx.Response:
+    return flow.client.get("/api/v1/oauth/grants")
+
+
+def _revoke(flow: Flow, grant_id: int, **headers: str) -> httpx.Response:
+    return flow.client.delete(f"/api/v1/oauth/grants/{grant_id}", headers=headers)
+
+
+def test_connected_apps_lists_the_users_own_grants(flow: Flow, user: User, admin: User) -> None:
+    flow.approved_tokens(user)
+    flow.approved_tokens(admin)
+    flow.sign_in(user)
+    listed = _grants(flow)
+    assert listed.status_code == 200, listed.text
+    body = listed.json()
+    assert body["auth"] == "builtin"
+    [app] = body["grants"]
+    assert app["client_name"] == "Claude"
+    assert app["client_host"] is None
+    assert datetime.fromisoformat(app["created_at"]) <= datetime.now(UTC)
+    assert app["last_used_at"] is not None  # the token exchange
+
+
+def test_revoking_a_connected_app_stops_its_tokens(
+    flow: Flow, user: User, db_session: Session
+) -> None:
+    tokens = flow.approved_tokens(user)
+    assert flow.mcp(tokens["access_token"]).status_code == 200
+    flow.sign_in(user)
+    [app] = _grants(flow).json()["grants"]
+    assert _revoke(flow, app["id"]).status_code == 204
+    assert _grants(flow).json()["grants"] == []
+    assert db_session.scalars(select(OAuthGrant)).all() == []
+    flow.sign_out()
+    revoked = flow.mcp(tokens["access_token"])
+    assert revoked.status_code == 401
+    refreshed = flow.client.post(
+        "/oauth/token",
+        data={
+            "grant_type": "refresh_token",
+            "refresh_token": tokens["refresh_token"],
+            "client_id": flow.client_id,
+        },
+    )
+    assert refreshed.status_code == 400
+    assert refreshed.json()["error"] == "invalid_grant"
+    flow.sign_in(user)
+    assert _revoke(flow, app["id"]).status_code == 404
+
+
+def test_another_users_connected_app_cannot_be_revoked(flow: Flow, user: User, admin: User) -> None:
+    tokens = flow.approved_tokens(user)
+    flow.sign_in(user)
+    [app] = _grants(flow).json()["grants"]
+    flow.sign_in(admin)
+    assert _grants(flow).json()["grants"] == []
+    assert _revoke(flow, app["id"]).status_code == 404
+    assert flow.mcp(tokens["access_token"]).status_code == 200
+
+
+def test_connected_apps_need_a_session_and_the_same_site(flow: Flow, user: User) -> None:
+    flow.approved_tokens(user)
+    assert _grants(flow).status_code == 401
+    assert _revoke(flow, 1).status_code == 401
+    flow.sign_in(user)
+    [app] = _grants(flow).json()["grants"]
+    assert _revoke(flow, app["id"], **{"sec-fetch-site": "cross-site"}).status_code == 403
+    assert len(_grants(flow).json()["grants"]) == 1
+    assert _revoke(flow, 0).status_code == 422
+
+
+@pytest.mark.parametrize(("settings", "auth"), [(None, "off"), ("external", "external")])
+def test_connected_apps_say_how_access_is_managed(
+    user_client: TestClient,
+    application: FastAPI,
+    monkeypatch: pytest.MonkeyPatch,
+    settings: str | None,
+    auth: str,
+) -> None:
+    if settings is not None:
+        monkeypatch.setattr(
+            application.state,
+            "mcp_settings",
+            McpSettings(public_url=PUBLIC_URL, auth="external", groups=selected_groups(None)),
+        )
+    listed = user_client.get("/api/v1/oauth/grants")
+    assert listed.status_code == 200, listed.text
+    assert listed.json() == {"auth": auth, "grants": []}

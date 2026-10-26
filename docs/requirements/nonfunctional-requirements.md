@@ -131,6 +131,8 @@ bounded to one minor because the server relies on its handlers.
   screen's API (`/api/v1/oauth/requests/{id}`) needs the session cookie, its `POST` is refused
   cross-site like any other, and an unknown, expired or another user's request is a 404; the SPA,
   not the API, navigates to the returned redirect URL.
+- **Connected apps** (`/api/v1/oauth/grants`): a user lists and revokes only their own grants;
+  revoking deletes the grant and its tokens, and grants left from an earlier mode stay revocable.
 - **Opaque secrets, hashed:** request ids, codes and tokens are 256-bit random strings and only
   their SHA-256 is stored. A code is single use and marked used as it is read, so a failed PKCE
   check burns it; 10 minutes. A used code stays until it expires, and presented again it ends its

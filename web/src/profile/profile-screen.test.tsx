@@ -12,15 +12,21 @@ const NEXT = 'a brand new passphrase'
 
 const PASSWORD_PATH = '/api/v1/auth/password'
 
-/** Anything but the password change (the linked sign-ins section's requests) finds nothing. */
-function notFound(): Promise<Response> {
+/**
+ * Anything but the password change: no connected apps (the MCP server off), and nothing else
+ * found (the linked sign-ins section's requests).
+ */
+function otherSections(path: string): Promise<Response> {
+  if (path === '/api/v1/oauth/grants') {
+    return Promise.resolve(new Response('{"auth":"off","grants":[]}', { status: 200 }))
+  }
   return Promise.resolve(new Response('{"detail":"Not Found"}', { status: 404 }))
 }
 
 function stubApi(): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn((path: string, init?: RequestInit) => {
     if (path !== PASSWORD_PATH) {
-      return notFound()
+      return otherSections(path)
     }
     const { current_password } = JSON.parse(init?.body as string) as { current_password: string }
     if (current_password !== CURRENT) {
@@ -60,7 +66,7 @@ describe('ProfileScreen', () => {
       vi.fn((path: string) =>
         path === PASSWORD_PATH
           ? Promise.resolve(new Response('{"detail":"Too many failed attempts"}', { status: 429 }))
-          : notFound(),
+          : otherSections(path),
       ),
     )
     renderSignedIn(<ProfileScreen />, ALICE)

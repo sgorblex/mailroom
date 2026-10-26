@@ -2,8 +2,9 @@ import type { ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { Filter, FilterReport, RunReport } from '@/api/filters.ts'
+import { formatDateTime } from '@/lib/format.ts'
 
-import { describeActions, formatDateTime } from './describe.ts'
+import { describeActions } from './describe.ts'
 import { runErrorMessage } from './messages.ts'
 import { readSpec } from './spec.ts'
 import type { Vocabulary } from './vocabulary.ts'

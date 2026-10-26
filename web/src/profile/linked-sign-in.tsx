@@ -1,16 +1,17 @@
-import { useCallback, useState, type ReactElement } from 'react'
+import { useCallback, useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { apiErrorMessage } from '@/api/http.ts'
 import { listIdentities, ssoStartUrl, unlinkIdentity, type Identity } from '@/api/sso.ts'
 import { currentReturnTo, ssoErrorMessage, useSsoConfig, useSsoError } from '@/auth/sso.ts'
+import { ConfirmRemoval } from '@/components/confirm-removal.tsx'
 import { Button } from '@/components/ui/button.tsx'
 import { buttonVariants } from '@/components/ui/button-variants.ts'
 import { useLoad } from '@/lib/use-load.ts'
 
 /**
- * The user's linked sign-ins: each lets them sign in through the identity provider. Hidden while
- * SSO is off and nothing is linked.
+ * The user's linked sign-ins: each lets them sign in through the identity provider, and unlinks
+ * after a confirm. Hidden while SSO is off and nothing is linked.
  */
 export function LinkedSignIn(): ReactElement | null {
   const { t } = useTranslation()
@@ -19,6 +20,9 @@ export function LinkedSignIn(): ReactElement | null {
   const [reloadKey, setReloadKey] = useState(0)
   const [failure, setFailure] = useState<string | null>(null)
   const [pending, setPending] = useState<number | null>(null)
+  const [confirming, setConfirming] = useState<number | null>(null)
+  // Each row's Unlink button, to give focus back to when its confirm is cancelled.
+  const unlinkTriggers = useRef(new Map<number, HTMLButtonElement>())
   const load = useCallback((signal: AbortSignal) => listIdentities(signal), [])
   const { state } = useLoad(
     load,
@@ -36,6 +40,7 @@ export function LinkedSignIn(): ReactElement | null {
       setFailure(apiErrorMessage(error, t('sso.unlinkFailed')))
     } finally {
       setPending(null)
+      setConfirming(null)
     }
   }
 
@@ -68,22 +73,49 @@ export function LinkedSignIn(): ReactElement | null {
           {identities.map((identity) => {
             const label = identity.name ?? identity.issuer
             return (
-              <li key={identity.id} className="flex items-center gap-3 p-3">
-                <div className="mr-auto min-w-0">
-                  <p className="truncate text-sm font-medium">{label}</p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {t('sso.subject', { subject: identity.subject })}
-                  </p>
+              <li key={identity.id} className="flex flex-col gap-2 p-3">
+                <div className="flex items-center gap-3">
+                  <div className="mr-auto min-w-0">
+                    <p className="truncate text-sm font-medium">{label}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {t('sso.subject', { subject: identity.subject })}
+                    </p>
+                  </div>
+                  {confirming !== identity.id && (
+                    <Button
+                      ref={(button) => {
+                        if (button === null) {
+                          unlinkTriggers.current.delete(identity.id)
+                        } else {
+                          unlinkTriggers.current.set(identity.id, button)
+                        }
+                      }}
+                      variant="outline"
+                      size="sm"
+                      aria-label={t('sso.unlinkFrom', { name: label })}
+                      disabled={pending !== null}
+                      onClick={() => {
+                        setConfirming(identity.id)
+                        setFailure(null)
+                      }}
+                    >
+                      {t('sso.unlink')}
+                    </Button>
+                  )}
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  aria-label={t('sso.unlinkFrom', { name: label })}
-                  disabled={pending !== null}
-                  onClick={() => void unlink(identity)}
-                >
-                  {t('sso.unlink')}
-                </Button>
+                {confirming === identity.id && (
+                  <ConfirmRemoval
+                    question={t('sso.confirmUnlink', { name: label })}
+                    confirmLabel={t('sso.confirm')}
+                    cancelLabel={t('sso.cancel')}
+                    pending={pending !== null}
+                    onConfirm={() => void unlink(identity)}
+                    onCancel={() => {
+                      setConfirming(null)
+                      requestAnimationFrame(() => unlinkTriggers.current.get(identity.id)?.focus())
+                    }}
+                  />
+                )}
               </li>
             )
           })}

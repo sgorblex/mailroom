@@ -3,10 +3,10 @@ import { useTranslation } from 'react-i18next'
 import { ArrowDown, ArrowUp } from 'lucide-react'
 
 import { addFilter, changeFilter, removeFilter, reorderFilters, type Filter, type RuleSet } from '@/api/filters.ts'
+import { ConfirmRemoval } from '@/components/confirm-removal.tsx'
 import { Button } from '@/components/ui/button.tsx'
 import { Switch } from '@/components/ui/switch.tsx'
 
-import { ConfirmRemoval } from './confirm-removal.tsx'
 import { describeSpec, type Wording } from './describe.ts'
 import { FilterEditor } from './filter-editor.tsx'
 import type { FoldersState } from './folders.ts'
@@ -343,6 +343,8 @@ function FilterRow({
       {mode === 'confirming-removal' && (
         <ConfirmRemoval
           question={t('filters.filter.confirmRemoval', { name: filter.name })}
+          confirmLabel={t('filters.confirmRemove')}
+          cancelLabel={t('filters.cancel')}
           pending={pending}
           onConfirm={() => void remove()}
           onCancel={() => {

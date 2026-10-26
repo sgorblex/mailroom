@@ -14,10 +14,10 @@ import {
   type RuleSetWithFilters,
 } from '@/api/filters.ts'
 import { ApiRequestError } from '@/api/http.ts'
+import { ConfirmRemoval } from '@/components/confirm-removal.tsx'
 import { Button } from '@/components/ui/button.tsx'
 import { useLoad } from '@/lib/use-load.ts'
 
-import { ConfirmRemoval } from './confirm-removal.tsx'
 import { folderLabel, triggerSummary } from './describe.ts'
 import { FilterList } from './filter-list.tsx'
 import { useFolders, type FoldersState } from './folders.ts'
@@ -225,6 +225,8 @@ function RuleSetHeader({
       {mode === 'confirming-removal' && (
         <ConfirmRemoval
           question={t('filters.ruleSet.confirmRemoval', { name: ruleSet.name })}
+          confirmLabel={t('filters.confirmRemove')}
+          cancelLabel={t('filters.cancel')}
           pending={pending}
           onConfirm={() => void remove()}
           onCancel={backToIdle}

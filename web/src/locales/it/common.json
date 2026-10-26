@@ -33,6 +33,9 @@
     "link": "Collega {{name}}",
     "unlink": "Scollega",
     "unlinkFrom": "Scollega {{name}}",
+    "confirmUnlink": "Scollegare {{name}}? Non potrai più accedere così finché non lo ricolleghi.",
+    "confirm": "Scollega",
+    "cancel": "Annulla",
     "subject": "Account {{subject}}",
     "loadFailed": "Impossibile caricare i tuoi accessi collegati.",
     "unlinkFailed": "Impossibile scollegarlo. Riprova.",
@@ -46,6 +49,22 @@
       "busy": "Troppi accessi in corso. Riprova tra qualche minuto.",
       "failed": "L'accesso tramite il provider di identità non è riuscito."
     }
+  },
+  "connectedApps": {
+    "title": "App collegate",
+    "none": "Nessuna per ora: qui compare ogni app che colleghi a Mailroom (un client MCP come Claude).",
+    "external": "Le app che possono raggiungere Mailroom le gestisce il tuo provider di identità: revoca lì il loro accesso. Quelle elencate qui erano state collegate prima.",
+    "unnamed": "Un'app senza nome",
+    "connected": "Collegata il {{when}}",
+    "lastUsed": "ultimo uso il {{when}}",
+    "neverUsed": "mai usata",
+    "revoke": "Scollega",
+    "revokeApp": "Scollega {{name}}",
+    "confirmRevoke": "Scollegare {{name}}? Perde subito l'accesso alla tua posta.",
+    "confirm": "Scollega",
+    "cancel": "Annulla",
+    "loadFailed": "Impossibile caricare le app collegate.",
+    "revokeFailed": "Impossibile scollegarla. Riprova."
   },
   "nav": {
     "label": "Principale",

@@ -45,6 +45,11 @@ function stubApi(sso: { enabled: boolean; name: string | null }, identities: Ide
   return fetchMock
 }
 
+/** The DELETE calls `fetchMock` saw. */
+function deleted(fetchMock: ReturnType<typeof stubApi>): unknown[][] {
+  return fetchMock.mock.calls.filter(([, init]) => init?.method === 'DELETE')
+}
+
 afterEach(() => {
   vi.unstubAllGlobals()
   window.history.replaceState(null, '', '/')
@@ -76,11 +81,31 @@ describe('LinkedSignIn', () => {
     expect(screen.queryByRole('link', { name: 'Link Authentik' })).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'Unlink Authentik' }))
+    expect(screen.getByText(/Unlink Authentik\?/)).toBeInTheDocument()
+    expect(deleted(fetchMock)).toHaveLength(0)
+    const confirm = screen.getByRole('button', { name: 'Unlink' })
+    expect(confirm).toHaveFocus()
+    await userEvent.click(confirm)
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/v1/me/identities/1',
       expect.objectContaining({ method: 'DELETE' }),
     )
     expect(await screen.findByRole('link', { name: 'Link Authentik' })).toBeInTheDocument()
+    expect(screen.getAllByRole('listitem')).toHaveLength(1)
+  })
+
+  it('keeps the sign-in when the confirm is cancelled', async () => {
+    const fetchMock = stubApi({ enabled: true, name: 'Authentik' }, [identity(1, 'Authentik')])
+    renderSignedIn(<LinkedSignIn />, ALICE)
+    await userEvent.click(await screen.findByRole('button', { name: 'Unlink Authentik' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByText(/Unlink Authentik\?/)).not.toBeInTheDocument()
+    const trigger = screen.getByRole('button', { name: 'Unlink Authentik' })
+    await vi.waitFor(() => {
+      expect(trigger).toHaveFocus()
+    })
+    expect(deleted(fetchMock)).toHaveLength(0)
     expect(screen.getAllByRole('listitem')).toHaveLength(1)
   })
 

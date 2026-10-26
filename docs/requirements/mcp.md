@@ -107,7 +107,8 @@ interface, not on the app's routes), so it can move to a shared package later.
 - **Tokens are opaque** and the database keeps only their SHA-256, so revoking takes effect at
   once and there is no signing key to manage.
 - Each approval is a [connected app](../GLOSSARY.md): the user sees and revokes them on their
-  *Profile* page; removing a user removes their grants.
+  *Profile* page (name, when connected, when last used); revoking ends the grant's tokens at once,
+  so the app's next call is a 401. Removing a user removes their grants.
 
 ### External issuer
 
@@ -150,7 +151,7 @@ for users an admin has already created. **Nobody signs up through SSO.**
 | `/oauth/authorize`, `/oauth/token`, `/oauth/register`, `/oauth/revoke` | Built-in AS. |
 | `/connect?request=<id>` | Consent screen (web app). |
 | `/api/v1/oauth/requests/{id}` | `GET` the pending request; `POST {"decision": "approve" \| "deny"}` answers `{"redirect_to"}`, the client's redirect URL (session, same origin; 404 for an unknown, expired or another user's request). |
-| `/api/v1/oauth/grants` | `GET` the user's connected apps; `DELETE /{id}` revokes one. |
+| `/api/v1/oauth/grants` | `GET` `{"auth", "grants"}`: the MCP auth mode and the user's connected apps (client name, created, last used); `DELETE /{id}` revokes one, its tokens with it (404 for another user's). |
 | `/api/v1/auth/oidc/config`, `/start`, `/callback` | Web SSO: whether it is on and its label, start, callback. |
 | `/api/v1/me/identities` | `GET` the user's linked sign-ins; `DELETE /{id}` unlinks one. |
 
