@@ -37,6 +37,8 @@ _EXTRA_LOG_KEYS = (
     "grant_id",
     "argument_keys",
     "code",
+    "kind",
+    "reason",
 )
 
 

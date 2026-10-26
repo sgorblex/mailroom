@@ -37,7 +37,7 @@ Mailroom is built on standalone projects, each with its own repository and check
         MCP share it.
   - [x] **Web SSO** — OIDC sign-in for existing users, linked sign-ins on the profile.
   - [x] **MCP endpoint and tools** — `/mcp`, the `filters_*` groups, the envelope, the audit line.
-  - [ ] **Built-in OAuth server** — DCR, CIMD, tokens, the `/connect` consent screen.
+  - [x] **Built-in OAuth server** — DCR, CIMD, tokens, the `/connect` consent screen.
   - [ ] **External issuer** — JWTs from Authentik or Keycloak, mapped through linked sign-ins.
   - [ ] **Connected apps** — list and revoke grants on the profile.
   - [ ] **Mail tool groups** — once the client reaches parity with mailroom-mcp, turn on

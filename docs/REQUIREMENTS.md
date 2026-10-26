@@ -89,8 +89,9 @@ the index and live updates; tier 3 items arrive one at a time.
 
 ## MCP server
 
-**Maturity: Partial** — as specified in [`requirements/mcp.md`](requirements/mcp.md): `/mcp`
-and the `filters_*` tools are in; the authorization servers and connected apps are not yet.
+**Maturity: Partial** — as specified in [`requirements/mcp.md`](requirements/mcp.md): `/mcp`,
+the `filters_*` tools and the built-in authorization server with its `/connect` consent screen
+are in; the external issuer and connected apps are not yet.
 
 - The app's own MCP server at `/mcp`, for each user's own data: accounts, folders, rule sets,
   dry runs and runs, in [tool groups](GLOSSARY.md) chosen by instance config. Mail tools come

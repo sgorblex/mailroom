@@ -7,7 +7,7 @@ turns them into a runbook. Broader context: [`docs/deploy.md`](../../docs/deploy
 | --- | --- |
 | `mailroom.pod` | Pod publishing **127.0.0.1:8080 → 8080** (nginx in `mailroom-web`, non-root). |
 | `mailroom-api.container` | FastAPI + uvicorn on **8000** inside the pod, not published. Migrates at startup (mailroom-core's schema `core`, then `alembic upgrade head`) (`MAILROOM_RUN_STARTUP_MIGRATIONS=1`, the image default). |
-| `mailroom-web.container` | nginx serves the SPA and proxies `/api/`, `/mcp` and `/.well-known/oauth-protected-resource` to `127.0.0.1:8000`. HTTP only; TLS terminates on the host's reverse proxy, which must append the client to `X-Forwarded-For` (login throttling keys on it). |
+| `mailroom-web.container` | nginx serves the SPA and proxies `/api/`, `/mcp`, `/oauth/` and `/.well-known/oauth-` to `127.0.0.1:8000`. HTTP only; TLS terminates on the host's reverse proxy, which must append the client to `X-Forwarded-For` (login throttling keys on it). |
 | `mailroom-worker.container` | procrastinate worker on the API image (`python -m mailroom.worker`), same environment file. Never migrates: it waits for the API to bring the database to head, then runs jobs and watches the folders of new-mail rule sets over IMAP IDLE, so it reaches the mail servers. One instance only (a second exits). |
 
 Images are `localhost/mailroom-api` and `localhost/mailroom-web` (`mise run build-containers`), or

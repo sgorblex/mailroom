@@ -170,6 +170,13 @@ def test_without_its_verifier_a_mode_accepts_no_token() -> None:
     assert token_verifier("off") is None
 
 
+def test_builtin_mode_verifies_with_the_builtin_server() -> None:
+    server = RefusingVerifier()
+    assert token_verifier("builtin", builtin=server) is server
+    assert isinstance(token_verifier("external", builtin=server), RefusingVerifier)
+    assert token_verifier("external", builtin=server) is not server
+
+
 class StalledConnection:
     """An IMAP connection whose server stops answering: reads block until the socket is shut."""
 

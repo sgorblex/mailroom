@@ -44,7 +44,7 @@ Then open <http://127.0.0.1:5180>. Ports are fixed so other local dev stacks and
 
 | Service | Address |
 | --- | --- |
-| Web (Vite) | `127.0.0.1:5180` (proxies `/api`, `/mcp`, `/.well-known/oauth-protected-resource`) |
+| Web (Vite) | `127.0.0.1:5180` (proxies `/api`, `/mcp`, `/oauth/`, `/.well-known/oauth-`) |
 | API | `127.0.0.1:8100` (`/docs` for OpenAPI) |
 | Postgres | `127.0.0.1:5434`, user/password/db `mailroom`, tests in `mailroom_test` |
 | Dev Dovecot | IMAPS `127.0.0.1:33993` (`mise run dev-mail`) |

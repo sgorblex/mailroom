@@ -56,8 +56,9 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   `object-src 'none'`, `base-uri 'none'`, plus `nosniff` and `Referrer-Policy: no-referrer`.
   `style-src` allows `'unsafe-inline'` for UI-library style attributes (decided; revisit if that
   stops being needed).
-- The SPA and API are **same-origin** (Vite proxy in dev, nginx in the image), so there is no CORS
-  configuration at all.
+- The SPA and API are **same-origin** (Vite proxy in dev, nginx in the image), so `/api/` has no
+  CORS configuration at all. Only the OAuth metadata, token, register and revoke endpoints answer
+  CORS (any origin, no credentials), for browser-based MCP clients.
 - **Secrets** (account passwords, tokens) are sealed at rest as mailroom-core seals them and never
   appear in logs, errors or API responses. See *Mail accounts* below.
 - **Destructive actions** never expunge: trash moves to `\Trash`, as in mailroom-mcp.
@@ -90,6 +91,61 @@ Specification: [`mcp.md`](mcp.md). Code: `mailroom.mcp`.
   `outcome` (`ok`, `refused`, `invalid_arguments`, `unknown_tool`, `failed`), `code`,
   `duration_ms` and `argument_keys`: the arguments' names, never their values. Changes log as from
   the web app, with `via` `mcp`.
+
+### Built-in OAuth authorization server
+
+Code: `mailroom.oauth`, self-contained (SQLAlchemy, the `mcp` SDK's authorize, token and register
+handlers, httpx, and the `app.user` table; never the app's routes). Mounted when
+`MAILROOM_MCP_AUTH` is `builtin` (the default) and `MAILROOM_PUBLIC_URL` is set. The `mcp` SDK is
+bounded to one minor because the server relies on its handlers.
+
+- **Issuer** `{MAILROOM_PUBLIC_URL}/oauth`, its RFC 8414 metadata at
+  `/.well-known/oauth-authorization-server/oauth` (written by us: the SDK's advertises client
+  secrets); endpoints `/oauth/{authorize,token,register,revoke}`.
+- **Public clients only**, PKCE S256 only, one scope `mailroom`; `resource` must be
+  `{MAILROOM_PUBLIC_URL}/mcp` (a token request naming another gets `invalid_target`). No client
+  secret is ever issued, whatever a registration asks for.
+- **Redirect URIs** on an allowlist: claude.ai's and claude.com's `/api/mcp/auth_callback`,
+  `http://` loopback on any port and path, and `MAILROOM_OAUTH_EXTRA_REDIRECT_URIS` (https only).
+- **Throttles** (in memory, per process): registration (`/oauth/register`) 10 per client key and
+  30 per IPv6 /48 an hour; `/oauth/authorize` 30 per client key in 10 minutes; metadata document
+  fetches 10 per client key in 10 minutes, whichever endpoint caused them. Over a limit is a 429
+  with `Retry-After` (a fetch over its limit is not made). `/oauth/authorize` refuses a `state`
+  over 1024 characters.
+- **Registered clients** are capped at 1000; at the cap a registration evicts the oldest client
+  that was never used and holds no grant, and is refused only when there is none. Clients without
+  a grant are forgotten after a day if never used, after 30 days unused otherwise.
+- **Client ID metadata documents:** a `client_id` that is an https URL on a host in
+  `MAILROOM_OAUTH_CIMD_HOSTS` (default `claude.ai,claude.com`; empty turns them off), default
+  port, with a path and no query, fragment or dot segment, is fetched with no redirects, 5 s in
+  all and at most 64 KB. Its `client_id` must equal the URL, it must be a public client, and its
+  redirect URIs must be on the allowlist. Cached in `app.oauth_client` for 24 hours. A refetch
+  that fails in transit (timeout, transport error, a status other than 200) keeps the cached copy
+  serving for up to 7 days after its last good fetch; a document that is fetched and invalid is
+  not served. A failed fetch is remembered per process for 5 minutes and not repeated meanwhile.
+  The host allowlist is what keeps this fetch from being an SSRF.
+- **Consent:** `/oauth/authorize` stores the request (10 minutes) and redirects to
+  `/connect?request=<id>`. The first user to open it claims it; nobody else can see or decide it.
+  Approving creates a grant (a connected app) and a code; the redirect carries `code`, `state` and
+  `iss` (RFC 9207), and so does every error redirect back to the client, the SDK's included. The
+  screen's API (`/api/v1/oauth/requests/{id}`) needs the session cookie, its `POST` is refused
+  cross-site like any other, and an unknown, expired or another user's request is a 404; the SPA,
+  not the API, navigates to the returned redirect URL.
+- **Opaque secrets, hashed:** request ids, codes and tokens are 256-bit random strings and only
+  their SHA-256 is stored. A code is single use and marked used as it is read, so a failed PKCE
+  check burns it; 10 minutes. A used code stays until it expires, and presented again it ends its
+  grant and the tokens issued from it (RFC 6749, 4.1.2). Access tokens last 1 hour, refresh
+  tokens 30 days and rotate on every use; a spent refresh token presented again ends the whole
+  grant. Revoking either token ends the grant. Removing a user removes their grants (cascade).
+  Expired rows are swept on writes.
+- **Logs:** `oauth_client_registered`, `oauth_client_registration_refused` (with `reason`),
+  `oauth_client_registration_throttled`, `oauth_client_evicted`, `oauth_authorization_throttled`,
+  `oauth_client_document_refused`, `oauth_authorization_approved`, `oauth_authorization_denied`,
+  `oauth_token_issued` (`trigger`: `authorization_code` or `refresh_token`),
+  `oauth_authorization_code_reused`, `oauth_refresh_token_reused`, `oauth_grant_revoked`, with
+  `user_id`, `client_id` and `grant_id` where known; never a token.
+- **`/mcp`'s verifier** in builtin mode: an access token is looked up by its hash, so a revoked or
+  expired one stops working at once; the `AccessToken` names the user and carries `grant_id`.
 
 ### Sign-in
 

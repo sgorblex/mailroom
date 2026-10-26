@@ -28,10 +28,11 @@ from mailroom.api.refusals import http_refusal
 from mailroom.api.routes.accounts import accounts_router
 from mailroom.api.routes.auth import auth_router
 from mailroom.api.routes.filters import filters_router
+from mailroom.api.routes.oauth_consent import consent_router
 from mailroom.api.routes.sso import identities_router, sso_router
 from mailroom.api.routes.users import own_password_router, users_router
 from mailroom.auth.sso import Sso, sso_from_env, sso_start_limit
-from mailroom.auth.throttle import LoginThrottle
+from mailroom.auth.throttle import LoginThrottle, client_key
 from mailroom.auth.users import user_count
 from mailroom.config.public_url import public_url_from_env
 from mailroom.context import app_context
@@ -40,6 +41,8 @@ from mailroom.errors import Refusal
 from mailroom.mcp.app import METADATA_PATH, McpEndpoint
 from mailroom.mcp.settings import mcp_settings_from_env
 from mailroom.mcp.verifier import token_verifier
+from mailroom.oauth.config import oauth_settings_from_env
+from mailroom.oauth.server import OAuthServer
 from mailroom.observability.http_request_logging import CorrelationLoggingMiddleware
 from mailroom.observability.logging_config import configure_logging
 
@@ -143,21 +146,17 @@ def _warn_if_nobody_can_sign_in(application: FastAPI) -> None:
 @asynccontextmanager
 async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
     configure_logging()
-    mailroom_database.load_local_environment()
     application.state.database_startup_failure = None
     mailroom_db_migrations.apply_startup_migrations_if_configured()
     _initialize_database(application)
     _warn_if_nobody_can_sign_in(application)
     application.state.secrets_subkey = secrets_subkey_from_env()
     application.state.mail_ssl_context = mail_ssl_context()
-    application.state.public_url = public_url_from_env()
     application.state.sso = sso_from_env(application.state.public_url)
-    mcp_settings: McpSettings | None = application.state.mcp_settings or mcp_settings_from_env(
-        application.state.public_url
-    )
+    mcp_settings: McpSettings | None = application.state.mcp_settings
     verifier: TokenVerifier | None = application.state.mcp_verifier
     if verifier is None and mcp_settings is not None:
-        verifier = token_verifier(mcp_settings.auth)
+        verifier = token_verifier(mcp_settings.auth, builtin=application.state.oauth_server)
     mcp: McpEndpoint = application.state.mcp
     async with mcp.running(mcp_settings, verifier):
         yield
@@ -182,12 +181,31 @@ async def _refusal_answer(request: Request, exc: Exception) -> Response:
     return await http_exception_handler(request, http_refusal(exc))
 
 
+def _builtin_oauth_server(
+    application: FastAPI, mcp_settings: McpSettings | None
+) -> OAuthServer | None:
+    """The built-in authorization server, when the MCP server is on (``MAILROOM_PUBLIC_URL`` set)
+    with ``MAILROOM_MCP_AUTH`` ``builtin``, the default."""
+    if mcp_settings is None or mcp_settings.auth != "builtin":
+        return None
+    return OAuthServer(
+        oauth_settings_from_env(mcp_settings.public_url),
+        lambda: application.state.session_maker,
+        client_key=client_key,
+    )
+
+
 def create_application(
     *, mcp_settings: McpSettings | None = None, mcp_verifier: TokenVerifier | None = None
 ) -> FastAPI:
     """The API. ``mcp_settings`` and ``mcp_verifier`` replace what the environment would choose
     for the MCP server (tests)."""
+    mailroom_database.load_local_environment()
+    public_url = public_url_from_env()
+    if mcp_settings is None:
+        mcp_settings = mcp_settings_from_env(public_url)
     application = FastAPI(title="Mailroom API", lifespan=_lifespan)
+    application.state.public_url = public_url
     application.state.mcp_settings = mcp_settings
     application.state.mcp_verifier = mcp_verifier
     mcp = McpEndpoint(lambda: app_context(application.state))
@@ -246,11 +264,16 @@ def create_application(
     protected_v1.include_router(accounts_router)
     protected_v1.include_router(filters_router)
     protected_v1.include_router(identities_router)
+    protected_v1.include_router(consent_router)
     application.include_router(protected_v1)
 
     # Exact routes: a mount would redirect /mcp to /mcp/.
     application.router.routes.append(Route("/mcp", mcp.endpoint))
     application.router.routes.append(Route(METADATA_PATH, mcp.metadata))
+    oauth_server = _builtin_oauth_server(application, mcp_settings)
+    application.state.oauth_server = oauth_server
+    if oauth_server is not None:
+        application.router.routes.extend(oauth_server.routes())
     return application
 
 

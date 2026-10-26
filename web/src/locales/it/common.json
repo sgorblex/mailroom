@@ -146,6 +146,24 @@
     "passwordsDiffer": "Le nuove password non coincidono.",
     "unknownError": "Impossibile cambiare la password."
   },
+  "connect": {
+    "title": "Collega un'app",
+    "loading": "Caricamento della richiesta…",
+    "loadFailed": "Impossibile caricare la richiesta.",
+    "retry": "Riprova",
+    "gone": "Questa richiesta è sconosciuta, è scaduta o ha già avuto risposta. Ricomincia il collegamento dall'app.",
+    "unnamed": "Un'app senza nome",
+    "asks": "{{name}} vuole usare Mailroom come {{username}}",
+    "selfRegistered": "L'app si è registrata da sola: il nome è quello che dichiara, non verificato.",
+    "describedBy": "L'app è descritta da {{host}}.",
+    "access": "Potrà usare a tuo nome gli strumenti che questo Mailroom offre: i tuoi account di posta, le loro cartelle e i tuoi filtri.",
+    "returnsTo": "Approvando o rifiutando torni a",
+    "revoke": "Puoi scollegarla quando vuoi dal tuo profilo.",
+    "approve": "Approva",
+    "deny": "Rifiuta",
+    "decideFailed": "Impossibile registrare la risposta. Riprova.",
+    "leaving": "Ritorno a {{host}}…"
+  },
   "errors": {
     "usernameTaken": "Questo nome utente è già in uso.",
     "usernameInvalid": "Un nome utente ha da 1 a 64 caratteri: lettere, cifre, '.', '_' o '-', e inizia con una lettera o una cifra.",

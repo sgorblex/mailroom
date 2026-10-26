@@ -19,5 +19,8 @@
 | **Profile** | A user's own page for their password, linked sign-ins and connected apps. (In mailroom-mcp, a connector scope `/mcp/<profile>`; the app has none: its tool groups are instance config.) |
 | **Tool group** | A named set of MCP tools (`filters_read`, `filters_write`, `filters_run`, later the `mail_*` ones) with a status (`stable`, `preview`, `planned`); `MAILROOM_MCP_TOOL_GROUPS` picks which are served. [`requirements/mcp.md`](requirements/mcp.md). |
 | **Connected app** | An MCP client a user approved through the built-in OAuth server (an OAuth grant), listed and revocable on their profile. |
+| **DCR** | Dynamic client registration (RFC 7591): an MCP client registering itself at `/oauth/register`, limited to the redirect allowlist. [`requirements/mcp.md`](requirements/mcp.md). |
+| **CIMD** | Client ID metadata document: an MCP client whose `client_id` is an https URL on an allowed host, serving its own metadata, which the built-in OAuth server fetches and caches instead of a registration. |
+| **Authorization request** | An MCP client's `/oauth/authorize` call, stored until a signed-in user approves or denies it on `/connect`; the first user to open it claims it. |
 | **Linked sign-in** | An identity at the SSO provider (issuer and subject) tied to one user, so they can sign in through SSO and, in external mode, use that provider's MCP tokens. |
 | **Worker** | The app's background process: IDLE, indexing, filter runs, learning. |

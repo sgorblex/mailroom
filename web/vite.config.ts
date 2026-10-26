@@ -90,10 +90,11 @@ export default defineConfig(({ mode }) => {
           target: apiTarget,
           changeOrigin: true,
         },
-        // The MCP server, as the web container's nginx routes it.
+        // The MCP server and the built-in OAuth server, as the web container's nginx routes them.
         // The browser's Host is kept: /mcp answers only MAILROOM_PUBLIC_URL's host.
         "^/mcp(?:\\?.*)?$": { target: apiTarget },
-        "/.well-known/oauth-protected-resource": { target: apiTarget },
+        "/oauth/": { target: apiTarget },
+        "/.well-known/oauth-": { target: apiTarget },
       },
     },
   };

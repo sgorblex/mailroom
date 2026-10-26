@@ -3,6 +3,7 @@ import { createRootRoute, createRoute, createRouter, lazyRouteComponent } from '
 import { AccountsScreen } from '@/accounts/accounts-screen.tsx'
 import { RootLayout } from '@/auth/root-layout.tsx'
 import { HealthScreen } from '@/health/health-screen.tsx'
+import { ConnectRoute } from '@/oauth/connect-screen.tsx'
 import { ProfileScreen } from '@/profile/profile-screen.tsx'
 import { UsersScreen } from '@/users/users-screen.tsx'
 
@@ -45,6 +46,15 @@ const profileRoute = createRoute({
   component: ProfileScreen,
 })
 
+// Where the built-in OAuth server sends a user to approve an app (MCP client).
+const connectRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/connect',
+  validateSearch: ({ request }: Record<string, unknown>): { request?: string } =>
+    typeof request === 'string' ? { request } : {},
+  component: ConnectRoute,
+})
+
 export const router = createRouter({
   routeTree: rootRoute.addChildren([
     indexRoute,
@@ -53,6 +63,7 @@ export const router = createRouter({
     ruleSetRoute,
     usersRoute,
     profileRoute,
+    connectRoute,
   ]),
 })
 

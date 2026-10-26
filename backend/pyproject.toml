@@ -28,8 +28,9 @@ dependencies = [
   # the extra carries: it has no Windows wheel and does not build there.
   "uvloop>=0.21; platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32'",
   "httptools>=0.6",
-  # The MCP server (mailroom.mcp). Bounded to one minor: the app uses its low-level server, session
-  # manager and auth middleware directly (nonfunctional-requirements.md, MCP server).
+  # The MCP server (mailroom.mcp) and the built-in OAuth authorization server (mailroom.oauth).
+  # Bounded to one minor: the app uses the SDK's low-level server, session manager, auth middleware
+  # and authorize, token, register and revoke handlers directly (nonfunctional-requirements.md).
   "mcp>=1.30,<1.31",
   # OIDC and OAuth: discovery, JWKS and client metadata documents (httpx); ID tokens and an
   # external issuer's JWTs checked against them (pyjwt). mcp brings both too.

@@ -79,22 +79,31 @@ OAuth 2.1, self-contained in its own module (it depends on the database and a sm
 interface, not on the app's routes), so it can move to a shared package later.
 
 - **Clients are public**; PKCE with S256 is required. One scope, `mailroom`.
-- **Registration:** dynamic (DCR) at `/oauth/register`, throttled per client and with a cap on the
-  number of clients, or a **client ID metadata document** (CIMD) whose URL is the `client_id`: its
-  host must be in `MAILROOM_OAUTH_CIMD_HOSTS`, the fetch follows no redirects, times out after
-  5 s and reads at most 64 KB, the document's `client_id` must equal its URL, and it is cached for
-  24 hours.
+- **Registration:** dynamic (DCR) at `/oauth/register`, throttled per client and per IPv6 /48,
+  with a cap on the number of clients (a full register evicts its oldest never-used client; a
+  client never used is forgotten after a day), or a **client ID metadata document** (CIMD) whose
+  URL is the `client_id`: its host must be in `MAILROOM_OAUTH_CIMD_HOSTS`, the fetch follows no
+  redirects, times out after 5 s and reads at most 64 KB, the document's `client_id` must equal
+  its URL, and it is cached for 24 hours. When fetching it again fails in transit (timeout, error,
+  a status other than 200), the cached copy keeps serving for up to 7 days after its last good
+  fetch; a document fetched and found invalid stops the client at once. A failed fetch is not
+  repeated for 5 minutes, and fetches count against the requesting client's limit.
+- **`/oauth/authorize`** is throttled per client and refuses a `state` over 1024 characters.
+  Every redirect back to the client, errors included, carries `iss` (RFC 9207).
 - **Redirect URIs** must be on the allowlist: claude.ai's and claude.com's `auth_callback`,
   loopback on any port, and `MAILROOM_OAUTH_EXTRA_REDIRECT_URIS`.
-- **`resource`** must equal `{MAILROOM_PUBLIC_URL}/mcp`.
+- **`resource`** must equal `{MAILROOM_PUBLIC_URL}/mcp` at `/oauth/authorize`; a token request
+  that names another is refused with `invalid_target`.
 - **Consent** is a web app screen. `/oauth/authorize` stores the request (10 minutes) and
   redirects to `/connect?request=<id>`; the screen signs the user in if needed (password or SSO)
   and shows the client and what it gets, to approve or deny. (The session cookie is
   `SameSite=Strict`, so it does not arrive on the cross-site navigation from the client; the
-  screen's same-origin requests do carry it.)
+  screen's same-origin requests do carry it.) The screen names the client as it calls itself
+  (and, for a metadata document, the host serving it) and the host the browser goes back to. The
+  first user to open a request claims it; nobody else can see or decide it.
 - **Lifetimes:** an authorization code is single use and lasts 10 minutes; an access token 1 hour;
-  a refresh token 30 days, rotated on every use. Reusing a spent refresh token revokes the whole
-  grant.
+  a refresh token 30 days, rotated on every use. Presenting a used code again, or a spent refresh
+  token, revokes the whole grant and its tokens, and so does revoking either token.
 - **Tokens are opaque** and the database keeps only their SHA-256, so revoking takes effect at
   once and there is no signing key to manage.
 - Each approval is a [connected app](../GLOSSARY.md): the user sees and revokes them on their
@@ -140,7 +149,7 @@ for users an admin has already created. **Nobody signs up through SSO.**
 | `/.well-known/oauth-authorization-server/oauth` | Built-in AS metadata (RFC 8414); issuer `{MAILROOM_PUBLIC_URL}/oauth`. |
 | `/oauth/authorize`, `/oauth/token`, `/oauth/register`, `/oauth/revoke` | Built-in AS. |
 | `/connect?request=<id>` | Consent screen (web app). |
-| `/api/v1/oauth/requests/{id}` | `GET` the pending request, `POST` approve or deny (session, same origin). |
+| `/api/v1/oauth/requests/{id}` | `GET` the pending request; `POST {"decision": "approve" \| "deny"}` answers `{"redirect_to"}`, the client's redirect URL (session, same origin; 404 for an unknown, expired or another user's request). |
 | `/api/v1/oauth/grants` | `GET` the user's connected apps; `DELETE /{id}` revokes one. |
 | `/api/v1/auth/oidc/config`, `/start`, `/callback` | Web SSO: whether it is on and its label, start, callback. |
 | `/api/v1/me/identities` | `GET` the user's linked sign-ins; `DELETE /{id}` unlinks one. |
@@ -160,7 +169,7 @@ workers; expired rows are swept on writes.
 | `sso_login_state` | `state_hash`, `nonce`, `code_verifier`, `intent` (`login` \| `link`), `link_user_id`, `return_to`, `browser_binding_hash`, `client_key`, `expires_at` |
 | `oauth_client` | `client_id`, `kind` (`dcr` \| `cimd`), `client_name`, `redirect_uris`, `metadata`, `fetched_at`, `created_at`, `last_used_at` |
 | `oauth_authorization_request` | `id_hash`, `client_id`, `params`, `expires_at` |
-| `oauth_authorization_code` | `code_hash`, `client_id`, `user_id`, `grant_id`, `redirect_uri`, `redirect_uri_explicit`, `code_challenge`, `resource`, `scopes`, `expires_at` |
+| `oauth_authorization_code` | `code_hash`, `client_id`, `user_id`, `grant_id`, `redirect_uri`, `redirect_uri_explicit`, `code_challenge`, `resource`, `scopes`, `expires_at`, `used_at` |
 | `oauth_grant` | `id`, `user_id` (cascade), `client_id` (cascade), `resource`, `scopes`, `created_at`, `last_used_at` |
 | `oauth_token` | `token_hash`, `grant_id` (cascade), `kind` (`access` \| `refresh`), `expires_at`, `used_at`, `created_at` |
 

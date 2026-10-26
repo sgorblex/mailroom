@@ -34,10 +34,13 @@ class RefusingVerifier:
         return None
 
 
-def token_verifier(mode: AuthMode) -> TokenVerifier | None:
-    """The verifier for ``mode``; None for ``off``."""
+def token_verifier(mode: AuthMode, *, builtin: TokenVerifier | None = None) -> TokenVerifier | None:
+    """The verifier for ``mode``; None for ``off``. ``builtin`` is the built-in authorization
+    server, which checks its own access tokens."""
     if mode == "off":
         return None
+    if mode == "builtin" and builtin is not None:
+        return builtin
     logger.warning(
         "%s=%s: its token verifier is not available yet, so /mcp accepts no token",
         AUTH_ENV,
