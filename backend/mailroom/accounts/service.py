@@ -217,10 +217,13 @@ def imap_account(ctx: AppContext, user_id: int, account_id: str) -> Account:
         raise account_not_found() from None
 
 
-def account_folders(ctx: AppContext, user_id: int, account_id: str) -> list[list[str]]:
-    """The account's folders, each as its path segments (``["Archive", "2026"]``)."""
+def account_folders(
+    ctx: AppContext, user_id: int, account_id: str, *, seconds: float | None = None
+) -> list[list[str]]:
+    """The account's folders, each as its path segments (``["Archive", "2026"]``), within
+    ``seconds`` when given (``mailroom.accounts.mail.list_folders``)."""
     try:
-        return list_folders(imap_account(ctx, user_id, account_id))
+        return list_folders(imap_account(ctx, user_id, account_id), seconds=seconds)
     except MailFailure as failure:
         raise mail_refusal(failure.code, failure.message) from None
 

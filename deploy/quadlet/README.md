@@ -7,7 +7,7 @@ turns them into a runbook. Broader context: [`docs/deploy.md`](../../docs/deploy
 | --- | --- |
 | `mailroom.pod` | Pod publishing **127.0.0.1:8080 → 8080** (nginx in `mailroom-web`, non-root). |
 | `mailroom-api.container` | FastAPI + uvicorn on **8000** inside the pod, not published. Migrates at startup (mailroom-core's schema `core`, then `alembic upgrade head`) (`MAILROOM_RUN_STARTUP_MIGRATIONS=1`, the image default). |
-| `mailroom-web.container` | nginx serves the SPA and proxies `/api/` to `127.0.0.1:8000`. HTTP only; TLS terminates on the host's reverse proxy, which must append the client to `X-Forwarded-For` (login throttling keys on it). |
+| `mailroom-web.container` | nginx serves the SPA and proxies `/api/`, `/mcp` and `/.well-known/oauth-protected-resource` to `127.0.0.1:8000`. HTTP only; TLS terminates on the host's reverse proxy, which must append the client to `X-Forwarded-For` (login throttling keys on it). |
 | `mailroom-worker.container` | procrastinate worker on the API image (`python -m mailroom.worker`), same environment file. Never migrates: it waits for the API to bring the database to head, then runs jobs and watches the folders of new-mail rule sets over IMAP IDLE, so it reaches the mail servers. One instance only (a second exits). |
 
 Images are `localhost/mailroom-api` and `localhost/mailroom-web` (`mise run build-containers`), or
@@ -21,8 +21,9 @@ app can manage users, every user is made this way.
 The environment file needs `MAILROOM_SECRETS_KEY` (`openssl rand -hex 32`): mailbox passwords are
 sealed under it, and a lost or changed key means entering every one again.
 
-SSO needs `MAILROOM_PUBLIC_URL`: setup, and the Authentik runbook, in
-[`docs/deploy.md`](../../docs/deploy.md) — *SSO*.
+The MCP server and SSO need `MAILROOM_PUBLIC_URL`, and the reverse proxy must pass the request's
+`Host` through: setup, and the Authentik runbook, in [`docs/deploy.md`](../../docs/deploy.md) —
+*MCP server and OAuth*.
 
 Postgres is provided outside the pod (the host's shared `postgres`): database and role `mailroom`.
 Standalone mailroom-mcp uses `mailroom_mcp`.

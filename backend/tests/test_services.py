@@ -117,6 +117,50 @@ def test_another_users_rows_are_not_found(
     assert [entry.id for entry in accounts.listed_accounts(ctx, db_session, user.id)] == [account]
 
 
+def test_an_enabled_rule_set_is_refused_where_asked(
+    db_session: Session, user: User, rule_set_id: int, filter_id: int
+) -> None:
+    filters.change_rule_set(db_session, user.id, rule_set_id, RuleSetPatch(enabled=True))
+    calls: list[Callable[[], object]] = [
+        lambda: filters.change_rule_set(
+            db_session, user.id, rule_set_id, RuleSetPatch(name="x"), disabled_only=True
+        ),
+        lambda: filters.remove_rule_set(db_session, user.id, rule_set_id, disabled_only=True),
+        lambda: filters.add_filter(
+            db_session,
+            user.id,
+            rule_set_id,
+            FilterFields(name="x", spec=SHOP_SPEC),
+            disabled_only=True,
+        ),
+        lambda: filters.change_filter(
+            db_session, user.id, filter_id, FilterPatch(name="x"), disabled_only=True
+        ),
+        lambda: filters.remove_filter(db_session, user.id, filter_id, disabled_only=True),
+        lambda: filters.reorder_filters(
+            db_session, user.id, rule_set_id, [filter_id], disabled_only=True
+        ),
+    ]
+    for call in calls:
+        refused = refusal(call)
+        assert (refused.kind, refused.code, refused.message) == (
+            "conflict",
+            "rule_set_enabled",
+            "Disable the rule set first",
+        )
+    detail = filters.rule_set_detail(db_session, user.id, rule_set_id)
+    assert (detail.name, [row.name for row in detail.filters]) == ("Newsletters", ["Shop"])
+
+    # Without the guard, as the web app asks, the change goes through; once disabled, so does
+    # a guarded one.
+    filters.change_filter(db_session, user.id, filter_id, FilterPatch(name="Shop 2"))
+    filters.change_rule_set(db_session, user.id, rule_set_id, RuleSetPatch(enabled=False))
+    changed = filters.change_rule_set(
+        db_session, user.id, rule_set_id, RuleSetPatch(name="News"), disabled_only=True
+    )
+    assert (changed.name, changed.enabled) == ("News", False)
+
+
 def test_run_now_keeps_its_guards(
     ctx: AppContext, db_session: Session, user: User, account: str, rule_set_id: int
 ) -> None:

@@ -10,6 +10,7 @@ from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy import text
 from sqlalchemy.exc import ArgumentError, NoSuchModuleError, SQLAlchemyError
+from starlette.routing import Route
 
 from mailroom import database as mailroom_database
 from mailroom import db_migrations as mailroom_db_migrations
@@ -33,8 +34,12 @@ from mailroom.auth.sso import Sso, sso_from_env, sso_start_limit
 from mailroom.auth.throttle import LoginThrottle
 from mailroom.auth.users import user_count
 from mailroom.config.public_url import public_url_from_env
+from mailroom.context import app_context
 from mailroom.database_connectivity import CONNECTIVITY_ERRORS
 from mailroom.errors import Refusal
+from mailroom.mcp.app import METADATA_PATH, McpEndpoint
+from mailroom.mcp.settings import mcp_settings_from_env
+from mailroom.mcp.verifier import token_verifier
 from mailroom.observability.http_request_logging import CorrelationLoggingMiddleware
 from mailroom.observability.logging_config import configure_logging
 
@@ -43,7 +48,10 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
+    from mcp.server.auth.provider import TokenVerifier
     from sqlalchemy.engine import Engine
+
+    from mailroom.mcp.settings import McpSettings
 
 
 def _record_database_startup_failure(
@@ -144,7 +152,15 @@ async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
     application.state.mail_ssl_context = mail_ssl_context()
     application.state.public_url = public_url_from_env()
     application.state.sso = sso_from_env(application.state.public_url)
-    yield
+    mcp_settings: McpSettings | None = application.state.mcp_settings or mcp_settings_from_env(
+        application.state.public_url
+    )
+    verifier: TokenVerifier | None = application.state.mcp_verifier
+    if verifier is None and mcp_settings is not None:
+        verifier = token_verifier(mcp_settings.auth)
+    mcp: McpEndpoint = application.state.mcp
+    async with mcp.running(mcp_settings, verifier):
+        yield
     sso: Sso | None = application.state.sso
     if sso is not None:
         sso.provider.close()
@@ -166,8 +182,16 @@ async def _refusal_answer(request: Request, exc: Exception) -> Response:
     return await http_exception_handler(request, http_refusal(exc))
 
 
-def create_application() -> FastAPI:
+def create_application(
+    *, mcp_settings: McpSettings | None = None, mcp_verifier: TokenVerifier | None = None
+) -> FastAPI:
+    """The API. ``mcp_settings`` and ``mcp_verifier`` replace what the environment would choose
+    for the MCP server (tests)."""
     application = FastAPI(title="Mailroom API", lifespan=_lifespan)
+    application.state.mcp_settings = mcp_settings
+    application.state.mcp_verifier = mcp_verifier
+    mcp = McpEndpoint(lambda: app_context(application.state))
+    application.state.mcp = mcp
     application.add_exception_handler(Refusal, _refusal_answer)
     application.state.login_throttle = LoginThrottle()
     application.state.sso_start_limit = sso_start_limit()
@@ -223,6 +247,10 @@ def create_application() -> FastAPI:
     protected_v1.include_router(filters_router)
     protected_v1.include_router(identities_router)
     application.include_router(protected_v1)
+
+    # Exact routes: a mount would redirect /mcp to /mcp/.
+    application.router.routes.append(Route("/mcp", mcp.endpoint))
+    application.router.routes.append(Route(METADATA_PATH, mcp.metadata))
     return application
 
 

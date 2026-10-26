@@ -29,9 +29,9 @@ A destructive hint makes clients such as claude.ai ask the user before each call
 ### Safety rules
 
 - **A rule set created over MCP starts disabled**, whatever the input says.
-- **Write tools refuse an enabled rule set** ("disable it first"): `rule_set_update`, the filter
-  tools and `filters_reorder` act only on a disabled one. The path is disable → edit → dry run →
-  enable.
+- **Write tools refuse an enabled rule set** ("disable it first"): `rule_set_update`,
+  `rule_set_delete`, the filter tools (`filter_delete` too) and `filters_reorder` act only on a
+  disabled one. The path is disable → edit → dry run → enable.
 - **Turning things on is a separate, destructive call**: `rule_set_enable` (which says so when the
   account's *Run filters* is off), `run_now` (with the same guards as *Run now* in the web app) and
   `account_run_filters`, the account's [Run filters](../GLOSSARY.md) switch.
@@ -41,15 +41,20 @@ A destructive hint makes clients such as claude.ai ask the user before each call
 
 ### Tool contract
 
-- **Inputs** are strict (unknown fields refused) with the REST API's bounds; a filter `spec` is
-  checked as the API checks it.
+- **Inputs** are strict (unknown fields refused, no type coercion) with the REST API's bounds; a
+  filter `spec` is checked as the API checks it.
 - **Errors:** a refusal returns a tool error with its fixed message; anything unexpected returns
   "Internal error", the details only in the log.
 - **Mail is untrusted.** Strings that come from mail (a run's `from` and `subject`) are wrapped in
-  an `<untrusted_email nonce="…">` envelope whose closing tag carries a random nonce, and the
-  server instructions tell the model that the content is data, not instructions.
+  an `<untrusted_email nonce="…">` envelope whose closing tag carries a random nonce. The tag
+  name inside is rewritten, also when it only shows after NFKC folding (fullwidth letters,
+  invisible characters between them), even next to a plain one. The server instructions tell the
+  model that the content is data, not instructions.
 - **Tools are async** and run database and IMAP work off the event loop, so a slow mail server
   never stalls the API.
+- **Two calls per user at a time:** a user's third concurrent tool call (in one API process) is
+  refused at once as busy ("wait for one, then retry"), so one user cannot take every tool thread.
+  `dry_run` and `folders_list` stop after 30 s of mailbox work and answer a timeout refusal.
 - **Audit:** each call logs `mcp_tool_called` with the user, client, grant, tool, outcome and
   duration, and the argument *keys* only, never their values. Changes made through the service
   layer log as they do from the web app, with `via="mcp"`.

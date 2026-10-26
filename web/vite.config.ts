@@ -46,6 +46,7 @@ export default defineConfig(({ mode }) => {
   const apiHost = bindHostRaw === "0.0.0.0" ? "127.0.0.1" : bindHostRaw;
   const apiPort = portFromEnv(rootEnv, "MAILROOM_API_PORT", 8100);
   const vitePort = portFromEnv(rootEnv, "MAILROOM_VITE_PORT", 5180);
+  const apiTarget = `http://${apiHost}:${String(apiPort)}`;
 
   const webPackage = JSON.parse(
     readFileSync(path.resolve(import.meta.dirname, "package.json"), "utf8"),
@@ -86,9 +87,13 @@ export default defineConfig(({ mode }) => {
       strictPort: true,
       proxy: {
         "/api": {
-          target: `http://${apiHost}:${String(apiPort)}`,
+          target: apiTarget,
           changeOrigin: true,
         },
+        // The MCP server, as the web container's nginx routes it.
+        // The browser's Host is kept: /mcp answers only MAILROOM_PUBLIC_URL's host.
+        "^/mcp(?:\\?.*)?$": { target: apiTarget },
+        "/.well-known/oauth-protected-resource": { target: apiTarget },
       },
     },
   };

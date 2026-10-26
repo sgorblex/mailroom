@@ -13,6 +13,7 @@ Engineering baseline for Mailroom. Product scope: [`../REQUIREMENTS.md`](../REQU
 | Tests | pytest (+ xdist, one database per worker cloned from the migrated `mailroom_test`), Vitest (`node` and `jsdom` projects) |
 | Containers | Podman, `mailroom-api` and `mailroom-web` images; Quadlet for deploy |
 | Component family | mailroom-core and imap-thingy (PyPI); mailroom-mcp stays standalone, not a dependency ([`../CONTEXT.md`](../CONTEXT.md)) |
+| MCP server | the `mcp` SDK's low-level server, Streamable HTTP session manager and bearer-auth middleware, bounded to one minor because the app uses them directly ([`mcp.md`](mcp.md)) |
 
 Tool pins: `mise.toml` (dev), the digest-pinned `.woodpecker/*.yaml` step images (CI), the
 Containerfiles, `backend/.python-version`, `web/package.json` `packageManager`, and
@@ -61,6 +62,34 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   appear in logs, errors or API responses. See *Mail accounts* below.
 - **Destructive actions** never expunge: trash moves to `\Trash`, as in mailroom-mcp.
 - **Learning never acts** ([`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Filter suggestions*).
+
+### MCP server
+
+Specification: [`mcp.md`](mcp.md). Code: `mailroom.mcp`.
+
+- **`/mcp` takes a bearer token only**, never the session cookie, so a browser's ambient
+  credentials never reach it. The verifier maps a token to a user id (`AccessToken.subject`) and
+  must have issued it for `{MAILROOM_PUBLIC_URL}/mcp`; every tool then goes through the service
+  layer as that user.
+- **DNS rebinding:** `Host` must be `MAILROOM_PUBLIC_URL`'s (421 otherwise) and an `Origin`, when
+  sent, its origin (403).
+- **Strict inputs:** each tool's arguments are a Pydantic model with `extra="forbid"` and
+  `strict=True`, with the REST API's bounds; a refusal's message reaches the model, nothing else
+  does ("Internal error", the details in the log).
+- **Mail strings** a tool returns (a run's matched `from` and `subject`) are wrapped in
+  `<untrusted_email nonce="…">…</untrusted_email nonce="…">`, the tag name inside neutralised
+  (also after NFKC folding: when the folded text holds it, the folded text is passed on with every
+  occurrence rewritten, even beside a plain one), as mailroom-mcp wraps mail.
+- **Off the event loop:** tools are async and run database and IMAP work in worker threads, at
+  most 10 at a time, so a slow mailbox stalls neither the API nor the REST routes' threads.
+- **Per-user cap:** a user has at most 2 tool calls running at once in an API process; one more
+  is refused at once with a busy tool error, so one user cannot hold every tool thread. Mailbox
+  work has a wall-clock deadline: `dry_run` 30 s, `folders_list` 30 s (its connections closed,
+  a `timeout` refusal).
+- **Logs:** one `mcp_tool_called` per call, with `tool`, `user_id`, `client_id`, `grant_id`,
+  `outcome` (`ok`, `refused`, `invalid_arguments`, `unknown_tool`, `failed`), `code`,
+  `duration_ms` and `argument_keys`: the arguments' names, never their values. Changes log as from
+  the web app, with `via` `mcp`.
 
 ### Sign-in
 

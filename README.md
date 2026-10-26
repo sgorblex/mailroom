@@ -36,13 +36,15 @@ run yet): `mise run create-user <name> --admin`. That admin adds the rest on the
 page. For mail to try things on, `mise run dev-mail`, then `mise run seed-dev-mail <name>` gives
 that user the dev Dovecot's accounts `dev` and `team` with sample mail. To try SSO, run `mise run
 dev-idp` and put `MAILROOM_PUBLIC_URL=http://127.0.0.1:5180` and the `MAILROOM_OIDC_*` lines it
-prints in `.env` (see `.env.example`); open the app at that same origin.
+prints in `.env` (see `.env.example`); open the app at that same origin. With
+`MAILROOM_PUBLIC_URL` set, the MCP server answers at `http://127.0.0.1:5180/mcp`
+([`docs/deploy.md`](docs/deploy.md) — *MCP server and OAuth*).
 
 Then open <http://127.0.0.1:5180>. Ports are fixed so other local dev stacks and mailroom-mcp can run alongside:
 
 | Service | Address |
 | --- | --- |
-| Web (Vite) | `127.0.0.1:5180` (proxies `/api`) |
+| Web (Vite) | `127.0.0.1:5180` (proxies `/api`, `/mcp`, `/.well-known/oauth-protected-resource`) |
 | API | `127.0.0.1:8100` (`/docs` for OpenAPI) |
 | Postgres | `127.0.0.1:5434`, user/password/db `mailroom`, tests in `mailroom_test` |
 | Dev Dovecot | IMAPS `127.0.0.1:33993` (`mise run dev-mail`) |

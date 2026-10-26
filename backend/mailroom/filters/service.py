@@ -179,6 +179,22 @@ def _filter_not_found() -> Refusal:
     return Refusal("not_found", "filter_not_found", "No such filter")
 
 
+def refuse_enabled(rule_set: RuleSet) -> None:
+    """Refuse a change to an enabled rule set: the way to change one is disable, edit, dry run,
+    enable. For front ends that must not change what may be running (the web app may)."""
+    if rule_set.enabled:
+        raise Refusal("conflict", "rule_set_enabled", "Disable the rule set first")
+
+
+def _owned_for_change(
+    db: Session, user_id: int, rule_set_id: int, *, disabled_only: bool
+) -> RuleSet:
+    rule_set = owned_rule_set(db, user_id, rule_set_id, lock=True)
+    if disabled_only:
+        refuse_enabled(rule_set)
+    return rule_set
+
+
 def _filters_of(db: Session, rule_set_id: int) -> list[Filter]:
     return list(
         db.scalars(
@@ -243,10 +259,12 @@ def change_rule_set(
     rule_set_id: int,
     patch: RuleSetPatch,
     *,
+    disabled_only: bool = False,
     via: Via = "web",
 ) -> RuleSetOut:
-    """Change the fields ``patch`` sets (a None one stays, but for ``interval_minutes``)."""
-    rule_set = owned_rule_set(db, user_id, rule_set_id, lock=True)
+    """Change the fields ``patch`` sets (a None one stays, but for ``interval_minutes``).
+    ``disabled_only``: refuse an enabled rule set (``refuse_enabled``)."""
+    rule_set = _owned_for_change(db, user_id, rule_set_id, disabled_only=disabled_only)
     changes = patch.model_dump(exclude_unset=True)
     for field in ("name", "folder", "trigger", "starred_only", "enabled"):
         if changes.get(field, None) is None:
@@ -274,10 +292,11 @@ def remove_rule_set(
     user_id: int,
     rule_set_id: int,
     *,
+    disabled_only: bool = False,
     via: Via = "web",
 ) -> None:
     """Remove the rule set with its filters and runs."""
-    rule_set = owned_rule_set(db, user_id, rule_set_id, lock=True)
+    rule_set = _owned_for_change(db, user_id, rule_set_id, disabled_only=disabled_only)
     db.delete(rule_set)
     db.commit()
     _log("rule_set_removed", user_id, via, account_id=rule_set.account_id, rule_set_id=rule_set_id)
@@ -289,10 +308,11 @@ def add_filter(
     rule_set_id: int,
     fields: FilterFields,
     *,
+    disabled_only: bool = False,
     via: Via = "web",
 ) -> FilterOut:
     """Add a filter after the rule set's last one."""
-    rule_set = owned_rule_set(db, user_id, rule_set_id, lock=True)
+    rule_set = _owned_for_change(db, user_id, rule_set_id, disabled_only=disabled_only)
     spec = checked_spec(fields.spec)
     count, last = db.execute(
         select(func.count(), func.max(Filter.position)).where(Filter.rule_set_id == rule_set.id)
@@ -320,10 +340,13 @@ def change_filter(
     filter_id: int,
     patch: FilterPatch,
     *,
+    disabled_only: bool = False,
     via: Via = "web",
 ) -> FilterOut:
     """Change the fields ``patch`` sets (a None one stays)."""
     row, rule_set = owned_filter(db, user_id, filter_id)
+    if disabled_only:
+        refuse_enabled(rule_set)
     if patch.name is not None:
         row.name = patch.name
     if patch.enabled is not None:
@@ -341,10 +364,13 @@ def remove_filter(
     user_id: int,
     filter_id: int,
     *,
+    disabled_only: bool = False,
     via: Via = "web",
 ) -> None:
     """Remove the filter; the rest close up."""
     row, rule_set = owned_filter(db, user_id, filter_id)
+    if disabled_only:
+        refuse_enabled(rule_set)
     db.delete(row)
     db.flush()
     for position, rest in enumerate(_filters_of(db, rule_set.id)):
@@ -359,10 +385,11 @@ def reorder_filters(
     rule_set_id: int,
     filter_ids: list[int],
     *,
+    disabled_only: bool = False,
     via: Via = "web",
 ) -> list[FilterOut]:
     """Put the rule set's filters in the order of ``filter_ids``: every one of them, each once."""
-    rule_set = owned_rule_set(db, user_id, rule_set_id, lock=True)
+    rule_set = _owned_for_change(db, user_id, rule_set_id, disabled_only=disabled_only)
     rows = {row.id: row for row in _filters_of(db, rule_set.id)}
     if len(filter_ids) != len(rows) or set(filter_ids) != rows.keys():
         msg = "List every filter of the rule set, each once."

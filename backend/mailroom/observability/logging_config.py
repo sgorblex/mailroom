@@ -32,6 +32,11 @@ _EXTRA_LOG_KEYS = (
     "run_id",
     "trigger",
     "via",
+    "tool",
+    "client_id",
+    "grant_id",
+    "argument_keys",
+    "code",
 )
 
 

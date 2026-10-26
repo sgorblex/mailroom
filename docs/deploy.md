@@ -7,7 +7,7 @@
 | Image | Built from | Runs |
 | --- | --- | --- |
 | `mailroom-api` | `backend/Containerfile` (context: repository root) | uvicorn on 8000, non-root, migrates at startup; `/healthz` for the healthcheck. Also the worker (`python -m mailroom.worker`, one instance: it runs the filters and watches folders over IMAP IDLE), which never migrates |
-| `mailroom-web` | `web/Containerfile` (context: `web/`) | nginx on 8080, non-root, serves the SPA, proxies `/api/` to `127.0.0.1:8000`, sets the CSP |
+| `mailroom-web` | `web/Containerfile` (context: `web/`) | nginx on 8080, non-root, serves the SPA, proxies `/api/`, `/mcp` and `/.well-known/oauth-protected-resource` to `127.0.0.1:8000`, sets the SPA's CSP |
 
 **Never name an image `mailroom`**: `registry.example.org/mailroom:production` is the MCP server, running
 on the production host.
@@ -28,14 +28,20 @@ worker), Postgres outside it, TLS on the host's reverse proxy, which must append
 `X-Forwarded-For` (login throttling keys on it). Operator environment, `MAILROOM_SECRETS_KEY` included:
 [`../deploy/quadlet/mailroom-api.env.example`](../deploy/quadlet/mailroom-api.env.example).
 
-## SSO
+## MCP server and OAuth
 
-Specification: [`requirements/mcp.md`](requirements/mcp.md) — *Web SSO*. Variables:
+Specification: [`requirements/mcp.md`](requirements/mcp.md). Variables:
 [`../deploy/quadlet/mailroom-api.env.example`](../deploy/quadlet/mailroom-api.env.example).
 
-Set `MAILROOM_PUBLIC_URL` to the origin users reach (`https://mail.example.com`; a `:443` is
-dropped). Without it, or when it is not a plain origin with a valid host (the log says why), SSO is
-off.
+1. Set `MAILROOM_PUBLIC_URL` to the origin users reach (`https://mail.example.com`; a `:443` is
+   dropped). Without it, or when it is not a plain origin with a valid host (the log says why),
+   the MCP server and SSO are off.
+2. The host's reverse proxy sends every path to the pod (the web container's nginx routes `/mcp`
+   and `/.well-known/oauth-protected-resource` to the API) and keeps the request's `Host`, as
+   Traefik does by default: `/mcp` answers only `MAILROOM_PUBLIC_URL`'s host (421 otherwise).
+3. Check: `curl https://mail.example.com/.well-known/oauth-protected-resource/mcp` names the
+   authorization server, and `curl -X POST https://mail.example.com/mcp` answers 401 with a
+   `WWW-Authenticate` naming that metadata.
 
 ### Authentik
 

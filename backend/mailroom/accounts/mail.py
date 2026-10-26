@@ -11,6 +11,7 @@ import imaplib
 import logging
 import os
 import ssl
+import threading
 from contextlib import suppress
 from typing import TYPE_CHECKING, Final
 
@@ -20,6 +21,8 @@ from imapclient.exceptions import LoginError
 from mailroom.accounts.store import account_password, load_accounts
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from imapclient import IMAPClient
     from mailroom_core.config import AccountConfig
     from mailroom_core.crypto import SecretsSubkey
@@ -31,6 +34,7 @@ MAIL_CA_FILE_ENV: Final = "MAILROOM_MAIL_CA_FILE"
 IMAP_TIMEOUT_SECONDS: Final = 20.0
 """For connecting and for every read: a test or folder listing never hangs a request."""
 _MAX_MESSAGE: Final = 300
+LIST_TIMEOUT_MESSAGE: Final = "Listing the folders took too long: try again later."
 
 
 def mail_ssl_context() -> ssl.SSLContext:
@@ -116,9 +120,35 @@ def hierarchy_delimiter(conn: IMAPClient) -> str | None:
     return None
 
 
-def list_folders(account: Account) -> list[list[str]]:
+def list_folders(account: Account, *, seconds: float | None = None) -> list[list[str]]:
     """The folders that can hold mail, as path segments split on the server's delimiter, in the
-    server's order. Raises ``MailFailure``."""
+    server's order. With ``seconds``, a listing still going after that long is stopped (its
+    connections closed) and fails as ``timeout``: each IMAP read has its own timeout, but a slow
+    server answering just in time could otherwise keep it going much longer. Raises
+    ``MailFailure``.
+
+    With ``seconds``, ``account`` must be a fresh one of the caller's own (as
+    ``mailroom.accounts.service.imap_account`` builds per call), never shared with another
+    thread: for the listing, its ``connect`` is replaced on the instance and restored after."""
+    if seconds is None:
+        return _list_folders(account)
+    deadline = _Deadline(account.connect, seconds)
+    # imap-thingy's Account.list_folders opens its own connection through self.connect and has
+    # no other hook, so the instance's connect goes through the deadline while it lists.
+    account.connect = deadline.connect  # type: ignore[method-assign]
+    deadline.start()
+    try:
+        return _list_folders(account)
+    except Exception:
+        if deadline.expired:
+            raise MailFailure("timeout", LIST_TIMEOUT_MESSAGE) from None
+        raise
+    finally:
+        deadline.cancel()
+        del account.connect
+
+
+def _list_folders(account: Account) -> list[list[str]]:
     try:
         conn = account.connect()
         try:
@@ -134,6 +164,48 @@ def list_folders(account: Account) -> list[list[str]]:
         if failure is None:
             raise
         raise failure from None
+
+
+class _Deadline:
+    """Closes the connections ``connect`` opened once ``seconds`` have passed, from a timer
+    thread, and refuses any opened after: the work using them then fails."""
+
+    def __init__(self, connect: Callable[[], IMAPClient], seconds: float) -> None:
+        self._connect = connect
+        self._lock = threading.Lock()
+        self._connections: list[IMAPClient] = []
+        self.expired = False
+        self._timer = threading.Timer(seconds, self._expire)
+        self._timer.daemon = True
+
+    def start(self) -> None:
+        self._timer.start()
+
+    def cancel(self) -> None:
+        self._timer.cancel()
+
+    def connect(self) -> IMAPClient:
+        conn = self._connect()
+        with self._lock:
+            if not self.expired:
+                self._connections.append(conn)
+                return conn
+        _shut(conn)
+        msg = "the folder listing was stopped"
+        raise TimeoutError(msg)
+
+    def _expire(self) -> None:
+        with self._lock:
+            self.expired = True
+            connections = list(self._connections)
+        for conn in connections:
+            _shut(conn)
+
+
+def _shut(conn: IMAPClient) -> None:
+    """Close the socket under ``conn``, even while another thread reads from it."""
+    with suppress(Exception):
+        conn.shutdown()
 
 
 def mail_failure(exc: Exception, password: str) -> MailFailure | None:
