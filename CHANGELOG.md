@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.0](https://github.com/sgorblex/mailroom/compare/v0.1.0...v0.2.0) (2026-10-26)
+
+
+### Features
+
+* accept external OIDC issuer JWTs on the MCP endpoint ([#27](https://github.com/sgorblex/mailroom/issues/27)) ([ebe6c3f](https://github.com/sgorblex/mailroom/commit/ebe6c3fdd24354705832822f691afbdfd68726f9))
+* add a built-in OAuth server for MCP, with a consent screen ([#25](https://github.com/sgorblex/mailroom/issues/25)) ([de534ab](https://github.com/sgorblex/mailroom/commit/de534aba1756740e8e590ea49b5c71114b0b852e))
+* add an MCP server at /mcp with filter tools ([#24](https://github.com/sgorblex/mailroom/issues/24)) ([8147a56](https://github.com/sgorblex/mailroom/commit/8147a56878bd0d77d0510969845134a0e8db002a))
+* add OIDC single sign-on with linked sign-ins ([#23](https://github.com/sgorblex/mailroom/issues/23)) ([c65bf35](https://github.com/sgorblex/mailroom/commit/c65bf35538bc0bdf574ad186d8e3ae24d18c5d5a))
+* let users list and revoke their connected apps ([#26](https://github.com/sgorblex/mailroom/issues/26)) ([88f7134](https://github.com/sgorblex/mailroom/commit/88f713462bf1264a7937c01d0ec73dfee8ef894c))
+
+
+### Bug Fixes
+
+* override dev defaults in mise.local.toml and isolate the migration check ([#28](https://github.com/sgorblex/mailroom/issues/28)) ([5c74f7f](https://github.com/sgorblex/mailroom/commit/5c74f7fde9e8eb66ae07a682b4cecae447d29d46))
+* polish OIDC/MCP issuer handling, fake IdP algorithms, and confirm-removal focus ([#30](https://github.com/sgorblex/mailroom/issues/30)) ([e6db9f8](https://github.com/sgorblex/mailroom/commit/e6db9f825c77421c805ee5e1fa97fd8872a2c73c))
+
 ## 0.1.0 (2026-10-25)
 
 
