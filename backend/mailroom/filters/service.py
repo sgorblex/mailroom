@@ -446,11 +446,14 @@ def _dry_run(
     filters: list[Filter],
     via: Via,
 ) -> RunOut:
+    # Saved only once it has finished, so it is created when it starts, not when it is saved.
+    started = datetime.now(UTC)
     run = FilterRun(
         rule_set_id=rule_set.id,
         trigger="manual",
         dry_run=True,
-        started_at=datetime.now(UTC),
+        created_at=started,
+        started_at=started,
     )
     try:
         run.result = dry_run_result(

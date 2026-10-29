@@ -129,7 +129,7 @@ def test_a_dry_run_reports_matches_and_changes_nothing(
 
     run = dry_run_of(user_client, rule_set_id)
     assert (run["dry_run"], run["trigger"], run["error"]) == (True, "manual", None)
-    assert run["started_at"] is not None
+    assert run["created_at"] == run["started_at"]
     assert run["finished_at"] is not None
     result = run["result"]
     assert (result["folder"], result["dry_run"], result["limited_to_newest"]) == (
