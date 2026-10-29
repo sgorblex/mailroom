@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from imap_thingy.accounts import Path
+from imap_thingy.core import Flag
 from imap_thingy.filters import (
     Action,
     Delete,
@@ -17,6 +18,7 @@ from imap_thingy.filters import (
     Trash,
     Unstar,
 )
+from imap_thingy.filters.actions.flags import AddFlag, RemoveFlag
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -43,49 +45,54 @@ class TestActionCreation:
         """Test MarkAsRead action creation."""
         action = MarkAsRead()
         assert isinstance(action, Action)
-        assert action.name == "MarkAsRead"
+        assert action.name == "mark as read"
 
     def test_mark_as_unread_creation(self) -> None:
         """Test MarkAsUnread action creation."""
         action = MarkAsUnread()
         assert isinstance(action, Action)
-        assert action.name == "MarkAsUnread"
+        assert action.name == "mark as unread"
 
     def test_mark_as_answered_creation(self) -> None:
         """Test MarkAsAnswered action creation."""
         action = MarkAsAnswered()
         assert isinstance(action, Action)
-        assert action.name == "MarkAsAnswered"
+        assert action.name == "mark as answered"
 
     def test_mark_as_unanswered_creation(self) -> None:
         """Test MarkAsUnanswered action creation."""
         action = MarkAsUnanswered()
         assert isinstance(action, Action)
-        assert action.name == "MarkAsUnanswered"
+        assert action.name == "mark as unanswered"
 
     def test_star_creation(self) -> None:
         """Test Star action creation."""
         action = Star()
         assert isinstance(action, Action)
-        assert action.name == "Star"
+        assert action.name == "star"
 
     def test_unstar_creation(self) -> None:
         """Test Unstar action creation."""
         action = Unstar()
         assert isinstance(action, Action)
-        assert action.name == "Unstar"
+        assert action.name == "unstar"
 
     def test_delete_creation(self) -> None:
         """Test Delete action creation."""
         action = Delete()
         assert isinstance(action, Action)
-        assert action.name == "Delete"
+        assert action.name == "delete"
+
+    def test_flag_action_default_name(self) -> None:
+        """A bare flag action is named after its flag."""
+        assert AddFlag(Flag.SEEN).name == "add SEEN"
+        assert RemoveFlag(Flag.FLAGGED).name == "remove FLAGGED"
 
     def test_noop_creation(self) -> None:
         """Test NoOp action creation."""
         action = NoOp()
         assert isinstance(action, Action)
-        assert action.name == "NoOp"
+        assert action.name == "do nothing"
 
 
 class TestActionChaining:
@@ -97,7 +104,7 @@ class TestActionChaining:
         action2 = MoveTo(Path("Folder"))
         chained = action1 + action2
         assert isinstance(chained, Action)
-        assert "MarkAsRead" in chained.name
+        assert "mark as read" in chained.name
         assert "move to Folder" in chained.name
 
     def test_action_then_method(self) -> None:
@@ -106,7 +113,7 @@ class TestActionChaining:
         a2 = MoveTo(Path("Folder"))
         chained = a1.then(a2)
         assert isinstance(chained, Action)
-        assert "MarkAsRead" in chained.name
+        assert "mark as read" in chained.name
         assert "move to Folder" in chained.name
 
     def test_action_chaining_execution(self, mock_account: MockEMailAccount) -> None:

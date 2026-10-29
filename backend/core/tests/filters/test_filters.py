@@ -116,7 +116,7 @@ class TestFilter:
         f = Filter(criterion, action1 + action2)
         assert isinstance(f, Filter)
         assert f.criterion is criterion
-        assert "MarkAsRead" in f.action.name
+        assert "mark as read" in f.action.name
 
     def test_from_and_subject_is_fetches_and_exact_match(
         self, mock_account: MockEMailAccount

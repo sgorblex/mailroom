@@ -29,4 +29,4 @@ class Delete(Action):
             conn.add_flags(msgids, [b"\\Deleted"])
             conn.expunge(msgids)
 
-        super().__init__(func)
+        super().__init__(func, name="delete")

@@ -9,22 +9,24 @@ from imap_thingy.filters.actions.action import Action
 class AddFlag(Action):
     """Action that adds a single IMAP flag from the Flag enum."""
 
-    def __init__(self, flag: Flag) -> None:
-        """Build an action that adds the given flag."""
+    def __init__(self, flag: Flag, name: str | None = None) -> None:
+        """Build an action that adds the given flag; name defaults to "add <flag>"."""
         flagname = flag.value.flagname
         super().__init__(
             lambda conn, msgids, *, delimiter="/": conn.add_flags(msgids, [flagname]),
+            name=name if name is not None else f"add {flag.name}",
         )
 
 
 class RemoveFlag(Action):
     """Action that removes a single IMAP flag from the Flag enum."""
 
-    def __init__(self, flag: Flag) -> None:
-        """Build an action that removes the given flag."""
+    def __init__(self, flag: Flag, name: str | None = None) -> None:
+        """Build an action that removes the given flag; name defaults to "remove <flag>"."""
         flagname = flag.value.flagname
         super().__init__(
             lambda conn, msgids, *, delimiter="/": conn.remove_flags(msgids, [flagname]),
+            name=name if name is not None else f"remove {flag.name}",
         )
 
 
@@ -35,7 +37,7 @@ class MarkAsRead(AddFlag):
 
     def __init__(self) -> None:
         r"""Add \Seen."""
-        super().__init__(Flag.SEEN)
+        super().__init__(Flag.SEEN, "mark as read")
 
 
 class MarkAsUnread(RemoveFlag):
@@ -45,7 +47,7 @@ class MarkAsUnread(RemoveFlag):
 
     def __init__(self) -> None:
         r"""Remove \Seen."""
-        super().__init__(Flag.SEEN)
+        super().__init__(Flag.SEEN, "mark as unread")
 
 
 class Star(AddFlag):
@@ -55,7 +57,7 @@ class Star(AddFlag):
 
     def __init__(self) -> None:
         r"""Add \Flagged."""
-        super().__init__(Flag.FLAGGED)
+        super().__init__(Flag.FLAGGED, "star")
 
 
 class Unstar(RemoveFlag):
@@ -65,7 +67,7 @@ class Unstar(RemoveFlag):
 
     def __init__(self) -> None:
         r"""Remove \Flagged."""
-        super().__init__(Flag.FLAGGED)
+        super().__init__(Flag.FLAGGED, "unstar")
 
 
 class MarkAsAnswered(AddFlag):
@@ -75,7 +77,7 @@ class MarkAsAnswered(AddFlag):
 
     def __init__(self) -> None:
         r"""Add \Answered."""
-        super().__init__(Flag.ANSWERED)
+        super().__init__(Flag.ANSWERED, "mark as answered")
 
 
 class MarkAsUnanswered(RemoveFlag):
@@ -85,4 +87,4 @@ class MarkAsUnanswered(RemoveFlag):
 
     def __init__(self) -> None:
         r"""Remove \Answered."""
-        super().__init__(Flag.ANSWERED)
+        super().__init__(Flag.ANSWERED, "mark as unanswered")

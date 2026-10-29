@@ -361,7 +361,7 @@ class TestEqualityAndRepr:
         )
         action = MarkAsRead() + MoveTo(Path(["A", "B"]))
         assert repr(action) == "(MarkAsRead() + MoveTo(folder=['A', 'B']))"
-        assert str(action) == "MarkAsRead; move to A/B"
+        assert str(action) == "mark as read; move to A/B"
         assert repr(Filter(IsRead(), Star())) == "Filter(IsRead(), Star())"
 
     def test_custom_repr_falls_back(self) -> None:
