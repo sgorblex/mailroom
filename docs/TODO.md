@@ -46,6 +46,8 @@ Mailroom is built on standalone projects, each with its own repository and check
 
 ## Engineering and operations
 
-- [ ] **First staging deploy** — database and role `mailroom` on the shared Postgres, backup
-      line, Quadlet units for real, Woodpecker release and staging pipelines, Traefik route.
+- [x] **First deploy** — production since 0.2.0: database and role `mailroom` on the shared
+      Postgres, backup line, Quadlet units, Traefik route.
+- [ ] **Release and staging pipelines** — Woodpecker builds and pushes the images on a release
+      tag, and a staging instance; images are built and pushed by hand until then.
 - [ ] **Theme and design pass** — palette, typography, light/dark switch, app shell.

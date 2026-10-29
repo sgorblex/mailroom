@@ -1,7 +1,8 @@
 # Mailroom on Podman Quadlet (sketch)
 
-**Not deployed yet.** These units sketch the shape Mailroom will run in; the first staging deploy
-turns them into a runbook. Broader context: [`docs/deploy.md`](../../docs/deploy.md).
+These units sketch the shape Mailroom runs in; the production units, on the operator's host, add its
+networks and reverse-proxy labels and set the non-secret variables, such as `MAILROOM_PUBLIC_URL`, in
+the unit. Broader context: [`docs/deploy.md`](../../docs/deploy.md).
 
 | Unit | Role |
 | --- | --- |

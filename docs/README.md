@@ -25,7 +25,7 @@ section you are changing. Workflow and *which* doc to update after a change:
 | [`requirements/mcp.md`](requirements/mcp.md) | MCP server: tools, OAuth modes, web SSO, endpoints, config |
 | [`TODO.md`](TODO.md) | Next phases, roughly in order — not committed requirements |
 | [`IDEAS.md`](IDEAS.md) | Exploratory ideas — not scoped, not scheduled |
-| [`../deploy/quadlet/README.md`](../deploy/quadlet/README.md) | Quadlet units (sketch, not deployed) |
+| [`../deploy/quadlet/README.md`](../deploy/quadlet/README.md) | Quadlet units (sketch of the deployed ones) |
 
 ## Conventions
 

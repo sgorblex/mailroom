@@ -1,6 +1,7 @@
 # Deploy
 
-**Not deployed yet.** This records the image layout so the first deploy has nothing to invent.
+**Runs in production since 0.2.0** (28 October 2026), on the operator's host, from the Quadlet units
+below adapted to it. There is no staging yet, and images are built and pushed by hand.
 
 ## Images
 
