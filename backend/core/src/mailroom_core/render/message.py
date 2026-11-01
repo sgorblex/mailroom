@@ -30,6 +30,7 @@ class PartInfo:
     """The IMAP part number, `1.2`."""
     type: str
     size: int
+    """Bytes once decoded: `mailroom_core.mail` estimates it from the encoded size."""
     name: str | None = None
 
 

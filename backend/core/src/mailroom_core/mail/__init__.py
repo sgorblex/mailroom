@@ -1,5 +1,9 @@
-"""Mail over IMAP: connections and error mapping (`src/imap/`), and the mail operations on them."""
+"""Mail over IMAP: connections and error mapping (`src/imap/`), and the read operations on them
+(`src/mail/`, `src/mcp/tools/` minus the tool plumbing). Synchronous: an async host calls it
+from a worker thread."""
 
+from mailroom_core.mail.content_type import DISPLAYED_IMAGES, content_type, is_text_type
+from mailroom_core.mail.download import body_text, part_content
 from mailroom_core.mail.errors import (
     MAIL_ERROR_CODES,
     MESSAGES,
@@ -18,20 +22,110 @@ from mailroom_core.mail.imap import (
     Timeouts,
     retriable,
 )
+from mailroom_core.mail.pages import (
+    PREVIEW_LENGTH,
+    Criteria,
+    MessageSummary,
+    Page,
+    PageFailure,
+    Position,
+    Source,
+    decode_cursor,
+    encode_cursor,
+    preview_of,
+    read_page,
+    search_arguments,
+)
+from mailroom_core.mail.read import (
+    MAX_BODY_BYTES,
+    Attachment,
+    MessageView,
+    html_view,
+    read_attachment,
+    read_message,
+)
+from mailroom_core.mail.ref import MessageRef, check_fresh, format_ref, parse_ref
+from mailroom_core.mail.search import (
+    ALL_FOLDERS,
+    SearchQuery,
+    list_messages,
+    search_messages,
+    searchable_folders,
+    thread_page,
+)
+from mailroom_core.mail.structure import MimePart, Structure, analyse_structure
+from mailroom_core.mail.text import (
+    ATTACHMENT_FILE_NOTE,
+    TYPESCRIPT_TOOLS,
+    ToolNames,
+    attachment_label,
+    attachment_text,
+    empty_folder_text,
+    folders_block,
+    page_text,
+    read_text,
+    thread_text,
+)
 
 __all__ = [
+    "ALL_FOLDERS",
+    "ATTACHMENT_FILE_NOTE",
+    "DISPLAYED_IMAGES",
     "FOLDER_ROLES",
     "MAIL_ERROR_CODES",
+    "MAX_BODY_BYTES",
     "MESSAGES",
+    "PREVIEW_LENGTH",
+    "TYPESCRIPT_TOOLS",
+    "Attachment",
     "Capabilities",
+    "Criteria",
     "Folder",
     "FolderRole",
     "MailConnections",
     "MailError",
     "MailErrorCode",
     "MailboxContext",
+    "MessageRef",
+    "MessageSummary",
+    "MessageView",
+    "MimePart",
+    "Page",
+    "PageFailure",
+    "Position",
     "Reachability",
+    "SearchQuery",
+    "Source",
+    "Structure",
     "Timeouts",
+    "ToolNames",
+    "analyse_structure",
+    "attachment_label",
+    "attachment_text",
+    "body_text",
+    "check_fresh",
+    "content_type",
+    "decode_cursor",
+    "empty_folder_text",
+    "encode_cursor",
+    "folders_block",
+    "format_ref",
+    "html_view",
+    "is_text_type",
+    "list_messages",
     "mail_error",
+    "page_text",
+    "parse_ref",
+    "part_content",
+    "preview_of",
+    "read_attachment",
+    "read_message",
+    "read_page",
+    "read_text",
     "retriable",
+    "search_arguments",
+    "search_messages",
+    "searchable_folders",
+    "thread_page",
+    "thread_text",
 ]
