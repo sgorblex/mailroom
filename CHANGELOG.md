@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.0](https://github.com/sgorblex/mailroom/compare/v0.2.0...v0.3.0) (2026-11-03)
+
+
+### Features
+
+* add a web mail client with folders, message list, search, and sandboxed HTML view ([#38](https://github.com/sgorblex/mailroom/issues/38)) ([707d641](https://github.com/sgorblex/mailroom/commit/707d641e3a045e9c516644ed2c8d7cad428aacb5))
+* add mail_read tools to the MCP server ([#39](https://github.com/sgorblex/mailroom/issues/39)) ([763dc8d](https://github.com/sgorblex/mailroom/commit/763dc8d0f532f6ea4bab2ebad4376f6ade8aee7f))
+* add read-only mail client REST API ([#37](https://github.com/sgorblex/mailroom/issues/37)) ([7c63744](https://github.com/sgorblex/mailroom/commit/7c637441042eadb05660665a955a5353cd235d60))
+
+
+### Bug Fixes
+
+* set dry run created_at to its start time ([#31](https://github.com/sgorblex/mailroom/issues/31)) ([df099d3](https://github.com/sgorblex/mailroom/commit/df099d3f048b0c46ef966efe7d3992cbd6101e90))
+* show every filter action in plain words in run reports ([#34](https://github.com/sgorblex/mailroom/issues/34)) ([e187850](https://github.com/sgorblex/mailroom/commit/e187850401c47ded11e0cd058f55465b6372232b))
+
 ## [0.2.0](https://github.com/sgorblex/mailroom/compare/v0.1.0...v0.2.0) (2026-10-26)
 
 
