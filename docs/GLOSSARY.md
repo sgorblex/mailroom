@@ -10,6 +10,9 @@
 | **Send mode** | Per account: `off`, `drafts`, `approval`, `direct` — what "send" is allowed to mean (mailroom-core's send gate). |
 | **Index** | The app's local copy of message metadata and rendered text across every account and folder, for lists and search without a round of IMAP per query. |
 | **Live update** | A change on the server (new mail, a flag or move from another client) reaching the open web app without a reload, via the worker's IMAP IDLE. |
+| **Ref** | An opaque string naming one message exactly (account, folder, UIDVALIDITY, UID), as in mailroom-mcp; stale once the folder's UIDVALIDITY changes. [`requirements/mail-client.md`](requirements/mail-client.md). |
+| **Remote content** | Images a message loads from the internet (tracking pixels among them): blocked, and revealed per message on request ([`requirements/mail-client.md`](requirements/mail-client.md)). |
+| **Message view** | A message as the client shows it: headers, the text body, attachments, and the HTML view when the message has an HTML body. |
 | **Rule set** | An ordered list of filters for one account folder, with one trigger. [`requirements/filters.md`](requirements/filters.md). |
 | **Filter** | An imap-thingy rule (criteria plus actions) that sorts mail on the server, stored as its imap-thingy spec and run by imap-thingy's runner in the app's worker. |
 | **Trigger** | What starts a rule set's run: `new_mail` (IMAP IDLE), `scheduled` (every so many minutes) or `manual` (only *Run now*). |

@@ -30,8 +30,8 @@ mailroom-mcp              standalone MCP server for mail, on mailroom-core (repo
 - **The app has its own MCP server** (`mailroom-app`, [`requirements/mcp.md`](requirements/mcp.md)),
   written in the app, over the app's own services, for each user's own data. It starts with
   filters (rule sets, dry runs, runs), which mailroom-mcp lacks, plus the accounts and folders
-  listing they need; its mail tool groups are registered as `planned` and stay hidden until the
-  app reaches parity with mailroom-mcp.
+  listing they need. It writes its own mail tools over mailroom-core, turning them on group by
+  group ([`requirements/mcp.md`](requirements/mcp.md)), `mail_read` first.
 - **mailroom-mcp stays a maintained standalone server**, for people who do not run the app, and
   keeps serving mail reading and sending meanwhile. The app does not embed or import it; the two
   share mailroom-core, and accounts in schema `core` are byte-compatible, so mailroom-mcp's data

@@ -53,7 +53,9 @@ through the Vite proxy. Engineering baseline:
 
 ## Mail client
 
-**Maturity: Planned** — target is **between tier 2 and tier 3**: tiers 1 and 2 in full, on top of
+**Maturity: Current** for slice A (tier 1, read), specified in
+[`requirements/mail-client.md`](requirements/mail-client.md); **Planned** for the rest. Target is
+**between tier 2 and tier 3**: tiers 1 and 2 in full, on top of
 the index and live updates; tier 3 items arrive one at a time.
 
 | Tier | Scope |
@@ -95,7 +97,8 @@ connected apps on the profile and external issuer mode are in.
 
 - The app's own MCP server at `/mcp`, for each user's own data: accounts, folders, rule sets,
   dry runs and runs, in [tool groups](GLOSSARY.md) chosen by instance config. Mail tools come
-  later, hidden until the app matches standalone mailroom-mcp.
+  group by group ([`requirements/mcp.md`](requirements/mcp.md)), `mail_read` with the first
+  slice of the [mail client](requirements/mail-client.md).
 - **Nothing turns on without the user's say:** a rule set created over MCP starts disabled, an
   enabled one cannot be edited, and enabling, *Run now* and the *Run filters* switch are separate
   tools marked destructive, so the client asks first.

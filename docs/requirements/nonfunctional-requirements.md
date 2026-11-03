@@ -28,16 +28,23 @@ and may try to run script, track the reader, phish, or — through the MCP — i
 
 ### HTML mail
 
-- HTML bodies render **only inside a sandboxed iframe**: `sandbox` without `allow-scripts` and
-  without `allow-same-origin`, so the message has an opaque origin and can neither run script nor
-  reach the app's cookies, storage or API. Never `dangerouslySetInnerHTML` mail content into the
-  app's own document.
+- HTML bodies render **only inside a sandboxed iframe**, whose `src` is a **standalone HTML
+  document** the API serves (`GET /api/v1/mail/messages/{ref}/html`,
+  [`mail-client.md`](mail-client.md)) with its own CSP header, not a `srcdoc`: a `srcdoc` iframe
+  inherits the SPA's CSP, and an opaque-origin document gets no cookie for its `cid:` images. The
+  HTML is sanitised by mailroom-core (`nh3`: allowlist, no script, forms, frames, `base` or event
+  handlers; `cid:` parts inlined as `data:`) before it is served. The iframe has `sandbox`
+  without `allow-scripts` and without `allow-same-origin`, so the message has an opaque origin
+  and can neither run script nor reach the app's cookies, storage or API. Never
+  `dangerouslySetInnerHTML` mail content into the app's own document.
 - The iframe document carries its **own strict CSP** (`default-src 'none'`; images only from
-  `data:`/`cid:` parts the API serves, unless the user reveals remote content; no scripts, no
-  forms, no frames, no `base`), in addition to server-side sanitisation of the HTML.
-- **No remote content by default.** Remote images, fonts and CSS are blocked until the user reveals
-  them for that message; tracking pixels therefore never fire on open. Links open in a new
-  top-level context with `noopener` and `noreferrer`.
+  `data:` (the inlined `cid:` parts), unless the user reveals remote content; no scripts, no
+  forms, no frames, `base-uri 'none'`), in addition to server-side sanitisation of the HTML.
+- **No remote content by default.** Remote images are removed from the document and refused by
+  its CSP until the user reveals them for that message (`?remote=1`, per message, never
+  remembered); tracking pixels therefore never fire on open. What is removed whatever the user
+  chooses: [`mail-client.md`](mail-client.md), the HTML route. Links open in a new top-level
+  context with `noopener` and `noreferrer`.
 - Plain-text rendering is the fallback and the default for the index.
 
 ### The app

@@ -24,8 +24,13 @@ Mailroom is built on standalone projects, each with its own repository and check
 
 ## Client
 
-- [ ] **Tier 1** — folders, message list, message view with the sandboxed HTML iframe and
-      remote-content gate, search over IMAP.
+- [ ] **Tier 1** (slice A, [`requirements/mail-client.md`](requirements/mail-client.md)):
+  - [x] **Core mail read** — `render` and `mail` (with `mail.imap`) in mailroom-core 0.1.1, the
+        app's pin.
+  - [ ] **REST** — folders, message list and search, message view, HTML document, part download.
+  - [ ] **Web** — `/mail`: folders with counts, list with load more, message view with the
+        sandboxed HTML iframe and remote-content gate.
+  - [ ] **MCP** — the `mail_read` group.
 - [ ] **Index and live updates** — schema, initial sync, IDLE-driven refresh, push to the browser;
       lists and search move to the index.
 - [ ] **Tier 2** — triage actions and compose (reply, forward, drafts, attachments) through

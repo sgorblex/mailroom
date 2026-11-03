@@ -3,8 +3,10 @@
 Mailroom's own MCP server, `mailroom-app`, at `/mcp` in the API process, with its OAuth
 (a built-in authorization server, or an external issuer such as Authentik or Keycloak) and web
 SSO. It exposes what a model needs to work on a user's filters: accounts, folders, rule sets,
-dry runs and runs. Mail reading and sending stay with standalone mailroom-mcp until the app
-reaches parity ([`../CONTEXT.md`](../CONTEXT.md)). Product scope:
+dry runs and runs, and, group by group, the mail tools: each mail group turns on (status
+`stable`) once the client does what it does; `mail_read` comes with slice A of the
+[mail client](mail-client.md). Standalone mailroom-mcp keeps serving the rest meanwhile
+([`../CONTEXT.md`](../CONTEXT.md)). Product scope:
 [`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *MCP server*.
 
 ## Tools
@@ -22,7 +24,8 @@ tools a client gets is instance config, not OAuth scope.
 | | `rule_set_delete`, `filter_delete` | destructive |
 | `filters_run` (stable, on) | `dry_run` | readOnly, openWorld |
 | | `rule_set_enable`, `run_now`, `account_run_filters(account_id, on)` | destructive |
-| `mail_read`, `mail_organize`, `mail_draft`, `mail_send` | placeholders | planned, off |
+| `mail_read` (planned until slice A ships, then stable, on) | `messages_list`, `messages_search`, `message_read`, `thread_read`, `attachment_read` | readOnly, idempotent, openWorld |
+| `mail_organize`, `mail_draft`, `mail_send` | placeholders | planned, off |
 
 A destructive hint makes clients such as claude.ai ask the user before each call.
 
