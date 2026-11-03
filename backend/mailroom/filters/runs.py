@@ -91,7 +91,7 @@ def labelled_report(
     one).
 
     The name is set here because imap-thingy writes a filter's ``repr`` (``Star()``) when it can
-    serialise the filter and its name (``Star``) when not, and a dry run's filters, bounded to the
+    serialise the filter and its name (``star``) when not, and a dry run's filters, bounded to the
     newest messages, cannot be: a dry run and a real run would name one action two ways."""
     entries = [
         {

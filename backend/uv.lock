@@ -560,16 +560,16 @@ wheels = [
 
 [[package]]
 name = "imap-thingy"
-version = "0.7.0"
+version = "0.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "imapclient" },
     { name = "mail-parser" },
     { name = "regex" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f2/c7/b6daefa61f8b425247ab4a365c888423b63d88bc5043454c0f3163f2875d/imap_thingy-0.7.0.tar.gz", hash = "sha256:40a4a0fd2948d9440526417b15f0606c53ccfb8586a14b0c67a4d7dcee7638cc", size = 69752, upload-time = "2026-10-23T21:40:15.457Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ac/db/8684f9e926cea366b708014299ce077da085e225b8964adaabc5a0e80f69/imap_thingy-0.8.0.tar.gz", hash = "sha256:56290dcf9cff316683cbce38c6040be3e282179986133446a2debad8f1713534", size = 69892, upload-time = "2026-10-29T16:37:31.841Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/41/e5/d1e7402208ddb2051f32a43c34e0a33ea45abc176e1090afc11e228650cc/imap_thingy-0.7.0-py3-none-any.whl", hash = "sha256:ad0561f45e2702679149ff24c183da050a3e8aefc6ab696c8546780ea84916d2", size = 58904, upload-time = "2026-10-23T21:40:14.203Z" },
+    { url = "https://files.pythonhosted.org/packages/ed/55/712751ceff1d58f16f4083d0db34120687d55306b8aaad50551c32edd536/imap_thingy-0.8.0-py3-none-any.whl", hash = "sha256:e8f730a80ad150e3b91def670ac298c8572cc6baeac73c5a35c99118f4f29c72", size = 59009, upload-time = "2026-10-29T16:37:30.317Z" },
 ]
 
 [[package]]
@@ -741,7 +741,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httptools", specifier = ">=0.6" },
     { name = "httpx", specifier = ">=0.28" },
-    { name = "imap-thingy", specifier = ">=0.7.0" },
+    { name = "imap-thingy", specifier = ">=0.8.0" },
     { name = "imapclient", specifier = ">=3.1.0" },
     { name = "jsonschema", specifier = ">=4.23" },
     { name = "mailroom-core", specifier = ">=0.1.0" },

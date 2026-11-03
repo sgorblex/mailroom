@@ -19,7 +19,8 @@ Mailroom is built on standalone projects, each with its own repository and check
   `imap_thingy.spec`) since 0.5.0, the runner (`imap_thingy.runner`: `run_rules`, `starred_only`,
   the IDLE `monitor`) since 0.6.0; 0.7.0 adds run reports (what each filter matched and did, also
   for a dry run), the `older_than_days` criterion, SSL and timeout options and `list_folders()` on
-  `Account`, a stoppable `monitor` and regex match timeouts.
+  `Account`, a stoppable `monitor` and regex match timeouts; 0.8.0 names every built-in action in
+  plain words (`star`, `mark as read`), as run reports show them.
 
 ## Client
 

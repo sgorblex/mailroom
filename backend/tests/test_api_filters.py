@@ -579,6 +579,6 @@ def test_a_dry_run_and_a_real_run_name_an_action_alike() -> None:
             [row],
             [load_filter(spec)],
         )["filters"][0]["action"]
-        for written in ("Star()", "Star")
+        for written in ("Star()", "star")
     }
-    assert labels == {"Star"}
+    assert labels == {"star"}
