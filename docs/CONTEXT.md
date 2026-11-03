@@ -38,7 +38,8 @@ mailroom-mcp              standalone MCP server for mail, on mailroom-core (repo
   imports unchanged.
 - **The app's built-in OAuth authorization server is self-contained** (the database and a small
   user interface, no app routes), so it may move to a shared package later.
-- **mailroom-core** stays usable on its own. The app keeps the accounts (`AccountStore`) in
+- **mailroom-core** provides `render` and `mail` (connections in `mail.imap`) from 0.1.1, which the
+  mail client is built on. It stays usable on its own. The app keeps the accounts (`AccountStore`) in
   mailroom-core's schema `core` in the app's database, under mailroom-core's own Alembic history
   (`core.alembic_version`); the app's tables live in schema `app`.
 - **imap-thingy** stays a general-purpose library on PyPI; the app reads and writes its rules
