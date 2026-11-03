@@ -45,6 +45,11 @@ export function onSessionEnded(listener: (() => void) | null): void {
   sessionEndedListener = listener
 }
 
+/** A request outside `apiRequest` (a raw `fetch`) came back 401: the session ended. */
+export function reportSessionEnded(): void {
+  sessionEndedListener?.()
+}
+
 const LOGIN_PATH = '/api/v1/auth/login'
 
 const MAX_RENDERABLE_ERROR_BODY_LENGTH = 300
@@ -106,7 +111,7 @@ async function apiRequest<T>(
   const body = await parseJsonResponse(response)
   if (!response.ok) {
     if (response.status === 401 && path !== LOGIN_PATH) {
-      sessionEndedListener?.()
+      reportSessionEnded()
     }
     throw new ApiRequestError(response.status, body, formatErrorMessage(response.status, body))
   }

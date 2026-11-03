@@ -3,6 +3,7 @@ import { createRootRoute, createRoute, createRouter, lazyRouteComponent } from '
 import { AccountsScreen } from '@/accounts/accounts-screen.tsx'
 import { RootLayout } from '@/auth/root-layout.tsx'
 import { HealthScreen } from '@/health/health-screen.tsx'
+import { validateMailSearch } from '@/mail/route-search.ts'
 import { ConnectRoute } from '@/oauth/connect-screen.tsx'
 import { ProfileScreen } from '@/profile/profile-screen.tsx'
 import { UsersScreen } from '@/users/users-screen.tsx'
@@ -40,6 +41,15 @@ const ruleSetRoute = createRoute({
   component: lazyRouteComponent(() => import('@/filters/rule-set-screen.tsx'), 'RuleSetRoute'),
 })
 
+// The mail screens load when first opened, as the filter screens do. Where the reader is (account,
+// folder, message, search) lives in the query string.
+const mailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/mail',
+  validateSearch: validateMailSearch,
+  component: lazyRouteComponent(() => import('@/mail/mail-screen.tsx'), 'MailScreen'),
+})
+
 const profileRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/profile',
@@ -59,6 +69,7 @@ export const router = createRouter({
   routeTree: rootRoute.addChildren([
     indexRoute,
     accountsRoute,
+    mailRoute,
     filtersRoute,
     ruleSetRoute,
     usersRoute,

@@ -28,7 +28,7 @@ Mailroom is built on standalone projects, each with its own repository and check
   - [x] **Core mail read** — `render` and `mail` (with `mail.imap`) in mailroom-core 0.1.1, the
         app's pin.
   - [x] **REST** — folders, message list and search, message view, HTML document, part download.
-  - [ ] **Web** — `/mail`: folders with counts, list with load more, message view with the
+  - [x] **Web** — `/mail`: folders with counts, list with load more, message view with the
         sandboxed HTML iframe and remote-content gate.
   - [ ] **MCP** — the `mail_read` group.
 - [ ] **Index and live updates** — schema, initial sync, IDLE-driven refresh, push to the browser;

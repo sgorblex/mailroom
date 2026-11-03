@@ -36,6 +36,7 @@ export function RootLayout(): ReactElement {
       <header className="flex flex-wrap items-center gap-3 p-3">
         <nav aria-label={t('nav.label')} className="mr-auto flex gap-3 text-sm">
           <NavLink to="/">{t('nav.home')}</NavLink>
+          <NavLink to="/mail">{t('nav.mail')}</NavLink>
           <NavLink to="/accounts">{t('nav.accounts')}</NavLink>
           <NavLink to="/filters">{t('nav.filters')}</NavLink>
           {auth.user.is_admin && <NavLink to="/users">{t('nav.users')}</NavLink>}
@@ -55,7 +56,7 @@ function NavLink({
   to,
   children,
 }: {
-  to: '/' | '/accounts' | '/filters' | '/users' | '/profile'
+  to: '/' | '/mail' | '/accounts' | '/filters' | '/users' | '/profile'
   children: string
 }): ReactElement {
   return (

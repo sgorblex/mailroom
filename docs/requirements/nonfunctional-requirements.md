@@ -61,11 +61,11 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   front end keeps the same rules.
 - **Strict CSP on the app** (`web/nginx-default.conf`): `script-src 'self'` with no inline script
   (the dark theme follows `prefers-color-scheme` in CSS for that reason), `frame-ancestors 'none'`,
-  `object-src 'none'`, `base-uri 'none'`, plus `nosniff` and `Referrer-Policy: no-referrer`.
-  The `/api/` location gets the last two but not the SPA's CSP: the API's HTML mail document sets
-  its own. nginx hides the API's own copies of those two, so each is sent once. `style-src`
-  allows `'unsafe-inline'` for UI-library style attributes (decided; revisit if that stops being
-  needed).
+  `frame-src 'self'` (the HTML mail view), `object-src 'none'`, `base-uri 'none'`, plus `nosniff`
+  and `Referrer-Policy: no-referrer`. The `/api/` location gets the last two but not the SPA's CSP:
+  the API's HTML mail document sets its own. nginx hides the API's own copies of those two, so
+  each is sent once. `style-src` allows `'unsafe-inline'` for UI-library style attributes
+  (decided; revisit if that stops being needed).
 - The SPA and API are **same-origin** (Vite proxy in dev, nginx in the image), so `/api/` has no
   CORS configuration at all. Only the OAuth metadata, token, register and revoke endpoints answer
   CORS (any origin, no credentials), for browser-based MCP clients.
