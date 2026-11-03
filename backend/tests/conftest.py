@@ -34,6 +34,10 @@ PASSWORD = "correct horse battery staple"
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
+# mise.toml sets a dev key; CI sets none. Set at import, so every application a test builds has
+# one, not only the shared one.
+os.environ.setdefault("MAILROOM_SECRETS_KEY", os.urandom(32).hex())
+
 
 def pytest_configure(config: pytest.Config) -> None:
     """Migrate the coordinator's ``TEST_DATABASE_URL`` database on a long-lived PostgreSQL server.
@@ -155,8 +159,6 @@ def _shared_application(_worker_engine: Engine) -> Iterator[FastAPI]:
 
     from mailroom.api.main import create_application
 
-    # mise.toml sets a dev key; CI sets none.
-    os.environ.setdefault("MAILROOM_SECRETS_KEY", os.urandom(32).hex())
     application = create_application()
     with TestClient(application):
         yield application
@@ -253,6 +255,40 @@ def sessions(db_session: Session) -> sessionmaker[Session]:
         join_transaction_mode="create_savepoint",
         expire_on_commit=False,
     )
+
+
+@pytest.fixture
+def silent_server() -> Iterator[int]:
+    """A port that accepts connections and never answers; closed after the test, which ends
+    whatever still waits on it."""
+    import socket
+    import threading
+
+    listener = socket.create_server(("127.0.0.1", 0))
+    accepted: list[socket.socket] = []
+    stop = threading.Event()
+
+    def accept() -> None:
+        listener.settimeout(0.2)
+        while not stop.is_set():
+            try:
+                conn, _ = listener.accept()
+            except TimeoutError:
+                continue
+            except OSError:
+                return
+            accepted.append(conn)
+
+    thread = threading.Thread(target=accept, daemon=True)
+    thread.start()
+    try:
+        yield listener.getsockname()[1]
+    finally:
+        stop.set()
+        thread.join()
+        for conn in accepted:
+            conn.close()
+        listener.close()
 
 
 @pytest.fixture

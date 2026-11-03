@@ -179,6 +179,7 @@ def change_account(
         raise _account_refusal(exc) from None
     except (RevisionConflict, SettingsBusy) as exc:
         raise _store_refusal(exc) from None
+    ctx.mail_pool.invalidate(user_id, account_id)
     _log(
         "account_changed",
         user_id,
@@ -203,6 +204,7 @@ def remove_account(
         raise account_not_found() from None
     except (RevisionConflict, SettingsBusy) as exc:
         raise _store_refusal(exc) from None
+    ctx.mail_pool.invalidate(user_id, account_id)
     _log("account_removed", user_id, via, account_id=account_id)
 
 

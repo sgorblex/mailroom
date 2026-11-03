@@ -53,16 +53,19 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   that reads them is scoped to the signed-in user. Admins manage users, not their mail. No sharing.
   See *Sign-in* below.
 - **One service layer.** What a user may do with their accounts and filters (ownership by user id,
-  the checks, the guards) lives in `mailroom.accounts.service` and `mailroom.filters.service`,
-  which refuse with a `mailroom.errors.Refusal` (a kind, a `code`, a safe `message`). The REST
-  routes only map them (`mailroom.api.refusals.http_refusal`: `not_found` 404 with the message
-  alone, `invalid` 400, `conflict` 409, `busy` 429, `mail` 502 or 409, `unavailable` 503,
-  `timeout` 504, `failed` 500), so every front end keeps the same rules.
+  the checks, the guards) lives in `mailroom.accounts.service`, `mailroom.filters.service` and
+  `mailroom.mail.service`, which refuse with a `mailroom.errors.Refusal` (a kind, a `code`, a
+  safe `message`). The REST routes only map them (`mailroom.api.refusals.http_refusal`:
+  `not_found` 404 with the message alone, `invalid` 400, `conflict` 409, `busy` 429, `mail` by its
+  code (`mail_status`: 502 by default), `unavailable` 503, `timeout` 504, `failed` 500), so every
+  front end keeps the same rules.
 - **Strict CSP on the app** (`web/nginx-default.conf`): `script-src 'self'` with no inline script
   (the dark theme follows `prefers-color-scheme` in CSS for that reason), `frame-ancestors 'none'`,
   `object-src 'none'`, `base-uri 'none'`, plus `nosniff` and `Referrer-Policy: no-referrer`.
-  `style-src` allows `'unsafe-inline'` for UI-library style attributes (decided; revisit if that
-  stops being needed).
+  The `/api/` location gets the last two but not the SPA's CSP: the API's HTML mail document sets
+  its own. nginx hides the API's own copies of those two, so each is sent once. `style-src`
+  allows `'unsafe-inline'` for UI-library style attributes (decided; revisit if that stops being
+  needed).
 - The SPA and API are **same-origin** (Vite proxy in dev, nginx in the image), so `/api/` has no
   CORS configuration at all. Only the OAuth metadata, token, register and revoke endpoints answer
   CORS (any origin, no credentials), for browser-based MCP clients.
@@ -269,8 +272,9 @@ bounded to one minor because the server relies on its handlers.
 - **IMAP** goes through imap-thingy, implicit TLS only (`starttls_unsupported` otherwise), verified
   against the system CAs plus `MAILROOM_MAIL_CA_FILE` (the dev mail CA in dev), with a 20 s
   timeout on connecting and on every read. A failure is reported by kind (`login_failed`,
-  `unreachable`, `timeout`, `tls_failed`, `imap_error`, `password_missing`) with the server's wording, the password masked; a folder
-  listing answers it as 502 (409 for `password_missing` / `starttls_unsupported`).
+  `unreachable`, `timeout`, `tls_failed`, `imap_error`, `password_missing`) with the server's
+  wording, the password masked; a folder listing answers it by `mail_status` (502 by default,
+  504 for `timeout`, 409 for `password_missing` / `starttls_unsupported`).
 - **Logs:** `account_added`, `account_changed`, `account_removed`, `account_tested` (with
   `outcome`), `run_filters_changed`, each with `user_id` and `account_id`, and the changes with
   `via` (`web`, or `mcp` for the MCP server); never a login, a host or a password.
@@ -283,6 +287,45 @@ bounded to one minor because the server relies on its handlers.
   from its network to any `host:port` (internal services included) and learn from the failure kind
   whether something answered. Accepted because only admin-created users sign in;
   revisit before anyone else can.
+
+### Mail client
+
+What it does and the routes: [`mail-client.md`](mail-client.md). How:
+
+- **Connections** go through mailroom-core's `MailConnections` (imapclient; implicit TLS or
+  STARTTLS, verified as above), one per user per API process (`mailroom.mail.pool`), up to two
+  connections per account, built on first use from the user's settings and sealed passwords. They
+  are logged out after 5 minutes unused, when an account is changed or removed, when its user is
+  removed, and when the user's settings are found at a new revision (a change made by another
+  process). The lifespan closes them all.
+- **Fairness:** a call first passes, in the request's own thread, three gates: the process's (24
+  calls holding or waiting at once, well below the 40 request threads, so mail never takes them
+  all; one more is 429 `busy` at once), the user's (4 calls at once) and, on one account, the
+  account's (2, its connections). At the last two a few callers wait, 10 s at most for both
+  together, and any more answer 429 `busy` at once. Only then does it take one of the pool's 16
+  shared threads, so one user's slow server or burst of requests holds neither the shared threads
+  nor more than a few request threads. A gate opens again when the work ends.
+- **Deadline:** a call answers 504 `timeout` after 30 s, and the account's connections in use are
+  cut then (mailroom-core's `interrupt`), which ends the work at once and frees them; a call of
+  the same user on that account at that moment fails as well (10 s to connect, 30 s for any one
+  server reply). An all-accounts search gives each account 12 s to list its folders and cuts the
+  ones still reading their mailbox at 25 s (an account already done is left alone, so another
+  call on it goes on): they are `timeout` failures of the page, and the rest answer.
+- A call that fails unexpectedly answers 500 `failed` and logs `mail_call_failed` (with `call`,
+  the event's name) and its traceback; the event's outcome is `failed`. A password that stops
+  opening once a call began is `password_missing`, also when mailroom-core reported it as a
+  page's `server_error`.
+- **Errors** are mailroom-core's codes with their fixed messages, never the server's wording
+  (statuses: [`mail-client.md`](mail-client.md), *Errors*).
+- Every mail route answers `Cache-Control: private, no-store`, a refusal too (not FastAPI's 422,
+  nor the 401 of a missing session, which carry no mail).
+- **Logs:** `mail_folders`, `mail_listed`, `mail_searched`, `mail_read`, `mail_html_read`,
+  `mail_attachment_read`, each with `user_id`, `account_id`, `via`, `outcome` (`ok` or the code)
+  and `duration_ms`; never a subject, an address, a folder name or a body. Search criteria travel
+  in a `POST` body, so access logs (nginx's, the host proxy's) never see them, and the web
+  image's nginx logs paths without their query string (a list's `folder`, a search the SPA keeps
+  in its URL; [`../deploy.md`](../deploy.md)). A ref is in the path of the message routes, and it
+  encodes the account, the folder name and the UID: an access log does see that.
 
 ### Filters
 
@@ -307,8 +350,9 @@ What they do and the route list: [`filters.md`](filters.md). How:
   starred only, run through imap-thingy's `Folder.run(dry_run=True)` (read-only select) on the
   folder's newest 500 messages, for about 30 s (then the connection is closed: 504
   `dry_run_timeout`). A pattern out of time is 400 `match_timeout`. The folder path is joined with
-  the delimiter the server reports. Mailbox failures answer as a folder listing does (502, or 409
-  `password_missing` / `starttls_unsupported`, 503 `secrets_key_missing`); any other failure is 500
+  the delimiter the server reports. Mailbox failures answer as a folder listing does (by
+  `mail_status`: 502, 504 `timeout`, 409 `password_missing` / `starttls_unsupported`; 503
+  `secrets_key_missing`); any other failure is 500
   `run_failed`, its exception's type name only. Either way the run joins the history. One dry run
   per user at a time, across API processes: a session advisory lock on a connection of its own,
   taken with `pg_try_advisory_lock`; a second one meanwhile is 429 `dry_run_busy` and not

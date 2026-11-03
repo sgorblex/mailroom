@@ -17,12 +17,13 @@ from mailroom.errors import Refusal, mail_refusal
 from mailroom.filters import service as filters
 from mailroom.filters.runs import dry_run_slot
 from mailroom.filters.service import FilterFields, FilterPatch, RuleSetFields, RuleSetPatch
+from mailroom.mail.pool import MailPool
 from tests.conftest import PASSWORD
 from tests.test_api_accounts import MAILBOX_PASSWORD, new_account
 from tests.test_api_filters import SHOP_SPEC
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
     from mailroom_core.crypto import SecretsSubkey
     from sqlalchemy.engine import Engine
@@ -34,8 +35,12 @@ if TYPE_CHECKING:
 @pytest.fixture
 def ctx(
     migrated_engine: Engine, sessions: sessionmaker[Session], secrets_subkey: SecretsSubkey
-) -> AppContext:
-    return AppContext(migrated_engine, sessions, secrets_subkey, mail_ssl_context())
+) -> Iterator[AppContext]:
+    pool = MailPool()
+    try:
+        yield AppContext(migrated_engine, sessions, secrets_subkey, mail_ssl_context(), pool)
+    finally:
+        pool.close()
 
 
 def _fields() -> dict[str, Any]:
@@ -229,7 +234,7 @@ def test_writes_log_where_they_came_from(
 def test_without_a_secrets_key_no_account_is_added(
     ctx: AppContext, db_session: Session, user: User
 ) -> None:
-    keyless = AppContext(ctx.engine, ctx.session_maker, None, ctx.ssl_context)
+    keyless = AppContext(ctx.engine, ctx.session_maker, None, ctx.ssl_context, ctx.mail_pool)
     refused = refusal(lambda: accounts.add_account(keyless, user.id, "work", _fields(), "x"))
     assert (refused.kind, refused.code) == ("unavailable", "secrets_key_missing")
     assert accounts.listed_accounts(ctx, db_session, user.id) == []
@@ -267,6 +272,13 @@ def test_without_a_secrets_key_no_account_is_added(
         ),
         (Refusal("failed", "run_failed", "m"), 500, {"code": "run_failed", "message": "m"}),
         (mail_refusal("unreachable", "m"), 502, {"code": "unreachable", "message": "m"}),
+        (mail_refusal("timeout", "m"), 504, {"code": "timeout", "message": "m"}),
+        (mail_refusal("stale_reference", "m"), 409, {"code": "stale_reference", "message": "m"}),
+        (mail_refusal("too_large", "m"), 413, {"code": "too_large", "message": "m"}),
+        (mail_refusal("mailbox_missing", "m"), 404, {"code": "mailbox_missing", "message": "m"}),
+        (mail_refusal("busy", "m"), 429, {"code": "busy", "message": "m"}),
+        (mail_refusal("invalid_argument", "m"), 400, {"code": "invalid_argument", "message": "m"}),
+        (mail_refusal("some_new_code", "m"), 502, {"code": "some_new_code", "message": "m"}),
         (mail_refusal("password_missing", "m"), 409, {"code": "password_missing", "message": "m"}),
         (
             mail_refusal("secrets_key_missing", "m"),

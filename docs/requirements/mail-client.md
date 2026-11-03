@@ -31,7 +31,7 @@ Every route is under `/api/v1/mail`, needs a [user session](../GLOSSARY.md), and
 signed-in user's accounts. All are `GET` but search, a `POST` with a JSON body so that search
 terms (addresses, subjects, words of a body) are never in an API URL. The SPA does keep a search
 in its own URL (`?q=`), so the access logs in front of it, the web image's nginx and the host's
-proxy, must log paths without their query string. Mail-derived strings (subject, names,
+proxy, must log paths without their query string ([`../deploy.md`](../deploy.md)). Mail-derived strings (subject, names,
 previews, body) are raw text, never HTML: the client escapes them. Control and invisible
 characters are already stripped from headers.
 

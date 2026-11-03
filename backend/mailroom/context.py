@@ -1,9 +1,9 @@
 """What the API's front ends (the REST routes, and any other) share: the database, the secrets
-subkey and the TLS context the users' mailboxes are reached with.
+subkey, the TLS context the users' mailboxes are reached with and their mail connections.
 
 ``mailroom.api.main``'s lifespan builds them once and keeps them on ``app.state``
-(``database_engine``, ``session_maker``, ``secrets_subkey``, ``mail_ssl_context``); ``app_context``
-reads them back as one ``AppContext``.
+(``database_engine``, ``session_maker``, ``secrets_subkey``, ``mail_ssl_context``,
+``mail_pool``); ``app_context`` reads them back as one ``AppContext``.
 """
 
 from __future__ import annotations
@@ -22,6 +22,8 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session, sessionmaker
     from starlette.datastructures import State
 
+    from mailroom.mail.pool import MailPool
+
 
 @dataclass(frozen=True, slots=True)
 class AppContext:
@@ -31,6 +33,8 @@ class AppContext:
     subkey: SecretsSubkey | None
     """None without ``MAILROOM_SECRETS_KEY``: no password can be stored or opened."""
     ssl_context: ssl.SSLContext
+    mail_pool: MailPool
+    """The users' IMAP connections for the mail client (``mailroom.mail.pool``)."""
 
     def store(self, user_id: int) -> AccountStore:
         """The user's accounts, as mailroom-core keeps them."""
@@ -48,4 +52,5 @@ def app_context(state: State) -> AppContext | None:
         session_maker=session_maker,
         subkey=state.secrets_subkey,
         ssl_context=state.mail_ssl_context,
+        mail_pool=state.mail_pool,
     )

@@ -28,6 +28,7 @@ from mailroom.api.refusals import http_refusal
 from mailroom.api.routes.accounts import accounts_router
 from mailroom.api.routes.auth import auth_router
 from mailroom.api.routes.filters import filters_router
+from mailroom.api.routes.mail import mail_router
 from mailroom.api.routes.oauth_consent import consent_router, grants_router
 from mailroom.api.routes.sso import identities_router, sso_router
 from mailroom.api.routes.users import own_password_router, users_router
@@ -39,6 +40,7 @@ from mailroom.config.public_url import public_url_from_env
 from mailroom.context import app_context
 from mailroom.database_connectivity import CONNECTIVITY_ERRORS
 from mailroom.errors import Refusal
+from mailroom.mail.pool import MailPool
 from mailroom.mcp.app import METADATA_PATH, McpEndpoint
 from mailroom.mcp.settings import mcp_settings_from_env
 from mailroom.mcp.verifier import ExternalJwtVerifier, token_verifier
@@ -182,6 +184,7 @@ async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
     _warn_if_nobody_can_sign_in(application)
     application.state.secrets_subkey = secrets_subkey_from_env()
     application.state.mail_ssl_context = mail_ssl_context()
+    application.state.mail_pool = MailPool()
     application.state.sso = sso_from_env(application.state.public_url)
     mcp_settings: McpSettings | None = application.state.mcp_settings
     verifier: TokenVerifier | None = application.state.mcp_verifier
@@ -196,6 +199,7 @@ async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
         async with mcp.running(mcp_settings, verifier):
             yield
     finally:
+        application.state.mail_pool.close()
         if mcp_provider is not None:
             mcp_provider.close()
         sso: Sso | None = application.state.sso
@@ -306,6 +310,7 @@ def create_application(
     protected_v1.include_router(users_router)
     protected_v1.include_router(accounts_router)
     protected_v1.include_router(filters_router)
+    protected_v1.include_router(mail_router)
     protected_v1.include_router(identities_router)
     protected_v1.include_router(consent_router)
     protected_v1.include_router(grants_router)
