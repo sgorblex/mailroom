@@ -1,6 +1,5 @@
 """Tool groups: the unit an instance turns on (``MAILROOM_MCP_TOOL_GROUPS``). A ``stable`` group is
-on by default, a ``preview`` one only when named, a ``planned`` one never (it holds no tools yet:
-mail stays with mailroom-mcp until the app reaches parity)."""
+on by default, a ``preview`` one only when named, a ``planned`` one never."""
 
 from __future__ import annotations
 
@@ -38,7 +37,7 @@ GROUPS: Final[tuple[ToolGroup, ...]] = (
     ToolGroup("filters_read", "stable", "accounts, folders, rule sets, filters and runs"),
     ToolGroup("filters_write", "stable", "create and edit disabled rule sets and their filters"),
     ToolGroup("filters_run", "stable", "dry runs, enabling rule sets, Run now, Run filters"),
-    ToolGroup("mail_read", "planned", "list, search and read mail"),
+    ToolGroup("mail_read", "stable", "list, search and read mail"),
     ToolGroup("mail_organize", "planned", "move, trash and flag mail"),
     ToolGroup("mail_draft", "planned", "write drafts"),
     ToolGroup("mail_send", "planned", "send mail"),

@@ -30,7 +30,7 @@ Mailroom is built on standalone projects, each with its own repository and check
   - [x] **REST** — folders, message list and search, message view, HTML document, part download.
   - [x] **Web** — `/mail`: folders with counts, list with load more, message view with the
         sandboxed HTML iframe and remote-content gate.
-  - [ ] **MCP** — the `mail_read` group.
+  - [x] **MCP** — the `mail_read` group.
 - [ ] **Index and live updates** — schema, initial sync, IDLE-driven refresh, push to the browser;
       lists and search move to the index.
 - [ ] **Tier 2** — triage actions and compose (reply, forward, drafts, attachments) through
@@ -46,8 +46,11 @@ Mailroom is built on standalone projects, each with its own repository and check
   - [x] **Built-in OAuth server** — DCR, CIMD, tokens, the `/connect` consent screen.
   - [x] **External issuer** — JWTs from Authentik or Keycloak, mapped through linked sign-ins.
   - [x] **Connected apps** — list and revoke grants on the profile.
-  - [ ] **Mail tool groups** — once the client reaches parity with mailroom-mcp, turn on
-        `mail_read`, `mail_organize`, `mail_draft` and `mail_send`.
+  - [ ] **Mail tool groups** — each with its client slice: `mail_organize`, `mail_draft` and
+        `mail_send` (`mail_read` is on).
+  - [ ] **Consent per tool group** — record the tool groups each grant was approved for, and ask
+        for fresh consent when a grant's client calls a group added after it (a grant approved
+        before `mail_read` reads mail without asking again); before other users join.
 - [ ] **Suggestions** — learn from manual moves, propose filters with evidence and dry run.
 
 ## Engineering and operations

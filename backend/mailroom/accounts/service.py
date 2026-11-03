@@ -72,8 +72,10 @@ class ListedAccount(StoredAccount):
     run_filters: bool
 
 
-def account_not_found() -> Refusal:
-    return Refusal("not_found", "account_not_found", "No such account")
+def account_not_found(*, coded: bool = False) -> Refusal:
+    """An account id that is not the user's, the same for every front end and service (the mail
+    routes keep the code: ``coded``)."""
+    return Refusal("not_found", "not_found", "No such account.", coded=coded)
 
 
 def require_subkey(subkey: SecretsSubkey | None) -> SecretsSubkey:

@@ -2,9 +2,10 @@
 
 - takes strict arguments (a ``pydantic`` model refusing unknown fields, with the REST API's
   bounds), checked before it runs;
+- answers JSON, or its own content (a mail tool answers text, an attachment an image or a file);
 - is async, and does its database and mailbox work in a worker thread (``ToolCall.db``,
   ``ToolCall.thread``), so a slow mail server never holds up the event loop;
-- answers JSON; a ``Refusal`` becomes a tool error with its fixed message, anything unexpected
+- a ``Refusal`` becomes a tool error with its fixed message, anything unexpected
   "Internal error" with the details in the log only;
 - runs only while its user has fewer than ``UserSlots.per_user`` calls running in this process;
   one more is refused at once as busy, so one user cannot hold every worker thread;
@@ -41,6 +42,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 JsonObject = dict[str, Any]
+ToolResult = JsonObject | types.CallToolResult
+"""What a tool answers: a JSON object (also sent as text), or its own content (the mail tools
+answer text, an attachment an image or a file)."""
 
 INTERNAL_ERROR: Final = "Internal error; the server log has the details."
 CALLS_PER_USER: Final = 2
@@ -68,6 +72,8 @@ class Hints:
 
 
 READ: Final = Hints(read_only=True, idempotent=True)
+MAILBOX_READ: Final = Hints(read_only=True, idempotent=True, open_world=True)
+"""A read of the mail server, whose answer carries what third parties wrote (as ``dry_run``)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,7 +132,13 @@ class Tool[A: Arguments]:
     group: GroupName
     arguments: type[A]
     hints: Hints
-    run: Callable[[A, ToolCall], Awaitable[JsonObject]]
+    run: Callable[[A, ToolCall], Awaitable[ToolResult]]
+    also_in: tuple[GroupName, ...] = ()
+    """Other groups that need the tool: it is registered when any of its groups is on."""
+
+    @property
+    def groups(self) -> tuple[GroupName, ...]:
+        return (self.group, *self.also_in)
 
     def definition(self) -> types.Tool:
         return types.Tool(
@@ -144,11 +156,18 @@ class Tool[A: Arguments]:
         )
 
 
-def _result(payload: JsonObject) -> types.CallToolResult:
+def _result(payload: ToolResult) -> types.CallToolResult:
+    if isinstance(payload, types.CallToolResult):
+        return payload
     text = json.dumps(payload, ensure_ascii=False, indent=2)
     return types.CallToolResult(
         content=[types.TextContent(type="text", text=text)], structuredContent=payload
     )
+
+
+def content_result(*content: types.ContentBlock) -> types.CallToolResult:
+    """A tool answer made of its own content blocks."""
+    return types.CallToolResult(content=list(content))
 
 
 def _error(message: str) -> types.CallToolResult:

@@ -177,7 +177,7 @@
     "asks": "{{name}} wants to use Mailroom as {{username}}",
     "selfRegistered": "The app registered itself: its name is what it says it is, unchecked.",
     "describedBy": "The app is described by {{host}}.",
-    "access": "It can use the tools this Mailroom offers on your behalf: your mail accounts, their folders and your filters.",
+    "access": "It can use the tools this Mailroom offers on your behalf: your mail accounts, their folders and your filters and, where this Mailroom offers it, reading your messages and their attachments.",
     "returnsTo": "Approving or denying takes you back to",
     "revoke": "You can disconnect it at any time from your profile.",
     "approve": "Approve",

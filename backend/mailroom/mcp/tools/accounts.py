@@ -1,5 +1,10 @@
-"""The user's mail accounts as the filter tools need them: which there are, their folders, and
-the Run filters switch."""
+"""The user's mail accounts as the filter and mail tools need them: which there are, their
+folders, and the Run filters switch.
+
+``folders_list`` lists through ``mailroom.mail.service`` (mailroom-core's LIST, the server's
+paths and delimiter, ``segments`` split on it); the REST folder picker of a rule set still lists
+through ``mailroom.accounts.service.account_folders`` (imap-thingy's segments). Both name a
+folder by the same segments."""
 
 from __future__ import annotations
 
@@ -8,18 +13,17 @@ from typing import TYPE_CHECKING, Annotated, Any, Final
 from pydantic import Field, StrictBool
 
 from mailroom.accounts import service
-from mailroom.mcp.tool import READ, Arguments, Hints, JsonObject, Tool
+from mailroom.mail import service as mail_service
+from mailroom.mcp.tool import MAILBOX_READ, READ, Arguments, Hints, JsonObject, Tool
 
 if TYPE_CHECKING:
     from mailroom.mcp.tool import ToolCall
 
-FOLDERS_LIST_SECONDS: Final = 30.0
-"""``folders_list`` still waiting on the mail server after this long is stopped (as a dry run
-is), so a slow server cannot hold a worker thread and the user's call slot."""
-
 AccountId = Annotated[
     str, Field(min_length=1, max_length=64, description="An account id, from accounts_list.")
 ]
+
+ACCOUNT_FIELDS: Final = {"id", "login", "has_password", "run_filters", "send_mode"}
 
 
 class NoArguments(Arguments):
@@ -30,6 +34,13 @@ class AccountArguments(Arguments):
     account_id: AccountId
 
 
+class FoldersArguments(AccountArguments):
+    counts: StrictBool = Field(
+        default=False,
+        description="Add each folder's unread and total counts (one more command per folder).",
+    )
+
+
 class RunFiltersArguments(Arguments):
     account_id: AccountId
     on: StrictBool = Field(description="True to turn Run filters on, false to turn it off.")
@@ -38,19 +49,29 @@ class RunFiltersArguments(Arguments):
 async def _accounts_list(_args: NoArguments, call: ToolCall) -> JsonObject:
     listed = await call.db(lambda db: service.listed_accounts(call.ctx, db, call.user_id))
     return {
-        "accounts": [
-            account.model_dump(mode="json", include={"id", "login", "has_password", "run_filters"})
-            for account in listed
-        ]
+        "accounts": [account.model_dump(mode="json", include=ACCOUNT_FIELDS) for account in listed]
     }
 
 
-async def _folders_list(args: AccountArguments, call: ToolCall) -> JsonObject:
-    folders = await call.thread(
-        lambda: service.account_folders(
-            call.ctx, call.user_id, args.account_id, seconds=FOLDERS_LIST_SECONDS
+async def _folders_list(args: FoldersArguments, call: ToolCall) -> JsonObject:
+    listed = await call.thread(
+        lambda: mail_service.folders(
+            call.ctx, call.user_id, args.account_id, counts=args.counts, via="mcp"
         )
     )
+    folders = []
+    for folder in listed:
+        entry: JsonObject = {
+            "path": folder.path,
+            "segments": folder.path.split(folder.delimiter) if folder.delimiter else [folder.path],
+            "delimiter": folder.delimiter,
+            "role": folder.role,
+        }
+        if args.counts:
+            # None when the server would not say (STATUS failed): not an empty folder.
+            entry["unread"] = folder.unseen
+            entry["total"] = folder.messages
+        folders.append(entry)
     return {"account_id": args.account_id, "folders": folders}
 
 
@@ -68,10 +89,12 @@ ACCOUNT_TOOLS: Final[tuple[Tool[Any], ...]] = (
         name="accounts_list",
         title="List accounts",
         description=(
-            "The user's mail accounts: id, login, whether a password is stored, and whether "
-            "Run filters is on (rule sets run only on an account where it is). Call this first."
+            "The user's mail accounts: id, login, whether a password is stored, whether Run "
+            "filters is on (rule sets run only on an account where it is) and the send mode. "
+            "Call this first."
         ),
         group="filters_read",
+        also_in=("mail_read",),
         arguments=NoArguments,
         hints=READ,
         run=_accounts_list,
@@ -80,12 +103,17 @@ ACCOUNT_TOOLS: Final[tuple[Tool[Any], ...]] = (
         name="folders_list",
         title="List folders",
         description=(
-            "An account's folders, each as its path segments (['Archive', '2026']): what a rule "
-            "set's folder and a move_to action take. Asks the mail server."
+            "An account's folders, each with its path as the server names it ('Archive/2026': "
+            "what messages_list and messages_search take as folder), its delimiter, its path "
+            "as segments (['Archive', '2026']: what a rule set's folder and a move_to action "
+            "take) and its role (inbox, sent, drafts, trash, junk, archive…, or null). "
+            "counts=true adds unread and total (null when the server would not say). Asks the "
+            "mail server."
         ),
         group="filters_read",
-        arguments=AccountArguments,
-        hints=READ,
+        also_in=("mail_read",),
+        arguments=FoldersArguments,
+        hints=MAILBOX_READ,
         run=_folders_list,
     ),
     Tool(

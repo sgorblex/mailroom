@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Final, cast
 from mailroom_core import mail as core
 from mailroom_core.mail import MESSAGES, MailError, Page, PageFailure, SearchQuery, Source
 
-from mailroom.accounts.service import require_subkey
+from mailroom.accounts.service import account_not_found, require_subkey
 from mailroom.accounts.store import account_password, load_accounts
 from mailroom.errors import Refusal, mail_refusal
 from mailroom.mail.pool import DeadlineExceeded, PasswordMissing
@@ -41,6 +41,7 @@ if TYPE_CHECKING:
         MessageRef,
         MessageView,
     )
+    from mailroom_core.render import Marker
     from mailroom_core.render.safe_html import SafeHtml
 
     from mailroom.accounts.service import Via
@@ -72,8 +73,9 @@ failures), inside the pool's 30 s deadline, so the others still answer."""
 
 
 def unknown_account() -> Refusal:
-    """An account id that is not the user's (theirs or nobody's: the same answer)."""
-    return Refusal("not_found", "not_found", "No such account.", coded=True)
+    """An account id that is not the user's (theirs or nobody's: the same answer), as the
+    accounts service words it, its code kept for the mail client."""
+    return account_not_found(coded=True)
 
 
 def unknown_message() -> Refusal:
@@ -212,9 +214,11 @@ def _first_failure(page: Page) -> None:
         raise mail_refusal(failure.code, failure.message)
 
 
-def folders(ctx: AppContext, user_id: int, account_id: str, *, via: Via = "web") -> list[Folder]:
-    """The account's selectable folders with their counts (STATUS), in mailroom-core's order:
-    special-use folders first, then the rest by path."""
+def folders(
+    ctx: AppContext, user_id: int, account_id: str, *, counts: bool = True, via: Via = "web"
+) -> list[Folder]:
+    """The account's selectable folders in mailroom-core's order (special-use first, then the rest
+    by path), with their counts (STATUS: one command per folder) unless ``counts`` is off."""
     accounts = _accounts(ctx, user_id)
     _usable(ctx, user_id, accounts, account_id)
     listed = _call(
@@ -224,7 +228,7 @@ def folders(ctx: AppContext, user_id: int, account_id: str, *, via: Via = "web")
         "mail_folders",
         via,
         account_id,
-        lambda connections: connections.folders(account_id, with_status=True),
+        lambda connections: connections.folders(account_id, with_status=counts),
     )
     return [folder for folder in listed if folder.selectable]
 
@@ -446,12 +450,14 @@ def read_message(
     *,
     offset: int = 0,
     include_quoted: bool = False,
+    raw_headers: bool = False,
     remote_check: bool = False,
+    marker: Marker | None = None,
     via: Via = "web",
 ) -> MessageView:
-    """One message, its text body windowed by the user's ``body_chars`` from ``offset``, with no
-    marker where quotes were left out; ``remote_check`` as for mailroom-core's
-    ``read_message``."""
+    """One message, its text body windowed by the user's ``body_chars`` from ``offset``;
+    ``raw_headers``, ``remote_check`` and ``marker`` (by default none where quotes were left
+    out) as for mailroom-core's ``read_message``."""
     accounts = _accounts(ctx, user_id)
     message = _message_ref(ctx, user_id, accounts, ref)
     body_chars = accounts.limits.body_chars
@@ -468,10 +474,31 @@ def read_message(
             offset=offset,
             include_quoted=include_quoted,
             body_chars=body_chars,
+            raw_headers=raw_headers,
             remote_check=remote_check,
-            marker=None,
+            marker=marker,
         ),
     )
+
+
+def thread(ctx: AppContext, user_id: int, ref: str, *, limit: int = 30, via: Via = "web") -> Page:
+    """The conversation of the message ``ref`` names, in its account."""
+    accounts = _accounts(ctx, user_id)
+    message = _message_ref(ctx, user_id, accounts, ref)
+    return _call(
+        ctx,
+        user_id,
+        accounts,
+        "mail_thread_read",
+        via,
+        message.account,
+        lambda connections: core.thread_page(connections, message, limit=limit),
+    )
+
+
+def account_ids(ctx: AppContext, user_id: int) -> Sequence[str]:
+    """The user's account ids, in their order."""
+    return _accounts(ctx, user_id).ids()
 
 
 def attachment(

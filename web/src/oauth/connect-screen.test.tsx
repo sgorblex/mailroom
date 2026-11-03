@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { ConsentRequest } from '@/api/oauth.ts'
 import { AuthContext } from '@/auth/auth-context.ts'
+import itCommon from '@/locales/it/common.json'
 import { RootLayout } from '@/auth/root-layout.tsx'
 import { renderSignedIn } from '@/test/signed-in.tsx'
 
@@ -71,6 +72,16 @@ describe('ConnectScreen', () => {
     expect(leave).toHaveBeenCalledWith(`${CALLBACK}?code=c0de&state=s`)
     expect(await screen.findByRole('status')).toHaveTextContent('Taking you back to claude.ai')
     expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
+  })
+
+  it('says what approving gives, reading mail and attachments included', async () => {
+    stubApi()
+    renderSignedIn(<ConnectScreen requestId="req-1" leave={vi.fn()} />, ALICE)
+    expect(
+      await screen.findByText(/your mail accounts, their folders and your filters/),
+    ).toHaveTextContent('reading your messages and their attachments')
+    // Italian says as much.
+    expect(itCommon.connect.access).toMatch(/messaggi.*allegati/)
   })
 
   it('denies, going back with the refusal', async () => {

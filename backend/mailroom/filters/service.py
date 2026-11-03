@@ -51,7 +51,9 @@ MAX_FILTERS: Final = 100
 class RuleSetFields(BaseModel):
     name: Name
     folder: list[Segment] = Field(min_length=1, max_length=32)
-    """Path segments, as ``mailroom.accounts.service.account_folders`` lists them."""
+    """Path segments, as the REST folder picker lists them
+    (``mailroom.accounts.service.account_folders``, imap-thingy's) and MCP's ``folders_list``
+    gives them as ``segments`` (mailroom-core's LIST through ``mailroom.mail.service``)."""
     trigger: Trigger
     interval_minutes: IntervalMinutes | None = None
     """``scheduled`` only, and required there."""

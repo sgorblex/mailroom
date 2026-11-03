@@ -43,7 +43,7 @@ def test_the_settings_come_from_the_environment(monkeypatch: pytest.MonkeyPatch)
         "https://mail.example.org/mcp",
         "https://mail.example.org/oauth",
     )
-    assert names(settings.groups) == ["filters_read", "filters_write", "filters_run"]
+    assert names(settings.groups) == ["filters_read", "filters_write", "filters_run", "mail_read"]
 
     monkeypatch.setenv("MAILROOM_MCP_AUTH", "off")
     assert mcp_settings_from_env(public_url) is None
@@ -86,10 +86,10 @@ def test_the_tools_follow_their_groups() -> None:
     }
     assert tools_for(()) == []
     every_group = {group.name for group in groups.GROUPS}
-    assert all(tool.group in every_group for tool in TOOLS)
+    assert all(set(tool.groups) <= every_group for tool in TOOLS)
     assert len({tool.name for tool in TOOLS}) == len(TOOLS)
     planned = {group.name for group in groups.GROUPS if group.status == "planned"}
-    assert not [tool for tool in TOOLS if tool.group in planned]
+    assert not [tool for tool in TOOLS if planned.intersection(tool.groups)]
 
 
 def test_the_instructions_follow_the_groups() -> None:
@@ -98,6 +98,12 @@ def test_the_instructions_follow_the_groups() -> None:
     assert "rule_set_enable" not in read_only
     assert "untrusted_email" in read_only
     assert "rule_set_enable" in instructions(selected_groups(None))
+    # The opening says what the served groups do, and nothing else.
+    assert "It also reads the user's mail" not in read_only
+    assert "It also reads the user's mail" in instructions(selected_groups(None))
+    mail_only = instructions(selected_groups("mail_read"))
+    assert mail_only.startswith("mailroom-app reads the user's mail")
+    assert "filters" not in mail_only.split(".")[0]
 
 
 def test_the_envelope_closes_only_with_its_nonce() -> None:

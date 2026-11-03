@@ -53,8 +53,9 @@ through the Vite proxy. Engineering baseline:
 
 ## Mail client
 
-**Maturity: Current** for slice A (tier 1, read), specified in
-[`requirements/mail-client.md`](requirements/mail-client.md); **Planned** for the rest. Target is
+**Maturity: Partial** — slice A (tier 1, read: REST, web and the `mail_read` MCP tools), as
+specified in [`requirements/mail-client.md`](requirements/mail-client.md), is in; the rest is
+planned (gaps: the index and live updates, triage, compose). Target is
 **between tier 2 and tier 3**: tiers 1 and 2 in full, on top of
 the index and live updates; tier 3 items arrive one at a time.
 
@@ -92,8 +93,8 @@ the index and live updates; tier 3 items arrive one at a time.
 ## MCP server
 
 **Maturity: Partial** — as specified in [`requirements/mcp.md`](requirements/mcp.md): `/mcp`,
-the `filters_*` tools, the built-in authorization server with its `/connect` consent screen,
-connected apps on the profile and external issuer mode are in.
+the `filters_*` and `mail_read` tools, the built-in authorization server with its `/connect`
+consent screen, connected apps on the profile and external issuer mode are in.
 
 - The app's own MCP server at `/mcp`, for each user's own data: accounts, folders, rule sets,
   dry runs and runs, in [tool groups](GLOSSARY.md) chosen by instance config. Mail tools come
