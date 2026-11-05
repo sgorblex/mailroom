@@ -44,13 +44,15 @@ class SearchQuery:
     unread: bool | None = None
     flagged: bool | None = None
     has_attachment: bool | None = None
-    """Approximate: True matches messages sent as multipart/mixed; False is ignored."""
+    """True matches messages with an attachment: Gmail's own `has:attachment`, elsewhere an
+    approximation (sent as multipart/mixed). False is ignored."""
     gmail_query: str | None = None
     """Gmail search syntax (X-GM-RAW); Gmail accounts only, else `unsupported`."""
 
-    def criteria(self) -> list[object]:
+    def criteria(self, *, gmail: bool = False) -> list[object]:
         """As core's own `Criteria` (written by `search_arguments`, not imapclient), imapflow's
-        compilation of the TypeScript query."""
+        compilation of the TypeScript query; for an account whose capabilities say `gmail`,
+        `has_attachment` goes into X-GM-RAW, since Gmail ignores SEARCH HEADER."""
         out: list[object] = []
         for key, value in (
             ("FROM", self.sender),
@@ -68,10 +70,14 @@ class SearchQuery:
             out.append("UNSEEN" if self.unread else "SEEN")
         if self.flagged is not None:
             out.append("FLAGGED" if self.flagged else "UNFLAGGED")
+        raw = self.gmail_query
         if self.has_attachment is True:
-            out += ["HEADER", "Content-Type", "multipart/mixed"]
-        if self.gmail_query is not None:
-            out += ["X-GM-RAW", self.gmail_query]
+            if gmail:
+                raw = f"has:attachment ({raw})" if raw and raw.strip() else "has:attachment"
+            else:
+                out += ["HEADER", "Content-Type", "multipart/mixed"]
+        if raw is not None:
+            out += ["X-GM-RAW", raw]
         return out or ["ALL"]
 
 
@@ -121,9 +127,13 @@ def search_messages(
     failure with no folder and the others still answer; with one, its MailError is raised."""
     sources: list[Source] = []
     failures: list[PageFailure] = []
+    criteria: dict[str, Criteria] = {}
     for account in accounts:
         try:
-            if query.gmail_query is not None and not connections.capabilities(account).gmail:
+            gmail = (
+                query.gmail_query is not None or query.has_attachment is True
+            ) and connections.capabilities(account).gmail
+            if query.gmail_query is not None and not gmail:
                 raise MailError(
                     "unsupported",
                     f'gmail_query works only on Gmail accounts; "{account}" is not one.',
@@ -132,13 +142,12 @@ def search_messages(
                 searchable_folders(connections, account) if folder == ALL_FOLDERS else [folder]
             )
             sources.extend(Source(account, path) for path in folders)
+            criteria[account] = query.criteria(gmail=gmail)
         except MailError as error:
             if len(accounts) == 1:
                 raise
             failures.append(PageFailure.of(account, None, error))
-    page = read_page(
-        connections, sources, query.criteria(), limit=limit, cursor=cursor, previews=previews
-    )
+    page = read_page(connections, sources, criteria, limit=limit, cursor=cursor, previews=previews)
     return Page(page.messages, page.next_cursor, (*failures, *page.failures))
 
 

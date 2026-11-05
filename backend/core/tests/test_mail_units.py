@@ -4,15 +4,20 @@ imapclient's BODYSTRUCTURE, `src/mail/content-type.test.ts`, and the decoding im
 
 import base64
 import json
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from imapclient.response_types import BodyData
 
 from mailroom_core.mail import (
+    MailboxContext,
+    MailConnections,
     MailError,
     MessageRef,
     Position,
     SearchQuery,
+    Source,
     analyse_structure,
     check_fresh,
     content_type,
@@ -21,9 +26,14 @@ from mailroom_core.mail import (
     format_ref,
     parse_ref,
     preview_of,
+    read_page,
+    search_messages,
 )
 from mailroom_core.mail._mime import TransferDecoder, decode_words, parameters, unflow
 from mailroom_core.render import PartInfo
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 # What the TypeScript writes (Buffer.from(JSON.stringify(…)).toString('base64url')), from Node.
 TS_REF = "WzEsImhvbWUiLCJBcmNoaXZpby8yMDI2IFwiT3R0b2JyZVwiwrfDvCIsIjE3OTExNDkzNDUiLDQyXQ"
@@ -347,6 +357,74 @@ def test_search_criteria() -> None:
         "X-GM-RAW",
         "has:attachment",
     ]
+
+
+def test_gmail_finds_attachments_through_its_own_search() -> None:
+    """Gmail ignores SEARCH HEADER, so `has_attachment` becomes X-GM-RAW there, one criterion
+    with any `gmail_query` grouped after it."""
+    from mailroom_core.mail import search_arguments
+
+    assert SearchQuery(has_attachment=True).criteria(gmail=True) == ["X-GM-RAW", "has:attachment"]
+    combined = SearchQuery(
+        unread=True, has_attachment=True, gmail_query="from:a OR from:b"
+    ).criteria(gmail=True)
+    assert combined == ["UNSEEN", "X-GM-RAW", "has:attachment (from:a OR from:b)"]
+    assert search_arguments(combined) == (
+        [b"UNSEEN", b"X-GM-RAW", b'"has:attachment (from:a OR from:b)"'],
+        False,
+    )
+    assert SearchQuery(has_attachment=True, gmail_query=" ").criteria(gmail=True) == [
+        "X-GM-RAW",
+        "has:attachment",
+    ]
+    assert SearchQuery(has_attachment=False).criteria(gmail=True) == ["ALL"]
+    assert SearchQuery(gmail_query="label:x").criteria(gmail=True) == ["X-GM-RAW", "label:x"]
+    assert SearchQuery(has_attachment=True).criteria() == [
+        "HEADER",
+        "Content-Type",
+        "multipart/mixed",
+    ]
+
+
+def test_each_account_gets_its_own_search() -> None:
+    """`search_messages` builds criteria per account and `read_page` sends each its own: Gmail's
+    X-GM-RAW to the Gmail account, HEADER to the other. A mapping that leaves out a source's
+    account is a programming error, refused before any search."""
+    sent: dict[str, list[object]] = {}
+
+    class Client:
+        def __init__(self, account: str) -> None:
+            self.account = account
+
+        def _raw_command_untagged(self, command: bytes, arguments: list[object]) -> list[bytes]:
+            sent[self.account] = arguments
+            return [b""]
+
+    class Connections:
+        def capabilities(self, account: str) -> SimpleNamespace:
+            return SimpleNamespace(gmail=account == "gmail")
+
+        def with_mailbox(
+            self, account: str, path: str, read_only: bool, fn: Callable[[MailboxContext], object]
+        ) -> object:
+            return fn(MailboxContext(Client(account), path, read_only, 1, 0, None))  # type: ignore[arg-type]
+
+    connections = cast("MailConnections", Connections())
+    page = search_messages(
+        connections, ["gmail", "other"], "INBOX", SearchQuery(has_attachment=True)
+    )
+    assert page.messages == ()
+    assert page.failures == ()
+    assert sent == {
+        "gmail": [b"X-GM-RAW", b"has:attachment"],
+        "other": [b"HEADER", b"Content-Type", b"multipart/mixed"],
+    }
+
+    sent.clear()
+    sources = [Source("gmail", "INBOX"), Source("other", "INBOX")]
+    with pytest.raises(ValueError, match="other"):
+        read_page(connections, sources, {"gmail": ["ALL"]}, limit=5)
+    assert sent == {}
 
 
 def test_thread_ids_leave_out_what_cannot_be_searched_for() -> None:
