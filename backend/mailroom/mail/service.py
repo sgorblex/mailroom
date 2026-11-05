@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from mailroom_core.config import Limits
     from mailroom_core.mail import (
         Attachment,
+        Criteria,
         Folder,
         MailboxContext,
         MailConnections,
@@ -73,8 +74,11 @@ PASSWORD_MISSING: Final = "password_missing"
 _PASSWORD_MISSING_TEXT: Final = "No stored password opens for this account: enter it again."
 _FAILED_TEXT: Final = "Reading the mail failed unexpectedly."
 SOURCES_SECONDS: Final = 12.0
-"""How long an all-accounts search waits for an account's folders before it is a ``timeout``
-failure (a blackholed server costs two 10 s connects)."""
+"""How long an all-accounts search waits for an account's folders and, when the query needs them
+(``has_attachment``, ``gmail_query``), its capabilities before it is a ``timeout`` failure (a
+blackholed server costs two 10 s connects). The capabilities can log in, so such a query logs in
+within this bound even when it reads one folder; mailroom-core's ``search_messages`` does the
+same."""
 ACCOUNT_SECONDS: Final = 25.0
 """When an all-accounts search cuts the accounts still reading their mailbox (``timeout``
 failures), inside the pool's 30 s deadline, so the others still answer."""
@@ -356,14 +360,20 @@ def search(
 
 def _sources(
     connections: MailConnections, account: str, folder: str, query: SearchQuery
-) -> list[Source]:
-    """What mailroom-core's ``search_messages`` reads in ``account``."""
-    if query.gmail_query is not None and not connections.capabilities(account).gmail:
+) -> tuple[list[Source], Criteria]:
+    """What mailroom-core's ``search_messages`` reads in ``account``, and with which criteria:
+    as it does, a Gmail account's ``has_attachment`` goes into X-GM-RAW (Gmail ignores the
+    ``Content-Type`` header search), so its capabilities are asked only when the query needs
+    them."""
+    gmail = (
+        query.gmail_query is not None or query.has_attachment is True
+    ) and connections.capabilities(account).gmail
+    if query.gmail_query is not None and not gmail:
         raise MailError(
             "unsupported", f'gmail_query works only on Gmail accounts; "{account}" is not one.'
         )
     paths = core.searchable_folders(connections, account) if folder == ALL_FOLDERS else [folder]
-    return [Source(account, path) for path in paths]
+    return [Source(account, path) for path in paths], query.criteria(gmail=gmail)
 
 
 class _Reading:
@@ -415,6 +425,7 @@ def _search_accounts(
     started = time.monotonic()
     failures: list[PageFailure] = []
     sources: list[Source] = []
+    criteria: dict[str, Criteria] = {}
     finder = ThreadPoolExecutor(max_workers=min(len(accounts), 8), thread_name_prefix="mail-src")
     found = {
         account: finder.submit(_sources, connections, account, folder, query)
@@ -428,7 +439,8 @@ def _search_accounts(
             failures.append(PageFailure(account, None, "timeout", MESSAGES["timeout"]))
             continue
         try:
-            sources.extend(future.result())
+            read, criteria[account] = future.result()
+            sources.extend(read)
         except MailError as error:
             failures.append(PageFailure.of(account, None, error))
         except Exception:
@@ -452,7 +464,7 @@ def _search_accounts(
         page = core.read_page(
             cast("MailConnections", reading),
             sources,
-            query.criteria(),
+            criteria,
             limit=limit,
             cursor=cursor,
         )

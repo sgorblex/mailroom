@@ -329,7 +329,7 @@ same page shape.
 | `text` | Headers or body contain this. |
 | `since`, `before` | `YYYY-MM-DD` (a real calendar date; `since` inclusive, `before` exclusive), compared with the arrival date (INTERNALDATE), not the `Date` header. |
 | `unread`, `flagged` | Booleans. |
-| `has_attachment` | `true` only (approximate: `multipart/mixed`); `false` is ignored, not a criterion. |
+| `has_attachment` | `true` only (approximate: `multipart/mixed`; on Gmail, which ignores that header search, `has:attachment` through X-GM-RAW, over one account or all); `false` is ignored, not a criterion. |
 | `gmail_query` | Gmail search syntax (X-GM-RAW); Gmail accounts only, else `unsupported`. |
 | `limit`, `cursor` | As for the list. |
 

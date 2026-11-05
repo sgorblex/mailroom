@@ -120,7 +120,11 @@ class MessagesSearchArguments(Arguments):
     unread: StrictBool | None = None
     flagged: StrictBool | None = None
     has_attachment: StrictBool | None = Field(
-        default=None, description="Approximate: messages sent as multipart/mixed."
+        default=None,
+        description=(
+            "Messages with an attachment: Gmail's has:attachment on Gmail, elsewhere "
+            "approximate (sent as multipart/mixed)."
+        ),
     )
     gmail_query: Criterion | None = Field(
         default=None, description="Gmail search syntax (X-GM-RAW), Gmail accounts only."

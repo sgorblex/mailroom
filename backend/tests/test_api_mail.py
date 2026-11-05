@@ -18,9 +18,11 @@ import pytest
 from mailroom_core.crypto import secrets_subkey
 from mailroom_core.mail import (
     MESSAGES,
+    Capabilities,
     MailConnections,
     MailError,
     MessageRef,
+    Page,
     SearchQuery,
     format_ref,
     parse_ref,
@@ -816,6 +818,61 @@ def test_an_all_accounts_search_cuts_only_the_accounts_still_reading(
     # "fast" was done long before: another call of the user on it is not cut.
     assert connections.interrupted == ["slow"]
     assert [(f.account, f.folder, f.code) for f in page.failures] == [("slow", "INBOX", "timeout")]
+
+
+class _GmailConnections:
+    """``gmail`` has Gmail's extensions and ``plain`` has not; any other call fails the test."""
+
+    def __init__(self) -> None:
+        self.asked: list[str] = []
+
+    def capabilities(self, account_id: str) -> Capabilities:
+        self.asked.append(account_id)
+        gmail = account_id == "gmail"
+        return Capabilities(
+            gmail=gmail, thread=gmail, move=True, uidplus=True, condstore=True, special_use=True
+        )
+
+
+def test_an_all_accounts_search_asks_gmail_for_attachments_its_own_way(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mailroom.mail import service
+
+    read: dict[str, Any] = {}
+
+    def read_page(_connections: Any, sources: Any, criteria: Any, **_kwargs: Any) -> Page:
+        read.update(sources=list(sources), criteria=criteria)
+        return Page((), None, ())
+
+    monkeypatch.setattr(service.core, "read_page", read_page)
+    connections: Any = _GmailConnections()
+    service._search_accounts(  # noqa: SLF001 - the criteria per account, without IMAP
+        connections,
+        ["gmail", "plain"],
+        "INBOX",
+        SearchQuery(subject="invoice", has_attachment=True),
+        limit=10,
+        cursor=None,
+    )
+    assert sorted(connections.asked) == ["gmail", "plain"]
+    # Gmail ignores a search of the Content-Type header: X-GM-RAW there, as core's own search.
+    assert read["criteria"] == {
+        "gmail": ["SUBJECT", "invoice", "X-GM-RAW", "has:attachment"],
+        "plain": ["SUBJECT", "invoice", "HEADER", "Content-Type", "multipart/mixed"],
+    }
+    assert [(source.account, source.folder) for source in read["sources"]] == [
+        ("gmail", "INBOX"),
+        ("plain", "INBOX"),
+    ]
+
+    # A query that needs nothing of Gmail's does not ask.
+    connections.asked.clear()
+    service._search_accounts(  # noqa: SLF001
+        connections, ["gmail", "plain"], "INBOX", SearchQuery(unread=True), limit=10, cursor=None
+    )
+    assert connections.asked == []
+    assert read["criteria"] == {"gmail": ["UNSEEN"], "plain": ["UNSEEN"]}
 
 
 def test_an_unexpected_failure_is_a_failed_refusal(

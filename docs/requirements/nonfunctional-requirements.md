@@ -310,9 +310,11 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
 - **Deadline:** a call answers 504 `timeout` after 30 s, and the account's connections in use are
   cut then (mailroom-core's `interrupt`), which ends the work at once and frees them; a call of
   the same user on that account at that moment fails as well (10 s to connect, 30 s for any one
-  server reply). An all-accounts search gives each account 12 s to list its folders and cuts the
-  ones still reading their mailbox at 25 s (an account already done is left alone, so another
-  call on it goes on): they are `timeout` failures of the page, and the rest answer.
+  server reply). An all-accounts search gives each account 12 s to list its folders (and, for
+  `has_attachment` or `gmail_query`, to read its capabilities, which can log in even when one
+  folder is searched) and cuts the ones still reading their mailbox at 25 s (an account already
+  done is left alone, so another call on it goes on): they are `timeout` failures of the page,
+  and the rest answer.
 - A call that fails unexpectedly answers 500 `failed` and logs `mail_call_failed` (with `call`,
   the event's name) and its traceback; the event's outcome is `failed`. A password that stops
   opening once a call began is `password_missing`, also when mailroom-core reported it as a
