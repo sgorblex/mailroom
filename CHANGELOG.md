@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.4.0](https://github.com/sgorblex/mailroom/compare/v0.3.0...v0.4.0) (2026-11-05)
+
+
+### Features
+
+* add mail organize REST API (move, archive, trash, flag) ([#42](https://github.com/sgorblex/mailroom/issues/42)) ([16bf612](https://github.com/sgorblex/mailroom/commit/16bf61211ea0e2580cd9251ce980de087e2d49bc))
+* add mail_organize tools to the MCP server ([#44](https://github.com/sgorblex/mailroom/issues/44)) ([e341dc1](https://github.com/sgorblex/mailroom/commit/e341dc1e103f486111ed7b9578b6aaf42e56e1cc))
+* add web mail triage with toolbar, multi-select, and keyboard shortcuts ([#43](https://github.com/sgorblex/mailroom/issues/43)) ([60df4fc](https://github.com/sgorblex/mailroom/commit/60df4fcd2b31e5308efd0f2220aaec53ab07e558))
+* move, archive, trash and flag mail through the REST API ([16bf612](https://github.com/sgorblex/mailroom/commit/16bf61211ea0e2580cd9251ce980de087e2d49bc))
+* **web:** triage mail: select, archive, trash, move, star and mark read, with shortcuts ([60df4fc](https://github.com/sgorblex/mailroom/commit/60df4fcd2b31e5308efd0f2220aaec53ab07e558))
+
+
+### Bug Fixes
+
+* search Gmail accounts for attachments through X-GM-RAW ([fc2e6b9](https://github.com/sgorblex/mailroom/commit/fc2e6b90a1160568bbc4721742123c798b02b0ed))
+* use Gmail's has:attachment in all-accounts search ([#45](https://github.com/sgorblex/mailroom/issues/45)) ([fc2e6b9](https://github.com/sgorblex/mailroom/commit/fc2e6b90a1160568bbc4721742123c798b02b0ed))
+
 ## [0.3.0](https://github.com/sgorblex/mailroom/compare/v0.2.0...v0.3.0) (2026-11-03)
 
 
