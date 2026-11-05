@@ -3,6 +3,7 @@ fake verifier; the built-in authorization server's are tested with it."""
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import itertools
 import logging
@@ -14,7 +15,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import pytest
-from mailroom_core.mail import Folder
+from mailroom_core.mail import Folder, MessageRef, format_ref
 from mailroom_core.testing import (
     MimeAttachment,
     create_folders,
@@ -37,7 +38,7 @@ from mailroom.mail import service as mail_service
 from mailroom.mcp.app import instructions, tools_for
 from mailroom.mcp.groups import selected_groups
 from mailroom.mcp.settings import McpSettings
-from mailroom.mcp.tool import BUSY_MESSAGE, CALLS_PER_USER
+from mailroom.mcp.tool import BUSY_MESSAGE, CALLS_PER_USER, call_tool
 from mailroom.mcp.tools.filters import RUN_FILTERS_OFF_NOTE
 from tests.conftest import PASSWORD
 from tests.test_api_accounts import MAILBOX_PASSWORD, new_account
@@ -271,6 +272,9 @@ ANNOTATIONS = {
     "message_read": (True, False, True, True),
     "thread_read": (True, False, True, True),
     "attachment_read": (True, False, True, True),
+    "messages_move": (False, False, False, True),
+    "messages_trash": (False, True, False, True),
+    "messages_flag": (False, False, True, True),
 }
 
 
@@ -1091,6 +1095,13 @@ def test_another_users_account_is_not_found_even_through_a_ref(
         assert mcp.error(bob, tool, ref=ref, **arguments) == "No such message or part."
     searched = mcp.text(bob, "messages_search", account_id="*", subject="not yours")
     assert "No matching messages." in searched
+    for tool, arguments in (
+        ("messages_move", {"folder": "Trash"}),
+        ("messages_trash", {}),
+        ("messages_flag", {"seen": True}),
+    ):
+        assert mcp.error(bob, tool, refs=[ref], **arguments) == "No such message or part."
+    assert stored(mail, login, "INBOX") == [("not yours", ())]
 
 
 def test_a_garbage_cursor_and_a_recreated_folder_are_refused(
@@ -1174,3 +1185,218 @@ def test_mail_read_calls_log_keys_only(
     assert [r.__dict__["argument_keys"] for r in called] == [["subject"]]
     ours = [r.__dict__ for r in caplog.records if r.name.startswith("mailroom")]
     assert "Secret subject" not in str(ours)
+
+
+def inbox_ref(mcp: Mcp, token: str, folder: str = "INBOX") -> str:
+    """The ref of the newest message of ``folder``."""
+    return refs_in(mcp.text(token, "messages_list", folder=folder))[0]
+
+
+def stored(mail: MailAccounts, login: str, folder: str) -> list[tuple[str, tuple[str, ...]]]:
+    """Subjects and flags of ``folder``, oldest first."""
+    return [
+        (m.subject, tuple(sorted(f for f in m.flags if f != "\\Recent")))
+        for m in folder_contents(mail.server, login, folder)
+    ]
+
+
+def test_the_organize_tools_are_registered_and_bounded(mcp: Mcp, token: str) -> None:
+    tools = {tool["name"]: tool for tool in mcp.tools(token)}
+    for name in ("messages_move", "messages_trash", "messages_flag"):
+        refs = tools[name]["inputSchema"]["properties"]["refs"]
+        assert (refs["minItems"], refs["maxItems"], refs["items"]["maxLength"]) == (1, 50, 4096)
+        assert refs["description"] == "Message refs (up to 50, any folders)."
+    assert "Invalid arguments" in mcp.error(token, "messages_trash", refs=[])
+    assert "Invalid arguments" in mcp.error(token, "messages_trash", refs=["x"] * 51)
+    assert "Invalid arguments" in mcp.error(token, "messages_flag", refs=["x"], seen="yes")
+    assert "Invalid arguments" in mcp.error(token, "messages_move", refs=["x"])
+
+
+def test_the_organize_group_can_be_left_out() -> None:
+    groups = selected_groups("filters_read,mail_read")
+    names = {tool.name for tool in tools_for(groups)}
+    assert not names & {"messages_move", "messages_trash", "messages_flag"}
+    assert "messages_move" not in instructions(groups)
+    assert "never deletes mail permanently" in instructions(selected_groups(None))
+    alone = [tool.name for tool in tools_for(selected_groups("mail_organize"))]
+    assert alone[:2] == ["accounts_list", "folders_list"]
+    assert alone[2:] == ["messages_move", "messages_trash", "messages_flag"]
+
+
+def test_a_server_without_the_organize_group_refuses_its_tools() -> None:
+    served = {tool.name: tool for tool in tools_for(selected_groups("filters_read,mail_read"))}
+    arguments = {"refs": ["x"], "folder": "INBOX"}
+    answer = asyncio.run(
+        call_tool(served, "messages_move", arguments, token=None, context=lambda: None)
+    )
+    assert answer.isError is True
+    assert "Unknown tool: messages_move" in str(answer.content)
+
+
+def test_a_move_gives_new_refs_and_the_old_ones_stop_working(
+    mcp: Mcp, token: str, mail: MailAccounts
+) -> None:
+    login = mail.add()
+    create_folders(mail.server, login, "Archive")
+    mail.seed(login, mime("quarterly report"))
+    ref = inbox_ref(mcp, token)
+    moved = mcp.text(token, "messages_move", refs=[ref], folder="Archive")
+    assert ENVELOPE.search(moved)
+    found = re.search(r"work/INBOX: moved 1 to Archive\. New refs: ([\w-]+)", moved)
+    assert found
+    assert "Subject: quarterly report" in mcp.text(token, "message_read", ref=found.group(1))
+    assert "No such message" in mcp.error(token, "message_read", ref=ref)
+    assert stored(mail, login, "Archive") == [("quarterly report", ())]
+    assert stored(mail, login, "INBOX") == []
+
+
+def test_a_move_takes_refs_of_several_folders(mcp: Mcp, token: str, mail: MailAccounts) -> None:
+    login = mail.add()
+    create_folders(mail.server, login, "Projects", "Archive")
+    mail.seed(login, mime("one"))
+    mail.seed(login, mime("two"), folder="Projects")
+    refs = [inbox_ref(mcp, token), inbox_ref(mcp, token, "Projects")]
+    moved = mcp.text(token, "messages_move", refs=refs, folder="Archive")
+    assert "work/INBOX: moved 1 to Archive." in moved
+    assert "work/Projects: moved 1 to Archive." in moved
+    assert len(stored(mail, login, "Archive")) == 2
+
+
+def test_a_move_is_refused_when_it_cannot_be_done_safely(
+    mcp: Mcp, token: str, mail: MailAccounts
+) -> None:
+    login = mail.add()
+    create_folders(mail.server, login, "Projects")
+    mail.seed(login, mime("old"), folder="Projects")
+    ref = inbox_ref(mcp, token, "Projects")
+    assert "is not a folder of work" in mcp.error(
+        token, "messages_move", refs=[ref], folder="Nowhere"
+    )
+    assert "already in that folder" in mcp.error(
+        token, "messages_move", refs=[ref], folder="Projects"
+    )
+    stranger = format_ref(MessageRef("stranger", "INBOX", 1, 1))
+    assert mcp.error(token, "messages_move", refs=[stranger], folder="INBOX") == (
+        "No such message or part."
+    )
+    assert "Not a message reference" in mcp.error(
+        token, "messages_move", refs=["garbage"], folder="INBOX"
+    )
+    # One bad ref refuses the whole call, the good one included.
+    assert "Not a message reference" in mcp.error(
+        token, "messages_move", refs=[ref, "garbage"], folder="INBOX"
+    )
+    assert len(stored(mail, login, "Projects")) == 1
+
+    # The folder is rebuilt: its UIDVALIDITY changes and the ref is stale.
+    with raw_client(mail.server, login) as client:
+        client.delete_folder("Projects")
+        client.create_folder("Projects")
+    mail.seed(login, mime("new one with the same uid"), folder="Projects")
+    assert "out of date" in mcp.error(token, "messages_move", refs=[ref], folder="INBOX")
+    assert len(stored(mail, login, "Projects")) == 1
+
+
+def test_a_vanished_message_makes_the_batch_partial(
+    mcp: Mcp, token: str, mail: MailAccounts
+) -> None:
+    login = mail.add()
+    create_folders(mail.server, login, "Projects", "Archive")
+    mail.seed(login, mime("fine"))
+    mail.seed(login, mime("gone soon"), folder="Projects")
+    inbox, projects = inbox_ref(mcp, token), inbox_ref(mcp, token, "Projects")
+    # Another client moves the Projects message away first.
+    mcp.text(token, "messages_move", refs=[projects], folder="Archive")
+    batch = mcp.text(token, "messages_move", refs=[inbox, projects], folder="Archive")
+    assert "work/INBOX: moved 1 to Archive." in batch
+    assert "work/Projects: No such message or part. 1 of these messages are no longer in" in batch
+    # A lone failing group: its error is the tool error, enveloped (it names a folder).
+    lone = mcp.error(token, "messages_move", refs=[projects], folder="Archive")
+    assert ENVELOPE.search(lone)
+    assert "no longer in Projects" in lone
+    # Several groups, every one failed: the tool error is the per-folder text, enveloped.
+    mail.seed(login, mime("spam"), folder="Junk")
+    both = [inbox_ref(mcp, token, "Archive"), inbox_ref(mcp, token, "Junk")]
+    error = mcp.error(token, "messages_move", refs=both, folder="Nowhere")
+    assert ENVELOPE.search(error)
+    assert "work/Archive:" in error
+    assert "work/Junk:" in error
+    assert len(stored(mail, login, "Archive")) == 2
+
+
+def test_drafts_and_sent_are_not_destinations(mcp: Mcp, token: str, mail: MailAccounts) -> None:
+    login = mail.add()
+    mail.seed(login, mime("please send me"))
+    ref = inbox_ref(mcp, token)
+    for folder in ("Drafts", "Sent"):
+        error = mcp.error(token, "messages_move", refs=[ref], folder=folder)
+        assert "cannot be moved into Drafts or Sent" in error
+    assert len(stored(mail, login, "INBOX")) == 1
+
+
+def test_moving_into_and_out_of_junk_says_what_the_filter_learns(
+    mcp: Mcp, token: str, mail: MailAccounts
+) -> None:
+    login = mail.add()
+    mail.seed(login, mime("win a prize"))
+    moved = mcp.text(token, "messages_move", refs=[inbox_ref(mcp, token)], folder="Junk")
+    assert "The spam filter learns them as spam." in moved
+    back = mcp.text(token, "messages_move", refs=[inbox_ref(mcp, token, "Junk")], folder="inbox")
+    assert "moved 1 to INBOX. " in back
+    assert "The spam filter learns them as not spam." in back
+    # Junk to Trash trains nothing.
+    mail.seed(login, mime("more spam"), folder="Junk")
+    binned = mcp.text(token, "messages_move", refs=[inbox_ref(mcp, token, "Junk")], folder="Trash")
+    assert "spam filter" not in binned
+
+
+def test_trash_never_deletes_and_refuses_what_is_already_in_trash(
+    mcp: Mcp, token: str, mail: MailAccounts
+) -> None:
+    login = mail.add()
+    mail.seed(login, mime("keep me"), flags=("\\Deleted",))
+    mail.seed(login, mime("bin me"))
+    bin_ref = inbox_ref(mcp, token)  # newest first
+    trashed = mcp.text(token, "messages_trash", refs=[bin_ref])
+    assert re.search(r"work/INBOX: moved 1 to Trash\.", trashed)
+    # Another client's \Deleted message is still there: no EXPUNGE reached it.
+    assert stored(mail, login, "INBOX") == [("keep me", ("\\Deleted",))]
+    assert [subject for subject, _ in stored(mail, login, "Trash")] == ["bin me"]
+    error = mcp.error(token, "messages_trash", refs=[inbox_ref(mcp, token, "Trash")])
+    assert "never deletes permanently" in error
+
+
+def test_flag_marks_read_unread_and_flagged_idempotently(
+    mcp: Mcp, token: str, mail: MailAccounts
+) -> None:
+    login = mail.add()
+    mail.seed(login, mime("flag me"))
+    ref = inbox_ref(mcp, token)
+    read = mcp.text(token, "messages_flag", refs=[ref], seen=True, flagged=True)
+    assert f"{ref} read, flagged" in read
+    assert stored(mail, login, "INBOX")[0][1] == ("\\Flagged", "\\Seen")
+    again = mcp.text(token, "messages_flag", refs=[ref], seen=True, flagged=True)
+    assert f"{ref} read, flagged" in again
+    assert f"{ref} unread, flagged" in mcp.text(token, "messages_flag", refs=[ref], seen=False)
+    assert stored(mail, login, "INBOX")[0][1] == ("\\Flagged",)
+    assert "Give `seen`, `flagged` or both." in mcp.error(token, "messages_flag", refs=[ref])
+
+
+def test_organize_calls_log_keys_only(
+    mcp: Mcp, token: str, mail: MailAccounts, caplog: pytest.LogCaptureFixture
+) -> None:
+    login = mail.add()
+    create_folders(mail.server, login, "Secret folder")
+    mail.seed(login, mime("Secret subject"), flags=())
+    ref = inbox_ref(mcp, token)
+    caplog.set_level(logging.DEBUG)
+    mcp.text(token, "messages_move", refs=[ref], folder="Secret folder")
+    called = [
+        r
+        for r in caplog.records
+        if getattr(r, "event", None) == "mcp_tool_called" and r.__dict__["tool"] == "messages_move"
+    ]
+    assert [sorted(r.__dict__["argument_keys"]) for r in called] == [["folder", "refs"]]
+    ours = str([r.__dict__ for r in caplog.records if r.name.startswith("mailroom")])
+    for secret in ("Secret subject", "Secret folder", ref):
+        assert secret not in ours

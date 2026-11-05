@@ -38,7 +38,7 @@ GROUPS: Final[tuple[ToolGroup, ...]] = (
     ToolGroup("filters_write", "stable", "create and edit disabled rule sets and their filters"),
     ToolGroup("filters_run", "stable", "dry runs, enabling rule sets, Run now, Run filters"),
     ToolGroup("mail_read", "stable", "list, search and read mail"),
-    ToolGroup("mail_organize", "planned", "move, trash and flag mail"),
+    ToolGroup("mail_organize", "stable", "move, trash and flag mail"),
     ToolGroup("mail_draft", "planned", "write drafts"),
     ToolGroup("mail_send", "planned", "send mail"),
 )
@@ -67,6 +67,11 @@ def selected_groups(raw: str | None) -> tuple[ToolGroup, ...]:
             wanted.add(name)
     if not wanted:
         logger.warning("%s selects no tool group: the MCP server has no tools", TOOL_GROUPS_ENV)
+    if "mail_organize" in wanted and "mail_read" not in wanted:
+        logger.warning(
+            "%s selects mail_organize without mail_read: no served tool gives the refs it takes",
+            TOOL_GROUPS_ENV,
+        )
     return tuple(group for group in GROUPS if group.name in wanted)
 
 

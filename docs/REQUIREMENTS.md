@@ -53,18 +53,18 @@ through the Vite proxy. Engineering baseline:
 
 ## Mail client
 
-**Maturity: Partial** — slice A (tier 1, read: REST, web and the `mail_read` MCP tools), as
-specified in [`requirements/mail-client.md`](requirements/mail-client.md), is in; the rest is
-planned; of slice B (organize: move, archive, trash, flag, multi-select, shortcuts), the REST
-routes and the web triage are in and the `mail_organize` MCP tools are arriving (gaps: the index
-and live updates, compose). Target is
+**Maturity: Partial** — slice A (tier 1, read: REST, web and the `mail_read` MCP tools) and
+slice B (tier 2 triage: move, archive, trash, flag, multi-select, shortcuts; REST, web and the
+`mail_organize` MCP tools), as specified in
+[`requirements/mail-client.md`](requirements/mail-client.md), are in; the rest is planned (gaps:
+the index and live updates, compose). Target is
 **between tier 2 and tier 3**: tiers 1 and 2 in full, on top of
 the index and live updates; tier 3 items arrive one at a time.
 
 | Tier | Scope |
 | --- | --- |
 | **1 — Read** | Accounts and folders with unread counts; message list (threaded or flat) with paging; read a message: headers, text and **sandboxed HTML** body, attachments (download), remote content blocked with a per-message reveal. Search. |
-| **2 — Triage and compose** | *Triage (slice B: REST and web in, MCP tools arriving):* flag/unflag, read/unread, move, archive, trash (never expunge), multi-select, keyboard shortcuts for triage. *Compose (slice C, planned):* compose new, reply, reply-all, forward, with identity (`From`) choice, attachments and drafts saved to the server's `\Drafts`. Sending obeys the account's **send mode** (mailroom-core's send gate). |
+| **2 — Triage and compose** | *Triage (slice B, in):* flag/unflag, read/unread, move, archive, trash (never expunge), multi-select, keyboard shortcuts for triage. *Compose (slice C, planned):* compose new, reply, reply-all, forward, with identity (`From`) choice, attachments and drafts saved to the server's `\Drafts`. Sending obeys the account's **send mode** (mailroom-core's send gate). |
 | **2+ — Index and live updates** | A **local index** of every account and folder (metadata plus rendered text) for fast cross-account search and lists; kept fresh by the worker over **IMAP IDLE** (and periodic resync), pushed to the browser (SSE or WebSocket). |
 | **3 — Later** | Rich-text compose, signatures, snooze and send-later, contacts and autocomplete from history, calendar invites, offline reading, PGP/S/MIME, unified inbox views, saved searches. |
 
@@ -95,13 +95,13 @@ the index and live updates; tier 3 items arrive one at a time.
 ## MCP server
 
 **Maturity: Partial** — as specified in [`requirements/mcp.md`](requirements/mcp.md): `/mcp`,
-the `filters_*` and `mail_read` tools, the built-in authorization server with its `/connect`
-consent screen, connected apps on the profile and external issuer mode are in.
+the `filters_*`, `mail_read` and `mail_organize` tools, the built-in authorization server with
+its `/connect` consent screen, connected apps on the profile and external issuer mode are in.
 
 - The app's own MCP server at `/mcp`, for each user's own data: accounts, folders, rule sets,
   dry runs and runs, in [tool groups](GLOSSARY.md) chosen by instance config. Mail tools come
   group by group ([`requirements/mcp.md`](requirements/mcp.md)), `mail_read` with the first
-  slice of the [mail client](requirements/mail-client.md).
+  slice of the [mail client](requirements/mail-client.md) and `mail_organize` with the second.
 - **Nothing turns on without the user's say:** a rule set created over MCP starts disabled, an
   enabled one cannot be edited, and enabling, *Run now* and the *Run filters* switch are separate
   tools marked destructive, so the client asks first.

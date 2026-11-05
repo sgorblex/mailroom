@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import time
@@ -43,7 +44,13 @@ def test_the_settings_come_from_the_environment(monkeypatch: pytest.MonkeyPatch)
         "https://mail.example.org/mcp",
         "https://mail.example.org/oauth",
     )
-    assert names(settings.groups) == ["filters_read", "filters_write", "filters_run", "mail_read"]
+    assert names(settings.groups) == [
+        "filters_read",
+        "filters_write",
+        "filters_run",
+        "mail_read",
+        "mail_organize",
+    ]
 
     monkeypatch.setenv("MAILROOM_MCP_AUTH", "off")
     assert mcp_settings_from_env(public_url) is None
@@ -100,10 +107,32 @@ def test_the_instructions_follow_the_groups() -> None:
     assert "rule_set_enable" in instructions(selected_groups(None))
     # The opening says what the served groups do, and nothing else.
     assert "It also reads the user's mail" not in read_only
-    assert "It also reads the user's mail" in instructions(selected_groups(None))
+    assert "It also reads the user's mail." in instructions(
+        selected_groups("filters_read,mail_read")
+    )
+    assert "It also reads and organizes the user's mail" in instructions(selected_groups(None))
     mail_only = instructions(selected_groups("mail_read"))
     assert mail_only.startswith("mailroom-app reads the user's mail")
     assert "filters" not in mail_only.split(".")[0]
+    assert "messages_move" not in mail_only
+
+
+def test_organizing_without_reading_names_no_missing_ref_source(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Neither the instructions nor a served input schema send the model to a tool that would
+    give refs but is not served."""
+    caplog.set_level(logging.WARNING)
+    selected = selected_groups("mail_organize")
+    organize_only = instructions(selected)
+    assert "mail_organize without mail_read" in caplog.text
+    assert organize_only.startswith("mailroom-app organizes the user's mail")
+    assert "messages_move" in organize_only
+    schemas = json.dumps([tool.definition().inputSchema for tool in tools_for(selected)])
+    assert "Message refs" in schemas
+    for missing in ("messages_list", "messages_search", "thread_read"):
+        assert missing not in organize_only
+        assert missing not in schemas
 
 
 def test_the_envelope_closes_only_with_its_nonce() -> None:

@@ -94,7 +94,7 @@ ACCOUNT_TOOLS: Final[tuple[Tool[Any], ...]] = (
             "Call this first."
         ),
         group="filters_read",
-        also_in=("mail_read",),
+        also_in=("mail_read", "mail_organize"),
         arguments=NoArguments,
         hints=READ,
         run=_accounts_list,
@@ -111,7 +111,7 @@ ACCOUNT_TOOLS: Final[tuple[Tool[Any], ...]] = (
             "mail server."
         ),
         group="filters_read",
-        also_in=("mail_read",),
+        also_in=("mail_read", "mail_organize"),
         arguments=FoldersArguments,
         hints=MAILBOX_READ,
         run=_folders_list,

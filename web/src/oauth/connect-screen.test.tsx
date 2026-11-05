@@ -74,14 +74,16 @@ describe('ConnectScreen', () => {
     expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
   })
 
-  it('says what approving gives, reading mail and attachments included', async () => {
+  it('says what approving gives, reading and organizing mail included', async () => {
     stubApi()
     renderSignedIn(<ConnectScreen requestId="req-1" leave={vi.fn()} />, ALICE)
     expect(
       await screen.findByText(/your mail accounts, their folders and your filters/),
-    ).toHaveTextContent('reading your messages and their attachments')
+    ).toHaveTextContent(
+      'reading your messages and their attachments, and organizing them (moving, trashing, flagging)',
+    )
     // Italian says as much.
-    expect(itCommon.connect.access).toMatch(/messaggi.*allegati/)
+    expect(itCommon.connect.access).toMatch(/messaggi.*allegati.*organizzazione \(spostamento, cestino, contrassegni\)/)
   })
 
   it('denies, going back with the refusal', async () => {

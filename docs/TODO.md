@@ -33,7 +33,10 @@ Mailroom is built on standalone projects, each with its own repository and check
   - [x] **MCP** — the `mail_read` group.
 - [ ] **Index and live updates** — schema, initial sync, IDLE-driven refresh, push to the browser;
       lists and search move to the index.
-- [ ] **Tier 2** — triage actions and compose (reply, forward, drafts, attachments) through
+- [x] **Tier 2 triage** (slice B, [`requirements/mail-client.md`](requirements/mail-client.md)) —
+      move, archive, trash and flag over REST, the web triage (multi-select, toolbar, shortcuts,
+      mark read on open) and the `mail_organize` MCP group.
+- [ ] **Tier 2 compose** — compose, reply, forward, drafts and attachments through
       mailroom-core's send gate.
 
 ## MCP and suggestions
@@ -46,11 +49,12 @@ Mailroom is built on standalone projects, each with its own repository and check
   - [x] **Built-in OAuth server** — DCR, CIMD, tokens, the `/connect` consent screen.
   - [x] **External issuer** — JWTs from Authentik or Keycloak, mapped through linked sign-ins.
   - [x] **Connected apps** — list and revoke grants on the profile.
-  - [ ] **Mail tool groups** — each with its client slice: `mail_organize`, `mail_draft` and
-        `mail_send` (`mail_read` is on).
+  - [ ] **Mail tool groups** — each with its client slice: `mail_draft` and `mail_send`
+        (`mail_read` and `mail_organize` are on).
   - [ ] **Consent per tool group** — record the tool groups each grant was approved for, and ask
         for fresh consent when a grant's client calls a group added after it (a grant approved
-        before `mail_read` reads mail without asking again); before other users join.
+        before `mail_read` or `mail_organize` reads and moves mail without asking again); before
+        other users join.
 - [ ] **Suggestions** — learn from manual moves, propose filters with evidence and dry run.
 - [ ] **Organize audit trail** — keep mailroom-core's audit item per moved, trashed or flagged
       message (REST and MCP), per user, where the user can review it; the app logs counts and

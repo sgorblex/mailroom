@@ -97,7 +97,8 @@ Specification: [`mcp.md`](mcp.md). Code: `mailroom.mcp`.
   most 10 at a time, so a slow mailbox stalls neither the API nor the REST routes' threads.
 - **Per-user cap:** a user has at most 2 tool calls running at once in an API process; one more
   is refused at once with a busy tool error, so one user cannot hold every tool thread. Mailbox
-  work has a wall-clock deadline: `dry_run` 30 s, `folders_list` and the `mail_read` tools 30 s
+  work has a wall-clock deadline: `dry_run` 30 s, `folders_list`, the `mail_read` and
+  `mail_organize` tools 30 s
   (the mail pool's: the account's connections in use are cut, a `timeout` refusal; *Mail
   client* below).
 - **Logs:** one `mcp_tool_called` per call, with `tool`, `user_id`, `client_id`, `grant_id`,

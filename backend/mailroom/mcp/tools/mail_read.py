@@ -62,13 +62,10 @@ Cursor = Annotated[
         description="`next_cursor` from the previous page, to continue.",
     ),
 ]
+RefText = Annotated[str, Field(min_length=1, max_length=service.MAX_REF_LENGTH)]
+"""A message ref as every mail tool takes one (``mail_organize`` too)."""
 Ref = Annotated[
-    str,
-    Field(
-        min_length=1,
-        max_length=4096,
-        description="Message ref from messages_list, messages_search or thread_read.",
-    ),
+    RefText, Field(description="Message ref from messages_list, messages_search or thread_read.")
 ]
 Criterion = Annotated[str, Field(min_length=1, max_length=service.MAX_TERM)]
 FolderPath = Annotated[str, Field(min_length=1, max_length=service.MAX_FOLDER)]

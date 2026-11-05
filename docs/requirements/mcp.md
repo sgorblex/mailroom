@@ -5,7 +5,7 @@ Mailroom's own MCP server, `mailroom-app`, at `/mcp` in the API process, with it
 SSO. It exposes what a model needs to work on a user's filters: accounts, folders, rule sets,
 dry runs and runs, and, group by group, the mail tools: each mail group turns on (status
 `stable`) once the client does what it does; `mail_read` is the first, with slice A of the
-[mail client](mail-client.md). Standalone mailroom-mcp keeps serving the rest meanwhile
+[mail client](mail-client.md), then `mail_organize`, with slice B. Standalone mailroom-mcp keeps serving the rest meanwhile
 ([`../CONTEXT.md`](../CONTEXT.md)). Product scope:
 [`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *MCP server*.
 
@@ -27,14 +27,27 @@ rule set's folder and a `move_to` action take) and `role`; with `counts=true` it
 total (`null` when the server would not say). An account that is not the user's is the same
 refusal ("No such account.") from every tool.
 
+The `mail_organize` tools take 1 to 50 refs (any folders, any of the user's accounts) and are
+the REST organize routes ([`mail-client.md`](mail-client.md)) over the same service functions:
+every ref is checked before anything is written, then each source folder is a group that
+succeeds or fails alone. The answer is mailroom-core's text, one line per group, inside the
+envelope (folder names come from the server). When every group fails, the tool error is
+mailroom-core's text inside the envelope too: a lone group's error message, or the per-folder
+text when there were several; when only some fail, the answer names each. The refs argument says
+only "up to 50, any folders": the server instructions name the tools that give refs when
+`mail_read` is served. Nothing is ever deleted permanently;
+`messages_trash` is a move to Trash. There is no archive tool: `messages_move` to the account's
+archive folder does it.
+
 Tools are registered in [tool groups](../GLOSSARY.md). `MAILROOM_MCP_TOOL_GROUPS` chooses which
 groups are registered: by default the `stable` ones; a `preview` group only when named; a
-`planned` group never (an unknown or `planned` name is skipped with a warning in the log). Which
-tools a client gets is instance config, not OAuth scope.
+`planned` group never (an unknown or `planned` name is skipped with a warning in the log).
+`mail_organize` without `mail_read` is served with a warning too: no served tool then gives the
+refs it takes. Which tools a client gets is instance config, not OAuth scope.
 
 | Group (status, default) | Tool | Annotations |
 | --- | --- | --- |
-| `filters_read` or `mail_read` (whichever is on) | `accounts_list` (id, login, `has_password`, `run_filters`, `send_mode`) | readOnly, idempotent |
+| `filters_read`, `mail_read` or `mail_organize` (whichever is on) | `accounts_list` (id, login, `has_password`, `run_filters`, `send_mode`) | readOnly, idempotent |
 | | `folders_list` (`path` as the mail tools take it, `delimiter`, `segments`, `role`; `counts=true` adds unread and total) | readOnly, idempotent, openWorld |
 | `filters_read` (stable, on) | `filter_schema`, `rule_sets_list`, `rule_set_get` (with its filters), `runs_list` | readOnly, idempotent |
 | `filters_write` (stable, on) | `rule_set_create`, `rule_set_update`, `filter_add`, `filter_update`, `filters_reorder` | none |
@@ -43,9 +56,14 @@ tools a client gets is instance config, not OAuth scope.
 | `filters_run` (stable, on) | `dry_run` | readOnly, openWorld |
 | | `rule_set_enable`, `run_now`, `account_run_filters(account_id, on)` | destructive |
 | `mail_read` (stable, on) | `messages_list`, `messages_search`, `message_read`, `thread_read`, `attachment_read` | readOnly, idempotent, openWorld |
-| `mail_organize`, `mail_draft`, `mail_send` | placeholders | planned, off |
+| `mail_organize` (stable, on) | `messages_move(refs, folder)`, `messages_flag(refs, seen?, flagged?)` | openWorld (flag also idempotent) |
+| | `messages_trash(refs)` | destructive, openWorld |
+| `mail_draft`, `mail_send` | placeholders | planned, off |
 
-A destructive hint makes clients such as claude.ai ask the user before each call.
+A destructive hint makes clients such as claude.ai ask the user before each call. Of the
+organize tools only `messages_trash` has it. `messages_move` can move into Trash too (any folder
+but Drafts and Sent) and has no destructive hint, by choice: the hint marks the tool whose
+purpose is trashing, not every move that may end there.
 
 ### Safety rules
 
@@ -64,8 +82,9 @@ A destructive hint makes clients such as claude.ai ask the user before each call
 
 - **Inputs** are strict (unknown fields refused, no type coercion) with the REST API's bounds; a
   filter `spec` is checked as the API checks it.
-- **Errors:** a refusal returns a tool error with its fixed message; anything unexpected returns
-  "Internal error", the details only in the log.
+- **Errors:** a refusal returns a tool error with its message (enveloped when it can name a
+  server's folder, as the organize tools' do); anything unexpected returns "Internal error", the
+  details only in the log.
 - **Mail is untrusted.** Strings that come from mail (a run's `from` and `subject`) are wrapped in
   an `<untrusted_email nonce="…">` envelope whose closing tag carries a random nonce. The tag
   name inside is rewritten, also when it only shows after NFKC folding (fullwidth letters,
@@ -122,8 +141,9 @@ interface, not on the app's routes), so it can move to a shared package later.
 - **Consent** is a web app screen. `/oauth/authorize` stores the request (10 minutes) and
   redirects to `/connect?request=<id>`; the screen signs the user in if needed (password or SSO)
   and shows the client and what it gets (accounts, folders, filters and, where offered, reading
-  messages and attachments), to approve or deny. A grant is not tied to the tool groups served
-  when it was approved: one approved before `mail_read` was on reads mail without asking again
+  messages and their attachments and organizing them: moving, trashing, flagging), to approve or
+  deny. A grant is not tied to the tool groups served
+  when it was approved: one approved before `mail_read` or `mail_organize` was on reads and moves mail without asking again
   ([`../TODO.md`](../TODO.md)). (The session cookie is `SameSite=Strict`, so it does not arrive
   on the cross-site navigation from the client; the screen's same-origin requests do carry it.)
   The screen names the client as it calls itself (and, for a metadata document, the host serving
@@ -228,7 +248,7 @@ workers; expired rows are swept on writes.
 | --- | --- |
 | `MAILROOM_PUBLIC_URL` | The instance's public origin. Required for SSO and the MCP server; unset, both are off. |
 | `MAILROOM_MCP_AUTH` | `builtin` (default), `external` or `off`. |
-| `MAILROOM_MCP_TOOL_GROUPS` | Registered tool groups; default `filters_read,filters_write,filters_run,mail_read`. |
+| `MAILROOM_MCP_TOOL_GROUPS` | Registered tool groups; default `filters_read,filters_write,filters_run,mail_read,mail_organize`. |
 | `MAILROOM_OAUTH_EXTRA_REDIRECT_URIS` | Redirect URIs allowed beyond the built-in list. |
 | `MAILROOM_OAUTH_CIMD_HOSTS` | Hosts whose client ID metadata documents are fetched; default `claude.ai,claude.com`. |
 | `MAILROOM_OIDC_ISSUER`, `MAILROOM_OIDC_CLIENT_ID`, `MAILROOM_OIDC_CLIENT_SECRET` | Web SSO's provider and confidential client; SSO is off without them. |
