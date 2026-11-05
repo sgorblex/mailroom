@@ -1,8 +1,9 @@
 # Mail client
 
 The web mail client, built in slices. **Slice A (read)** is specified here and never changes the
-mailbox: not even `\Seen` is set by opening a message. Triage and compose (slices B and C) extend
-this file when they start. Product scope: [`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Mail
+mailbox: not even `\Seen` is set by opening a message through the API or MCP. **Slice B
+(organize)** changes flags and folders, and never deletes. Compose (slice C) extends this file when
+it starts. Product scope: [`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Mail
 client*. Rendering and IMAP come from **mailroom-core** 0.1.1 (`render` and `mail`, connections in
 `mail.imap`), over IMAP directly: no index and no live updates yet.
 
@@ -25,11 +26,171 @@ allow-popups-to-escape-sandbox"`, never `allow-scripts` or `allow-same-origin`. 
 top-level with `noopener noreferrer`. Security:
 [`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *HTML mail*.
 
+## Slice B: organize
+
+Slice B lets the user change a message's flags and folder from the web client and the MCP tools.
+Behaviour is mailroom-core's `mail.organize` (`move_messages`, `archive_messages`,
+`trash_messages`, `set_flags`), itself the behaviour of mailroom-mcp's `organize` tools.
+
+### Actions
+
+- **Move** to a folder of the message's account, by path.
+- **Archive:** move to the account's folder with role `archive`. The web toolbar hides the action
+  for an account without one.
+- **Trash:** move to the account's folder with role `trash`. This is never a permanent delete:
+  mailroom does not delete mail.
+- **Flag:** set or clear `\Seen` (read/unread) and `\Flagged` (star/unstar); `seen`, `flagged` or
+  both. Only these two flags can be changed. The answer reads them back per message.
+
+A **batch** is 1 to 50 refs, from any folders and accounts of the user (not 0, not 51: 422 on the
+REST routes, `invalid_argument` from mailroom-core). Every ref is parsed and its account checked
+**before any write**: a malformed ref (400 `invalid_argument`), one of an account that is not the
+user's (404 `not_found`, as a missing message) or one of an account that cannot log in
+(`password_missing` 409, `secrets_key_missing` 503) fails the whole call and nothing is written.
+The refs are then grouped by account and folder, and each group is one SELECT (read-write) and one
+operation.
+
+### Partial results
+
+Groups succeed or fail independently, and a write is never retried. A group is all-or-nothing,
+except a move on a server without `MOVE` whose removal fails after the copy: the group fails with
+its `new_refs` and "do not repeat the move", and the messages may be in both folders.
+The answer has one **result per group**: `account`, `folder` (the source folder), `ok`, `count`
+(messages changed), and:
+
+- `new_refs`: the refs in the destination, when the server reports where the messages landed
+  (COPYUID); `null` when it did not (the client then searches the destination), empty for flags.
+- `junk`: `"spam"` or `"ham"` when the move trained the account's Junk (below), else `null`.
+- `flags`: for the flag route, each message's `seen` and `flagged` read back (`null` when the read
+  failed; the change stands).
+- `error`: `{code, message}` of the group's failure, else `null`.
+
+The call answers `200` when at least one group succeeded, with the failures in the list. When
+**no** group succeeded, it answers the refusal of the first failure: its code's status from the
+[errors table](#errors) and mailroom-core's message ([Refusals](#refusals) below). The web client
+shows each failed group with the mail error wording and updates the rows of the others.
+
+### Refusals
+
+| Case | Code |
+| --- | --- |
+| A ref names a folder whose UIDVALIDITY changed | `stale_reference` (409) |
+| Some messages of a group are gone from the folder | `not_found` (404) for the whole group: "N of these messages are no longer in <folder>; search again." |
+| Destination folder missing or `\Noselect` | `mailbox_missing` (404) |
+| Destination is the folder the messages are in | `invalid_argument`: "They are already in that folder." |
+| Destination is Drafts or Sent (moving there would make a draft or sent copy of a message that is neither) | `invalid_argument` |
+| Trash, and the messages are already in Trash | `invalid_argument`: "They are already in Trash; mailroom never deletes permanently." |
+| Trash, and the account has no Trash folder | `unsupported` |
+| Archive, and the account has no Archive folder | `unsupported`: "<account> has no Archive folder." |
+| Neither `seen` nor `flagged` given | `invalid_argument`: "Give `seen`, `flagged` or both." |
+| The server has neither MOVE nor UIDPLUS | `unsupported` |
+| A move without MOVE copied the messages but could not remove them from the source | The connection's failure code (`server_error` for a refusal, as something was written), with `new_refs`: "They were copied to the destination but may not have been removed from this folder: do not repeat the move. New refs: …" |
+
+INBOX is matched case-insensitively, as everywhere.
+
+### Never expunge
+
+Mailroom never deletes mail and expunges nothing it did not move. With the `MOVE` extension a move
+is one command. Without it but with `UIDPLUS`, it is `UID COPY`, `UID STORE +FLAGS \Deleted` and
+`UID EXPUNGE` of **exactly those UIDs**. A server with neither is refused (`unsupported`) rather
+than risk a plain `EXPUNGE` that would remove other messages already marked `\Deleted`.
+
+### Junk training
+
+A move into the account's Junk folder is a `spam` training signal and a move out of it a `ham`
+one, as in mailroom-mcp: the group result's `junk` says which, and the tool text tells the agent
+the message can be trained. Nothing learns from it on its own ("learning never acts",
+[`../../AGENTS.md`](../../AGENTS.md)).
+
+### Mark read on open
+
+Opening a message in the web client marks it read: once the message view has loaded with
+`flags.seen` false, the client calls the flag route with `seen: true`; the row and the folder's
+unread count update without a reload. This is **a web choice only**. `GET /messages/{ref}` and the
+MCP `message_read` still never set `\Seen`.
+
+### Web client
+
+- **Multi-select:** a checkbox per row, and a select-all for the loaded page.
+- **Toolbar** acting on the selection, or on the open message when nothing is selected: Archive
+  (hidden when the account has no archive-role folder), Trash, Move to… (a picker over the
+  account's folders, Drafts, Sent and the folder the messages are in left out), Star/Unstar, Mark
+  read/unread.
+- Results update the list in place: moved or trashed rows disappear, flags change on the row, and
+  failed groups are shown with the mail error wording.
+- A selection over 50 refs is sent 50 at a time; a refused batch is shown as failed groups and the
+  rest are still sent; only when every batch is refused is the outcome worded as that refusal.
+- **Keyboard shortcuts** on `/mail`:
+
+| Key | Action |
+| --- | --- |
+| `j` / `k` | Next / previous message |
+| `x` | Toggle selection of the current message |
+| `e` | Archive |
+| `#` | Trash |
+| `s` | Star or unstar |
+| `u` | Mark unread |
+| `v` | Open the move picker |
+| `Escape` | Close the picker, else clear the selection |
+
+  Shortcuts are ignored while focus is in a text field (an input that takes text, a textarea, a
+  select or a contenteditable element), with Ctrl or Meta held (AltGr aside), and with Alt on a
+  letter key: a `#` typed with AltGr or Option, as on an Italian keyboard, still trashes. A held
+  key repeats only `j` / `k`. They do not reach the page while focus is inside the HTML view's
+  frame. Every control has an accessible label; strings are in the `mail` namespace in English
+  and Italian.
+
+### REST routes
+
+JSON bodies (unknown fields are 422), CSRF as for every state-changing route.
+
+| Route | Body |
+| --- | --- |
+| `POST /messages/move` | `{"refs": ["…"], "folder": "Archive/2025"}` |
+| `POST /messages/archive` | `{"refs": ["…"]}` |
+| `POST /messages/trash` | `{"refs": ["…"]}` |
+| `POST /messages/flag` | `{"refs": ["…"], "seen": true, "flagged": false}` (`seen`, `flagged` optional, at least one) |
+
+`refs` holds 1 to 50 strings of at most 4096 characters. Answer, `200`:
+
+```jsonc
+{
+  "results": [
+    {
+      "account": "work",
+      "folder": "INBOX",
+      "ok": true,
+      "count": 2,
+      "new_refs": ["WzEsIndvcmsiLC…"],      // null when the server gave no COPYUID; [] for flags
+      "junk": null,                         // "spam" | "ham" | null
+      "flags": [],                          // flag route: [{ "ref", "seen", "flagged" }]
+      "error": null                         // or { "code": "not_found", "message": "…" }
+    }
+  ]
+}
+```
+
+Refs in `flags` and `new_refs` are the client's to store; the source refs of a moved message are
+stale afterwards. Errors: 400, 404, 409, 422, 429, 502, 504, and the answers cannot be cached
+(`Cache-Control: private, no-store`).
+
+### MCP
+
+The tools `messages_move`, `messages_trash` and `messages_flag` (group `mail_organize`,
+[`mcp.md`](mcp.md)) take the same refs (up to 50, any folders) and return mailroom-core's text
+inside the untrusted envelope. When every group fails, the tool error is mailroom-core's text
+inside the envelope too: a lone group's error message, or the per-folder text when there were
+several. mailroom-core returns an audit item per message
+(account, folder, UID, `Message-ID`, sender address, a SHA-256 of the subject, destination, junk,
+result); the app does not keep them yet ([`../TODO.md`](../TODO.md)) and logs counts and codes
+only, never these fields.
+
 ## REST contract
 
 Every route is under `/api/v1/mail`, needs a [user session](../GLOSSARY.md), and sees only the
-signed-in user's accounts. All are `GET` but search, a `POST` with a JSON body so that search
-terms (addresses, subjects, words of a body) are never in an API URL. The SPA does keep a search
+signed-in user's accounts. Reads are `GET` but search, a `POST` with a JSON body so that search
+terms (addresses, subjects, words of a body) are never in an API URL; the four organize routes
+(slice B) are `POST` too. The SPA does keep a search
 in its own URL (`?q=`), so the access logs in front of it, the web image's nginx and the host's
 proxy, must log paths without their query string ([`../deploy.md`](../deploy.md)). Mail-derived strings (subject, names,
 previews, body) are raw text, never HTML: the client escapes them. Control and invisible
@@ -279,7 +440,5 @@ collapsed quote as a marker line that says how to read it. There is no REST rout
 
 ## Later slices
 
-- **B (organize):** flag, mark read, move, archive, trash with ref batches; mark-read on open is a
-  web choice.
 - **C (drafts and send):** compose, reply, forward, drafts, send through the send gate.
 - Threaded list view, and the index with live updates ([`../REQUIREMENTS.md`](../REQUIREMENTS.md)).

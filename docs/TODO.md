@@ -52,6 +52,9 @@ Mailroom is built on standalone projects, each with its own repository and check
         for fresh consent when a grant's client calls a group added after it (a grant approved
         before `mail_read` reads mail without asking again); before other users join.
 - [ ] **Suggestions** — learn from manual moves, propose filters with evidence and dry run.
+- [ ] **Organize audit trail** — keep mailroom-core's audit item per moved, trashed or flagged
+      message (REST and MCP), per user, where the user can review it; the app logs counts and
+      codes only today ([`requirements/mail-client.md`](requirements/mail-client.md), *MCP*).
 
 ## Engineering and operations
 
