@@ -16,7 +16,9 @@ the wait at both together, beyond which the call is ``busy``. So one user's slow
 user's burst, holds neither the shared threads nor more than a few request threads, though many
 users at once can still fill the process's gate. A gate is let go when the work ends, not when
 its caller stops waiting. At the deadline the caller gets ``DeadlineExceeded`` and the account's
-connections in use are cut (``MailConnections.interrupt``), which ends the work at once.
+connections in use are cut (``MailConnections.interrupt``), which ends the work at once; a
+caller's ``on_deadline`` runs first, so work that would go on to open another mailbox can refuse
+to.
 """
 
 from __future__ import annotations
@@ -172,10 +174,13 @@ class MailPool:
         user_id: int,
         accounts: Sequence[str],
         work: Callable[[], T],
+        *,
+        on_deadline: Callable[[], None] | None = None,
     ) -> T:
         """``work`` on ``accounts`` of the user, on the pool's threads once the gates let it
         through (``MailError("busy")`` otherwise); ``DeadlineExceeded`` after
-        ``deadline_seconds``, the accounts' connections in use then cut."""
+        ``deadline_seconds``, ``on_deadline`` then called and the accounts' connections in use
+        cut."""
         keys: list[tuple[int, str | None, int]] = [(user_id, None, USER_CALLS)]
         if len(accounts) == 1:
             keys.append((user_id, accounts[0], CONNECTIONS_PER_ACCOUNT))
@@ -196,6 +201,8 @@ class MailPool:
         try:
             return future.result(timeout=self.deadline_seconds)
         except FutureTimeout:
+            if on_deadline is not None:
+                on_deadline()
             if not future.cancel():
                 for account_id in accounts:
                     connections.interrupt(account_id)

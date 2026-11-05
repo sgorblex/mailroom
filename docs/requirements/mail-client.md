@@ -190,7 +190,8 @@ only, never these fields.
 Every route is under `/api/v1/mail`, needs a [user session](../GLOSSARY.md), and sees only the
 signed-in user's accounts. Reads are `GET` but search, a `POST` with a JSON body so that search
 terms (addresses, subjects, words of a body) are never in an API URL; the four organize routes
-(slice B) are `POST` too. The SPA does keep a search
+(slice B) are `POST` too. Every response, the `401` of a missing or expired session included,
+carries `Cache-Control: private, no-store`. The SPA does keep a search
 in its own URL (`?q=`), so the access logs in front of it, the web image's nginx and the host's
 proxy, must log paths without their query string ([`../deploy.md`](../deploy.md)). Mail-derived strings (subject, names,
 previews, body) are raw text, never HTML: the client escapes them. Control and invisible

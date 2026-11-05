@@ -1,13 +1,16 @@
-"""A user's mail as every front end reads it (the REST routes, the MCP tools): folders, pages of
-messages, one message, its HTML and its attachments, over mailroom-core. Nothing here changes a
-mailbox, not even ``\\Seen``.
+"""A user's mail as every front end reads and organizes it (the REST routes, the MCP tools):
+folders, pages of messages, one message, its HTML and its attachments, over mailroom-core; and
+moves, archiving, trashing and flag changes of batches of refs. Reading changes nothing, not even
+``\\Seen``; only the organize calls write, and nothing ever deletes or expunges mail beyond what a
+move takes away.
 
 Only the user's own accounts: an account id, or the account a ref names, that is not theirs is
 ``not_found`` exactly as one that does not exist. A mailbox failure is a ``Refusal`` of kind
 ``mail`` carrying mailroom-core's code and fixed message (never the server's words); a call still
 waiting on the server after ``MailPool.deadline_seconds`` is ``timeout``. Every function blocks:
 an async caller runs it in a worker thread. The log names the call, the account and the front end
-(``via``), never a subject, an address or a body.
+(``via``), never a subject, an address, a folder or a body; an organize call's adds only counts
+and codes.
 """
 
 from __future__ import annotations
@@ -40,6 +43,7 @@ if TYPE_CHECKING:
         MailErrorCode,
         MessageRef,
         MessageView,
+        OrganizeResult,
     )
     from mailroom_core.render import Marker
     from mailroom_core.render.safe_html import SafeHtml
@@ -58,6 +62,10 @@ MAX_TERM: Final = 500
 """The bounds every front end puts on what it takes (a folder path, a cursor, a search term)."""
 ALL_ACCOUNTS: Final = "*"
 ALL_FOLDERS: Final = core.ALL_FOLDERS
+MAX_REFS: Final = core.MAX_REFS
+"""The most refs one organize call takes."""
+MAX_REF_LENGTH: Final = 4096
+"""The longest ref a front end takes (a ref holds its folder's path)."""
 INLINE_IMAGE_BYTES: Final = 5 * 1024 * 1024
 """The ``cid:`` images inlined into one HTML view, in total; past it an image keeps only its
 alt text."""
@@ -138,6 +146,36 @@ def _message_ref(ctx: AppContext, user_id: int, accounts: _Accounts, ref: str) -
     return message
 
 
+def _run[T](
+    ctx: AppContext,
+    user_id: int,
+    accounts: _Accounts,
+    event: str,
+    used: Sequence[str],
+    work: Callable[[MailConnections], T],
+    *,
+    on_deadline: Callable[[], None] | None = None,
+) -> T:
+    """``work`` on the user's connections, on the accounts ``used``, under the pool's gates and
+    deadline (``on_deadline`` called when it passes); every failure a ``Refusal``."""
+    try:
+        with ctx.mail_pool.lease(ctx, user_id, accounts.revision) as connections:
+            return ctx.mail_pool.call(
+                connections, user_id, used, lambda: work(connections), on_deadline=on_deadline
+            )
+    except MailError as error:
+        raise mail_refusal(error.code, error.message) from None
+    except DeadlineExceeded:
+        raise mail_refusal("timeout", MESSAGES["timeout"]) from None
+    except PasswordMissing:
+        raise mail_refusal(PASSWORD_MISSING, _PASSWORD_MISSING_TEXT) from None
+    except Refusal:
+        raise
+    except Exception:
+        logger.exception("mail_call_failed", extra={"event": "mail_call_failed", "call": event})
+        raise Refusal("failed", "failed", _FAILED_TEXT) from None
+
+
 def _call[T](
     ctx: AppContext,
     user_id: int,
@@ -149,30 +187,16 @@ def _call[T](
     *,
     on: Sequence[str] | None = None,
 ) -> T:
-    """``work`` on the user's connections, under the pool's gates and deadline, logged.
-    ``on``: the accounts it uses, when not just ``account_id``."""
+    """``work`` as ``_run`` does it, logged. ``on``: the accounts it uses, when not just
+    ``account_id``."""
     started = time.monotonic()
     outcome = "ok"
     try:
-        with ctx.mail_pool.lease(ctx, user_id, accounts.revision) as connections:
-            used = [account_id] if on is None else list(on)
-            return ctx.mail_pool.call(connections, user_id, used, lambda: work(connections))
-    except MailError as error:
-        outcome = error.code
-        raise mail_refusal(error.code, error.message) from None
-    except DeadlineExceeded:
-        outcome = "timeout"
-        raise mail_refusal("timeout", MESSAGES["timeout"]) from None
-    except PasswordMissing:
-        outcome = PASSWORD_MISSING
-        raise mail_refusal(PASSWORD_MISSING, _PASSWORD_MISSING_TEXT) from None
+        used = [account_id] if on is None else list(on)
+        return _run(ctx, user_id, accounts, event, used, work)
     except Refusal as refusal:
         outcome = refusal.code
         raise
-    except Exception:
-        outcome = "failed"
-        logger.exception("mail_call_failed", extra={"event": "mail_call_failed", "call": event})
-        raise Refusal("failed", "failed", _FAILED_TEXT) from None
     finally:
         logger.info(
             event,
@@ -538,4 +562,183 @@ def message_html(
         lambda connections: core.html_view(
             connections, message, remote=remote, max_inline_bytes=INLINE_IMAGE_BYTES
         ),
+    )
+
+
+def _ref_accounts(
+    ctx: AppContext, user_id: int, accounts: _Accounts, refs: Sequence[str]
+) -> list[str]:
+    """The accounts ``refs`` name, in order, once every ref parses and names one of the user's
+    usable accounts: else the whole batch is refused, before anything is written."""
+    named: list[str] = []
+    for ref in refs:
+        try:
+            account_id = core.parse_ref(ref).account
+        except MailError as error:
+            raise mail_refusal(error.code, error.message) from None
+        if not accounts.has(account_id):
+            raise unknown_message()
+        if account_id not in named:
+            named.append(account_id)
+    for account_id in named:
+        _usable(ctx, user_id, accounts, account_id)
+    return named
+
+
+class _Stoppable:
+    """``connections`` for an organize call that refuse every mailbox and folder list
+    (``timeout``) once ``stop`` is set: the groups after the call's deadline are refused, not
+    written. A mailbox already selected is checked again before its group acts."""
+
+    def __init__(self, connections: MailConnections, stop: threading.Event) -> None:
+        self._connections = connections
+        self._stop = stop
+
+    def _check(self) -> None:
+        if self._stop.is_set():
+            raise MailError("timeout")
+
+    def with_mailbox[T](
+        self,
+        account_id: str,
+        path: str,
+        read_only: bool,
+        fn: Callable[[MailboxContext], T],
+    ) -> T:
+        self._check()
+
+        def checked(context: MailboxContext) -> T:
+            self._check()
+            return fn(context)
+
+        return self._connections.with_mailbox(account_id, path, read_only, checked)
+
+    def folders(self, account_id: str, *, with_status: bool = False) -> list[Folder]:
+        self._check()
+        return self._connections.folders(account_id, with_status=with_status)
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._connections, name)
+
+
+def _organize(
+    ctx: AppContext,
+    user_id: int,
+    event: str,
+    via: Via,
+    refs: Sequence[str],
+    work: Callable[[MailConnections], OrganizeResult],
+) -> OrganizeResult:
+    """``work`` on the batch ``refs`` once each ref is checked (``_ref_accounts``), logged with
+    its accounts, counts and failure codes only: never a folder, a ref or a message's data (the
+    result's audit items, which the app does not keep). A call cut at the deadline writes no group
+    after the cut (``_Stoppable``); the ones done before it stay done."""
+    accounts = _accounts(ctx, user_id)
+    used = _ref_accounts(ctx, user_id, accounts, refs)
+    started = time.monotonic()
+    result: OrganizeResult | None = None
+    outcome: str = "ok"
+    stop = threading.Event()
+    try:
+        result = _run(
+            ctx,
+            user_id,
+            accounts,
+            event,
+            used,
+            lambda connections: work(cast("MailConnections", _Stoppable(connections, stop))),
+            on_deadline=stop.set,
+        )
+        outcome = result.outcome
+        return result
+    except Refusal as refusal:
+        outcome = refusal.code
+        raise
+    finally:
+        groups = () if result is None else result.groups
+        logger.info(
+            event,
+            extra={
+                "event": event,
+                "user_id": user_id,
+                "via": via,
+                "account_ids": used,
+                "ref_count": len(refs),
+                "changed": sum(group.count for group in groups),
+                "groups": len(groups),
+                "failed_groups": sum(not group.ok for group in groups),
+                "codes": sorted({group.error.code for group in groups if group.error is not None}),
+                "outcome": outcome,
+                "duration_ms": round((time.monotonic() - started) * 1000),
+            },
+        )
+
+
+def move(
+    ctx: AppContext, user_id: int, refs: Sequence[str], folder: str, *, via: Via = "web"
+) -> OrganizeResult:
+    """Moves the messages ``refs`` name (1 to ``MAX_REFS``, any folders and accounts) to
+    ``folder`` of each one's account, never Drafts or Sent: mailroom-core's ``move_messages``,
+    one result per source folder."""
+    return _organize(
+        ctx,
+        user_id,
+        "mail_moved",
+        via,
+        refs,
+        lambda connections: core.move_messages(connections, refs, folder),
+    )
+
+
+def archive(
+    ctx: AppContext, user_id: int, refs: Sequence[str], *, via: Via = "web"
+) -> OrganizeResult:
+    """Moves them to each account's folder with role ``archive``: ``unsupported`` for an
+    account's group when it has none."""
+    return _organize(
+        ctx,
+        user_id,
+        "mail_archived",
+        via,
+        refs,
+        lambda connections: core.archive_messages(connections, refs),
+    )
+
+
+def trash(
+    ctx: AppContext, user_id: int, refs: Sequence[str], *, via: Via = "web"
+) -> OrganizeResult:
+    """Moves them to each account's Trash; never a permanent delete, so a group already in Trash
+    is refused."""
+    return _organize(
+        ctx,
+        user_id,
+        "mail_trashed",
+        via,
+        refs,
+        lambda connections: core.trash_messages(connections, refs),
+    )
+
+
+def flag(
+    ctx: AppContext,
+    user_id: int,
+    refs: Sequence[str],
+    *,
+    seen: bool | None = None,
+    flagged: bool | None = None,
+    via: Via = "web",
+) -> OrganizeResult:
+    """Sets (True) or clears (False) ``\\Seen`` and ``\\Flagged``, at least one of them (else
+    refused before anything connects), and reads them back; the refs stay valid."""
+    if seen is None and flagged is None:
+        neither = MailError("invalid_argument", "Give `seen`, `flagged` or both.")
+        raise mail_refusal(neither.code, neither.message)
+    return _organize(
+        ctx,
+        user_id,
+        "mail_flagged",
+        via,
+        refs,
+        lambda connections: core.set_flags(connections, refs, seen=seen, flagged=flagged),
     )

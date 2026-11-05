@@ -10,6 +10,7 @@ import logging
 import os
 import threading
 import time
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
@@ -17,6 +18,7 @@ import pytest
 from mailroom_core.crypto import secrets_subkey
 from mailroom_core.mail import (
     MESSAGES,
+    MailConnections,
     MailError,
     MessageRef,
     SearchQuery,
@@ -39,6 +41,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from fastapi import FastAPI
+    from mailroom_core.mail import Folder
     from mailroom_core.testing import ImapTestServer
     from sqlalchemy.orm import Session
     from starlette.testclient import TestClient
@@ -82,6 +85,13 @@ class Mailbox:
         page = self.get("/accounts/work/messages", folder=folder)
         return [item["ref"] for item in page["messages"]]
 
+    def organize(self, action: str, **body: Any) -> Any:
+        """``POST /messages/<action>``, answered 200."""
+        response = self.client.post(f"{MAIL}/messages/{action}", json=body)
+        assert response.status_code == 200, response.text
+        assert response.headers["cache-control"] == "private, no-store"
+        return response.json()["results"]
+
 
 def endpoint(server: ImapTestServer) -> dict[str, Any]:
     return {"host": server.host, "port": server.port, "tls": "implicit"}
@@ -105,16 +115,27 @@ def detail(response: Any) -> tuple[int, str]:
     return response.status_code, response.json()["detail"]["code"]
 
 
-def test_signed_out_browsers_are_refused(api_client: TestClient) -> None:
-    for path in (
-        "/accounts/work/folders",
-        "/accounts/work/messages",
-        "/messages/x",
-        "/messages/x/html",
-        "/messages/x/parts/2",
-    ):
-        assert api_client.get(f"{MAIL}{path}").status_code == 401
-    assert api_client.post(f"{MAIL}/search", json={}).status_code == 401
+def test_signed_out_browsers_are_refused_uncached(api_client: TestClient) -> None:
+    refused = [
+        api_client.get(f"{MAIL}{path}")
+        for path in (
+            "/accounts/work/folders",
+            "/accounts/work/messages",
+            "/messages/x",
+            "/messages/x/html",
+            "/messages/x/parts/2",
+        )
+    ]
+    refused += [
+        api_client.post(f"{MAIL}{path}", json={"refs": ["x"], "folder": "Archive"})
+        for path in ("/search", "/messages/move", "/messages/archive", "/messages/trash")
+    ]
+    refused.append(api_client.post(f"{MAIL}/messages/flag", json={"refs": ["x"], "seen": True}))
+    for response in refused:
+        assert response.status_code == 401
+        assert response.headers["cache-control"] == "private, no-store"
+    # Only the mail routes: the rest of the API keeps its own caching.
+    assert "cache-control" not in api_client.get("/api/v1/accounts").headers
 
 
 def test_folders_carry_roles_and_counts(mailbox: Mailbox) -> None:
@@ -639,9 +660,17 @@ def test_the_deadline_cuts_the_accounts_connections_and_frees_the_gate() -> None
         connections.released.wait(5)
         ended.set()
 
+    cut_before: list[list[str]] = []
     try:
         with pytest.raises(DeadlineExceeded):
-            pool.call(connections, 1, ["a"], stuck)
+            pool.call(
+                connections,
+                1,
+                ["a"],
+                stuck,
+                on_deadline=lambda: cut_before.append(list(connections.interrupted)),
+            )
+        assert cut_before == [[]]  # told before anything is cut
         assert connections.interrupted == ["a"]
         assert ended.wait(5)
         for _ in range(2):  # both of the account's gate places are free again
@@ -898,3 +927,328 @@ def test_mail_answers_are_never_cached(mailbox: Mailbox) -> None:
     missing = client.get(f"{MAIL}/accounts/home/folders")
     assert missing.json() == {"detail": {"code": "not_found", "message": "No such account."}}
     assert missing.headers["cache-control"] == "private, no-store"
+    invalid = client.get(f"{MAIL}/accounts/work/messages", params={"limit": 0})
+    assert invalid.status_code == 422
+    assert invalid.headers["cache-control"] == "private, no-store"
+
+
+def subjects(mailbox: Mailbox, folder: str) -> list[str]:
+    return sorted(m.subject for m in folder_contents(mailbox.server, mailbox.login, folder))
+
+
+def test_a_move_answers_the_new_refs_and_the_old_ones_are_gone(
+    mailbox: Mailbox, caplog: pytest.LogCaptureFixture
+) -> None:
+    mailbox.seed(mime("file me", sender="Ada <ada@example.org>"))
+    mailbox.seed(mime("and me"))
+    refs = mailbox.refs()
+    with caplog.at_level(logging.INFO, logger="mailroom.mail.service"):
+        [group] = mailbox.organize("move", refs=refs, folder="Archive")
+    assert {k: v for k, v in group.items() if k != "new_refs"} == {
+        "account": "work",
+        "folder": "INBOX",
+        "ok": True,
+        "count": 2,
+        "junk": None,
+        "flags": [],
+        "error": None,
+    }
+    assert sorted(mailbox.get(f"/messages/{ref}")["subject"] for ref in group["new_refs"]) == [
+        "and me",
+        "file me",
+    ]
+    assert subjects(mailbox, "INBOX") == []
+    assert subjects(mailbox, "Archive") == ["and me", "file me"]
+
+    gone = mailbox.client.get(f"{MAIL}/messages/{refs[0]}")
+    assert detail(gone) == (404, "not_found")
+    # Nothing moved: the refusal of the only group, its text naming the count.
+    again = mailbox.client.post(f"{MAIL}/messages/move", json={"refs": refs, "folder": "Junk"})
+    assert detail(again) == (404, "not_found")
+    assert again.json()["detail"]["message"].endswith(
+        "2 of these messages are no longer in INBOX; search again."
+    )
+    assert again.headers["cache-control"] == "private, no-store"
+
+    record = next(r for r in caplog.records if r.msg == "mail_moved")
+    logged = {
+        key: record.__dict__[key]
+        for key in (
+            "via",
+            "account_ids",
+            "ref_count",
+            "changed",
+            "groups",
+            "failed_groups",
+            "codes",
+            "outcome",
+        )
+    }
+    assert logged == {
+        "via": "web",
+        "account_ids": ["work"],
+        "ref_count": 2,
+        "changed": 2,
+        "groups": 1,
+        "failed_groups": 0,
+        "codes": [],
+        "outcome": "ok",
+    }
+    assert isinstance(record.__dict__["duration_ms"], int)
+    for text in ("file me", "ada@example.org", "Archive", "INBOX", refs[0]):
+        assert text not in str(record.__dict__)
+
+
+def test_moves_into_drafts_sent_or_where_they_are_are_refused(mailbox: Mailbox) -> None:
+    mailbox.seed(mime("stay"))
+    refs = mailbox.refs()
+    for folder, code, status in (
+        ("Drafts", "invalid_argument", 400),
+        ("Sent", "invalid_argument", 400),
+        ("inbox", "invalid_argument", 400),  # INBOX in any case
+        ("Nowhere", "mailbox_missing", 404),
+    ):
+        response = mailbox.client.post(
+            f"{MAIL}/messages/move", json={"refs": refs, "folder": folder}
+        )
+        assert detail(response) == (status, code), folder
+    assert subjects(mailbox, "INBOX") == ["stay"]
+
+
+def test_a_batch_over_two_folders_answers_each_group(mailbox: Mailbox) -> None:
+    mailbox.seed(mime("offer"))
+    mailbox.seed(mime("already junk"), folder="Junk")
+    refs = mailbox.refs() + mailbox.refs("Junk")
+    inbox, junk = mailbox.organize("move", refs=refs, folder="Junk")
+    assert (inbox["folder"], inbox["ok"], inbox["count"], inbox["junk"]) == (
+        "INBOX",
+        True,
+        1,
+        "spam",
+    )
+    assert junk["folder"] == "Junk"
+    assert (junk["ok"], junk["count"], junk["new_refs"]) == (False, 0, None)
+    assert junk["error"] == {
+        "code": "invalid_argument",
+        "message": "Invalid argument. They are already in that folder.",
+    }
+    assert subjects(mailbox, "Junk") == ["already junk", "offer"]
+
+    [back] = mailbox.organize("move", refs=mailbox.refs("Junk")[:1], folder="INBOX")
+    assert back["junk"] == "ham"
+
+    # Every group failed: the refusal is the first group's (a stale INBOX ref), not the second's
+    # (already in Junk), and nothing is written.
+    before = (subjects(mailbox, "INBOX"), subjects(mailbox, "Junk"))
+    [kept] = mailbox.refs()
+    message = parse_ref(kept)
+    stale = format_ref(MessageRef("work", "INBOX", message.uid_validity + 1, message.uid))
+    refused = mailbox.client.post(
+        f"{MAIL}/messages/move", json={"refs": [stale, *mailbox.refs("Junk")], "folder": "Junk"}
+    )
+    assert detail(refused) == (409, "stale_reference")
+    assert (subjects(mailbox, "INBOX"), subjects(mailbox, "Junk")) == before
+
+
+def test_a_call_cut_at_its_deadline_writes_no_group_after_the_cut(
+    mailbox: Mailbox, application: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mailroom.mail import service
+
+    mailbox.seed(mime("slow inbox"))
+    mailbox.seed(mime("quick junk"), folder="Junk")
+    refs = mailbox.refs() + mailbox.refs("Junk")
+    pool: MailPool = application.state.mail_pool
+    monkeypatch.setattr(pool, "deadline_seconds", 1.5)
+    answered = threading.Event()
+    ended = threading.Event()
+    real_with_mailbox = MailConnections.with_mailbox
+    real_move = service.core.move_messages
+
+    def slow_inbox(
+        self: MailConnections, account_id: str, path: str, read_only: bool, fn: Any
+    ) -> Any:
+        # A server that answers the INBOX group only once the caller has had its 504: nothing in
+        # use for the pool to cut, so only the call's own stop keeps the groups from writing.
+        if path == "INBOX" and not read_only:
+            assert answered.wait(10)
+        return real_with_mailbox(self, account_id, path, read_only, fn)
+
+    def move_then_end(*args: Any, **kwargs: Any) -> Any:
+        try:
+            return real_move(*args, **kwargs)
+        finally:
+            ended.set()
+
+    monkeypatch.setattr(MailConnections, "with_mailbox", slow_inbox)
+    monkeypatch.setattr(service.core, "move_messages", move_then_end)
+    response = mailbox.client.post(
+        f"{MAIL}/messages/move", json={"refs": refs, "folder": "Archive"}
+    )
+    answered.set()
+    assert detail(response) == (504, "timeout")
+    assert ended.wait(10)
+    assert subjects(mailbox, "INBOX") == ["slow inbox"]
+    assert subjects(mailbox, "Junk") == ["quick junk"]
+    assert subjects(mailbox, "Archive") == []
+
+
+def test_archive_moves_to_the_archive_folder_or_is_unsupported(
+    mailbox: Mailbox, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mailbox.seed(mime("keep"))
+    [ref] = mailbox.refs()
+    [group] = mailbox.organize("archive", refs=[ref])
+    assert (group["ok"], group["count"], len(group["new_refs"])) == (True, 1, 1)
+    assert subjects(mailbox, "Archive") == ["keep"]
+
+    # A server that names no \Archive folder (the dev Dovecot always creates one).
+    real = MailConnections.folders
+
+    def without_archive(self: MailConnections, account_id: str, **kwargs: Any) -> list[Folder]:
+        return [
+            replace(f, role=None) if f.role == "archive" else f
+            for f in real(self, account_id, **kwargs)
+        ]
+
+    monkeypatch.setattr(MailConnections, "folders", without_archive)
+    [archived] = group["new_refs"]
+    refused = mailbox.client.post(f"{MAIL}/messages/archive", json={"refs": [archived]})
+    assert detail(refused) == (502, "unsupported")
+    assert refused.json()["detail"]["message"].endswith("work has no Archive folder.")
+    assert subjects(mailbox, "Archive") == ["keep"]
+
+
+def test_trash_moves_to_trash_and_never_deletes(mailbox: Mailbox) -> None:
+    mailbox.seed(mime("unwanted"))
+    [group] = mailbox.organize("trash", refs=mailbox.refs())
+    assert (group["ok"], group["count"], group["junk"]) == (True, 1, None)
+    assert subjects(mailbox, "Trash") == ["unwanted"]
+
+    refused = mailbox.client.post(f"{MAIL}/messages/trash", json={"refs": group["new_refs"]})
+    assert detail(refused) == (400, "invalid_argument")
+    assert refused.json()["detail"]["message"].endswith(
+        "They are already in Trash; mailroom never deletes permanently."
+    )
+    assert subjects(mailbox, "Trash") == ["unwanted"]
+
+
+def test_flags_change_read_back_and_repeat(mailbox: Mailbox) -> None:
+    mailbox.seed(mime("news"))
+    [ref] = mailbox.refs()
+
+    def flags() -> set[str]:
+        [message] = folder_contents(mailbox.server, mailbox.login, "INBOX")
+        return set(message.flags)
+
+    for _ in range(2):  # the same change twice answers the same
+        [group] = mailbox.organize("flag", refs=[ref], seen=True)
+        assert group == {
+            "account": "work",
+            "folder": "INBOX",
+            "ok": True,
+            "count": 1,
+            "new_refs": [],
+            "junk": None,
+            "flags": [{"ref": ref, "seen": True, "flagged": False}],
+            "error": None,
+        }
+        assert flags() == {"\\Seen"}
+    [starred] = mailbox.organize("flag", refs=[ref], seen=False, flagged=True)
+    assert starred["flags"] == [{"ref": ref, "seen": False, "flagged": True}]
+    assert flags() == {"\\Flagged"}
+    [unstarred] = mailbox.organize("flag", refs=[ref], flagged=False, seen=None)
+    assert unstarred["flags"] == [{"ref": ref, "seen": False, "flagged": False}]
+    assert mailbox.get(f"/messages/{ref}")["flags"]["flagged"] is False
+
+    neither = mailbox.client.post(f"{MAIL}/messages/flag", json={"refs": [ref]})
+    assert detail(neither) == (400, "invalid_argument")
+    assert neither.json()["detail"]["message"].endswith("Give `seen`, `flagged` or both.")
+
+
+def test_a_batch_is_refused_whole_before_any_write(mailbox: Mailbox) -> None:
+    mailbox.seed(mime("mine"))
+    [ref] = mailbox.refs()
+    message = parse_ref(ref)
+    elsewhere = format_ref(MessageRef("home", "INBOX", message.uid_validity, message.uid))
+    stale = format_ref(MessageRef("work", "INBOX", message.uid_validity + 1, message.uid))
+    client = mailbox.client
+
+    def post(action: str, **body: Any) -> Any:
+        return client.post(f"{MAIL}/messages/{action}", json=body)
+
+    for action, extra in (
+        ("move", {"folder": "Archive"}),
+        ("archive", {}),
+        ("trash", {}),
+        ("flag", {"seen": True}),
+    ):
+        foreign = post(action, refs=[ref, elsewhere], **extra)
+        assert foreign.json() == {
+            "detail": {"code": "not_found", "message": "No such message or part."}
+        }
+        assert foreign.headers["cache-control"] == "private, no-store"
+        assert detail(post(action, refs=[ref, "garbage"], **extra)) == (400, "invalid_argument")
+        assert detail(post(action, refs=[stale], **extra)) == (409, "stale_reference")
+        for refs in ([], [ref] * 51, ["x" * 4097], [""]):
+            refused = post(action, refs=refs, **extra)
+            assert refused.status_code == 422
+            assert refused.headers["cache-control"] == "private, no-store"
+        assert post(action, refs=[ref], unknown=1, **extra).status_code == 422
+    assert post("move", refs=[ref]).status_code == 422  # no folder
+    # Neither flag given is refused before the refs are looked at: not the foreign ref's 404.
+    assert detail(post("flag", refs=[elsewhere])) == (400, "invalid_argument")
+    assert [
+        (m.subject, m.flags) for m in folder_contents(mailbox.server, mailbox.login, "INBOX")
+    ] == [("mine", ())]
+
+
+def test_a_batch_naming_an_account_that_cannot_log_in_is_refused_before_any_write(
+    mailbox: Mailbox,
+    application: FastAPI,
+    migrated_engine: Any,
+    user: User,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every account a batch names is checked before anything connects; the usable account's
+    message stays where it was."""
+    home = new_account("home", imap=endpoint(mailbox.server))
+    added = mailbox.client.post("/api/v1/accounts", json=home)
+    assert added.status_code == 201, added.text
+    store = user_store(migrated_engine, user.id)
+    current = load_accounts(store)
+    store.save_settings(current.doc, current.revision, SecretChanges(remove=["home"]))
+    mailbox.seed(mime("mine"))
+    [ref] = mailbox.refs()
+    message = parse_ref(ref)
+    locked = format_ref(MessageRef("home", "INBOX", message.uid_validity, message.uid))
+    actions: tuple[tuple[str, dict[str, Any]], ...] = (
+        ("move", {"folder": "Archive"}),
+        ("archive", {}),
+        ("trash", {}),
+        ("flag", {"seen": True}),
+    )
+
+    def post(action: str, **body: Any) -> Any:
+        return mailbox.client.post(f"{MAIL}/messages/{action}", json=body)
+
+    for action, extra in actions:
+        assert detail(post(action, refs=[ref, locked], **extra)) == (409, "password_missing")
+    monkeypatch.setattr(application.state, "secrets_subkey", None)
+    for action, extra in actions:
+        assert detail(post(action, refs=[ref], **extra)) == (503, "secrets_key_missing")
+    [kept] = folder_contents(mailbox.server, mailbox.login, "INBOX")
+    assert (kept.subject, set(kept.flags) - {"\\Recent"}) == ("mine", set())
+    assert subjects(mailbox, "Archive") == subjects(mailbox, "Trash") == []
+
+
+def test_a_cross_site_organize_is_refused(mailbox: Mailbox) -> None:
+    mailbox.seed(mime("mine"))
+    refs = mailbox.refs()
+    for headers in ({"Sec-Fetch-Site": "cross-site"}, {"Origin": "https://evil.example"}):
+        response = mailbox.client.post(
+            f"{MAIL}/messages/trash", json={"refs": refs}, headers=headers
+        )
+        assert response.status_code == 403
+        assert response.headers["cache-control"] == "private, no-store"
+    assert subjects(mailbox, "INBOX") == ["mine"]

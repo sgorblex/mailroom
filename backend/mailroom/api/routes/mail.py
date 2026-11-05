@@ -1,29 +1,39 @@
-"""The mail client's reads (``docs/requirements/mail-client.md``, *REST contract*): folders,
-message pages, search, one message, its HTML as a standalone document, and part downloads. Only
-the signed-in user's accounts; nothing here changes a mailbox."""
+"""The mail client (``docs/requirements/mail-client.md``, *REST contract*): folders, message
+pages, search, one message, its HTML as a standalone document and part downloads, which change
+nothing; and the organize routes (move, archive, trash, flag), which change folders and flags.
+Only the signed-in user's accounts."""
 
 from __future__ import annotations
 
 import unicodedata
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Annotated, Final
+from typing import TYPE_CHECKING, Annotated, Final, Literal
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, Path, Query
 from fastapi.responses import Response
 from mailroom_core.mail import DISPLAYED_IMAGES, SearchQuery
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from starlette.datastructures import MutableHeaders
 
 from mailroom.api.deps import Context, CurrentUser
-from mailroom.api.refusals import http_refusal
-from mailroom.errors import Refusal
+from mailroom.errors import mail_refusal
 from mailroom.mail import service
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Iterable
 
-    from mailroom_core.mail import Folder, MessageSummary, MessageView, Page
+    from mailroom_core.mail import (
+        FlagState,
+        Folder,
+        GroupResult,
+        MessageSummary,
+        MessageView,
+        OrganizeResult,
+        Page,
+    )
     from mailroom_core.render.message import Address, PartInfo
+    from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 PAGE_SIZE: Final = 25
 MAX_PAGE_SIZE: Final = 50
@@ -59,23 +69,32 @@ _DOCUMENT: Final = (
 )
 
 
-def _not_stored(response: Response) -> Iterator[None]:
-    """What these routes answer is the user's mail: no cache keeps it, a refusal included. (A
-    route answering its own ``Response`` sets the header itself; FastAPI copies this one only
-    onto the responses it builds.)"""
-    response.headers["Cache-Control"] = _NO_STORE
-    try:
-        yield
-    except Refusal as refusal:
-        refused = http_refusal(refusal)
-        refused.headers = {"Cache-Control": _NO_STORE}
-        raise refused from None
+class NotStored:
+    """What answers under ``prefix`` is the user's mail: no cache keeps it, whatever the status. As
+    middleware outside the cross-site check, so that a refusal, the 401 of a missing session, a
+    422 and that check's 403 carry ``Cache-Control: private, no-store`` too."""
+
+    def __init__(self, app: ASGIApp, prefix: str) -> None:
+        self.app = app
+        self.prefix = prefix
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or not scope["path"].startswith(self.prefix):
+            await self.app(scope, receive, send)
+            return
+
+        async def not_stored(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                MutableHeaders(scope=message)["Cache-Control"] = _NO_STORE
+            await send(message)
+
+        await self.app(scope, receive, not_stored)
 
 
-mail_router = APIRouter(prefix="/mail", dependencies=[Depends(_not_stored)])
+mail_router = APIRouter(prefix="/mail")
 
 AccountId = Annotated[str, Path(min_length=1, max_length=64)]
-Ref = Annotated[str, Path(min_length=1, max_length=4096)]
+Ref = Annotated[str, Path(min_length=1, max_length=service.MAX_REF_LENGTH)]
 Cursor = Annotated[str | None, Query(max_length=service.MAX_CURSOR)]
 Limit = Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)]
 
@@ -420,4 +439,96 @@ def message_part(
             "Content-Security-Policy": PART_CSP,
             **_PRIVATE,
         },
+    )
+
+
+BatchRef = Annotated[str, StringConstraints(min_length=1, max_length=service.MAX_REF_LENGTH)]
+
+
+class RefsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    refs: Annotated[list[BatchRef], Field(min_length=1, max_length=service.MAX_REFS)]
+
+
+class MoveRequest(RefsRequest):
+    folder: Annotated[str, Field(min_length=1, max_length=service.MAX_FOLDER)]
+
+
+class FlagRequest(RefsRequest):
+    seen: bool | None = None
+    flagged: bool | None = None
+
+
+class MessageFlags(BaseModel):
+    ref: str
+    seen: bool | None
+    flagged: bool | None
+
+    @classmethod
+    def of(cls, state: FlagState) -> MessageFlags:
+        return cls(ref=state.ref, seen=state.seen, flagged=state.flagged)
+
+
+class GroupError(BaseModel):
+    code: str
+    message: str
+
+
+class GroupOutcome(BaseModel):
+    account: str
+    folder: str
+    ok: bool
+    count: int
+    new_refs: list[str] | None
+    junk: Literal["spam", "ham"] | None
+    flags: list[MessageFlags]
+    error: GroupError | None
+
+    @classmethod
+    def of(cls, group: GroupResult) -> GroupOutcome:
+        error = group.error
+        return cls(
+            account=group.account,
+            folder=group.folder,
+            ok=group.ok,
+            count=group.count,
+            new_refs=None if group.new_refs is None else list(group.new_refs),
+            junk=group.junk,
+            flags=[MessageFlags.of(state) for state in group.flags],
+            error=None if error is None else GroupError(code=error.code, message=error.message),
+        )
+
+
+class OrganizeAnswer(BaseModel):
+    results: list[GroupOutcome]
+
+
+def organize_answer(result: OrganizeResult) -> OrganizeAnswer:
+    """The groups' results, when one succeeded at least; else the first failure's refusal."""
+    if result.succeeded == 0:
+        error = next(group.error for group in result.groups if group.error is not None)
+        raise mail_refusal(error.code, error.message)
+    return OrganizeAnswer(results=[GroupOutcome.of(group) for group in result.groups])
+
+
+@mail_router.post("/messages/move")
+def move(request: MoveRequest, ctx: Context, user: CurrentUser) -> OrganizeAnswer:
+    return organize_answer(service.move(ctx, user.id, request.refs, request.folder))
+
+
+@mail_router.post("/messages/archive")
+def archive(request: RefsRequest, ctx: Context, user: CurrentUser) -> OrganizeAnswer:
+    return organize_answer(service.archive(ctx, user.id, request.refs))
+
+
+@mail_router.post("/messages/trash")
+def trash(request: RefsRequest, ctx: Context, user: CurrentUser) -> OrganizeAnswer:
+    return organize_answer(service.trash(ctx, user.id, request.refs))
+
+
+@mail_router.post("/messages/flag")
+def flag(request: FlagRequest, ctx: Context, user: CurrentUser) -> OrganizeAnswer:
+    return organize_answer(
+        service.flag(ctx, user.id, request.refs, seen=request.seen, flagged=request.flagged)
     )

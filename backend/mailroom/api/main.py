@@ -28,7 +28,7 @@ from mailroom.api.refusals import http_refusal
 from mailroom.api.routes.accounts import accounts_router
 from mailroom.api.routes.auth import auth_router
 from mailroom.api.routes.filters import filters_router
-from mailroom.api.routes.mail import mail_router
+from mailroom.api.routes.mail import NotStored, mail_router
 from mailroom.api.routes.oauth_consent import consent_router, grants_router
 from mailroom.api.routes.sso import identities_router, sso_router
 from mailroom.api.routes.users import own_password_router, users_router
@@ -261,6 +261,7 @@ def create_application(
     application.state.login_throttle = LoginThrottle()
     application.state.sso_start_limit = sso_start_limit()
     application.add_middleware(CrossSiteRequestMiddleware)
+    application.add_middleware(NotStored, prefix=f"/api/v1{mail_router.prefix}/")
     application.add_middleware(CorrelationLoggingMiddleware)
 
     @application.get("/healthz", include_in_schema=False)

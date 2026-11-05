@@ -318,11 +318,24 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   page's `server_error`.
 - **Errors** are mailroom-core's codes with their fixed messages, never the server's wording
   (statuses: [`mail-client.md`](mail-client.md), *Errors*).
-- Every mail route answers `Cache-Control: private, no-store`, a refusal too (not FastAPI's 422,
-  nor the 401 of a missing session, which carry no mail).
+- Every answer under `/api/v1/mail/` carries `Cache-Control: private, no-store`, whatever its
+  status: a refusal, a 422, the 401 of a missing session and the cross-site 403 too (a middleware
+  outside the cross-site check, `mailroom.api.routes.mail.NotStored`).
+- **Organize calls** (move, archive, trash, flag) check every ref before connecting: a malformed
+  one, or one of an account that is not the user's (404) or cannot log in (`password_missing`
+  409, `secrets_key_missing` 503), refuses the batch and nothing is written. A call cut at the
+  deadline answers `timeout`: the groups done before the cut stay done, and the ones after it are
+  refused, not written (its connections refuse every mailbox once the deadline passed); no write
+  is retried. The group running at the cut is cut with its connection: with `MOVE` it is done or
+  not; without `MOVE` it can be copied but not removed, so after a 504 a client should reload the
+  folders rather than repeat the call.
 - **Logs:** `mail_folders`, `mail_listed`, `mail_searched`, `mail_read`, `mail_thread_read` (MCP
   only), `mail_html_read`, `mail_attachment_read`, each with `user_id`, `account_id`, `via`, `outcome` (`ok` or the code)
-  and `duration_ms`; never a subject, an address, a folder name or a body. Search criteria travel
+  and `duration_ms`; never a subject, an address, a folder name or a body. `mail_moved`,
+  `mail_archived`, `mail_trashed` and `mail_flagged` carry `user_id`, `via`, `account_ids`,
+  `ref_count`, `changed` (messages), `groups`, `failed_groups`, `codes` (the failed groups'),
+  `outcome` (`ok`, `partial`, `refused`, `failed`, or the code of a refused call) and
+  `duration_ms`: counts and codes only, never a folder, a ref, a `Message-ID` or a sender. Search criteria travel
   in a `POST` body, so access logs (nginx's, the host proxy's) never see them, and the web
   image's nginx logs paths without their query string (a list's `folder`, a search the SPA keeps
   in its URL; [`../deploy.md`](../deploy.md)). A ref is in the path of the message routes, and it
