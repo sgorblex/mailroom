@@ -11,6 +11,8 @@ Its Postgres tables live in schema `core`, with their own Alembic history:
 Its API is synchronous: `mailroom_core.mail.MailConnections` holds the IMAP connections, and an
 async host calls it from a worker thread. Over them, `list_messages`, `search_messages`, `thread_page`,
 `read_message`, `read_attachment` and `html_view` read mail and return typed results.
+`move_messages`, `trash_messages`, `archive_messages` and `set_flags` organize it, returning
+per-folder results and per-message audit items.
 
 `mailroom_core.testing` is a pytest plugin, loaded wherever the package is installed: a
 no-network guard, the IMAP, SMTP and test-database fixtures, and helpers to seed the IMAP test

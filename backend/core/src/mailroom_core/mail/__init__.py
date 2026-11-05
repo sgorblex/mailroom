@@ -1,7 +1,16 @@
-"""Mail over IMAP: connections and error mapping (`src/imap/`), and the read operations on them
-(`src/mail/`, `src/mcp/tools/` minus the tool plumbing). Synchronous: an async host calls it
-from a worker thread."""
+"""Mail over IMAP: connections and error mapping (`src/imap/`), and the read and organize
+operations on them (`src/mail/`, `src/mcp/tools/` minus the tool plumbing). Synchronous: an
+async host calls it from a worker thread."""
 
+from mailroom_core.mail.audit import (
+    REFUSALS,
+    AuditItem,
+    AuditOutcome,
+    AuditResult,
+    Junk,
+    audit_outcome,
+    message_item,
+)
 from mailroom_core.mail.content_type import DISPLAYED_IMAGES, content_type, is_text_type
 from mailroom_core.mail.download import body_text, part_content
 from mailroom_core.mail.errors import (
@@ -21,6 +30,16 @@ from mailroom_core.mail.imap import (
     Reachability,
     Timeouts,
     retriable,
+)
+from mailroom_core.mail.organize import (
+    MAX_REFS,
+    FlagState,
+    GroupResult,
+    OrganizeResult,
+    archive_messages,
+    move_messages,
+    set_flags,
+    trash_messages,
 )
 from mailroom_core.mail.pages import (
     PREVIEW_LENGTH,
@@ -62,6 +81,7 @@ from mailroom_core.mail.text import (
     attachment_text,
     empty_folder_text,
     folders_block,
+    organize_text,
     page_text,
     read_text,
     thread_text,
@@ -74,14 +94,22 @@ __all__ = [
     "FOLDER_ROLES",
     "MAIL_ERROR_CODES",
     "MAX_BODY_BYTES",
+    "MAX_REFS",
     "MESSAGES",
     "PREVIEW_LENGTH",
+    "REFUSALS",
     "TYPESCRIPT_TOOLS",
     "Attachment",
+    "AuditItem",
+    "AuditOutcome",
+    "AuditResult",
     "Capabilities",
     "Criteria",
+    "FlagState",
     "Folder",
     "FolderRole",
+    "GroupResult",
+    "Junk",
     "MailConnections",
     "MailError",
     "MailErrorCode",
@@ -90,6 +118,7 @@ __all__ = [
     "MessageSummary",
     "MessageView",
     "MimePart",
+    "OrganizeResult",
     "Page",
     "PageFailure",
     "Position",
@@ -100,8 +129,10 @@ __all__ = [
     "Timeouts",
     "ToolNames",
     "analyse_structure",
+    "archive_messages",
     "attachment_label",
     "attachment_text",
+    "audit_outcome",
     "body_text",
     "check_fresh",
     "content_type",
@@ -114,6 +145,9 @@ __all__ = [
     "is_text_type",
     "list_messages",
     "mail_error",
+    "message_item",
+    "move_messages",
+    "organize_text",
     "page_text",
     "parse_ref",
     "part_content",
@@ -126,6 +160,8 @@ __all__ = [
     "search_arguments",
     "search_messages",
     "searchable_folders",
+    "set_flags",
     "thread_page",
     "thread_text",
+    "trash_messages",
 ]

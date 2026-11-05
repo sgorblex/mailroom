@@ -214,6 +214,10 @@ class MailConnections:
         except _AttemptFailedError as failure:
             raise failure.error from None
 
+    def serves(self, account_id: str) -> bool:
+        """Whether `account_id` is one of these connections' accounts; opens nothing."""
+        return self._lookup_account(account_id) is not None
+
     def capabilities(self, account_id: str) -> Capabilities:
         """What the account's server supports, as it announced after the login."""
         state = self._state(account_id)
