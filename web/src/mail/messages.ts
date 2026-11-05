@@ -2,6 +2,7 @@ import type { TFunction } from 'i18next'
 
 import { accountErrorMessage, mailboxMessage } from '@/accounts/messages.ts'
 import { ApiRequestError } from '@/api/http.ts'
+import type { MailFolder } from '@/api/mail.ts'
 
 /** The mailbox codes of the mail routes (`docs/requirements/mail-client.md`), with their wording key. */
 const MAIL_CODES: Record<string, string> = {
@@ -57,4 +58,9 @@ export function mailErrorMessage(t: TFunction, failure: unknown, fallback: strin
     }
   }
   return accountErrorMessage(t, failure, fallback)
+}
+
+/** A folder as the sidebar and the move picker name it: its role's name, else its path. */
+export function folderName(t: TFunction, folder: Pick<MailFolder, 'path' | 'role'>): string {
+  return folder.role === null ? folder.path : t(`roles.${folder.role}`)
 }

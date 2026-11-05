@@ -14,6 +14,9 @@ import { MailSidebar } from './mail-sidebar.tsx'
 import { MessageList } from './message-list.tsx'
 import { MessageView } from './message-view.tsx'
 import { SearchForm } from './search-form.tsx'
+import { useMailShortcuts } from './shortcuts.ts'
+import { OutcomeAnnouncer, Toolbar } from './toolbar.tsx'
+import { TriageProvider } from './triage-provider.tsx'
 
 const DEFAULT_FOLDER = 'INBOX'
 
@@ -66,53 +69,69 @@ export function MailScreen(): ReactElement {
   const folder = search.folder ?? DEFAULT_FOLDER
   const open = search.message
   return (
-    <main className="flex flex-1 flex-col border-t lg:h-0 lg:min-h-0 lg:flex-row">
-      <h1 className="sr-only">{t('mail.title')}</h1>
-      <MailSidebar
-        accounts={accounts.value.map((account) => account.id)}
-        accountId={accountId}
-        folder={search.q === undefined ? folder : null}
-        className={cn(open !== undefined && 'hidden lg:flex')}
-      />
-      <section
-        aria-label={t('list.label')}
-        className={cn(
-          'flex min-w-0 flex-col gap-3 border-t p-3 lg:w-96 lg:shrink-0 lg:overflow-y-auto lg:border-t-0 lg:border-r',
-          open !== undefined && 'hidden lg:flex',
-        )}
-      >
-        <SearchForm
-          key={JSON.stringify(search.q ?? null)}
+    <TriageProvider sourceKey={sourceKey(accountId, folder, search.q)}>
+      <MailShortcuts />
+      <main className="flex flex-1 flex-col border-t lg:h-0 lg:min-h-0 lg:flex-row">
+        <h1 className="sr-only">{t('mail.title')}</h1>
+        <MailSidebar
           accounts={accounts.value.map((account) => account.id)}
           accountId={accountId}
-          folder={folder}
-          query={search.q}
+          folder={search.q === undefined ? folder : null}
+          className={cn(open !== undefined && 'hidden lg:flex')}
         />
-        <Listing accountId={accountId} folder={folder} />
-      </section>
-      <section
-        aria-label={t('message.label')}
-        className={cn(
-          'min-w-0 flex-1 flex-col p-3 lg:flex lg:overflow-y-auto',
-          open === undefined ? 'hidden' : 'flex',
-        )}
-      >
-        {open === undefined ? (
-          <p className="m-auto text-sm text-muted-foreground">{t('message.none')}</p>
-        ) : (
-          <MessageView key={open} messageRef={open} />
-        )}
-      </section>
-    </main>
+        {/* On a phone the open message hides the list, but not the toolbar acting on it. */}
+        <section
+          aria-label={t('list.label')}
+          className="flex min-w-0 flex-col gap-3 border-t p-3 lg:w-96 lg:shrink-0 lg:overflow-y-auto lg:border-t-0 lg:border-r"
+        >
+          <div className={cn('flex flex-col gap-3', open !== undefined && 'hidden lg:flex')}>
+            <SearchForm
+              key={JSON.stringify(search.q ?? null)}
+              accounts={accounts.value.map((account) => account.id)}
+              accountId={accountId}
+              folder={folder}
+              query={search.q}
+            />
+          </div>
+          <Toolbar />
+          <div className={cn('flex flex-col gap-3', open !== undefined && 'hidden lg:flex')}>
+            <Listing accountId={accountId} folder={folder} />
+          </div>
+        </section>
+        <section
+          aria-label={t('message.label')}
+          className={cn(
+            'min-w-0 flex-1 flex-col p-3 lg:flex lg:overflow-y-auto',
+            open === undefined ? 'hidden' : 'flex',
+          )}
+        >
+          {open === undefined ? (
+            <p className="m-auto text-sm text-muted-foreground">{t('message.none')}</p>
+          ) : (
+            <MessageView key={open} messageRef={open} />
+          )}
+        </section>
+        <OutcomeAnnouncer />
+      </main>
+    </TriageProvider>
   )
+}
+
+function MailShortcuts(): null {
+  useMailShortcuts()
+  return null
+}
+
+/** Names the list shown: a folder, or a search (`q` is a new object on every navigation). */
+function sourceKey(accountId: string, folder: string, q: SearchQuery | undefined): string {
+  return q === undefined ? `folder:${accountId}:${folder}` : `search:${JSON.stringify(q)}`
 }
 
 /** The folder's messages, or the search's when there is one; a new source starts over. */
 function Listing({ accountId, folder }: { accountId: string; folder: string }): ReactElement {
   const { q } = useSearch({ from: '/mail' })
-  // A string stands for the search: `q` is a new object on every navigation.
-  const queryKey = q === undefined ? null : JSON.stringify(q)
-  const query = useMemo(() => (queryKey === null ? null : (JSON.parse(queryKey) as SearchQuery)), [queryKey])
+  const key = sourceKey(accountId, folder, q)
+  const query = useMemo(() => (key.startsWith('search:') ? (JSON.parse(key.slice(7)) as SearchQuery) : null), [key])
   const loadPage = useCallback(
     (cursor: string | null, signal: AbortSignal) =>
       query === null
@@ -120,6 +139,5 @@ function Listing({ accountId, folder }: { accountId: string; folder: string }): 
         : searchMessages(query, { cursor }, signal),
     [accountId, folder, query],
   )
-  const key = queryKey === null ? `folder:${accountId}:${folder}` : `search:${queryKey}`
   return <MessageList key={key} loadPage={loadPage} searching={q !== undefined} />
 }

@@ -55,14 +55,16 @@ through the Vite proxy. Engineering baseline:
 
 **Maturity: Partial** — slice A (tier 1, read: REST, web and the `mail_read` MCP tools), as
 specified in [`requirements/mail-client.md`](requirements/mail-client.md), is in; the rest is
-planned; slice B (organize: move, archive, trash, flag, multi-select, shortcuts, the `mail_organize` MCP tools) is specified and arriving (gaps: the index and live updates, compose). Target is
+planned; of slice B (organize: move, archive, trash, flag, multi-select, shortcuts), the REST
+routes and the web triage are in and the `mail_organize` MCP tools are arriving (gaps: the index
+and live updates, compose). Target is
 **between tier 2 and tier 3**: tiers 1 and 2 in full, on top of
 the index and live updates; tier 3 items arrive one at a time.
 
 | Tier | Scope |
 | --- | --- |
 | **1 — Read** | Accounts and folders with unread counts; message list (threaded or flat) with paging; read a message: headers, text and **sandboxed HTML** body, attachments (download), remote content blocked with a per-message reveal. Search. |
-| **2 — Triage and compose** | *Triage (slice B, specified):* flag/unflag, read/unread, move, archive, trash (never expunge), multi-select, keyboard shortcuts for triage. *Compose (slice C, planned):* compose new, reply, reply-all, forward, with identity (`From`) choice, attachments and drafts saved to the server's `\Drafts`. Sending obeys the account's **send mode** (mailroom-core's send gate). |
+| **2 — Triage and compose** | *Triage (slice B: REST and web in, MCP tools arriving):* flag/unflag, read/unread, move, archive, trash (never expunge), multi-select, keyboard shortcuts for triage. *Compose (slice C, planned):* compose new, reply, reply-all, forward, with identity (`From`) choice, attachments and drafts saved to the server's `\Drafts`. Sending obeys the account's **send mode** (mailroom-core's send gate). |
 | **2+ — Index and live updates** | A **local index** of every account and folder (metadata plus rendered text) for fast cross-account search and lists; kept fresh by the worker over **IMAP IDLE** (and periodic resync), pushed to the browser (SSE or WebSocket). |
 | **3 — Later** | Rich-text compose, signatures, snooze and send-later, contacts and autocomplete from history, calendar invites, offline reading, PGP/S/MIME, unified inbox views, saved searches. |
 

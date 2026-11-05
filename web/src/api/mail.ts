@@ -200,3 +200,50 @@ export async function checkMessageHtml(ref: string, remote: boolean, signal?: Ab
 export function messagePartUrl(ref: string, part: string): string {
   return `${getApiBaseUrl()}${messagePath(ref)}/parts/${encodeURIComponent(part)}`
 }
+
+const organizeGroupSchema = z.object({
+  account: z.string(),
+  folder: z.string(),
+  ok: z.boolean(),
+  count: z.number(),
+  new_refs: z.array(z.string()).nullable(),
+  junk: z.enum(['spam', 'ham']).nullable(),
+  flags: z.array(z.object({ ref: z.string(), seen: z.boolean().nullable(), flagged: z.boolean().nullable() })),
+  error: z.object({ code: z.string(), message: z.string() }).nullable(),
+})
+/** One account and folder of a batch: groups succeed or fail on their own. */
+export type OrganizeGroup = z.infer<typeof organizeGroupSchema>
+
+const organizeAnswerSchema = z.object({ results: z.array(organizeGroupSchema) })
+
+/** The flags a batch sets; at least one. */
+export interface FlagChange {
+  seen?: boolean
+  flagged?: boolean
+}
+
+async function organize(route: string, body: object, signal?: AbortSignal): Promise<OrganizeGroup[]> {
+  const answer = await apiPostJson(`${base}/messages/${route}`, body, { init: { signal }, schema: organizeAnswerSchema })
+  return answer.results
+}
+
+/**
+ * Up to 50 refs, from any folders; a group's failure is in its result, and only a batch where no
+ * group succeeded throws (the first failure's refusal).
+ */
+export function moveMessages(refs: string[], folder: string, signal?: AbortSignal): Promise<OrganizeGroup[]> {
+  return organize('move', { refs, folder }, signal)
+}
+
+export function archiveMessages(refs: string[], signal?: AbortSignal): Promise<OrganizeGroup[]> {
+  return organize('archive', { refs }, signal)
+}
+
+/** Moves them to Trash: mailroom never deletes mail. */
+export function trashMessages(refs: string[], signal?: AbortSignal): Promise<OrganizeGroup[]> {
+  return organize('trash', { refs }, signal)
+}
+
+export function flagMessages(refs: string[], change: FlagChange, signal?: AbortSignal): Promise<OrganizeGroup[]> {
+  return organize('flag', { refs, ...change }, signal)
+}

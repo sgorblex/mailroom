@@ -77,6 +77,8 @@ function state(overrides: Partial<FakeMailState> = {}): FakeMailState {
 }
 
 const messagesList = (): Promise<HTMLElement> => screen.findByRole('list', { name: 'Messages' })
+/** The list pane: its own alerts, not the toolbar's live regions. */
+const listRegion = (): Promise<HTMLElement> => screen.findByRole('region', { name: 'Messages' })
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -111,7 +113,7 @@ describe('MailScreen', () => {
     expect(within(list).getAllByRole('listitem')).toHaveLength(30)
     expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument()
     const cursors = queriesTo(fetchMock, '/api/v1/mail/accounts/work/messages').map((query) => query.get('cursor'))
-    expect(cursors).toEqual([null, 'at:25'])
+    expect(cursors).toEqual([null, 'before:76'])
   })
 
   it('words a page that fails to load more, and keeps what was shown', async () => {
@@ -122,7 +124,7 @@ describe('MailScreen', () => {
     const list = await messagesList()
     fake.refuse = { 'GET /api/v1/mail/accounts/work/messages': refusal(504, 'timeout') }
     await userEvent.click(screen.getByRole('button', { name: 'Load more' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('The mail server did not answer in time.')
+    expect(await within(await listRegion()).findByRole('alert')).toHaveTextContent('The mail server did not answer in time.')
     expect(within(list).getAllByRole('listitem')).toHaveLength(25)
     expect(screen.getByRole('button', { name: 'Load more' })).toBeInTheDocument()
   })
@@ -324,7 +326,7 @@ describe('MailScreen', () => {
 
     const results = await screen.findByRole('list', { name: 'Search results' })
     expect(within(results).getByText('home · INBOX')).toBeInTheDocument()
-    const alert = screen.getByRole('alert')
+    const alert = within(await listRegion()).getByRole('alert')
     expect(alert).toHaveTextContent('work: The mail server rejected the login for this account.')
     // The app's own code, worded as Accounts words it.
     expect(alert).toHaveTextContent('home: No stored password works for this account')
@@ -353,7 +355,7 @@ describe('MailScreen', () => {
     stubMailApi(state())
     renderMailApp('/mail?account=gone')
 
-    const [alert] = await screen.findAllByRole('alert')
+    const [alert] = await within(await listRegion()).findAllByRole('alert')
     expect(alert).toHaveTextContent('This mail account does not exist (any more).')
   })
 
@@ -361,7 +363,7 @@ describe('MailScreen', () => {
     stubMailApi(state())
     renderMailApp('/mail?folder=Gone')
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('That folder does not exist on this account.')
+    expect(await within(await listRegion()).findByRole('alert')).toHaveTextContent('That folder does not exist on this account.')
   })
 
   it('words a stale message reference, never the server text', async () => {

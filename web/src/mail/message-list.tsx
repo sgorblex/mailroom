@@ -1,4 +1,4 @@
-import { useCallback, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useSearch } from '@tanstack/react-router'
 import { Paperclip, Star } from 'lucide-react'
@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils.ts'
 import { addressLabel, formatListDate } from './format.ts'
 import { MAIL_NS } from './i18n.ts'
 import { ACCOUNT_NOT_FOUND, mailCodeMessage, mailErrorMessage } from './messages.ts'
+import { useTriage, type Target } from './triage-context.ts'
 
 type More = { kind: 'idle' } | { kind: 'loading' } | { kind: 'failed'; message: string }
 
@@ -32,6 +33,20 @@ export function MessageList({
   const [later, setLater] = useState<MessagePage[]>([])
   const [more, setMore] = useState<More>({ kind: 'idle' })
   const unmountSignal = useUnmountSignal()
+  const triage = useTriage()
+  const { removed, setVisible } = triage
+  const loaded = state.kind === 'loaded' ? [state.value, ...later] : []
+  // Rows moved away since are gone in place.
+  const messages = loaded.flatMap((page) => page.messages).filter((message) => !removed.has(message.ref))
+  useEffect(() => {
+    setVisible(messages)
+  })
+  useEffect(
+    () => () => {
+      setVisible([])
+    },
+    [setVisible],
+  )
 
   if (state.kind === 'loading') {
     return (
@@ -53,10 +68,8 @@ export function MessageList({
     )
   }
 
-  const pages = [state.value, ...later]
-  const messages = pages.flatMap((page) => page.messages)
-  const failures = uniqueFailures(pages.flatMap((page) => page.failures))
-  const nextCursor = pages[pages.length - 1]?.next_cursor ?? null
+  const failures = uniqueFailures(loaded.flatMap((page) => page.failures))
+  const nextCursor = loaded[loaded.length - 1]?.next_cursor ?? null
 
   async function loadMore(cursor: string): Promise<void> {
     setMore({ kind: 'loading' })
@@ -75,16 +88,31 @@ export function MessageList({
   return (
     <div className="flex flex-col gap-3">
       {failures.length > 0 && <Failures failures={failures} />}
+      {/* Every loaded row moved away is not an empty folder while there is more to load. */}
       {messages.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{searching ? t('list.noMatches') : t('list.empty')}</p>
+        nextCursor === null && (
+          <p className="text-sm text-muted-foreground">{searching ? t('list.noMatches') : t('list.empty')}</p>
+        )
       ) : (
-        <ul aria-label={searching ? t('list.results') : t('list.messages')} className="flex flex-col divide-y rounded-lg border">
-          {messages.map((message) => (
-            <li key={message.ref}>
-              <MessageRow message={message} showSource={searching} />
-            </li>
-          ))}
-        </ul>
+        <>
+          <SelectAll messages={messages} />
+          <ul aria-label={searching ? t('list.results') : t('list.messages')} className="flex flex-col divide-y rounded-lg border">
+            {messages.map((message) => (
+              <li key={message.ref} className="flex items-start">
+                <input
+                  type="checkbox"
+                  aria-label={t('triage.select', { subject: message.subject === '' ? t('message.noSubject') : message.subject })}
+                  className="m-3 mr-0 size-4 shrink-0 accent-primary"
+                  checked={triage.selection.has(message.ref)}
+                  onChange={(event) => {
+                    triage.select([message], event.target.checked)
+                  }}
+                />
+                <MessageRow message={message} showSource={searching} />
+              </li>
+            ))}
+          </ul>
+        </>
       )}
       {more.kind === 'failed' && (
         <p role="alert" className="text-sm text-destructive">
@@ -145,10 +173,39 @@ function Failures({ failures }: { failures: SourceFailure[] }): ReactElement {
   )
 }
 
+/** Selects every loaded row, or none once all are. */
+function SelectAll({ messages }: { messages: Target[] }): ReactElement {
+  const { t } = useTranslation(MAIL_NS)
+  const { selection, select } = useTriage()
+  const box = useRef<HTMLInputElement>(null)
+  const chosen = messages.filter((message) => selection.has(message.ref)).length
+  const all = chosen === messages.length
+  useEffect(() => {
+    if (box.current !== null) {
+      box.current.indeterminate = chosen > 0 && !all
+    }
+  }, [chosen, all])
+  return (
+    <label className="flex items-center gap-3 px-3 text-sm text-muted-foreground">
+      <input
+        ref={box}
+        type="checkbox"
+        className="size-4 accent-primary"
+        checked={all}
+        onChange={() => {
+          select(messages, !all)
+        }}
+      />
+      {t('triage.selectAll')}
+    </label>
+  )
+}
+
 function MessageRow({ message, showSource }: { message: MessageItem; showSource: boolean }): ReactElement {
   const { t, i18n } = useTranslation(MAIL_NS)
   const { message: open } = useSearch({ from: '/mail' })
-  const unread = !message.flags.seen
+  const flags = useTriage().flagsOf(message)
+  const unread = !flags.seen
   const subject = message.subject === '' ? t('message.noSubject') : message.subject
   const sender = addressLabel(message.from)
   return (
@@ -157,7 +214,7 @@ function MessageRow({ message, showSource }: { message: MessageItem; showSource:
       search={(previous) => ({ ...previous, message: message.ref })}
       aria-current={message.ref === open ? 'true' : undefined}
       className={cn(
-        'flex flex-col gap-0.5 p-3 text-sm hover:bg-accent',
+        'flex min-w-0 flex-1 flex-col gap-0.5 p-3 text-sm hover:bg-accent',
         message.ref === open && 'bg-accent',
       )}
     >
@@ -165,7 +222,7 @@ function MessageRow({ message, showSource }: { message: MessageItem; showSource:
         <span className={cn('min-w-0 flex-1 truncate', unread && 'font-semibold')}>
           {sender === '' ? t('message.noSender') : sender}
         </span>
-        {message.flags.flagged && (
+        {flags.flagged && (
           <Star role="img" aria-label={t('list.flagged')} className="size-3.5 shrink-0 self-center fill-current" />
         )}
         {message.has_attachments && (

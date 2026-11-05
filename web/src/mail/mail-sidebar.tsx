@@ -1,4 +1,4 @@
-import { useCallback, type ReactElement } from 'react'
+import type { ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from '@tanstack/react-router'
 import {
@@ -14,13 +14,13 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 
-import { listMailFolders, type FolderRole, type MailFolder } from '@/api/mail.ts'
+import type { FolderRole, MailFolder } from '@/api/mail.ts'
 import { Button } from '@/components/ui/button.tsx'
-import { useLoad } from '@/lib/use-load.ts'
 import { cn } from '@/lib/utils.ts'
 
 import { MAIL_NS } from './i18n.ts'
-import { ACCOUNT_NOT_FOUND, mailErrorMessage } from './messages.ts'
+import { ACCOUNT_NOT_FOUND, folderName, mailErrorMessage } from './messages.ts'
+import { useAccountFolders } from './triage-context.ts'
 
 const ROLE_ICONS: Record<FolderRole, LucideIcon> = {
   inbox: Inbox,
@@ -79,8 +79,8 @@ export function MailSidebar({
 
 function FolderList({ accountId, folder }: { accountId: string; folder: string | null }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
-  const load = useCallback((signal: AbortSignal) => listMailFolders(accountId, signal), [accountId])
-  const { state, retry } = useLoad(load, (error) => mailErrorMessage(t, error, t('folders.loadFailed'), ACCOUNT_NOT_FOUND))
+  // Shared with the toolbar, whose actions change the counts in place; read again on mount.
+  const { state, retry } = useAccountFolders(accountId, true)
 
   if (state.kind === 'loading') {
     return (
@@ -93,7 +93,7 @@ function FolderList({ accountId, folder }: { accountId: string; folder: string |
     return (
       <div className="flex flex-col items-start gap-2 px-2">
         <p role="alert" className="text-sm">
-          {state.message}
+          {mailErrorMessage(t, state.error, t('folders.loadFailed'), ACCOUNT_NOT_FOUND)}
         </p>
         <Button variant="outline" size="sm" onClick={retry}>
           {t('auth.retry')}
@@ -123,7 +123,7 @@ function FolderLink({
 }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const Icon = folder.role === null ? Folder : ROLE_ICONS[folder.role]
-  const name = folder.role === null ? folder.path : t(`roles.${folder.role}`)
+  const name = folderName(t, folder)
   return (
     <Link
       to="/mail"

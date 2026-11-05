@@ -1,4 +1,4 @@
-import { useCallback, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
@@ -14,6 +14,7 @@ import { addressFull } from './format.ts'
 import { HtmlBody } from './html-body.tsx'
 import { MAIL_NS } from './i18n.ts'
 import { mailErrorMessage } from './messages.ts'
+import { useTriage } from './triage-context.ts'
 
 /** One message, mounted anew (by key) for each: its view choices are never carried over. */
 export function MessageView({ messageRef }: { messageRef: string }): ReactElement {
@@ -32,6 +33,32 @@ export function MessageView({ messageRef }: { messageRef: string }): ReactElemen
   )
   const { state, retry } = useLoad(load, (error) => mailErrorMessage(t, error, t('message.loadFailed')))
   const pending = state.kind === 'loading' || (state.kind === 'loaded' && state.value.includeQuoted !== includeQuoted)
+  const { setOpen, flagsOf, run } = useTriage()
+  const marked = useRef(false)
+  const view = state.kind === 'loaded' ? state.value.view : null
+
+  // The toolbar acts on the open message; opening an unread one marks it read, once, and a
+  // failure leaves it unread without a word.
+  useEffect(() => {
+    if (view === null) {
+      return
+    }
+    const target = { ref: view.ref, account_id: view.account_id, folder: view.folder, flags: view.flags }
+    setOpen(target)
+    // Decided on the first load only: marked unread while open, it stays so.
+    if (!marked.current) {
+      marked.current = true
+      if (!flagsOf(target).seen) {
+        void run({ kind: 'flag', change: { seen: true } }, [target], { silent: true })
+      }
+    }
+  }, [view, setOpen, flagsOf, run])
+  useEffect(
+    () => () => {
+      setOpen(null)
+    },
+    [setOpen],
+  )
 
   return (
     <article className="flex flex-1 flex-col gap-4" aria-busy={pending}>
