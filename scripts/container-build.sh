@@ -79,10 +79,21 @@ _build_date() {
   date -u +%Y-%m-%dT%H:%M:%SZ
 }
 
+# A tag that the next release moves (`:latest`, `:production`, `:staging`) rather than one that
+# names a single build.
+_is_moving_tag() {
+  case "${1##*:}" in
+    latest | production | staging) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # Builds the current `tags` array (set by the caller) plus, when MAILROOM_REGISTRY is set, a
 # matching set of "${MAILROOM_REGISTRY}/..." tags built in the same invocation and pushed
-# afterward. With MAILROOM_REGISTRY unset, behaves exactly as before (local tags only, exec'd
-# so the engine replaces this process for correct signal/exit-code passthrough).
+# afterward. With MAILROOM_PUSH_LIST set as well, the registry tags are not pushed but appended
+# to that file as `fixed|moving <engine> <ref>` lines, for containers-both.sh to push once
+# every image has built. With MAILROOM_REGISTRY unset, behaves exactly as before (local tags
+# only, exec'd so the engine replaces this process for correct signal/exit-code passthrough).
 _run_build() {
   local context="$1"; shift
   local -a load_flag=()
@@ -95,8 +106,16 @@ _run_build() {
     done
     tags+=("${registry_tags[@]}")
     "$E" build "$@" "${load_flag[@]}" "${tags[@]}" "$context"
+    local ref
     for ((i = 0; i < ${#registry_tags[@]}; i += 2)); do
-      "$E" push "${registry_tags[i + 1]}"
+      ref="${registry_tags[i + 1]}"
+      if [[ -z "${MAILROOM_PUSH_LIST:-}" ]]; then
+        "$E" push "$ref"
+      elif _is_moving_tag "$ref"; then
+        printf 'moving %s %s\n' "$E" "$ref" >>"$MAILROOM_PUSH_LIST"
+      else
+        printf 'fixed %s %s\n' "$E" "$ref" >>"$MAILROOM_PUSH_LIST"
+      fi
     done
   else
     exec "$E" build "$@" "${load_flag[@]}" "${tags[@]}" "$context"
@@ -126,7 +145,15 @@ case "$target" in
 esac
 
 semver="$(_read_semver)"
-if [[ "$release" == "production" ]]; then
+# A release build tags what the tag says; a tag that disagrees with version.txt is a mistake.
+if [[ -n "${CI_COMMIT_TAG:-}" && "${CI_COMMIT_TAG}" != "v${semver}" ]]; then
+  echo "container-build: tag ${CI_COMMIT_TAG} does not match version.txt (${semver})" >&2
+  exit 1
+fi
+if [[ "$release" == "production" && "$semver" == *-* ]]; then
+  # A pre-release never becomes :production or :latest, so nothing deploys it.
+  tags=(-t "${image}:${semver}")
+elif [[ "$release" == "production" ]]; then
   tags=(-t "${image}:${semver}" -t "${image}:latest" -t "${image}:production")
 else
   tags=(-t "${image}:staging")

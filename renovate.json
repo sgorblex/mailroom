@@ -102,6 +102,14 @@
       "groupName": "Woodpecker pipeline images"
     },
     {
+      "matchFileNames": [
+        ".woodpecker/release.yaml"
+      ],
+      "automerge": false,
+      "groupName": "Woodpecker release images",
+      "description": "release.yaml runs only on a `v*` tag, so nothing on a PR exercises its images; they never automerge, in a group of their own so the other pipeline images still do."
+    },
+    {
       "matchManagers": [
         "dockerfile",
         "docker-compose"
