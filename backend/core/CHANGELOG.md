@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.2](https://github.com/sgorblex/mailroom-mcp/compare/mailroom-core-v0.1.1...mailroom-core-v0.1.2) (2026-11-05)
+
+
+### Features
+
+* **core:** port mail organize operations to Python ([#71](https://github.com/sgorblex/mailroom-mcp/issues/71)) ([550352b](https://github.com/sgorblex/mailroom-mcp/commit/550352b80454f0abd1801c27ba92bc25645c97cb))
+* **core:** port move, trash, archive and flag to Python ([550352b](https://github.com/sgorblex/mailroom-mcp/commit/550352b80454f0abd1801c27ba92bc25645c97cb))
+
+
+### Bug Fixes
+
+* **core:** find attachments on Gmail accounts ([9048024](https://github.com/sgorblex/mailroom-mcp/commit/9048024f8f98ccb4a81e98ed23a8d0d83785fcc8))
+* **core:** search Gmail attachments with X-GM-RAW ([#69](https://github.com/sgorblex/mailroom-mcp/issues/69)) ([9048024](https://github.com/sgorblex/mailroom-mcp/commit/9048024f8f98ccb4a81e98ed23a8d0d83785fcc8))
+
 ## [0.1.1](https://github.com/sgorblex/mailroom-mcp/compare/mailroom-core-v0.1.0...mailroom-core-v0.1.1) (2026-11-01)
 
 
