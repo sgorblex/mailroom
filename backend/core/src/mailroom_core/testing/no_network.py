@@ -23,10 +23,14 @@ class NetworkAccessError(RuntimeError):
 
 
 def _test_hosts() -> list[str]:
-    hosts = [os.environ.get("IMAP_TEST_HOST"), os.environ.get("SMTP_TEST_HOST")]
-    api = os.environ.get("MAILPIT_TEST_API")
-    if api is not None:
-        hosts.append(urlsplit(api).hostname)
+    hosts = [
+        os.environ.get(name)
+        for name in ("IMAP_TEST_HOST", "SMTP_TEST_HOST", "SMTP_TEST_STARTTLS_HOST")
+    ]
+    for name in ("MAILPIT_TEST_API", "MAILPIT_TEST_STARTTLS_API"):
+        api = os.environ.get(name)
+        if api is not None:
+            hosts.append(urlsplit(api).hostname)
     return [host for host in hosts if host]
 
 

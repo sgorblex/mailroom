@@ -63,6 +63,18 @@ class SmtpTestServer:
             os.environ.get("MAILPIT_TEST_API", "http://127.0.0.1:38025"),
         )
 
+    @classmethod
+    def starttls_from_env(cls) -> Self | None:
+        """The same server, offering STARTTLS on a plain port instead."""
+        host = os.environ.get("SMTP_TEST_STARTTLS_HOST")
+        if host is None:
+            return None
+        return cls(
+            host,
+            int(os.environ.get("SMTP_TEST_STARTTLS_PORT", "31587")),
+            os.environ.get("MAILPIT_TEST_STARTTLS_API", "http://127.0.0.1:38026"),
+        )
+
     def delivered_to(self, address: str) -> list[Delivered]:
         """Every message Mailpit received for `address` (as an SMTP recipient), oldest first."""
         query = quote(f'addressed:"{address}"')

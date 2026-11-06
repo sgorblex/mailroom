@@ -17,6 +17,12 @@ and `recipient_list`, `from_identity`, `original_message`, `reply_recipients` an
 `attachments_from` give it what it takes. `save_draft`, `read_draft`, `find_drafts`, `draft_source`
 and `remove_draft` keep drafts in the account's Drafts folder.
 
+`mailroom_core.send` is the one gate every send goes through. `send_through_gate` does all of it;
+a host that answers before the message has left calls `admit`, then `deliver` and `file_sent` on a
+worker, and writes what followed to the send's row itself. `admit` takes who authorised the send:
+`send_mode` limits agents, not a person's click.
+
 `mailroom_core.testing` is a pytest plugin, loaded wherever the package is installed: a
-no-network guard, the IMAP, SMTP and test-database fixtures, and helpers to seed the IMAP test
-server (`mailroom_core.testing.imap`). Install the `testing` extra for it.
+no-network guard, the IMAP, SMTP and test-database fixtures, helpers to seed the IMAP test
+server (`mailroom_core.testing.imap`), and `SmtpStub`, an SMTP server scripted to refuse, stall or
+hang up at a chosen step. Install the `testing` extra for it.

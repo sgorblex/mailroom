@@ -4,6 +4,7 @@ records of an outgoing message."""
 import email
 import json
 import re
+import time
 from dataclasses import replace
 from datetime import UTC, datetime
 from email import policy
@@ -55,6 +56,7 @@ from mailroom_core.mail import (
     without_headers,
 )
 from mailroom_core.mail._mime import header_values
+from mailroom_core.mail.compose import crlf_lines
 
 if TYPE_CHECKING:
     from email.message import EmailMessage
@@ -492,6 +494,33 @@ class TestWithoutHeaders:
     def test_strips_what_compose_stored_down_to_the_wire(self) -> None:
         composed = compose(replace(BASE, draft=True))
         assert without_headers(composed.stored, ["Bcc", DRAFT_HEADER]) == composed.wire
+
+
+class TestCrlfLines:
+    @pytest.mark.parametrize(
+        ("raw", "lines"),
+        [
+            (b"a\r\nb", b"a\r\nb"),
+            (b"a\nb", b"a\r\nb"),
+            (b"a\rb", b"a\r\nb"),
+            (b"a\n\nb", b"a\r\n\r\nb"),
+            (b"a\r\rb", b"a\r\n\r\nb"),
+            (b"a\r\n\rb", b"a\r\n\r\nb"),
+            (b"a\n\r\nb", b"a\r\n\r\nb"),
+            (b"a\r\r\nb", b"a\r\nb"),
+            (b"a\n\rb", b"a\r\nb"),
+            (b"a\n\r\r\nb", b"a\r\n\r\nb"),
+        ],
+    )
+    def test_counts_a_break_as_the_wire_will(self, raw: bytes, lines: bytes) -> None:
+        assert crlf_lines(raw) == lines
+        assert crlf_lines(lines) == lines
+
+    def test_is_linear_on_a_long_run_of_crs(self) -> None:
+        started = time.perf_counter()
+        lines = crlf_lines(b"\r" * 200_000)
+        assert time.perf_counter() - started < 1.0
+        assert lines == b"\r\n" * 200_000
 
 
 def test_reads_every_value_of_a_header_unfolded() -> None:

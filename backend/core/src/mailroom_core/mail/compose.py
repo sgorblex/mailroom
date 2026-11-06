@@ -48,6 +48,9 @@ _SURROGATE: Final = re.compile("[\ud800-\udfff]")
 _SEPARATOR: Final = re.compile(rb"\r?\n\r?\n")
 _LINE_START: Final = re.compile(rb"(?<=\n)")
 _LAST_BREAK: Final = re.compile(rb"\r?\n\Z")
+# The last branch takes a whole run of CRs: one at a time, `\r+\n` would rescan the run from each.
+_BREAKS: Final = re.compile(rb"\r+\n|\n\r?|\r+")
+_BARE_CR: Final = re.compile(rb"\r(?!\n)")
 
 
 @dataclass(frozen=True, slots=True)
@@ -256,9 +259,44 @@ def draft_answers(headers: bytes | str) -> MessageRef | None:
         return None
 
 
+def _crlf(breaks: re.Match[bytes]) -> bytes:
+    run = breaks.group()
+    return b"\r\n" * (run.count(b"\n") or len(run))
+
+
+def crlf_lines(raw: bytes) -> bytes:
+    """`raw` with every line ending in CRLF, which is what the wire will read. An LF is one break
+    with the CRs before it and a CR after it, or `\\r\\r\\n` would be a blank line that turns the
+    fields after it into body text; every other CR is a break of its own."""
+    return _BREAKS.sub(_crlf, raw)
+
+
+def _header_block(raw: bytes) -> bytes:
+    """`raw` through the blank line that ends its headers, not to it: a CR just before that line is
+    judged by the LF that follows. All of `raw` when it has no such line."""
+    separator = _SEPARATOR.search(raw)
+    return raw if separator is None else raw[: separator.end()]
+
+
+def bare_cr_in_headers(raw: bytes) -> bool:
+    """Whether a CR with no LF after it comes before the blank line that ends `raw`'s headers."""
+    return _BARE_CR.search(_header_block(raw)) is not None
+
+
+def field_count(raw: bytes, name: str) -> int:
+    """How many `name` fields `raw`'s headers hold, each counted as `without_headers` would find it,
+    so `From :` is one too."""
+    wanted = name.lower().encode("ascii")
+    return sum(
+        line[:1] not in (b" ", b"\t") and line.partition(b":")[0].strip().lower() == wanted
+        for line in _LINE_START.split(_header_block(raw))
+    )
+
+
 def without_headers(raw: bytes, names: Iterable[str]) -> bytes:
     """The raw message without the named header fields (folded continuation lines included); the
-    body is left byte for byte as it was."""
+    body is left byte for byte as it was. A line ends at an LF here, so bytes another client wrote
+    go through `crlf_lines` first."""
     separator = _SEPARATOR.search(raw)
     end = len(raw) if separator is None else separator.start()
     wanted = {name.lower().encode("ascii") for name in names}

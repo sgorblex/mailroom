@@ -52,6 +52,15 @@ def smtp_server() -> SmtpTestServer:
 
 
 @pytest.fixture(scope="session")
+def smtp_starttls_server() -> SmtpTestServer:
+    """The Mailpit test server offering STARTTLS; skips the test without SMTP_TEST_STARTTLS_HOST."""
+    server = SmtpTestServer.starttls_from_env()
+    if server is None:
+        pytest.skip("SMTP_TEST_STARTTLS_HOST is not set: run `mise run test-integration-py`")
+    return server
+
+
+@pytest.fixture(scope="session")
 def throwaway_databases() -> Iterator[ThrowawayDatabases]:
     """Throwaway databases on TEST_DATABASE_URL's server; skips the test without it."""
     databases = ThrowawayDatabases.from_env()

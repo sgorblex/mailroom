@@ -27,6 +27,11 @@ type Junk = Literal["spam", "ham"]
 """What a move teaches the account's spam filter: into Junk, or out of it."""
 type Removal = Literal["expunged", "trashed", "failed"]
 """How a draft left Drafts: expunged (mailroom's own), moved to Trash, or still there."""
+type Authoriser = Literal["user", "agent"]
+"""Who asked for a send: a person's click, or an agent. `send_mode` limits agents only."""
+type DeliveryStage = Literal["sent", "drafted", "attempted", "refused", "repeated"]
+"""How far a send went: out, into Drafts instead, handed to SMTP without success, stopped by the
+gate, or a retry answered from the earlier attempt."""
 
 REFUSALS: Final[frozenset[AuditResult]] = frozenset(
     {
@@ -81,6 +86,14 @@ class AuditItem:
     flag: str | None = None
     """A flag set on its own, as `\\Answered` after a reply."""
     removed: Removal | None = None
+    mode: str | None = None
+    """The account's `send_mode`, on a send."""
+    by: Authoriser | None = None
+    delivery: DeliveryStage | None = None
+    filed: bool | None = None
+    """On a sent message: whether the copy reached Sent."""
+    rejected: tuple[str, ...] | None = None
+    """Recipients the server refused while taking the others."""
     result: AuditResult
 
     @property
