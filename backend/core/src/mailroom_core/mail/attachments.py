@@ -29,15 +29,19 @@ class AttachmentSource:
 
 
 def attachments_from(
-    connections: MailConnections, sources: Iterable[AttachmentSource], cap_bytes: int
+    connections: MailConnections,
+    sources: Iterable[AttachmentSource],
+    cap_bytes: int,
+    *,
+    used: int = 0,
 ) -> tuple[OutgoingAttachment, ...]:
     """The parts to attach, read from their mailboxes. Each must be an attachment or the calendar
-    part of its message (not its body, nor what its HTML shows in place), and together they stay
-    under `cap_bytes`: `too_large` beyond. A host checks that each ref's account is the caller's,
-    as for any ref."""
+    part of its message (not its body, nor what its HTML shows in place), and together with the
+    `used` bytes the message carries already they stay under `cap_bytes`: `too_large` beyond. A
+    host checks that each ref's account is the caller's, as for any ref."""
     attachments: list[OutgoingAttachment] = []
     for source in sources:
-        room = cap_bytes - sum(len(attachment.content) for attachment in attachments)
+        room = cap_bytes - used - sum(len(attachment.content) for attachment in attachments)
         if room < 0:
             raise attachments_too_large(cap_bytes)
         attachments.append(_read(connections, source, room, cap_bytes))

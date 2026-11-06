@@ -77,6 +77,14 @@ class Structure:
         calendar = () if self.calendar is None else (self.calendar,)
         return self.attachments + self.inline_parts + calendar
 
+    @property
+    def carried(self) -> tuple[PartInfo, ...]:
+        """The parts a draft's next version can keep: the attachments, then an invite with a
+        name, which someone attached as a file. One with no name is a body alternative."""
+        if self.calendar is None or self.calendar.name is None:
+            return self.attachments
+        return (*self.attachments, self.calendar)
+
 
 def _int(value: object) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) else 0

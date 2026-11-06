@@ -11,6 +11,7 @@ from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Final, Literal
 
 from mailroom_core.mail._mime import addresses, decode_words, text_value
+from mailroom_core.mail.errors import MailError
 from mailroom_core.render import clean_header
 
 if TYPE_CHECKING:
@@ -161,6 +162,11 @@ def outgoing_item(
         attachments=len(message.attachments),
         result=result,
     )
+
+
+def audit_result(error: Exception) -> AuditResult:
+    """What an exception records: its code, `internal` when it has none."""
+    return error.code if isinstance(error, MailError) else "internal"
 
 
 def audit_outcome(results: Iterable[AuditResult], error: AuditResult | None = None) -> AuditOutcome:

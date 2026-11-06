@@ -28,6 +28,7 @@ from mailroom_core.render import (
 from mailroom_core.render.safe_html import RASTER_TYPES
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from datetime import datetime
 
     from imapclient import IMAPClient
@@ -55,6 +56,21 @@ def fetch_structure(
     if not isinstance(body, tuple | list):
         raise MailError("not_found")
     return data, analyse_structure(body)
+
+
+def fetched_headers(data: Mapping[bytes, object]) -> bytes:
+    """The header block of a `BODY.PEEK[HEADER.FIELDS (…)]` fetched with a message; empty when
+    the server sent none."""
+    return next(
+        (
+            value
+            for key, value in data.items()
+            if isinstance(key, bytes)
+            and key.startswith(b"BODY[HEADER.FIELDS")
+            and isinstance(value, bytes)
+        ),
+        b"",
+    )
 
 
 @dataclass(frozen=True, slots=True)

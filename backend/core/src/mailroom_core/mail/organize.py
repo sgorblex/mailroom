@@ -153,7 +153,7 @@ def trash_messages(
     connections: MailConnections, refs: Sequence[str], *, removed: Removal | None = None
 ) -> OrganizeResult:
     """Moves to each account's Trash; what is in Trash already stays, never deleted. `removed`
-    tags the audit items, when this is how a draft is removed."""
+    tags the audit items, when this is how a draft is removed: `failed` on those it failed for."""
     groups = _groups(connections, refs)
     folders_of = _folder_lookup(connections)
 
@@ -168,7 +168,7 @@ def trash_messages(
             )
         return _move(connections, group, trash.path, None, note, removed=removed)
 
-    return _each_group(groups, act)
+    return _each_group(groups, act, removed=None if removed is None else "failed")
 
 
 def set_flags(
@@ -266,9 +266,13 @@ def _groups(connections: MailConnections, texts: Sequence[str]) -> list[_Group]:
 
 
 def _each_group(
-    groups: Sequence[_Group], act: Callable[[_Group, _Note], GroupResult]
+    groups: Sequence[_Group],
+    act: Callable[[_Group, _Note], GroupResult],
+    *,
+    removed: Removal | None = None,
 ) -> OrganizeResult:
-    """`act` per group; a group that fails is noted as failed for every ref it had not noted."""
+    """`act` per group; a group that fails is noted as failed for every ref it had not noted, with
+    `removed` as its tag."""
     items: list[AuditItem] = []
     results: list[GroupResult] = []
     for group in groups:
@@ -281,7 +285,11 @@ def _each_group(
             if len(items) == noted:
                 items.extend(
                     AuditItem(
-                        account=group.account, folder=group.folder, uid=ref.uid, result=error.code
+                        account=group.account,
+                        folder=group.folder,
+                        uid=ref.uid,
+                        removed=removed,
+                        result=error.code,
                     )
                     for ref in group.refs
                 )
@@ -383,7 +391,7 @@ def _move(
                         destination=destination,
                         junk=junk,
                         copied=copied,
-                        removed=removed,
+                        removed=removed if removed is None or result == "ok" else "failed",
                     )
                 )
 

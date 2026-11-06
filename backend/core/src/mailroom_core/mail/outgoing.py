@@ -10,7 +10,7 @@ from mailroom_core.render._js import Utf16Index
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sized
 
-    from mailroom_core.config import Limits
+    from mailroom_core.config import AccountConfig, Limits
 
 MAX_ADDRESSES: Final = 50
 """Per field, before `Limits.max_recipients` bounds the message."""
@@ -22,6 +22,12 @@ MAX_UPLOADS: Final = 10
 def attachment_cap(limits: Limits) -> int:
     """The bytes all of a message's attachments may total."""
     return int(limits.attachment_max_mb * 1024 * 1024)
+
+
+def check_sendable(account: AccountConfig) -> None:
+    """`send_disabled` on an account whose `send_mode` is `off`: no drafts or sends."""
+    if account.send_mode == "off":
+        raise MailError("send_disabled")
 
 
 def attachments_too_large(cap: int) -> MailError:

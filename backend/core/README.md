@@ -14,7 +14,8 @@ async host calls it from a worker thread. Over them, `list_messages`, `search_me
 `move_messages`, `trash_messages`, `archive_messages` and `set_flags` organize it, returning
 per-folder results and per-message audit items. `compose` builds a message from a `MessageInput`,
 and `recipient_list`, `from_identity`, `original_message`, `reply_recipients` and
-`attachments_from` give it what it takes.
+`attachments_from` give it what it takes. `save_draft`, `read_draft`, `find_drafts`, `draft_source`
+and `remove_draft` keep drafts in the account's Drafts folder.
 
 `mailroom_core.testing` is a pytest plugin, loaded wherever the package is installed: a
 no-network guard, the IMAP, SMTP and test-database fixtures, and helpers to seed the IMAP test

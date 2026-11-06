@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Final
 from mailroom_core.mail._mime import aware_date, header_text, header_values
 from mailroom_core.mail.download import body_text, part_content
 from mailroom_core.mail.identity import Addressed
-from mailroom_core.mail.read import fetch_structure
+from mailroom_core.mail.read import fetch_structure, fetched_headers
 from mailroom_core.mail.recipients import envelope_mailboxes, mailbox_text
 from mailroom_core.mail.ref import MessageRef, check_fresh
 from mailroom_core.render import clean_header, format_date, render_body
@@ -73,6 +73,11 @@ def _found(pattern: re.Pattern[str], values: Iterable[str]) -> tuple[str, ...]:
     return tuple(found for value in values for found in pattern.findall(value))
 
 
+def references_in(headers: bytes) -> tuple[str, ...]:
+    """The Message-IDs of a header block's References."""
+    return _found(_MESSAGE_ID, header_values(headers, "references"))
+
+
 def original_message(connections: MailConnections, ref: MessageRef) -> Original:
     """Reads the message a reply or forward is built on, under EXAMINE, at most
     `MAX_ORIGINAL_BYTES` of its body."""
@@ -82,16 +87,7 @@ def original_message(connections: MailConnections, ref: MessageRef) -> Original:
         client = context.client
         fields = f"BODY.PEEK[HEADER.FIELDS ({' '.join(_HEADERS)})]"
         data, structure = fetch_structure(client, ref.uid, ["ENVELOPE", fields])
-        headers = next(
-            (
-                value
-                for key, value in data.items()
-                if isinstance(key, bytes)
-                and key.startswith(b"BODY[HEADER.FIELDS")
-                and isinstance(value, bytes)
-            ),
-            b"",
-        )
+        headers = fetched_headers(data)
         text = ""
         fmt = structure.body_format
         if structure.body is not None and fmt is not None:
@@ -111,7 +107,7 @@ def original_message(connections: MailConnections, ref: MessageRef) -> Original:
         return Original(
             ref=ref,
             message_id=None if own is None else header_text(own) or None,
-            references=_found(_MESSAGE_ID, header_values(headers, "references")),
+            references=references_in(headers),
             subject=header_text(getattr(envelope, "subject", None)),
             date=aware_date(getattr(envelope, "date", None)),
             sender=envelope_mailboxes(getattr(envelope, "from_", None)),
