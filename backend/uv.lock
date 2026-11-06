@@ -818,7 +818,7 @@ requires-dist = [
     { name = "imap-thingy", specifier = ">=0.8.0" },
     { name = "imapclient", specifier = ">=3.1.0" },
     { name = "jsonschema", specifier = ">=4.23" },
-    { name = "mailroom-core", specifier = ">=0.1.2" },
+    { name = "mailroom-core", specifier = ">=0.1.3" },
     { name = "mcp", specifier = ">=1.30,<1.31" },
     { name = "procrastinate", specifier = ">=3.10,<3.11" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
@@ -845,7 +845,7 @@ dev = [
 
 [[package]]
 name = "mailroom-core"
-version = "0.1.2"
+version = "0.1.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "alembic" },
@@ -858,9 +858,9 @@ dependencies = [
     { name = "sqlalchemy" },
     { name = "tzdata" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b0/5a/3b491a33d01a205db8a2179bc2d0dbed4bef8a6594ef65c5596235255141/mailroom_core-0.1.2.tar.gz", hash = "sha256:516fe473351a02b09b9a25d2aafb21505b9591a8f1004b1c8da141555798503d", size = 151636, upload-time = "2026-11-05T20:07:54.174Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/43/56/4902b533254100971407e6f4e9a2b582c8abf0946ea7f7570a616961a8b8/mailroom_core-0.1.3.tar.gz", hash = "sha256:4edae029f56ccbe5cb3f78d703c775635942b3adeafaa276481100eb27467bf8", size = 224550, upload-time = "2026-11-06T14:25:26.986Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ec/22/c0b5cdcd062e28679c4dcc2ebd814345405c3ed64e0d380917a8e72daf02/mailroom_core-0.1.2-py3-none-any.whl", hash = "sha256:386b66fa106bb77aeb6c907aaa473b25fb648ce3ff75f8e696e1408dd60aeed7", size = 121708, upload-time = "2026-11-05T20:07:52.831Z" },
+    { url = "https://files.pythonhosted.org/packages/47/2d/fbd3c912506d87ee724cd4918860312c3e1cfb9e76fc90a9fae89c6b3fd0/mailroom_core-0.1.3-py3-none-any.whl", hash = "sha256:7fe9d38e5ead98550b4891ba1d25af11ef45a241cda5b9ab55d4360abfae5d1d", size = 164711, upload-time = "2026-11-06T14:25:25.609Z" },
 ]
 
 [package.optional-dependencies]
