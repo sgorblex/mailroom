@@ -16,6 +16,7 @@ from mailroom_core.mail.audit import (
     AuditItem,
     AuditOutcome,
     Junk,
+    Removal,
     audit_outcome,
     message_item,
 )
@@ -148,8 +149,11 @@ def archive_messages(connections: MailConnections, refs: Sequence[str]) -> Organ
     return _each_group(groups, act)
 
 
-def trash_messages(connections: MailConnections, refs: Sequence[str]) -> OrganizeResult:
-    """Moves to each account's Trash; what is in Trash already stays, never deleted."""
+def trash_messages(
+    connections: MailConnections, refs: Sequence[str], *, removed: Removal | None = None
+) -> OrganizeResult:
+    """Moves to each account's Trash; what is in Trash already stays, never deleted. `removed`
+    tags the audit items, when this is how a draft is removed."""
     groups = _groups(connections, refs)
     folders_of = _folder_lookup(connections)
 
@@ -162,7 +166,7 @@ def trash_messages(connections: MailConnections, refs: Sequence[str]) -> Organiz
                 "invalid_argument",
                 "They are already in Trash; mailroom never deletes permanently.",
             )
-        return _move(connections, group, trash.path, None, note)
+        return _move(connections, group, trash.path, None, note, removed=removed)
 
     return _each_group(groups, act)
 
@@ -344,6 +348,8 @@ def _move(
     destination: str,
     junk: Junk | None,
     note: _Note,
+    *,
+    removed: Removal | None = None,
 ) -> GroupResult:
     """Moves the group's messages to `destination` and notes each one. Without MOVE it copies,
     marks \\Deleted and expunges exactly those UIDs, which only UIDPLUS allows: a server with
@@ -377,6 +383,7 @@ def _move(
                         destination=destination,
                         junk=junk,
                         copied=copied,
+                        removed=removed,
                     )
                 )
 

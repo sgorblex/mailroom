@@ -12,7 +12,7 @@ from mailroom_core.mail.content_type import content_type
 from mailroom_core.mail.download import body_text, part_content
 from mailroom_core.mail.errors import MailError
 from mailroom_core.mail.ref import MessageRef, check_fresh, format_ref, parse_ref
-from mailroom_core.mail.structure import Structure, analyse_structure
+from mailroom_core.mail.structure import MimePart, Structure, analyse_structure
 from mailroom_core.render import (
     Address,
     HeaderView,
@@ -44,9 +44,10 @@ def _message(ref: str | MessageRef) -> MessageRef:
     return parse_ref(ref) if isinstance(ref, str) else ref
 
 
-def _structure(
+def fetch_structure(
     client: IMAPClient, uid: int, items: list[str]
 ) -> tuple[dict[bytes, object], Structure]:
+    """The message's BODYSTRUCTURE analysed, with the other `items` fetched alongside it."""
     data = client.fetch([uid], ["BODYSTRUCTURE", *items]).get(uid)
     if data is None:
         raise MailError("not_found")
@@ -141,7 +142,7 @@ def read_message(
         items = ["ENVELOPE", "FLAGS", "INTERNALDATE", "RFC822.SIZE"]
         if raw_headers:
             items.append("BODY.PEEK[HEADER]")
-        data, structure = _structure(client, message.uid, items)
+        data, structure = fetch_structure(client, message.uid, items)
         envelope = data.get(b"ENVELOPE")
         body: RenderedBody | None = None
         html: str | None = None
@@ -227,6 +228,13 @@ def _check_part(part: str) -> None:
         raise MailError("invalid_argument", 'A part number is like "2" or "1.2".')
 
 
+def clearly_over(part: MimePart, max_bytes: int) -> bool:
+    """Whether the part can be refused before any download: base64 lines shorter than 76
+    characters make the estimate up to 1% high. Quoted-printable has no estimate."""
+    margin = max_bytes + max_bytes // 50 + 4
+    return part.encoding != "quoted-printable" and part.decoded_size > margin
+
+
 def read_attachment(
     connections: MailConnections, ref: str | MessageRef, part: str, *, max_bytes: int
 ) -> Attachment:
@@ -237,7 +245,7 @@ def read_attachment(
 
     def run(context: MailboxContext) -> Attachment:
         check_fresh(message, context.uid_validity)
-        _data, structure = _structure(context.client, message.uid, [])
+        _data, structure = fetch_structure(context.client, message.uid, [])
         info = next((p for p in structure.downloadable if p.part == part), None)
         leaf = structure.parts.get(part)
         if info is None or leaf is None:
@@ -247,12 +255,7 @@ def read_attachment(
             f"The attachment exceeds the {format_size(max_bytes)} limit "
             f"(about {format_size(leaf.decoded_size)}).",
         )
-        # Refused before any download when the estimate is clearly past the cap: base64 lines
-        # shorter than 76 characters make it up to 1% high. Quoted-printable has no estimate.
-        if (
-            leaf.encoding != "quoted-printable"
-            and leaf.decoded_size > max_bytes + max_bytes // 50 + 4
-        ):
+        if clearly_over(leaf, max_bytes):
             raise too_large
         # One byte over the cap is enough to know it is too large.
         data = part_content(context.client, message.uid, leaf, max_bytes + 1)
@@ -296,7 +299,7 @@ def html_view(
     def run(context: MailboxContext) -> SafeHtml:
         check_fresh(message, context.uid_validity)
         client = context.client
-        _data, structure = _structure(client, message.uid, [])
+        _data, structure = fetch_structure(client, message.uid, [])
         html = _html(client, message.uid, structure)
         if html is None:
             raise MailError("not_found", "This message has no HTML body.")

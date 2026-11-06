@@ -116,6 +116,17 @@ def header_text(value: bytes | str | None) -> str:
     return clean_header(decode_words(text_value(value)))
 
 
+_FOLD: Final = re.compile(r"\r?\n[ \t]+")
+
+
+def header_values(headers: bytes | str, name: str) -> list[str]:
+    """Every value of the field `name` in a raw header block, unfolded."""
+    field = re.compile(
+        rf"^{re.escape(name)}:[ \t]*([^\r\n]*(?:\r?\n[ \t][^\r\n]*)*)", re.IGNORECASE | re.MULTILINE
+    )
+    return [_FOLD.sub(" ", m.group(1)).strip() for m in field.finditer(text_value(headers))]
+
+
 _PARAMETER: Final = re.compile(r"([^*]+)(?:\*(\d+))?(\*)?")
 
 

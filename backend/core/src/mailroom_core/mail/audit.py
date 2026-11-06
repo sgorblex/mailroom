@@ -2,8 +2,8 @@
 call's outcome follows from those records (`AuditTrail.outcome` in `src/mcp/tool.ts`).
 
 A host writes the records into its own audit trail, or logs only their counts and codes; they
-never carry a message's content: the sender in clear (an investigation needs it), the subject
-only as a hash (DESIGN.md, *Safety*).
+never carry a message's content: the sender and recipients in clear (an investigation needs
+them), the subject only as a hash (DESIGN.md, *Safety*).
 """
 
 import hashlib
@@ -16,13 +16,16 @@ from mailroom_core.render import clean_header
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    from mailroom_core.mail.compose import MessageInput
     from mailroom_core.mail.errors import MailErrorCode
 
-type AuditResult = Literal["ok"] | MailErrorCode
-"""How a write ended for one message: `ok` or why not."""
+type AuditResult = Literal["ok", "internal"] | MailErrorCode
+"""How a write ended for one message: `ok` or why not, `internal` when no error code says."""
 type AuditOutcome = Literal["ok", "partial", "refused", "failed"]
 type Junk = Literal["spam", "ham"]
 """What a move teaches the account's spam filter: into Junk, or out of it."""
+type Removal = Literal["expunged", "trashed", "failed"]
+"""How a draft left Drafts: expunged (mailroom's own), moved to Trash, or still there."""
 
 REFUSALS: Final[frozenset[AuditResult]] = frozenset(
     {
@@ -41,17 +44,30 @@ REFUSALS: Final[frozenset[AuditResult]] = frozenset(
 """Errors that stop a write before it reaches the server; anything else means it failed."""
 
 
+@dataclass(frozen=True, slots=True)
+class AuditRecipients:
+    """Where an outgoing message goes, in clear, Bcc included."""
+
+    to: tuple[str, ...] = ()
+    cc: tuple[str, ...] = ()
+    bcc: tuple[str, ...] = ()
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class AuditItem:
     """One message in a write call's audit record, with what happened to it."""
 
     account: str
-    folder: str
-    uid: int
+    folder: str | None = None
+    """None on a send that was never filed."""
+    uid: int | None = None
     message_id: str | None = None
     sender: str | None = None
     """The first From address, without its display name."""
+    recipients: AuditRecipients | None = None
     subject_sha256: str | None = None
+    attachments: int | None = None
+    """How many an outgoing message carries."""
     destination: str | None = None
     """Where a move took it."""
     copied: bool | None = None
@@ -61,16 +77,26 @@ class AuditItem:
     seen: bool | None = None
     """The flag change asked for, on a flag write."""
     flagged: bool | None = None
+    flag: str | None = None
+    """A flag set on its own, as `\\Answered` after a reply."""
+    removed: Removal | None = None
     result: AuditResult
 
     @property
     def record(self) -> dict[str, object]:
-        """The fields that are set, for a JSON audit line; `sender` is written as `from`, as the
-        TypeScript records it."""
+        """The fields that are set, for a JSON audit line; `sender` is written as `from` and
+        `recipients` as `to`, `cc` and `bcc`, as the TypeScript records them."""
         fields = {key: value for key, value in asdict(self).items() if value is not None}
         if "sender" in fields:
             fields["from"] = fields.pop("sender")
+        recipients = fields.pop("recipients", None)
+        if isinstance(recipients, dict):
+            fields.update(recipients)
         return fields
+
+
+def _subject_hash(subject: str) -> str:
+    return hashlib.sha256(subject.encode("utf-8", "replace")).hexdigest()
 
 
 def message_item(
@@ -85,6 +111,7 @@ def message_item(
     junk: Junk | None = None,
     seen: bool | None = None,
     flagged: bool | None = None,
+    removed: Removal | None = None,
 ) -> AuditItem:
     """The record of one message whose ENVELOPE (imapclient's) was fetched: enough to find it
     again and see who sent it; what the envelope lacks is left out."""
@@ -98,14 +125,40 @@ def message_item(
         message_id=None if message_id is None else clean_header(text_value(message_id), 300),
         sender=None if sender is None else sender.address or None,
         # Hashed as imapflow hands the subject over: encoded words decoded, nothing else changed.
-        subject_sha256=None
-        if subject is None
-        else hashlib.sha256(decode_words(text_value(subject)).encode("utf-8")).hexdigest(),
+        subject_sha256=(
+            None if subject is None else _subject_hash(decode_words(text_value(subject)))
+        ),
         destination=destination,
         copied=copied,
         junk=junk,
         seen=seen,
         flagged=flagged,
+        removed=removed,
+        result=result,
+    )
+
+
+def outgoing_item(
+    account: str,
+    message: MessageInput,
+    result: AuditResult,
+    *,
+    folder: str | None = None,
+    message_id: str | None = None,
+) -> AuditItem:
+    """The record of an outgoing message: who it is from and to in clear, the subject hashed."""
+    return AuditItem(
+        account=account,
+        folder=folder,
+        message_id=message_id,
+        sender=message.sender.address,
+        recipients=AuditRecipients(
+            to=tuple(m.address for m in message.to),
+            cc=tuple(m.address for m in message.cc),
+            bcc=tuple(m.address for m in message.bcc),
+        ),
+        subject_sha256=_subject_hash(message.subject),
+        attachments=len(message.attachments),
         result=result,
     )
 

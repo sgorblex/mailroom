@@ -29,6 +29,7 @@ type MailErrorCode = Literal[
     "send_disabled",
     "rate_limited",
     "recipient_refused",
+    "delivery_unknown",
     "server_error",
 ]
 MAIL_ERROR_CODES: Final[tuple[MailErrorCode, ...]] = get_args(MailErrorCode.__value__)
@@ -49,6 +50,10 @@ MESSAGES: Final[Mapping[MailErrorCode, str]] = {
     "send_disabled": "Sending is disabled for this account (send_mode off): no drafts or sends.",
     "rate_limited": "The hourly send limit is reached; nothing was sent.",
     "recipient_refused": "The mail server refused the message; nothing was sent.",
+    "delivery_unknown": (
+        "Delivery could not be confirmed: the message may already have gone out, so it was not "
+        "sent again."
+    ),
     "server_error": "The mail server reported an error.",
 }
 
