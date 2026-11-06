@@ -5,33 +5,45 @@ a `Connection` run inside the caller's transaction, so mailroom-mcp can save its
 settings in the same one.
 """
 
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final, Protocol
+from typing import TYPE_CHECKING, Any, Final, Literal, Protocol
 
 from psycopg.errors import LockNotAvailable
-from sqlalchemy import delete, func, insert, select, text
+from sqlalchemy import and_, delete, func, insert, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert as upsert
 from sqlalchemy.exc import OperationalError
 
 from mailroom_core.store.schema import account_secrets, sends, settings
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Iterator, Mapping, Sequence
 
-    from sqlalchemy import Connection, Engine
+    from sqlalchemy import ColumnElement, Connection, Engine, Row, Table
 
 type Json = dict[str, Json] | list[Json] | str | int | float | bool | None
 """A JSON value, as stored in a JSONB column."""
+
+type SendState = Literal["sending", "sent", "failed", "unknown"]
+"""`sending` ends in `sent`, in `failed` if the server definitely refused, else in `unknown`."""
+
+type FinishedSendState = Literal["sent", "failed", "unknown"]
 
 SETTINGS_HISTORY: Final = 100
 """Revisions of the settings kept."""
 
 LOCK_TIMEOUT: Final = timedelta(seconds=5)
-"""How long a settings save waits for another to finish, as the SQLite store's busy_timeout."""
+"""How long a settings save or a send claim waits for another, as SQLite's busy_timeout."""
+
+SEND_CEILING: Final = timedelta(seconds=360)
+"""The longest a send can run: one still `sending` after this reads as `unknown`, as after a
+restart that lost it."""
 
 _SEND_LOG_SPAN: Final = timedelta(days=1)
+_KEYED_SEND_SPAN: Final = timedelta(days=30)
+_SEND_LIMIT_WINDOW: Final = timedelta(hours=1)
 
 
 class RevisionConflict(Exception):  # noqa: N818 -- the TypeScript name
@@ -40,6 +52,10 @@ class RevisionConflict(Exception):  # noqa: N818 -- the TypeScript name
 
 class SettingsBusy(Exception):  # noqa: N818 -- named as RevisionConflict is
     """Another save held the settings for longer than `LOCK_TIMEOUT`: this write is refused."""
+
+
+class SendsBusy(Exception):  # noqa: N818 -- named as RevisionConflict is
+    """Another claim held the send log for longer than `LOCK_TIMEOUT`: nothing was claimed."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,12 +81,61 @@ class SendCount:
     oldest: datetime | None
 
 
+class SendLimitReached(Exception):  # noqa: N818 -- named as RevisionConflict is
+    """The hourly limit is used up: nothing was claimed. `recent` says when the next send fits."""
+
+    def __init__(self, recent: SendCount) -> None:
+        super().__init__(f"{recent.count} sends in the last hour")
+        self.recent: Final = recent
+
+
+@dataclass(frozen=True, slots=True)
+class SendRecord:
+    """A send as `claim_send` wrote it. `at` is when its latest attempt was claimed."""
+
+    id: int
+    key: str | None
+    state: SendState
+    account: str | None
+    result: Json
+    at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class SendClaim:
+    """What `claim_send` decided. `fresh`: this caller owns the attempt and must deliver it and
+    call `finish_send`. Otherwise `send` is the earlier attempt and nothing may be delivered: its
+    `state` is `sent` (replay `result`), `sending` (same id) or `unknown` (ask to confirm).
+    """
+
+    send: SendRecord
+    fresh: bool
+
+
 class SendLog(Protocol):
-    """Messages handed to SMTP, for the hourly send limit."""
+    """Messages handed to SMTP: the hourly send limit and each send's outcome."""
 
     def sends_since(self, since: datetime) -> SendCount: ...
 
     def record_send(self, at: datetime) -> None: ...
+
+    def claim_send(
+        self,
+        key: str | None,
+        account: str,
+        limit: int,
+        *,
+        confirm_resend: bool = False,
+        now: datetime | None = None,
+    ) -> SendClaim: ...
+
+    def finish_send(
+        self, send: SendRecord, state: FinishedSendState, result: Json = None
+    ) -> bool: ...
+
+    def send_state(self, send_id: int, now: datetime | None = None) -> SendRecord | None: ...
+
+    def send_state_by_key(self, key: str, now: datetime | None = None) -> SendRecord | None: ...
 
 
 def current_settings(connection: Connection, user_id: str) -> StoredSettings | None:
@@ -156,19 +221,78 @@ def forget_user(
 
 def _lock_settings(connection: Connection, user_id: str, lock_timeout: timedelta) -> None:
     """Take `user_id`'s settings lock until the transaction ends, or raise `SettingsBusy`."""
+    busy = SettingsBusy("another save of the settings is still running")
+    _lock_user_rows(connection, settings, user_id, lock_timeout, busy)
+
+
+def _lock_user_rows(
+    connection: Connection, table: Table, user_id: str, lock_timeout: timedelta, busy: Exception
+) -> None:
+    """Take `user_id`'s lock on `table` until the transaction ends, or raise `busy`. The
+    transaction's `lock_timeout` stays set, for any other lock it takes."""
     connection.execute(
         text("select set_config('lock_timeout', :timeout, true)"),
         {"timeout": f"{int(lock_timeout.total_seconds() * 1000)}ms"},
     )
-    try:
+    with _busy_past_lock_timeout(busy):
         connection.execute(
             text("select pg_advisory_xact_lock(hashtext(:table), hashtext(:user_id))"),
-            {"table": settings.fullname, "user_id": user_id},
+            {"table": table.fullname, "user_id": user_id},
         )
+
+
+@contextmanager
+def _busy_past_lock_timeout(busy: Exception) -> Iterator[None]:
+    try:
+        yield
     except OperationalError as error:
         if isinstance(error.orig, LockNotAvailable):
-            raise SettingsBusy("another save of the settings is still running") from None
+            raise busy from None
         raise
+
+
+def _sends_since(connection: Connection, user_id: str, since: datetime) -> SendCount:
+    row = connection.execute(
+        select(func.count(), func.min(sends.c.at)).where(
+            sends.c.user_id == user_id, sends.c.at > since
+        )
+    ).one()
+    return SendCount(count=row[0], oldest=row[1])
+
+
+def _prune_sends(connection: Connection, user_id: str, now: datetime) -> None:
+    """Drop `user_id`'s rows that neither the hourly limit nor a retry can still need."""
+    connection.execute(
+        delete(sends).where(
+            sends.c.user_id == user_id,
+            or_(
+                and_(sends.c.key.is_(None), sends.c.at <= now - _SEND_LOG_SPAN),
+                sends.c.at <= now - _KEYED_SEND_SPAN,
+            ),
+        )
+    )
+
+
+_SEND_RECORD: Final = (
+    sends.c.id,
+    sends.c.key,
+    sends.c.state,
+    sends.c.account,
+    sends.c.result,
+    sends.c.at,
+)
+
+
+def _send_record(row: Row[*tuple[Any, ...]], now: datetime) -> SendRecord:
+    stale = row.state == "sending" and now - row.at > SEND_CEILING
+    return SendRecord(
+        id=row.id,
+        key=row.key,
+        state="unknown" if stale else row.state,
+        account=row.account,
+        result=row.result,
+        at=row.at,
+    )
 
 
 class AccountStore:
@@ -232,18 +356,109 @@ class AccountStore:
 
     def sends_since(self, since: datetime) -> SendCount:
         with self._engine.connect() as connection:
-            row = connection.execute(
-                select(func.count(), func.min(sends.c.at)).where(
-                    sends.c.user_id == self.user_id, sends.c.at > since
-                )
-            ).one()
-        return SendCount(count=row[0], oldest=row[1])
+            return _sends_since(connection, self.user_id, since)
 
     def record_send(self, at: datetime) -> None:
         with self._engine.begin() as connection:
-            connection.execute(
-                delete(sends).where(
-                    sends.c.user_id == self.user_id, sends.c.at <= at - _SEND_LOG_SPAN
-                )
-            )
+            _prune_sends(connection, self.user_id, at)
             connection.execute(insert(sends).values(user_id=self.user_id, at=at))
+
+    def claim_send(
+        self,
+        key: str | None,
+        account: str,
+        limit: int,
+        *,
+        confirm_resend: bool = False,
+        now: datetime | None = None,
+    ) -> SendClaim:
+        """Write a `sending` row before SMTP, unless a retry of `key` must not deliver again.
+
+        The count and the insert share a per-user lock, so concurrent claims admit exactly `limit`
+        in the hour and one key wins once. A send without a `key` is never a retry.
+
+        A key already `sent`, `sending` or, without `confirm_resend`, `unknown` answers with that
+        send, not `fresh`, whatever the limit. A `failed` one, or a confirmed `unknown` one, is
+        claimed again under the same id: a new attempt, so it needs room under `limit` and the
+        previous attempt stays counted, since it may have been delivered.
+
+        Raises `SendLimitReached` at the limit, `SendsBusy` if another claim holds the lock too
+        long.
+        """
+        now = now or datetime.now(UTC)
+        busy = SendsBusy("another send is still being claimed")
+        with self._engine.begin() as connection:
+            _lock_user_rows(connection, sends, self.user_id, self._lock_timeout, busy)
+            _prune_sends(connection, self.user_id, now)
+            earlier = None
+            if key is not None:
+                # The row lock: `finish_send` takes no advisory lock, so an outcome could land
+                # after this read and be overwritten by the reclaim below.
+                with _busy_past_lock_timeout(busy):
+                    earlier = connection.execute(
+                        select(*_SEND_RECORD)
+                        .where(sends.c.user_id == self.user_id, sends.c.key == key)
+                        .with_for_update()
+                    ).one_or_none()
+            if earlier is not None:
+                send = _send_record(earlier, now)
+                if send.state in ("sent", "sending") or (
+                    send.state == "unknown" and not confirm_resend
+                ):
+                    return SendClaim(send, fresh=False)
+            recent = _sends_since(connection, self.user_id, now - _SEND_LIMIT_WINDOW)
+            if recent.count >= limit:
+                raise SendLimitReached(recent)
+            if earlier is None:
+                row = connection.execute(
+                    insert(sends)
+                    .values(user_id=self.user_id, key=key, state="sending", account=account, at=now)
+                    .returning(*_SEND_RECORD)
+                ).one()
+            else:
+                connection.execute(insert(sends).values(user_id=self.user_id, at=earlier.at))
+                row = connection.execute(
+                    update(sends)
+                    .where(sends.c.id == earlier.id)
+                    .values(state="sending", account=account, result=None, at=now)
+                    .returning(*_SEND_RECORD)
+                ).one()
+            return SendClaim(_send_record(row, now), fresh=True)
+
+    def finish_send(self, send: SendRecord, state: FinishedSendState, result: Json = None) -> bool:
+        """Record how the attempt in `send`, from a fresh claim, ended; False if nothing changed.
+
+        A finished state never changes, though finishing again with the same state replaces
+        `result`, for what happens after delivery (filing to Sent). An attempt that has since been
+        reclaimed no longer owns the row, and one past `SEND_CEILING` still does: its real outcome
+        beats the `unknown` it reads as.
+        """
+        with self._engine.begin() as connection:
+            updated = connection.execute(
+                update(sends)
+                .where(
+                    sends.c.id == send.id,
+                    sends.c.user_id == self.user_id,
+                    sends.c.at == send.at,
+                    sends.c.state.in_(("sending", state)),
+                )
+                .values(state=state, result=result)
+            )
+            return updated.rowcount > 0
+
+    def send_state(self, send_id: int, now: datetime | None = None) -> SendRecord | None:
+        """This user's send `send_id`, if it was claimed and is still kept."""
+        return self._send(sends.c.id == send_id, now)
+
+    def send_state_by_key(self, key: str, now: datetime | None = None) -> SendRecord | None:
+        """This user's send of `key`, if any is still kept."""
+        return self._send(sends.c.key == key, now)
+
+    def _send(self, match: ColumnElement[bool], now: datetime | None) -> SendRecord | None:
+        with self._engine.connect() as connection:
+            row = connection.execute(
+                select(*_SEND_RECORD).where(
+                    sends.c.user_id == self.user_id, sends.c.state.is_not(None), match
+                )
+            ).one_or_none()
+        return None if row is None else _send_record(row, now or datetime.now(UTC))

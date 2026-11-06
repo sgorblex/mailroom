@@ -20,6 +20,7 @@ from sqlalchemy import (
     MetaData,
     Table,
     Text,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -63,13 +64,25 @@ account_secrets = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False),
 )
 
-# Every message handed to SMTP in the last day, for each user's limits.send_per_hour (stored, so it
-# survives restarts).
+# Every message handed to SMTP, for each user's limits.send_per_hour (stored, so it survives
+# restarts). A row written by `claim_send` also records the send's state, and with a `key` it stays
+# at least 30 days instead of one, pruned on the user's next send, so a retry can't deliver twice.
 sends = Table(
     "sends",
     metadata,
     Column("id", BigInteger, Identity(always=True), primary_key=True),
     Column("user_id", Text, nullable=False),
     Column("at", DateTime(timezone=True), nullable=False),
+    Column("key", Text),
+    Column("state", Text),
+    Column("account", Text),
+    Column("result", JSONB(none_as_null=True)),
     Index("ix_sends_user_id_at", "user_id", "at"),
+    Index(
+        "uq_sends_user_id_key",
+        "user_id",
+        "key",
+        unique=True,
+        postgresql_where=text("key is not null"),
+    ),
 )
