@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.3](https://github.com/sgorblex/mailroom-mcp/compare/mailroom-core-v0.1.2...mailroom-core-v0.1.3) (2026-11-06)
+
+
+### Features
+
+* **core:** claim sends before SMTP with idempotent retry keys ([#76](https://github.com/sgorblex/mailroom-mcp/issues/76)) ([4e52b5a](https://github.com/sgorblex/mailroom-mcp/commit/4e52b5ab8610009a731eee20d58ddc4a3c754030))
+* **core:** port compose, recipients, identity and reply to Python ([#74](https://github.com/sgorblex/mailroom-mcp/issues/74)) ([ecf3446](https://github.com/sgorblex/mailroom-mcp/commit/ecf34461534adc95b0c5e84afad78bd6b0186394))
+* **core:** port mail drafts to Python ([#75](https://github.com/sgorblex/mailroom-mcp/issues/75)) ([6ac6102](https://github.com/sgorblex/mailroom-mcp/commit/6ac6102d5c941f6db0bae4ba3c31ccecd848a524))
+* **core:** port send gate and SMTP to Python ([#77](https://github.com/sgorblex/mailroom-mcp/issues/77)) ([1ed2161](https://github.com/sgorblex/mailroom-mcp/commit/1ed2161834bf37ea15fd96f1278e885dbe93fdcb))
+
 ## [0.1.2](https://github.com/sgorblex/mailroom-mcp/compare/mailroom-core-v0.1.1...mailroom-core-v0.1.2) (2026-11-05)
 
 
