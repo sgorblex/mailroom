@@ -177,7 +177,7 @@
     "asks": "{{name}} vuole usare Mailroom come {{username}}",
     "selfRegistered": "L'app si è registrata da sola: il nome è quello che dichiara, non verificato.",
     "describedBy": "L'app è descritta da {{host}}.",
-    "access": "Potrà usare a tuo nome gli strumenti che questo Mailroom offre: i tuoi account di posta, le loro cartelle e i tuoi filtri e, dove questo Mailroom lo offre, la lettura dei tuoi messaggi e dei loro allegati e la loro organizzazione (spostamento, cestino, contrassegni).",
+    "access": "Potrà usare a tuo nome gli strumenti che questo Mailroom offre: i tuoi account di posta, le loro cartelle e i tuoi filtri e, dove questo Mailroom lo offre, la lettura dei tuoi messaggi e dei loro allegati e la loro organizzazione (spostamento, cestino, contrassegni), la scrittura di bozze e l'invio di posta, nei limiti dell'impostazione Invio di ciascun account.",
     "returnsTo": "Approvando o rifiutando torni a",
     "revoke": "Puoi scollegarla quando vuoi dal tuo profilo.",
     "approve": "Approva",

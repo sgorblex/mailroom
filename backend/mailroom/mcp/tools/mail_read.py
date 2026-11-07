@@ -35,7 +35,7 @@ from pydantic import AfterValidator, AnyUrl, Field, StrictBool
 
 from mailroom.errors import Refusal
 from mailroom.mail import service
-from mailroom.mcp.tool import MAILBOX_READ, Arguments, Tool, content_result
+from mailroom.mcp.tool import MAILBOX_READ, Arguments, Tool, content_result, text_result
 
 if TYPE_CHECKING:
     from mailroom.mcp.tool import ToolCall
@@ -168,11 +168,7 @@ class AttachmentReadArguments(Arguments):
     )
 
 
-def _text(text: str) -> types.CallToolResult:
-    return content_result(types.TextContent(type="text", text=text))
-
-
-async def _named(account_id: str | None, call: ToolCall, *, every: bool = False) -> str:
+async def named_account(account_id: str | None, call: ToolCall, *, every: bool = False) -> str:
     """``account_id``, or the user's only account when none is given."""
     if account_id is not None:
         if account_id == service.ALL_ACCOUNTS and not every:
@@ -190,7 +186,7 @@ async def _named(account_id: str | None, call: ToolCall, *, every: bool = False)
 
 
 async def _messages_list(args: MessagesListArguments, call: ToolCall) -> types.CallToolResult:
-    account = await _named(args.account_id, call)
+    account = await named_account(args.account_id, call)
     page = await call.thread(
         lambda: service.list_messages(
             call.ctx,
@@ -202,11 +198,11 @@ async def _messages_list(args: MessagesListArguments, call: ToolCall) -> types.C
             via="mcp",
         )
     )
-    return _text(page_text(page, empty_folder_text(args.folder), TIME_ZONE, tools=TOOL_NAMES))
+    return text_result(page_text(page, empty_folder_text(args.folder), TIME_ZONE, tools=TOOL_NAMES))
 
 
 async def _messages_search(args: MessagesSearchArguments, call: ToolCall) -> types.CallToolResult:
-    account = await _named(args.account_id, call, every=True)
+    account = await named_account(args.account_id, call, every=True)
     query = SearchQuery(
         sender=args.sender,
         to=args.to,
@@ -231,7 +227,7 @@ async def _messages_search(args: MessagesSearchArguments, call: ToolCall) -> typ
             via="mcp",
         )
     )
-    return _text(page_text(page, "No matching messages.", TIME_ZONE, tools=TOOL_NAMES))
+    return text_result(page_text(page, "No matching messages.", TIME_ZONE, tools=TOOL_NAMES))
 
 
 async def _message_read(args: MessageReadArguments, call: ToolCall) -> types.CallToolResult:
@@ -247,14 +243,14 @@ async def _message_read(args: MessageReadArguments, call: ToolCall) -> types.Cal
             via="mcp",
         )
     )
-    return _text(read_text(view, offset=args.offset, time_zone=TIME_ZONE, tools=TOOL_NAMES))
+    return text_result(read_text(view, offset=args.offset, time_zone=TIME_ZONE, tools=TOOL_NAMES))
 
 
 async def _thread_read(args: ThreadReadArguments, call: ToolCall) -> types.CallToolResult:
     page = await call.thread(
         lambda: service.thread(call.ctx, call.user_id, args.ref, limit=args.limit, via="mcp")
     )
-    return _text(thread_text(page, TIME_ZONE))
+    return text_result(thread_text(page, TIME_ZONE))
 
 
 async def _attachment_read(args: AttachmentReadArguments, call: ToolCall) -> types.CallToolResult:
@@ -262,7 +258,7 @@ async def _attachment_read(args: AttachmentReadArguments, call: ToolCall) -> typ
         lambda: service.attachment(call.ctx, call.user_id, args.ref, args.part, via="mcp")
     )
     if is_text_type(found.type):
-        return _text(attachment_text(found))
+        return text_result(attachment_text(found))
     label = untrusted(attachment_label(found))
     data = base64.b64encode(found.data).decode("ascii")
     if found.type in DISPLAYED_IMAGES:

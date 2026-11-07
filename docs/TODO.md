@@ -36,13 +36,14 @@ Mailroom is built on standalone projects, each with its own repository and check
 - [x] **Tier 2 triage** (slice B, [`requirements/mail-client.md`](requirements/mail-client.md)) —
       move, archive, trash and flag over REST, the web triage (multi-select, toolbar, shortcuts,
       mark read on open) and the `mail_organize` MCP group.
-- [ ] **Tier 2 compose** (slice C, [`requirements/mail-client.md`](requirements/mail-client.md)) —
+- [x] **Tier 2 compose** (slice C, [`requirements/mail-client.md`](requirements/mail-client.md)) —
       compose, reply, reply all, forward, drafts and attachments through mailroom-core's send
       gate: compose, drafts and send in mailroom-core 0.1.3, the REST routes,
-      the web composer and the `mail_draft` and `mail_send` MCP groups. Needs the host proxy's
-      30 MB limit on `/api/v1/mail/drafts` before the deploy. Then to try by hand: a send to
-      oneself from the web, and a Gmail account (it may keep old draft versions in All Mail or
-      Trash).
+      the web composer and the `mail_draft` and `mail_send` MCP groups.
+- [ ] **Host proxy limit for drafts** — the host's reverse proxy needs the same 30 MB body limit as
+      the web image's nginx on `/api/v1/mail/drafts`, before the slice C release is deployed.
+- [ ] **Try compose by hand** — a send to oneself from the web, then a Gmail account (it may keep
+      old draft versions in All Mail or Trash, which no test here can show).
 
 ## MCP and suggestions
 
@@ -54,8 +55,8 @@ Mailroom is built on standalone projects, each with its own repository and check
   - [x] **Built-in OAuth server** — DCR, CIMD, tokens, the `/connect` consent screen.
   - [x] **External issuer** — JWTs from Authentik or Keycloak, mapped through linked sign-ins.
   - [x] **Connected apps** — list and revoke grants on the profile.
-  - [ ] **Mail tool groups** — each with its client slice: `mail_draft` and `mail_send`
-        with slice C (`mail_read` and `mail_organize` are on).
+  - [x] **Mail tool groups** — each with its client slice: `mail_read`, `mail_organize`,
+        `mail_draft` and `mail_send` are on.
   - [ ] **Consent per tool group** — record the tool groups each grant was approved for, and ask
         for fresh consent when a grant's client calls a group added after it (a grant approved
         before `mail_read`, `mail_organize`, `mail_draft` or `mail_send` reads, moves and, within the

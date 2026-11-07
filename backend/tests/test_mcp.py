@@ -10,14 +10,19 @@ import logging
 import re
 import threading
 import time
+import uuid
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 import pytest
-from mailroom_core.mail import Folder, MessageRef, format_ref
+from mailroom_core.mail import MESSAGES, Folder, MessageRef, format_ref
+from mailroom_core.store import SEND_CEILING
 from mailroom_core.testing import (
+    HANG_UP,
+    STALL,
     MimeAttachment,
+    SmtpStub,
     create_folders,
     folder_contents,
     mime,
@@ -33,12 +38,14 @@ from mailroom.accounts.store import load_accounts
 from mailroom.api.main import create_application
 from mailroom.auth.users import create_user
 from mailroom.context import app_context
+from mailroom.errors import Refusal, mail_refusal
 from mailroom.filters import service as filters_service
 from mailroom.mail import service as mail_service
 from mailroom.mcp.app import instructions, tools_for
 from mailroom.mcp.groups import selected_groups
 from mailroom.mcp.settings import McpSettings
 from mailroom.mcp.tool import BUSY_MESSAGE, CALLS_PER_USER, call_tool
+from mailroom.mcp.tools import mail_send
 from mailroom.mcp.tools.filters import RUN_FILTERS_OFF_NOTE
 from tests.conftest import PASSWORD
 from tests.test_api_accounts import MAILBOX_PASSWORD, new_account
@@ -162,12 +169,16 @@ def mcp(
     _mcp_application: tuple[TestClient, FakeVerifier, FastAPI],
     sessions: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
-) -> Mcp:
+) -> Iterator[Mcp]:
     """The MCP endpoint, its database work inside the test's transaction."""
     client, verifier, application = _mcp_application
     verifier.tokens.clear()
     monkeypatch.setattr(application.state, "session_maker", sessions)
-    return Mcp(client, verifier, application)
+    yield Mcp(client, verifier, application)
+    # The application outlives the test, and each user's connections would stay open past it, up
+    # to the mail server's limit on all the workers together.
+    pool = application.state.mail_pool
+    pool.close_idle(time.monotonic() + pool.idle_seconds)
 
 
 @pytest.fixture
@@ -275,6 +286,13 @@ ANNOTATIONS = {
     "messages_move": (False, False, False, True),
     "messages_trash": (False, True, False, True),
     "messages_flag": (False, False, True, True),
+    "draft_create": (False, False, False, True),
+    "draft_update": (False, True, False, True),
+    "draft_delete": (False, True, False, True),
+    "message_send": (False, True, False, True),
+    "message_reply": (False, True, False, True),
+    "message_forward": (False, True, False, True),
+    "draft_send": (False, True, False, True),
 }
 
 
@@ -369,6 +387,7 @@ def test_run_now_and_the_run_filters_switch(
             "has_password": True,
             "run_filters": True,
             "send_mode": "drafts",
+            "identities": [{"address": "work@example.org", "name": "Alice", "default": True}],
         }
     ]
     assert mcp.error(token, "run_now", rule_set_id=rule_set_id) == "Enable the rule set to run it."
@@ -644,13 +663,16 @@ class MailAccounts:
     def __init__(self, ctx: AppContext, user: User, server: ImapTestServer) -> None:
         self.ctx, self.user, self.server = ctx, user, server
 
-    def add(self, account_id: str = "work", *, password: str | None = None) -> str:
+    def add(self, account_id: str = "work", *, password: str | None = None, **changes: Any) -> str:
         """Account ``account_id`` on a fresh mailbox user; its login."""
         login = self.server.unique_user(f"mcp{account_id}")
-        raw = new_account(
-            account_id,
-            login=login,
-            imap={"host": self.server.host, "port": self.server.port, "tls": "implicit"},
+        raw = (
+            new_account(
+                account_id,
+                login=login,
+                imap={"host": self.server.host, "port": self.server.port, "tls": "implicit"},
+            )
+            | changes
         )
         fields = {k: v for k, v in raw.items() if k not in {"id", "password"}}
         accounts_service.add_account(
@@ -1217,7 +1239,8 @@ def test_the_organize_group_can_be_left_out() -> None:
     names = {tool.name for tool in tools_for(groups)}
     assert not names & {"messages_move", "messages_trash", "messages_flag"}
     assert "messages_move" not in instructions(groups)
-    assert "never deletes mail permanently" in instructions(selected_groups(None))
+    # Not "Mailroom never deletes": the draft tools expunge an own draft.
+    assert "these tools never delete mail permanently" in instructions(selected_groups(None))
     alone = [tool.name for tool in tools_for(selected_groups("mail_organize"))]
     assert alone[:2] == ["accounts_list", "folders_list"]
     assert alone[2:] == ["messages_move", "messages_trash", "messages_flag"]
@@ -1400,3 +1423,860 @@ def test_organize_calls_log_keys_only(
     ours = str([r.__dict__ for r in caplog.records if r.name.startswith("mailroom")])
     for secret in ("Secret subject", "Secret folder", ref):
         assert secret not in ours
+
+
+# --- mail_draft and mail_send: ported from mailroom-mcp's draft-tools.it and send-tools.it ---
+
+
+def stranger() -> str:
+    return f"to-{uuid.uuid4().hex}@example.org"
+
+
+class Writer:
+    """An account that may send, on a fresh Dovecot user with Drafts, Sent and Trash, and the
+    address it sends as (plus an alias)."""
+
+    def __init__(self, mail: MailAccounts, smtp: dict[str, Any], **changes: Any) -> None:
+        self.mail = mail
+        self.tag = uuid.uuid4().hex[:10]
+        self.me = f"me-{self.tag}@example.test"
+        self.alias = f"alias-{self.tag}@example.test"
+        fields: dict[str, Any] = {
+            "send_mode": "direct",
+            "smtp": smtp,
+            "identities": [
+                {"address": self.me, "name": "Me", "default": True},
+                {"address": self.alias, "name": "Alias"},
+            ],
+        }
+        self.login = mail.add("work", **(fields | changes))
+        create_folders(mail.server, self.login, "Drafts", "Sent", "Trash")
+
+    def contents(self, folder: str) -> list[Any]:
+        return folder_contents(self.mail.server, self.login, folder)
+
+
+def smtp_of(server: Any) -> dict[str, Any]:
+    return {"host": server.host, "port": server.port, "tls": "implicit"}
+
+
+@pytest.fixture
+def writer(mail: MailAccounts, smtp_server: Any) -> Writer:
+    return Writer(mail, smtp_of(smtp_server))
+
+
+def draft_ref(text: str) -> str:
+    found = re.search(r" as ([\w-]{20,}):", text)
+    assert found, text
+    return found.group(1)
+
+
+def set_mode(ctx: AppContext, user: User, mode: str, **changes: Any) -> None:
+    store = ctx.store(user.id)
+    current = load_accounts(store)
+    doc = current.doc
+    accounts = [
+        {**a, "send_mode": mode, **changes} if a["id"] == "work" else a for a in doc["account"]
+    ]
+    store.save_settings({**doc, "account": accounts}, current.revision)
+
+
+def test_the_write_groups_are_registered_stable_and_enveloped(mcp: Mcp, token: str) -> None:
+    names = {tool["name"] for tool in mcp.tools(token)}
+    assert {"draft_create", "draft_update", "draft_delete"} <= names
+    assert {"message_send", "message_reply", "message_forward", "draft_send"} <= names
+    tools = {tool["name"]: tool for tool in mcp.tools(token)}
+    properties = tools["message_send"]["inputSchema"]["properties"]
+    assert "from" in properties
+    attachments = next(p for p in properties["attachments"]["anyOf"] if p["type"] == "array")
+    assert attachments["maxItems"] == 10
+    assert "Invalid arguments" in mcp.error(token, "message_send", subject="s", text="t", body="x")
+    assert "Invalid arguments" in mcp.error(
+        token, "message_send", subject="s", text="t", attachments=[{"ref": "x", "part": "2a"}]
+    )
+    assert "Invalid arguments" in mcp.error(
+        token, "message_send", subject="s", text="t", to="a@b.c"
+    )
+    assert "Never call it again" in tools["message_send"]["description"]
+
+
+def test_the_write_groups_follow_the_server_settings() -> None:
+    groups = selected_groups("mail_read,mail_draft")
+    names = [tool.name for tool in tools_for(groups)]
+    assert names[:2] == ["accounts_list", "folders_list"]
+    assert names[-3:] == ["draft_create", "draft_update", "draft_delete"]
+    assert "message_send" not in names
+    text = instructions(groups)
+    assert "message_send" not in text
+    assert "never send" in text
+    both = instructions(selected_groups(None))
+    assert "It also reads, organizes, drafts and sends the user's mail" in both
+    assert "Never send the same message twice" in both
+    assert tools_for(selected_groups("mail_send"))[2].name == "message_send"
+
+
+def test_accounts_list_shows_the_identities(mcp: Mcp, token: str, writer: Writer) -> None:
+    [listed] = mcp.call(token, "accounts_list")["accounts"]
+    assert listed["send_mode"] == "direct"
+    assert {i["address"] for i in listed["identities"]} == {writer.me, writer.alias}
+    assert [i["address"] for i in listed["identities"] if i.get("default")] == [writer.me]
+
+
+def test_a_draft_is_saved_marked_and_never_sent(
+    mcp: Mcp, token: str, writer: Writer, smtp_server: Any
+) -> None:
+    to = stranger()
+    created = mcp.text(
+        token,
+        "draft_create",
+        to=[f"Ana <{to}>"],
+        bcc=["hidden@example.org"],
+        subject="Plans\r\nBcc: victim@example.org",
+        text="Shall we meet?",
+    )
+    assert re.match(r"Draft saved as [\w-]+: ", created), created
+    assert ENVELOPE.search(created)
+    assert f"from Me <{writer.me}>, to Ana <{to}>; bcc hidden@example.org" in created
+    assert created.endswith(", 0 attachment(s). Not sent.")
+    [draft] = writer.contents("Drafts")
+    assert sorted(f for f in draft.flags if f != "\\Recent") == ["\\Draft", "\\Seen"]
+    source = draft.source.decode()
+    assert "X-Mailroom-Draft: 1" in source
+    assert len(re.findall(r"^Bcc:", source, re.MULTILINE | re.IGNORECASE)) == 1
+    assert draft.subject == "Plans Bcc: victim@example.org"
+    assert smtp_server.delivered_to(to) == []
+
+
+def test_a_reply_draft_is_threaded_from_the_identity_it_was_sent_to(
+    mcp: Mcp, token: str, writer: Writer
+) -> None:
+    ana = stranger()
+    writer.mail.seed(
+        writer.login,
+        mime(
+            "Dinner",
+            sender=f"Ana <{ana}>",
+            to=writer.alias,
+            message_id="<dinner@example.org>",
+            text="Friday at 8?",
+        ),
+    )
+    ref = inbox_ref(mcp, token)
+    created = mcp.text(token, "draft_create", reply_to=ref, text="Yes, see you there.")
+    assert f"from Alias <{writer.alias}>, to Ana <{ana}>" in created
+    source = writer.contents("Drafts")[0].source.decode()
+    assert "In-Reply-To: <dinner@example.org>" in source
+    assert "Subject: Re: Dinner" in source
+    assert "> Friday at 8?" in source
+    other = mcp.error(token, "draft_create", account_id="nope", reply_to=ref, text="x")
+    assert "another account" in other or "No such" in other
+
+
+def test_a_draft_update_replaces_it_keeping_attachments(
+    mcp: Mcp, token: str, writer: Writer
+) -> None:
+    writer.mail.seed(
+        writer.login,
+        mime("files", attachments=[MimeAttachment("a.pdf", "application/pdf", PDF)]),
+    )
+    with_file = inbox_ref(mcp, token)
+    created = mcp.text(
+        token,
+        "draft_create",
+        to=[stranger()],
+        subject="v1",
+        text="first",
+        attachments=[{"ref": with_file, "part": "2"}],
+    )
+    assert "1 attachment(s)" in created
+    old = draft_ref(created)
+    updated = mcp.text(token, "draft_update", ref=old, text="second")
+    assert "1 attachment(s)" in updated
+    assert "The previous version was removed." in updated
+    [draft] = writer.contents("Drafts")
+    assert "second" in draft.source.decode()
+    assert base64.b64encode(PDF).decode()[:20] in draft.source.decode()
+    assert "No such message" in mcp.error(token, "draft_update", ref=old, text="again")
+    dropped = mcp.text(token, "draft_update", ref=draft_ref(updated), attachments=[])
+    assert "0 attachment(s)" in dropped
+
+
+def test_deleting_a_draft_trashes_only_one_written_elsewhere(
+    mcp: Mcp, token: str, writer: Writer
+) -> None:
+    writer.mail.seed(writer.login, mime("by hand"), folder="Drafts", flags=("\\Draft",))
+    writer.mail.seed(writer.login, mime("gone"), folder="Drafts", flags=("\\Deleted",))
+    refs = refs_in(mcp.text(token, "messages_list", folder="Drafts"))
+    # Newest first: the second one listed is the hand-written draft.
+    assert mcp.text(token, "draft_delete", ref=refs[1]) == "Draft moved to Trash."
+    own = draft_ref(mcp.text(token, "draft_create", subject="tmp", text="x"))
+    assert mcp.text(token, "draft_delete", ref=own) == "Draft deleted."
+    assert [m.subject for m in writer.contents("Drafts")] == ["gone"]
+    assert [m.subject for m in writer.contents("Trash")] == ["by hand"]
+
+
+def test_refs_outside_drafts_and_accounts_with_sending_off_are_refused(
+    mcp: Mcp, token: str, writer: Writer, ctx: AppContext, user: User
+) -> None:
+    writer.mail.seed(writer.login, mime("not a draft"))
+    inbox = inbox_ref(mcp, token)
+    assert "not in Drafts" in mcp.error(token, "draft_delete", ref=inbox)
+    held = draft_ref(mcp.text(token, "draft_create", to=[stranger()], text="x"))
+    set_mode(ctx, user, "off")
+    for tool, arguments in (
+        ("draft_create", {"to": [stranger()], "text": "x"}),
+        ("message_send", {"to": [stranger()], "subject": "s", "text": "t"}),
+        ("message_reply", {"ref": inbox, "text": "t"}),
+        ("message_forward", {"ref": inbox, "to": [stranger()]}),
+        ("draft_send", {"ref": held}),
+    ):
+        refusal = mcp.error(token, tool, **arguments)
+        assert "send_mode off" in refusal, (tool, refusal)
+    assert len(writer.contents("INBOX")) == 1
+
+
+def test_a_message_is_sent_and_filed_with_a_header_that_cannot_be_split(
+    mcp: Mcp, token: str, writer: Writer, smtp_server: Any
+) -> None:
+    to = stranger()
+    sent = mcp.text(
+        token,
+        "message_send",
+        to=[f"Ana <{to}>"],
+        subject="Hello\r\nBcc: victim@example.org",
+        text="Hi Ana.",
+    )
+    assert sent.startswith("Sent ")
+    assert ENVELOPE.search(sent)
+    assert f"from Me <{writer.me}>, to Ana <{to}>" in sent
+    assert sent.endswith("Do not send it again.")
+    [delivered] = smtp_server.delivered_to(to)
+    assert delivered.recipients == [to]
+    assert len(re.findall(r"^Subject:", delivered.raw.decode(), re.MULTILINE)) == 1
+    assert smtp_server.delivered_to("victim@example.org") == []
+    assert [m.subject for m in writer.contents("Sent")] == ["Hello Bcc: victim@example.org"]
+
+
+def test_a_reply_is_threaded_from_the_alias_and_marks_the_original_answered(
+    mcp: Mcp, token: str, writer: Writer, smtp_server: Any
+) -> None:
+    ana = stranger()
+    writer.mail.seed(
+        writer.login,
+        mime(
+            "Dinner",
+            sender=f"Ana <{ana}>",
+            to=writer.alias,
+            message_id="<dinner-reply@example.org>",
+            text="Friday at 8?",
+        ),
+    )
+    replied = mcp.text(token, "message_reply", ref=inbox_ref(mcp, token), text="Yes!")
+    assert f"Alias <{writer.alias}>" in replied
+    raw = smtp_server.delivered_to(ana)[0].raw.decode()
+    assert "In-Reply-To: <dinner-reply@example.org>" in raw
+    assert "Subject: Re: Dinner" in raw
+    assert "> Friday at 8?" in raw
+    assert "\\Answered" in writer.contents("INBOX")[0].flags
+
+
+def test_a_forward_carries_the_attachments_byte_for_byte(
+    mcp: Mcp, token: str, writer: Writer, smtp_server: Any
+) -> None:
+    bo = stranger()
+    writer.mail.seed(
+        writer.login,
+        mime(
+            "Invoice",
+            text="Attached.",
+            attachments=[MimeAttachment("invoice.pdf", "application/octet-stream", PDF)],
+        ),
+    )
+    forwarded = mcp.text(token, "message_forward", ref=inbox_ref(mcp, token), to=[bo], text="FYI")
+    assert "Sent" in forwarded
+    raw = smtp_server.delivered_to(bo)[0].raw.decode()
+    assert "Subject: Fwd: Invoice" in raw
+    assert "---------- Forwarded message ---------" in raw
+    assert base64.b64encode(PDF).decode() in raw.replace("\r\n", "")
+
+
+def test_a_draft_is_sent_as_stored_then_removed_and_asking_twice_delivers_once(
+    mcp: Mcp, token: str, writer: Writer, smtp_server: Any
+) -> None:
+    cy = stranger()
+    ref = draft_ref(mcp.text(token, "draft_create", to=[cy], subject="Agenda", text="Points."))
+    sent = mcp.text(token, "draft_send", ref=ref)
+    assert "Sent" in sent
+    assert "Do not send it again." in sent
+    [delivered] = smtp_server.delivered_to(cy)
+    assert "Subject: Agenda" in delivered.raw.decode()
+    assert "X-Mailroom-Draft" not in delivered.raw.decode()
+    assert writer.contents("Drafts") == []
+    # The draft is gone: a second call has nothing to send.
+    mcp.error(token, "draft_send", ref=ref)
+    assert len(smtp_server.delivered_to(cy)) == 1
+
+
+def test_drafts_mode_drafts_and_off_refuses_through_mcp_while_the_web_send_works(
+    mcp: Mcp,
+    token: str,
+    writer: Writer,
+    smtp_server: Any,
+    ctx: AppContext,
+    user: User,
+) -> None:
+    set_mode(ctx, user, "drafts")
+    out = stranger()
+    drafted = mcp.text(token, "message_send", to=[out], subject="s", text="t")
+    assert drafted.startswith("Saved as a draft, NOT sent (work's send mode is drafts)")
+    assert smtp_server.delivered_to(out) == []
+    [stored] = writer.contents("Drafts")
+    assert stored.subject == "s"
+    # The draft cannot be pushed out by an agent...
+    ref = draft_ref(mcp.text(token, "draft_create", to=[out], subject="Hold", text="x"))
+    refused = mcp.error(token, "draft_send", ref=ref)
+    assert "The draft stays." in refused
+    assert smtp_server.delivered_to(out) == []
+    # ...but the user's own click sends it.
+    view = mail_service.send_draft(ctx, user.id, ref, by="user", via="web")
+    for _ in range(300):
+        view = mail_service.read_send(ctx, user.id, view.send_id)
+        if view.state != "sending" and view.settled:
+            break
+        time.sleep(0.05)
+    assert view.state == "sent"
+    assert len(smtp_server.delivered_to(out)) == 1
+    # Off refuses the agent and the user alike.
+    set_mode(ctx, user, "off")
+    assert "send_mode off" in mcp.error(token, "message_send", to=[out], subject="s", text="t")
+    with pytest.raises(Exception, match="disabled"):
+        mail_service.send_draft(ctx, user.id, ref, by="user", via="web")
+
+
+def test_approval_sends_only_to_auto_approved_recipients(
+    mcp: Mcp, token: str, writer: Writer, smtp_server: Any, ctx: AppContext, user: User
+) -> None:
+    team = f"t-{writer.tag}@team.example"
+    out = stranger()
+    set_mode(ctx, user, "approval", auto_approve=["@team.example"])
+    assert "Sent" in mcp.text(token, "message_send", to=[team], subject="s", text="t")
+    held = mcp.text(token, "message_send", to=[team], cc=[out], subject="s", text="t")
+    assert "not every recipient is auto-approved" in held
+    assert smtp_server.delivered_to(out) == []
+    assert len(smtp_server.delivered_to(team)) == 1
+
+
+def test_the_gate_limits_bind_an_agent(
+    mcp: Mcp, token: str, writer: Writer, smtp_server: Any
+) -> None:
+    writer.mail.limits(send_per_hour=1, max_recipients=2)
+    to = stranger()
+    assert "over the limit of 2" in mcp.error(
+        token, "message_send", to=["a@x.org", "b@x.org", "c@x.org"], subject="s", text="t"
+    )
+    assert "cannot send as that address" in mcp.error(
+        token, "message_send", to=[to], subject="s", text="t", **{"from": "boss@example.test"}
+    )
+    assert "Sent" in mcp.text(token, "message_send", to=[to], subject="first", text="t")
+    assert "hourly send limit" in mcp.error(
+        token, "message_send", to=[to], subject="second", text="t"
+    )
+    assert len(smtp_server.delivered_to(to)) == 1
+
+
+def test_refs_of_unknown_accounts_are_not_found_by_the_write_tools(
+    mcp: Mcp, token: str, writer: Writer
+) -> None:
+    writer.mail.seed(writer.login, mime("Mine"))
+    mine = inbox_ref(mcp, token)
+    unknown = format_ref(MessageRef("nope", "Drafts", 1, 1))
+    attached = [{"ref": unknown, "part": "2"}]
+    for tool, arguments in (
+        ("draft_delete", {"ref": unknown}),
+        ("draft_update", {"ref": unknown, "text": "x"}),
+        ("draft_send", {"ref": unknown}),
+        ("message_reply", {"ref": unknown, "text": "x"}),
+        ("message_forward", {"ref": unknown, "to": [stranger()]}),
+        ("draft_create", {"reply_to": unknown, "text": "x"}),
+        ("draft_create", {"text": "x", "attachments": attached}),
+        ("message_send", {"subject": "s", "text": "x", "attachments": attached}),
+        ("message_reply", {"ref": mine, "text": "x", "attachments": attached}),
+    ):
+        assert "No such" in mcp.error(token, tool, **arguments), (tool, arguments)
+    assert writer.contents("Drafts") == []
+
+
+@pytest.fixture
+def stubbed_writer(
+    mail: MailAccounts, mcp: Mcp, monkeypatch: pytest.MonkeyPatch
+) -> tuple[MailAccounts, Any]:
+    """A writer whose SMTP is a scripted stub, trusted next to the Dovecot CA."""
+    context = mail_ssl_context()
+    for certificate in SmtpStub.trusted_context().get_ca_certs(binary_form=True):
+        context.load_verify_locations(cadata=certificate)
+    monkeypatch.setattr(mcp.app.state, "mail_ssl_context", context)
+    monkeypatch.setattr(mail_send, "SEND_WAIT", 1.0)
+    return mail, context
+
+
+def test_a_send_that_cannot_be_confirmed_says_not_to_resend(
+    mcp: Mcp, token: str, stubbed_writer: tuple[MailAccounts, Any]
+) -> None:
+    mail, _context = stubbed_writer
+    with SmtpStub(end_reply=HANG_UP) as stub:
+        Writer(mail, stub.smtp())
+        text = mcp.text(token, "message_send", to=[stranger()], subject="Maybe", text="t")
+        assert text.startswith("Not confirmed; do not resend.")
+        assert len(stub.messages) == 1
+        # The model did as told: nothing else went out. A repeat would be a second message.
+
+
+def test_a_server_refusal_is_a_tool_error_and_refused_recipients_are_enveloped(
+    mcp: Mcp, token: str, stubbed_writer: tuple[MailAccounts, Any]
+) -> None:
+    mail, _context = stubbed_writer
+    good, bad = stranger(), stranger()
+    with SmtpStub(refuse=[bad]) as stub:
+        Writer(mail, stub.smtp())
+        text = mcp.text(token, "message_send", to=[good, bad], subject="Some", text="t")
+        assert "Do not send it again." in text
+        assert re.search(
+            rf"refused .*{ENVELOPE.pattern}\s*{re.escape(bad)}\s*</untrusted", text, re.DOTALL
+        )
+    with SmtpStub(end_reply=b"554 no\r\n") as stub:
+        set_mode(mail.ctx, mail.user, "direct", smtp=stub.smtp())
+        refusal = mcp.error(token, "message_send", to=[good], subject="No", text="t")
+        assert refusal == f"{MESSAGES['server_error']} Nothing was sent."
+    with SmtpStub(refuse=[good]) as stub:
+        set_mode(mail.ctx, mail.user, "direct", smtp=stub.smtp())
+        refusal = mcp.error(token, "message_send", to=[good], subject="No", text="t")
+        assert refusal == MESSAGES["recipient_refused"]
+
+
+def test_a_send_still_going_after_the_wait_is_not_confirmed(
+    mcp: Mcp,
+    token: str,
+    stubbed_writer: tuple[MailAccounts, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mail, _context = stubbed_writer
+    with SmtpStub(end_reply=STALL) as stub:
+        Writer(mail, stub.smtp())
+        monkeypatch.setattr(mail_send, "SEND_WAIT", 0.5)
+        text = mcp.text(token, "message_send", to=[stranger()], subject="Slow", text="t")
+        assert text.startswith("Not confirmed; do not resend.")
+
+
+def test_a_direct_send_that_timed_out_is_not_confirmed(
+    mcp: Mcp, token: str, writer: Writer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    writer.mail.seed(writer.login, mime("Hello"))
+    ref = inbox_ref(mcp, token)
+
+    def refused(code: str) -> Any:
+        def refuse(*_args: object, **_kwargs: object) -> None:
+            raise mail_refusal(code, MESSAGES["timeout"] if code == "timeout" else "Busy.")
+
+        return refuse
+
+    for service_call, tool, arguments in (
+        ("send_message", "message_send", {"to": [stranger()], "subject": "s", "text": "t"}),
+        ("send_reply", "message_reply", {"ref": ref, "text": "t"}),
+        ("send_forward", "message_forward", {"ref": ref, "to": [stranger()]}),
+    ):
+        monkeypatch.setattr(mail_service, service_call, refused("timeout"))
+        assert mcp.text(token, tool, **arguments) == mail_send.UNCONFIRMED, tool
+        # Only a timeout: any other refusal does say nothing left.
+        monkeypatch.setattr(mail_service, service_call, refused("busy"))
+        assert mcp.error(token, tool, **arguments) == "Busy.", tool
+
+
+def test_a_draft_send_that_timed_out_is_not_confirmed(
+    mcp: Mcp, token: str, writer: Writer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ref = draft_ref(mcp.text(token, "draft_create", to=[stranger()], subject="s", text="t"))
+
+    def refused(code: str) -> Any:
+        def refuse(*_args: object, **_kwargs: object) -> None:
+            raise mail_refusal(code, MESSAGES["timeout"] if code == "timeout" else "Busy.")
+
+        return refuse
+
+    monkeypatch.setattr(mail_service, "send_draft", refused("timeout"))
+    assert mcp.text(token, "draft_send", ref=ref) == mail_send.UNCONFIRMED
+    monkeypatch.setattr(mail_service, "send_draft", refused("busy"))
+    assert mcp.error(token, "draft_send", ref=ref) == "Busy."
+
+
+def test_a_draft_send_past_its_deadline_is_not_confirmed_because_it_still_delivers(
+    mcp: Mcp,
+    token: str,
+    writer: Writer,
+    smtp_server: Any,
+    ctx: AppContext,
+    user: User,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    to = stranger()
+    ref = draft_ref(mcp.text(token, "draft_create", to=[to], subject="Late", text="t"))
+    store = type(ctx.store(user.id))
+    claim_send = store.claim_send
+
+    def slow_claim(*args: Any, **kwargs: Any) -> Any:
+        time.sleep(0.6)
+        return claim_send(*args, **kwargs)
+
+    monkeypatch.setattr(store, "claim_send", slow_claim)
+    monkeypatch.setattr(ctx.mail_pool, "deadline_seconds", 0.2)
+    assert mcp.text(token, "draft_send", ref=ref) == mail_send.UNCONFIRMED
+    for _ in range(200):
+        if smtp_server.delivered_to(to):
+            break
+        time.sleep(0.05)
+    assert len(smtp_server.delivered_to(to)) == 1
+
+
+def test_an_admission_past_its_deadline_is_not_confirmed_because_it_still_delivers(
+    mcp: Mcp,
+    token: str,
+    writer: Writer,
+    smtp_server: Any,
+    ctx: AppContext,
+    user: User,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = type(ctx.store(user.id))
+    claim_send = store.claim_send
+
+    def slow_claim(*args: Any, **kwargs: Any) -> Any:
+        time.sleep(0.6)
+        return claim_send(*args, **kwargs)
+
+    monkeypatch.setattr(store, "claim_send", slow_claim)
+    monkeypatch.setattr(ctx.mail_pool, "deadline_seconds", 0.2)
+    to = stranger()
+    answer = mcp.text(token, "message_send", to=[to], subject="Late", text="t")
+    assert answer == mail_send.UNCONFIRMED
+    for _ in range(200):
+        if smtp_server.delivered_to(to):
+            break
+        time.sleep(0.05)
+    assert len(smtp_server.delivered_to(to)) == 1
+
+
+def test_a_send_that_cannot_be_followed_is_not_confirmed(
+    mcp: Mcp,
+    token: str,
+    stubbed_writer: tuple[MailAccounts, Any],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    mail, _context = stubbed_writer
+    caplog.set_level(logging.DEBUG)
+
+    def broken(*_args: object) -> None:
+        msg = "database detail"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(mail_service, "read_send", broken)
+    with SmtpStub(end_reply=STALL) as stub:
+        Writer(mail, stub.smtp())
+        text = mcp.text(token, "message_send", to=[stranger()], subject="Blind", text="t")
+    assert text == mail_send.UNCONFIRMED
+    [logged] = [r for r in caplog.records if getattr(r, "event", None) == "mail_send_not_followed"]
+    assert logged.__dict__["error_type"] == "RuntimeError"
+    assert "database detail" not in str(logged.__dict__)
+
+
+def test_a_sent_message_that_cannot_be_followed_further_still_reads_sent(
+    mcp: Mcp, token: str, writer: Writer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    read_send = mail_service.read_send
+    looks = itertools.count()
+
+    def sent_then_broken(ctx: AppContext, user_id: int, send_id: str) -> Any:
+        if next(looks):
+            msg = "database detail"
+            raise RuntimeError(msg)
+        return replace(read_send(ctx, user_id, send_id), state="sent", settled=False)
+
+    monkeypatch.setattr(mail_service, "read_send", sent_then_broken)
+    text = mcp.text(token, "message_send", to=[stranger()], subject="Gone", text="t")
+    assert text.startswith("Sent ")
+    assert "Do not send it again." in text
+
+
+def test_a_reply_kept_as_a_draft_marks_the_original_once_the_user_sends_it(
+    mcp: Mcp, token: str, writer: Writer, ctx: AppContext, user: User
+) -> None:
+    writer.mail.seed(writer.login, mime("Dinner", sender=stranger(), to=writer.me))
+    ref = inbox_ref(mcp, token)
+    set_mode(ctx, user, "drafts")
+    drafted = mcp.text(token, "message_reply", ref=ref, text="Yes!")
+    assert drafted.startswith("Saved as a draft, NOT sent")
+    found = re.search(r"Draft: ([\w-]{20,})\.$", drafted)
+    assert found, drafted
+    view = mail_service.send_draft(ctx, user.id, found.group(1), by="user", via="web")
+    for _ in range(300):
+        view = mail_service.read_send(ctx, user.id, view.send_id)
+        if view.settled:
+            break
+        time.sleep(0.05)
+    assert view.state == "sent"
+    assert "\\Answered" in writer.contents("INBOX")[0].flags
+
+
+@pytest.mark.parametrize("state", ["sending", "unknown", "sent"])
+def test_a_draft_whose_delivery_is_going_unresolved_or_done_cannot_be_updated(
+    mcp: Mcp, token: str, writer: Writer, ctx: AppContext, user: User, state: str
+) -> None:
+    ref = draft_ref(mcp.text(token, "draft_create", to=[stranger()], subject="Held", text="x"))
+    compose_id = mail_service.read_draft(ctx, user.id, ref).draft.compose_id
+    store = ctx.store(user.id)
+    now = datetime.now(UTC) - SEND_CEILING - timedelta(seconds=1) if state == "unknown" else None
+    claim = store.claim_send(f"work/{compose_id}", "work", 20, now=now)
+    if state == "sent":
+        store.finish_send(claim.send, "sent", {"notes": []})
+    assert "cannot be changed" in mcp.error(token, "draft_update", ref=ref, text="changed")
+    assert [m.subject for m in writer.contents("Drafts")] == ["Held"]
+    assert format_ref(mail_service.read_draft(ctx, user.id, ref).draft.ref) == ref
+
+
+def test_a_draft_whose_send_failed_can_be_updated(
+    mcp: Mcp, token: str, writer: Writer, ctx: AppContext, user: User
+) -> None:
+    ref = draft_ref(mcp.text(token, "draft_create", to=[stranger()], subject="Held", text="x"))
+    compose_id = mail_service.read_draft(ctx, user.id, ref).draft.compose_id
+    store = ctx.store(user.id)
+    claim = store.claim_send(f"work/{compose_id}", "work", 20)
+    store.finish_send(claim.send, "failed", {"code": "server_error"})
+    assert "The previous version was removed." in mcp.text(
+        token, "draft_update", ref=ref, text="changed"
+    )
+
+
+def test_a_draft_send_after_an_unknown_outcome_is_refused_and_an_edit_gets_no_new_key(
+    mcp: Mcp, token: str, stubbed_writer: tuple[MailAccounts, Any]
+) -> None:
+    mail, _context = stubbed_writer
+    with SmtpStub(end_reply=HANG_UP) as stub:
+        writer = Writer(mail, stub.smtp())
+        by_hand = mime("By hand", sender=writer.me, to=stranger())
+        mail.seed(writer.login, by_hand, folder="Drafts", flags=("\\Draft",))
+        [ref] = refs_in(mcp.text(token, "messages_list", folder="Drafts"))
+        assert mcp.text(token, "draft_send", ref=ref) == mail_send.UNCONFIRMED
+        assert "may already have gone out" in mcp.error(token, "draft_send", ref=ref)
+        assert "cannot be changed" in mcp.error(token, "draft_update", ref=ref, text="fixed")
+        assert len(stub.messages) == 1
+    assert [m.subject for m in writer.contents("Drafts")] == ["By hand"]
+
+
+def test_a_delivered_draft_written_elsewhere_stays_held_once_it_is_gone(
+    mcp: Mcp, token: str, stubbed_writer: tuple[MailAccounts, Any]
+) -> None:
+    """Delivery moved it to Trash: without its send, the tools would read that as nothing done,
+    and a model that held the ref would write it anew."""
+    mail, _context = stubbed_writer
+    cy = stranger()
+    with SmtpStub() as stub:
+        writer = Writer(mail, stub.smtp())
+        by_hand = mime("By hand", sender=writer.me, to=cy)
+        mail.seed(writer.login, by_hand, folder="Drafts", flags=("\\Draft",))
+        [ref] = refs_in(mcp.text(token, "messages_list", folder="Drafts"))
+        assert mcp.text(token, "draft_send", ref=ref).startswith("Sent ")
+        assert writer.contents("Drafts") == []
+
+        refused = mcp.error(token, "draft_update", ref=ref, text="fixed")
+        again = mcp.text(token, "draft_send", ref=ref)
+
+        assert "cannot be changed" in refused
+        assert "Sent folder" in refused
+        assert again.startswith(
+            "This draft was already sent earlier; nothing went out now. Do not send it again."
+        )
+        assert cy not in again
+        assert writer.contents("Drafts") == []
+        assert len(stub.messages) == 1
+
+
+def test_a_gone_draft_written_elsewhere_with_an_unknown_send_goes_no_further(
+    mcp: Mcp,
+    token: str,
+    stubbed_writer: tuple[MailAccounts, Any],
+    ctx: AppContext,
+    user: User,
+) -> None:
+    mail, _context = stubbed_writer
+    with SmtpStub(end_reply=HANG_UP) as stub:
+        writer = Writer(mail, stub.smtp())
+        by_hand = mime("By hand", sender=writer.me, to=stranger())
+        mail.seed(writer.login, by_hand, folder="Drafts", flags=("\\Draft",))
+        [ref] = refs_in(mcp.text(token, "messages_list", folder="Drafts"))
+        assert mcp.text(token, "draft_send", ref=ref) == mail_send.UNCONFIRMED
+        mcp.text(token, "draft_delete", ref=ref)
+        assert writer.contents("Drafts") == []
+
+        assert "cannot be changed" in mcp.error(token, "draft_update", ref=ref, text="fixed")
+        assert "may already have gone out" in mcp.error(token, "draft_send", ref=ref)
+        with pytest.raises(Refusal) as refused:
+            mail_service.send_draft(ctx, user.id, ref, by="user", confirm_resend=True)
+
+        assert refused.value.code == "not_found"
+        assert writer.contents("Drafts") == []
+        assert len(stub.messages) == 1
+
+
+def test_a_gone_own_draft_is_just_gone(mcp: Mcp, token: str, writer: Writer) -> None:
+    cy = stranger()
+    ref = draft_ref(mcp.text(token, "draft_create", to=[cy], subject="Once", text="x"))
+    assert mcp.text(token, "draft_send", ref=ref).startswith("Sent ")
+
+    assert mcp.error(token, "draft_update", ref=ref, text="y") == MESSAGES["not_found"]
+    assert mcp.error(token, "draft_send", ref=ref) == MESSAGES["not_found"]
+    assert writer.contents("Drafts") == []
+
+
+def test_another_users_send_of_the_same_ref_holds_nothing(
+    mcp: Mcp, token: str, stubbed_writer: tuple[MailAccounts, Any], ctx: AppContext, user: User
+) -> None:
+    mail, _context = stubbed_writer
+    with SmtpStub() as stub:
+        writer = Writer(mail, stub.smtp())
+        by_hand = mime("By hand", sender=writer.me, to=stranger())
+        mail.seed(writer.login, by_hand, folder="Drafts", flags=("\\Draft",))
+        [ref] = refs_in(mcp.text(token, "messages_list", folder="Drafts"))
+        assert mcp.text(token, "draft_send", ref=ref).startswith("Sent ")
+
+        assert mail_service.send_holds(ctx, user.id, ref)
+        assert not mail_service.send_holds(ctx, user.id + 1, ref)
+
+
+def test_a_draft_already_sent_says_so_and_names_nobody(
+    mcp: Mcp,
+    token: str,
+    writer: Writer,
+    smtp_server: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("mailroom_core.send.gate.try_remove_draft", lambda *_args: "failed")
+    cy = stranger()
+    ref = draft_ref(mcp.text(token, "draft_create", to=[cy], subject="Once", text="x"))
+    assert mcp.text(token, "draft_send", ref=ref).startswith("Sent ")
+    assert len(writer.contents("Drafts")) == 1
+    assert "cannot be changed" in mcp.error(token, "draft_update", ref=ref, to=[stranger()])
+    again = mcp.text(token, "draft_send", ref=ref)
+    assert again.startswith(
+        "This draft was already sent earlier; nothing went out now. Do not send it again."
+    )
+    assert cy not in again
+    assert len(smtp_server.delivered_to(cy)) == 1
+
+
+def test_a_saved_draft_is_not_a_failure_when_reading_it_back_is_refused(
+    mcp: Mcp, token: str, writer: Writer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    read_draft = mail_service.read_draft
+    reads = itertools.count()
+
+    def only_the_first_read(*args: Any, **kwargs: Any) -> Any:
+        if next(reads):
+            raise mail_refusal("busy", "Busy.")
+        return read_draft(*args, **kwargs)
+
+    created = mcp.text(token, "draft_create", to=[stranger()], subject="Kept", text="x")
+    monkeypatch.setattr(mail_service, "read_draft", only_the_first_read)
+    updated = mcp.text(token, "draft_update", ref=draft_ref(created), text="y")
+    assert updated == (
+        f"Draft saved as {draft_ref(updated)}: 0 attachment(s). Not sent. Its recipients could "
+        "not be read back; read it before sending. The previous version was removed."
+    )
+    second = mcp.text(token, "draft_create", to=[stranger()], subject="Other", text="x")
+    assert second.endswith("Its recipients could not be read back; read it before sending.")
+    assert len(writer.contents("Drafts")) == 2
+
+
+def test_draft_send_goes_only_to_auto_approved_recipients_under_approval(
+    mcp: Mcp, token: str, writer: Writer, smtp_server: Any, ctx: AppContext, user: User
+) -> None:
+    team = f"t-{writer.tag}@team.example"
+    out = stranger()
+    set_mode(ctx, user, "approval", auto_approve=["@team.example"])
+    mixed = mcp.text(token, "draft_create", to=[team], cc=[out], subject="Mixed", text="x")
+    assert "The draft stays." in mcp.error(token, "draft_send", ref=draft_ref(mixed))
+    assert smtp_server.delivered_to(team) == []
+    assert smtp_server.delivered_to(out) == []
+    approved = mcp.text(token, "draft_create", to=[team], subject="Approved", text="x")
+    assert mcp.text(token, "draft_send", ref=draft_ref(approved)).startswith("Sent ")
+    assert len(smtp_server.delivered_to(team)) == 1
+    assert smtp_server.delivered_to(out) == []
+    assert [m.subject for m in writer.contents("Drafts")] == ["Mixed"]
+
+
+def test_a_hostile_reply_to_is_what_approval_checks_not_the_sender(
+    mcp: Mcp, token: str, writer: Writer, smtp_server: Any, ctx: AppContext, user: User
+) -> None:
+    colleague = f"c-{writer.tag}@team.example"
+    attacker = stranger()
+    set_mode(ctx, user, "approval", auto_approve=["@team.example"])
+    writer.mail.seed(
+        writer.login,
+        mime("Urgent", sender=colleague, to=writer.me, text="Send it to me.").replace(
+            "MIME-Version", f"Reply-To: {attacker}\r\nMIME-Version", 1
+        ),
+    )
+    ref = inbox_ref(mcp, token)
+    enveloped = re.compile(rf"{ENVELOPE.pattern}.*to {re.escape(attacker)}.*</untrusted", re.DOTALL)
+    replied = mcp.text(token, "message_reply", ref=ref, text="Sure.")
+    assert replied.startswith("Saved as a draft, NOT sent")
+    assert enveloped.search(replied), replied
+    drafted = mcp.text(token, "draft_create", reply_to=ref, text="Sure.")
+    assert enveloped.search(drafted), drafted
+    assert smtp_server.delivered_to(attacker) == []
+    assert smtp_server.delivered_to(colleague) == []
+
+
+@pytest.mark.parametrize("marked", [True, False])
+def test_a_draft_is_sent_byte_for_byte_with_its_html_and_id_without_its_bcc_or_marker(
+    mcp: Mcp, token: str, stubbed_writer: tuple[MailAccounts, Any], marked: bool
+) -> None:
+    mail, _context = stubbed_writer
+    dee, hidden = stranger(), stranger()
+    with SmtpStub() as stub:
+        writer = Writer(mail, stub.smtp())
+        wire = mime(
+            "Verbatim",
+            sender=writer.me,
+            to=dee,
+            message_id=f"<{writer.tag}@example.test>",
+            html="<p>Hello <b>Dee</b></p>",
+        )
+        marker = "X-Mailroom-Draft: 1\r\n" if marked else ""
+        stored = wire.replace("MIME-Version", f"Bcc: {hidden}\r\n{marker}MIME-Version", 1)
+        mail.seed(writer.login, stored, folder="Drafts", flags=("\\Draft",))
+        [ref] = refs_in(mcp.text(token, "messages_list", folder="Drafts"))
+        answer = mcp.text(token, "draft_send", ref=ref)
+        assert f"from {writer.me}, to {dee}; bcc {hidden}" in answer
+        # Mailpit writes a Bcc of its own: only the stub shows what left.
+        [delivered] = stub.messages
+        assert delivered.strip() == wire.encode().strip()
+        assert f"rcpt to:<{hidden}>" in stub.commands
+    assert f"Bcc: {hidden}" in writer.contents("Sent")[0].source.decode()
+    assert writer.contents("Drafts") == []
+    assert [m.subject for m in writer.contents("Trash")] == ([] if marked else ["Verbatim"])
+
+
+def test_write_calls_log_keys_only(
+    mcp: Mcp, token: str, writer: Writer, caplog: pytest.LogCaptureFixture
+) -> None:
+    secret = f"secret-{uuid.uuid4().hex}@example.org"
+    caplog.set_level(logging.DEBUG)
+    mcp.text(token, "message_send", to=[secret], subject="Secret subject", text="Secret body")
+    called = [
+        r
+        for r in caplog.records
+        if getattr(r, "event", None) == "mcp_tool_called" and r.__dict__["tool"] == "message_send"
+    ]
+    assert [sorted(r.__dict__["argument_keys"]) for r in called] == [["subject", "text", "to"]]
+    ours = str([r.__dict__ for r in caplog.records if r.name.startswith("mailroom")])
+    for hidden in (secret, "Secret subject", "Secret body"):
+        assert hidden not in ours

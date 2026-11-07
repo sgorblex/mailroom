@@ -17,7 +17,7 @@ from mailroom.errors import Refusal
 from mailroom.mcp import groups
 from mailroom.mcp.app import instructions, tools_for
 from mailroom.mcp.envelope import untrusted, wrapped_result
-from mailroom.mcp.groups import ToolGroup, selected_groups
+from mailroom.mcp.groups import GroupName, ToolGroup, selected_groups
 from mailroom.mcp.settings import mcp_settings_from_env
 from mailroom.mcp.tool import BUSY_MESSAGE, READ, Arguments, Tool, ToolCall, UserSlots, call_tool
 from mailroom.mcp.tools import TOOLS
@@ -50,6 +50,8 @@ def test_the_settings_come_from_the_environment(monkeypatch: pytest.MonkeyPatch)
         "filters_run",
         "mail_read",
         "mail_organize",
+        "mail_draft",
+        "mail_send",
     ]
 
     monkeypatch.setenv("MAILROOM_MCP_AUTH", "off")
@@ -61,15 +63,26 @@ def test_the_settings_come_from_the_environment(monkeypatch: pytest.MonkeyPatch)
     assert mcp_settings_from_env(None) is None
 
 
+@pytest.fixture
+def planned_group(monkeypatch: pytest.MonkeyPatch) -> str:
+    """A group that is ``planned``: every real one is stable now, so this one is made up."""
+    name = "mail_future"
+    future = ToolGroup(cast("GroupName", name), "planned", "a group nobody has built")
+    registry = (*groups.GROUPS, future)
+    monkeypatch.setattr(groups, "GROUPS", registry)
+    monkeypatch.setattr(groups, "_BY_NAME", {group.name: group for group in registry})
+    return name
+
+
 def test_groups_named_are_registered_unknown_and_planned_ones_skipped(
-    caplog: pytest.LogCaptureFixture,
+    caplog: pytest.LogCaptureFixture, planned_group: str
 ) -> None:
     caplog.set_level(logging.WARNING)
-    selected = selected_groups(" filters_run, mail_send ,bogus,filters_read")
+    selected = selected_groups(f" filters_run, {planned_group} ,bogus,filters_read")
     assert names(selected) == ["filters_read", "filters_run"]
     warnings = " ".join(record.getMessage() for record in caplog.records)
     assert "'bogus'" in warnings
-    assert "mail_send" in warnings
+    assert planned_group in warnings
     assert names(selected_groups("")) == names(selected_groups(None))
 
 
@@ -82,7 +95,7 @@ def test_a_preview_group_only_when_named(monkeypatch: pytest.MonkeyPatch) -> Non
     assert names(selected_groups("mail_read")) == ["mail_read"]
 
 
-def test_the_tools_follow_their_groups() -> None:
+def test_the_tools_follow_their_groups(planned_group: str) -> None:
     assert {tool.name for tool in tools_for(selected_groups("filters_read"))} == {
         "accounts_list",
         "folders_list",
@@ -96,6 +109,7 @@ def test_the_tools_follow_their_groups() -> None:
     assert all(set(tool.groups) <= every_group for tool in TOOLS)
     assert len({tool.name for tool in TOOLS}) == len(TOOLS)
     planned = {group.name for group in groups.GROUPS if group.status == "planned"}
+    assert planned == {planned_group}
     assert not [tool for tool in TOOLS if planned.intersection(tool.groups)]
 
 
@@ -110,7 +124,9 @@ def test_the_instructions_follow_the_groups() -> None:
     assert "It also reads the user's mail." in instructions(
         selected_groups("filters_read,mail_read")
     )
-    assert "It also reads and organizes the user's mail" in instructions(selected_groups(None))
+    assert "It also reads, organizes, drafts and sends the user's mail" in instructions(
+        selected_groups(None)
+    )
     mail_only = instructions(selected_groups("mail_read"))
     assert mail_only.startswith("mailroom-app reads the user's mail")
     assert "filters" not in mail_only.split(".")[0]
@@ -132,6 +148,22 @@ def test_organizing_without_reading_names_no_missing_ref_source(
     assert "Message refs" in schemas
     for missing in ("messages_list", "messages_search", "thread_read"):
         assert missing not in organize_only
+        assert missing not in schemas
+
+
+def test_writing_without_reading_names_no_missing_ref_source(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.WARNING)
+    selected = selected_groups("mail_draft,mail_send")
+    text = instructions(selected)
+    assert "mail_draft without mail_read" in caplog.text
+    assert "mail_send without mail_read" in caplog.text
+    assert text.startswith("mailroom-app drafts and sends the user's mail")
+    written = [tool for tool in tools_for(selected) if tool.group in {"mail_draft", "mail_send"}]
+    schemas = json.dumps([tool.definition().model_dump(mode="json") for tool in written])
+    for missing in ("messages_list", "messages_search", "thread_read", "message_read"):
+        assert missing not in text
         assert missing not in schemas
 
 

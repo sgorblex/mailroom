@@ -18,6 +18,10 @@ row. From the moment the server has taken the message nothing can make that a fa
 removing its draft and marking what it answered are later calls, each of which at worst sets
 ``filed`` to false or adds a note. A draft that did not reach Sent stays where it is: it is the only
 copy the account has.
+
+An agent's direct send (``send_message``, ``send_reply``, ``send_forward``) goes the same way, by
+``agent``, without a key: its Message-ID is fresh, so a repeat is a second message. Where the send
+mode only drafts it, the gate saves a draft and the answer says so (``Dispatched``).
 """
 
 from __future__ import annotations
@@ -1123,9 +1127,7 @@ def save_draft(
         if named_ref is not None and core.parse_ref(named_ref).account != account.id:
             elsewhere = "That message belongs to another account."
             raise mail_refusal("invalid_argument", elsewhere)
-    keep: list[AttachmentSource] = [
-        core.AttachmentSource(core.parse_ref(ref), part) for ref, part in fields.keep
-    ]
+    keep = _attachment_sources(fields.keep)
 
     def saved(connections: MailConnections) -> SavedDraft:
         previous = _replaced(ctx, user_id, connections, replaces, fields.compose_id)
@@ -1374,6 +1376,7 @@ def _admit(
     *,
     by: Authoriser,
     confirm_resend: bool,
+    on: Sequence[str] | None = None,
 ) -> SendView | gate.Drafted:
     """Takes a send to the gate under the pool's deadline, and on to the runner: a place first,
     so that ``busy`` comes before anything is claimed. The running send is started inside the
@@ -1425,6 +1428,7 @@ def _admit(
             via,
             account.id,
             admission,
+            on=on,
             on_deadline=stop.set,
         )
     finally:
@@ -1435,6 +1439,11 @@ def _draft_unsettled(draft: Draft, filed: bool) -> tuple[gate.SendNote, ...]:
     """What ``gate.settle_draft`` would have reported had none of it worked."""
     unmarked = () if draft.answers is None else (gate.ORIGINAL_NOT_MARKED,)
     return (*unmarked, gate.DRAFT_NOT_REMOVED if filed else gate.DRAFT_KEPT)
+
+
+def send_holds(ctx: AppContext, user_id: int, ref: str) -> bool:
+    """Whether a send holds the draft written elsewhere at ``ref``, there or not by now."""
+    return _holding_send(ctx, user_id, core.parse_ref(ref)) is not None
 
 
 def _send_of_gone_draft(
@@ -1507,3 +1516,223 @@ def read_send(ctx: AppContext, user_id: int, send_id: str) -> SendView:
     if send is None:
         raise unknown_message()
     return _send_view(send)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Dispatched:
+    """What an agent's direct send came to: ``send`` (follow it with ``read_send``) when the gate
+    let it go, else it was saved as a draft (``draft``, None when it could not be read back)."""
+
+    account: str
+    send_mode: str
+    message: MessageInput
+    """As it goes out or was drafted, from and every recipient included."""
+    send: SendView | None = None
+    draft: MessageRef | None = None
+
+
+def _attachment_sources(refs: Iterable[tuple[str, str]]) -> list[AttachmentSource]:
+    return [core.AttachmentSource(core.parse_ref(ref), part) for ref, part in refs]
+
+
+def _dispatch(
+    ctx: AppContext,
+    user_id: int,
+    accounts: _Accounts,
+    account: AccountConfig,
+    via: Via,
+    build: Callable[[MailConnections], _Outgoing],
+    *,
+    on: Sequence[str],
+) -> Dispatched:
+    """An agent's message to the gate. It has no key and a fresh Message-ID, so a repeat is a
+    second message: a retry is the caller's to avoid. Where the send mode only drafts it, the
+    gate saves it in Drafts."""
+    built: list[MessageInput] = []
+
+    def outgoing(connections: MailConnections) -> _Outgoing:
+        request = build(connections)
+        built.append(request.message)
+        return request
+
+    started = _admit(
+        ctx, user_id, accounts, account, via, outgoing, by="agent", confirm_resend=False, on=on
+    )
+    [message] = built
+    if isinstance(started, gate.Drafted):
+        return Dispatched(
+            account=account.id, send_mode=account.send_mode, message=message, draft=started.ref
+        )
+    return Dispatched(
+        account=account.id, send_mode=account.send_mode, message=message, send=started
+    )
+
+
+def _written(
+    ctx: AppContext,
+    user_id: int,
+    accounts: _Accounts,
+    account_id: str,
+    refs: Sequence[str],
+) -> tuple[AccountConfig, list[str]]:
+    """The account that writes, once it may (not ``off``) and every ref is the user's."""
+    if not accounts.has(account_id):
+        raise unknown_account()
+    _usable(ctx, user_id, accounts, account_id)
+    used = _ref_accounts(ctx, user_id, accounts, refs)
+    account = accounts.config(account_id)
+    _writable(account)
+    return account, sorted({account_id, *used})
+
+
+def _plain(
+    request: Callable[[MailConnections], MessageInput],
+) -> Callable[[MailConnections], _Outgoing]:
+    """``request`` as a message with nothing to do once it is delivered."""
+
+    def build(connections: MailConnections) -> _Outgoing:
+        return _Outgoing(
+            request(connections), None, None, lambda _connections, _filed: (), lambda _filed: ()
+        )
+
+    return build
+
+
+def send_message(
+    ctx: AppContext,
+    user_id: int,
+    account_id: str,
+    *,
+    sender: str | None = None,
+    to: Sequence[Mailbox] = (),
+    cc: Sequence[Mailbox] = (),
+    bcc: Sequence[Mailbox] = (),
+    subject: str,
+    text: str,
+    attachments: Sequence[tuple[str, str]] = (),
+    via: Via = "mcp",
+) -> Dispatched:
+    """A new message from an agent, as far as the account's send mode lets it. ``attachments``
+    are ``(ref, part)`` of existing messages."""
+    accounts = _accounts(ctx, user_id)
+    account, used = _written(ctx, user_id, accounts, account_id, [r for r, _ in attachments])
+    with _as_refusals():
+        core.check_fields(to=to, cc=cc, bcc=bcc, subject=subject, text=text)
+    recipients = _deliverable(to), _deliverable(cc), _deliverable(bcc)
+    limits = accounts.write_limits
+    sources = _attachment_sources(attachments)
+    with _as_refusals():
+        from_ = core.from_identity(account, sender)
+
+    def message(connections: MailConnections) -> MessageInput:
+        files = core.attachments_from(connections, sources, core.attachment_cap(limits))
+        return core.MessageInput(
+            sender=from_,
+            to=recipients[0],
+            cc=recipients[1],
+            bcc=recipients[2],
+            subject=subject,
+            text=text,
+            attachments=files,
+        )
+
+    return _dispatch(ctx, user_id, accounts, account, via, _plain(message), on=used)
+
+
+def send_reply(
+    ctx: AppContext,
+    user_id: int,
+    ref: str,
+    *,
+    text: str,
+    reply_all: bool = False,
+    sender: str | None = None,
+    cc: Sequence[Mailbox] = (),
+    bcc: Sequence[Mailbox] = (),
+    attachments: Sequence[tuple[str, str]] = (),
+    quote: bool = True,
+    via: Via = "mcp",
+) -> Dispatched:
+    """A reply from an agent: threaded, to the original's Reply-To or sender (everyone with
+    ``reply_all``) and ``cc``, from the identity it was sent to, quoting it. It marks the
+    original ``\\Answered`` once delivered."""
+    accounts = _accounts(ctx, user_id)
+    original_ref = _message_ref(ctx, user_id, accounts, ref)
+    account, used = _written(
+        ctx, user_id, accounts, original_ref.account, [ref, *(r for r, _ in attachments)]
+    )
+    with _as_refusals():
+        core.check_fields(cc=cc, bcc=bcc, text=text)
+    extra_cc, extra_bcc = _deliverable(cc), _deliverable(bcc)
+    limits = accounts.write_limits
+    sources = _attachment_sources(attachments)
+
+    def build(connections: MailConnections) -> _Outgoing:
+        original = core.original_message(connections, original_ref)
+        answered = core.reply_recipients(original, account, reply_all=reply_all)
+        thread = core.threading(original)
+        files = core.attachments_from(connections, sources, core.attachment_cap(limits))
+        message = core.MessageInput(
+            sender=core.from_identity(account, sender, original.addressed),
+            to=_deliverable(answered.to),
+            cc=_deliverable((*answered.cc, *extra_cc)),
+            bcc=extra_bcc,
+            subject=_subject_cut(core.reply_subject(original.subject)),
+            text=f"{text}\n\n{core.quoted_original(original, TIME_ZONE)}" if quote else text,
+            answers=ref,
+            in_reply_to=thread.in_reply_to,
+            references=thread.references,
+            attachments=files,
+        )
+
+        def mark(settling: MailConnections, _filed: bool) -> tuple[gate.SendNote, ...]:
+            note = gate.mark_original(settling, original_ref, _not_kept)
+            return () if note is None else (note,)
+
+        return _Outgoing(message, None, None, mark, lambda _filed: (gate.ORIGINAL_NOT_MARKED,))
+
+    return _dispatch(ctx, user_id, accounts, account, via, build, on=used)
+
+
+def send_forward(
+    ctx: AppContext,
+    user_id: int,
+    ref: str,
+    *,
+    to: Sequence[Mailbox],
+    cc: Sequence[Mailbox] = (),
+    bcc: Sequence[Mailbox] = (),
+    text: str | None = None,
+    sender: str | None = None,
+    include_attachments: bool = True,
+    via: Via = "mcp",
+) -> Dispatched:
+    """A forward from an agent: the original inline, its attachments too by default, an optional
+    note above it."""
+    accounts = _accounts(ctx, user_id)
+    original_ref = _message_ref(ctx, user_id, accounts, ref)
+    account, used = _written(ctx, user_id, accounts, original_ref.account, [ref])
+    with _as_refusals():
+        core.check_fields(to=to, cc=cc, bcc=bcc, text=text or "")
+    recipients = _deliverable(to), _deliverable(cc), _deliverable(bcc)
+    limits = accounts.write_limits
+
+    def message(connections: MailConnections) -> MessageInput:
+        original = core.original_message(connections, original_ref)
+        forwarded = core.forwarded_original(original, TIME_ZONE)
+        sources = (
+            [core.AttachmentSource(original_ref, part.part) for part in original.attachments]
+            if include_attachments
+            else []
+        )
+        return core.MessageInput(
+            sender=core.from_identity(account, sender, original.addressed),
+            to=recipients[0],
+            cc=recipients[1],
+            bcc=recipients[2],
+            subject=_subject_cut(core.forward_subject(original.subject)),
+            text=forwarded if text is None else f"{text}\n\n{forwarded}",
+            attachments=core.attachments_from(connections, sources, core.attachment_cap(limits)),
+        )
+
+    return _dispatch(ctx, user_id, accounts, account, via, _plain(message), on=used)

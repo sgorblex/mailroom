@@ -6,7 +6,7 @@ SSO. It exposes what a model needs to work on a user's filters: accounts, folder
 dry runs and runs, and, group by group, the mail tools: each mail group turns on (status
 `stable`) once the client does what it does; `mail_read` is the first, with slice A of the
 [mail client](mail-client.md), then `mail_organize`, with slice B, then `mail_draft` and
-`mail_send`, with slice C. Standalone mailroom-mcp keeps serving the rest meanwhile
+`mail_send`, with slice C. Standalone mailroom-mcp stays a maintained server of its own
 ([`../CONTEXT.md`](../CONTEXT.md)). Product scope:
 [`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *MCP server*.
 
@@ -58,13 +58,21 @@ where refs come from. The hourly send limit and the recipient cap apply to every
 default), and both it and `folders_list` are served with these groups. An agent never gets the
 human's override of the send mode: only the web *Send* does.
 
-**After admission (30 s) the tool waits up to 45 s for the delivery.** (`draft_send` first reads
-the draft, under a 30 s deadline of its own.) A send that is not confirmed by then, or whose outcome cannot be known, answers **"not confirmed; do not
-resend"** with the same instruction in the text: the message may have been delivered, so repeating
-the call could send it twice. A sent message's answer also says it must not be sent again. A
-direct send has a fresh `Message-ID` each time, so the server cannot recognise a repeat itself;
-the instruction is the guard. Recipients the server refused are listed inside the envelope, since
-they are mail-derived text.
+**After admission (30 s) the tool waits up to 45 s for the delivery.** (`draft_send` first reads the
+draft, under a 30 s deadline of its own.) A send that is not confirmed by then, or whose outcome
+cannot be known, answers **"not confirmed; do not resend"** with the same instruction in the text:
+the message may have been delivered, so repeating the call could send it twice. A sent message's
+answer also says it must not be sent again. A direct send has a fresh `Message-ID` each time, so the
+server cannot recognise a repeat itself; the instruction is the guard. A send that hits the
+admission deadline answers "not confirmed" too, `draft_send` included, since its worker can still
+deliver, and an own draft's key cannot stop a retry once the delivered draft is gone.
+`draft_update` is refused (`draft_not_editable`) once the draft's send is going, unknown or sent, so
+that an edit cannot give it a new key or make a replay name recipients who never got it.
+`draft_send` of a draft already sent says so and sends nothing, and of one whose delivery is unknown
+is refused as `delivery_unknown`: only the user can confirm a resend. A draft written elsewhere is
+keyed by its ref, so both tools answer this way once it is gone too, which is how a delivered one
+normally ends; an own draft that is gone is `not_found`. Recipients the server refused
+are listed inside the envelope, since they are mail-derived text.
 
 Tools are registered in [tool groups](../GLOSSARY.md). `MAILROOM_MCP_TOOL_GROUPS` chooses which
 groups are registered: by default the `stable` ones; a `preview` group only when named; a

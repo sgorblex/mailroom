@@ -170,6 +170,11 @@ def content_result(*content: types.ContentBlock) -> types.CallToolResult:
     return types.CallToolResult(content=list(content))
 
 
+def text_result(text: str) -> types.CallToolResult:
+    """A tool answer of one text block."""
+    return content_result(types.TextContent(type="text", text=text))
+
+
 def _error(message: str) -> types.CallToolResult:
     return types.CallToolResult(
         content=[types.TextContent(type="text", text=message)], isError=True

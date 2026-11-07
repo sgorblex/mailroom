@@ -1,7 +1,7 @@
 """Organizing mail: move, trash and flag, over ``mailroom.mail.service`` (never over
 mailroom-core directly). The behaviour and the text are mailroom-mcp's ``move``, ``trash`` and
-``flag`` (mailroom-core's ``organize_text``): one line per folder the refs came from. Mailroom
-never deletes mail permanently, and a tool here never expunges anything it did not move.
+``flag`` (mailroom-core's ``organize_text``): one line per folder the refs came from. These tools
+never delete mail permanently, and none expunges anything it did not move.
 
 A call is a tool error when every folder failed (a lone folder's error message, or the text
 naming each folder), and an answer naming each folder's outcome otherwise. Either carries folder
