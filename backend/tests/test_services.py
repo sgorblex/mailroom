@@ -4,9 +4,11 @@ only their own, and every refusal is a ``Refusal`` the REST routes word as they 
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 import pytest
+from mailroom_core.mail import MESSAGES
 
 from mailroom.accounts import service as accounts
 from mailroom.accounts.mail import mail_ssl_context
@@ -18,6 +20,7 @@ from mailroom.filters import service as filters
 from mailroom.filters.runs import dry_run_slot
 from mailroom.filters.service import FilterFields, FilterPatch, RuleSetFields, RuleSetPatch
 from mailroom.mail.pool import MailPool
+from mailroom.mail.sends import SendRunner
 from tests.conftest import PASSWORD
 from tests.test_api_accounts import MAILBOX_PASSWORD, new_account
 from tests.test_api_filters import SHOP_SPEC
@@ -37,9 +40,13 @@ def ctx(
     migrated_engine: Engine, sessions: sessionmaker[Session], secrets_subkey: SecretsSubkey
 ) -> Iterator[AppContext]:
     pool = MailPool()
+    runner = SendRunner()
     try:
-        yield AppContext(migrated_engine, sessions, secrets_subkey, mail_ssl_context(), pool)
+        yield AppContext(
+            migrated_engine, sessions, secrets_subkey, mail_ssl_context(), pool, runner
+        )
     finally:
+        runner.close()
         pool.close()
 
 
@@ -234,7 +241,7 @@ def test_writes_log_where_they_came_from(
 def test_without_a_secrets_key_no_account_is_added(
     ctx: AppContext, db_session: Session, user: User
 ) -> None:
-    keyless = AppContext(ctx.engine, ctx.session_maker, None, ctx.ssl_context, ctx.mail_pool)
+    keyless = replace(ctx, subkey=None)
     refused = refusal(lambda: accounts.add_account(keyless, user.id, "work", _fields(), "x"))
     assert (refused.kind, refused.code) == ("unavailable", "secrets_key_missing")
     assert accounts.listed_accounts(ctx, db_session, user.id) == []
@@ -275,6 +282,20 @@ def test_without_a_secrets_key_no_account_is_added(
         (mail_refusal("timeout", "m"), 504, {"code": "timeout", "message": "m"}),
         (mail_refusal("stale_reference", "m"), 409, {"code": "stale_reference", "message": "m"}),
         (mail_refusal("too_large", "m"), 413, {"code": "too_large", "message": "m"}),
+        (
+            mail_refusal("too_large", MESSAGES["too_large"]),
+            413,
+            {
+                "code": "too_large",
+                "message": "Too large: the message, attachment or upload is over its limit.",
+            },
+        ),
+        (mail_refusal("delivery_unknown", "m"), 409, {"code": "delivery_unknown", "message": "m"}),
+        (
+            mail_refusal("recipient_refused", "m"),
+            422,
+            {"code": "recipient_refused", "message": "m"},
+        ),
         (mail_refusal("mailbox_missing", "m"), 404, {"code": "mailbox_missing", "message": "m"}),
         (mail_refusal("busy", "m"), 429, {"code": "busy", "message": "m"}),
         (mail_refusal("invalid_argument", "m"), 400, {"code": "invalid_argument", "message": "m"}),

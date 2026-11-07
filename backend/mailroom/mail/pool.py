@@ -19,6 +19,10 @@ its caller stops waiting. At the deadline the caller gets ``DeadlineExceeded`` a
 connections in use are cut (``MailConnections.interrupt``), which ends the work at once; a
 caller's ``on_deadline`` runs first, so work that would go on to open another mailbox can refuse
 to.
+
+A save's body is held back by a gate of its own (``upload``), which nothing waits at: the mail
+gates come only once the body has been read, so without it a user's burst would all be read in,
+to disk and to memory, before most of it was refused.
 """
 
 from __future__ import annotations
@@ -26,6 +30,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from contextlib import ExitStack, contextmanager
@@ -61,6 +66,9 @@ PROCESS_CALLS: Final = 24
 """Mail calls holding or waiting in this process, so that they leave request threads (anyio's
 40) to every other route."""
 WORKERS: Final = 16
+USER_UPLOADS: Final = 3
+"""A user's save requests from before their body is read until they are answered. A composer
+saves one at a time, so this is for several tabs, not for a burst."""
 
 
 class DeadlineExceeded(Exception):  # noqa: N818 -- the outcome of a call, not a bug
@@ -135,6 +143,8 @@ class MailPool:
         self._users: dict[int, _UserMail] = {}
         self._process = _Gate(process_calls, waiting=0)
         self._gates: dict[tuple[int, str | None], _Gate] = {}
+        self._uploads_lock = threading.Lock()
+        self._uploads: Counter[int] = Counter()
         self._executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="mail")
         self._stop = threading.Event()
         self._sweeper: threading.Thread | None = None
@@ -167,6 +177,22 @@ class MailPool:
             with self._lock:
                 entry.leases -= 1
                 entry.last_used = time.monotonic()
+
+    @contextmanager
+    def upload(self, user_id: int) -> Iterator[None]:
+        """Holds one of the user's ``USER_UPLOADS`` places, or ``MailError("busy")`` at once. An
+        async route takes this, so it has a lock of its own that nothing holds for long."""
+        with self._uploads_lock:
+            if self._uploads[user_id] >= USER_UPLOADS:
+                raise MailError("busy")
+            self._uploads[user_id] += 1
+        try:
+            yield
+        finally:
+            with self._uploads_lock:
+                self._uploads[user_id] -= 1
+                if self._uploads[user_id] <= 0:
+                    del self._uploads[user_id]
 
     def call[T](
         self,

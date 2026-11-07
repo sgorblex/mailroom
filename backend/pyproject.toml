@@ -19,6 +19,8 @@ dependencies = [
   "procrastinate>=3.10,<3.11",
   "psycopg[binary]>=3.2",
   "python-dotenv>=1.0",
+  # Starlette's parser for the one multipart route, POST /api/v1/mail/drafts.
+  "python-multipart>=0.0.20",
   # The engine imap-thingy matches user patterns with (it can time a match out): the API checks
   # them with it too.
   "regex>=2024.11.6",

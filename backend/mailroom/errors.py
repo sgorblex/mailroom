@@ -23,7 +23,8 @@ class Refusal(Exception):  # noqa: N818 -- the outcome of a request, not a bug
     ``issues``: the fields at fault, for an account a client sends (``invalid_account``).
     ``coded``: a ``not_found`` that keeps its ``code`` for the client, unlike a missing id, which
     is answered by its message alone (a dry run's ``account_not_found``: the account went after
-    the rule set was found)."""
+    the rule set was found).
+    ``extra``: more of the answer's ``detail``, for a client that acts on the refusal."""
 
     def __init__(
         self,
@@ -33,6 +34,7 @@ class Refusal(Exception):  # noqa: N818 -- the outcome of a request, not a bug
         *,
         issues: Sequence[Mapping[str, object]] | None = None,
         coded: bool = False,
+        extra: Mapping[str, object] | None = None,
     ) -> None:
         super().__init__(message)
         self.kind: RefusalKind = kind
@@ -40,6 +42,7 @@ class Refusal(Exception):  # noqa: N818 -- the outcome of a request, not a bug
         self.message = message
         self.issues = None if issues is None else [dict(issue) for issue in issues]
         self.coded = coded
+        self.extra = {} if extra is None else dict(extra)
 
     def __repr__(self) -> str:
         return f"Refusal({self.kind!r}, {self.code!r}, {self.message!r})"

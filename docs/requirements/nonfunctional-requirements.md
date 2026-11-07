@@ -358,22 +358,29 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
     25) in total, a 2 MiB original read for quoting. `python-multipart` parses the one multipart
     route (`POST /drafts`); the web image's nginx allows `client_max_body_size 30m` on that exact
     location (repeating its security headers) and the host's proxy needs the same, and the route
-    refuses early from `Content-Length`.
+    refuses early from `Content-Length`, then at the user's limit as the body arrives, once the
+    user is known: FastAPI's own multipart handling reads the body first. A user's fourth save at
+    once is `busy` before its body is read, since the mail gates come only after that. Files past
+    1 MiB spool to the API container's temporary directory until the body has been read into
+    memory, before the save runs.
   - **Execution:** admission runs under the 30 s mail deadline; delivery runs in a `SendRunner`
     (`mailroom.mail.sends`: 4 threads, 2 per user, `busy` before anything is claimed). SMTP
     timeouts: 15 s to connect, 60 s per command, 60 s plus the size at 128 KiB/s for `DATA`, a
-    watchdog at 360 s. SMTP uses one connection per send with a verified certificate.
+    watchdog at 360 s. SMTP uses one connection per send with a verified certificate. At shutdown
+    a running send gets 5 s, then its connection is cut.
   - **Storage:** mailroom-core's `core.sends` holds a row per send (a key, a state, the account
     and the result), keyed rows for at least 30 days and key-less ones (an agent's direct send) for a
     day, pruned when the user next sends; claiming counts and inserts under a per-user advisory
     lock.
-  - **Logs:** `mail_draft_saved`, `mail_draft_deleted`, `mail_send_requested` and
-    `mail_send_finished`, each with `user_id`, `account_id`, `via` (`web` or `mcp`), `outcome`
-    (`ok`, the state or the code) and `duration_ms`, and a send's `state`, `filed`,
-    `recipient_count` and `rejected_count`; never an address, a subject, a body, a filename, a
-    `Message-ID`, a ref or the server's wording. mailroom-core produces an audit item for each draft and send (recipients, and a
-    `removed` tag on a draft's removal), which the app does not keep yet ([`../TODO.md`](../TODO.md)):
-    they are not logged here either.
+  - **Logs:** `mail_prefilled`, `mail_draft_saved`, `mail_draft_read`, `mail_draft_found`,
+    `mail_draft_deleted`, `mail_send_requested` and `mail_send_finished`, each with `user_id`,
+    `account_id`, `via` (`web` or `mcp`), `outcome` (`ok`, the state or the code) and
+    `duration_ms`, and a finished send's `send_id`, `state`, `filed`, `recipient_count` and
+    `rejected_count`; `mail_send_not_filed` and `mail_send_not_settled` with their `code`. Never an
+    address, a subject, a body, a filename, a `Message-ID`, a ref or the server's wording.
+    mailroom-core produces an audit item for each draft and send (recipients, and a `removed` tag
+    on a draft's removal), which the app does not keep yet ([`../TODO.md`](../TODO.md)): they are
+    not logged here either.
 
 ### Filters
 

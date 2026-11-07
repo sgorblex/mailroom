@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Final, Literal
 
 from mailroom_core.store import RevisionConflict, SettingsBusy
 from pydantic import BaseModel
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from imap_thingy.accounts import Account
-    from mailroom_core.config import AccountConfig
+    from mailroom_core.config import AccountConfig, Limits
     from mailroom_core.crypto import SecretsSubkey
     from mailroom_core.store import AccountStore, Json
     from sqlalchemy.orm import Session
@@ -38,6 +38,10 @@ logger = logging.getLogger(__name__)
 
 Via = Literal["web", "mcp"]
 """The front end a change came through, as its log line names it."""
+ATTACHMENT_MAX_MB: Final = 25.0
+"""The most a written message's attachments may total, whatever the user's limit: the upload
+route's body limit (``client_max_body_size`` in ``web/nginx-default.conf``, and the host's proxy)
+is fixed and must hold them."""
 
 
 class StoredEndpoint(BaseModel):
@@ -70,6 +74,14 @@ class ListedAccount(StoredAccount):
     id: str
     has_password: bool
     run_filters: bool
+    attachment_max_mb: float
+    """The user's limit on a written message's attachments, at most ``ATTACHMENT_MAX_MB``."""
+    max_recipients: int
+    """The user's limit on To, Cc and Bcc together."""
+
+
+def attachment_limit_mb(limits: Limits) -> float:
+    return min(limits.attachment_max_mb, ATTACHMENT_MAX_MB)
 
 
 def account_not_found(*, coded: bool = False) -> Refusal:
@@ -108,12 +120,16 @@ def _store_refusal(error: RevisionConflict | SettingsBusy) -> Refusal:
     return Refusal("unavailable", "accounts_busy", msg)
 
 
-def _listed(account: AccountConfig, *, has_password: bool, run_filters: bool) -> ListedAccount:
+def _listed(
+    account: AccountConfig, limits: Limits, *, has_password: bool, run_filters: bool
+) -> ListedAccount:
     return ListedAccount.model_validate(
         {
             **account.model_dump(mode="json", exclude={"auth"}),
             "has_password": has_password,
             "run_filters": run_filters,
+            "attachment_max_mb": attachment_limit_mb(limits),
+            "max_recipients": limits.max_recipients,
         }
     )
 
@@ -126,13 +142,15 @@ def listed_accounts(ctx: AppContext, db: Session, user_id: int) -> list[ListedAc
     store = ctx.store(user_id)
     passwords = accounts_with_password(store)
     run_filters = app_data.run_filters_by_account(db, user_id)
+    settings = load_accounts(store).settings
     return [
         _listed(
             account,
+            settings.limits,
             has_password=account.id in passwords,
             run_filters=run_filters.get(account.id, False),
         )
-        for account in load_accounts(store).settings.account
+        for account in settings.account
     ]
 
 
@@ -149,14 +167,16 @@ def add_account(
     password, sealed."""
     key = require_subkey(ctx.subkey)
     raw = password_account(account_id, fields)
+    store = ctx.store(user_id)
     try:
-        account = save_account(ctx.store(user_id), key, raw, password, new=True)
+        account = save_account(store, key, raw, password, new=True)
     except AccountError as exc:
         raise _account_refusal(exc) from None
     except (RevisionConflict, SettingsBusy) as exc:
         raise _store_refusal(exc) from None
     _log("account_added", user_id, via, account_id=account.id)
-    return _listed(account, has_password=True, run_filters=False)
+    limits = load_accounts(store).settings.limits
+    return _listed(account, limits, has_password=True, run_filters=False)
 
 
 def change_account(
@@ -191,6 +211,7 @@ def change_account(
     )
     return _listed(
         account,
+        load_accounts(store).settings.limits,
         has_password=account_id in accounts_with_password(store),
         run_filters=app_data.run_filters_by_account(db, user_id).get(account_id, False),
     )

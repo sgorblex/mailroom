@@ -82,6 +82,8 @@ def test_a_user_adds_edits_and_removes_an_account(
         "auto_approve": [],
         "has_password": True,
         "run_filters": False,
+        "attachment_max_mb": 10.0,
+        "max_recipients": 10,
     }
     assert user_client.get("/api/v1/accounts").json() == [added]
 

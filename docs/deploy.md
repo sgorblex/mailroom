@@ -31,7 +31,9 @@ Quadlet sketch: [`../deploy/quadlet/README.md`](../deploy/quadlet/README.md) —
 worker), Postgres outside it, TLS on the host's reverse proxy, which must append the client to
 `X-Forwarded-For` (login throttling keys on it). The web container's nginx logs paths without
 their query string, which can hold mail data (a folder name, a search the SPA keeps in its URL);
-the host's proxy must log the same way, or not at all. Operator environment, `MAILROOM_SECRETS_KEY` included:
+the host's proxy must log the same way, or not at all. The web container's nginx allows a body of
+30 MB on `/api/v1/mail/drafts` alone, for a draft's attachments; the host's proxy must allow the
+same there, or it refuses them first. Operator environment, `MAILROOM_SECRETS_KEY` included:
 [`../deploy/quadlet/mailroom-api.env.example`](../deploy/quadlet/mailroom-api.env.example).
 
 ## MCP server and OAuth

@@ -41,6 +41,7 @@ from mailroom.context import app_context
 from mailroom.database_connectivity import CONNECTIVITY_ERRORS
 from mailroom.errors import Refusal
 from mailroom.mail.pool import MailPool
+from mailroom.mail.sends import SendRunner
 from mailroom.mcp.app import METADATA_PATH, McpEndpoint
 from mailroom.mcp.settings import mcp_settings_from_env
 from mailroom.mcp.verifier import ExternalJwtVerifier, token_verifier
@@ -185,6 +186,7 @@ async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
     application.state.secrets_subkey = secrets_subkey_from_env()
     application.state.mail_ssl_context = mail_ssl_context()
     application.state.mail_pool = MailPool()
+    application.state.send_runner = SendRunner()
     application.state.sso = sso_from_env(application.state.public_url)
     mcp_settings: McpSettings | None = application.state.mcp_settings
     verifier: TokenVerifier | None = application.state.mcp_verifier
@@ -199,6 +201,7 @@ async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
         async with mcp.running(mcp_settings, verifier):
             yield
     finally:
+        application.state.send_runner.close()
         application.state.mail_pool.close()
         if mcp_provider is not None:
             mcp_provider.close()

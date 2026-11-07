@@ -3,7 +3,7 @@ subkey, the TLS context the users' mailboxes are reached with and their mail con
 
 ``mailroom.api.main``'s lifespan builds them once and keeps them on ``app.state``
 (``database_engine``, ``session_maker``, ``secrets_subkey``, ``mail_ssl_context``,
-``mail_pool``); ``app_context`` reads them back as one ``AppContext``.
+``mail_pool``, ``send_runner``); ``app_context`` reads them back as one ``AppContext``.
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from starlette.datastructures import State
 
     from mailroom.mail.pool import MailPool
+    from mailroom.mail.sends import SendRunner
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,6 +36,8 @@ class AppContext:
     ssl_context: ssl.SSLContext
     mail_pool: MailPool
     """The users' IMAP connections for the mail client (``mailroom.mail.pool``)."""
+    send_runner: SendRunner
+    """Where sends run once admitted (``mailroom.mail.sends``)."""
 
     def store(self, user_id: int) -> AccountStore:
         """The user's accounts, as mailroom-core keeps them."""
@@ -53,4 +56,5 @@ def app_context(state: State) -> AppContext | None:
         subkey=state.secrets_subkey,
         ssl_context=state.mail_ssl_context,
         mail_pool=state.mail_pool,
+        send_runner=state.send_runner,
     )
