@@ -131,17 +131,23 @@ def test_an_oct_key_in_the_jwks_never_verifies_an_hs_token(idp: FakeIdp) -> None
         ({"aud": "someone-else"}, [CLIENT]),
         ({"iss": "https://elsewhere.example.test"}, [CLIENT]),
         ({"exp": int(time.time()) - 61}, [CLIENT]),
-        ({"iat": int(time.time()) + 120}, [CLIENT]),
         ({"sub": ""}, [CLIENT]),
         ({}, []),
     ],
-    ids=["audience", "issuer", "expired", "issued in the future", "empty subject", "no audience"],
+    ids=["audience", "issuer", "expired", "empty subject", "no audience"],
 )
 def test_a_token_whose_claims_do_not_hold_is_refused(
     idp: FakeIdp, provider: OidcProvider, claims: dict[str, object], audiences: list[str]
 ) -> None:
     with pytest.raises(OidcError) as refused:
         provider.verify_jwt(idp.mint(claims), audiences=audiences)
+    assert refused.value.code == "invalid_token"
+
+
+def test_a_token_issued_in_the_future_is_refused(idp: FakeIdp, provider: OidcProvider) -> None:
+    """Its ``iat`` is taken here: from collection, a suite slower than the leeway would let it by."""
+    with pytest.raises(OidcError) as refused:
+        provider.verify_jwt(idp.mint({"iat": int(time.time()) + 120}), audiences=[CLIENT])
     assert refused.value.code == "invalid_token"
 
 
