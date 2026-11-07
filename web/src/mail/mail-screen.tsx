@@ -9,13 +9,19 @@ import { Button } from '@/components/ui/button.tsx'
 import { useLoad } from '@/lib/use-load.ts'
 import { cn } from '@/lib/utils.ts'
 
+import { ComposeBar } from './compose-bar.tsx'
+import { useCompose } from './compose-context.ts'
+import { ComposeProvider } from './compose-provider.tsx'
+import { Composer } from './composer.tsx'
 import { MAIL_NS } from './i18n.ts'
 import { MailSidebar } from './mail-sidebar.tsx'
 import { MessageList } from './message-list.tsx'
 import { MessageView } from './message-view.tsx'
 import { SearchForm } from './search-form.tsx'
+import { ComposeAnnouncer } from './send-status.tsx'
 import { useMailShortcuts } from './shortcuts.ts'
 import { OutcomeAnnouncer, Toolbar } from './toolbar.tsx'
+import { isSameFolder, loadedFolders, useTriage } from './triage-context.ts'
 import { TriageProvider } from './triage-provider.tsx'
 
 const DEFAULT_FOLDER = 'INBOX'
@@ -67,58 +73,91 @@ export function MailScreen(): ReactElement {
 
   const accountId = search.account ?? first.id
   const folder = search.folder ?? DEFAULT_FOLDER
-  const open = search.message
   return (
     <TriageProvider sourceKey={sourceKey(accountId, folder, search.q)}>
-      <MailShortcuts />
-      <main className="flex flex-1 flex-col border-t lg:h-0 lg:min-h-0 lg:flex-row">
-        <h1 className="sr-only">{t('mail.title')}</h1>
-        <MailSidebar
-          accounts={accounts.value.map((account) => account.id)}
-          accountId={accountId}
-          folder={search.q === undefined ? folder : null}
-          className={cn(open !== undefined && 'hidden lg:flex')}
-        />
-        {/* On a phone the open message hides the list, but not the toolbar acting on it. */}
-        <section
-          aria-label={t('list.label')}
-          className="flex min-w-0 flex-col gap-3 border-t p-3 lg:w-96 lg:shrink-0 lg:overflow-y-auto lg:border-t-0 lg:border-r"
-        >
-          <div className={cn('flex flex-col gap-3', open !== undefined && 'hidden lg:flex')}>
-            <SearchForm
-              key={JSON.stringify(search.q ?? null)}
-              accounts={accounts.value.map((account) => account.id)}
-              accountId={accountId}
-              folder={folder}
-              query={search.q}
-            />
-          </div>
-          <Toolbar />
-          <div className={cn('flex flex-col gap-3', open !== undefined && 'hidden lg:flex')}>
-            <Listing accountId={accountId} folder={folder} />
-          </div>
-        </section>
-        <section
-          aria-label={t('message.label')}
-          className={cn(
-            'min-w-0 flex-1 flex-col p-3 lg:flex lg:overflow-y-auto',
-            open === undefined ? 'hidden' : 'flex',
-          )}
-        >
-          {open === undefined ? (
-            <p className="m-auto text-sm text-muted-foreground">{t('message.none')}</p>
-          ) : (
-            <MessageView key={open} messageRef={open} />
-          )}
-        </section>
-        <OutcomeAnnouncer />
-      </main>
+      <ComposeProvider accounts={accounts.value} accountId={accountId}>
+        <MailShortcuts accountId={accountId} />
+        <MailPanes accounts={accounts.value.map((account) => account.id)} accountId={accountId} folder={folder} />
+      </ComposeProvider>
     </TriageProvider>
   )
 }
 
-function MailShortcuts(): null {
-  useMailShortcuts()
+/** The three panes; on a phone an open message or composer takes the screen. */
+function MailPanes({
+  accounts,
+  accountId,
+  folder,
+}: {
+  accounts: string[]
+  accountId: string
+  folder: string
+}): ReactElement {
+  const { t } = useTranslation(MAIL_NS)
+  const search = useSearch({ from: '/mail' })
+  const { session, shown } = useCompose()
+  const open = search.message
+  const covered = open !== undefined || shown
+  return (
+    <main className="flex flex-1 flex-col border-t lg:h-0 lg:min-h-0 lg:flex-row">
+      <h1 className="sr-only">{t('mail.title')}</h1>
+      <MailSidebar
+        accounts={accounts}
+        accountId={accountId}
+        folder={search.q === undefined ? folder : null}
+        className={cn(covered && 'hidden lg:flex')}
+      />
+      {/* On a phone the open message hides the list, but not the toolbar acting on it. */}
+      <section
+        aria-label={t('list.label')}
+        className={cn(
+          'min-w-0 flex-col gap-3 border-t p-3 lg:flex lg:w-96 lg:shrink-0 lg:overflow-y-auto lg:border-t-0 lg:border-r',
+          shown ? 'hidden' : 'flex',
+        )}
+      >
+        <ComposeBar accountId={accountId} />
+        <div className={cn('flex flex-col gap-3', covered && 'hidden lg:flex')}>
+          <SearchForm
+            key={JSON.stringify(search.q ?? null)}
+            accounts={accounts}
+            accountId={accountId}
+            folder={folder}
+            query={search.q}
+          />
+        </div>
+        <Toolbar />
+        <div className={cn('flex flex-col gap-3', covered && 'hidden lg:flex')}>
+          <Listing accountId={accountId} folder={folder} />
+        </div>
+      </section>
+      <section
+        aria-label={t('message.label')}
+        className={cn(
+          'min-w-0 flex-1 flex-col p-3 lg:flex lg:overflow-y-auto',
+          covered ? 'flex' : 'hidden',
+        )}
+      >
+        {/* Stays mounted behind an open message: what is being written lives in it. */}
+        {session !== null && (
+          <div hidden={!shown} className={shown ? 'flex flex-1 flex-col' : undefined}>
+            <Composer key={session.id} session={session} />
+          </div>
+        )}
+        {!shown &&
+          (open === undefined ? (
+            <p className="m-auto text-sm text-muted-foreground">{t('message.none')}</p>
+          ) : (
+            <MessageView key={open} messageRef={open} />
+          ))}
+      </section>
+      <OutcomeAnnouncer />
+      <ComposeAnnouncer />
+    </main>
+  )
+}
+
+function MailShortcuts({ accountId }: { accountId: string }): null {
+  useMailShortcuts(accountId)
   return null
 }
 
@@ -139,5 +178,9 @@ function Listing({ accountId, folder }: { accountId: string; folder: string }): 
         : searchMessages(query, { cursor }, signal),
     [accountId, folder, query],
   )
-  return <MessageList key={key} loadPage={loadPage} searching={q !== undefined} />
+  // What the composer does changes these two folders' lists under the user's eyes.
+  const { revision } = useCompose()
+  const shownFolder = loadedFolders(useTriage().folders[accountId])?.find((each) => isSameFolder(each.path, folder))
+  const live = q === undefined && (shownFolder?.role === 'drafts' || shownFolder?.role === 'sent')
+  return <MessageList key={key} loadPage={loadPage} searching={q !== undefined} reloadKey={live ? revision : undefined} />
 }

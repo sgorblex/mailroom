@@ -17,6 +17,11 @@ const MAIL_CODES: Record<string, string> = {
   invalid_argument: 'mailErrors.invalidArgument',
   too_large: 'mailErrors.tooLarge',
   server_error: 'mailErrors.serverError',
+  send_disabled: 'mailErrors.sendDisabled',
+  rate_limited: 'mailErrors.rateLimited',
+  recipient_refused: 'mailErrors.recipientRefused',
+  delivery_unknown: 'mailErrors.deliveryUnknown',
+  draft_not_editable: 'mailErrors.draftNotEditable',
 }
 
 /** `not_found` from the account routes (folders, a list, a search): the account is not there. */
@@ -58,6 +63,39 @@ export function mailErrorMessage(t: TFunction, failure: unknown, fallback: strin
     }
   }
   return accountErrorMessage(t, failure, fallback)
+}
+
+/** A refused save or send: what is invalid there is one of the composer's limits, `limit` if it knows which. */
+export function composeErrorMessage(t: TFunction, failure: unknown, fallback: string, limit?: string | null): string {
+  if (failure instanceof ApiRequestError && failure.code === 'invalid_argument') {
+    return limit ?? t('compose.invalidDraft')
+  }
+  return mailErrorMessage(t, failure, fallback)
+}
+
+/** The notes of a delivered send (`note_codes`), with their wording key. */
+const NOTE_CODES: Record<string, string> = {
+  draft_not_removed: 'compose.noteDraftNotRemoved',
+  draft_kept: 'compose.noteDraftKept',
+  original_not_marked: 'compose.noteOriginalNotMarked',
+}
+
+/** How a delivered send went, in one sentence or a few. */
+export function sentMessage(t: TFunction, notice: { filed: boolean | null; rejected: string[]; note_codes: string[] }): string {
+  const parts = [t('compose.sent')]
+  if (notice.filed === false) {
+    parts.push(t('compose.notFiled'))
+  }
+  if (notice.rejected.length > 0) {
+    parts.push(t('compose.rejected', { recipients: notice.rejected.join(', ') }))
+  }
+  for (const code of notice.note_codes) {
+    const note = NOTE_CODES[code]
+    if (note !== undefined) {
+      parts.push(t(note))
+    }
+  }
+  return parts.join(' ')
 }
 
 /** A folder as the sidebar and the move picker name it: its role's name, else its path. */

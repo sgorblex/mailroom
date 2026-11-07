@@ -130,7 +130,7 @@
       "starttls": "STARTTLS"
     },
     "sendMode": "Invio",
-    "sendModeHint": "Come si può inviare posta da questo account, quando Mailroom invierà posta.",
+    "sendModeHint": "Limita ciò che gli agenti possono fare tramite MCP: Disattivato li blocca, Solo bozze lascia la loro posta in bozza, Dopo approvazione invia solo ai destinatari approvati, Direttamente invia. Il tuo Invia funziona sempre, tranne con Disattivato.",
     "sendModes": {
       "off": "Disattivato",
       "drafts": "Solo bozze",

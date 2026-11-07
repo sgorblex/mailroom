@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next'
 import { describe, expect, it } from 'vitest'
 
 import { FOLDER_ROLES } from '@/api/mail.ts'
@@ -5,6 +6,7 @@ import en from '@/locales/en/mail.json'
 import it_ from '@/locales/it/mail.json'
 
 import { formatListDate, formatSize } from './format.ts'
+import { sentMessage } from './messages.ts'
 
 describe.each([
   ['en', en],
@@ -12,6 +14,37 @@ describe.each([
 ])('the %s mail strings', (_language, locale) => {
   it('name every folder role', () => {
     expect(FOLDER_ROLES.filter((role) => !(role in locale.roles))).toEqual([])
+  })
+})
+
+/** Every key path of a strings file, with each plural form as itself: the two languages' forms match. */
+function keys(strings: object, prefix = ''): string[] {
+  return Object.entries(strings).flatMap(([key, value]: [string, unknown]) =>
+    typeof value === 'object' && value !== null ? keys(value, `${prefix}${key}.`) : [`${prefix}${key}`],
+  )
+}
+
+describe('the compose strings', () => {
+  it('exist in both languages', () => {
+    expect(keys(it_.compose).sort()).toEqual(keys(en.compose).sort())
+    expect(keys(it_.mailErrors).sort()).toEqual(keys(en.mailErrors).sort())
+  })
+})
+
+describe.each([
+  ['en', en],
+  ['it', it_],
+])('a delivered send in %s', (_language, locale) => {
+  const t = ((key: string) => locale.compose[key.replace('compose.', '') as keyof typeof locale.compose]) as TFunction
+
+  it.each(['draft_not_removed', 'draft_kept', 'original_not_marked'])('words the note %s', (code) => {
+    const worded = sentMessage(t, { filed: true, rejected: [], note_codes: [code] })
+    expect(worded.length).toBeGreaterThan(locale.compose.sent.length + 10)
+    expect(worded).not.toContain('undefined')
+  })
+
+  it('leaves out a note it has no words for: the server text is never shown', () => {
+    expect(sentMessage(t, { filed: true, rejected: [], note_codes: ['something_new'] })).toBe(locale.compose.sent)
   })
 })
 

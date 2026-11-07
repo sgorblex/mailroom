@@ -1,3 +1,4 @@
+import { StrictMode } from 'react'
 import { render } from '@testing-library/react'
 import {
   createMemoryHistory,
@@ -13,8 +14,8 @@ import { vi } from 'vitest'
 import { MailScreen } from '@/mail/mail-screen.tsx'
 import { validateMailSearch } from '@/mail/route-search.ts'
 
-/** The mail screen at `path`, in a router of its own, with Accounts as a placeholder; its history to inspect. */
-export function renderMailApp(path: string): RouterHistory {
+/** The mail screen at `path`, in a router of its own, with Accounts as a placeholder; its history to inspect. `strict` as `main.tsx` renders it. */
+export function renderMailApp(path: string, { strict = false }: { strict?: boolean } = {}): RouterHistory {
   const rootRoute = createRootRoute({ component: Outlet })
   const accountsRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -31,6 +32,6 @@ export function renderMailApp(path: string): RouterHistory {
   const router = createRouter({ routeTree: rootRoute.addChildren([accountsRoute, mailRoute]), history })
   // The router restores scroll positions, which jsdom does not implement.
   vi.stubGlobal('scrollTo', vi.fn())
-  render(<RouterProvider router={router} />)
+  render(<RouterProvider router={router} />, { wrapper: strict ? StrictMode : undefined })
   return history
 }

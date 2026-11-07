@@ -149,6 +149,12 @@ export function apiPostJson<T = null>(
   )
 }
 
+/** POST a multipart form; the browser sets the `Content-Type`, with its boundary. */
+export function apiPostForm<T>(path: string, form: FormData, options: ApiJsonRequestOptions<T> = {}): Promise<T> {
+  const { init = {}, schema } = options
+  return apiRequest(path, { method: 'POST', ...init, body: form }, schema)
+}
+
 /** PUT a JSON body, replacing the resource. */
 export function apiPutJson<T>(
   path: string,
@@ -165,6 +171,12 @@ export function apiPutJson<T>(
 export function apiDelete(path: string, options: ApiJsonRequestOptions<null> = {}): Promise<null> {
   const { init = {} } = options
   return apiRequest(path, { method: 'DELETE', ...init }, undefined)
+}
+
+/** DELETE, with an answer to read. */
+export function apiDeleteJson<T>(path: string, options: ApiJsonRequestOptions<T> = {}): Promise<T> {
+  const { init = {}, schema } = options
+  return apiRequest(path, { method: 'DELETE', ...init }, schema)
 }
 
 /** PATCH a JSON body: only the fields it carries change. */

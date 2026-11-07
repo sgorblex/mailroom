@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
 
 import { readMessage, type MailAddress, type MessageView as MessageData } from '@/api/mail.ts'
@@ -10,11 +10,13 @@ import { useLoad } from '@/lib/use-load.ts'
 import { useUnmountSignal } from '@/lib/use-unmount-signal.ts'
 
 import { Attachments } from './attachments.tsx'
+import { useCompose } from './compose-context.ts'
 import { addressFull } from './format.ts'
 import { HtmlBody } from './html-body.tsx'
 import { MAIL_NS } from './i18n.ts'
 import { mailErrorMessage } from './messages.ts'
-import { useTriage } from './triage-context.ts'
+import { ReplyActions } from './reply-actions.tsx'
+import { isSameFolder, loadedFolders, roleFolder, useTriage } from './triage-context.ts'
 
 /** One message, mounted anew (by key) for each: its view choices are never carried over. */
 export function MessageView({ messageRef }: { messageRef: string }): ReactElement {
@@ -33,26 +35,41 @@ export function MessageView({ messageRef }: { messageRef: string }): ReactElemen
   )
   const { state, retry } = useLoad(load, (error) => mailErrorMessage(t, error, t('message.loadFailed')))
   const pending = state.kind === 'loading' || (state.kind === 'loaded' && state.value.includeQuoted !== includeQuoted)
-  const { setOpen, flagsOf, run } = useTriage()
+  const { setOpen, flagsOf, run, folders, loadFolders } = useTriage()
+  const { canCompose } = useCompose()
+  const navigate = useNavigate()
   const marked = useRef(false)
   const view = state.kind === 'loaded' ? state.value.view : null
+  const accountFolders = view === null ? undefined : folders[view.account_id]
 
   // The toolbar acts on the open message; opening an unread one marks it read, once, and a
-  // failure leaves it unread without a word.
+  // failure leaves it unread without a word. A draft stays as it is, and opens in the composer
+  // instead, unless its account can't save one (send mode off).
   useEffect(() => {
     if (view === null) {
       return
     }
     const target = { ref: view.ref, account_id: view.account_id, folder: view.folder, flags: view.flags }
     setOpen(target)
-    // Decided on the first load only: marked unread while open, it stays so.
-    if (!marked.current) {
-      marked.current = true
-      if (!flagsOf(target).seen) {
-        void run({ kind: 'flag', change: { seen: true } }, [target], { silent: true })
-      }
+    loadFolders(view.account_id, false)
+    if (accountFolders === undefined || accountFolders.kind === 'loading' || marked.current) {
+      return
     }
-  }, [view, setOpen, flagsOf, run])
+    // Decided on the first load only: marked unread while open, it stays so.
+    marked.current = true
+    const drafts = roleFolder(loadedFolders(accountFolders), 'drafts')
+    if (drafts !== undefined && isSameFolder(drafts.path, view.folder) && canCompose(view.account_id)) {
+      void navigate({
+        to: '/mail',
+        search: (previous) => ({ ...previous, message: undefined, compose: view.ref }),
+        replace: true,
+      })
+      return
+    }
+    if (!view.flags.draft && !flagsOf(target).seen) {
+      void run({ kind: 'flag', change: { seen: true } }, [target], { silent: true })
+    }
+  }, [view, accountFolders, canCompose, navigate, loadFolders, setOpen, flagsOf, run])
   useEffect(
     () => () => {
       setOpen(null)
@@ -145,6 +162,7 @@ function LoadedMessage({
           )}
         </dl>
       </header>
+      <ReplyActions account={view.account_id} messageRef={view.ref} />
       {view.has_html && (
         <div role="group" aria-label={t('message.format')} className="flex gap-1 self-start rounded-md border p-0.5">
           <Button

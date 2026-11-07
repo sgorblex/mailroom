@@ -8,6 +8,16 @@ await i18nReady
 // Tests assert on the English copy whatever the machine's locale.
 await i18n.changeLanguage('en')
 
+// jsdom has `<dialog>` but not its methods.
+Object.assign(HTMLDialogElement.prototype, {
+  showModal(this: HTMLDialogElement) {
+    this.open = true
+  },
+  close(this: HTMLDialogElement) {
+    this.open = false
+  },
+})
+
 afterEach(() => {
   cleanup()
 })

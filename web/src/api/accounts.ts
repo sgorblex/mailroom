@@ -29,6 +29,10 @@ export const accountSchema = z.object({
   auto_approve: z.array(z.string()),
   has_password: z.boolean(),
   run_filters: z.boolean(),
+  /** The user's limit on a draft's attachments, at most 25; absent from an API older than slice C. */
+  attachment_max_mb: z.number().optional(),
+  /** The user's limit on To, Cc and Bcc together; absent from an API older than slice C. */
+  max_recipients: z.number().optional(),
 })
 export type Account = z.infer<typeof accountSchema>
 

@@ -1,6 +1,9 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 
+import type { PrefillMode } from '@/api/mail.ts'
+
+import { useCompose, type Compose } from './compose-context.ts'
 import { useTriageActions, type TriageActions } from './triage-actions.ts'
 import { useTriage } from './triage-context.ts'
 
@@ -27,18 +30,21 @@ const REPEATING = new Set(['j', 'k'])
 /**
  * The mail screen's keyboard shortcuts (`docs/requirements/mail-client.md`): j/k move through
  * the list, x selects, e archives, # trashes, s stars, u marks unread, v opens the move picker,
- * Escape closes it or clears the selection. None while typing, none with Ctrl or Meta (but for
- * AltGr, which types characters), and no letter with Alt.
+ * Escape closes it or clears the selection; r, a and f reply, reply to all and forward the open
+ * message, c writes a new one on `accountId`, and those four wait while a composer is open or
+ * for an account in send mode off. None while typing, none with Ctrl or Meta (but for AltGr,
+ * which types characters), and no letter with Alt.
  */
-export function useMailShortcuts(): void {
+export function useMailShortcuts(accountId: string): void {
   const triage = useTriage()
   const actions = useTriageActions()
+  const compose = useCompose()
   const navigate = useNavigate()
   // The message in the URL is the current one at once; the open view is set only once it loads.
   const { message } = useSearch({ from: '/mail' })
-  const latest = useRef({ triage, actions, navigate, message })
+  const latest = useRef({ triage, actions, navigate, message, compose, accountId })
   useEffect(() => {
-    latest.current = { triage, actions, navigate, message }
+    latest.current = { triage, actions, navigate, message, compose, accountId }
   })
 
   useEffect(() => {
@@ -54,8 +60,20 @@ export function useMailShortcuts(): void {
       return true
     }
 
-    function handled(key: string, current: { triage: typeof triage; actions: TriageActions }): boolean {
-      const { triage: state, actions: offered } = current
+    function answer(mode: PrefillMode, writer: Compose, state: typeof triage): boolean {
+      const open = state.open
+      if (open === null || writer.session !== null || !writer.canCompose(open.account_id)) {
+        return false
+      }
+      writer.start({ kind: mode, account: open.account_id, ref: open.ref })
+      return true
+    }
+
+    function handled(
+      key: string,
+      current: { triage: typeof triage; actions: TriageActions; compose: Compose; accountId: string },
+    ): boolean {
+      const { triage: state, actions: offered, compose: writer } = current
       const run = (action: (() => void) | null | undefined): boolean => {
         if (action === null || action === undefined || state.busy) {
           return false
@@ -88,6 +106,18 @@ export function useMailShortcuts(): void {
           return run(offered.moveChoices === null ? null : () => {
             state.setPicker(true)
           })
+        case 'r':
+          return answer('reply', writer, state)
+        case 'a':
+          return answer('reply_all', writer, state)
+        case 'f':
+          return answer('forward', writer, state)
+        case 'c':
+          if (writer.session !== null || !writer.canCompose(current.accountId)) {
+            return false
+          }
+          writer.start({ kind: 'new', account: current.accountId })
+          return true
         case 'Escape':
           if (state.picker) {
             state.setPicker(false)
@@ -110,7 +140,9 @@ export function useMailShortcuts(): void {
         (event.altKey && LETTER.test(event.key)) ||
         (event.repeat && !REPEATING.has(event.key)) ||
         event.defaultPrevented ||
-        isTyping(event.target)
+        isTyping(event.target) ||
+        // A modal leaves the page behind it out of reach, and Escape to the dialog.
+        document.querySelector('dialog[open]') !== null
       ) {
         return
       }

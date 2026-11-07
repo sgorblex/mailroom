@@ -2,7 +2,8 @@ import { SEARCH_FLAG_FIELDS, SEARCH_TEXT_FIELDS, type SearchQuery } from '@/api/
 
 /**
  * Where the mail screen is, kept in the URL so a reload or a shared link lands in the same place:
- * the account and folder shown, the open message (its ref), and a search in place of the folder.
+ * the account and folder shown, the open message (its ref), a search in place of the folder, and
+ * the composer: `compose-session.ts` says what `compose` holds.
  * Kept out of the screen's own chunk: the router validates it before the screen loads.
  */
 export interface MailSearch {
@@ -10,6 +11,7 @@ export interface MailSearch {
   folder?: string
   message?: string
   q?: SearchQuery
+  compose?: string
 }
 
 function text(value: unknown): string | undefined {
@@ -46,6 +48,7 @@ export function validateMailSearch(raw: Record<string, unknown>): MailSearch {
   const folder = text(raw['folder'])
   const message = text(raw['message'])
   const q = searchQuery(raw['q'])
+  const compose = text(raw['compose'])
   if (account !== undefined) {
     search.account = account
   }
@@ -57,6 +60,9 @@ export function validateMailSearch(raw: Record<string, unknown>): MailSearch {
   }
   if (q !== undefined) {
     search.q = q
+  }
+  if (compose !== undefined) {
+    search.compose = compose
   }
   return search
 }

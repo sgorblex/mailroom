@@ -130,7 +130,7 @@
       "starttls": "STARTTLS"
     },
     "sendMode": "Sending",
-    "sendModeHint": "How mail from this account may be sent, once Mailroom sends mail.",
+    "sendModeHint": "Limits what agents may do through MCP: Off refuses them, Drafts only leaves their mail as drafts, After approval sends only to approved recipients, Directly sends. Your own Send always works, unless this is Off.",
     "sendModes": {
       "off": "Off",
       "drafts": "Drafts only",

@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import { getApiBaseUrl } from './api-base-url.ts'
-import { ApiRequestError, apiGetJson, apiPostJson, reportSessionEnded } from './http.ts'
+import { ApiRequestError, apiDeleteJson, apiGetJson, apiPostForm, apiPostJson, reportSessionEnded } from './http.ts'
 
 /** The REST contract of `docs/requirements/mail-client.md`. Refs and cursors are opaque strings. */
 
@@ -246,4 +246,136 @@ export function trashMessages(refs: string[], signal?: AbortSignal): Promise<Org
 
 export function flagMessages(refs: string[], change: FlagChange, signal?: AbortSignal): Promise<OrganizeGroup[]> {
   return organize('flag', { refs, ...change }, signal)
+}
+
+const keepPartSchema = partSchema.extend({ ref: z.string() })
+/** A part of another message (or of the draft itself) a draft keeps. */
+export type KeptPart = z.infer<typeof keepPartSchema>
+
+const composeFieldsSchema = z.object({
+  account: z.string(),
+  from: z.string().nullable(),
+  to: z.array(addressSchema),
+  cc: z.array(addressSchema),
+  bcc: z.array(addressSchema),
+  subject: z.string(),
+  text: z.string(),
+  answers: z.string().nullable(),
+})
+
+const prefillSchema = composeFieldsSchema.extend({ attachments: z.array(keepPartSchema) })
+export type Prefill = z.infer<typeof prefillSchema>
+export type PrefillMode = 'reply' | 'reply_all' | 'forward'
+
+export const SEND_STATES = ['sending', 'sent', 'failed', 'unknown'] as const
+
+const draftSendSchema = z.object({ send_id: z.string(), state: z.enum(SEND_STATES), code: z.string().nullable() })
+export type DraftSend = z.infer<typeof draftSendSchema>
+
+const draftSchema = composeFieldsSchema.extend({
+  ref: z.string(),
+  compose_id: z.string().nullable(),
+  lossy: z.boolean(),
+  parts: z.array(partSchema),
+  send: draftSendSchema.nullable(),
+})
+export type Draft = z.infer<typeof draftSchema>
+
+const heldRefusalSchema = z.object({ detail: z.object({ code: z.literal('draft_not_editable'), send: draftSendSchema }) })
+
+/** The send that made the server refuse a save, which it names as the draft may be gone. */
+export function holdingSend(error: unknown): DraftSend | null {
+  const body = error instanceof ApiRequestError ? heldRefusalSchema.safeParse(error.body) : null
+  return body?.success === true ? body.data.detail.send : null
+}
+
+const savedDraftSchema = z.object({
+  ref: z.string().nullable(),
+  parts: z.array(partSchema),
+  replaced: z.boolean(),
+  autosave: z.boolean(),
+})
+export type SavedDraft = z.infer<typeof savedDraftSchema>
+
+const foundDraftSchema = z.object({ ref: z.string(), parts: z.array(partSchema) })
+export type FoundDraft = z.infer<typeof foundDraftSchema>
+
+const sendResultSchema = z.object({
+  send_id: z.string(),
+  state: z.enum(SEND_STATES),
+  code: z.string().nullable(),
+  filed: z.boolean().nullable(),
+  rejected: z.array(z.string()),
+  notes: z.array(z.string()),
+  note_codes: z.array(z.string()),
+  settled: z.boolean(),
+})
+export type SendResult = z.infer<typeof sendResultSchema>
+
+/** The `draft` part of a save. */
+export interface DraftFields {
+  account: string
+  compose_id: string
+  ref: string | null
+  answers: string | null
+  from: string | null
+  to: MailAddress[]
+  cc: MailAddress[]
+  bcc: MailAddress[]
+  subject: string
+  text: string
+  keep: { ref: string; part: string }[]
+}
+
+const draftPath = (ref: string): string => `${base}/drafts/${encodeURIComponent(ref)}`
+
+/** The fields a reply or forward of `ref` starts from; writes nothing. */
+export function prefillDraft(ref: string, mode: PrefillMode, signal?: AbortSignal): Promise<Prefill> {
+  return apiPostJson(`${base}/drafts/prefill`, { ref, mode }, { init: { signal }, schema: prefillSchema })
+}
+
+/**
+ * Replaces the draft `fields.ref` (or writes the first version). `keepalive` outlives the page, so
+ * it must fit the browser's small keepalive quota: text only, no `files`.
+ */
+export function saveDraft(fields: DraftFields, files: File[], options: { keepalive?: boolean } = {}): Promise<SavedDraft> {
+  const form = new FormData()
+  form.set('draft', JSON.stringify(fields))
+  for (const file of files) {
+    form.append('files[]', file)
+  }
+  return apiPostForm(`${base}/drafts`, form, { init: { keepalive: options.keepalive === true }, schema: savedDraftSchema })
+}
+
+export function readDraft(ref: string, signal?: AbortSignal): Promise<Draft> {
+  return apiGetJson(draftPath(ref), { init: { signal }, schema: draftSchema })
+}
+
+/** The newest version saved under `composeId`, or `null` when there is none. */
+export async function findDraft(account: string, composeId: string, signal?: AbortSignal): Promise<FoundDraft | null> {
+  const path = withQuery(`${base}/drafts/find`, { account, compose_id: composeId })
+  try {
+    return await apiGetJson(path, { init: { signal }, schema: foundDraftSchema })
+  } catch (error) {
+    if (error instanceof ApiRequestError && error.code === 'not_found') {
+      return null
+    }
+    throw error
+  }
+}
+
+export async function deleteDraft(ref: string): Promise<void> {
+  await apiDeleteJson(draftPath(ref), { schema: z.object({ removed: z.enum(['expunged', 'trashed']) }) })
+}
+
+/** Starts the send (an id to follow), or the result when this draft's key is already sent. */
+export function sendDraft(ref: string, options: { confirmResend?: boolean } = {}): Promise<SendResult | { send_id: string }> {
+  const body = options.confirmResend === true ? { confirm_resend: true } : {}
+  return apiPostJson(`${draftPath(ref)}/send`, body, {
+    schema: z.union([sendResultSchema, z.object({ send_id: z.string() })]),
+  })
+}
+
+export function readSend(sendId: string, signal?: AbortSignal): Promise<SendResult> {
+  return apiGetJson(`${base}/sends/${encodeURIComponent(sendId)}`, { init: { signal }, schema: sendResultSchema })
 }

@@ -267,6 +267,11 @@ composer to server.
   included, which is also what `draft_send` does), under the key its ref gives when it has no
   `compose_id`.
 - **Opening** a message in the Drafts folder opens it in the composer, and does not mark it read.
+  An account in send mode `off` cannot save one, so there it reads as any other message.
+- **One composer** is open at a time, above the panes: sidebar and list links leave it alone, and
+  opening a message puts it behind that message until the user goes back to the draft. The URL's
+  `compose` param names it by `compose_id` and account, not by ref, so a reload brings it back
+  from `GET /drafts/find`; if nothing was saved there is nothing to bring back.
 - **Removing** a draft (`DELETE /drafts/{ref}`, or the old version of a save) follows
   [the own-draft exception](#the-own-draft-exception).
 - **`autosave`:** a save answers `autosave: false` when the server lacks `UIDPLUS`, because each
@@ -388,19 +393,47 @@ In meaning (the strings are in the `mail` namespace, English and Italian, the sa
 
 - **Saving:** "Saving…", "Saved", "Not saved" with a retry; for `autosave: false`, that the draft is
   saved only on request. A draft the client cannot save keeps the last good version on the server.
-- **Sending:** "Sending…"; on `sent`, "Sent" (with "not filed in Sent" when `filed` is false and
-  who the server refused when `rejected` is not empty); on `failed`, that the message was **not
-  sent** and stays in Drafts, with the reason of the code.
+  A save answered with `ref: null` is stored but not located: closing is fine, while Send refuses,
+  saying the draft is still being saved, until `GET /drafts/find` shows a different ref, so that
+  it can never deliver the version before. A save whose answer was lost and that is then found
+  there is not written twice, but another writer's version may have taken that ref, so Send saves
+  the form over it first, and refuses the same way if it cannot.
+- **Sending:** "Sending…"; on `sent`, once `settled` or after 70 s without it, "Sent" (with "not
+  filed in Sent" when `filed` is false, who the server refused when `rejected` is not empty, and
+  the notes worded from `note_codes`, never the server's English); on `failed`, that the message
+  was **not sent** and stays in Drafts, with the reason of the code. More recipients than
+  `max_recipients` are refused at Send, naming the number.
+- **Already sent:** a first answer of `200` means an earlier delivery spent the key, and this click
+  delivered nothing, whatever the draft now holds, so it never says "Sent". The composer stays
+  open on the banner a reopened draft of a `sent` key shows; Send stays blocked there and what is
+  left to do is delete the draft. A `200` after a lost answer may be this click's own delivery and
+  reads as sent.
 - **`unknown`:** "Can't confirm delivery. The message stayed in Drafts." with three actions:
   **Open Sent** (look for it), **Keep draft** (dismiss, the draft stays) and **Send anyway** (the
   message may then arrive twice; sends with `confirm_resend`). Reopening the draft shows the same
   banner until it is settled.
+- **A draft written elsewhere that its send holds** (`sending`, `unknown` or `sent`): the server
+  refuses a new version of it, so it opens read-only, saying why, with its fields off and nothing
+  saved. The banner's actions stay, and so does *Delete draft*; *Send anyway* needs no save, so it
+  sends the draft as stored. An own draft stays editable, since its key survives a save. A save
+  refused `draft_not_editable` means such a send came from elsewhere after the draft was opened:
+  the composer takes the send's state from the refusal, as the draft may be gone, and behaves the
+  same, saving nothing more. The typed text stays on screen and selectable, marked as not saved,
+  and *Close* warns that it is lost. Until the send fails, *Send* and *Send anyway* are off, since
+  they would deliver the stored version and not that text. *Open Sent*, *Delete draft* and *Close*
+  stay.
 - **Refusals:** `send_disabled` (sending is off for this account), `rate_limited` ("The hourly send
   limit is reached. Nothing was sent.": the web client does not show when the next send is
   possible, though the API's message says it), `too_large`, `recipient_refused`, `busy` (try again
-  in a moment), `stale_reference` (the draft changed elsewhere: reload it).
+  in a moment), `draft_not_editable` (the send of a draft written elsewhere holds it),
+  `invalid_argument` (the stored draft can't go out as it is, its headers malformed for example:
+  changing anything saves a clean version, and Send then works). `not_found`
+  or `stale_reference` on Send mean the ref held is no longer the draft: the composer looks up what
+  is there now and, if it finds a version, says the draft changed elsewhere, that the text is saved
+  over that version, and to press Send again.
 - **Leaving:** closing the composer or the tab with unsaved text flushes a save; nothing asks the
-  user to confirm leaving a saved draft.
+  user to confirm leaving a saved draft. Only a save that fails on closing asks, since closing then
+  loses the latest changes. *Send anyway* and deleting a draft ask first too.
 
 ### Keyboard shortcuts
 

@@ -23,15 +23,23 @@ type More = { kind: 'idle' } | { kind: 'loading' } | { kind: 'failed'; message: 
 export function MessageList({
   loadPage,
   searching,
+  reloadKey,
 }: {
   loadPage: (cursor: string | null, signal: AbortSignal) => Promise<MessagePage>
   searching: boolean
+  /** A new value reads the list again from its first page, keeping it on show meanwhile. */
+  reloadKey?: unknown
 }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const loadFirst = useCallback((signal: AbortSignal) => loadPage(null, signal), [loadPage])
-  const { state, retry } = useLoad(loadFirst, (error) => mailErrorMessage(t, error, t('list.loadFailed'), ACCOUNT_NOT_FOUND))
+  const { state, retry } = useLoad(loadFirst, (error) => mailErrorMessage(t, error, t('list.loadFailed'), ACCOUNT_NOT_FOUND), reloadKey)
   const [later, setLater] = useState<MessagePage[]>([])
   const [more, setMore] = useState<More>({ kind: 'idle' })
+  const [readFor, setReadFor] = useState(reloadKey)
+  if (readFor !== reloadKey) {
+    setReadFor(reloadKey)
+    setLater([])
+  }
   const unmountSignal = useUnmountSignal()
   const triage = useTriage()
   const { removed, setVisible } = triage
