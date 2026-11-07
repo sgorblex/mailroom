@@ -12,7 +12,7 @@ Engineering baseline for Mailroom. Product scope: [`../REQUIREMENTS.md`](../REQU
 | Database | PostgreSQL 18 |
 | Tests | pytest (+ xdist, one database per worker cloned from the migrated `mailroom_test`), Vitest (`node` and `jsdom` projects) |
 | Containers | Podman, `mailroom-api` and `mailroom-web` images; Quadlet for deploy |
-| Component family | mailroom-core and imap-thingy (PyPI; mailroom-core 0.1.2 for `render` and `mail`, which the mail client is built on); mailroom-mcp stays standalone, not a dependency ([`../CONTEXT.md`](../CONTEXT.md)) |
+| Component family | mailroom-core and imap-thingy (PyPI; mailroom-core 0.1.2 for `render` and `mail`, 0.1.3 for compose, drafts and send, which the mail client is built on); mailroom-mcp stays standalone, not a dependency ([`../CONTEXT.md`](../CONTEXT.md)) |
 | MCP server | the `mcp` SDK's low-level server, Streamable HTTP session manager and bearer-auth middleware, bounded to one minor because the app uses them directly ([`mcp.md`](mcp.md)) |
 
 Tool pins: `mise.toml` (dev), the digest-pinned `.woodpecker/*.yaml` step images (CI), the
@@ -71,7 +71,15 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   CORS (any origin, no credentials), for browser-based MCP clients.
 - **Secrets** (account passwords, tokens) are sealed at rest as mailroom-core seals them and never
   appear in logs, errors or API responses. See *Mail accounts* below.
-- **Destructive actions** never expunge: trash moves to `\Trash`, as in mailroom-mcp.
+- **Destructive actions** never expunge: trash moves to `\Trash`, as in mailroom-mcp. The one
+  exception is the removal of **a draft Mailroom wrote**, by `UID EXPUNGE` of exactly that UID
+  ([`mail-client.md`](mail-client.md), *The own-draft exception*); a draft written elsewhere goes
+  to Trash.
+- **Sending** passes the send gate only: an `Admitted` token from `admit` is the one thing
+  `deliver` takes, and the user's *Send* overrides a send mode except `off`. A send is counted and
+  recorded before SMTP; a draft's send is keyed so it is delivered once (an agent's direct send has
+  no key), and one whose delivery is uncertain is `unknown`, never retried by itself. Header values built from user input or mail have CR and LF
+  stripped, and Bcc never goes in a transmitted header.
 - **Learning never acts** ([`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Filter suggestions*).
 
 ### MCP server
@@ -97,8 +105,9 @@ Specification: [`mcp.md`](mcp.md). Code: `mailroom.mcp`.
   most 10 at a time, so a slow mailbox stalls neither the API nor the REST routes' threads.
 - **Per-user cap:** a user has at most 2 tool calls running at once in an API process; one more
   is refused at once with a busy tool error, so one user cannot hold every tool thread. Mailbox
-  work has a wall-clock deadline: `dry_run` 30 s, `folders_list`, the `mail_read` and
-  `mail_organize` tools 30 s
+  work has a wall-clock deadline: `dry_run` 30 s, `folders_list`, the `mail_read`,
+  `mail_organize` and `mail_draft` tools 30 s, the `mail_send` tools 30 s for admission and then up
+  to 45 s waiting for the delivery (a send not over by then is "not confirmed, do not resend")
   (the mail pool's: the account's connections in use are cut, a `timeout` refusal; *Mail
   client* below).
 - **Logs:** one `mcp_tool_called` per call, with `tool`, `user_id`, `client_id`, `grant_id`,
@@ -343,6 +352,28 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   image's nginx logs paths without their query string (a list's `folder`, a search the SPA keeps
   in its URL; [`../deploy.md`](../deploy.md)). A ref is in the path of the message routes, and it
   encodes the account, the folder name and the UID: an access log does see that.
+- **Drafts and sends** ([`mail-client.md`](mail-client.md), *Slice C*):
+  - **Limits:** the user's `send_per_hour` and `max_recipients`, 50 addresses per field, a body of
+    100,000 characters, a subject of 998, 10 new files and the user's `attachment_max_mb` (at most
+    25) in total, a 2 MiB original read for quoting. `python-multipart` parses the one multipart
+    route (`POST /drafts`); the web image's nginx allows `client_max_body_size 30m` on that exact
+    location (repeating its security headers) and the host's proxy needs the same, and the route
+    refuses early from `Content-Length`.
+  - **Execution:** admission runs under the 30 s mail deadline; delivery runs in a `SendRunner`
+    (`mailroom.mail.sends`: 4 threads, 2 per user, `busy` before anything is claimed). SMTP
+    timeouts: 15 s to connect, 60 s per command, 60 s plus the size at 128 KiB/s for `DATA`, a
+    watchdog at 360 s. SMTP uses one connection per send with a verified certificate.
+  - **Storage:** mailroom-core's `core.sends` holds a row per send (a key, a state, the account
+    and the result), keyed rows for at least 30 days and key-less ones (an agent's direct send) for a
+    day, pruned when the user next sends; claiming counts and inserts under a per-user advisory
+    lock.
+  - **Logs:** `mail_draft_saved`, `mail_draft_deleted`, `mail_send_requested` and
+    `mail_send_finished`, each with `user_id`, `account_id`, `via` (`web` or `mcp`), `outcome`
+    (`ok`, the state or the code) and `duration_ms`, and a send's `state`, `filed`,
+    `recipient_count` and `rejected_count`; never an address, a subject, a body, a filename, a
+    `Message-ID`, a ref or the server's wording. mailroom-core produces an audit item for each draft and send (recipients, and a
+    `removed` tag on a draft's removal), which the app does not keep yet ([`../TODO.md`](../TODO.md)):
+    they are not logged here either.
 
 ### Filters
 

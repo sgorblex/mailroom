@@ -2,10 +2,12 @@
 
 The web mail client, built in slices. **Slice A (read)** is specified here and never changes the
 mailbox: not even `\Seen` is set by opening a message through the API or MCP. **Slice B
-(organize)** changes flags and folders, and never deletes. Compose (slice C) extends this file when
-it starts. Product scope: [`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Mail
-client*. Rendering and IMAP come from **mailroom-core** 0.1.1 (`render` and `mail`, connections in
-`mail.imap`), over IMAP directly: no index and no live updates yet.
+(organize)** changes flags and folders, and never deletes. **Slice C (drafts and send)** writes
+mail: compose, reply, forward, drafts and sending. Product scope:
+[`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Mail client*. Rendering and IMAP come from
+**mailroom-core** (`render` and `mail`, connections in `mail.imap`; 0.1.2 for slices A and B, the
+0.1.3 for slice C's compose, drafts and send), over IMAP directly: no index and no
+live updates yet.
 
 ## Slice A: read
 
@@ -90,7 +92,8 @@ INBOX is matched case-insensitively, as everywhere.
 
 ### Never expunge
 
-Mailroom never deletes mail and expunges nothing it did not move. With the `MOVE` extension a move
+Mailroom never deletes mail and expunges nothing it did not move, apart from
+[the own-draft exception](#the-own-draft-exception). With the `MOVE` extension a move
 is one command. Without it but with `UIDPLUS`, it is `UID COPY`, `UID STORE +FLAGS \Deleted` and
 `UID EXPUNGE` of **exactly those UIDs**. A server with neither is refused (`unsupported`) rather
 than risk a plain `EXPUNGE` that would remove other messages already marked `\Deleted`.
@@ -185,6 +188,304 @@ several. mailroom-core returns an audit item per message
 result); the app does not keep them yet ([`../TODO.md`](../TODO.md)) and logs counts and codes
 only, never these fields.
 
+## Slice C: drafts and send
+
+Slice C lets the user write mail in the web client and lets agents do the same through the MCP
+tools. It is the one slice that sends mail, so its rules are the strictest: read
+[Send rules](#send-rules) before changing any of it. Behaviour is mailroom-core's `mail.compose`,
+`mail.reply`, `mail.attachments`, `mail.drafts` and `send` modules, themselves the behaviour of
+mailroom-mcp's `draft` and `send` tools. Web composing is **plain text**; rich text is tier 3
+([`../REQUIREMENTS.md`](../REQUIREMENTS.md)).
+
+### Compose
+
+- **Modes:** a new message, **reply**, **reply all** and **forward**. A reply or forward starts
+  from the message open in the client; the web client asks `POST /drafts/prefill` for the fields
+  and shows them in the composer. Prefilling writes nothing.
+- **Reply** is addressed to the original's `Reply-To`, else its sender; **reply all** adds its
+  other recipients, minus the account's identities (every address it can send as, not just the one
+  answering). A reply to one's own message, from Sent for example, has nobody left that way and
+  goes to its To. The subject gets one `Re: `, the threading headers (`In-Reply-To`,
+  `References`) continue the thread, and the body quotes the original. The original is read up to
+  2 MiB and its text is then cut to 20,000 characters, in a quote and in a forward alike; a longer
+  one is cut, never refused.
+- **Forward** has an empty recipient list and the subject with one `Fwd: `. The body holds a
+  "Forwarded message" block with the original's headers and text, and the original's
+  attachments are offered as `keep` entries (the user can drop each). Only reply and reply all
+  set `\Answered` on the original; a forward sets nothing.
+- **Identity:** the composer's `From` is a choice among the account's
+  [identities](../GLOSSARY.md). A reply or reply all preselects the identity the original was
+  addressed to, else the account's default; a new message and a forward use the default.
+  An address outside the identities is `invalid_argument`. The accounts API gives the web
+  client each account's `identities` (`address`, `name`, `default`), its `send_mode` and
+  `attachment_max_mb` (the user's limit, at most 25), so the composer can say early what is not
+  possible.
+- **Recipients** are To, Cc and Bcc: each at most 50 addresses, together at most the user's
+  `max_recipients` (mailroom-core settings, default 10). An address must be deliverable: one `@`,
+  an ASCII local part, a domain that is ASCII or punycode. Anything else is 422
+  `recipient_refused` before a connection is made. Autosave saves only the recipients the user
+  has committed (a chip), so an address half typed cannot fail a save.
+- **Attachments** are new uploads (`files[]`) or parts of existing messages (`keep`: `ref` and
+  `part`); an agent never passes file content (MCP). Only attachment and calendar parts of a
+  message can be kept; inline images and the body parts cannot. Limits are in
+  [Limits](#limits).
+- **Headers** are one line: CR and LF are stripped from every header value built from user input
+  or mail (subject, names, addresses), so a header cannot be injected.
+
+### Drafts
+
+A draft is a message in the account's `\Drafts` folder. **The web client always composes through
+a draft**: autosave replaces the draft, and Send saves it and then sends that draft. A closed tab
+or a crashed browser therefore loses at most the last few seconds, and there is one path from
+composer to server.
+
+- **An IMAP message cannot be edited**, so saving is: check that the old version can be removed
+  (`check_removable`), APPEND the new one, then remove the old one: never the other way round,
+  so a failed save leaves the last good draft. A save whose removal fails stands, with
+  `replaced: false`. The client serialises its saves, always passes the latest `ref`, and never
+  starts a save while one is running.
+- **`compose_id`** is a UUID the client makes when the composer opens. It becomes the draft's
+  `Message-ID` (`<compose_id@domain>`). The `compose_id` is the same across every version and the
+  domain follows the `From`, so a version saved under another identity may change it; a save whose
+  answer was lost is found again by the `compose_id` alone (`GET /drafts/find`) instead of saved
+  twice, and
+  it is the key of the send ([state machine](#send-state-machine)). A draft not made by Mailroom
+  has none: the client generates one, and the next save replaces it.
+- **Fields:** the draft keeps `From`, To, Cc, Bcc (Bcc is kept in the draft and in the Sent copy,
+  never on the wire), subject, the plain text and the attachments. A header
+  `X-Mailroom-Draft: 1` marks a draft Mailroom wrote; when the draft answers a message it reads
+  `X-Mailroom-Draft: 1; answers=<ref>`. The header is stripped before the message is sent.
+- **`lossy`:** a draft written elsewhere may hold what the plain-text editor cannot keep (an HTML
+  body, inline images, formatting). `GET /drafts/{ref}` then answers `lossy: true` and the
+  composer warns that saving keeps only the plain text and the attachments. Only a save does
+  that: a draft that is sent without being edited goes out exactly as stored (an HTML body
+  included, which is also what `draft_send` does), under the key its ref gives when it has no
+  `compose_id`.
+- **Opening** a message in the Drafts folder opens it in the composer, and does not mark it read.
+- **Removing** a draft (`DELETE /drafts/{ref}`, or the old version of a save) follows
+  [the own-draft exception](#the-own-draft-exception).
+- **`autosave`:** a save answers `autosave: false` when the server lacks `UIDPLUS`, because each
+  version would then be moved to Trash instead of removed and autosave would fill it. The web
+  client then saves only when the user asks (a *Save draft* button, and on Send).
+- A `keepalive` request flushes the latest text when the page is hidden (`pagehide`); it carries
+  text only, no files, and only what fits the browser's 64 KiB keepalive quota: for a longer
+  draft the browser refuses the request, the edits since the last save are lost, and the last
+  saved version stays.
+
+### The own-draft exception
+
+[*Never expunge*](#never-expunge) has one exception: **a draft Mailroom wrote**, identified by its
+`X-Mailroom-Draft` header, is removed with `UID STORE +FLAGS \Deleted` and `UID EXPUNGE` of
+**exactly its UID** (needs `UIDPLUS`), so another message already marked `\Deleted` is left
+alone. Without `UIDPLUS` that removal is not made, which is why such an account answers
+`autosave: false`. A draft written elsewhere is **moved to Trash**, never expunged, and a draft
+the user deletes is subject to the same rule. Nothing else is ever expunged. The reason is
+practical: an edited draft is a new message, and keeping every version in Trash would bury the
+user's own Trash.
+
+### Send mode and who is acting
+
+The account's [send mode](../GLOSSARY.md) limits what **agents** may do through MCP. The user
+clicking *Send* in the web client **overrides it, except for `off`**.
+
+| Send mode | MCP agent (`message_send`, `message_reply`, `message_forward`, `draft_send`) | Web *Send* |
+| --- | --- | --- |
+| `off` | Refused, `send_disabled`; draft tools refused too | Refused, `send_disabled`; compose, save and delete are refused too |
+| `drafts` | Saved as a draft, and the answer says so; `draft_send` is refused, `invalid_argument` (it would only be saved as a draft again) | Sent |
+| `approval` | Sent only if every recipient matches the account's `auto_approve` rules, else the whole message is saved as a draft (nobody gets it); `draft_send` is refused, `invalid_argument`, instead | Sent |
+| `direct` | Sent | Sent |
+
+There is no outbox for `approval`: whatever is not auto-approved is drafted. The hourly send limit
+and the recipient cap bind both. In the web client, an account in `off` has its compose actions
+disabled, with a hint saying why; and its settings hint says what each mode lets **agents** do
+(and that the user's own *Send* always works unless the mode is `off`).
+
+### Send rules
+
+These bind every code path that sends.
+
+- **Only an admitted message reaches SMTP.** The gate's `admit` checks the mode (with who
+  authorised: the user or an agent), the recipients and the limits, and returns an `Admitted`
+  token; only that token can be passed to `deliver`. The app's phases (admission under the
+  request, delivery in the background) cannot skip it.
+- **Counting before sending.** `claim_send` counts the user's sends of the last hour and inserts
+  the new row under a per-user advisory lock, so parallel requests cannot all pass the limit. The
+  row is written **before** SMTP: a send that fails midway may still have been delivered, so it
+  counts.
+- **No double delivery.** A web send is keyed by its `compose_id`. The same key is claimed once
+  (a unique index per user), so a repeated click, a retried request or two tabs deliver once.
+- **One connection, verified TLS:** one SMTP connection per send, certificate and
+  host name checked, implicit TLS or STARTTLS as the account says; a server that does not offer
+  a required STARTTLS fails the send.
+- **Filing is secondary.** Filing to Sent, removing the draft and setting `\Answered` are separate
+  calls after delivery. Each can only set `filed: false` or add a note; none can turn a
+  delivered message into a failure, and none is retried in a way that could send again.
+- **MCP direct sends** (`message_send`, `message_reply`, `message_forward`) have no `compose_id`
+  and use a fresh `Message-ID`, so an agent's repeated call is not guarded: the tool texts tell the
+  agent not to resend ([`mcp.md`](mcp.md)).
+
+### Send state machine
+
+A send is a row with a state, the key, the account and the result. A keyed row (a draft's send)
+stays at least 30 days and a key-less one (an agent's direct send) a day; rows are pruned when the
+user next sends, so a direct send's `GET /sends/{id}` is `not_found` after a day.
+
+```
+            claim
+  (none) ───────────▶ sending ──▶ sent
+                         │
+                         ├──────▶ failed   the message definitely did not leave
+                         └──────▶ unknown  delivery cannot be confirmed
+```
+
+- **`sending`** while the background runner works on it. **`sent`** after the server accepted the
+  message. **`failed`** only when no byte of the message can have left: the server refused it, or
+  the attempt ended before the `DATA` command (a refused connection, a TLS failure, a login that
+  failed, a timeout before `DATA`, a 4xx or 5xx reply to a command or to `DATA`), or the send
+  waited in the queue past 360 s and never began (`failed` with `timeout`). **`unknown`** for any
+  socket failure, timeout or lost connection once `DATA` has begun, and for a `sending` row older
+  than 360 s (a restart or a stuck runner), because the message may have been delivered.
+- **Admission and delivery are separate.** `POST /drafts/{ref}/send` checks the draft, the mode
+  and the limits under the 30 s mail deadline, then answers `202 {send_id}`; a `SendRunner`
+  (4 threads, at most 2 per user) delivers. When the runner has no free thread for the user the
+  route answers 429 `busy` **before** claiming anything. The client then polls
+  `GET /sends/{id}` until the state is not `sending`.
+- **Retry of the same key:** `sent` replays the stored result (200); `sending` returns the same
+  `send_id` (202); `failed` is claimed again and delivered afresh (the earlier attempt counted
+  toward the limit); `unknown` answers **409 `delivery_unknown`** unless the request has
+  `confirm_resend: true`, which the user gives with *Send anyway*. A retry reaches the key only
+  while its draft exists, because the draft is read first: the 200 is what a draft left behind
+  (its removal failed) answers, and once a send has removed its draft a retry is 404 `not_found`,
+  so the client then looks in Sent, or follows the `send_id` it already holds.
+- **SMTP timeouts:** 15 s to connect, 60 s per command, 60 s plus the message size at 128 KiB/s
+  for `DATA`, and a watchdog at 360 s for the whole send.
+- A deploy or restart during a send leaves it `unknown` by design.
+- **The result** (`GET /sends/{id}`): `state`; `code` (the refusal's code for `failed`, else
+  `null`); `filed` (the Sent copy was stored; `null` until known); `rejected` (recipients the
+  server refused while accepting others: delivered to the rest); `notes` (fixed texts such as
+  "Sent, but not filed in Sent."). Another user's `send_id` is 404.
+
+### Texts in the web client
+
+In meaning (the strings are in the `mail` namespace, English and Italian, the same keys):
+
+- **Saving:** "Saving…", "Saved", "Not saved" with a retry; for `autosave: false`, that the draft is
+  saved only on request. A draft the client cannot save keeps the last good version on the server.
+- **Sending:** "Sending…"; on `sent`, "Sent" (with "not filed in Sent" when `filed` is false and
+  who the server refused when `rejected` is not empty); on `failed`, that the message was **not
+  sent** and stays in Drafts, with the reason of the code.
+- **`unknown`:** "Can't confirm delivery. The message stayed in Drafts." with three actions:
+  **Open Sent** (look for it), **Keep draft** (dismiss, the draft stays) and **Send anyway** (the
+  message may then arrive twice; sends with `confirm_resend`). Reopening the draft shows the same
+  banner until it is settled.
+- **Refusals:** `send_disabled` (sending is off for this account), `rate_limited` ("The hourly send
+  limit is reached. Nothing was sent.": the web client does not show when the next send is
+  possible, though the API's message says it), `too_large`, `recipient_refused`, `busy` (try again
+  in a moment), `stale_reference` (the draft changed elsewhere: reload it).
+- **Leaving:** closing the composer or the tab with unsaved text flushes a save; nothing asks the
+  user to confirm leaving a saved draft.
+
+### Keyboard shortcuts
+
+Added to the table under [Web client](#web-client): `r` reply, `a` reply all and `f` forward
+(on the open message), `c` compose a new message (from any `/mail` screen; the account is the
+current one). They follow the same rules as the others (ignored in text fields and with
+Ctrl or Meta held) and **do not fire while the composer is open**, wherever focus is. They are
+disabled for an account whose send mode is `off`.
+
+### Limits
+
+| Limit | Value |
+| --- | --- |
+| Addresses per field (To, Cc, Bcc) | 50 |
+| Recipients of one message | the user's `max_recipients` (default 10), over To, Cc and Bcc |
+| Sends per hour | the user's `send_per_hour` (default 20), across their accounts; counted when claimed |
+| Body text | 100,000 characters |
+| Subject | 998 characters |
+| New files per draft | 10 |
+| Attachments, in total (uploads and kept parts) | the user's `attachment_max_mb` (default 10), at most 25 MB |
+| Upload request | 30 MB at `/api/v1/mail/drafts` (nginx), refused early on `Content-Length` |
+| Original read for quoting | 2 MiB |
+| Text quoted or forwarded | 20,000 characters (the original's text is cut to this) |
+| Existing parts kept (`keep`) in a save | 50 (422 beyond it) |
+| Attachments on an MCP tool | 10 (`attachments`, by ref and part) |
+| Send rows kept | keyed: at least 30 days; key-less: a day; pruned on the user's next send |
+| Concurrent sends | 4 in the process, 2 per user |
+
+Over a field's cap, or over the recipient cap, is 400 `invalid_argument` (a send with no
+recipient too: "Name at least one recipient."); over the attachment total or the upload size, 413
+`too_large`; over the hourly limit, 429 `rate_limited`, whose message gives the time the next send
+is possible.
+The host's reverse proxy needs the same 30 MB limit on that route ([`../deploy.md`](../deploy.md)).
+
+### Slice C routes
+
+Every route is under `/api/v1/mail`, on the mail router: so the `Cache-Control: private,
+no-store` rule, the ownership rules (another user's account, ref or send is `not_found`) and the
+CSRF check apply. Bodies are JSON except `POST /drafts`. Unknown fields are 422.
+
+| Route | Body | Answers |
+| --- | --- | --- |
+| `POST /drafts/prefill` | `{"ref", "mode": "reply" \| "reply_all" \| "forward"}` | 200 the fields below; writes nothing |
+| `POST /drafts` | multipart: `draft` (JSON) and `files[]` | 201 `{ref, parts, replaced, autosave}` |
+| `GET /drafts/{ref}` | | 200 the draft's fields, `lossy`, `parts`, `send` |
+| `GET /drafts/find?account=&compose_id=` | | 200 `{ref, parts}` of the newest version; 404 `not_found` |
+| `DELETE /drafts/{ref}` | | 200 `{removed}` |
+| `POST /drafts/{ref}/send` | `{"confirm_resend": false}` (optional) | 202 `{send_id}`; 200 already sent; 409; 429 |
+| `GET /sends/{id}` | | 200 the send's result |
+
+The static route `GET /drafts/find` is matched before `GET /drafts/{ref}`.
+
+```jsonc
+// POST /drafts: the `draft` part (to, cc, bcc are lists of Address; text is plain text)
+{
+  "account": "work",
+  "compose_id": "6f1c0a2e-…",                  // UUID; required
+  "ref": "WzEsIndvcmsiLC…",                    // the latest version being replaced; null for the first save
+  "answers": "WzEsIndvcmsiLC…",                // the message being replied to; null otherwise
+  "from": "me@example.org",                    // one of the identities; null: the default
+  "to": [ { "name": "", "address": "ada@example.org" } ],
+  "cc": [], "bcc": [],
+  "subject": "Re: Notes on the engine",
+  "text": "Thanks, …",
+  "keep": [ { "ref": "WzEsIndvcmsiLC…", "part": "2" } ]   // parts of existing messages, or of the draft itself
+}
+// 201
+{ "ref": "WzEsIndvcmsiLC…", "parts": [ { "part": "2", "name": "notes.pdf", "type": "application/pdf", "size": 40211 } ],
+  "replaced": true, "autosave": true }
+```
+
+- `ref` in the answer is the new version's ref, the one the client uses from now on; it is `null`
+  when the server did not report where the draft landed and a search by `Message-ID` found
+  nothing yet (the client then calls `GET /drafts/find`). `parts` lists the attachments of the
+  saved version, as the message view's `attachments`: after a save, the client keeps its
+  attachment tray from `parts`, with `keep` entries that name the draft's own parts. `replaced`
+  is true when the previous version was removed.
+- A draft with no recipient is a valid draft; a send needs at least one.
+- `POST /drafts/prefill` answers `{account, from, to, cc, bcc, subject, text, answers, attachments}`,
+  the fields of the draft it would start (`answers` null for a forward; `attachments`, for a
+  forward, the original's `{ref, part, name, type, size}` that the composer offers as `keep`), `from` the
+  identity address chosen as above.
+- `GET /drafts/{ref}` answers `{ref, account, compose_id, from, to, cc, bcc, subject, text, answers,
+  lossy, parts, send}`: `compose_id` is `null` for a draft not written by Mailroom; `send` is
+  `null`, or `{send_id, state, code}` of the send of this draft, so reopening shows an `unknown`
+  banner. `bcc` is shown to its owner.
+- `DELETE /drafts/{ref}` answers `{"removed": "expunged" | "trashed"}`.
+- `GET /sends/{id}` answers `{send_id, state, code, filed, rejected, notes}`
+  ([send state machine](#send-state-machine)); `POST /drafts/{ref}/send` answers `202` with
+  `{send_id}` or, when that key is already `sent` and the draft is still there, `200` with the same
+  body as `GET /sends/{id}`; once the draft is removed, 404 `not_found`.
+- Errors: 400 `invalid_argument`; 404 `not_found` (account, ref, draft, send); 409
+  `stale_reference`, `send_disabled`, `delivery_unknown`, `password_missing`; 413 `too_large`;
+  422 `recipient_refused`; 429 `busy`, `rate_limited`; 502, 504.
+
+### MCP
+
+The `mail_draft` and `mail_send` groups ([`mcp.md`](mcp.md)) are the same service functions
+behind the same gate, with the agent as the one acting: the send mode limits them as in the
+[table above](#send-mode-and-who-is-acting), and the hourly limit and recipient cap bind them.
+Attachments are named by `ref` and `part` only: an agent never passes file content.
+
 ## REST contract
 
 Every route is under `/api/v1/mail`, needs a [user session](../GLOSSARY.md), and sees only the
@@ -216,7 +517,7 @@ other route). The message is a fixed, secret-free text; server wording never rea
 malformed request (bad query value, wrong type) is FastAPI's 422 with its `detail` list, as
 elsewhere.
 
-Mailbox failures carry the 14 codes of mailroom-mcp (`src/imap/errors.ts`):
+Mailbox failures carry the 14 codes of mailroom-mcp, plus `delivery_unknown` (`src/imap/errors.ts`):
 
 | Code | Status | Message |
 | --- | --- | --- |
@@ -229,14 +530,15 @@ Mailbox failures carry the 14 codes of mailroom-mcp (`src/imap/errors.ts`):
 | `stale_reference` | 409 | This message reference is out of date (the folder changed). Search again for a fresh one. |
 | `not_found` | 404 | No such message or part. |
 | `invalid_argument` | 400 | Invalid argument. (Optionally followed by what is wrong.) |
-| `too_large` | 413 | Too large to return. |
+| `too_large` | 413 | Too large: the message, attachment or upload is over its limit. (Optionally followed by the limit that was passed.) |
 | `send_disabled` | 409 | Sending is disabled for this account (send_mode off): no drafts or sends. |
-| `rate_limited` | 429 | The hourly send limit is reached; nothing was sent. |
-| `recipient_refused` | 502 | The mail server refused the message; nothing was sent. |
+| `rate_limited` | 429 | The limit is *N* per hour; the next send is possible at *time (UTC)*. |
+| `recipient_refused` | 422 | A recipient is not a deliverable address, or the mail server refused the message; nothing was sent. |
+| `delivery_unknown` | 409 | Delivery could not be confirmed: the message may already have gone out, so it was not sent again. |
 | `server_error` | 502 | The mail server reported an error. |
 
-The last three of the send group (`send_disabled`, `rate_limited`, `recipient_refused`) belong to
-slice C; slice A never answers them. The app's own codes keep their statuses: `password_missing`
+The send group (`send_disabled`, `rate_limited`, `recipient_refused`, `delivery_unknown`) belongs
+to slice C; slices A and B never answer them. The app's own codes keep their statuses: `password_missing`
 and `starttls_unsupported` 409, `secrets_key_missing` 503, an unknown account `not_found` 404
 (coded). A mailbox failure carrying a code not in this table keeps its code, with status 502.
 
@@ -441,5 +743,4 @@ collapsed quote as a marker line that says how to read it. There is no REST rout
 
 ## Later slices
 
-- **C (drafts and send):** compose, reply, forward, drafts, send through the send gate.
 - Threaded list view, and the index with live updates ([`../REQUIREMENTS.md`](../REQUIREMENTS.md)).

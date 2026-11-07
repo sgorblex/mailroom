@@ -31,15 +31,17 @@ mailroom-mcp              standalone MCP server for mail, on mailroom-core (repo
   written in the app, over the app's own services, for each user's own data. It starts with
   filters (rule sets, dry runs, runs), which mailroom-mcp lacks, plus the accounts and folders
   listing they need. It writes its own mail tools over mailroom-core, turning them on group by
-  group ([`requirements/mcp.md`](requirements/mcp.md)), `mail_read` first.
+  group ([`requirements/mcp.md`](requirements/mcp.md)), `mail_read` first, `mail_draft` and
+  `mail_send` with the compose slice.
 - **mailroom-mcp stays a maintained standalone server**, for people who do not run the app, and
   keeps serving mail reading and sending meanwhile. The app does not embed or import it; the two
   share mailroom-core, and accounts in schema `core` are byte-compatible, so mailroom-mcp's data
   imports unchanged.
 - **The app's built-in OAuth authorization server is self-contained** (the database and a small
   user interface, no app routes), so it may move to a shared package later.
-- **mailroom-core** provides `render` and `mail` (connections in `mail.imap`) from 0.1.1, and organize
-  from 0.1.2, which the mail client is built on. It stays usable on its own. The app keeps the accounts
+- **mailroom-core** provides `render` and `mail` (connections in `mail.imap`) from 0.1.1, organize
+  from 0.1.2, and compose, drafts and the send gate (SMTP) from 0.1.3, which the mail
+  client is built on. It stays usable on its own. The app keeps the accounts
   (`AccountStore`) in mailroom-core's schema `core` in the app's database, under mailroom-core's own
   Alembic history (`core.alembic_version`); the app's tables live in schema `app`.
 - **imap-thingy** stays a general-purpose library on PyPI; the app reads and writes its rules
@@ -57,7 +59,7 @@ fixtures) loads in the backend's tests.
 ## Client scope
 
 Between **tier 2** and **tier 3** of [`REQUIREMENTS.md`](REQUIREMENTS.md) — *Mail client*: reading
-and triage plus composing, over a **local index** with **live updates** (IMAP IDLE), first. Tier 3
+and triage plus composing (plain text, with the send mode limiting what agents send), over a **local index** with **live updates** (IMAP IDLE), first. Tier 3
 features come later, one by one, when they earn their place.
 
 ## Reversed non-goals

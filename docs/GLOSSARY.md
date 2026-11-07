@@ -7,13 +7,15 @@
 | **User session** | One browser signed in as a user: a random token in the `mailroom_session` cookie, valid until it expires or the user signs out there. |
 | **Account** | One mailbox a user reaches over IMAP (read) and SMTP (send), with its identities and send mode. Modelled by mailroom-core. |
 | **Identity** | A `From` address an account may send as. |
-| **Send mode** | Per account: `off`, `drafts`, `approval`, `direct` — what "send" is allowed to mean (mailroom-core's send gate). |
+| **Send mode** | Per account: `off`, `drafts`, `approval`, `direct` — what an **agent** may do when it sends (mailroom-core's send gate): `off` refuses it and the draft tools, `drafts` saves a draft instead, `approval` sends only if every recipient is auto-approved and otherwise saves the whole message as a draft, `direct` sends. The user's own *Send* in the web client overrides it, except `off`. [`requirements/mail-client.md`](requirements/mail-client.md). |
+| **Send gate** | mailroom-core's single path to SMTP: it checks the send mode (and who is acting, user or agent), the recipients and the limits, counts the send before it is made, and hands out the only token that `deliver` accepts. [`requirements/mail-client.md`](requirements/mail-client.md). |
+| **Draft** | A message in the account's `\Drafts` folder. The web client always composes through one; saving makes a new version and then removes the old one. [`requirements/mail-client.md`](requirements/mail-client.md). |
 | **Index** | The app's local copy of message metadata and rendered text across every account and folder, for lists and search without a round of IMAP per query. |
 | **Live update** | A change on the server (new mail, a flag or move from another client) reaching the open web app without a reload, via the worker's IMAP IDLE. |
 | **Ref** | An opaque string naming one message exactly (account, folder, UIDVALIDITY, UID), as in mailroom-mcp; stale once the folder's UIDVALIDITY changes. [`requirements/mail-client.md`](requirements/mail-client.md). |
 | **Remote content** | Images a message loads from the internet (tracking pixels among them): blocked, and revealed per message on request ([`requirements/mail-client.md`](requirements/mail-client.md)). |
 | **Archive** | The account's folder with role `archive`; archiving moves messages there. [`requirements/mail-client.md`](requirements/mail-client.md). |
-| **Trash** | Moving messages to the account's folder with role `trash`. Never a permanent delete: Mailroom does not delete or expunge mail. [`requirements/mail-client.md`](requirements/mail-client.md). |
+| **Trash** | Moving messages to the account's folder with role `trash`. Never a permanent delete: trashing does not delete or expunge mail. The one expunge is of a draft Mailroom wrote ([`requirements/mail-client.md`](requirements/mail-client.md#the-own-draft-exception)). |
 | **Message view** | A message as the client shows it: headers, the text body, attachments, and the HTML view when the message has an HTML body. |
 | **Rule set** | An ordered list of filters for one account folder, with one trigger. [`requirements/filters.md`](requirements/filters.md). |
 | **Filter** | An imap-thingy rule (criteria plus actions) that sorts mail on the server, stored as its imap-thingy spec and run by imap-thingy's runner in the app's worker. |
@@ -22,7 +24,7 @@
 | **Dry run** | Evaluating a rule set against real mail and reporting what each filter would match and do, changing nothing. |
 | **Suggestion** | A filter proposed from a user's own triage, with its evidence; inert until that user accepts it. |
 | **Profile** | A user's own page for their password, linked sign-ins and connected apps. (In mailroom-mcp, a connector scope `/mcp/<profile>`; the app has none: its tool groups are instance config.) |
-| **Tool group** | A named set of MCP tools (`filters_read`, `filters_write`, `filters_run`, `mail_read`, `mail_organize`, later the other `mail_*` ones) with a status (`stable`, `preview`, `planned`); `MAILROOM_MCP_TOOL_GROUPS` picks which are served. A tool several groups need (`accounts_list`, `folders_list`) is served when any of them is. [`requirements/mcp.md`](requirements/mcp.md). |
+| **Tool group** | A named set of MCP tools (`filters_read`, `filters_write`, `filters_run`, `mail_read`, `mail_organize`, `mail_draft`, `mail_send`) with a status (`stable`, `preview`, `planned`); `MAILROOM_MCP_TOOL_GROUPS` picks which are served. A tool several groups need (`accounts_list`, `folders_list`) is served when any of them is. [`requirements/mcp.md`](requirements/mcp.md). |
 | **Connected app** | An MCP client a user approved through the built-in OAuth server (an OAuth grant), listed and revocable on their profile. |
 | **DCR** | Dynamic client registration (RFC 7591): an MCP client registering itself at `/oauth/register`, limited to the redirect allowlist. [`requirements/mcp.md`](requirements/mcp.md). |
 | **CIMD** | Client ID metadata document: an MCP client whose `client_id` is an https URL on an allowed host, serving its own metadata, which the built-in OAuth server fetches and caches instead of a registration. |
