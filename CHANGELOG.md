@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.0](https://github.com/sgorblex/mailroom/compare/v0.4.0...v0.5.0) (2026-11-07)
+
+
+### Features
+
+* add drafts and send REST API for the mail client ([#52](https://github.com/sgorblex/mailroom/issues/52)) ([2ac9424](https://github.com/sgorblex/mailroom/commit/2ac9424db5d1c2fe23c0707254c54bf01a0591d1))
+* add mail_draft and mail_send tools to the MCP server ([#54](https://github.com/sgorblex/mailroom/issues/54)) ([ced4f5e](https://github.com/sgorblex/mailroom/commit/ced4f5e5bd0a0469861d884cc84a0af708128acd))
+* **mail:** compose, reply, forward and send in the web client ([#53](https://github.com/sgorblex/mailroom/issues/53)) ([e458b81](https://github.com/sgorblex/mailroom/commit/e458b81c67b2e68433fc8aa6ef95076f8959084d))
+
 ## [0.4.0](https://github.com/sgorblex/mailroom/compare/v0.3.0...v0.4.0) (2026-11-05)
 
 
