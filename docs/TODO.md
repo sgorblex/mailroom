@@ -40,10 +40,11 @@ Mailroom is built on standalone projects, each with its own repository and check
       compose, reply, reply all, forward, drafts and attachments through mailroom-core's send
       gate: compose, drafts and send in mailroom-core 0.1.3, the REST routes,
       the web composer and the `mail_draft` and `mail_send` MCP groups.
-- [ ] **Host proxy limit for drafts** — the host's reverse proxy needs the same 30 MB body limit as
-      the web image's nginx on `/api/v1/mail/drafts`, before the slice C release is deployed.
+- [x] **Host proxy limit for drafts** — the production host's proxy sets no body limit, and its read timeout is now
+      300 s, so a 30 MB draft has time to arrive.
 - [ ] **Try compose by hand** — a send to oneself from the web, then a Gmail account (it may keep
-      old draft versions in All Mail or Trash, which no test here can show).
+      old draft versions in All Mail or Trash, which no test here can show), and a 25 MB
+      attachment through the host's proxy.
 
 ## MCP and suggestions
 
