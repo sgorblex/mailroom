@@ -109,6 +109,8 @@ export function MessageList({
               <li key={message.ref} className="flex items-start">
                 <input
                   type="checkbox"
+                  name="message"
+                  value={message.ref}
                   aria-label={t('triage.select', { subject: message.subject === '' ? t('message.noSubject') : message.subject })}
                   className="m-3 mr-0 size-4 shrink-0 accent-primary"
                   checked={triage.selection.has(message.ref)}
@@ -198,6 +200,7 @@ function SelectAll({ messages }: { messages: Target[] }): ReactElement {
       <input
         ref={box}
         type="checkbox"
+        name="all"
         className="size-4 accent-primary"
         checked={all}
         onChange={() => {

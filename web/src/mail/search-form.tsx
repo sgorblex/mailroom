@@ -115,6 +115,7 @@ export function SearchForm({
       <div className="flex gap-2">
         <Input
           type="search"
+          name="q"
           aria-label={t('search.text')}
           placeholder={t('search.placeholder')}
           value={draft.text}
