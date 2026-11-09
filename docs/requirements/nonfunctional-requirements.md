@@ -74,7 +74,8 @@ and may try to run script, track the reader, phish, or — through the MCP — i
 - **Destructive actions** never expunge: trash moves to `\Trash`, as in mailroom-mcp. The one
   exception is the removal of **a draft Mailroom wrote**, by `UID EXPUNGE` of exactly that UID
   ([`mail-client.md`](mail-client.md), *The own-draft exception*); a draft written elsewhere goes
-  to Trash.
+  to Trash. Filters are outside this rule: a filter's `delete` action removes mail for good
+  ([`filters.md`](filters.md)).
 - **Sending** passes the send gate only: an `Admitted` token from `admit` is the one thing
   `deliver` takes, and the user's *Send* overrides a send mode except `off`. A send is counted and
   recorded before SMTP; a draft's send is keyed so it is delivered once (an agent's direct send has

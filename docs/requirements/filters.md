@@ -19,7 +19,9 @@ in the browser, tried with a dry run, and run by the worker. Product scope:
 - A rule set holds **ordered filters**, each an imap-thingy filter spec (criteria plus actions),
   stored as imap-thingy serialises it and validated with `imap_thingy.spec.load_filter`, its JSON
   Schema, and every `pattern` compiled as a regular expression (with `regex`, the engine
-  imap-thingy matches with). A rule set holds at most 100 filters. Filters run in order; a disabled filter is skipped, by dry runs too. A disabled rule set never runs (no
+  imap-thingy matches with). A rule set holds at most 100 filters. Every imap-thingy action is
+  allowed, `delete` (*Delete for good*) too: a filter is the one place Mailroom removes mail
+  permanently, because the user wrote it, saw its dry run and enabled it. Filters run in order; a disabled filter is skipped, by dry runs too. A disabled rule set never runs (no
   trigger fires, *Run now* is refused) but can still be dry-run; a new rule set starts disabled.
 - **Dry run** evaluates the rule set against the folder's real mail and reports, per filter, the
   messages it matches (uid, from, subject, date) and what it would do, changing nothing (the folder
