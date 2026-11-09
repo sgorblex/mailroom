@@ -53,21 +53,70 @@ steps:
       - uv run python -m mailroom.dev.wait_for_database --url-env TEST_DATABASE_URL
       - uv run pytest -n auto
 
+  # mailroom-core's mail test servers; keep the pins equal to scripts/images.sh.
+  - name: dovecot
+    image: docker.io/dovecot/dovecot:2.4.5@sha256:c807be4fb5a97d9c3a90770569d3a6c4cbdcb36742ad41f90409cbd929166553
+    detach: true
+    when: *backend-tests-when
+    environment:
+      USER_PASSWORD: pass
+
+  - name: mailpit
+    image: docker.io/axllent/mailpit:v1.31.3@sha256:ed9b00c609e77e99c79b93f1178255ebc271868920f2c69a8d166bd5634ed10d
+    detach: true
+    when: *backend-tests-when
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 'true'
+      MP_SMTP_REQUIRE_TLS: 'true'
+      MP_SMTP_TLS_CERT: sans:mailpit
+      MP_SMTP_TLS_KEY: sans:mailpit
+
+  - name: mailpit-starttls
+    image: docker.io/axllent/mailpit:v1.31.3@sha256:ed9b00c609e77e99c79b93f1178255ebc271868920f2c69a8d166bd5634ed10d
+    detach: true
+    when: *backend-tests-when
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 'true'
+      MP_SMTP_REQUIRE_STARTTLS: 'true'
+      MP_SMTP_TLS_CERT: sans:mailpit-starttls
+      MP_SMTP_TLS_KEY: sans:mailpit-starttls
+
   # mailroom-core's own tests, run from its directory with its own pytest config (see
-  # backend/core/pyproject.toml). Its store tests use the database; its mail tests skip, as
-  # there are no test mail servers here.
+  # backend/core/pyproject.toml).
   - name: core-test
     image: ghcr.io/astral-sh/uv:0.13.1-python3.14-trixie-slim@sha256:112f89760bd54b63c84d140151ea5f3d849278e54f6f939f2c40a57f3e33d895
     volumes:
       - /var/lib/woodpecker-cache/uv:/root/.cache/uv
     environment:
       TEST_DATABASE_URL: postgresql://mailroom:mailroom@database:5432/mailroom_test
+      IMAP_TEST_HOST: dovecot
+      IMAP_TEST_PORT: '31993'
+      SMTP_TEST_HOST: mailpit
+      SMTP_TEST_PORT: '1025'
+      MAILPIT_TEST_API: http://mailpit:8025
+      SMTP_TEST_STARTTLS_HOST: mailpit-starttls
+      SMTP_TEST_STARTTLS_PORT: '1025'
+      MAILPIT_TEST_STARTTLS_API: http://mailpit-starttls:8025
     when: *backend-tests-when
     commands:
       # The whole workspace's environment (backend/.venv): a plain `uv run` from core/ would sync
       # it down to core alone, without pytest.
       - cd backend
       - uv sync --locked --all-groups
+      # The image has no nc: wait for the mail servers' ports from Python.
+      - |
+        uv run --no-sync python - <<'EOF'
+        import socket, time
+        for host, port in (("dovecot", 31993), ("mailpit", 1025), ("mailpit-starttls", 1025)):
+            for _ in range(30):
+                try:
+                    socket.create_connection((host, port), timeout=2).close()
+                    break
+                except OSError:
+                    time.sleep(1)
+            else:
+                raise SystemExit(f"{host}:{port} did not open within 30 s")
+        EOF
       - cd core
       - uv run --no-sync pytest -q -rs
 

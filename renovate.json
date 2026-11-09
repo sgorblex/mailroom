@@ -50,7 +50,7 @@
     },
     {
       "customType": "regex",
-      "description": "Dev mail images (scripts/images.sh); keep on the same pins as mailroom-mcp.",
+      "description": "Dev and test mail images (scripts/images.sh); keep on the same pins as mailroom-mcp.",
       "managerFilePatterns": [
         "/^scripts/images\\.sh$/"
       ],
@@ -258,6 +258,15 @@
       ],
       "groupName": "postgres (compose, CI)",
       "description": "One group across compose.yml (dev) and backend-tests.yaml (CI), so tests never run against a Postgres the developer doesn't."
+    },
+    {
+      "matchPackageNames": [
+        "docker.io/dovecot/dovecot",
+        "docker.io/axllent/mailpit"
+      ],
+      "groupName": "mail test images (scripts/images.sh, CI)",
+      "minimumReleaseAge": null,
+      "description": "One group across scripts/images.sh and backend-tests.yaml, so CI tests mailroom-core against the same servers as dev; no soak on either side, as for the other docker images."
     }
   ]
 }
