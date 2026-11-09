@@ -122,8 +122,12 @@ def test_dates_and_sizes():
 
 
 def test_invisible_covers_every_format_character():
-    """The hard-coded Cf table is Unicode 16's, the version both runtimes use."""
-    assert unicodedata.unidata_version == "16.0.0"
+    """The hard-coded Cf table covers the running Python's Unicode version.
+
+    It was written for Unicode 16 (Python 3.14 and the TypeScript server); the app runs on 3.15,
+    whose Unicode 17 adds no format character.
+    """
+    assert unicodedata.unidata_version in {"16.0.0", "17.0.0"}
     for code in range(0x110000):
         char = chr(code)
         if unicodedata.category(char) == "Cf":

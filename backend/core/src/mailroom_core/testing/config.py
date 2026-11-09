@@ -1,25 +1,17 @@
-"""The example config and the mailbox secrets it names, as `src/testing/fixtures.ts` has them.
-
-The bootstrap's own (the public URL, the login hash, the signing key) are mailroom-mcp's, in
-`mailroom_mcp.testing`.
+"""The example config and the mailbox secrets it names, as mailroom-mcp's `src/testing/fixtures.ts`
+has them.
 """
 
 import os
 import re
 from functools import cache
-from pathlib import Path
+from importlib.resources import files
 
 
 @cache
 def example_config_text() -> str:
-    """config.example.toml, from the root of the repository this package is checked out in.
-
-    Works only from a checkout of this repository: the file is at its root, not in the package.
-    """
-    for directory in Path(__file__).resolve().parents:
-        if (directory / "config.example.toml").is_file():
-            return (directory / "config.example.toml").read_text()
-    raise FileNotFoundError("config.example.toml: not in a checkout of the mailroom-mcp repository")
+    """mailroom-mcp's example config, kept next to this module as a fixture."""
+    return files("mailroom_core.testing").joinpath("config.example.toml").read_text()
 
 
 @cache
