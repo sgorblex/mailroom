@@ -6,8 +6,8 @@ SSO. It exposes what a model needs to work on a user's filters: accounts, folder
 dry runs and runs, and, group by group, the mail tools: each mail group turns on (status
 `stable`) once the client does what it does; `mail_read` is the first, with slice A of the
 [mail client](mail-client.md), then `mail_organize`, with slice B, then `mail_draft` and
-`mail_send`, with slice C. Standalone mailroom-mcp stays a maintained server of its own
-([`../CONTEXT.md`](../CONTEXT.md)). Product scope:
+`mail_send`, with slice C. Standalone mailroom-mcp is to be retired once this server covers its
+use ([`../CONTEXT.md`](../CONTEXT.md)). Product scope:
 [`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *MCP server*.
 
 ## Tools

@@ -33,10 +33,10 @@ mailroom-mcp              standalone MCP server for mail, on mailroom-core (repo
   listing they need. It writes its own mail tools over mailroom-core, turning them on group by
   group ([`requirements/mcp.md`](requirements/mcp.md)), `mail_read` first, `mail_draft` and
   `mail_send` with the compose slice.
-- **mailroom-mcp stays a maintained standalone server**, for people who do not run the app, and
-  keeps serving mail reading and sending meanwhile. The app does not embed or import it; the two
-  share mailroom-core, and accounts in schema `core` are byte-compatible, so mailroom-mcp's data
-  imports unchanged.
+- **mailroom-mcp is to be retired** (decided on 2026-11-09). It keeps serving mail until the
+  app's MCP covers what it is used for, then its deployment stops and its repository is archived.
+  The app does not embed or import it. The two share mailroom-core, and accounts in schema
+  `core` are byte-compatible, so mailroom-mcp's data imports unchanged.
 - **The app's built-in OAuth authorization server is self-contained** (the database and a small
   user interface, no app routes), so it may move to a shared package later.
 - **mailroom-core** provides `render` and `mail` (connections in `mail.imap`) from 0.1.1, organize
@@ -56,6 +56,23 @@ checkout, or `MAILROOM_CORE_PATH` / `IMAP_THINGY_PATH`) without touching a track
 `mise run deps-pinned` switches back. mailroom-core's pytest plugin (no-network guard, store
 fixtures) loads in the backend's tests.
 
+### Where the family is heading
+
+Decided on 2026-11-09, in this order ([`TODO.md`](TODO.md) — *Family roadmap*):
+
+- **mailroom-core folds into this repository** as a workspace package, since the app is now its
+  only consumer. That ends the step of releasing core and then bumping the app's pin.
+- **Editions:** an instance chooses its features in config. There is always a base: users,
+  accounts and their secrets, sign-in, a settings UI with `/connect`, and Postgres. On top of it,
+  the mail client, the MCP server and filters are each optional. A disabled feature runs nothing:
+  no routes, worker or screens. Every edition uses Postgres.
+- **This repository goes public** once the app is in a decent state, after an audit of its whole
+  history. **imap-thingy folds in then, not before**, because it is public already. It keeps its
+  history and its PyPI name, and it never depends on mailroom-core.
+- **Command-line tools:**
+  - a client for a running instance, after personal API tokens exist;
+  - `imap-thingy run`, for filters with no server at all.
+
 ## Client scope
 
 Between **tier 2** and **tier 3** of [`REQUIREMENTS.md`](REQUIREMENTS.md) — *Mail client*: reading
@@ -65,8 +82,7 @@ features come later, one by one, when they earn their place.
 ## Reversed non-goals
 
 mailroom-mcp's design ruled out **a webmail UI** and **filter management**. Mailroom is where both
-now live — deliberately outside mailroom-mcp, which stays a small, separately deployable
-component. Filter management reaches models through the app's own MCP server instead.
+now live — deliberately outside mailroom-mcp, which is to be retired (*The component family*). Filter management reaches models through the app's own MCP server instead.
 
 ## Non-goals (unless requirements say otherwise)
 

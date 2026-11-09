@@ -6,21 +6,35 @@ exploratory work. Once an item is done, remove it.
 
 ## Across the family
 
-Mailroom is built on standalone projects, each with its own repository and checklist. As of
-2026-10-23:
+Mailroom is built on projects with their own repositories and checklists. As of 2026-11-09:
 
-- **mailroom-mcp** (`../mailroom-mcp`, GitHub `sgorblex/mailroom-mcp`): the 0.3 Python port is
-  under way; `crypto` (sealed secrets, byte-compatible), `config` and the per-user `store` are
-  ported and published as **mailroom-core** 0.1.0 on PyPI. Its own
-  [`docs/TODO.md`](https://github.com/sgorblex/mailroom-mcp/blob/main/docs/TODO.md) *0.3* section
-  is the checklist, in dependency order, with the TypeScript tests as the parity list. The
-  TypeScript server keeps running on the production host until the cutover described there.
+- **mailroom-mcp** (`../mailroom-mcp`, GitHub `sgorblex/mailroom-mcp`) holds **mailroom-core**,
+  0.1.3 on PyPI, which the app pins. Its Python port of the server stopped at core: the
+  TypeScript server keeps running on the production host until it is retired (*Family roadmap* below).
 - **imap-thingy** (`../imap-thingy`, GitHub `sgorblex/imap-thingy`): rules as data (`to_spec()`,
   `imap_thingy.spec`) since 0.5.0, the runner (`imap_thingy.runner`: `run_rules`, `starred_only`,
   the IDLE `monitor`) since 0.6.0; 0.7.0 adds run reports (what each filter matched and did, also
   for a dry run), the `older_than_days` criterion, SSL and timeout options and `list_folders()` on
   `Account`, a stoppable `monitor` and regex match timeouts; 0.8.0 names every built-in action in
   plain words (`star`, `mark as read`), as run reports show them.
+
+## Family roadmap
+
+In order. The reasons are in [`CONTEXT.md`](CONTEXT.md) — *Where the family is heading*.
+
+- [ ] **Fold mailroom-core into this repository** as a workspace package, with its history.
+- [ ] **Editions:** features chosen in config (mail client, MCP, filters) over an always-present
+      base.
+- [ ] **Retire mailroom-mcp** once the app's MCP covers its use, per-connector profiles included.
+      Then stop its deployment and archive the repository.
+- [ ] **Go public:**
+  - [ ] audit the whole history (secrets, infrastructure names);
+  - [ ] make the repository public;
+  - [ ] fold in imap-thingy, keeping its history and PyPI name, and archive its old repository
+        with a pointer.
+- [ ] **Command-line tools:**
+  - [ ] a client for a running instance, after personal API tokens;
+  - [ ] `imap-thingy run`, for filters with no server.
 
 ## Client
 
