@@ -5,13 +5,13 @@ from typing import TYPE_CHECKING
 import pytest
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from mailroom_core.store import CORE_MIGRATIONS, CORE_SCHEMA
 from sqlalchemy import text
 
 from mailroom import db_migrations
 from mailroom.db_migrations import applied_revisions, expected_heads, wait_for_head
 from mailroom.dev.check_migration_roundtrip import scratch_database_name
 from mailroom.models.base import ALEMBIC_VERSION_TABLE, APP_SCHEMA
+from mailroom_core.store import CORE_MIGRATIONS, CORE_SCHEMA
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine

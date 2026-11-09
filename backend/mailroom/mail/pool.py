@@ -37,16 +37,14 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final
 
-from mailroom_core.mail import MailConnections, MailError, Timeouts
-
 from mailroom.accounts.store import AccountNotFound, account_password, load_accounts, user_store
+from mailroom_core.mail import MailConnections, MailError, Timeouts
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
 
-    from mailroom_core.config import AccountConfig
-
     from mailroom.context import AppContext
+    from mailroom_core.config import AccountConfig
 
 logger = logging.getLogger(__name__)
 

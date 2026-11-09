@@ -5,16 +5,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from mailroom_core.store import forget_user
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 
 from mailroom.accounts.store import core_user_id, load_accounts, remove_account
 from mailroom.models import AccountFilterSettings, RuleSet
+from mailroom_core.store import forget_user
 
 if TYPE_CHECKING:
-    from mailroom_core.store import AccountStore
     from sqlalchemy.orm import Session
+
+    from mailroom_core.store import AccountStore
 
 
 def run_filters_by_account(db: Session, user_id: int) -> dict[str, bool]:

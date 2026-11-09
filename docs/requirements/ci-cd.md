@@ -8,6 +8,12 @@ release type, `release-please-config.json`) owns `version.txt`, `CHANGELOG.md`, 
 `mise run check-version-sync` asserts they agree. The first release is 0.1.0 (`initial-version`);
 pre-1.0, a `feat` bumps the minor.
 
+**mailroom-core** (`backend/core`) has no release of its own: its changes ship in the app's
+releases, like any backend change, and its `version` stays at 0.1.3, its last PyPI release. It
+came from mailroom-mcp with its history, through one pull request merged with a **merge commit**
+(merge commits are otherwise disabled); that PR's body carries a `BEGIN_COMMIT_OVERRIDE` block, so
+Release Please reads all of its commits as one hidden `build:` entry.
+
 [`release-please.yml`](../../.github/workflows/release-please.yml) runs on every push to `main`
 and keeps a release PR open. Merging it tags `vX.Y.Z`, and the tag starts the release pipeline
 (*Release and deploy* below). The workflow signs in with **`RELEASE_PLEASE_TOKEN`** (a fine-grained

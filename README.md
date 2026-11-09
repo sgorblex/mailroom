@@ -13,7 +13,7 @@ in [`docs/TODO.md`](docs/TODO.md).
 
 | Part | What |
 | --- | --- |
-| `backend/` | Python 3.14+, FastAPI, SQLAlchemy 2 + psycopg 3, Alembic (schema `app`), procrastinate worker, uv; mailroom-core, imap-thingy |
+| `backend/` | Python 3.14+, FastAPI, SQLAlchemy 2 + psycopg 3, Alembic (schema `app`), procrastinate worker, uv; mailroom-core (the mail layer, in `backend/core`), imap-thingy |
 | `web/` | React 19, Vite, TanStack Router, Tailwind 4 + shadcn, i18next, Zod, Vitest |
 | Database | PostgreSQL 18 (`compose.yml` for dev) |
 | Images | `mailroom-api`, `mailroom-web` (Podman; Quadlet sketch in `deploy/quadlet/`) |
@@ -56,7 +56,7 @@ Defaults live in `mise.toml`'s `[env]`. To change one, set it in a gitignored `m
 | Task | Does |
 | --- | --- |
 | `setup` | Install Python and Node dependencies |
-| `deps-local` / `deps-pinned` | Swap mailroom-core and imap-thingy for local editable checkouts / back to the pinned ones |
+| `deps-local` / `deps-pinned` | Swap imap-thingy for a local editable checkout / back to the pinned one |
 | `dev` | `dev-db` + `dev-api` + `dev-worker` + `dev-web` together |
 | `dev-db` / `dev-db-down` | Start (foreground) / stop the dev Postgres; data stays |
 | `dev-api` / `dev-web` | API with reload (migrates at startup) / Vite |
@@ -70,7 +70,8 @@ Defaults live in `mise.toml`'s `[env]`. To change one, set it in a gitignored `m
 | `check-migrations` | Upgrade → downgrade base → upgrade on a scratch database |
 | `check-version-sync` / `check-scripts` | Release Please version copies / `node --test scripts/lib` |
 | `check-all` | Every check (needs the dev database for `check-migrations`) |
-| `test-backend` / `test-web` / `test-all` | pytest (needs `dev-db`) / Vitest / both |
+| `test-backend` / `test-web` / `test-all` | pytest, the app's then mailroom-core's (needs `dev-db`) / Vitest / both |
+| `test-core` | mailroom-core's pytest alone, from `backend/core` |
 | `fix` | Ruff and ESLint auto-fix, then mypy |
 | `build-containers` | Build `mailroom-api` and `mailroom-web` (`-- staging` for staging tags) |
 | `browser-check` | Report the browser chrome-devtools-mcp would drive |

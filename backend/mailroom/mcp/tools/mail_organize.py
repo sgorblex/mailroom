@@ -12,8 +12,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Annotated, Any, Final
 
-from mailroom_core.mail import organize_text
-from mailroom_core.render import untrusted
 from mcp import types
 from pydantic import Field, StrictBool
 
@@ -21,13 +19,14 @@ from mailroom.errors import mail_refusal
 from mailroom.mail import service
 from mailroom.mcp.tool import Arguments, Hints, Tool, content_result
 from mailroom.mcp.tools.mail_read import FolderPath, RefText
+from mailroom_core.mail import organize_text
+from mailroom_core.render import untrusted
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from mailroom_core.mail import OrganizeResult
-
     from mailroom.mcp.tool import ToolCall
+    from mailroom_core.mail import OrganizeResult
 
 ORGANIZE: Final = Hints(open_world=True)
 """A change to the mail server that mail can be moved back from."""

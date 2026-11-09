@@ -20,13 +20,13 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from fastapi import FastAPI
-    from mailroom_core.crypto import SecretsSubkey
     from sqlalchemy.engine import Engine
     from sqlalchemy.orm import Session, sessionmaker
     from starlette.testclient import TestClient
 
     from mailroom.models import User
     from mailroom.worker.context import Mailboxes
+    from mailroom_core.crypto import SecretsSubkey
 
 USERNAME = "alice"
 ADMIN_USERNAME = "root"

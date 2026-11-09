@@ -16,14 +16,14 @@ from mailroom.accounts.store import user_store
 if TYPE_CHECKING:
     import ssl
 
-    from mailroom_core.crypto import SecretsSubkey
-    from mailroom_core.store import AccountStore
     from sqlalchemy.engine import Engine
     from sqlalchemy.orm import Session, sessionmaker
     from starlette.datastructures import State
 
     from mailroom.mail.pool import MailPool
     from mailroom.mail.sends import SendRunner
+    from mailroom_core.crypto import SecretsSubkey
+    from mailroom_core.store import AccountStore
 
 
 @dataclass(frozen=True, slots=True)

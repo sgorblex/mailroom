@@ -30,12 +30,12 @@ if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
     from imap_thingy.report import FolderReport
-    from mailroom_core.crypto import SecretsSubkey
-    from mailroom_core.store import AccountStore
     from sqlalchemy.engine import Engine
     from sqlalchemy.orm import Session
 
     from mailroom.models import RuleSet
+    from mailroom_core.crypto import SecretsSubkey
+    from mailroom_core.store import AccountStore
 
 logger = logging.getLogger(__name__)
 

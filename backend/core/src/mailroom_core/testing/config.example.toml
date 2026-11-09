@@ -1,0 +1,65 @@
+# Test fixture: mailroom-mcp's example config, as it stood when mailroom-core moved into the
+# Mailroom app. mailroom_core.testing reads it (`example_config_text`); core's config and sealed
+# secrets tests parse it. Nothing loads it at run time.
+
+# Origin the server is reached at; every OAuth and MCP URL derives from it.
+public_url = "https://mail.example.net"
+
+# IANA time zone for every date shown to Claude. Default UTC.
+timezone = "Europe/Rome"
+
+[auth]
+password_hash_env = "MAILROOM_LOGIN_HASH"   # argon2id PHC string from `mise run hash-password`
+signing_key_env   = "MAILROOM_SIGNING_KEY"  # >= 32 random bytes, hex: `openssl rand -hex 32`
+# Seals the mailbox secrets stored in the database.
+# Exactly 32 random bytes, hex: `openssl rand -hex 32`. Back it up apart from the database.
+secrets_key_env   = "MAILROOM_SECRETS_KEY"
+access_token_ttl  = "1h"                    # default 1h
+refresh_token_ttl = "30d"                   # default 30d
+# redirect_uris defaults to claude.ai's and claude.com's callbacks plus Claude Code's loopback
+# ones (any port). Set it only to narrow that list.
+
+# Everything below is the settings: limits, accounts and profiles. They live in the database.
+# On the first start with an empty database they are imported from here, once; afterwards
+# these sections are ignored (with a warning) and can be removed. An account's auth.secret_env
+# is read at that import only: its value is sealed into the database, and the variable can go.
+
+[limits]
+send_per_hour     = 20     # global, across accounts
+max_recipients    = 10     # To + Cc + Bcc of one message
+body_chars        = 6000   # per read, before a continuation cursor
+attachment_max_mb = 10
+
+[[account]]
+id         = "home"
+login      = "me@example.net"
+send_mode  = "direct"      # off | drafts | approval | direct
+auth       = { type = "password", secret_env = "HOME_TOKEN" }
+imap       = { host = "mail.example.net", port = 993, tls = "implicit" }
+smtp       = { host = "mail.example.net", port = 465, tls = "implicit" }
+identities = [
+  { address = "me@example.net", name = "Ada Lovelace", default = true },
+  { address = "club@example.net", name = "Ada (club)" },
+  { address = "ada@example.net", name = "Ada" },
+]
+
+[[account]]
+id           = "work"
+login        = "it@team.example"
+send_mode    = "approval"
+auth         = { type = "password", secret_env = "WORK_APP_PASSWORD" }
+imap         = { host = "imap.gmail.com", port = 993, tls = "implicit" }
+smtp         = { host = "smtp.gmail.com", port = 465, tls = "implicit" }
+identities   = [{ address = "it@team.example" }]
+auto_approve = ["@team.example"]
+
+# One connector URL per profile: <public_url>/mcp/<name>. Tool groups: read, organize, draft, send.
+[[profile]]
+name     = "full"
+tools    = ["*"]
+accounts = ["*"]
+
+[[profile]]
+name     = "read"
+tools    = ["read"]
+accounts = ["*"]

@@ -6,6 +6,12 @@ resolution-markers = [
     "python_full_version < '3.15'",
 ]
 
+[manifest]
+members = [
+    "mailroom",
+    "mailroom-core",
+]
+
 [[package]]
 name = "alembic"
 version = "1.20.0"
@@ -185,6 +191,19 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/9a/8e/82a0fe20a541c03148528be8cac2408564a6c9a0cc7e9171802bc1d26985/attrs-26.1.0.tar.gz", hash = "sha256:d03ceb89cb322a8fd706d4fb91940737b6642aa36998fe130a9bc96c985eff32", size = 952055, upload-time = "2026-03-19T14:22:25.026Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/64/b4/17d4b0b2a2dc85a6df63d1157e028ed19f90d4cd97c36717afef2bc2f395/attrs-26.1.0-py3-none-any.whl", hash = "sha256:c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309", size = 67548, upload-time = "2026-03-19T14:22:23.645Z" },
+]
+
+[[package]]
+name = "beautifulsoup4"
+version = "4.15.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "soupsieve" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/43/65/318323f98dbee45d42dff61d8f047181bc6f2268a9068cfad035a46be5af/beautifulsoup4-4.15.0.tar.gz", hash = "sha256:288e3ca7d54b06f2ac191970bc275c1939cb46d450b255bf6718b04aa37ab4f7", size = 632571, upload-time = "2026-06-07T16:44:20.453Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/88/c6/92fcd42f1ba33e1184263f25bfabf3d27c383410470f169e4b8163bf9c17/beautifulsoup4-4.15.0-py3-none-any.whl", hash = "sha256:d6f88de62e1d4e38ecb1077eb9724cd0eff29d2a08ca16a401e9b9e93f117cf9", size = 109924, upload-time = "2026-06-07T16:44:21.566Z" },
 ]
 
 [[package]]
@@ -415,6 +434,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/10/bf/8d6ebc7dded797bd0f0160d52188021211f011a2b164ef0ae1dac4587465/cryptography-50.0.2-cp39-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:7a8701d6b584d76e909e3d305b7d126b41439876a5aaf76cddc67fc230eafa2e", size = 4897738, upload-time = "2026-09-30T15:29:43.106Z" },
     { url = "https://files.pythonhosted.org/packages/d4/aa/f3f6e0de7e6253b8baa8b2d8fb9d50924fa75cee3d4624bd4bc1208ee923/cryptography-50.0.2-cp39-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:ce47f66801c20ec6c6632453bb5960fe38939e9306970b48b3a5a26de7745d94", size = 5058280, upload-time = "2026-09-30T15:29:44.827Z" },
     { url = "https://files.pythonhosted.org/packages/f6/b6/a1faf3a27ae9405fb34b1713cc73b2d8a26b04d5c561578fa2e6ef3e5bb9/cryptography-50.0.2-cp39-abi3-win_amd64.whl", hash = "sha256:4e81d95e5bafc2d6e34e4bed780e53e4d5b9a2f928573428aa4d35fbec1eb0de", size = 3854095, upload-time = "2026-09-30T15:29:46.782Z" },
+]
+
+[[package]]
+name = "cssselect"
+version = "1.6.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c8/8b/dc32df939ab541fca6ee8964d26aa231dbe231cdc2b2713228161441ba9c/cssselect-1.6.0.tar.gz", hash = "sha256:8c83a7139e97b93aa5ebdc0f46e785f7056a08a8bf201e597a6a2629d7eb11db", size = 51743, upload-time = "2026-10-09T20:05:09.484Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/08/ae/f24b3aac56ba91a29c9d3a31c07a9ad4e9eb500e5d212742bb6d348edaef/cssselect-1.6.0-py3-none-any.whl", hash = "sha256:6df6eab9b264c0f2092a6e386b33610e1684a25e27925ecebe25e3d97cbf3525", size = 22244, upload-time = "2026-10-09T20:05:08.215Z" },
 ]
 
 [[package]]
@@ -805,6 +833,7 @@ dev = [
     { name = "pytest-xdist" },
     { name = "ruff" },
     { name = "types-jsonschema" },
+    { name = "types-lxml" },
     { name = "types-regex" },
     { name = "watchfiles" },
 ]
@@ -819,7 +848,7 @@ requires-dist = [
     { name = "imap-thingy", specifier = ">=0.8.0" },
     { name = "imapclient", specifier = ">=3.1.0" },
     { name = "jsonschema", specifier = ">=4.23" },
-    { name = "mailroom-core", specifier = ">=0.1.3" },
+    { name = "mailroom-core", editable = "core" },
     { name = "mcp", specifier = ">=1.30,<1.31" },
     { name = "procrastinate", specifier = ">=3.10,<3.11" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
@@ -834,13 +863,14 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "mailroom-core", extras = ["testing"] },
+    { name = "mailroom-core", extras = ["testing"], editable = "core" },
     { name = "mypy", specifier = ">=2.4,<2.5" },
     { name = "pytest", specifier = ">=8.3" },
     { name = "pytest-cov", specifier = ">=6.0" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
     { name = "ruff", specifier = ">=0.17,<0.18" },
     { name = "types-jsonschema", specifier = ">=4.23" },
+    { name = "types-lxml", specifier = ">=2026.2.16" },
     { name = "types-regex", specifier = ">=2024.11.6" },
     { name = "watchfiles", specifier = ">=1.0" },
 ]
@@ -848,7 +878,7 @@ dev = [
 [[package]]
 name = "mailroom-core"
 version = "0.1.3"
-source = { registry = "https://pypi.org/simple" }
+source = { editable = "core" }
 dependencies = [
     { name = "alembic" },
     { name = "cryptography" },
@@ -860,15 +890,26 @@ dependencies = [
     { name = "sqlalchemy" },
     { name = "tzdata" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/43/56/4902b533254100971407e6f4e9a2b582c8abf0946ea7f7570a616961a8b8/mailroom_core-0.1.3.tar.gz", hash = "sha256:4edae029f56ccbe5cb3f78d703c775635942b3adeafaa276481100eb27467bf8", size = 224550, upload-time = "2026-11-06T14:25:26.986Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/47/2d/fbd3c912506d87ee724cd4918860312c3e1cfb9e76fc90a9fae89c6b3fd0/mailroom_core-0.1.3-py3-none-any.whl", hash = "sha256:7fe9d38e5ead98550b4891ba1d25af11ef45a241cda5b9ab55d4360abfae5d1d", size = 164711, upload-time = "2026-11-06T14:25:25.609Z" },
-]
 
 [package.optional-dependencies]
 testing = [
     { name = "pytest" },
 ]
+
+[package.metadata]
+requires-dist = [
+    { name = "alembic", specifier = ">=1.20.0" },
+    { name = "cryptography", specifier = ">=50.0.2" },
+    { name = "imapclient", specifier = ">=4.1.0,<4.2" },
+    { name = "lxml", specifier = ">=6.1.3" },
+    { name = "nh3", specifier = ">=0.3.7" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.3.6" },
+    { name = "pydantic", specifier = ">=2.14.1" },
+    { name = "pytest", marker = "extra == 'testing'", specifier = ">=8.3" },
+    { name = "sqlalchemy", specifier = ">=2.1.5" },
+    { name = "tzdata", specifier = ">=2026.5" },
+]
+provides-extras = ["testing"]
 
 [[package]]
 name = "mako"
@@ -1595,6 +1636,15 @@ wheels = [
 ]
 
 [[package]]
+name = "soupsieve"
+version = "4.0.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/01/7c/a64eedae0b7776cb9602d2da9cb8f8caae8e1b4c1da5e8e87bf1e68121ec/soupsieve-4.0.1.tar.gz", hash = "sha256:7621e3c5f6b371ed2c5eabaac5de300ac3d66d05e6d7f34783e31b63c4f90c75", size = 153302, upload-time = "2026-11-04T16:36:27.749Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2c/5c/4f68370847b561a389dd9a2d7eb3d19fd8cbb8acbae543a0c6b8d0d9700b/soupsieve-4.0.1-py3-none-any.whl", hash = "sha256:2e68cf7dd5a0f29d81f9d485275ccf294e6475f615e211895d91cb81f8614f04", size = 50688, upload-time = "2026-11-04T16:36:26.158Z" },
+]
+
+[[package]]
 name = "sqlalchemy"
 version = "2.1.5"
 source = { registry = "https://pypi.org/simple" }
@@ -1672,6 +1722,18 @@ wheels = [
 ]
 
 [[package]]
+name = "types-html5lib"
+version = "1.1.11.20260518"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "types-webencodings" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b8/5a/0c708d1b0d35ad48b6a223c77c4a882fd016b40c25becb082a92e02a9c00/types_html5lib-1.1.11.20260518.tar.gz", hash = "sha256:4f33c087cb1119d65c4c80eca4323c2b501f9eaf8af9616b8b732ed4d8eae8fa", size = 18420, upload-time = "2026-05-18T06:07:23.662Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4d/d0/b088b9f11eb69637d6826843f06caaff60247156735a25512922d3dc2c13/types_html5lib-1.1.11.20260518-py3-none-any.whl", hash = "sha256:9baa7912224ebb37027c5ccb7e3768e43ea47b1dfdd977e7ddc4b0a4a550584d", size = 24339, upload-time = "2026-05-18T06:07:22.876Z" },
+]
+
+[[package]]
 name = "types-jsonschema"
 version = "4.26.0.20261006"
 source = { registry = "https://pypi.org/simple" }
@@ -1684,12 +1746,36 @@ wheels = [
 ]
 
 [[package]]
+name = "types-lxml"
+version = "2026.2.16"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "beautifulsoup4" },
+    { name = "cssselect" },
+    { name = "types-html5lib" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/dd/ad/c70ac8cbdc28eb58a17301c69b4925af54b614e47f9b2ebc9de5cc10f786/types_lxml-2026.2.16.tar.gz", hash = "sha256:b3a1340cc06db98d541c785732f6f68bea438daff4e2b7809ef748d545d01406", size = 161204, upload-time = "2026-02-17T02:34:50.855Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5f/5c/03ec9befbf4bb5309bfd576c6a5ac1c75633f78f6b64cf1f594e97cd3d23/types_lxml-2026.2.16-py3-none-any.whl", hash = "sha256:5dd81ffa54830e5f361988737c5f1d6a0ae48b2742790637ec560df790ea0401", size = 97040, upload-time = "2026-02-17T02:34:49.286Z" },
+]
+
+[[package]]
 name = "types-regex"
 version = "2026.9.29.20261017"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/a2/bb/15d3c5f2f21ebf040430970e57bf8c438701e21ecd155607860e1dcff4f2/types_regex-2026.9.29.20261017.tar.gz", hash = "sha256:1eb0d21f77331e0f87268eeb1a75c4ac8025665a211c6e2e8ba084504b1c299f", size = 13971, upload-time = "2026-10-17T06:20:04.659Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/bd/2d/4a7cde6131caf872b33d25a66ffd938ebd10758e84527eb3c456cb558e77/types_regex-2026.9.29.20261017-py3-none-any.whl", hash = "sha256:d0bc5d8f44d2039f40f52b272e672266ba6cc1710956c6c7f5045000fea433b8", size = 11194, upload-time = "2026-10-17T06:20:03.623Z" },
+]
+
+[[package]]
+name = "types-webencodings"
+version = "0.6.0.20261104"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/63/b8/722e153333019ac643dfac24be7c8d2fa21cbea791c94c39a1c58f413211/types_webencodings-0.6.0.20261104.tar.gz", hash = "sha256:3021d7ea7011a4a51a43b2dc4c0e4856c8d9b1bb1a1a3d2500ab177224225b08", size = 7818, upload-time = "2026-11-04T08:13:58.651Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cb/3b/93a20758bf4b0a388a97672c7bd8212856bf744f6894fdaa8d2f877815cd/types_webencodings-0.6.0.20261104-py3-none-any.whl", hash = "sha256:a719903a309f35d43a99461e801df94af2def074dec2694423c7a2601ddcc45d", size = 8577, upload-time = "2026-11-04T08:13:57.726Z" },
 ]
 
 [[package]]

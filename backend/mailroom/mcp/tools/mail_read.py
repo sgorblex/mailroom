@@ -13,6 +13,12 @@ import base64
 from datetime import date
 from typing import TYPE_CHECKING, Annotated, Any, Final
 
+from mcp import types
+from pydantic import AfterValidator, AnyUrl, Field, StrictBool
+
+from mailroom.errors import Refusal
+from mailroom.mail import service
+from mailroom.mcp.tool import MAILBOX_READ, Arguments, Tool, content_result, text_result
 from mailroom_core.config import time_zone_name
 from mailroom_core.mail import (
     ATTACHMENT_FILE_NOTE,
@@ -30,12 +36,6 @@ from mailroom_core.mail import (
     thread_text,
 )
 from mailroom_core.render import default_marker, untrusted
-from mcp import types
-from pydantic import AfterValidator, AnyUrl, Field, StrictBool
-
-from mailroom.errors import Refusal
-from mailroom.mail import service
-from mailroom.mcp.tool import MAILBOX_READ, Arguments, Tool, content_result, text_result
 
 if TYPE_CHECKING:
     from mailroom.mcp.tool import ToolCall

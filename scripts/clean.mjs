@@ -25,6 +25,10 @@ function cleanBackend() {
   for (const name of staticNames) {
     removeQuiet(path.join(backendDirectory, name));
   }
+  // The mailroom-core workspace member keeps its own tool caches next to its pyproject.
+  for (const name of [".mypy_cache", ".ruff_cache", ".pytest_cache"]) {
+    removeQuiet(path.join(backendDirectory, "core", name));
+  }
   let entries;
   try {
     entries = fs.readdirSync(backendDirectory, { withFileTypes: true });

@@ -8,9 +8,9 @@ exploratory work. Once an item is done, remove it.
 
 Mailroom is built on projects with their own repositories and checklists. As of 2026-11-09:
 
-- **mailroom-mcp** (`../mailroom-mcp`, GitHub `sgorblex/mailroom-mcp`) holds **mailroom-core**,
-  0.1.3 on PyPI, which the app pins. Its Python port of the server stopped at core: the
-  TypeScript server keeps running on the production host until it is retired (*Family roadmap* below).
+- **mailroom-mcp** (`../mailroom-mcp`, GitHub `sgorblex/mailroom-mcp`): its Python port of the
+  server stopped at core, which now lives in `backend/core`. The TypeScript server keeps running on
+  the production host until it is retired (*Family roadmap* below).
 - **imap-thingy** (`../imap-thingy`, GitHub `sgorblex/imap-thingy`): rules as data (`to_spec()`,
   `imap_thingy.spec`) since 0.5.0, the runner (`imap_thingy.runner`: `run_rules`, `starred_only`,
   the IDLE `monitor`) since 0.6.0; 0.7.0 adds run reports (what each filter matched and did, also
@@ -22,7 +22,7 @@ Mailroom is built on projects with their own repositories and checklists. As of 
 
 In order. The reasons are in [`CONTEXT.md`](CONTEXT.md) — *Where the family is heading*.
 
-- [ ] **Fold mailroom-core into this repository** as a workspace package, with its history.
+- [x] **Fold mailroom-core into this repository** as a workspace package, with its history.
 - [ ] **Editions:** features chosen in config (mail client, MCP, filters) over an always-present
       base.
 - [ ] **Retire mailroom-mcp** once the app's MCP covers its use, per-connector profiles included.

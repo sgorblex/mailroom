@@ -35,7 +35,7 @@ _.file = ".env"
 hide = true
 description = "Install Python dependencies"
 dir = "backend"
-# `uv sync`, leaving the local checkouts in place if `deps-local` chose them (scripts/deps.sh).
+# `uv sync`, leaving the local imap-thingy in place if `deps-local` chose it (scripts/deps.sh).
 run = "../scripts/deps.sh sync"
 
 [tasks.setup-node-web]
@@ -51,11 +51,11 @@ description = "Install Python and Node dependencies"
 depends = ["setup-python", "setup-node-web"]
 
 [tasks.deps-local]
-description = "Use local editable mailroom-core and imap-thingy (../mailroom-mcp, ../imap-thingy; see scripts/deps.sh)"
+description = "Use a local editable imap-thingy (../imap-thingy; see scripts/deps.sh)"
 run = "scripts/deps.sh local"
 
 [tasks.deps-pinned]
-description = "Back to the mailroom-core and imap-thingy sources pinned in backend/pyproject.toml"
+description = "Back to the imap-thingy source pinned in backend/pyproject.toml"
 run = "scripts/deps.sh pinned"
 
 [tasks.dev-db]
@@ -112,7 +112,7 @@ run = "uv run --no-sync python -m mailroom.dev.create_user"
 description = "Ruff + mypy on backend"
 depends = ["setup-python"]
 dir = "backend"
-run = ["uv run --no-sync ruff check . -q", "uv run --no-sync ruff format --check . -q", "uv run --no-sync mypy mailroom"]
+run = ["uv run --no-sync ruff check . -q", "uv run --no-sync ruff format --check . -q", "uv run --no-sync mypy"]
 
 [tasks.check-migrations]
 description = "Verify alembic upgrade head -> downgrade base -> upgrade head on a scratch database"
@@ -151,10 +151,20 @@ depends = ["check-backend", "check-migrations", "check-scripts", "check-version-
 run = "true"
 
 [tasks.test-backend]
-description = "Run backend pytest against TEST_DATABASE_URL (needs `mise run dev-db`)"
+description = "Run the app's and mailroom-core's pytest against TEST_DATABASE_URL (needs `mise run dev-db`)"
 depends = ["setup-python"]
 dir = "backend"
-run = "uv run --no-sync python -m mailroom.dev.wait_for_database --url-env TEST_DATABASE_URL && uv run --no-sync pytest -n auto"
+run = [
+  "uv run --no-sync python -m mailroom.dev.wait_for_database --url-env TEST_DATABASE_URL && uv run --no-sync pytest -n auto",
+  # Core's own run (its pytest config, no app conftest): see test-core.
+  "cd core && uv run --no-sync pytest -q",
+]
+
+[tasks.test-core]
+description = "Run mailroom-core's pytest (backend/core) on its own; its store tests need TEST_DATABASE_URL"
+depends = ["setup-python"]
+dir = "backend/core"
+run = "uv run --no-sync pytest"
 
 [tasks.test-web]
 description = "Vitest for web (both projects)"
@@ -177,7 +187,7 @@ run = "true"
 description = "Ruff auto-fix + format, then mypy (types are not auto-fixed)"
 depends = ["setup-python"]
 dir = "backend"
-run = ["uv run --no-sync ruff check . --fix -q", "uv run --no-sync ruff format . -q", "uv run --no-sync mypy mailroom"]
+run = ["uv run --no-sync ruff check . --fix -q", "uv run --no-sync ruff format . -q", "uv run --no-sync mypy"]
 
 [tasks.fix-web]
 description = "ESLint with --fix on web"

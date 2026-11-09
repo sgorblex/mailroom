@@ -26,4 +26,4 @@ steps:
       - uv sync --locked --all-groups
       - uv run ruff check . -q
       - uv run ruff format --check . -q
-      - uv run mypy mailroom
+      - uv run mypy

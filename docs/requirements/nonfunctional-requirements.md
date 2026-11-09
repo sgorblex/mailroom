@@ -12,7 +12,7 @@ Engineering baseline for Mailroom. Product scope: [`../REQUIREMENTS.md`](../REQU
 | Database | PostgreSQL 18 |
 | Tests | pytest (+ xdist, one database per worker cloned from the migrated `mailroom_test`), Vitest (`node` and `jsdom` projects) |
 | Containers | Podman, `mailroom-api` and `mailroom-web` images; Quadlet for deploy |
-| Component family | mailroom-core and imap-thingy (PyPI; mailroom-core 0.1.2 for `render` and `mail`, 0.1.3 for compose, drafts and send, which the mail client is built on); mailroom-mcp stays standalone, not a dependency ([`../CONTEXT.md`](../CONTEXT.md)) |
+| Component family | mailroom-core, the mail layer, as a uv workspace member in `backend/core` (its own tests run from there: `mise run test-core`); imap-thingy from PyPI; mailroom-mcp, being retired, is not a dependency ([`../CONTEXT.md`](../CONTEXT.md)) |
 | MCP server | the `mcp` SDK's low-level server, Streamable HTTP session manager and bearer-auth middleware, bounded to one minor because the app uses them directly ([`mcp.md`](mcp.md)) |
 
 Tool pins: `mise.toml` (dev), the digest-pinned `.woodpecker/*.yaml` step images (CI), the

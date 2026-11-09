@@ -17,7 +17,6 @@ from email.message import EmailMessage
 from email.utils import format_datetime, make_msgid
 from typing import TYPE_CHECKING, Final
 
-from mailroom_core.store import RevisionConflict, SettingsBusy
 from sqlalchemy.exc import SQLAlchemyError
 
 from mailroom import database
@@ -26,6 +25,7 @@ from mailroom.accounts.secrets_key import secrets_subkey_from_env
 from mailroom.accounts.store import AccountError, load_accounts, save_account, user_store
 from mailroom.auth.users import user_by_username
 from mailroom.db_migrations import applied_revisions, expected_heads
+from mailroom_core.store import RevisionConflict, SettingsBusy
 
 if TYPE_CHECKING:
     from mailroom_core.config import AccountConfig

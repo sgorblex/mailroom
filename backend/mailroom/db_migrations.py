@@ -10,8 +10,6 @@ from alembic import command
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from mailroom_core.store import database_engine
-from mailroom_core.store import migrate as migrate_core_schema
 
 from mailroom.database import get_sync_database_url, load_local_environment
 from mailroom.database_connectivity import (
@@ -21,6 +19,8 @@ from mailroom.database_connectivity import (
     wait_for_sync_database,
 )
 from mailroom.models.base import ALEMBIC_VERSION_TABLE, APP_SCHEMA
+from mailroom_core.store import database_engine
+from mailroom_core.store import migrate as migrate_core_schema
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
