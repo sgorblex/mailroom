@@ -53,6 +53,8 @@ if TYPE_CHECKING:
     from mailroom.accounts.service import Via
     from mailroom.accounts.store import UserAccounts
     from mailroom.context import AppContext
+    from mailroom.mail.pool import MailPool
+    from mailroom.mail.sends import SendRunner
     from mailroom_core.config import AccountConfig, Limits
     from mailroom_core.mail import (
         Attachment,
@@ -138,6 +140,20 @@ def unknown_message() -> Refusal:
     return Refusal("not_found", "not_found", MESSAGES["not_found"], coded=True)
 
 
+def _pool(ctx: AppContext) -> MailPool:
+    if ctx.mail_pool is None:
+        msg = "The mail layer is off: nothing that reads or writes mail is served."
+        raise RuntimeError(msg)
+    return ctx.mail_pool
+
+
+def _runner(ctx: AppContext) -> SendRunner:
+    if ctx.send_runner is None:
+        msg = "The mail layer is off: nothing that sends mail is served."
+        raise RuntimeError(msg)
+    return ctx.send_runner
+
+
 @dataclass(frozen=True, slots=True)
 class _Accounts:
     """The user's accounts as one call found them."""
@@ -214,9 +230,10 @@ def _run[T](
 ) -> T:
     """``work`` on the user's connections, on the accounts ``used``, under the pool's gates and
     deadline (``on_deadline`` called when it passes); every failure a ``Refusal``."""
+    pool = _pool(ctx)
     try:
-        with ctx.mail_pool.lease(ctx, user_id, accounts.revision) as connections:
-            return ctx.mail_pool.call(
+        with pool.lease(ctx, user_id, accounts.revision) as connections:
+            return pool.call(
                 connections, user_id, used, lambda: work(connections), on_deadline=on_deadline
             )
     except MailError as error:
@@ -1079,7 +1096,7 @@ def upload_limit(ctx: AppContext, user_id: int) -> int:
 @contextmanager
 def upload_place(ctx: AppContext, user_id: int) -> Iterator[None]:
     """The user's place for a save's body while it is held, or ``busy`` at once."""
-    with _as_refusals(), ctx.mail_pool.upload(user_id):
+    with _as_refusals(), _pool(ctx).upload(user_id):
         yield
 
 
@@ -1384,7 +1401,7 @@ def _admit(
     draft's key guards a retry only while the draft exists, and the send removes the draft, so a
     caller must treat that refusal as not confirmed."""
     with _as_refusals():
-        slot = ctx.send_runner.reserve(user_id)
+        slot = _runner(ctx).reserve(user_id)
     stop = threading.Event()
     limits = accounts.write_limits
 

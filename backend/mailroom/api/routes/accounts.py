@@ -1,5 +1,5 @@
-"""Each user's mail accounts: list, add, edit, remove, test the login, list the folders, and the
-Run filters switch. Only the signed-in user's own: another user's account id is a 404."""
+"""Each user's mail accounts: list, add, edit, remove and test the login. Only the signed-in user's
+own: another user's account id is a 404."""
 
 from __future__ import annotations
 
@@ -60,15 +60,6 @@ class LoginTest(BaseModel):
     message: str | None = None
 
 
-class Folder(BaseModel):
-    path: list[str]
-    """Segments, split on the server's delimiter: ``["INBOX"]``, ``["Archive", "2026"]``."""
-
-
-class FilterSettings(BaseModel):
-    run_filters: bool
-
-
 AccountId = Annotated[str, Path(min_length=1, max_length=64)]
 
 
@@ -123,23 +114,3 @@ def _log_test(user_id: int, account_id: str, outcome: str) -> None:
             "outcome": outcome,
         },
     )
-
-
-@accounts_router.get("/{account_id}/folders")
-def folders(account_id: AccountId, ctx: Context, user: CurrentUser) -> list[Folder]:
-    return [Folder(path=path) for path in service.account_folders(ctx, user.id, account_id)]
-
-
-@accounts_router.get("/{account_id}/filter-settings")
-def filter_settings(
-    account_id: AccountId, ctx: Context, db: DbSession, user: CurrentUser
-) -> FilterSettings:
-    return FilterSettings(run_filters=service.run_filters(ctx, db, user.id, account_id))
-
-
-@accounts_router.put("/{account_id}/filter-settings")
-def change_filter_settings(
-    account_id: AccountId, body: FilterSettings, ctx: Context, db: DbSession, user: CurrentUser
-) -> FilterSettings:
-    on = service.set_run_filters(ctx, db, user.id, account_id, on=body.run_filters)
-    return FilterSettings(run_filters=on)

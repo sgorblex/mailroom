@@ -113,7 +113,7 @@ def delete_user(user_id: UserId, db: DbSession, ctx: Context, admin: CurrentAdmi
     except SettingsBusy:
         msg = "Their accounts are being saved: try again."
         raise refused(503, "user_accounts_busy", msg) from None
-    ctx.mail_pool.invalidate(user_id)
+    ctx.drop_mail_connections(user_id)
     logger.info(
         "user_removed",
         extra={"event": "user_removed", "user_id": admin.id, "target_user_id": user_id},

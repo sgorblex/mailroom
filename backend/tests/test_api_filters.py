@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import logging
+import os
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import pytest
 from imap_thingy.filters import MatchTimeoutError
 from imap_thingy.spec import json_schema, load_filter
+from imapclient import IMAPClient
 from sqlalchemy import select, text
 
+from mailroom.accounts.mail import mail_ssl_context
 from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
 from mailroom.auth.users import create_user
 from mailroom.filters import runs as filter_runs
@@ -18,13 +21,15 @@ from mailroom.filters.service import MAX_FILTERS
 from mailroom.models import Filter, FilterRun, RuleSet
 from mailroom.worker.app import PROCRASTINATE_SCHEMA
 from tests.conftest import PASSWORD
-from tests.test_api_accounts import new_account
+from tests.test_api_accounts import dev_mailbox_account, new_account
 
 if TYPE_CHECKING:
+    from fastapi import FastAPI
     from sqlalchemy.orm import Session
     from starlette.testclient import TestClient
 
     from mailroom.models import User
+    from mailroom_core.testing import ImapTestServer
 
 FROM_SHOP = {"type": "from_is", "args": {"addr": "news@shop.example"}}
 TO_ARCHIVE = {"type": "move_to", "args": {"folder": ["Archive"]}}
@@ -61,6 +66,8 @@ def add_filter(client: TestClient, rule_set_id: int, name: str, spec: dict[str, 
 
 def test_signed_out_browsers_are_refused(api_client: TestClient) -> None:
     assert api_client.get("/api/v1/filters/schema").status_code == 401
+    assert api_client.get("/api/v1/accounts/work/folders").status_code == 401
+    assert api_client.get("/api/v1/accounts/work/filter-settings").status_code == 401
     assert api_client.get("/api/v1/accounts/work/rule-sets").status_code == 401
     assert api_client.get("/api/v1/rule-sets/1").status_code == 401
     assert api_client.post("/api/v1/rule-sets/1/dry-run").status_code == 401
@@ -69,6 +76,66 @@ def test_signed_out_browsers_are_refused(api_client: TestClient) -> None:
 
 def test_the_schema_is_imap_thingys(user_client: TestClient) -> None:
     assert user_client.get("/api/v1/filters/schema").json() == json_schema()
+
+
+def test_run_filters_is_off_until_turned_on(user_client: TestClient, account: str) -> None:
+    settings = f"/api/v1/accounts/{account}/filter-settings"
+    assert user_client.get(settings).json() == {"run_filters": False}
+
+    assert user_client.put(settings, json={"run_filters": True}).json() == {"run_filters": True}
+    assert user_client.get(settings).json() == {"run_filters": True}
+    assert user_client.get("/api/v1/accounts").json()[0]["run_filters"] is True
+
+    # Removing the account takes the switch with it.
+    assert user_client.delete(f"/api/v1/accounts/{account}").status_code == 204
+    assert user_client.post("/api/v1/accounts", json=new_account()).status_code == 201
+    assert user_client.get(settings).json() == {"run_filters": False}
+
+
+def test_the_folder_picker_answers_mailbox_failures(
+    user_client: TestClient,
+    account: str,
+    application: FastAPI,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mailroom_core.crypto import secrets_subkey
+
+    # Port 9 on loopback is closed: a real connection, refused.
+    response = user_client.get(f"/api/v1/accounts/{account}/folders")
+    assert (response.status_code, response.json()["detail"]["code"]) == (502, "unreachable")
+
+    starttls = new_account("home", imap={"host": "127.0.0.1", "port": 143, "tls": "starttls"})
+    assert user_client.post("/api/v1/accounts", json=starttls).status_code == 201
+    response = user_client.get("/api/v1/accounts/home/folders")
+    assert (response.status_code, response.json()["detail"]["code"]) == (
+        409,
+        "starttls_unsupported",
+    )
+
+    monkeypatch.setattr(application.state, "secrets_subkey", secrets_subkey(os.urandom(32)))
+    response = user_client.get(f"/api/v1/accounts/{account}/folders")
+    assert (response.status_code, response.json()["detail"]["code"]) == (409, "password_missing")
+
+
+def test_the_dev_mailbox_lists_folders(
+    user_client: TestClient,
+    imap_server: ImapTestServer,
+    application: FastAPI,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    account = dev_mailbox_account(user_client, imap_server, application, monkeypatch, "folders")
+    conn = IMAPClient(imap_server.host, imap_server.port, ssl=True, ssl_context=mail_ssl_context())
+    try:
+        conn.login(account["login"], imap_server.password)
+        conn.create_folder("Archive/2026")
+    finally:
+        conn.logout()
+
+    folders = user_client.get("/api/v1/accounts/work/folders").json()
+    assert {"path": ["INBOX"]} in folders
+    assert {"path": ["Archive"]} in folders
+    # Split on the server's delimiter ("/" here), not imap-thingy's default.
+    assert {"path": ["Archive", "2026"]} in folders
 
 
 def test_a_user_adds_edits_and_removes_a_rule_set(
@@ -324,6 +391,10 @@ def test_users_see_only_their_own_filters(
     user_client.cookies.set(SESSION_COOKIE_NAME, create_session(db_session, bob))
 
     path = f"/api/v1/rule-sets/{rule_set_id}"
+    assert user_client.get("/api/v1/accounts/work/folders").status_code == 404
+    assert user_client.get("/api/v1/accounts/work/filter-settings").status_code == 404
+    on = {"run_filters": True}
+    assert user_client.put("/api/v1/accounts/work/filter-settings", json=on).status_code == 404
     assert user_client.get("/api/v1/accounts/work/rule-sets").status_code == 404
     assert user_client.post("/api/v1/accounts/work/rule-sets", json=rule_set()).status_code == 404
     assert user_client.get(path).status_code == 404

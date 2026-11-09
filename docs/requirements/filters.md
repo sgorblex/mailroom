@@ -61,6 +61,7 @@ Under `/api/v1`, signed-in user's own data only (another user's id is a 404).
 
 | Route | Does |
 | --- | --- |
+| `GET /accounts/{id}/folders` | An account's folders, for the folder picker (`[{"path": [segments]}]`) |
 | `GET`, `PUT /accounts/{id}/filter-settings` | Read, set *Run filters* (`{"run_filters": bool}`) |
 | `GET /filters/schema` | imap-thingy's filter spec JSON Schema (`json_schema()`) |
 | `GET`, `POST /accounts/{id}/rule-sets` | List, create an account's rule sets |

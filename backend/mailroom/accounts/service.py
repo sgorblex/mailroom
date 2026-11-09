@@ -1,6 +1,5 @@
-"""A user's mail accounts as every front end handles them: listed, added, edited, removed, their
-folders, and the Run filters switch. Only the user's own: another user's account id is
-``not_found``. Raises ``mailroom.errors.Refusal``."""
+"""A user's mail accounts as every front end handles them: listed, added, edited and removed. Only
+the user's own: another user's account id is ``not_found``. Raises ``mailroom.errors.Refusal``."""
 
 from __future__ import annotations
 
@@ -11,7 +10,7 @@ from typing import TYPE_CHECKING, Final, Literal
 from pydantic import BaseModel
 
 from mailroom.accounts import app_data
-from mailroom.accounts.mail import MailFailure, list_folders, mailbox_account
+from mailroom.accounts.mail import mailbox_account
 from mailroom.accounts.store import (
     AccountError,
     AccountNotFound,
@@ -20,7 +19,7 @@ from mailroom.accounts.store import (
     password_account,
     save_account,
 )
-from mailroom.errors import SECRETS_KEY_MISSING, Refusal, mail_refusal
+from mailroom.errors import SECRETS_KEY_MISSING, Refusal
 from mailroom_core.store import RevisionConflict, SettingsBusy
 
 if TYPE_CHECKING:
@@ -201,7 +200,7 @@ def change_account(
         raise _account_refusal(exc) from None
     except (RevisionConflict, SettingsBusy) as exc:
         raise _store_refusal(exc) from None
-    ctx.mail_pool.invalidate(user_id, account_id)
+    ctx.drop_mail_connections(user_id, account_id)
     _log(
         "account_changed",
         user_id,
@@ -227,7 +226,7 @@ def remove_account(
         raise account_not_found() from None
     except (RevisionConflict, SettingsBusy) as exc:
         raise _store_refusal(exc) from None
-    ctx.mail_pool.invalidate(user_id, account_id)
+    ctx.drop_mail_connections(user_id, account_id)
     _log("account_removed", user_id, via, account_id=account_id)
 
 
@@ -240,36 +239,3 @@ def imap_account(ctx: AppContext, user_id: int, account_id: str) -> Account:
         return mailbox_account(ctx.store(user_id), key, ctx.ssl_context, account_id)
     except AccountNotFound:
         raise account_not_found() from None
-
-
-def account_folders(
-    ctx: AppContext, user_id: int, account_id: str, *, seconds: float | None = None
-) -> list[list[str]]:
-    """The account's folders, each as its path segments (``["Archive", "2026"]``), within
-    ``seconds`` when given (``mailroom.accounts.mail.list_folders``)."""
-    try:
-        return list_folders(imap_account(ctx, user_id, account_id), seconds=seconds)
-    except MailFailure as failure:
-        raise mail_refusal(failure.code, failure.message) from None
-
-
-def run_filters(ctx: AppContext, db: Session, user_id: int, account_id: str) -> bool:
-    """The account's Run filters switch (off until turned on)."""
-    require_account(ctx.store(user_id), account_id)
-    return app_data.run_filters_by_account(db, user_id).get(account_id, False)
-
-
-def set_run_filters(
-    ctx: AppContext,
-    db: Session,
-    user_id: int,
-    account_id: str,
-    *,
-    on: bool,
-    via: Via = "web",
-) -> bool:
-    """Turn the account's Run filters switch ``on`` or off; the new state."""
-    require_account(ctx.store(user_id), account_id)
-    app_data.set_run_filters(db, user_id, account_id, run_filters=on)
-    _log("run_filters_changed", user_id, via, account_id=account_id, run_filters=on)
-    return on

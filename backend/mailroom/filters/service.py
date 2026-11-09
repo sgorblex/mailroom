@@ -1,6 +1,7 @@
-"""A user's filters as every front end handles them: rule sets per account folder, their ordered
-filters, dry runs, Run now and the run history. Only the user's own: another user's id is
-``not_found``. Raises ``mailroom.errors.Refusal``.
+"""A user's filters as every front end handles them: the folders and Run filters switch of their
+accounts, rule sets per account folder, their ordered filters, dry runs, Run now and the run
+history. Only the user's own: another user's id is ``not_found``. Raises
+``mailroom.errors.Refusal``.
 
 Specification: ``docs/requirements/filters.md``.
 """
@@ -14,7 +15,9 @@ from typing import TYPE_CHECKING, Annotated, Any, Final, Literal
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
-from mailroom.accounts.service import Via, require_account
+from mailroom.accounts import app_data
+from mailroom.accounts.mail import MailFailure, list_folders
+from mailroom.accounts.service import Via, imap_account, require_account
 from mailroom.errors import Refusal, mail_refusal
 from mailroom.filters.runs import (
     DryRunBusy,
@@ -51,9 +54,9 @@ MAX_FILTERS: Final = 100
 class RuleSetFields(BaseModel):
     name: Name
     folder: list[Segment] = Field(min_length=1, max_length=32)
-    """Path segments, as the REST folder picker lists them
-    (``mailroom.accounts.service.account_folders``, imap-thingy's) and MCP's ``folders_list``
-    gives them as ``segments`` (mailroom-core's LIST through ``mailroom.mail.service``)."""
+    """Path segments, as the REST folder picker lists them (``account_folders``, imap-thingy's)
+    and MCP's ``folders_list`` gives them as ``segments`` (mailroom-core's LIST through
+    ``mailroom.mail.service``)."""
     trigger: Trigger
     interval_minutes: IntervalMinutes | None = None
     """``scheduled`` only, and required there."""
@@ -218,6 +221,39 @@ def checked_spec(spec: Spec) -> Spec:
         return normalized_spec(spec)
     except InvalidSpecError as exc:
         raise Refusal("invalid", "invalid_spec", str(exc)) from None
+
+
+def account_folders(
+    ctx: AppContext, user_id: int, account_id: str, *, seconds: float | None = None
+) -> list[list[str]]:
+    """The account's folders, each as its path segments (``["Archive", "2026"]``), within
+    ``seconds`` when given (``mailroom.accounts.mail.list_folders``)."""
+    try:
+        return list_folders(imap_account(ctx, user_id, account_id), seconds=seconds)
+    except MailFailure as failure:
+        raise mail_refusal(failure.code, failure.message) from None
+
+
+def run_filters(ctx: AppContext, db: Session, user_id: int, account_id: str) -> bool:
+    """The account's Run filters switch (off until turned on)."""
+    require_account(ctx.store(user_id), account_id)
+    return app_data.run_filters_by_account(db, user_id).get(account_id, False)
+
+
+def set_run_filters(
+    ctx: AppContext,
+    db: Session,
+    user_id: int,
+    account_id: str,
+    *,
+    on: bool,
+    via: Via = "web",
+) -> bool:
+    """Turn the account's Run filters switch ``on`` or off; the new state."""
+    require_account(ctx.store(user_id), account_id)
+    app_data.set_run_filters(db, user_id, account_id, run_filters=on)
+    _log("run_filters_changed", user_id, via, account_id=account_id, run_filters=on)
+    return on
 
 
 def rule_sets(ctx: AppContext, db: Session, user_id: int, account_id: str) -> list[RuleSetOut]:

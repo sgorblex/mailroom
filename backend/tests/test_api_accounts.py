@@ -8,7 +8,6 @@ from functools import partial
 from typing import TYPE_CHECKING, Any
 
 import pytest
-from imapclient import IMAPClient
 from sqlalchemy import text
 
 from mailroom.accounts import service as accounts_service
@@ -207,27 +206,8 @@ def test_users_see_only_their_own_accounts(user_client: TestClient, db_session: 
     assert user_client.put("/api/v1/accounts/work", json=edited(new_account())).status_code == 404
     assert user_client.delete("/api/v1/accounts/work").status_code == 404
     assert user_client.post("/api/v1/accounts/work/test").status_code == 404
-    assert user_client.get("/api/v1/accounts/work/folders").status_code == 404
-    assert user_client.get("/api/v1/accounts/work/filter-settings").status_code == 404
-    off = {"run_filters": True}
-    assert user_client.put("/api/v1/accounts/work/filter-settings", json=off).status_code == 404
     # The same id is theirs to use.
     assert user_client.post("/api/v1/accounts", json=new_account()).status_code == 201
-
-
-def test_run_filters_is_off_until_turned_on(user_client: TestClient) -> None:
-    assert user_client.post("/api/v1/accounts", json=new_account()).status_code == 201
-    settings = "/api/v1/accounts/work/filter-settings"
-    assert user_client.get(settings).json() == {"run_filters": False}
-
-    assert user_client.put(settings, json={"run_filters": True}).json() == {"run_filters": True}
-    assert user_client.get(settings).json() == {"run_filters": True}
-    assert user_client.get("/api/v1/accounts").json()[0]["run_filters"] is True
-
-    # Removing the account takes the switch with it.
-    assert user_client.delete("/api/v1/accounts/work").status_code == 204
-    assert user_client.post("/api/v1/accounts", json=new_account()).status_code == 201
-    assert user_client.get(settings).json() == {"run_filters": False}
 
 
 def test_without_a_secrets_key_nothing_is_stored(
@@ -280,17 +260,12 @@ def test_an_unreachable_server_is_reported(user_client: TestClient) -> None:
     assert (result["ok"], result["code"]) == (False, "unreachable")
     assert MAILBOX_PASSWORD not in result["message"]
 
-    response = user_client.get("/api/v1/accounts/work/folders")
-    assert response.status_code == 502
-    assert response.json()["detail"]["code"] == "unreachable"
-
 
 def test_starttls_imap_is_refused_before_connecting(user_client: TestClient) -> None:
     account = new_account(imap={"host": "127.0.0.1", "port": 143, "tls": "starttls"})
     assert user_client.post("/api/v1/accounts", json=account).status_code == 201
     result = user_client.post("/api/v1/accounts/work/test").json()
     assert (result["ok"], result["code"]) == (False, "starttls_unsupported")
-    assert user_client.get("/api/v1/accounts/work/folders").status_code == 409
 
 
 def test_a_password_that_does_not_open_is_reported(
@@ -302,8 +277,6 @@ def test_a_password_that_does_not_open_is_reported(
     monkeypatch.setattr(application.state, "secrets_subkey", secrets_subkey(os.urandom(32)))
     result = user_client.post("/api/v1/accounts/work/test").json()
     assert (result["ok"], result["code"]) == (False, "password_missing")
-    response = user_client.get("/api/v1/accounts/work/folders")
-    assert (response.status_code, response.json()["detail"]["code"]) == (409, "password_missing")
 
 
 def _core_rows(db: Session, user_id: int) -> dict[str, int]:
@@ -385,32 +358,32 @@ def test_a_user_whose_accounts_are_being_saved_is_not_removed(
     assert app_data.run_filters_by_account(db_session, bob.id) == {"work": True}
 
 
-def test_the_dev_mailbox_logs_in_and_lists_folders(
+def dev_mailbox_account(
+    client: TestClient,
+    imap_server: ImapTestServer,
+    application: FastAPI,
+    monkeypatch: pytest.MonkeyPatch,
+    prefix: str,
+) -> dict[str, Any]:
+    """An account ``work`` on a fresh login of the Dovecot ``IMAP_TEST_HOST`` names (the dev one:
+    ``IMAP_TEST_PORT=33993``, ``MAILROOM_MAIL_CA_FILE`` its CA); the tests using it are skipped
+    without it."""
+    monkeypatch.setattr(application.state, "mail_ssl_context", mail_ssl_context())
+    login = imap_server.unique_user(prefix)
+    endpoint = {"host": imap_server.host, "port": imap_server.port, "tls": "implicit"}
+    account = new_account(login=login, password=imap_server.password, imap=endpoint)
+    assert client.post("/api/v1/accounts", json=account).status_code == 201
+    return account
+
+
+def test_the_dev_mailbox_logs_in(
     user_client: TestClient,
     imap_server: ImapTestServer,
     application: FastAPI,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Against the Dovecot ``IMAP_TEST_HOST`` names (the dev one: ``IMAP_TEST_PORT=33993``,
-    ``MAILROOM_MAIL_CA_FILE`` its CA); skipped without it."""
-    monkeypatch.setattr(application.state, "mail_ssl_context", mail_ssl_context())
-    login = imap_server.unique_user("accounts")
-    endpoint = {"host": imap_server.host, "port": imap_server.port, "tls": "implicit"}
-    account = new_account(login=login, password=imap_server.password, imap=endpoint)
-    assert user_client.post("/api/v1/accounts", json=account).status_code == 201
-    conn = IMAPClient(imap_server.host, imap_server.port, ssl=True, ssl_context=mail_ssl_context())
-    try:
-        conn.login(login, imap_server.password)
-        conn.create_folder("Archive/2026")
-    finally:
-        conn.logout()
-
+    account = dev_mailbox_account(user_client, imap_server, application, monkeypatch, "accounts")
     assert user_client.post("/api/v1/accounts/work/test").json()["ok"] is True
-    folders = user_client.get("/api/v1/accounts/work/folders").json()
-    assert {"path": ["INBOX"]} in folders
-    assert {"path": ["Archive"]} in folders
-    # Split on the server's delimiter ("/" here), not imap-thingy's default.
-    assert {"path": ["Archive", "2026"]} in folders
 
     change = edited(account) | {"password": "wrong password"}
     assert user_client.put("/api/v1/accounts/work", json=change).status_code == 200

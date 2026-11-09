@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, Annotated, Any, Final
 from imap_thingy.spec import json_schema
 from pydantic import Field
 
-from mailroom.accounts.service import run_filters
 from mailroom.filters import service
 from mailroom.filters.service import (
     MAX_FILTERS,
@@ -244,7 +243,7 @@ async def _rule_set_enable(args: RuleSetArguments, call: ToolCall) -> JsonObject
             db, call.user_id, args.rule_set_id, RuleSetPatch(enabled=True), via="mcp"
         )
         out: JsonObject = {"rule_set": changed.model_dump(mode="json")}
-        if not run_filters(call.ctx, db, call.user_id, changed.account_id):
+        if not service.run_filters(call.ctx, db, call.user_id, changed.account_id):
             out["note"] = RUN_FILTERS_OFF_NOTE
         return out
 

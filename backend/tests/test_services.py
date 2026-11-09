@@ -93,11 +93,11 @@ def test_another_users_rows_are_not_found(
     filter_id: int,
 ) -> None:
     calls: list[Callable[[], object]] = [
-        lambda: accounts.run_filters(ctx, db_session, bob.id, account),
-        lambda: accounts.set_run_filters(ctx, db_session, bob.id, account, on=True),
         lambda: accounts.change_account(ctx, db_session, bob.id, account, _fields(), None),
         lambda: accounts.remove_account(ctx, db_session, bob.id, account),
-        lambda: accounts.account_folders(ctx, bob.id, account),
+        lambda: filters.run_filters(ctx, db_session, bob.id, account),
+        lambda: filters.set_run_filters(ctx, db_session, bob.id, account, on=True),
+        lambda: filters.account_folders(ctx, bob.id, account),
         lambda: filters.rule_sets(ctx, db_session, bob.id, account),
         lambda: filters.add_rule_set(
             ctx,
@@ -179,7 +179,7 @@ def test_run_now_keeps_its_guards(
     assert refusal(lambda: filters.run_now(db_session, user.id, rule_set_id)).code == (
         "run_filters_off"
     )
-    accounts.set_run_filters(ctx, db_session, user.id, account, on=True)
+    filters.set_run_filters(ctx, db_session, user.id, account, on=True)
     assert refusal(lambda: filters.run_now(db_session, user.id, rule_set_id)).code == (
         "rule_set_disabled"
     )
@@ -236,6 +236,16 @@ def test_writes_log_where_they_came_from(
     filters.change_rule_set(db_session, user.id, rule_set_id, RuleSetPatch(name="x"), via="mcp")
     [record] = [r for r in caplog.records if r.msg == "rule_set_changed"]
     assert (record.__dict__["via"], record.__dict__["user_id"]) == ("mcp", user.id)
+
+
+def test_accounts_change_without_the_mail_layer(
+    ctx: AppContext, db_session: Session, user: User, account: str
+) -> None:
+    bare = replace(ctx, mail_pool=None, send_runner=None)
+    changed = accounts.change_account(bare, db_session, user.id, account, _fields(), None)
+    assert changed.id == account
+    accounts.remove_account(bare, db_session, user.id, account)
+    assert accounts.listed_accounts(bare, db_session, user.id) == []
 
 
 def test_without_a_secrets_key_no_account_is_added(

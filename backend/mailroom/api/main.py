@@ -201,8 +201,12 @@ async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
         async with mcp.running(mcp_settings, verifier):
             yield
     finally:
-        application.state.send_runner.close()
-        application.state.mail_pool.close()
+        runner: SendRunner | None = application.state.send_runner
+        if runner is not None:
+            runner.close()
+        pool: MailPool | None = application.state.mail_pool
+        if pool is not None:
+            pool.close()
         if mcp_provider is not None:
             mcp_provider.close()
         sso: Sso | None = application.state.sso

@@ -3,7 +3,7 @@ folders, and the Run filters switch.
 
 ``folders_list`` lists through ``mailroom.mail.service`` (mailroom-core's LIST, the server's
 paths and delimiter, ``segments`` split on it); the REST folder picker of a rule set still lists
-through ``mailroom.accounts.service.account_folders`` (imap-thingy's segments). Both name a
+through ``mailroom.filters.service.account_folders`` (imap-thingy's segments). Both name a
 folder by the same segments."""
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Annotated, Any, Final
 from pydantic import Field, StrictBool
 
 from mailroom.accounts import service
+from mailroom.filters import service as filters_service
 from mailroom.mail import service as mail_service
 from mailroom.mcp.tool import MAILBOX_READ, READ, Arguments, Hints, JsonObject, Tool
 
@@ -77,7 +78,7 @@ async def _folders_list(args: FoldersArguments, call: ToolCall) -> JsonObject:
 
 async def _account_run_filters(args: RunFiltersArguments, call: ToolCall) -> JsonObject:
     on = await call.db(
-        lambda db: service.set_run_filters(
+        lambda db: filters_service.set_run_filters(
             call.ctx, db, call.user_id, args.account_id, on=args.on, via="mcp"
         )
     )

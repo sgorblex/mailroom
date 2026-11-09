@@ -2,7 +2,7 @@
 user, built on first use from the user's ``AccountStore`` (settings and sealed passwords).
 
 A user's connections are dropped when idle for ``IDLE_SECONDS``, when one of their accounts is
-changed or removed (``mailroom.accounts.service`` calls ``invalidate``), and when their stored
+changed or removed or they are (``AppContext.drop_mail_connections``), and when their stored
 settings are at a newer revision than the one the connections were built under: a change made by
 another process (a second API worker, mailroom-mcp on the same database) is noticed on the next
 call. mailroom-core looks an account and its password up again whenever it opens a connection.

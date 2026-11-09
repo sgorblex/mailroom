@@ -274,8 +274,8 @@ bounded to one minor because the server relies on its handlers.
 - **API** (`/api/v1/accounts`, the signed-in user's own; another user's id is a 404): list, add
   (`POST`, with the password), edit (`PUT /{id}`, without the id; no password keeps it), remove
   (`DELETE /{id}`, its switch too), `POST /{id}/test` (an IMAP login and logout:
-  `{"ok", "code", "message"}`), `GET /{id}/folders` (`[{"path": [segments]}]`), `GET`/`PUT
-  /{id}/filter-settings` (`{"run_filters"}`). Responses carry `has_password`, never the password.
+  `{"ok", "code", "message"}`). Responses carry `has_password`, never the password. An account's
+  folders and its Run filters switch are the filters' routes ([Filters](#filters)).
 - **Checks:** mailroom-core's config models (`core_settings_or_issues`) validate the whole document
   before each save; a refusal is 400 `{"detail": {"code": "invalid_account" | "account_exists",
   "message", "issues": [{"path", "message"}]}}`, `path` inside the account. A save racing another
@@ -287,8 +287,8 @@ bounded to one minor because the server relies on its handlers.
   wording, the password masked; a folder listing answers it by `mail_status` (502 by default,
   504 for `timeout`, 409 for `password_missing` / `starttls_unsupported`).
 - **Logs:** `account_added`, `account_changed`, `account_removed`, `account_tested` (with
-  `outcome`), `run_filters_changed`, each with `user_id` and `account_id`, and the changes with
-  `via` (`web`, or `mcp` for the MCP server); never a login, a host or a password.
+  `outcome`), each with `user_id` and `account_id`, and the changes with `via` (`web`, or `mcp`
+  for the MCP server); never a login, a host or a password.
 - **Removing a user** removes, in the same transaction, the app's rows about their accounts and
   mailroom-core's (`forget_user`: settings with their history, sealed passwords, send log). While
   a save of their accounts holds them past mailroom-core's lock timeout, nothing is removed: 503
@@ -393,6 +393,7 @@ What they do and the route list: [`filters.md`](filters.md). How:
   theirs, with their accounts. Each rule
   set keeps its newest 100 runs, and every run still queued or in progress. A report is stored
   without NUL characters (`jsonb` refuses them; a header may decode to one).
+- **The folder picker's** `GET /accounts/{id}/folders` lists through imap-thingy.
 - **Refusals** are 400 `{"detail": {"code", "message"}}`: `invalid_spec` (imap-thingy's
   `SpecError` text, or the JSON Schema's or the regular expression's complaint, compiled with
   `regex` as imap-thingy matches it), `invalid_rule_set` (an `interval_minutes` exactly when
@@ -452,9 +453,10 @@ What they do and the route list: [`filters.md`](filters.md). How:
   `error` repeats the failure. `error` is `<code>: <message>`.
 - **Logs:** `rule_set_added`, `rule_set_changed`, `rule_set_removed`, `filter_added`,
   `filter_changed`, `filter_removed`, `filters_reordered`, `dry_run` (with `outcome`),
-  `run_requested`; from the worker `run_queued` and `rule_set_run` (with `trigger` and `outcome`:
-  `ok`, the error's code, or `gone`); with `user_id` and `rule_set_id`, `filter_id` or `run_id`,
-  and from the API `via` as for accounts; never a spec or a message.
+  `run_requested`, `run_filters_changed` (with `account_id`); from the worker `run_queued` and
+  `rule_set_run` (with `trigger` and `outcome`: `ok`, the error's code, or `gone`); with `user_id`
+  and `rule_set_id`, `filter_id` or `run_id`, and from the API `via` as for accounts; never a spec
+  or a message.
 
 ## Data persistence & schema migrations
 

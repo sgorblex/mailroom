@@ -1,5 +1,6 @@
-"""Each user's filters: rule sets per account folder, their ordered filters, dry runs, Run now and
-the run history. Only the signed-in user's own: another user's id is a 404.
+"""Each user's filters: the folders and Run filters switch of their accounts, rule sets per account
+folder, their ordered filters, dry runs, Run now and the run history. Only the signed-in user's
+own: another user's id is a 404.
 
 Specification: ``docs/requirements/filters.md``.
 """
@@ -31,6 +32,15 @@ AccountId = Annotated[str, Path(min_length=1, max_length=64)]
 RowId = Annotated[int, Path(ge=1)]
 
 
+class Folder(BaseModel):
+    path: list[str]
+    """Segments, split on the server's delimiter: ``["INBOX"]``, ``["Archive", "2026"]``."""
+
+
+class FilterSettings(BaseModel):
+    run_filters: bool
+
+
 class FilterOrder(BaseModel):
     filter_ids: list[int] = Field(max_length=1000)
     """Every filter of the rule set, each once, in the new order."""
@@ -40,6 +50,26 @@ class FilterOrder(BaseModel):
 def filter_schema() -> dict[str, Any]:
     """imap-thingy's JSON Schema (draft 2020-12) of a filter spec."""
     return json_schema()
+
+
+@filters_router.get("/accounts/{account_id}/folders")
+def folders(account_id: AccountId, ctx: Context, user: CurrentUser) -> list[Folder]:
+    return [Folder(path=path) for path in service.account_folders(ctx, user.id, account_id)]
+
+
+@filters_router.get("/accounts/{account_id}/filter-settings")
+def filter_settings(
+    account_id: AccountId, ctx: Context, db: DbSession, user: CurrentUser
+) -> FilterSettings:
+    return FilterSettings(run_filters=service.run_filters(ctx, db, user.id, account_id))
+
+
+@filters_router.put("/accounts/{account_id}/filter-settings")
+def change_filter_settings(
+    account_id: AccountId, body: FilterSettings, ctx: Context, db: DbSession, user: CurrentUser
+) -> FilterSettings:
+    on = service.set_run_filters(ctx, db, user.id, account_id, on=body.run_filters)
+    return FilterSettings(run_filters=on)
 
 
 @filters_router.get("/accounts/{account_id}/rule-sets")
