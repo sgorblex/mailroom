@@ -1,8 +1,9 @@
 """Throwaway Postgres databases for the store tests, on the server TEST_DATABASE_URL names.
 
-mise.toml points it at the dev Postgres (`mise run dev-db`); Woodpecker runs one as a service. The
-database it names is only connected to, for creating and dropping others: each test gets a fresh
-copy of a template migrated once per session, and every database made here is dropped at the end.
+mise.toml points it at the dev Postgres (`mise run dev-db`); Woodpecker runs one as a detached
+step. The database it names is only connected to, for creating and dropping others: each test gets
+a fresh copy of a template migrated once per session, and every database made here is dropped at
+the end.
 """
 
 import os

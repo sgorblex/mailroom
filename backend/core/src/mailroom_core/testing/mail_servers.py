@@ -1,6 +1,6 @@
 """The throwaway Dovecot (IMAP) and Mailpit (SMTP sink) the integration tests run against.
 
-`mise run test-integration-py` starts both locally; Woodpecker runs them as services. The same
+`mise run test-core-mail` starts both locally; Woodpecker runs them as detached steps. The same
 variables as the TypeScript tests (`src/testing/imap.ts`, `src/testing/smtp.ts`) locate them.
 """
 

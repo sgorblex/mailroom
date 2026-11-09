@@ -161,10 +161,15 @@ run = [
 ]
 
 [tasks.test-core]
-description = "Run mailroom-core's pytest (backend/core) on its own; its store tests need TEST_DATABASE_URL"
+description = "Run mailroom-core's pytest (backend/core) on its own; its store tests need `mise run dev-db`"
 depends = ["setup-python"]
 dir = "backend/core"
 run = "uv run --no-sync pytest"
+
+[tasks.test-core-mail]
+description = "Run mailroom-core's pytest with throwaway Dovecot and Mailpits (scripts/test-mail.sh); its store tests need `mise run dev-db`"
+depends = ["setup-python"]
+run = "scripts/test-mail.sh uv run --directory backend/core --no-sync pytest -q -rs"
 
 [tasks.test-web]
 description = "Vitest for web (both projects)"

@@ -22,7 +22,7 @@ _guard = pytest.StashKey[ExitStack]()
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers",
-        "integration: needs the Dovecot and Mailpit test servers; `mise run test-integration-py`",
+        "integration: needs the Dovecot and Mailpit test servers; `mise run test-core-mail`",
     )
     stack = ExitStack()
     stack.enter_context(no_network())
@@ -38,7 +38,7 @@ def imap_server() -> ImapTestServer:
     """The Dovecot test server; skips the test without IMAP_TEST_HOST."""
     server = ImapTestServer.from_env()
     if server is None:
-        pytest.skip("IMAP_TEST_HOST is not set: run `mise run test-integration-py`")
+        pytest.skip("IMAP_TEST_HOST is not set: run `mise run test-core-mail`")
     return server
 
 
@@ -47,7 +47,7 @@ def smtp_server() -> SmtpTestServer:
     """The Mailpit test server; skips the test without SMTP_TEST_HOST."""
     server = SmtpTestServer.from_env()
     if server is None:
-        pytest.skip("SMTP_TEST_HOST is not set: run `mise run test-integration-py`")
+        pytest.skip("SMTP_TEST_HOST is not set: run `mise run test-core-mail`")
     return server
 
 
@@ -56,7 +56,7 @@ def smtp_starttls_server() -> SmtpTestServer:
     """The Mailpit test server offering STARTTLS; skips the test without SMTP_TEST_STARTTLS_HOST."""
     server = SmtpTestServer.starttls_from_env()
     if server is None:
-        pytest.skip("SMTP_TEST_STARTTLS_HOST is not set: run `mise run test-integration-py`")
+        pytest.skip("SMTP_TEST_STARTTLS_HOST is not set: run `mise run test-core-mail`")
     return server
 
 

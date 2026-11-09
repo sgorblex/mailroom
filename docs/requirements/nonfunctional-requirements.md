@@ -498,6 +498,10 @@ clear (hash them, as mailroom-mcp's audit does).
   xdist worker clones it. A test that writes goes through the `db_session` fixture: one outer
   transaction rolled back afterwards, the code under test committing to savepoints; `api_client`
   binds the routes to it.
+- **mailroom-core** runs its own pytest from `backend/core`. Its mail tests need a Dovecot and two
+  Mailpits (implicit TLS, STARTTLS) and skip without them: `mise run test-core-mail` starts
+  throwaway ones (`scripts/test-mail.sh`), apart from the dev mail backends; CI runs them as
+  detached steps.
 - **Web:** Vitest; `*.node.test.ts(x)` in bare Node, everything else in jsdom with
   `src/test/setup.ts`. Test by accessible role and label.
 - **OIDC** tests run against `mailroom.dev.fake_idp` (also `mise run dev-idp`) through
