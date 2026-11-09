@@ -1,5 +1,8 @@
 # Changelog
 
+Releases on PyPI while core lived in mailroom-mcp. Since 0.1.3 it is part of the Mailroom app and
+its changes are in the app's own `CHANGELOG.md`.
+
 ## [0.1.3](https://github.com/sgorblex/mailroom-mcp/compare/mailroom-core-v0.1.2...mailroom-core-v0.1.3) (2026-11-06)
 
 

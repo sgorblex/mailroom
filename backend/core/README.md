@@ -1,9 +1,12 @@
 # mailroom-core
 
 Mailroom's mail layer: accounts and their sealed secrets, IMAP and SMTP, the send gate,
-rendering and audit. It is shared by the mailroom-mcp server and the Mailroom web app, and
-developed in the [mailroom-mcp](https://github.com/sgorblex/mailroom-mcp) repository
-(`packages/core`).
+rendering and audit, for the Mailroom app. It lives in the app's backend as a uv workspace
+package and never imports the app. It came from the
+[mailroom-mcp](https://github.com/sgorblex/mailroom-mcp) repository (`packages/core`) with its
+history; 0.1.3 was its last release on PyPI, and it is no longer published.
+
+Its tests run on their own from this directory: `mise run test-core`.
 
 Its Postgres tables live in schema `core`, with their own Alembic history:
 `mailroom_core.store.migrate(engine)` brings it up to date in the host's database.

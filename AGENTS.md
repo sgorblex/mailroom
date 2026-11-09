@@ -9,7 +9,7 @@ This file is the **shared** guide for AI-assisted work in this repository. **Cla
 **Cheap path:** **[`docs/README.md`](docs/README.md)** (which doc to open next), then only the **REQUIREMENTS** section you are changing plus any linked split file. Locate with **`grep -n`**, then read that range.
 
 1. Match behaviour to **`docs/REQUIREMENTS.md`**. **Maturity** (**Planned** / **Current** / **Partial** / **Done**) tracks what we are building; clarify with the user if a section is **Current** but intentionally not implemented yet.
-2. Respect the **component boundaries** in **`docs/CONTEXT.md`**: mailroom-core, mailroom-mcp and imap-thingy are **standalone projects**, and dependencies only point **downwards** (the app depends on them, never the reverse). A change that needs one of them to know about the app is a design question for the user, not an import.
+2. Respect the **component boundaries** in **`docs/CONTEXT.md`**: dependencies only point **downwards**. **mailroom-core** (`backend/core`, a workspace package) never imports `mailroom`; imap-thingy and mailroom-mcp are **standalone projects** the app never makes depend on it. A change that needs a lower component to know about the app is a design question for the user, not an import.
 3. For **stack, security, migrations, logging, or testing**, read **`docs/requirements/nonfunctional-requirements.md`** and keep it aligned with what you implement. **Mail content is untrusted input** — the security section there is not optional reading for anything that displays or acts on mail.
 4. For **CI/CD, SemVer, changelog, or release automation**, read **`docs/requirements/ci-cd.md`**.
 5. For **container images or Quadlet**, read **`docs/deploy.md`** and **`deploy/quadlet/README.md`**. Image names are **`mailroom-api`** and **`mailroom-web`** — never **`mailroom`**, which is the MCP server's production image.
@@ -58,7 +58,7 @@ Update documentation in the **same change**. Prefer **links** over duplicating a
 | --- | --- |
 | User-visible behaviour or agreed product scope | **`docs/REQUIREMENTS.md`** (maturity, notes, open questions), or a linked **`docs/requirements/<kebab-topic>.md`** for a new feature area |
 | What Mailroom is for, the component family, or a non-goal | **`docs/CONTEXT.md`** |
-| A dependency on mailroom-core, mailroom-mcp or imap-thingy | **`docs/CONTEXT.md`** (component family) and **`docs/requirements/nonfunctional-requirements.md`** (stack) |
+| A dependency on imap-thingy or mailroom-mcp, or what mailroom-core offers the app | **`docs/CONTEXT.md`** (component family) and **`docs/requirements/nonfunctional-requirements.md`** (stack) |
 | Security engineering, stack, migrations, logging, testing | **`docs/requirements/nonfunctional-requirements.md`** |
 | CI pipelines, versioning, changelog, release automation | **`docs/requirements/ci-cd.md`** |
 | **Containerfile**s, **`.dockerignore`**, **`deploy/quadlet/`** | **`docs/deploy.md`**, **`deploy/quadlet/README.md`** |
