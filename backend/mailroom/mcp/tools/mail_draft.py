@@ -15,7 +15,6 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING, Any, Final
 
-from mailroom_core.mail import format_ref
 from pydantic import Field, StrictBool
 
 from mailroom.errors import Refusal
@@ -35,12 +34,13 @@ from mailroom.mcp.tools.outgoing import (
     recipients,
     who,
 )
+from mailroom_core.mail import format_ref
 
 if TYPE_CHECKING:
-    from mailroom_core.mail import Draft, SavedDraft
     from mcp import types
 
     from mailroom.mcp.tool import ToolCall
+    from mailroom_core.mail import Draft, SavedDraft
 
 DRAFT: Final = Hints(open_world=True)
 """Adds a message to Drafts and nothing else."""

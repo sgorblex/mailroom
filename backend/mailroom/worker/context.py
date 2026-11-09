@@ -16,9 +16,10 @@ if TYPE_CHECKING:
     import ssl
 
     from imap_thingy.accounts import Account
-    from mailroom_core.crypto import SecretsSubkey
     from sqlalchemy.engine import Engine
     from sqlalchemy.orm import Session, sessionmaker
+
+    from mailroom_core.crypto import SecretsSubkey
 
 
 @dataclass(frozen=True, slots=True)

@@ -16,6 +16,16 @@ from email import message_from_bytes, policy
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+from starlette.datastructures import UploadFile
+
+from mailroom.accounts.mail import mail_ssl_context
+from mailroom.accounts.store import load_accounts, user_store
+from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
+from mailroom.auth.users import create_user
+from mailroom.context import app_context
+from mailroom.mail import service
+from mailroom.mail.pool import USER_UPLOADS
+from mailroom.mail.sends import SendRunner
 from mailroom_core import send as gate
 from mailroom_core.mail import MailError, MessageRef, format_ref, parse_ref
 from mailroom_core.store import SEND_CEILING
@@ -30,16 +40,6 @@ from mailroom_core.testing import (
     raw_client,
     seed,
 )
-from starlette.datastructures import UploadFile
-
-from mailroom.accounts.mail import mail_ssl_context
-from mailroom.accounts.store import load_accounts, user_store
-from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
-from mailroom.auth.users import create_user
-from mailroom.context import app_context
-from mailroom.mail import service
-from mailroom.mail.pool import USER_UPLOADS
-from mailroom.mail.sends import SendRunner
 from tests.conftest import PASSWORD
 from tests.test_api_accounts import new_account
 
@@ -48,12 +48,12 @@ if TYPE_CHECKING:
     from email.message import EmailMessage
 
     from fastapi import FastAPI
-    from mailroom_core.testing import ImapTestServer, RawMessage
     from sqlalchemy.engine import Engine
     from sqlalchemy.orm import Session
     from starlette.testclient import TestClient
 
     from mailroom.models import User
+    from mailroom_core.testing import ImapTestServer, RawMessage
 
 MAIL = "/api/v1/mail"
 ME = "me@example.org"

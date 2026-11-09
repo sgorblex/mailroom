@@ -3,6 +3,7 @@ from __future__ import annotations
 import socket
 
 import pytest
+
 from mailroom_core.testing.no_network import NetworkAccessError
 
 

@@ -9,8 +9,6 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 from imapclient import IMAPClient
-from mailroom_core.crypto import open_secret
-from mailroom_core.store import RevisionConflict, SettingsBusy, forget_user
 from sqlalchemy import text
 
 from mailroom.accounts import service as accounts_service
@@ -20,16 +18,19 @@ from mailroom.api.routes import accounts as accounts_routes
 from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
 from mailroom.auth.users import create_user
 from mailroom.models import User
+from mailroom_core.crypto import open_secret
+from mailroom_core.store import RevisionConflict, SettingsBusy, forget_user
 from tests.conftest import PASSWORD
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
     from imap_thingy.accounts import Account
-    from mailroom_core.crypto import SecretsSubkey
-    from mailroom_core.testing import ImapTestServer
     from sqlalchemy.engine import Engine
     from sqlalchemy.orm import Session
     from starlette.testclient import TestClient
+
+    from mailroom_core.crypto import SecretsSubkey
+    from mailroom_core.testing import ImapTestServer
 
 
 MAILBOX_PASSWORD = "mailbox-secret-3141"
@@ -417,9 +418,8 @@ def test_the_dev_mailbox_logs_in_and_lists_folders(
 
 
 def test_mail_connections_time_out() -> None:
-    from mailroom_core.config import AccountConfig
-
     from mailroom.accounts.mail import IMAP_TIMEOUT_SECONDS, imap_account
+    from mailroom_core.config import AccountConfig
 
     raw = new_account()
     del raw["password"]

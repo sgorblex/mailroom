@@ -8,7 +8,6 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 import pytest
-from mailroom_core.mail import MESSAGES
 
 from mailroom.accounts import service as accounts
 from mailroom.accounts.mail import mail_ssl_context
@@ -21,6 +20,7 @@ from mailroom.filters.runs import dry_run_slot
 from mailroom.filters.service import FilterFields, FilterPatch, RuleSetFields, RuleSetPatch
 from mailroom.mail.pool import MailPool
 from mailroom.mail.sends import SendRunner
+from mailroom_core.mail import MESSAGES
 from tests.conftest import PASSWORD
 from tests.test_api_accounts import MAILBOX_PASSWORD, new_account
 from tests.test_api_filters import SHOP_SPEC
@@ -28,11 +28,11 @@ from tests.test_api_filters import SHOP_SPEC
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
-    from mailroom_core.crypto import SecretsSubkey
     from sqlalchemy.engine import Engine
     from sqlalchemy.orm import Session, sessionmaker
 
     from mailroom.models import User
+    from mailroom_core.crypto import SecretsSubkey
 
 
 @pytest.fixture

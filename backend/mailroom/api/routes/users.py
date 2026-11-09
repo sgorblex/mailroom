@@ -7,7 +7,6 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
-from mailroom_core.store import SettingsBusy
 from pydantic import BaseModel, Field
 
 from mailroom.accounts.app_data import forget_user_accounts
@@ -32,6 +31,7 @@ from mailroom.auth.users import (
     user_by_id,
 )
 from mailroom.models import User
+from mailroom_core.store import SettingsBusy
 
 logger = logging.getLogger(__name__)
 

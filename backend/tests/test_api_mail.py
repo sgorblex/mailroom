@@ -15,6 +15,13 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
 import pytest
+
+from mailroom.accounts.mail import mail_ssl_context
+from mailroom.accounts.store import load_accounts, user_store
+from mailroom.api.routes.mail import download_name, served_type
+from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
+from mailroom.auth.users import create_user
+from mailroom.mail.pool import DeadlineExceeded, MailPool
 from mailroom_core.crypto import secrets_subkey
 from mailroom_core.mail import (
     MESSAGES,
@@ -29,13 +36,6 @@ from mailroom_core.mail import (
 )
 from mailroom_core.store import SecretChanges
 from mailroom_core.testing import MimeAttachment, folder_contents, mime, seed
-
-from mailroom.accounts.mail import mail_ssl_context
-from mailroom.accounts.store import load_accounts, user_store
-from mailroom.api.routes.mail import download_name, served_type
-from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
-from mailroom.auth.users import create_user
-from mailroom.mail.pool import DeadlineExceeded, MailPool
 from tests.conftest import PASSWORD
 from tests.test_api_accounts import new_account
 
@@ -43,12 +43,12 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from fastapi import FastAPI
-    from mailroom_core.mail import Folder
-    from mailroom_core.testing import ImapTestServer
     from sqlalchemy.orm import Session
     from starlette.testclient import TestClient
 
     from mailroom.models import User
+    from mailroom_core.mail import Folder
+    from mailroom_core.testing import ImapTestServer
 
 MAIL = "/api/v1/mail"
 PDF = b"%PDF-1.4\n1 0 obj << >> endobj\ntrailer << >>\n%%EOF\n"

@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from imapclient import IMAPClient
+
     from mailroom_core.config import AccountConfig
     from mailroom_core.crypto import SecretsSubkey
     from mailroom_core.store import AccountStore

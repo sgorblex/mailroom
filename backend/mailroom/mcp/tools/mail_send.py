@@ -25,8 +25,6 @@ from functools import partial
 from typing import TYPE_CHECKING, Any, Final, cast
 
 import anyio
-from mailroom_core.mail import MESSAGES, format_ref
-from mailroom_core.render import untrusted
 from pydantic import Field, StrictBool
 
 from mailroom.errors import Refusal, mail_refusal
@@ -48,15 +46,17 @@ from mailroom.mcp.tools.outgoing import (
     recipients,
     who,
 )
+from mailroom_core.mail import MESSAGES, format_ref
+from mailroom_core.render import untrusted
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from mailroom_core.mail import MailErrorCode
     from mcp import types
 
     from mailroom.mail.service import Dispatched, SendView
     from mailroom.mcp.tool import ToolCall
+    from mailroom_core.mail import MailErrorCode
 
 logger = logging.getLogger(__name__)
 

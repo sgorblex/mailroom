@@ -11,6 +11,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Annotated, Final
 
+from pydantic import Field
+
+from mailroom.errors import mail_refusal
+from mailroom.mcp.tool import Arguments
+from mailroom.mcp.tools.mail_read import RefText  # noqa: TC001 -- Pydantic reads it at runtime
 from mailroom_core.mail import (
     MAX_ADDRESSES,
     MAX_SUBJECT_CHARS,
@@ -21,11 +26,6 @@ from mailroom_core.mail import (
     recipient_list,
 )
 from mailroom_core.render import untrusted
-from pydantic import Field
-
-from mailroom.errors import mail_refusal
-from mailroom.mcp.tool import Arguments
-from mailroom.mcp.tools.mail_read import RefText  # noqa: TC001 -- Pydantic reads it at runtime
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

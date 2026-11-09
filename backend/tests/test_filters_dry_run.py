@@ -19,8 +19,9 @@ from tests.test_api_filters import SHOP_SPEC, add_filter, rule_set
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
-    from mailroom_core.testing import ImapTestServer
     from starlette.testclient import TestClient
+
+    from mailroom_core.testing import ImapTestServer
 
 SHOP = "Shop <news@shop.example>"
 BANK = "Bank <alerts@bank.example>"

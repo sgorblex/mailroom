@@ -16,19 +16,6 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 import pytest
-from mailroom_core.mail import MESSAGES, Folder, MessageRef, format_ref
-from mailroom_core.store import SEND_CEILING
-from mailroom_core.testing import (
-    HANG_UP,
-    STALL,
-    MimeAttachment,
-    SmtpStub,
-    create_folders,
-    folder_contents,
-    mime,
-    raw_client,
-    seed,
-)
 from mcp.server.auth.provider import AccessToken
 from starlette.testclient import TestClient
 
@@ -47,6 +34,19 @@ from mailroom.mcp.settings import McpSettings
 from mailroom.mcp.tool import BUSY_MESSAGE, CALLS_PER_USER, call_tool
 from mailroom.mcp.tools import mail_send
 from mailroom.mcp.tools.filters import RUN_FILTERS_OFF_NOTE
+from mailroom_core.mail import MESSAGES, Folder, MessageRef, format_ref
+from mailroom_core.store import SEND_CEILING
+from mailroom_core.testing import (
+    HANG_UP,
+    STALL,
+    MimeAttachment,
+    SmtpStub,
+    create_folders,
+    folder_contents,
+    mime,
+    raw_client,
+    seed,
+)
 from tests.conftest import PASSWORD
 from tests.test_api_accounts import MAILBOX_PASSWORD, new_account
 from tests.test_api_filters import SHOP_SPEC
@@ -57,12 +57,12 @@ if TYPE_CHECKING:
 
     from fastapi import FastAPI
     from httpx import Response
-    from mailroom_core.testing import ImapTestServer
     from sqlalchemy.engine import Engine
     from sqlalchemy.orm import Session, sessionmaker
 
     from mailroom.context import AppContext
     from mailroom.models import User
+    from mailroom_core.testing import ImapTestServer
 
 INBOX = Folder("INBOX", "/", "inbox", ())
 

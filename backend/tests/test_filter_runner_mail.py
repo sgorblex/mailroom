@@ -17,12 +17,12 @@ from tests.test_filter_runner import add_rule_set, queued_run, run_out, set_run_
 from tests.test_filters_dry_run import BANK, SHOP, Mailbox
 
 if TYPE_CHECKING:
-    from mailroom_core.testing import ImapTestServer
     from sqlalchemy.orm import Session
     from starlette.testclient import TestClient
 
     from mailroom.models import User
     from mailroom.worker.context import Mailboxes
+    from mailroom_core.testing import ImapTestServer
 
 WAIT_SECONDS = 20.0
 

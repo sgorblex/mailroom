@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Final
 
 from fastapi import HTTPException
+
 from mailroom_core.mail import MESSAGES
 
 if TYPE_CHECKING:

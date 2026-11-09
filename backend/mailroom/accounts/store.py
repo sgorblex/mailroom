@@ -17,10 +17,11 @@ from mailroom_core.store import AccountStore, SecretChanges
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
+    from sqlalchemy.engine import Engine
+
     from mailroom_core.config import ConfigIssue
     from mailroom_core.crypto import SecretsSubkey
     from mailroom_core.store import Json
-    from sqlalchemy.engine import Engine
 
 _ACCOUNTS: Final = "account"
 

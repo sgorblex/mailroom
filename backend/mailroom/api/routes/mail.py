@@ -13,6 +13,14 @@ from urllib.parse import quote
 from fastapi import APIRouter, Path, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import Response
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
+from starlette.concurrency import run_in_threadpool
+from starlette.datastructures import MutableHeaders, UploadFile
+from starlette.exceptions import HTTPException
+
+from mailroom.api.deps import Context, CurrentUser
+from mailroom.errors import mail_refusal
+from mailroom.mail import service
 from mailroom_core.mail import (
     DISPLAYED_IMAGES,
     MAX_UPLOADS,
@@ -22,17 +30,11 @@ from mailroom_core.mail import (
     SearchQuery,
     format_ref,
 )
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
-from starlette.concurrency import run_in_threadpool
-from starlette.datastructures import MutableHeaders, UploadFile
-from starlette.exceptions import HTTPException
-
-from mailroom.api.deps import Context, CurrentUser
-from mailroom.errors import mail_refusal
-from mailroom.mail import service
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+    from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
     from mailroom_core.mail import (
         Draft,
@@ -46,7 +48,6 @@ if TYPE_CHECKING:
         SavedDraft,
     )
     from mailroom_core.render.message import Address, PartInfo
-    from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 PAGE_SIZE: Final = 25
 MAX_PAGE_SIZE: Final = 50

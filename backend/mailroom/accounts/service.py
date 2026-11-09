@@ -8,7 +8,6 @@ import logging
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Final, Literal
 
-from mailroom_core.store import RevisionConflict, SettingsBusy
 from pydantic import BaseModel
 
 from mailroom.accounts import app_data
@@ -22,17 +21,18 @@ from mailroom.accounts.store import (
     save_account,
 )
 from mailroom.errors import SECRETS_KEY_MISSING, Refusal, mail_refusal
+from mailroom_core.store import RevisionConflict, SettingsBusy
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from imap_thingy.accounts import Account
-    from mailroom_core.config import AccountConfig, Limits
-    from mailroom_core.crypto import SecretsSubkey
-    from mailroom_core.store import AccountStore, Json
     from sqlalchemy.orm import Session
 
     from mailroom.context import AppContext
+    from mailroom_core.config import AccountConfig, Limits
+    from mailroom_core.crypto import SecretsSubkey
+    from mailroom_core.store import AccountStore, Json
 
 logger = logging.getLogger(__name__)
 
