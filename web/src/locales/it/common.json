@@ -67,6 +67,10 @@
     "loadFailed": "Impossibile caricare le app collegate.",
     "revokeFailed": "Impossibile scollegarla. Riprova."
   },
+  "notAvailable": {
+    "title": "Non disponibile su questa istanza",
+    "body": "Questo Mailroom non include questa parte dell'app."
+  },
   "nav": {
     "label": "Principale",
     "home": "Home",

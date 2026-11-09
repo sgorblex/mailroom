@@ -1,18 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import {
-  addAccount,
-  changeAccount,
-  listAccounts,
-  removeAccount,
-  setRunFilters,
-  testAccount,
-  type Account,
-} from '@/api/accounts.ts'
+import { addAccount, changeAccount, listAccounts, removeAccount, testAccount, type Account } from '@/api/accounts.ts'
+import { setRunFilters } from '@/api/filters.ts'
 import { apiErrorMessage } from '@/api/http.ts'
 import { AccountForm } from '@/accounts/account-form.tsx'
 import { accountErrorMessage, loginTestMessage } from '@/accounts/messages.ts'
+import { useFeature } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Switch } from '@/components/ui/switch.tsx'
 
@@ -21,7 +15,7 @@ type ListState =
   | { kind: 'failed'; message: string }
   | { kind: 'loaded'; accounts: Account[] }
 
-/** The signed-in user's mail accounts: add, edit, test, remove, and the Run filters switch. */
+/** The signed-in user's mail accounts: add, edit, test, remove and, with filters, Run filters. */
 export function AccountsScreen(): ReactElement {
   const { t } = useTranslation()
   const [list, setList] = useState<ListState>({ kind: 'loading' })
@@ -109,6 +103,7 @@ type RowMode = 'idle' | 'editing' | 'confirming-removal'
 
 function AccountRow({ account, onChange }: { account: Account; onChange: () => void }): ReactElement {
   const { t } = useTranslation()
+  const filters = useFeature('filters')
   const [mode, setMode] = useState<RowMode>('idle')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -244,19 +239,21 @@ function AccountRow({ account, onChange }: { account: Account; onChange: () => v
           </span>
         )}
       </div>
-      <div className="flex items-center gap-3">
-        <Switch
-          checked={runFilters}
-          aria-label={t('accounts.runFiltersOn', { id: account.id })}
-          aria-describedby={`account-${account.id}-run-filters-hint`}
-          disabled={pending}
-          onCheckedChange={() => void toggleRunFilters()}
-        />
-        <span className="text-sm">{t('accounts.runFilters')}</span>
-        <span id={`account-${account.id}-run-filters-hint`} className="text-sm text-muted-foreground">
-          {runFilters ? t('accounts.runFiltersOnHint') : t('accounts.runFiltersOffHint')}
-        </span>
-      </div>
+      {filters && (
+        <div className="flex items-center gap-3">
+          <Switch
+            checked={runFilters}
+            aria-label={t('accounts.runFiltersOn', { id: account.id })}
+            aria-describedby={`account-${account.id}-run-filters-hint`}
+            disabled={pending}
+            onCheckedChange={() => void toggleRunFilters()}
+          />
+          <span className="text-sm">{t('accounts.runFilters')}</span>
+          <span id={`account-${account.id}-run-filters-hint`} className="text-sm text-muted-foreground">
+            {runFilters ? t('accounts.runFiltersOnHint') : t('accounts.runFiltersOffHint')}
+          </span>
+        </div>
+      )}
       {mode === 'confirming-removal' && (
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-sm">{t('accounts.confirmRemoval', { id: account.id })}</p>

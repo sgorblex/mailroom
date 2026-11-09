@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import { changePassword } from '@/api/auth.ts'
 import { ApiRequestError } from '@/api/http.ts'
+import { useFeature } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Input } from '@/components/ui/input.tsx'
 import { ConnectedApps } from '@/profile/connected-apps.tsx'
@@ -18,9 +19,10 @@ type Outcome =
   | { kind: 'changed' }
   | { kind: 'failed'; message: string; field: Field }
 
-/** The signed-in user's own page: their password, linked sign-ins and connected apps. */
+/** The signed-in user's own page: their password, linked sign-ins and, with MCP, connected apps. */
 export function ProfileScreen(): ReactElement {
   const { t } = useTranslation()
+  const mcp = useFeature('mcp')
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [repeated, setRepeated] = useState('')
@@ -129,7 +131,7 @@ export function ProfileScreen(): ReactElement {
         </Button>
       </form>
       <LinkedSignIn />
-      <ConnectedApps />
+      {mcp && <ConnectedApps />}
     </main>
   )
 }

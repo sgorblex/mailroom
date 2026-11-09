@@ -21,7 +21,7 @@ interface StoredAccount {
   identities: { address: string; name?: string | null; default?: boolean }[]
   auto_approve: string[]
   has_password: boolean
-  run_filters: boolean
+  run_filters?: boolean
 }
 
 const WORK: StoredAccount = {
@@ -228,5 +228,29 @@ describe('AccountsScreen', () => {
     await vi.waitFor(() => {
       expect(toggle).not.toBeChecked()
     })
+  })
+
+  it('lists an account without Run filters where the instance runs no filters', async () => {
+    stubApi([{ ...WORK, run_filters: undefined }])
+    renderSignedIn(<AccountsScreen />, ALICE, ['mail', 'mcp'])
+
+    expect(await screen.findByRole('button', { name: 'Edit work' })).toBeInTheDocument()
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument()
+    expect(screen.queryByText('Run filters')).not.toBeInTheDocument()
+  })
+
+  it.each([
+    { features: ['mcp' as const], shown: true },
+    { features: ['filters' as const], shown: false },
+  ])('asks for the send mode only where something sends ($features)', async ({ features, shown }) => {
+    const fetchMock = stubApi([{ ...WORK, send_mode: 'approval' }])
+    renderSignedIn(<AccountsScreen />, ALICE, features)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit work' }))
+    const form = screen.getByRole('form', { name: 'Edit work' })
+    expect(within(form).queryByLabelText('Sending') !== null).toBe(shown)
+    await userEvent.click(within(form).getByRole('button', { name: 'Save' }))
+    await screen.findByRole('button', { name: 'Edit work' })
+    expect(sent(fetchMock, 'PUT', '/api/v1/accounts/work')).toMatchObject({ send_mode: 'approval' })
   })
 })

@@ -6,7 +6,7 @@ import { useAuth } from '@/auth/auth-context.ts'
 import { LoginScreen } from '@/auth/login-screen.tsx'
 import { Button } from '@/components/ui/button.tsx'
 
-/** Every page sits behind sign-in. */
+/** Every page sits behind sign-in; the nav shows only the instance's features. */
 export function RootLayout(): ReactElement {
   const { t } = useTranslation()
   const auth = useAuth()
@@ -36,9 +36,9 @@ export function RootLayout(): ReactElement {
       <header className="flex flex-wrap items-center gap-3 p-3">
         <nav aria-label={t('nav.label')} className="mr-auto flex gap-3 text-sm">
           <NavLink to="/">{t('nav.home')}</NavLink>
-          <NavLink to="/mail">{t('nav.mail')}</NavLink>
+          {auth.features.has('mail') && <NavLink to="/mail">{t('nav.mail')}</NavLink>}
           <NavLink to="/accounts">{t('nav.accounts')}</NavLink>
-          <NavLink to="/filters">{t('nav.filters')}</NavLink>
+          {auth.features.has('filters') && <NavLink to="/filters">{t('nav.filters')}</NavLink>}
           {auth.user.is_admin && <NavLink to="/users">{t('nav.users')}</NavLink>}
           <NavLink to="/profile">{t('nav.profile')}</NavLink>
         </nav>

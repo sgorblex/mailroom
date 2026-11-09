@@ -25,7 +25,13 @@ function renderSignedOut(): void {
   const reject = (): Promise<void> => Promise.reject(new Error('not in this test'))
   render(
     <AuthContext
-      value={{ status: 'signed-out', signIn: reject, signOut: reject, recheck: vi.fn() }}
+      value={{
+        status: 'signed-out',
+        features: new Set(),
+        signIn: reject,
+        signOut: reject,
+        recheck: vi.fn(),
+      }}
     >
       <LoginScreen />
     </AuthContext>,

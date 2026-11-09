@@ -53,8 +53,8 @@ through the Vite proxy. Engineering baseline:
 
 ## Editions
 
-**Maturity: Partial** — the API and the worker run only an instance's features; the web app still
-shows every screen.
+**Maturity: Done** — the API, the worker and the web app run and show only an instance's
+features.
 
 - An instance chooses its [features](GLOSSARY.md) with `MAILROOM_FEATURES`, any of `mail` (the
   [mail client](#mail-client)), `mcp` (the [MCP server](#mcp-server)) and `filters` (the
@@ -66,7 +66,8 @@ shows every screen.
 - **A feature that is off runs nothing:** no routes, no worker, no screens. Without `filters`,
   accounts have no *Run filters* switch and the MCP server serves no `filters_*` tool group.
   Without `mcp`, there is no `/mcp`, no authorization server, no `/connect` consent screen and no
-  connected apps.
+  connected apps. With neither `mail` nor `mcp` nothing sends, and accounts show no send mode. A
+  screen that is off says so instead.
 - **The MCP mail tools do not need the mail client:** an instance with `mcp` alone serves the
   mail tool groups, in place of mailroom-mcp.
 - **Turning a feature off keeps its data.** Rule sets, and runs already queued, wait until

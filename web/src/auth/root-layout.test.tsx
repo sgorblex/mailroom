@@ -32,6 +32,8 @@ function renderApp(): void {
     routeTree: rootRoute.addChildren([homeRoute]),
     history: createMemoryHistory({ initialEntries: ['/'] }),
   })
+  // The router restores scroll positions, which jsdom does not implement.
+  vi.stubGlobal('scrollTo', vi.fn())
   render(
     <AuthProvider>
       <RouterProvider router={router} />
@@ -45,14 +47,17 @@ function json(status: number, body: unknown): Response {
 
 const ALICE = { username: 'alice', is_admin: false }
 
-/** A fake API: `/me` answers from `signedIn`; login accepts alice / `hunter2hunter2`. */
-function stubApi(initiallySignedIn: boolean): void {
+/**
+ * A fake API: `/me` answers from `signedIn`, naming `features` unless left out; login accepts
+ * alice / `hunter2hunter2`.
+ */
+function stubApi(initiallySignedIn: boolean, features?: string[]): void {
   let signedIn = initiallySignedIn
   vi.stubGlobal(
     'fetch',
     vi.fn((path: string, init?: RequestInit) => {
       if (path === '/api/v1/auth/me') {
-        return Promise.resolve(json(200, { user: signedIn ? ALICE : null }))
+        return Promise.resolve(json(200, { user: signedIn ? ALICE : null, features }))
       }
       if (path === '/api/v1/auth/login') {
         const { username, password } = JSON.parse(init?.body as string) as {
@@ -107,9 +112,37 @@ describe('RootLayout', () => {
 
     expect(await screen.findByText('Home page')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Profile' })).toHaveAttribute('href', '/profile')
+    expect(screen.getByRole('link', { name: 'Mail' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Filters' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Users' })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Sign out' }))
     expect(await screen.findByLabelText('Password')).toBeInTheDocument()
+  })
+
+  it.each([
+    { features: [], mail: false, filters: false },
+    { features: ['mcp'], mail: false, filters: false },
+    { features: ['mail'], mail: true, filters: false },
+    { features: ['filters'], mail: false, filters: true },
+  ])('links only to the features the instance runs ($features)', async ({ features, mail, filters }) => {
+    stubApi(true, features)
+    renderApp()
+
+    expect(await screen.findByRole('link', { name: 'Accounts' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Profile' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Mail' }) !== null).toBe(mail)
+    expect(screen.queryByRole('link', { name: 'Filters' }) !== null).toBe(filters)
+  })
+
+  it('keeps the features it learned while signed out once signed in', async () => {
+    stubApi(false, ['filters'])
+    renderApp()
+
+    await userEvent.type(await screen.findByLabelText('Username'), 'alice')
+    await userEvent.type(screen.getByLabelText('Password'), 'hunter2hunter2')
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    expect(await screen.findByRole('link', { name: 'Filters' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Mail' })).not.toBeInTheDocument()
   })
 
   it('signs out and says why when a request finds the session ended', async () => {

@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react'
 
-import type { User } from '@/api/auth.ts'
+import type { Feature, User } from '@/api/auth.ts'
 
 export type AuthState =
   | { status: 'checking' }
@@ -10,6 +10,8 @@ export type AuthState =
   | { status: 'signed-in'; user: User }
 
 export type AuthContextValue = AuthState & {
+  /** The instance's features, the same whoever is signed in; none until the API has answered. */
+  features: ReadonlySet<Feature>
   /** Resolves once signed in; rejects with the API error otherwise. */
   signIn: (username: string, password: string) => Promise<void>
   signOut: () => Promise<void>
@@ -25,4 +27,9 @@ export function useAuth(): AuthContextValue {
     throw new Error('useAuth must be used inside AuthProvider')
   }
   return value
+}
+
+/** Whether the instance runs `feature`. */
+export function useFeature(feature: Feature): boolean {
+  return useAuth().features.has(feature)
 }

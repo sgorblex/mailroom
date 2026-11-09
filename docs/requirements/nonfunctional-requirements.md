@@ -102,6 +102,11 @@ What they are: [`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Editions*. Code:
   linked identities.
 - **The worker** reads it first, before the database: without `filters` it logs why and exits 0,
   and an unknown name exits 1.
+- **The web app** takes the features from `/api/v1/auth/me` (all of them from an older API that
+  does not name them) and keeps them across sign-in and sign-out. The nav, Profile's connected
+  apps, an account's *Run filters* switch and its send mode (shown with `mail` or `mcp`) follow
+  them. A screen whose feature is off stays a route and says it is not available, without
+  loading its chunk or calling its API.
 - **Account and user removal** still delete the filter rows of what they remove whatever the
   features: cleaning up is the base's job.
 - **`/api/v1/auth/me` names the features to anyone,** signed in or not, so the web app knows them

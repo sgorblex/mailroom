@@ -11,6 +11,7 @@ import {
   type Endpoint,
 } from '@/api/accounts.ts'
 import { ApiRequestError } from '@/api/http.ts'
+import { useFeature } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Input } from '@/components/ui/input.tsx'
 import { accountErrorMessage } from '@/accounts/messages.ts'
@@ -101,7 +102,9 @@ function fieldsOf(state: FormState, account: Account | undefined): AccountFields
 
 /**
  * Adds an account (no `account`) or edits one: its id stays, and an empty password keeps the
- * stored one. `save` sends it; a refusal shows next to the fields mailroom-core found wrong.
+ * stored one. `save` sends it; a refusal shows next to the fields mailroom-core found wrong. The
+ * send mode shows only with the mail client or MCP; otherwise the account keeps its own, and a new
+ * one gets `drafts`.
  */
 export function AccountForm({
   account,
@@ -113,6 +116,9 @@ export function AccountForm({
   onCancel: () => void
 }): ReactElement {
   const { t } = useTranslation()
+  const mail = useFeature('mail')
+  const mcp = useFeature('mcp')
+  const sends = mail || mcp
   const prefix = useId()
   const editing = account !== undefined
   const [state, setState] = useState(() => initialState(account))
@@ -333,25 +339,26 @@ export function AccountForm({
       )}
       {endpoint('imap')}
       {endpoint('smtp')}
-      {row(
-        'send_mode',
-        t('accounts.sendMode'),
-        <select
-          {...control('send_mode', true)}
-          className="h-9 rounded-md border bg-transparent px-2 text-sm"
-          value={state.sendMode}
-          onChange={(event) => {
-            set('sendMode', event.target.value as AccountFields['send_mode'])
-          }}
-        >
-          {SEND_MODES.map((mode) => (
-            <option key={mode} value={mode}>
-              {t(`accounts.sendModes.${mode}`)}
-            </option>
-          ))}
-        </select>,
-        t('accounts.sendModeHint'),
-      )}
+      {sends &&
+        row(
+          'send_mode',
+          t('accounts.sendMode'),
+          <select
+            {...control('send_mode', true)}
+            className="h-9 rounded-md border bg-transparent px-2 text-sm"
+            value={state.sendMode}
+            onChange={(event) => {
+              set('sendMode', event.target.value as AccountFields['send_mode'])
+            }}
+          >
+            {SEND_MODES.map((mode) => (
+              <option key={mode} value={mode}>
+                {t(`accounts.sendModes.${mode}`)}
+              </option>
+            ))}
+          </select>,
+          t('accounts.sendModeHint'),
+        )}
       {error !== null && (
         <p id={errorId} role="alert" className="text-sm text-destructive">
           {error}

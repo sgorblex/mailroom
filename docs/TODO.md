@@ -23,7 +23,7 @@ Mailroom is built on projects with their own repositories and checklists. As of 
 In order. The reasons are in [`CONTEXT.md`](CONTEXT.md) — *Where the family is heading*.
 
 - [x] **Fold mailroom-core into this repository** as a workspace package, with its history.
-- [ ] **Editions:** features chosen in config (mail client, MCP, filters) over an always-present
+- [x] **Editions:** features chosen in config (mail client, MCP, filters) over an always-present
       base.
 - [ ] **Retire mailroom-mcp** once the app's MCP covers its use, per-connector profiles included.
       Then stop its deployment and archive the repository.

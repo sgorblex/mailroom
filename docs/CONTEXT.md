@@ -71,7 +71,8 @@ Decided on 2026-11-09, in this order ([`TODO.md`](TODO.md) — *Family roadmap*)
   accounts and their secrets, the settings screens (profile, accounts, users), and Postgres. On
   top of it, the mail client, the MCP server (with its `/connect` consent screen and connected
   apps) and filters are each optional, and the MCP mail tools do not need the mail client. A
-  disabled feature runs nothing: no routes, worker or screens. Every edition uses Postgres.
+  disabled feature runs nothing: no routes, worker or screens. Every edition uses Postgres. Done:
+  the API, the worker and the web app.
 - **This repository goes public** once the app is in a decent state, after an audit of its whole
   history. **imap-thingy folds in then, not before**, because it is public already. It keeps its
   history and its PyPI name, and it never depends on mailroom-core.

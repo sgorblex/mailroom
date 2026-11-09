@@ -55,11 +55,6 @@ export const loginTestSchema = z.object({
 })
 export type LoginTest = z.infer<typeof loginTestSchema>
 
-const folderSchema = z.object({ path: z.array(z.string()) })
-export type Folder = z.infer<typeof folderSchema>
-
-const filterSettingsSchema = z.object({ run_filters: z.boolean() })
-
 /** A field mailroom-core found wrong: `path` inside the account (`["imap", "port"]`). */
 export interface AccountIssue {
   path: (string | number)[]
@@ -100,17 +95,4 @@ export function removeAccount(id: string): Promise<null> {
 /** Logs in to IMAP and out again; a refused login comes back as `ok: false`. */
 export function testAccount(id: string): Promise<LoginTest> {
   return apiPostJson(`${one(id)}/test`, undefined, { schema: loginTestSchema })
-}
-
-export function listFolders(id: string, signal?: AbortSignal): Promise<Folder[]> {
-  return apiGetJson(`${one(id)}/folders`, { init: { signal }, schema: z.array(folderSchema) })
-}
-
-export async function setRunFilters(id: string, runFilters: boolean): Promise<boolean> {
-  const settings = await apiPutJson(
-    `${one(id)}/filter-settings`,
-    { run_filters: runFilters },
-    { schema: filterSettingsSchema },
-  )
-  return settings.run_filters
 }

@@ -103,4 +103,16 @@ describe('ProfileScreen', () => {
       }),
     )
   })
+
+  it.each([
+    { features: ['mcp' as const], asked: true },
+    { features: ['mail' as const, 'filters' as const], asked: false },
+  ])('asks for connected apps only with mcp ($features)', async ({ features, asked }) => {
+    const fetchMock = stubApi()
+    renderSignedIn(<ProfileScreen />, ALICE, features)
+    expect(await screen.findByRole('heading', { name: 'Change your password' })).toBeInTheDocument()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const grants = fetchMock.mock.calls.some(([path]) => path === '/api/v1/oauth/grants')
+    expect(grants).toBe(asked)
+  })
 })

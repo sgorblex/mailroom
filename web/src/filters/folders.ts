@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { listFolders } from '@/api/accounts.ts'
+import { listFolders } from '@/api/filters.ts'
 import { accountErrorMessage } from '@/accounts/messages.ts'
 import { FILTERS_NS } from './i18n.ts'
 

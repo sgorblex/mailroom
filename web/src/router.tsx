@@ -1,6 +1,7 @@
 import { createRootRoute, createRoute, createRouter, lazyRouteComponent } from '@tanstack/react-router'
 
 import { AccountsScreen } from '@/accounts/accounts-screen.tsx'
+import { featureRoute } from '@/auth/feature-route.tsx'
 import { RootLayout } from '@/auth/root-layout.tsx'
 import { HealthScreen } from '@/health/health-screen.tsx'
 import { validateMailSearch } from '@/mail/route-search.ts'
@@ -32,13 +33,19 @@ const accountsRoute = createRoute({
 const filtersRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/filters',
-  component: lazyRouteComponent(() => import('@/filters/filters-screen.tsx'), 'FiltersScreen'),
+  component: featureRoute(
+    'filters',
+    lazyRouteComponent(() => import('@/filters/filters-screen.tsx'), 'FiltersScreen'),
+  ),
 })
 
 const ruleSetRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/filters/$ruleSetId',
-  component: lazyRouteComponent(() => import('@/filters/rule-set-screen.tsx'), 'RuleSetRoute'),
+  component: featureRoute(
+    'filters',
+    lazyRouteComponent(() => import('@/filters/rule-set-screen.tsx'), 'RuleSetRoute'),
+  ),
 })
 
 // The mail screens load when first opened, as the filter screens do. Where the reader is (account,
@@ -47,7 +54,7 @@ const mailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/mail',
   validateSearch: validateMailSearch,
-  component: lazyRouteComponent(() => import('@/mail/mail-screen.tsx'), 'MailScreen'),
+  component: featureRoute('mail', lazyRouteComponent(() => import('@/mail/mail-screen.tsx'), 'MailScreen')),
 })
 
 const profileRoute = createRoute({
@@ -62,21 +69,21 @@ const connectRoute = createRoute({
   path: '/connect',
   validateSearch: ({ request }: Record<string, unknown>): { request?: string } =>
     typeof request === 'string' ? { request } : {},
-  component: ConnectRoute,
+  component: featureRoute('mcp', ConnectRoute),
 })
 
-export const router = createRouter({
-  routeTree: rootRoute.addChildren([
-    indexRoute,
-    accountsRoute,
-    mailRoute,
-    filtersRoute,
-    ruleSetRoute,
-    usersRoute,
-    profileRoute,
-    connectRoute,
-  ]),
-})
+export const routeTree = rootRoute.addChildren([
+  indexRoute,
+  accountsRoute,
+  mailRoute,
+  filtersRoute,
+  ruleSetRoute,
+  usersRoute,
+  profileRoute,
+  connectRoute,
+])
+
+export const router = createRouter({ routeTree })
 
 declare module '@tanstack/react-router' {
   interface Register {

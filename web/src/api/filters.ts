@@ -97,9 +97,27 @@ const runSchema = z.object({
 })
 export type Run = z.infer<typeof runSchema>
 
+const folderSchema = z.object({ path: z.array(z.string()) })
+export type Folder = z.infer<typeof folderSchema>
+
+const filterSettingsSchema = z.object({ run_filters: z.boolean() })
+
 const ruleSet = (id: number): string => `/api/v1/rule-sets/${String(id)}`
-const accountRuleSets = (accountId: string): string =>
-  `/api/v1/accounts/${encodeURIComponent(accountId)}/rule-sets`
+const account = (accountId: string): string => `/api/v1/accounts/${encodeURIComponent(accountId)}`
+const accountRuleSets = (accountId: string): string => `${account(accountId)}/rule-sets`
+
+export function listFolders(accountId: string, signal?: AbortSignal): Promise<Folder[]> {
+  return apiGetJson(`${account(accountId)}/folders`, { init: { signal }, schema: z.array(folderSchema) })
+}
+
+export async function setRunFilters(accountId: string, runFilters: boolean): Promise<boolean> {
+  const settings = await apiPutJson(
+    `${account(accountId)}/filter-settings`,
+    { run_filters: runFilters },
+    { schema: filterSettingsSchema },
+  )
+  return settings.run_filters
+}
 
 /** imap-thingy's JSON Schema of a filter spec: the editor builds its fields from it. */
 export function getFilterSchema(signal?: AbortSignal): Promise<unknown> {
