@@ -3,8 +3,7 @@
 
 An IMAP message cannot be edited, so a save is `check_removable`, APPEND, then removing the old
 version, in that order: whatever fails, the last good draft is still there. A draft mailroom wrote
-is expunged by its UID alone, the one exception to "never expunge" (DESIGN.md, *Safety*); any
-other goes to Trash.
+is expunged by its UID alone (docs/core.md, *Safety*); any other goes to Trash.
 """
 
 import re

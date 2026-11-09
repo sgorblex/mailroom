@@ -31,7 +31,7 @@ def untrusted(content: str) -> str:
     on folded and rewritten again: stricter than the TypeScript, which folds only when there is
     no plain one, and not fooled by a plain spelling that folding merges away (a combining mark
     after it). A mitigation, not a guarantee: homoglyphs from other scripts still pass
-    (DESIGN.md, Safety)."""
+    (docs/core.md, *Safety*)."""
     nonce = secrets.token_urlsafe(6)
     rewritten = _TAG_NAME.sub(_NEUTRAL, content)
     folded = clean_text(unicodedata.normalize("NFKC", rewritten)).text

@@ -1,6 +1,6 @@
 """Mailbox secrets sealed at rest, byte-compatible with `src/crypto/sealed-secrets.ts`.
 
-The format is in docs/DESIGN.md — *Python port*, *Compatibility*.
+The format is in docs/core.md — *Compatibility*.
 """
 
 from secrets import token_bytes

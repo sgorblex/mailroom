@@ -28,7 +28,7 @@ def _mailbox(identity: Identity) -> Mailbox:
 def from_identity(
     account: AccountConfig, explicit: str | None = None, original: Addressed | None = None
 ) -> Mailbox:
-    """The From identity (DESIGN.md, `from` resolution): an explicit one must be among the
+    """The From identity (docs/core.md, *Compose*): an explicit one must be among the
     account's identities; otherwise, for a reply or forward, the identity the original was sent
     to (To, then Cc, then the delivery headers); otherwise the default one."""
     identities = {identity.address.lower(): identity for identity in account.identities}

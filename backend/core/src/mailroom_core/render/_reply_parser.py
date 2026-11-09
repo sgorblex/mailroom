@@ -106,7 +106,7 @@ _SIGNATURES: Final = [
 # Bounds the library does not have. Its patterns backtrack polynomially on long lines, and
 # Python's matcher holds the GIL, so one hostile mail would stall every thread of a host. Real
 # headers and signatures are far shorter than a line limit, and sit near the end of the text,
-# which the parser walks first; past these limits a line is plain text (DESIGN.md, Python port).
+# which the parser walks first; past these limits a line is plain text (docs/core.md, *Render*).
 MAX_LINE: Final = 256
 """Longer lines are never a quote header or a signature, nor joined into one."""
 MAX_TESTS: Final = 2000

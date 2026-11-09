@@ -21,6 +21,19 @@ This file is the **shared** guide for AI-assisted work in this repository. **Cla
 
 **Git / Graphite:** branches are managed with **Graphite** (**`gt`**) and named **`<type>/<short_name>`** — lowercase **`snake_case`**, **`<type>`** being the **Conventional Commit** type the branch will squash to (**`feat/thread_view`**, **`fix/idle_reconnect`**). Pass that name to **`gt create`** explicitly; commit messages follow **Conventional Commits** too. Full rules in **[`docs/requirements/ci-cd.md`](docs/requirements/ci-cd.md)** (**Git workflow and commit conventions**). Check the **current stack** (**`gt log`**) before adding branches. **Never run remote-mutating commands — `git push`, `gt submit`, `gt push`, `gh pr create`, creating a remote repository, merging, or closing/commenting on a PR, or anything that writes to a server or registry (an image push, a deploy) — unless the user explicitly asks for that action in the current request.** Approval of a plan is not that request. Local commits, stack edits (**`gt create`**, **`gt modify`**, **`gt restack`**), and read-only inspection do not require asking. Put the **why** in the **commit message body**: the review pass runs in a fresh session and reads the branch, not the conversation.
 
+## Mail invariants
+
+They hold across mailroom-core and its callers (the web client, the MCP mail tools); filters run through imap-thingy instead. Each is specified in **[`docs/core.md`](docs/core.md)**; this is the checklist, not the spec.
+
+- **One send gate.** Every send, reply, forward and draft send goes through `admit`, with `by` saying whether the user or an agent acts; nothing else reaches SMTP.
+- **`from` resolution:** an explicit `from` must be one of the account's identities; else the original's To, Cc, then delivery headers; else the default. The MCP tools always echo the choice.
+- **Message refs** encode account, folder, UIDVALIDITY and UID. A stale ref is an error, never a different message.
+- **Each user's own accounts only.** Refs and account ids are not signed: the app checks every one is the caller's before core touches it.
+- **Email content is the adversary.** Mail-derived text an agent reads goes inside the untrusted-content envelope; CRLF is stripped from any header built from input; no remote fetches; server and library errors become `MailError`'s fixed messages; secrets never reach a log line, an error or a tool result.
+- **No destructive deletes.** Trash moves to `\Trash`. Nothing is expunged but what a move has copied elsewhere (UIDPLUS, exactly those UIDs) and a draft Mailroom wrote itself (`X-Mailroom-Draft`) when it is replaced or deleted.
+- **Provider quirks by capability, not hostname** (Gmail is `X-GM-EXT-1`).
+- **Audit:** core yields an item for every write and send attempt, refused ones included, senders and recipients in clear, subjects only as a hash (the app does not keep them yet: [`docs/TODO.md`](docs/TODO.md)).
+
 ## Shell commands (mise)
 
 **mise** pins **Python**, **uv**, **Node**, and **pnpm** (**`mise.toml`**). Agent shell sessions do **not** have those tools on **`PATH`** unless **mise** is active — **`uv: command not found`** usually means you skipped **mise**.
@@ -59,6 +72,7 @@ Update documentation in the **same change**. Prefer **links** over duplicating a
 | User-visible behaviour or agreed product scope | **`docs/REQUIREMENTS.md`** (maturity, notes, open questions), or a linked **`docs/requirements/<kebab-topic>.md`** for a new feature area |
 | What Mailroom is for, the component family, or a non-goal | **`docs/CONTEXT.md`** |
 | A dependency on imap-thingy or mailroom-mcp, or what mailroom-core offers the app | **`docs/CONTEXT.md`** (component family) and **`docs/requirements/nonfunctional-requirements.md`** (stack) |
+| mailroom-core's behaviour or design (`backend/core`) | **`docs/core.md`**; **Mail invariants** above if one changes |
 | Security engineering, stack, migrations, logging, testing | **`docs/requirements/nonfunctional-requirements.md`** |
 | CI pipelines, versioning, changelog, release automation | **`docs/requirements/ci-cd.md`** |
 | **Containerfile**s, **`.dockerignore`**, **`deploy/quadlet/`** | **`docs/deploy.md`**, **`deploy/quadlet/README.md`** |

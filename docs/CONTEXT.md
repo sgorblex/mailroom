@@ -39,13 +39,13 @@ mailroom-mcp              standalone MCP server for mail (repo mailroom-mcp, bei
   unchanged.
 - **The app's built-in OAuth authorization server is self-contained** (the database and a small
   user interface, no app routes), so it may move to a shared package later.
-- **mailroom-core** is the mail layer: `render`, `mail` (connections in `mail.imap`, read,
-  organize, compose, drafts) and `send` (SMTP and the send gate), which the mail client and the
-  MCP mail tools are built on. It lived in mailroom-mcp until 0.1.3, its last PyPI release, and
-  is now a workspace package in `backend/core`, with its history, released only as part of the
-  app. It never imports `mailroom`. The app keeps the accounts
-  (`AccountStore`) in mailroom-core's schema `core` in the app's database, under mailroom-core's own
-  Alembic history (`core.alembic_version`); the app's tables live in schema `app`.
+- **mailroom-core** ([`core.md`](core.md)) is the mail layer: `render`, `mail` (connections in
+  `mail.imap`, read, organize, compose, drafts) and `send` (SMTP and the send gate), which the mail
+  client and the MCP mail tools are built on. It lived in mailroom-mcp until 0.1.3, its last PyPI
+  release, and is now a workspace package in `backend/core`, with its history, released only as
+  part of the app. It never imports `mailroom`. The app keeps the accounts (`AccountStore`) in
+  mailroom-core's schema `core` in the app's database, under mailroom-core's own Alembic history
+  (`core.alembic_version`); the app's tables live in schema `app`.
 - **imap-thingy** stays a general-purpose library on PyPI; the app reads and writes its rules
   through the library's own serialisation, never a private format, and runs them with its runner
   (`imap_thingy.runner`: run, IDLE monitor, starred-only).

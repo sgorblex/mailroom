@@ -26,8 +26,9 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
 DRAFT_HEADER: Final = "X-Mailroom-Draft"
-"""Marks a draft mailroom wrote, so only those are ever expunged when replaced (DESIGN.md). Its
-value is `1`, or `1; answers=<ref>` when sending the draft is to set \\Answered on that message."""
+"""Marks a draft mailroom wrote, so only those are ever expunged when replaced (docs/core.md,
+*Safety*). Its value is `1`, or `1; answers=<ref>` when sending the draft is to set
+\\Answered on that message."""
 
 _POLICY: Final = policy.SMTP.clone(max_line_length=76)
 _MAX_LINE: Final = 78

@@ -1,6 +1,6 @@
 """Mail errors with fixed, secret-free messages: the port of `src/imap/errors.ts`.
 
-A `MailError`'s message is the only error wording that reaches a user or a model (DESIGN.md,
+A `MailError`'s message is the only error wording that reaches a user or a model (docs/core.md,
 *Safety*). Whatever imapclient, imaplib or the socket raised goes to the log, with the account
 id, by `mail_error`.
 """

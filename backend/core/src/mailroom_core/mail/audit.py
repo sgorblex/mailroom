@@ -3,7 +3,7 @@ call's outcome follows from those records (`AuditTrail.outcome` in `src/mcp/tool
 
 A host writes the records into its own audit trail, or logs only their counts and codes; they
 never carry a message's content: the sender and recipients in clear (an investigation needs
-them), the subject only as a hash (DESIGN.md, *Safety*).
+them), the subject only as a hash (docs/core.md, *Safety*).
 """
 
 import hashlib
