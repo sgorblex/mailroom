@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.1](https://github.com/sgorblex/mailroom/compare/v0.5.0...v0.5.1) (2026-11-09)
+
+
+### Bug Fixes
+
+* **mail:** add name attributes to message list and search inputs ([#58](https://github.com/sgorblex/mailroom/issues/58)) ([1604a93](https://github.com/sgorblex/mailroom/commit/1604a937f6d82b7574493cb6380e05a567250816))
+* **mail:** keep composer text selectable while a send is running ([#57](https://github.com/sgorblex/mailroom/issues/57)) ([95b7755](https://github.com/sgorblex/mailroom/commit/95b775562560edac817223f40cc95abf04307e5e))
+
 ## [0.5.0](https://github.com/sgorblex/mailroom/compare/v0.4.0...v0.5.0) (2026-11-07)
 
 
