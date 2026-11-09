@@ -9,12 +9,13 @@ dependencies = [
   "alembic>=1.15",
   "argon2-cffi>=25.1",
   "fastapi>=0.115",
-  # `mise run deps-local` swaps imap-thingy and mailroom-core for local editable checkouts
-  # (scripts/deps.sh).
+  # `mise run deps-local` swaps imap-thingy for a local editable checkout (scripts/deps.sh).
   "imap-thingy>=0.8.0",
   "imapclient>=3.1.0",
   "jsonschema>=4.23",
-  "mailroom-core>=0.1.3",
+  # Mail layer: accounts, sealed secrets, IMAP/SMTP, the send gate, rendering. A workspace member
+  # in core/, never released on its own.
+  "mailroom-core",
   # The worker's job queue. Bounded to one minor: see nonfunctional-requirements.md (procrastinate).
   "procrastinate>=3.10,<3.11",
   "psycopg[binary]>=3.2",
@@ -54,10 +55,18 @@ dev = [
   # green branch with no dependency PR. Widen deliberately, fixing the new diagnostics.
   "ruff>=0.17,<0.18",
   "types-jsonschema>=4.23",
+  # mailroom_core.render parses HTML with lxml.
+  "types-lxml>=2026.2.16",
   "types-regex>=2024.11.6",
   # `mailroom.dev.run_uvicorn` reloads on change; the runtime image never watches files.
   "watchfiles>=1.0",
 ]
+
+[tool.uv.workspace]
+members = ["core"]
+
+[tool.uv.sources]
+mailroom-core = { workspace = true }
 
 [build-system]
 requires = ["hatchling>=1.26.0,<2"]
