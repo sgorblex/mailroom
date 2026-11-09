@@ -112,7 +112,7 @@ run = "uv run --no-sync python -m mailroom.dev.create_user"
 description = "Ruff + mypy on backend"
 depends = ["setup-python"]
 dir = "backend"
-run = ["uv run --no-sync ruff check . -q", "uv run --no-sync ruff format --check . -q", "uv run --no-sync mypy mailroom"]
+run = ["uv run --no-sync ruff check . -q", "uv run --no-sync ruff format --check . -q", "uv run --no-sync mypy"]
 
 [tasks.check-migrations]
 description = "Verify alembic upgrade head -> downgrade base -> upgrade head on a scratch database"
@@ -177,7 +177,7 @@ run = "true"
 description = "Ruff auto-fix + format, then mypy (types are not auto-fixed)"
 depends = ["setup-python"]
 dir = "backend"
-run = ["uv run --no-sync ruff check . --fix -q", "uv run --no-sync ruff format . -q", "uv run --no-sync mypy mailroom"]
+run = ["uv run --no-sync ruff check . --fix -q", "uv run --no-sync ruff format . -q", "uv run --no-sync mypy"]
 
 [tasks.fix-web]
 description = "ESLint with --fix on web"
