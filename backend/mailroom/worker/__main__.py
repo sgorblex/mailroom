@@ -1,5 +1,8 @@
 """Run the worker: `python -m mailroom.worker`. It never migrates; it waits for the API to.
 
+Only filters need it: without them in ``MAILROOM_FEATURES`` it logs why and exits 0 before it
+touches the database, and an unknown feature name makes it exit 1.
+
 One worker runs at a time (it holds a database lock while it runs): a second one exits. At
 start, jobs a stopped worker left running are marked failed, and their runs closed as
 interrupted. Beside procrastinate's job loop, a thread runs the IDLE supervisor
@@ -15,7 +18,8 @@ import sys
 import threading
 from typing import Final
 
-from mailroom.database import get_sync_database_url
+from mailroom.config.features import FEATURES_ENV, features_from_env
+from mailroom.database import get_sync_database_url, load_local_environment
 from mailroom.database_connectivity import wait_for_sync_database
 from mailroom.db_migrations import wait_for_head
 from mailroom.observability.logging_config import configure_logging
@@ -44,6 +48,16 @@ async def _settle() -> None:
 
 def main() -> None:
     configure_logging()
+    load_local_environment()
+    try:
+        features = features_from_env()
+    except ValueError as exc:
+        logger.error("%s", exc)
+        sys.exit(1)
+    logger.info("%s: %s", FEATURES_ENV, features.description)
+    if not features.filters:
+        logger.info("No enabled feature needs the worker (filters is off); exiting.")
+        return
     database_url = get_sync_database_url()
     engine = wait_for_sync_database(database_url)
     try:

@@ -216,7 +216,7 @@ MAILROOM_ENV = "development"
 MAILROOM_DEPLOY_ENV = "development"
 
 [tasks.dev-worker]
-description = "Wait for the API's migrations, then run the procrastinate worker (no reload: restart it)"
+description = "Wait for the API's migrations, then run the procrastinate worker (no reload: restart it; exits without filters in MAILROOM_FEATURES)"
 depends = ["setup-python"]
 dir = "backend"
 run = "uv run --no-sync python -m mailroom.dev.wait_for_database && uv run --no-sync python -m mailroom.worker"
@@ -233,7 +233,7 @@ dir = "web"
 run = "pnpm run dev"
 
 [tasks.dev]
-description = "Start dev-db, dev-api, dev-worker and dev-web together; Ctrl+C stops them all"
+description = "Start dev-db, dev-api, dev-worker and dev-web together; Ctrl+C stops them all (the worker may exit alone)"
 run = "scripts/dev-all.sh"
 
 [tasks.build-container-api]

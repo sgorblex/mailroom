@@ -88,10 +88,11 @@ and may try to run script, track the reader, phish, or — through the MCP — i
 What they are: [`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Editions*. Code:
 `mailroom.config.features`.
 
-- **`MAILROOM_FEATURES`** is read once, by `create_application` (after the root `.env`): comma
-  separated, case-insensitive, trimmed; unset is every feature, blank is none. An unknown name is a
-  `ValueError` naming the variable and the choices, so the API fails at import, as with an invalid
-  `MAILROOM_MCP_AUTH`. The lifespan logs the effective features once.
+- **`MAILROOM_FEATURES`** is read once per process: by `create_application` in the API (after the
+  root `.env`), and first thing by the worker (below). Comma separated, case-insensitive, trimmed;
+  unset is every feature, blank is none. An unknown name is a `ValueError` naming the variable and
+  the choices, so the API fails at import, as with an invalid `MAILROOM_MCP_AUTH`. The lifespan
+  logs the effective features once.
 - **What each one mounts:** `mail` the `/api/v1/mail` routes and their `NotStored` middleware;
   `filters` the filters router (rule sets, runs, the schema, an account's folders and
   `filter-settings`); `mcp` `/mcp` and its metadata, the built-in authorization server's routes and
@@ -99,6 +100,8 @@ What they are: [`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Editions*. Code:
   read at all. `MailPool` and `SendRunner` exist only with `mail` or `mcp` (`AppContext.mail_pool`
   and `send_runner` are None otherwise). The base always mounts sign-in, SSO, users, accounts and
   linked identities.
+- **The worker** reads it first, before the database: without `filters` it logs why and exits 0,
+  and an unknown name exits 1.
 - **Account and user removal** still delete the filter rows of what they remove whatever the
   features: cleaning up is the base's job.
 - **`/api/v1/auth/me` names the features to anyone,** signed in or not, so the web app knows them

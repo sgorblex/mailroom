@@ -60,7 +60,7 @@ Defaults live in `mise.toml`'s `[env]`. To change one, set it in a gitignored `m
 | `dev` | `dev-db` + `dev-api` + `dev-worker` + `dev-web` together |
 | `dev-db` / `dev-db-down` | Start (foreground) / stop the dev Postgres; data stays |
 | `dev-api` / `dev-web` | API with reload (migrates at startup) / Vite |
-| `dev-worker` | procrastinate worker (waits for the API's migrations; restart it after a change) |
+| `dev-worker` | procrastinate worker (waits for the API's migrations; restart it after a change; exits without `filters` in `MAILROOM_FEATURES`) |
 | `dev-mail` / `dev-mail-down` / `dev-mail-reset` | Dev Dovecot + Mailpit with a local CA (`dev/.state/`) |
 | `migrate` / `reset-db` | Schema `core`, then Alembic upgrade head / drop, recreate and migrate the dev database |
 | `create-user` | Create a user in `DATABASE_URL` (`<name> [--admin]`; the password is prompted for) |

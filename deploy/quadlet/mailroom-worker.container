@@ -12,7 +12,8 @@ Exec=.venv/bin/python -m mailroom.worker
 StopTimeout=90
 
 [Service]
-Restart=always
+# It exits 0 when MAILROOM_FEATURES leaves out filters: nothing to restart then.
+Restart=on-failure
 TimeoutStopSec=120
 
 [Install]

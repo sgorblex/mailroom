@@ -37,6 +37,10 @@ same there, or it refuses them first. Its read timeout must also cover the whole
 30 MB needs about 4 Mbit/s, and a slower client gets the proxy's 502 or 504 partway through.
 Operator environment, `MAILROOM_SECRETS_KEY` included:
 [`../deploy/quadlet/mailroom-api.env.example`](../deploy/quadlet/mailroom-api.env.example).
+`MAILROOM_FEATURES` chooses what the instance runs ([`REQUIREMENTS.md`](REQUIREMENTS.md) —
+*Editions*); unset, everything. Only filters need the worker: without them it exits 0 at start, so
+its unit may be left out, and it restarts only on failure. After adding `filters`, start the worker
+unit (`systemctl start mailroom-worker`), or install it if it was left out.
 
 ## MCP server and OAuth
 

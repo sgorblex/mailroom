@@ -49,7 +49,7 @@ ALL_FEATURES: Final = Features(mail=True, mcp=True, filters=True)
 def parsed_features(raw: str | None) -> Features:
     """``raw`` (``MAILROOM_FEATURES``, comma separated, case-insensitive): None means every
     feature, blank means none (the base only). Raises ``ValueError`` for a name that is no
-    feature: the API then refuses to start rather than guess."""
+    feature: the API and the worker then refuse to start rather than guess."""
     if raw is None:
         return ALL_FEATURES
     names = {name.strip().lower() for name in raw.split(",") if name.strip()}
