@@ -780,6 +780,17 @@ describe('drafts', () => {
       expect(savesOf(fetchMock)).toHaveLength(1)
     })
 
+    it('keep the refused text selectable while that send still runs', async () => {
+      const { form } = await typeRefused(withDraft({ compose_id: null }), 'sending')
+
+      expect(field(form, 'Message')).toHaveValue('So far!')
+      expect(field(form, 'Message')).toBeEnabled()
+      expect(field(form, 'Message')).toHaveAttribute('readonly')
+      expect(field(form, 'Subject')).toBeEnabled()
+      expect(field(form, 'Subject')).toHaveAttribute('readonly')
+      expect(field(form, 'To')).toBeDisabled()
+    })
+
     it('do so when delivery took the draft away: a refused save is not a deleted draft', async () => {
       const fake = withDraft({ compose_id: null })
       const user = userEvent.setup()

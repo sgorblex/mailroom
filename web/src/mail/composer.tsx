@@ -199,6 +199,8 @@ function Editor({ session, start }: { session: ComposeSession; start: ComposeSta
   const { refusedBy } = view
   // Keep draft only dismisses the banner: the send still holds the draft.
   const readOnly = (held && view.elsewhere) || refusedBy !== null
+  // Read-only, not disabled, so text that exists only here stays selectable while it can't change.
+  const locked = readOnly || sending || deleting
   const maxRecipients = account?.max_recipients
   const limitWords = maxRecipients === undefined ? null : t('compose.tooManyRecipients', { count: maxRecipients })
 
@@ -517,9 +519,9 @@ function Editor({ session, start }: { session: ComposeSession; start: ComposeSta
       {start.lossy && <p className="rounded-lg border p-2 text-sm">{t('compose.lossy')}</p>}
       {attachmentsLost && <p className="rounded-lg border p-2 text-sm">{t('compose.attachmentsLost')}</p>}
       {readOnly && <p className="rounded-lg border p-2 text-sm">{t('compose.heldBySend')}</p>}
-      <fieldset disabled={sending || deleting} className="flex min-w-0 flex-1 flex-col gap-3">
+      <fieldset className="flex min-w-0 flex-1 flex-col gap-3">
         <legend className="sr-only">{title}</legend>
-        <fieldset disabled={readOnly} className="contents">
+        <fieldset disabled={locked} className="contents">
           <IdentitySelect
             account={account}
             value={form.from}
@@ -555,7 +557,7 @@ function Editor({ session, start }: { session: ComposeSession; start: ComposeSta
             id={subjectId}
             type="text"
             maxLength={MAX_SUBJECT}
-            readOnly={readOnly}
+            readOnly={locked}
             value={form.subject}
             onChange={(event) => {
               model.update({ subject: event.target.value })
@@ -571,15 +573,14 @@ function Editor({ session, start }: { session: ComposeSession; start: ComposeSta
             id={bodyId}
             className="flex-1"
             maxLength={MAX_TEXT}
-            // Not disabled: refused edits exist only here, so they must stay selectable.
-            readOnly={readOnly}
+            readOnly={locked}
             value={form.text}
             onChange={(event) => {
               model.update({ text: event.target.value })
             }}
           />
         </div>
-        <fieldset disabled={readOnly} className="contents">
+        <fieldset disabled={locked} className="contents">
           <AttachmentTray
             items={form.tray}
             maxMb={account?.attachment_max_mb ?? DEFAULT_ATTACHMENT_MB}
