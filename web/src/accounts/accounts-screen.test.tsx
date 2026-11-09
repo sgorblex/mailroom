@@ -176,8 +176,69 @@ describe('AccountsScreen', () => {
     expect(body).not.toHaveProperty('password')
     expect(body).toMatchObject({
       send_mode: 'off',
-      identities: [{ address: 'alice@example.org', name: 'Alice', default: true }],
+      identities: [{ address: 'alice@example.org', name: 'Alice' }],
     })
+  })
+
+  it('edits every identity: adds one, picks the default and removes another', async () => {
+    const fetchMock = stubApi([
+      {
+        ...WORK,
+        identities: [
+          { address: 'alice@example.org', name: 'Alice', default: true },
+          { address: 'boss@example.org', name: 'The boss', default: false },
+        ],
+      },
+    ])
+    renderSignedIn(<AccountsScreen />, ALICE)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit work' }))
+    const form = screen.getByRole('form', { name: 'Edit work' })
+    expect(within(form).getByLabelText('Other address 1')).toHaveValue('boss@example.org')
+    expect(within(form).getByLabelText('Name for other address 1')).toHaveValue('The boss')
+    await userEvent.click(within(form).getByRole('button', { name: 'Add another address' }))
+    await userEvent.type(within(form).getByLabelText('Other address 2'), 'info@example.org')
+    await userEvent.selectOptions(within(form).getByLabelText('Send as by default'), 'info@example.org')
+    await userEvent.click(within(form).getByRole('button', { name: 'Remove other address 1' }))
+    expect(within(form).getByRole('button', { name: 'Add another address' })).toHaveFocus()
+    expect(within(form).getByLabelText('Other address 1')).toHaveValue('info@example.org')
+    expect(within(form).getByLabelText('Send as by default')).toHaveDisplayValue('info@example.org')
+    await userEvent.click(within(form).getByRole('button', { name: 'Save' }))
+
+    expect(await screen.findByRole('button', { name: 'Edit work' })).toBeInTheDocument()
+    expect(sent(fetchMock, 'PUT', '/api/v1/accounts/work')).toMatchObject({
+      identities: [
+        { address: 'alice@example.org', name: 'Alice', default: false },
+        { address: 'info@example.org', name: null, default: true },
+      ],
+    })
+  })
+
+  it('marks the identity a refusal is about', async () => {
+    stubApi([{ ...WORK, identities: [...WORK.identities, { address: 'boss@example.org', default: false }] }])
+    const issues = [{ path: ['identities', 1, 'address'], message: 'already used by account "home"' }]
+    const base = vi.mocked(fetch)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((path: string, init?: RequestInit) =>
+        init?.method === 'PUT'
+          ? Promise.resolve(json(400, { detail: { code: 'invalid_account', message: '…', issues } }))
+          : base(path, init),
+      ),
+    )
+    renderSignedIn(<AccountsScreen />, ALICE)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit work' }))
+    const form = screen.getByRole('form', { name: 'Edit work' })
+    await userEvent.click(within(form).getByRole('button', { name: 'Save' }))
+
+    expect(await within(form).findByText('already used by account "home"')).toBeInTheDocument()
+    expect(within(form).getByLabelText('Other address 1')).toHaveAttribute('aria-invalid', 'true')
+    expect(within(form).getByLabelText('Email address')).toHaveAttribute('aria-invalid', 'false')
+
+    // Its place is gone once it is removed: no issue moves onto another identity.
+    await userEvent.click(within(form).getByRole('button', { name: 'Remove other address 1' }))
+    expect(within(form).queryByText('already used by account "home"')).not.toBeInTheDocument()
   })
 
   it('tests the login and reports a refusal', async () => {

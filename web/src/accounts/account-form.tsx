@@ -1,4 +1,4 @@
-import { useId, useState, type ReactElement, type ReactNode, type SubmitEvent } from 'react'
+import { useEffect, useId, useRef, useState, type ReactElement, type ReactNode, type SubmitEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -14,12 +14,16 @@ import { Button } from '@/components/ui/button.tsx'
 import { Input } from '@/components/ui/input.tsx'
 import { accountErrorMessage } from '@/accounts/messages.ts'
 
+/** The most identities an account may have, as the API takes them. */
+const MAX_IDENTITIES = 50
+
 type Field =
   | 'id'
   | 'login'
   | 'password'
-  | 'address'
-  | 'name'
+  | `identities.${number}.address`
+  | `identities.${number}.name`
+  | 'default'
   | 'imap.host'
   | 'imap.port'
   | 'imap.tls'
@@ -28,8 +32,15 @@ type Field =
   | 'smtp.tls'
   | 'send_mode'
 
-/** Where mailroom-core's issue belongs in this form; `null` for the account as a whole. */
-function fieldOf(issue: RefusalIssue): Field | null {
+function identityField(index: number, key: 'address' | 'name'): Field {
+  return `identities.${String(index)}.${key}` as Field
+}
+
+/**
+ * Where mailroom-core's issue belongs in this form (with `identities` of them); `null` for the
+ * account as a whole.
+ */
+function fieldOf(issue: RefusalIssue, identities: number): Field | null {
   const [first, second, third] = issue.path
   switch (first) {
     case 'id':
@@ -41,22 +52,30 @@ function fieldOf(issue: RefusalIssue): Field | null {
     case 'smtp':
       return second === 'host' || second === 'port' || second === 'tls' ? `${first}.${second}` : null
     case 'identities':
-      // The form edits the first identity; the account's others are kept as they are.
-      if (second === undefined || second === 0) {
-        return third === 'name' ? 'name' : 'address'
+      // About them all (which one is the default, shown with several), else about one of them.
+      if (typeof second !== 'number') {
+        return identities > 1 ? 'default' : null
       }
-      return null
+      return identityField(second, third === 'name' ? 'name' : 'address')
     default:
       return null
   }
+}
+
+/** One identity as typed; `key` stays with it while others are added or removed. */
+interface IdentityDraft {
+  key: number
+  address: string
+  name: string
 }
 
 interface FormState {
   id: string
   login: string
   password: string
-  address: string
-  name: string
+  identities: IdentityDraft[]
+  /** The index of the default identity, when there is more than one. */
+  defaultIdentity: number
   imapHost: string
   imapPort: string
   imapTls: Endpoint['tls']
@@ -67,13 +86,21 @@ interface FormState {
 }
 
 function initialState(account: Account | undefined): FormState {
-  const identity = account?.identities[0]
+  const stored = account?.identities ?? []
+  const identities = stored.map((identity, key) => ({
+    key,
+    address: identity.address,
+    name: identity.name ?? '',
+  }))
   return {
     id: account?.id ?? '',
     login: account?.login ?? '',
     password: '',
-    address: identity?.address ?? '',
-    name: identity?.name ?? '',
+    identities: identities.length === 0 ? [{ key: 0, address: '', name: '' }] : identities,
+    defaultIdentity: Math.max(
+      stored.findIndex((identity) => identity.default === true),
+      0,
+    ),
     imapHost: account?.imap.host ?? '',
     imapPort: String(account?.imap.port ?? 993),
     imapTls: account?.imap.tls ?? 'implicit',
@@ -85,14 +112,21 @@ function initialState(account: Account | undefined): FormState {
 }
 
 function fieldsOf(state: FormState, account: Account | undefined): AccountFields {
-  const name = state.name.trim()
-  const first = { ...account?.identities[0], address: state.address.trim(), name: name === '' ? null : name }
+  const many = state.identities.length > 1
+  const identities = state.identities.map((identity, index) => {
+    const name = identity.name.trim()
+    return {
+      address: identity.address.trim(),
+      name: name === '' ? null : name,
+      ...(many ? { default: index === state.defaultIdentity } : {}),
+    }
+  })
   return {
     login: state.login.trim(),
     send_mode: state.sendMode,
     imap: { host: state.imapHost.trim(), port: Number(state.imapPort), tls: state.imapTls },
     smtp: { host: state.smtpHost.trim(), port: Number(state.smtpPort), tls: state.smtpTls },
-    identities: [first, ...(account?.identities.slice(1) ?? [])],
+    identities,
     auto_approve: account?.auto_approve ?? [],
     ...(state.password === '' ? {} : { password: state.password }),
   }
@@ -100,9 +134,10 @@ function fieldsOf(state: FormState, account: Account | undefined): AccountFields
 
 /**
  * Adds an account (no `account`) or edits one: its id stays, and an empty password keeps the
- * stored one. `save` sends it; a refusal shows next to the fields mailroom-core found wrong. The
- * send mode shows only with the mail client or MCP; otherwise the account keeps its own, and a new
- * one gets `drafts`.
+ * stored one. Every identity is edited here: the first, more added or removed, and which one is
+ * the default once there are several. `save` sends it; a refusal shows next to the fields
+ * mailroom-core found wrong. The send mode shows only with the mail client or MCP; otherwise the
+ * account keeps its own, and a new one gets `drafts`.
  */
 export function AccountForm({
   account,
@@ -121,10 +156,54 @@ export function AccountForm({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [issues, setIssues] = useState<Partial<Record<Field, string>>>({})
+  const nextIdentityKey = useRef(state.identities.length)
+  const addButton = useRef<HTMLButtonElement>(null)
+  const focusAdd = useRef(false)
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]): void {
     setState((current) => ({ ...current, [key]: value }))
   }
+
+  function setIdentity(index: number, key: 'address' | 'name', value: string): void {
+    setState((current) => ({
+      ...current,
+      identities: current.identities.map((identity, at) => (at === index ? { ...identity, [key]: value } : identity)),
+    }))
+  }
+
+  function addIdentity(): void {
+    const key = nextIdentityKey.current
+    nextIdentityKey.current += 1
+    set('identities', [...state.identities, { key, address: '', name: '' }])
+  }
+
+  /**
+   * Removes one, with every identity's issues (their places move), and gives focus to Add another
+   * address.
+   */
+  function removeIdentity(index: number): void {
+    setState((current) => {
+      const chosen = current.defaultIdentity
+      return {
+        ...current,
+        identities: current.identities.filter((_, at) => at !== index),
+        defaultIdentity: chosen === index ? 0 : chosen > index ? chosen - 1 : chosen,
+      }
+    })
+    setIssues((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([field]) => !field.startsWith('identities.') && field !== 'default'),
+      ),
+    )
+    focusAdd.current = true
+  }
+
+  useEffect(() => {
+    if (focusAdd.current) {
+      focusAdd.current = false
+      addButton.current?.focus()
+    }
+  }, [state.identities])
 
   async function submit(event: SubmitEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
@@ -138,7 +217,7 @@ export function AccountForm({
       const general: string[] = []
       if (failure instanceof ApiRequestError) {
         for (const issue of refusalIssues(failure.body)) {
-          const field = fieldOf(issue)
+          const field = fieldOf(issue, state.identities.length)
           if (field === null) {
             general.push(issue.message)
           } else {
@@ -274,33 +353,93 @@ export function AccountForm({
           />,
           t('accounts.idHint'),
         )}
-      {row(
-        'address',
-        t('accounts.address'),
-        <Input
-          {...control('address')}
-          type="email"
-          required
-          maxLength={320}
-          value={state.address}
-          onChange={(event) => {
-            set('address', event.target.value)
-          }}
-        />,
+      {state.identities.map((identity, index) => {
+        const address = identityField(index, 'address')
+        const name = identityField(index, 'name')
+        const first = index === 0
+        const fields = (
+          <>
+            {row(
+              address,
+              first ? t('accounts.address') : t('accounts.otherAddress', { n: index }),
+              <Input
+                {...control(address)}
+                type="email"
+                required
+                maxLength={320}
+                value={identity.address}
+                onChange={(event) => {
+                  setIdentity(index, 'address', event.target.value)
+                }}
+              />,
+            )}
+            {row(
+              name,
+              first ? t('accounts.name') : t('accounts.otherName', { n: index }),
+              <Input
+                {...control(name, first)}
+                maxLength={200}
+                value={identity.name}
+                onChange={(event) => {
+                  setIdentity(index, 'name', event.target.value)
+                }}
+              />,
+              first ? t('accounts.nameHint') : undefined,
+            )}
+          </>
+        )
+        if (first) {
+          return (
+            <div key={identity.key} className="flex flex-col gap-3">
+              {fields}
+            </div>
+          )
+        }
+        return (
+          <div key={identity.key} className="flex flex-col gap-3 rounded-md border p-3">
+            {fields}
+            <Button
+              type="button"
+              variant="ghost"
+              className="self-start"
+              onClick={() => {
+                removeIdentity(index)
+              }}
+            >
+              {t('accounts.removeAddress', { n: index })}
+            </Button>
+          </div>
+        )
+      })}
+      {state.identities.length < MAX_IDENTITIES && (
+        <Button ref={addButton} type="button" variant="outline" className="self-start" onClick={addIdentity}>
+          {t('accounts.addAddress')}
+        </Button>
       )}
-      {row(
-        'name',
-        t('accounts.name'),
-        <Input
-          {...control('name', true)}
-          maxLength={200}
-          value={state.name}
-          onChange={(event) => {
-            set('name', event.target.value)
-          }}
-        />,
-        t('accounts.nameHint'),
-      )}
+      {state.identities.length > 1 &&
+        row(
+          'default',
+          t('accounts.defaultAddress'),
+          <select
+            {...control('default', true)}
+            className="h-9 rounded-md border bg-transparent px-2 text-sm"
+            value={state.defaultIdentity}
+            onChange={(event) => {
+              set('defaultIdentity', Number(event.target.value))
+            }}
+          >
+            {state.identities.map((identity, index) => (
+              <option key={identity.key} value={index}>
+                {identity.address.trim() === ''
+                  ? index === 0
+                    ? t('accounts.address')
+                    : t('accounts.otherAddress', { n: index })
+                  : identity.address.trim()}
+              </option>
+            ))}
+          </select>,
+          t('accounts.defaultAddressHint'),
+        )}
       {row(
         'login',
         t('accounts.login'),
