@@ -1,0 +1,1656 @@
+{
+  "html": {
+    "spike_gmail": {
+      "input": "<div dir=\"ltr\">\n  Sounds good, see you Thursday.\n  <div><br /></div>\n  <div>Ale</div>\n</div>\n<br />\n<div class=\"gmail_quote gmail_quote_container\">\n  <div dir=\"ltr\" class=\"gmail_attr\">\n    On Wed, 1 Oct 2026 at 10:02, Maria Rossi &lt;<a href=\"mailto:maria@example.org\"\n      >maria@example.org</a\n    >&gt; wrote:<br />\n  </div>\n  <blockquote class=\"gmail_quote\" style=\"margin: 0px 0px 0px 0.8ex\">\n    Shall we meet on Thursday at 18:00?<br />Maria\n  </blockquote>\n</div>\n",
+      "marked": "Sounds good, see you Thursday.\n\n\nAle\n\n<Q>\nOn Wed, 1 Oct 2026 at 10:02, Maria Rossi <[maria@example.org](mailto:maria@example.org)> wrote:\n\n<Q>\nShall we meet on Thursday at 18:00?\nMaria\n<E>\n<E>",
+      "full": "Sounds good, see you Thursday.\n\n\nAle\n\nOn Wed, 1 Oct 2026 at 10:02, Maria Rossi <[maria@example.org](mailto:maria@example.org)> wrote:\n\n\n> Shall we meet on Thursday at 18:00?\n> Maria",
+      "cut": false,
+      "body": {
+        "text": "Sounds good, see you Thursday.\n\nAle\n\n[quoted text: 3 lines omitted, read with include_quoted: true]",
+        "removedChars": 0,
+        "totalChars": 99,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "Sounds good, see you Thursday.\n\nAle\n\nOn Wed, 1 Oct 2026 at 10:02, Maria Rossi <[maria@example.org](mailto:maria@example.org)> wrote:\n\n> Shall we meet on Thursday at 18:00?\n> Maria",
+        "removedChars": 0,
+        "totalChars": 179,
+        "incomplete": false
+      }
+    },
+    "spike_outlook": {
+      "input": "<html>\n  <head>\n    <style>\n      p {\n        margin: 0;\n      }\n    </style>\n  </head>\n  <body>\n    <div>Ciao Marco,</div>\n    <div>confermo la riunione.</div>\n    <div>Grazie</div>\n    <div id=\"appendonsend\"></div>\n    <hr style=\"display: inline-block; width: 98%\" />\n    <div id=\"divRplyFwdMsg\" dir=\"ltr\">\n      <b>Da:</b> Marco Bianchi &lt;marco@example.it&gt;<br /><b>Inviato:</b> mercoled\u00ec 1 ottobre\n      2026 09:15<br /><b>A:</b> Ale &lt;ale@example.org&gt;<br /><b>Oggetto:</b> Riunione\n    </div>\n    <div>Possiamo vederci gioved\u00ec?</div>\n    <div>Marco</div>\n  </body>\n</html>\n",
+      "marked": "Ciao Marco,\nconfermo la riunione.\nGrazie\n<Q>\n\n----------------------------------------\n\n<Q>\nDa: Marco Bianchi <marco@example.it>\nInviato: mercoled\u00ec 1 ottobre 2026 09:15\nA: Ale <ale@example.org>\nOggetto: Riunione\nPossiamo vederci gioved\u00ec?\nMarco",
+      "full": "Ciao Marco,\nconfermo la riunione.\nGrazie\n\n\n----------------------------------------\n\nDa: Marco Bianchi <marco@example.it>\nInviato: mercoled\u00ec 1 ottobre 2026 09:15\nA: Ale <ale@example.org>\nOggetto: Riunione\nPossiamo vederci gioved\u00ec?\nMarco",
+      "cut": false,
+      "body": {
+        "text": "Ciao Marco,\nconfermo la riunione.\nGrazie\n\n[quoted text: 7 lines omitted, read with include_quoted: true]",
+        "removedChars": 0,
+        "totalChars": 104,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "Ciao Marco,\nconfermo la riunione.\nGrazie\n\n----------------------------------------\n\nDa: Marco Bianchi <marco@example.it>\nInviato: mercoled\u00ec 1 ottobre 2026 09:15\nA: Ale <ale@example.org>\nOggetto: Riunione\nPossiamo vederci gioved\u00ec?\nMarco",
+        "removedChars": 0,
+        "totalChars": 235,
+        "incomplete": false
+      }
+    },
+    "spike_newsletter": {
+      "input": "<html>\n  <body>\n    <table width=\"600\">\n      <tr>\n        <td>\n          <img src=\"https://track.example.com/open.gif\" width=\"1\" height=\"1\" />\n          <h1>October news</h1>\n        </td>\n      </tr>\n      <tr>\n        <td>\n          <p>Our <a href=\"https://example.com/sale?a=1&amp;b=(2)\">autumn sale</a> starts today.</p>\n          <p><a href=\"javascript:alert(1)\">Click</a> or <a href=\"cid:logo\">logo</a>.</p>\n        </td>\n      </tr>\n      <tr>\n        <td>\n          <script>\n            steal()\n          </script>\n          <a href=\"https://example.com/unsubscribe\">Unsubscribe</a>\n        </td>\n      </tr>\n    </table>\n  </body>\n</html>\n",
+      "marked": "October news\n\nOur [autumn sale](https://example.com/sale?a=1&b=%282%29) starts today.\n\nClick or logo.\n\n[Unsubscribe](https://example.com/unsubscribe)",
+      "full": "October news\n\nOur [autumn sale](https://example.com/sale?a=1&b=%282%29) starts today.\n\nClick or logo.\n\n[Unsubscribe](https://example.com/unsubscribe)",
+      "cut": false,
+      "body": {
+        "text": "October news\n\nOur [autumn sale](https://example.com/sale?a=1&b=%282%29) starts today.\n\nClick or logo.\n\n[Unsubscribe](https://example.com/unsubscribe)",
+        "removedChars": 0,
+        "totalChars": 149,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "October news\n\nOur [autumn sale](https://example.com/sale?a=1&b=%282%29) starts today.\n\nClick or logo.\n\n[Unsubscribe](https://example.com/unsubscribe)",
+        "removedChars": 0,
+        "totalChars": 149,
+        "incomplete": false
+      }
+    },
+    "spike_between": {
+      "input": "<p>Hi</p><blockquote type=\"cite\">q1<br>q1b</blockquote><p>answer 1</p><blockquote type=\"cite\">q2<blockquote type=\"cite\">older</blockquote></blockquote><p>answer 2</p>",
+      "marked": "Hi\n\n<Q>\nq1\nq1b\n<E>\n\nanswer 1\n\n<Q>\nq2\n<Q>\nolder\n<E>\n<E>\n\nanswer 2",
+      "full": "Hi\n\n> q1\n> q1b\n\nanswer 1\n\n> q2\n> \n> > older\n\nanswer 2",
+      "cut": false,
+      "body": {
+        "text": "Hi\n\n[quoted text: 2 lines omitted, read with include_quoted: true]\n\nanswer 1\n\n[quoted text: 2 lines omitted, read with include_quoted: true]\n\nanswer 2",
+        "removedChars": 0,
+        "totalChars": 150,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "Hi\n\n> q1\n> q1b\n\nanswer 1\n\n> q2\n>\n> > older\n\nanswer 2",
+        "removedChars": 0,
+        "totalChars": 52,
+        "incomplete": false
+      }
+    },
+    "spike_fwd": {
+      "input": "<div>FYI</div><div class=\"gmail_quote\"><div class=\"gmail_attr\">---------- Forwarded message ---------<br>From: Bob</div><div>The budget is 10k.</div></div>",
+      "marked": "FYI\n<Q>\n---------- Forwarded message ---------\nFrom: Bob\nThe budget is 10k.\n<E>",
+      "full": "FYI\n---------- Forwarded message ---------\nFrom: Bob\nThe budget is 10k.",
+      "cut": false,
+      "body": {
+        "text": "FYI\n\n---------- Forwarded message ---------\nFrom: Bob\nThe budget is 10k.",
+        "removedChars": 0,
+        "totalChars": 72,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "FYI\n---------- Forwarded message ---------\nFrom: Bob\nThe budget is 10k.",
+        "removedChars": 0,
+        "totalChars": 71,
+        "incomplete": false
+      }
+    },
+    "spike_brackets": {
+      "input": "<a href=\"https://evil.example/x\">https://bank.example](https://bank.example</a>",
+      "marked": "[https://bank.example\\](https://bank.example](https://evil.example/x)",
+      "full": "[https://bank.example\\](https://bank.example](https://evil.example/x)",
+      "cut": false,
+      "body": {
+        "text": "[https://bank.example\\](https://bank.example](https://evil.example/x)",
+        "removedChars": 0,
+        "totalChars": 69,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "[https://bank.example\\](https://bank.example](https://evil.example/x)",
+        "removedChars": 0,
+        "totalChars": 69,
+        "incomplete": false
+      }
+    },
+    "spike_misc": {
+      "input": "<ul><li>one</li><li>two <i>it</i></li></ul><ol><li>a</li><li>b</li></ol><pre>  pre\n   kept</pre><p>a&nbsp;b &amp; c   spaced\n words</p><h2>Head</h2><table><tr><th>H</th><td>c1</td><td>c2</td></tr></table><span>x</span><span>y</span><hr><p>end<br><br>two</p><a href=\"mailto:a@b.c\">mail</a> <a href=\"#x\">anchor</a> <a href=\"https://x.y/a b(c)\">sp</a>",
+      "marked": " * one\n * two it\n\n 1. a\n 2. b\n\n  pre\n   kept\n\na\u00a0b & c spaced words\n\n\nHead\n\nH\n\nc1\n\nc2\n\nxy\n\n----------------------------------------\n\nend\n\ntwo\n\n[mail](mailto:a@b.c) anchor [sp](https://x.y/a%20b%28c%29)",
+      "full": " * one\n * two it\n\n 1. a\n 2. b\n\n  pre\n   kept\n\na\u00a0b & c spaced words\n\n\nHead\n\nH\n\nc1\n\nc2\n\nxy\n\n----------------------------------------\n\nend\n\ntwo\n\n[mail](mailto:a@b.c) anchor [sp](https://x.y/a%20b%28c%29)",
+      "cut": false,
+      "body": {
+        "text": "* one\n * two it\n\n 1. a\n 2. b\n\n  pre\n   kept\n\na\u00a0b & c spaced words\n\nHead\n\nH\n\nc1\n\nc2\n\nxy\n\n----------------------------------------\n\nend\n\ntwo\n\n[mail](mailto:a@b.c) anchor [sp](https://x.y/a%20b%28c%29)",
+        "removedChars": 0,
+        "totalChars": 198,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "* one\n * two it\n\n 1. a\n 2. b\n\n  pre\n   kept\n\na\u00a0b & c spaced words\n\nHead\n\nH\n\nc1\n\nc2\n\nxy\n\n----------------------------------------\n\nend\n\ntwo\n\n[mail](mailto:a@b.c) anchor [sp](https://x.y/a%20b%28c%29)",
+        "removedChars": 0,
+        "totalChars": 198,
+        "incomplete": false
+      }
+    },
+    "spike_nested500": {
+      "marked": "top\n\ndeep",
+      "full": "top\n\ndeep",
+      "cut": false,
+      "body": {
+        "text": "top\n\ndeep",
+        "removedChars": 0,
+        "totalChars": 9,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "top\n\ndeep",
+        "removedChars": 0,
+        "totalChars": 9,
+        "incomplete": false
+      }
+    },
+    "spike_nested999": {
+      "marked": "top\n\ndeep",
+      "full": "top\n\ndeep",
+      "cut": false,
+      "body": {
+        "text": "top\n\ndeep",
+        "removedChars": 0,
+        "totalChars": 9,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "top\n\ndeep",
+        "removedChars": 0,
+        "totalChars": 9,
+        "incomplete": false
+      }
+    },
+    "spike_nested1000": {
+      "marked": "top\n\ndeep",
+      "full": "top\n\ndeep",
+      "cut": false,
+      "body": {
+        "text": "top\n\ndeep",
+        "removedChars": 0,
+        "totalChars": 9,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "top\n\ndeep",
+        "removedChars": 0,
+        "totalChars": 9,
+        "incomplete": false
+      }
+    },
+    "spike_nested5000": {
+      "marked": "top\n\n<CUT>",
+      "full": "top\n\n<CUT>",
+      "cut": true,
+      "body": {
+        "text": "top\n\n\u2026",
+        "removedChars": 0,
+        "totalChars": 6,
+        "incomplete": true
+      },
+      "bodyQ": {
+        "text": "top\n\n\u2026",
+        "removedChars": 0,
+        "totalChars": 6,
+        "incomplete": true
+      }
+    },
+    "spike_spans5000": {
+      "marked": "top\n\n<CUT>",
+      "full": "top\n\n<CUT>",
+      "cut": true,
+      "body": {
+        "text": "top\n\n\u2026",
+        "removedChars": 0,
+        "totalChars": 6,
+        "incomplete": true
+      },
+      "bodyQ": {
+        "text": "top\n\n\u2026",
+        "removedChars": 0,
+        "totalChars": 6,
+        "incomplete": true
+      }
+    },
+    "spike_wide": {
+      "marked": null,
+      "full": null,
+      "cut": false,
+      "body": {
+        "text": "l0\nl1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9\nl10\nl11\nl12\nl13\nl14\nl15\nl16\nl17\nl18\nl19\nl20\nl21\nl22\nl23\nl24\nl25\nl26\nl27\nl28\nl29\nl30\nl31\nl32\nl33\nl34\nl35\nl36\nl37\nl38\nl39\nl40\nl41\nl42\nl43\nl44\nl45\nl46\nl47\nl48\nl49\nl50\nl51\nl52\nl53\nl54\nl55\nl56\nl57\nl58\nl59\nl60\nl61\nl62\nl63\nl64\nl65\nl66\nl67\nl68\nl69\nl70\nl71\nl72\nl73\nl74\nl75\nl76\nl77\nl78\nl79\nl80\nl81\nl82\nl83\nl84\nl85\nl86\nl87\nl88\nl89\nl90\nl91\nl92\nl93\nl94\nl95\nl96\nl97\nl98\nl99\nl100\nl101\nl102\nl103\nl104\nl105\nl106\nl107\nl108\nl109\nl110\nl111\nl112\nl113\nl114\nl115\nl116\nl117\nl118\nl119\nl120\nl121\nl122\nl123\nl124\nl125\nl126\nl127\nl128\nl129\nl130\nl131\nl132\nl133\nl134\nl135\nl136\nl137\nl138\nl139\nl140\nl141\nl142\nl143\nl144\nl145\nl146\nl147\nl148\nl149\nl150\nl151\nl152\nl153\nl154\nl155\nl156\nl157\nl158\nl159\nl160\nl161\nl162\nl163\nl164\nl165\nl166\nl167\nl168\nl169\nl170\nl171\nl172\nl173\nl174\nl175\nl176\nl177\nl178\nl179\nl180\nl181\nl182\nl183\nl184\nl185\nl186\nl187\nl188\nl189\nl190\nl191\nl192\nl193\nl194\nl195\nl196\nl197\nl198\nl199\nl200\nl201\nl202\nl203\nl204\nl205\nl206\nl207\nl208\nl209\nl210\nl211\nl212\nl213\nl214\nl215\nl216\nl217\nl218\nl219\nl220\nl221\nl222\nl223\nl224\nl225\nl226\nl227\nl228\nl229\nl230\nl231\nl232\nl233\nl234\nl235\nl236\nl237\nl238\nl239\nl240\nl241\nl242\nl243\nl244\nl245\nl246\nl247\nl248\nl249\nl250\nl251\nl252\nl253\nl254\nl255\nl256\nl257\nl258\nl259\nl260\nl261\nl262\nl263\nl264\nl265\nl266\nl267\nl268\nl269\nl270\nl271\nl272\nl273\nl274\nl275\nl276\nl277\nl278\nl279\nl280\nl281\nl282\nl283\nl284\nl285\nl286\nl287\nl288\nl289\nl290\nl291\nl292\nl293\nl294\nl295\nl296\nl297\nl298\nl299\nl300\nl301\nl302\nl303\nl304\nl305\nl306\nl307\nl308\nl309\nl310\nl311\nl312\nl313\nl314\nl315\nl316\nl317\nl318\nl319\nl320\nl321\nl322\nl323\nl324\nl325\nl326\nl327\nl328\nl329\nl330\nl331\nl332\nl333\nl334\nl335\nl336\nl337\nl338\nl339\nl340\nl341\nl342\nl343\nl344\nl345\nl346\nl347\nl348\nl349\nl350\nl351\nl352\nl353\nl354\nl355\nl356\nl357\nl358\nl359\nl360\nl361\nl362\nl363\nl364\nl365\nl366\nl367\nl368\nl369\nl370\nl371\nl372\nl373\nl374\nl375\nl376\nl377\nl378\nl379\nl380\nl381\nl382\nl383\nl384\nl385\nl386\nl387\nl388\nl389\nl390\nl391\nl392\nl393\nl394\nl395\nl396\nl397\nl398\nl399\nl400\nl401\nl402\nl403\nl404\nl405\nl406\nl407\nl408\nl409\nl410\nl411\nl412\nl413\nl414\nl415\nl416\nl417\nl418\nl419\nl420\nl421\nl422\nl423\nl424\nl425\nl426\nl427\nl428\nl429\nl430\nl431\nl432\nl433\nl434\nl435\nl436\nl437\nl438\nl439\nl440\nl441\nl442\nl443\nl444\nl445\nl446\nl447\nl448\nl449\nl450\nl451\nl452\nl453\nl454\nl455\nl456\nl457\nl458\nl459\nl460\nl461\nl462\nl463\nl464\nl465\nl466\nl467\nl468\nl469\nl470\nl471\nl472\nl473\nl474\nl475\nl476\nl477\nl478\nl479\nl480\nl481\nl482\nl483\nl484\nl485\nl486\nl487\nl488\nl489\nl490\nl491\nl492\nl493\nl494\nl495\nl496\nl497\nl498\nl499\nl500\nl501\nl502\nl503\nl504\nl505\nl506\nl507\nl508\nl509\nl510\nl511\nl512\nl513\nl514\nl515\nl516\nl517\nl518\nl519\nl520\nl521\nl522\nl523\nl524\nl525\nl526\nl527\nl528\nl529\nl530\nl531\nl532\nl533\nl534\nl535\nl536\nl537\nl538\nl539\nl540\nl541\nl542\nl543\nl544\nl545\nl546\nl547\nl548\nl549\nl550\nl551\nl552\nl553\nl554\nl555\nl556\nl557\nl558\nl559\nl560\nl561\nl562\nl563\nl564\nl565\nl566\nl567\nl568\nl569\nl570\nl571\nl572\nl573\nl574\nl575\nl576\nl577\nl578\nl579\nl580\nl581\nl582\nl583\nl584\nl585\nl586\nl587\nl588\nl589\nl590\nl591\nl592\nl593\nl594\nl595\nl596\nl597\nl598\nl599\nl600\nl601\nl602\nl603\nl604\nl605\nl606\nl607\nl608\nl609\nl610\nl611\nl612\nl613\nl614\nl615\nl616\nl617\nl618\nl619\nl620\nl621\nl622\nl623\nl624\nl625\nl626\nl627\nl628\nl629\nl630\nl631\nl632\nl633\nl634\nl635\nl636\nl637\nl638\nl639\nl640\nl641\nl642\nl643\nl644\nl645\nl646\nl647\nl648\nl649\nl650\nl651\nl652\nl653\nl654\nl655\nl656\nl657\nl658\nl659\nl660\nl661\nl662\nl663\nl664\nl665\nl666\nl667\nl668\nl669\nl670\nl671\nl672\nl673\nl674\nl675\nl676\nl677\nl678\nl679\nl680\nl681\nl682\nl683\nl684\nl685\nl686\nl687\nl688\nl689\nl690\nl691\nl692\nl693\nl694\nl695\nl696\nl697\nl698\nl699\nl700\nl701\nl702\nl703\nl704\nl705\nl706\nl707\nl708\nl709\nl710\nl711\nl712\nl713\nl714\nl715\nl716\nl717\nl718\nl719\nl720\nl721\nl722\nl723\nl724\nl725\nl726\nl727\nl728\nl729\nl730\nl731\nl732\nl733\nl734\nl735\nl736\nl737\nl738\nl739\nl740\nl741\nl742\nl743\nl744\nl745\nl746\nl747\nl748\nl749\nl750\nl751\nl752\nl753\nl754\nl755\nl756\nl757\nl758\nl759\nl760\nl761\nl762\nl763\nl764\nl765\nl766\nl767\nl768\nl769\nl770\nl771\nl772\nl773\nl774\nl775\nl776\nl777\nl778\nl779\nl780\nl781\nl782\nl783\nl784\nl785\nl786\nl787\nl788\nl789\nl790\nl791\nl792\nl793\nl794\nl795\nl796\nl797\nl798\nl799\nl800\nl801\nl802\nl803\nl804\nl805\nl806\nl807\nl808\nl809\nl810\nl811\nl812\nl813\nl814\nl815\nl816\nl817\nl818\nl819\nl820\nl821\nl822\nl823\nl824\nl825\nl826\nl827\nl828\nl829\nl830\nl831\nl832\nl833\nl834\nl835\nl836\nl837\nl838\nl839\nl840\nl841\nl842\nl843\nl844\nl845\nl846\nl847\nl848\nl849\nl850\nl851\nl852\nl853\nl854\nl855\nl856\nl857\nl858\nl859\nl860\nl861\nl862\nl863\nl864\nl865\nl866\nl867\nl868\nl869\nl870\nl871\nl872\nl873\nl874\nl875\nl876\nl877\nl878\nl879\nl880\nl881\nl882\nl883\nl884\nl885\nl886\nl887\nl888\nl889\nl890\nl891\nl892\nl893\nl894\nl895\nl896\nl897\nl898\nl899\nl900\nl901\nl902\nl903\nl904\nl905\nl906\nl907\nl908\nl909\nl910\nl911\nl912\nl913\nl914\nl915\nl916\nl917\nl918\nl919\nl920\nl921\nl922\nl923\nl924\nl925\nl926\nl927\nl928\nl929\nl930\nl931\nl932\nl933\nl934\nl935\nl936\nl937\nl938\nl939\nl940\nl941\nl942\nl943\nl944\nl945\nl946\nl947\nl948\nl949\nl950\nl951\nl952\nl953\nl954\nl955\nl956\nl957\nl958\nl959\nl960\nl961\nl962\nl963\nl964\nl965\nl966\nl967\nl968\nl969\nl970\nl971\nl972\nl973\nl974\nl975\nl976\nl977\nl978\nl979\nl980\nl981\nl982\nl983\nl984\nl985\nl986\nl987\nl988\nl989\nl990\nl991\nl992\nl993\nl994\nl995\nl996\nl997\nl998\nl999\nl1000\nl1001\nl1002\nl1003\nl1004\nl1005\nl1006\nl1007\nl1008\nl1009\nl1010\nl1011\nl1012\nl1013\nl1014\nl1015\nl1016\nl1017\nl1018\nl1019\nl1020\nl1021\nl1022\nl1023\nl1024\nl1025\nl1026\nl1027\nl1028\nl1029\nl1030\nl1031\nl1032\nl1033\nl1034\nl1035\nl1036\nl1037\nl1038\nl1039\nl1040\nl1041\nl1042\nl1043\nl1044\nl1045\nl1046\nl1047\nl1048\nl1049\nl1050\nl1051\nl1052\nl1053\nl1054\nl1055\nl1056\nl1057\nl1058\nl1059\nl1060\nl1061\nl1062\nl1063\nl1064\nl1065\nl1066\nl1067\nl1068\nl1069\nl1070\nl1071\nl1072\nl1073\nl1074\nl1075\nl1076\nl1077\nl1078\nl1079\nl1080\nl1081\nl1082\nl1083\nl1084\nl1085\nl1086\nl1087\nl1088\nl1089\nl1090\nl1091\nl1092\nl1093\nl1094\nl1095\nl1096\nl1097\nl1098\nl1099\nl1100\nl1101\nl1102\nl1103\nl1104\nl1105\nl1106\nl1107\nl1108\nl1109\nl1110\nl1111\nl1112\nl1113\nl1114\nl1115\nl1116\nl1117\nl1118\nl1119\nl1120\nl1121\nl1122\nl1123\nl1124\nl1125\nl1126\nl1127\nl1128\nl1129\nl1130\nl1131\nl1132\nl1133\nl1134\nl1135\nl1136\nl1137\nl1138\nl1139\nl1140\nl1141\nl1142\nl1143\nl1144\nl1145\nl1146\nl1147\nl1148\nl1149\nl1150\nl1151\nl1152\nl1153\nl1154\nl1155\nl1156\nl1157\nl1158\nl1159\nl1160\nl1161\nl1162\nl1163\nl1164\nl1165\nl1166\nl1167\nl1168\nl1169\nl1170\nl1171\nl1172\nl1173\nl1174\nl1175\nl1176\nl1177\nl1178\nl1179\nl1180\nl1181\nl1182\nl1183\nl1184",
+        "removedChars": 0,
+        "totalChars": 34889,
+        "nextOffset": 6000,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "l0\nl1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9\nl10\nl11\nl12\nl13\nl14\nl15\nl16\nl17\nl18\nl19\nl20\nl21\nl22\nl23\nl24\nl25\nl26\nl27\nl28\nl29\nl30\nl31\nl32\nl33\nl34\nl35\nl36\nl37\nl38\nl39\nl40\nl41\nl42\nl43\nl44\nl45\nl46\nl47\nl48\nl49\nl50\nl51\nl52\nl53\nl54\nl55\nl56\nl57\nl58\nl59\nl60\nl61\nl62\nl63\nl64\nl65\nl66\nl67\nl68\nl69\nl70\nl71\nl72\nl73\nl74\nl75\nl76\nl77\nl78\nl79\nl80\nl81\nl82\nl83\nl84\nl85\nl86\nl87\nl88\nl89\nl90\nl91\nl92\nl93\nl94\nl95\nl96\nl97\nl98\nl99\nl100\nl101\nl102\nl103\nl104\nl105\nl106\nl107\nl108\nl109\nl110\nl111\nl112\nl113\nl114\nl115\nl116\nl117\nl118\nl119\nl120\nl121\nl122\nl123\nl124\nl125\nl126\nl127\nl128\nl129\nl130\nl131\nl132\nl133\nl134\nl135\nl136\nl137\nl138\nl139\nl140\nl141\nl142\nl143\nl144\nl145\nl146\nl147\nl148\nl149\nl150\nl151\nl152\nl153\nl154\nl155\nl156\nl157\nl158\nl159\nl160\nl161\nl162\nl163\nl164\nl165\nl166\nl167\nl168\nl169\nl170\nl171\nl172\nl173\nl174\nl175\nl176\nl177\nl178\nl179\nl180\nl181\nl182\nl183\nl184\nl185\nl186\nl187\nl188\nl189\nl190\nl191\nl192\nl193\nl194\nl195\nl196\nl197\nl198\nl199\nl200\nl201\nl202\nl203\nl204\nl205\nl206\nl207\nl208\nl209\nl210\nl211\nl212\nl213\nl214\nl215\nl216\nl217\nl218\nl219\nl220\nl221\nl222\nl223\nl224\nl225\nl226\nl227\nl228\nl229\nl230\nl231\nl232\nl233\nl234\nl235\nl236\nl237\nl238\nl239\nl240\nl241\nl242\nl243\nl244\nl245\nl246\nl247\nl248\nl249\nl250\nl251\nl252\nl253\nl254\nl255\nl256\nl257\nl258\nl259\nl260\nl261\nl262\nl263\nl264\nl265\nl266\nl267\nl268\nl269\nl270\nl271\nl272\nl273\nl274\nl275\nl276\nl277\nl278\nl279\nl280\nl281\nl282\nl283\nl284\nl285\nl286\nl287\nl288\nl289\nl290\nl291\nl292\nl293\nl294\nl295\nl296\nl297\nl298\nl299\nl300\nl301\nl302\nl303\nl304\nl305\nl306\nl307\nl308\nl309\nl310\nl311\nl312\nl313\nl314\nl315\nl316\nl317\nl318\nl319\nl320\nl321\nl322\nl323\nl324\nl325\nl326\nl327\nl328\nl329\nl330\nl331\nl332\nl333\nl334\nl335\nl336\nl337\nl338\nl339\nl340\nl341\nl342\nl343\nl344\nl345\nl346\nl347\nl348\nl349\nl350\nl351\nl352\nl353\nl354\nl355\nl356\nl357\nl358\nl359\nl360\nl361\nl362\nl363\nl364\nl365\nl366\nl367\nl368\nl369\nl370\nl371\nl372\nl373\nl374\nl375\nl376\nl377\nl378\nl379\nl380\nl381\nl382\nl383\nl384\nl385\nl386\nl387\nl388\nl389\nl390\nl391\nl392\nl393\nl394\nl395\nl396\nl397\nl398\nl399\nl400\nl401\nl402\nl403\nl404\nl405\nl406\nl407\nl408\nl409\nl410\nl411\nl412\nl413\nl414\nl415\nl416\nl417\nl418\nl419\nl420\nl421\nl422\nl423\nl424\nl425\nl426\nl427\nl428\nl429\nl430\nl431\nl432\nl433\nl434\nl435\nl436\nl437\nl438\nl439\nl440\nl441\nl442\nl443\nl444\nl445\nl446\nl447\nl448\nl449\nl450\nl451\nl452\nl453\nl454\nl455\nl456\nl457\nl458\nl459\nl460\nl461\nl462\nl463\nl464\nl465\nl466\nl467\nl468\nl469\nl470\nl471\nl472\nl473\nl474\nl475\nl476\nl477\nl478\nl479\nl480\nl481\nl482\nl483\nl484\nl485\nl486\nl487\nl488\nl489\nl490\nl491\nl492\nl493\nl494\nl495\nl496\nl497\nl498\nl499\nl500\nl501\nl502\nl503\nl504\nl505\nl506\nl507\nl508\nl509\nl510\nl511\nl512\nl513\nl514\nl515\nl516\nl517\nl518\nl519\nl520\nl521\nl522\nl523\nl524\nl525\nl526\nl527\nl528\nl529\nl530\nl531\nl532\nl533\nl534\nl535\nl536\nl537\nl538\nl539\nl540\nl541\nl542\nl543\nl544\nl545\nl546\nl547\nl548\nl549\nl550\nl551\nl552\nl553\nl554\nl555\nl556\nl557\nl558\nl559\nl560\nl561\nl562\nl563\nl564\nl565\nl566\nl567\nl568\nl569\nl570\nl571\nl572\nl573\nl574\nl575\nl576\nl577\nl578\nl579\nl580\nl581\nl582\nl583\nl584\nl585\nl586\nl587\nl588\nl589\nl590\nl591\nl592\nl593\nl594\nl595\nl596\nl597\nl598\nl599\nl600\nl601\nl602\nl603\nl604\nl605\nl606\nl607\nl608\nl609\nl610\nl611\nl612\nl613\nl614\nl615\nl616\nl617\nl618\nl619\nl620\nl621\nl622\nl623\nl624\nl625\nl626\nl627\nl628\nl629\nl630\nl631\nl632\nl633\nl634\nl635\nl636\nl637\nl638\nl639\nl640\nl641\nl642\nl643\nl644\nl645\nl646\nl647\nl648\nl649\nl650\nl651\nl652\nl653\nl654\nl655\nl656\nl657\nl658\nl659\nl660\nl661\nl662\nl663\nl664\nl665\nl666\nl667\nl668\nl669\nl670\nl671\nl672\nl673\nl674\nl675\nl676\nl677\nl678\nl679\nl680\nl681\nl682\nl683\nl684\nl685\nl686\nl687\nl688\nl689\nl690\nl691\nl692\nl693\nl694\nl695\nl696\nl697\nl698\nl699\nl700\nl701\nl702\nl703\nl704\nl705\nl706\nl707\nl708\nl709\nl710\nl711\nl712\nl713\nl714\nl715\nl716\nl717\nl718\nl719\nl720\nl721\nl722\nl723\nl724\nl725\nl726\nl727\nl728\nl729\nl730\nl731\nl732\nl733\nl734\nl735\nl736\nl737\nl738\nl739\nl740\nl741\nl742\nl743\nl744\nl745\nl746\nl747\nl748\nl749\nl750\nl751\nl752\nl753\nl754\nl755\nl756\nl757\nl758\nl759\nl760\nl761\nl762\nl763\nl764\nl765\nl766\nl767\nl768\nl769\nl770\nl771\nl772\nl773\nl774\nl775\nl776\nl777\nl778\nl779\nl780\nl781\nl782\nl783\nl784\nl785\nl786\nl787\nl788\nl789\nl790\nl791\nl792\nl793\nl794\nl795\nl796\nl797\nl798\nl799\nl800\nl801\nl802\nl803\nl804\nl805\nl806\nl807\nl808\nl809\nl810\nl811\nl812\nl813\nl814\nl815\nl816\nl817\nl818\nl819\nl820\nl821\nl822\nl823\nl824\nl825\nl826\nl827\nl828\nl829\nl830\nl831\nl832\nl833\nl834\nl835\nl836\nl837\nl838\nl839\nl840\nl841\nl842\nl843\nl844\nl845\nl846\nl847\nl848\nl849\nl850\nl851\nl852\nl853\nl854\nl855\nl856\nl857\nl858\nl859\nl860\nl861\nl862\nl863\nl864\nl865\nl866\nl867\nl868\nl869\nl870\nl871\nl872\nl873\nl874\nl875\nl876\nl877\nl878\nl879\nl880\nl881\nl882\nl883\nl884\nl885\nl886\nl887\nl888\nl889\nl890\nl891\nl892\nl893\nl894\nl895\nl896\nl897\nl898\nl899\nl900\nl901\nl902\nl903\nl904\nl905\nl906\nl907\nl908\nl909\nl910\nl911\nl912\nl913\nl914\nl915\nl916\nl917\nl918\nl919\nl920\nl921\nl922\nl923\nl924\nl925\nl926\nl927\nl928\nl929\nl930\nl931\nl932\nl933\nl934\nl935\nl936\nl937\nl938\nl939\nl940\nl941\nl942\nl943\nl944\nl945\nl946\nl947\nl948\nl949\nl950\nl951\nl952\nl953\nl954\nl955\nl956\nl957\nl958\nl959\nl960\nl961\nl962\nl963\nl964\nl965\nl966\nl967\nl968\nl969\nl970\nl971\nl972\nl973\nl974\nl975\nl976\nl977\nl978\nl979\nl980\nl981\nl982\nl983\nl984\nl985\nl986\nl987\nl988\nl989\nl990\nl991\nl992\nl993\nl994\nl995\nl996\nl997\nl998\nl999\nl1000\nl1001\nl1002\nl1003\nl1004\nl1005\nl1006\nl1007\nl1008\nl1009\nl1010\nl1011\nl1012\nl1013\nl1014\nl1015\nl1016\nl1017\nl1018\nl1019\nl1020\nl1021\nl1022\nl1023\nl1024\nl1025\nl1026\nl1027\nl1028\nl1029\nl1030\nl1031\nl1032\nl1033\nl1034\nl1035\nl1036\nl1037\nl1038\nl1039\nl1040\nl1041\nl1042\nl1043\nl1044\nl1045\nl1046\nl1047\nl1048\nl1049\nl1050\nl1051\nl1052\nl1053\nl1054\nl1055\nl1056\nl1057\nl1058\nl1059\nl1060\nl1061\nl1062\nl1063\nl1064\nl1065\nl1066\nl1067\nl1068\nl1069\nl1070\nl1071\nl1072\nl1073\nl1074\nl1075\nl1076\nl1077\nl1078\nl1079\nl1080\nl1081\nl1082\nl1083\nl1084\nl1085\nl1086\nl1087\nl1088\nl1089\nl1090\nl1091\nl1092\nl1093\nl1094\nl1095\nl1096\nl1097\nl1098\nl1099\nl1100\nl1101\nl1102\nl1103\nl1104\nl1105\nl1106\nl1107\nl1108\nl1109\nl1110\nl1111\nl1112\nl1113\nl1114\nl1115\nl1116\nl1117\nl1118\nl1119\nl1120\nl1121\nl1122\nl1123\nl1124\nl1125\nl1126\nl1127\nl1128\nl1129\nl1130\nl1131\nl1132\nl1133\nl1134\nl1135\nl1136\nl1137\nl1138\nl1139\nl1140\nl1141\nl1142\nl1143\nl1144\nl1145\nl1146\nl1147\nl1148\nl1149\nl1150\nl1151\nl1152\nl1153\nl1154\nl1155\nl1156\nl1157\nl1158\nl1159\nl1160\nl1161\nl1162\nl1163\nl1164\nl1165\nl1166\nl1167\nl1168\nl1169\nl1170\nl1171\nl1172\nl1173\nl1174\nl1175\nl1176\nl1177\nl1178\nl1179\nl1180\nl1181\nl1182\nl1183\nl1184",
+        "removedChars": 0,
+        "totalChars": 34889,
+        "nextOffset": 6000,
+        "incomplete": false
+      }
+    },
+    "spike_misnest1": {
+      "input": "<p>a<div>b</div>c</p>",
+      "marked": "a\n\nb\nc\n\n",
+      "full": "a\n\nb\nc\n\n",
+      "cut": false,
+      "body": {
+        "text": "a\n\nb\nc",
+        "removedChars": 0,
+        "totalChars": 6,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "a\n\nb\nc",
+        "removedChars": 0,
+        "totalChars": 6,
+        "incomplete": false
+      }
+    },
+    "spike_misnest2": {
+      "input": "<table><tr><td>x</td></tr>stray text</table>",
+      "marked": "x\n\nstray text",
+      "full": "x\n\nstray text",
+      "cut": false,
+      "body": {
+        "text": "x\n\nstray text",
+        "removedChars": 0,
+        "totalChars": 13,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "x\n\nstray text",
+        "removedChars": 0,
+        "totalChars": 13,
+        "incomplete": false
+      }
+    },
+    "spike_misnest3": {
+      "input": "<b><p>x</b>y</p>",
+      "marked": "x\n\ny\n\n",
+      "full": "x\n\ny\n\n",
+      "cut": false,
+      "body": {
+        "text": "x\n\ny",
+        "removedChars": 0,
+        "totalChars": 4,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "x\n\ny",
+        "removedChars": 0,
+        "totalChars": 4,
+        "incomplete": false
+      }
+    },
+    "spike_misnest4": {
+      "input": "<a href=\"https://a.example\">one<a href=\"https://b.example\">two</a>",
+      "marked": "[one[two](https://b.example)](https://a.example)",
+      "full": "[one[two](https://b.example)](https://a.example)",
+      "cut": false,
+      "body": {
+        "text": "[one[two](https://b.example)](https://a.example)",
+        "removedChars": 0,
+        "totalChars": 48,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "[one[two](https://b.example)](https://a.example)",
+        "removedChars": 0,
+        "totalChars": 48,
+        "incomplete": false
+      }
+    },
+    "spike_misnest5": {
+      "input": "<div>unclosed<blockquote type=\"cite\">q<div>still q",
+      "marked": "unclosed\n<Q>\nq\nstill q\n<E>",
+      "full": "unclosed\n\n> q\n> still q",
+      "cut": false,
+      "body": {
+        "text": "unclosed\n\n[quoted text: 2 lines omitted, read with include_quoted: true]",
+        "removedChars": 0,
+        "totalChars": 72,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "unclosed\n\n> q\n> still q",
+        "removedChars": 0,
+        "totalChars": 23,
+        "incomplete": false
+      }
+    },
+    "spike_nobody": {
+      "input": "just text <b>bold</b><br>line",
+      "marked": "just text bold\nline",
+      "full": "just text bold\nline",
+      "cut": false,
+      "body": {
+        "text": "just text bold\nline",
+        "removedChars": 0,
+        "totalChars": 19,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "just text bold\nline",
+        "removedChars": 0,
+        "totalChars": 19,
+        "incomplete": false
+      }
+    },
+    "spike_headtitle": {
+      "input": "<html><head><title>T</title></head><body>B</body></html>",
+      "marked": "B",
+      "full": "B",
+      "cut": false,
+      "body": {
+        "text": "B",
+        "removedChars": 0,
+        "totalChars": 1,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "B",
+        "removedChars": 0,
+        "totalChars": 1,
+        "incomplete": false
+      }
+    },
+    "lists": {
+      "input": "<ul><li>one</li><li>two<ul><li>n1</li><li>n2</li></ul></li></ul><ol start=\"3\"><li>c</li><li>d</li></ol>",
+      "marked": " * one\n * two\n   * n1\n   * n2\n\n 3. c\n 4. d",
+      "full": " * one\n * two\n   * n1\n   * n2\n\n 3. c\n 4. d",
+      "cut": false,
+      "body": {
+        "text": "* one\n * two\n   * n1\n   * n2\n\n 3. c\n 4. d",
+        "removedChars": 0,
+        "totalChars": 41,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "* one\n * two\n   * n1\n   * n2\n\n 3. c\n 4. d",
+        "removedChars": 0,
+        "totalChars": 41,
+        "incomplete": false
+      }
+    },
+    "oltypes": {
+      "input": "<ol type=\"a\"><li>x</li><li>y</li></ol><ol type=\"A\" start=\"27\"><li>x</li></ol><ol type=\"i\" start=\"4\"><li>x</li><li>y</li></ol><ol type=\"I\" start=\"1999\"><li>x</li></ol>",
+      "marked": " a. x\n b. y\n\n AA. x\n\n iv. x\n v.  y\n\n MCMXCIX. x",
+      "full": " a. x\n b. y\n\n AA. x\n\n iv. x\n v.  y\n\n MCMXCIX. x",
+      "cut": false,
+      "body": {
+        "text": "a. x\n b. y\n\n AA. x\n\n iv. x\n v.  y\n\n MCMXCIX. x",
+        "removedChars": 0,
+        "totalChars": 46,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "a. x\n b. y\n\n AA. x\n\n iv. x\n v.  y\n\n MCMXCIX. x",
+        "removedChars": 0,
+        "totalChars": 46,
+        "incomplete": false
+      }
+    },
+    "olweird": {
+      "input": "<ol start=\"abc\"><li>x</li></ol><ol start=\"\"><li>y</li></ol><ol start=\" 7 \"><li>z</li></ol><ol start=\"2.5\"><li>w</li><li>v</li></ol><ol start=\"-2\" type=\"a\"><li>u</li></ol><ol start=\"0x10\"><li>h</li></ol><ol start=\"1e2\"><li>e</li></ol><ol type=\"i\" start=\"0\"><li>z</li></ol><ol type=\"I\" start=\"-3\"><li>m</li></ol>",
+      "marked": " NaN. x\n\n 1. y\n\n 7. z\n\n 2.5. w\n 3.5. v\n\n ^. u\n\n 16. h\n\n 100. e\n\n . z\n\n XCIII. m",
+      "full": " NaN. x\n\n 1. y\n\n 7. z\n\n 2.5. w\n 3.5. v\n\n ^. u\n\n 16. h\n\n 100. e\n\n . z\n\n XCIII. m",
+      "cut": false,
+      "body": {
+        "text": "NaN. x\n\n 1. y\n\n 7. z\n\n 2.5. w\n 3.5. v\n\n ^. u\n\n 16. h\n\n 100. e\n\n . z\n\n XCIII. m",
+        "removedChars": 0,
+        "totalChars": 78,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "NaN. x\n\n 1. y\n\n 7. z\n\n 2.5. w\n 3.5. v\n\n ^. u\n\n 16. h\n\n 100. e\n\n . z\n\n XCIII. m",
+        "removedChars": 0,
+        "totalChars": 78,
+        "incomplete": false
+      }
+    },
+    "listmixed": {
+      "input": "<ul>\n  <li>a</li>\n  text\n  <!-- c -->\n  <p>para</p>\n  <li>b</li>\n</ul>",
+      "marked": " * a\n   text\n   \n\n   para\n\n * b",
+      "full": " * a\n   text\n   \n\n   para\n\n * b",
+      "cut": false,
+      "body": {
+        "text": "* a\n   text\n\n   para\n\n * b",
+        "removedChars": 0,
+        "totalChars": 26,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "* a\n   text\n\n   para\n\n * b",
+        "removedChars": 0,
+        "totalChars": 26,
+        "incomplete": false
+      }
+    },
+    "listempty": {
+      "input": "<ul>  </ul><ul><li></li></ul>after",
+      "marked": " * \n\nafter",
+      "full": " * \n\nafter",
+      "cut": false,
+      "body": {
+        "text": "*\n\nafter",
+        "removedChars": 0,
+        "totalChars": 8,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "*\n\nafter",
+        "removedChars": 0,
+        "totalChars": 8,
+        "incomplete": false
+      }
+    },
+    "listnested_ol": {
+      "input": "<ol><li>a<ol><li>b</li><li>c</li></ol></li><li>d</li></ol>",
+      "marked": " 1. a\n    1. b\n    2. c\n 2. d",
+      "full": " 1. a\n    1. b\n    2. c\n 2. d",
+      "cut": false,
+      "body": {
+        "text": "1. a\n    1. b\n    2. c\n 2. d",
+        "removedChars": 0,
+        "totalChars": 28,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "1. a\n    1. b\n    2. c\n 2. d",
+        "removedChars": 0,
+        "totalChars": 28,
+        "incomplete": false
+      }
+    },
+    "pre": {
+      "input": "<p>x</p><pre>  a\n\n   b <b>bold</b>\n</pre><p>y</p>",
+      "marked": "x\n\n  a\n\n   b bold\n\n\ny",
+      "full": "x\n\n  a\n\n   b bold\n\n\ny",
+      "cut": false,
+      "body": {
+        "text": "x\n\n  a\n\n   b bold\n\ny",
+        "removedChars": 0,
+        "totalChars": 20,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "x\n\n  a\n\n   b bold\n\ny",
+        "removedChars": 0,
+        "totalChars": 20,
+        "incomplete": false
+      }
+    },
+    "premark": {
+      "input": "<pre>text<blockquote type=\"cite\">quoted</blockquote>after</pre>",
+      "marked": "text\n<Q>quoted\n<E>after",
+      "full": "text\n\n> quotedafter",
+      "cut": false,
+      "body": {
+        "text": "text\n\n[quoted text: 1 line omitted, read with include_quoted: true]\nafter",
+        "removedChars": 0,
+        "totalChars": 73,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "text\n\n> quotedafter",
+        "removedChars": 0,
+        "totalChars": 19,
+        "incomplete": false
+      }
+    },
+    "bq": {
+      "input": "<blockquote>\n<p>one</p>\n<p>two</p>\n</blockquote><blockquote><blockquote>deep</blockquote></blockquote>",
+      "marked": "> one\n> \n> two\n\n> > deep",
+      "full": "> one\n> \n> two\n\n> > deep",
+      "cut": false,
+      "body": {
+        "text": "[quoted text: 4 lines omitted, read with include_quoted: true]",
+        "removedChars": 0,
+        "totalChars": 62,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "> one\n>\n> two\n\n> > deep",
+        "removedChars": 0,
+        "totalChars": 23,
+        "incomplete": false
+      }
+    },
+    "bqcase": {
+      "input": "<blockquote type=\"CITE\">upper</blockquote><blockquote type=\"cite\">lower</blockquote>",
+      "marked": "> upper\n\n<Q>\nlower\n<E>",
+      "full": "> upper\n\n> lower",
+      "cut": false,
+      "body": {
+        "text": "[quoted text: 1 line omitted, read with include_quoted: true]\n\n[quoted text: 1 line omitted, read with include_quoted: true]",
+        "removedChars": 0,
+        "totalChars": 124,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "> upper\n\n> lower",
+        "removedChars": 0,
+        "totalChars": 16,
+        "incomplete": false
+      }
+    },
+    "headings": {
+      "input": "<h1>One</h1><h4>Four</h4>text<h6>six</h6>",
+      "marked": "One\n\nFour\n\ntext\n\nsix",
+      "full": "One\n\nFour\n\ntext\n\nsix",
+      "cut": false,
+      "body": {
+        "text": "One\n\nFour\n\ntext\n\nsix",
+        "removedChars": 0,
+        "totalChars": 20,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "One\n\nFour\n\ntext\n\nsix",
+        "removedChars": 0,
+        "totalChars": 20,
+        "incomplete": false
+      }
+    },
+    "links": {
+      "input": "<a href=\"HTTPS://X.Y/\">up</a> <a href=\"mailto:a@b\">m</a> <a href=\"javascript:alert(1)\">js</a> <a>none</a> <a href=\"https://a.b/\"><b>bold [x]</b> tail</a> <a href=\"https://o/\"><a href=\"https://i/\">in</a></a>",
+      "marked": "[up](HTTPS://X.Y/) [m](mailto:a@b) js none [bold \\[x\\] tail](https://a.b/) [[in](https://i/)](https://o/)",
+      "full": "[up](HTTPS://X.Y/) [m](mailto:a@b) js none [bold \\[x\\] tail](https://a.b/) [[in](https://i/)](https://o/)",
+      "cut": false,
+      "body": {
+        "text": "[up](HTTPS://X.Y/) [m](mailto:a@b) js none [bold \\[x\\] tail](https://a.b/) [[in](https://i/)](https://o/)",
+        "removedChars": 0,
+        "totalChars": 105,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "[up](HTTPS://X.Y/) [m](mailto:a@b) js none [bold \\[x\\] tail](https://a.b/) [[in](https://i/)](https://o/)",
+        "removedChars": 0,
+        "totalChars": 105,
+        "incomplete": false
+      }
+    },
+    "linkws": {
+      "input": "<a href=\"https://a.b/ x\ty\">t</a><a href=\"  https://lead/\">lead</a>",
+      "marked": "[t](https://a.b/%20x%20y)lead",
+      "full": "[t](https://a.b/%20x%20y)lead",
+      "cut": false,
+      "body": {
+        "text": "[t](https://a.b/%20x%20y)lead",
+        "removedChars": 0,
+        "totalChars": 29,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "[t](https://a.b/%20x%20y)lead",
+        "removedChars": 0,
+        "totalChars": 29,
+        "incomplete": false
+      }
+    },
+    "imgs": {
+      "input": "a<img src=\"x.png\" alt=\"ALT\">b <img class=\"gmail_quote\" src=\"y\">c",
+      "marked": "ab\n<Q>\n<E>\nc",
+      "full": "ab c",
+      "cut": false,
+      "body": {
+        "text": "ab\n\n[quoted text: 0 lines omitted, read with include_quoted: true]\n\nc",
+        "removedChars": 0,
+        "totalChars": 69,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "ab c",
+        "removedChars": 0,
+        "totalChars": 4,
+        "incomplete": false
+      }
+    },
+    "br": {
+      "input": "<div><br>a<br><br>b<br></div><p><br></p>c",
+      "marked": "\na\n\nb\n\n\n\n\n\nc",
+      "full": "\na\n\nb\n\n\n\n\n\nc",
+      "cut": false,
+      "body": {
+        "text": "a\n\nb\n\nc",
+        "removedChars": 0,
+        "totalChars": 7,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "a\n\nb\n\nc",
+        "removedChars": 0,
+        "totalChars": 7,
+        "incomplete": false
+      }
+    },
+    "spans": {
+      "input": "<span>a</span> <span>b</span><span>c</span>\n<b>d</b>&nbsp;<i>e</i>",
+      "marked": "a bc d\u00a0e",
+      "full": "a bc d\u00a0e",
+      "cut": false,
+      "body": {
+        "text": "a bc d\u00a0e",
+        "removedChars": 0,
+        "totalChars": 8,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "a bc d\u00a0e",
+        "removedChars": 0,
+        "totalChars": 8,
+        "incomplete": false
+      }
+    },
+    "ws": {
+      "input": "  lead   and\n\ttabs\r\nand\fform\u200bzw  ",
+      "marked": "lead and tabs and form zw",
+      "full": "lead and tabs and form zw",
+      "cut": false,
+      "body": {
+        "text": "lead and tabs and form zw",
+        "removedChars": 0,
+        "totalChars": 25,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "lead and tabs and form zw",
+        "removedChars": 0,
+        "totalChars": 25,
+        "incomplete": false
+      }
+    },
+    "entities": {
+      "input": "&lt;tag&gt; &amp;amp; &eacute; &#x1F600; &bogus; &#0; &#x110000; caf&eacute",
+      "marked": "<tag> &amp; \u00e9 \ud83d\ude00 &bogus; \ufffd \ufffd caf\u00e9",
+      "full": "<tag> &amp; \u00e9 \ud83d\ude00 &bogus; \ufffd \ufffd caf\u00e9",
+      "cut": false,
+      "body": {
+        "text": "<tag> &amp; \u00e9 \ud83d\ude00 &bogus; \ufffd \ufffd caf\u00e9",
+        "removedChars": 0,
+        "totalChars": 33,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "<tag> &amp; \u00e9 \ud83d\ude00 &bogus; \ufffd \ufffd caf\u00e9",
+        "removedChars": 0,
+        "totalChars": 33,
+        "incomplete": false
+      }
+    },
+    "tables": {
+      "input": "<table><tr><td>a</td><td>b</td></tr><tr><th>h</th></tr></table><table>\n<tr>\n<td>  x  </td>\n</tr>\n</table>",
+      "marked": "a\n\nb\n\nh\n\nx",
+      "full": "a\n\nb\n\nh\n\nx",
+      "cut": false,
+      "body": {
+        "text": "a\n\nb\n\nh\n\nx",
+        "removedChars": 0,
+        "totalChars": 10,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "a\n\nb\n\nh\n\nx",
+        "removedChars": 0,
+        "totalChars": 10,
+        "incomplete": false
+      }
+    },
+    "hr": {
+      "input": "a<hr>b<hr/>",
+      "marked": "a\n\n----------------------------------------\n\nb\n\n----------------------------------------",
+      "full": "a\n\n----------------------------------------\n\nb\n\n----------------------------------------",
+      "cut": false,
+      "body": {
+        "text": "a\n\n----------------------------------------\n\nb\n\n----------------------------------------",
+        "removedChars": 0,
+        "totalChars": 88,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "a\n\n----------------------------------------\n\nb\n\n----------------------------------------",
+        "removedChars": 0,
+        "totalChars": 88,
+        "incomplete": false
+      }
+    },
+    "explicitbody": {
+      "input": "<body><p>x</p></body>",
+      "marked": "x",
+      "full": "x",
+      "cut": false,
+      "body": {
+        "text": "x",
+        "removedChars": 0,
+        "totalChars": 1,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "x",
+        "removedChars": 0,
+        "totalChars": 1,
+        "incomplete": false
+      }
+    },
+    "bodyclass": {
+      "input": "<html><body class=\"gmail_quote\"><p>x</p></body></html>",
+      "marked": "<Q>\n\nx\n\n<E>",
+      "full": "x",
+      "cut": false,
+      "body": {
+        "text": "[quoted text: 1 line omitted, read with include_quoted: true]",
+        "removedChars": 0,
+        "totalChars": 61,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "x",
+        "removedChars": 0,
+        "totalChars": 1,
+        "incomplete": false
+      }
+    },
+    "htmlonly": {
+      "input": "<html><p>x</p></html>",
+      "marked": "x",
+      "full": "x",
+      "cut": false,
+      "body": {
+        "text": "x",
+        "removedChars": 0,
+        "totalChars": 1,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "x",
+        "removedChars": 0,
+        "totalChars": 1,
+        "incomplete": false
+      }
+    },
+    "titlebody": {
+      "input": "<title>T</title>hello",
+      "marked": "Thello",
+      "full": "Thello",
+      "cut": false,
+      "body": {
+        "text": "Thello",
+        "removedChars": 0,
+        "totalChars": 6,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "Thello",
+        "removedChars": 0,
+        "totalChars": 6,
+        "incomplete": false
+      }
+    },
+    "headonly": {
+      "input": "<head><title>T</title><style>p{}</style></head><p>vis</p>",
+      "marked": "vis",
+      "full": "vis",
+      "cut": false,
+      "body": {
+        "text": "vis",
+        "removedChars": 0,
+        "totalChars": 3,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "vis",
+        "removedChars": 0,
+        "totalChars": 3,
+        "incomplete": false
+      }
+    },
+    "wbr": {
+      "input": "long<wbr>word",
+      "marked": "longword",
+      "full": "longword",
+      "cut": false,
+      "body": {
+        "text": "longword",
+        "removedChars": 0,
+        "totalChars": 8,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "longword",
+        "removedChars": 0,
+        "totalChars": 8,
+        "incomplete": false
+      }
+    },
+    "script": {
+      "input": "<p>a<script>alert(1)</script>b<style>.x{}</style>c<noscript>ns</noscript>d<template>tp</template>e</p>",
+      "marked": "abcnsdtpe",
+      "full": "abcnsdtpe",
+      "cut": false,
+      "body": {
+        "text": "abcnsdtpe",
+        "removedChars": 0,
+        "totalChars": 9,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "abcnsdtpe",
+        "removedChars": 0,
+        "totalChars": 9,
+        "incomplete": false
+      }
+    },
+    "comment": {
+      "input": "a<!-- hidden -->b",
+      "marked": "ab",
+      "full": "ab",
+      "cut": false,
+      "body": {
+        "text": "ab",
+        "removedChars": 0,
+        "totalChars": 2,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "ab",
+        "removedChars": 0,
+        "totalChars": 2,
+        "incomplete": false
+      }
+    },
+    "quotes": {
+      "input": "<div>reply</div><div class=\"yahoo_quoted\">y</div><div class=\"moz-cite-prefix\">m</div><div id=\"OLK_SRC_BODY_SECTION\">o</div><div class=\"foo\tgmail_quote_container\">gc</div><div class=\"foo\ngmail_quote\">nl</div>",
+      "marked": "reply\n<Q>\ny\n<E>\n<Q>\nm\n<E>\n<Q>\no\n<E>\n<Q>\ngc\n<E>\nnl",
+      "full": "reply\ny\nm\no\ngc\nnl",
+      "cut": false,
+      "body": {
+        "text": "reply\n\n[quoted text: 1 line omitted, read with include_quoted: true]\n\n[quoted text: 1 line omitted, read with include_quoted: true]\n\n[quoted text: 1 line omitted, read with include_quoted: true]\n\n[quoted text: 1 line omitted, read with include_quoted: true]\n\nnl",
+        "removedChars": 0,
+        "totalChars": 261,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "reply\ny\nm\no\ngc\nnl",
+        "removedChars": 0,
+        "totalChars": 17,
+        "incomplete": false
+      }
+    },
+    "quotestart": {
+      "input": "<div>Reply here</div><div id=\"divRplyFwdMsg\"><b>From:</b> A<br><b>Sent:</b> B<br><b>To:</b> C<br><b>Subject:</b> D</div><div>Original body</div>",
+      "marked": "Reply here\n<Q>\nFrom: A\nSent: B\nTo: C\nSubject: D\nOriginal body",
+      "full": "Reply here\nFrom: A\nSent: B\nTo: C\nSubject: D\nOriginal body",
+      "cut": false,
+      "body": {
+        "text": "Reply here\n\n[quoted text: 5 lines omitted, read with include_quoted: true]",
+        "removedChars": 0,
+        "totalChars": 74,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "Reply here\nFrom: A\nSent: B\nTo: C\nSubject: D\nOriginal body",
+        "removedChars": 0,
+        "totalChars": 57,
+        "incomplete": false
+      }
+    },
+    "appendonsend": {
+      "input": "<div>Mine</div><div id=\"appendonsend\"></div><hr><div>From: x</div>",
+      "marked": "Mine\n<Q>\n\n----------------------------------------\n\nFrom: x",
+      "full": "Mine\n\n\n----------------------------------------\n\nFrom: x",
+      "cut": false,
+      "body": {
+        "text": "Mine\n\n[quoted text: 2 lines omitted, read with include_quoted: true]",
+        "removedChars": 0,
+        "totalChars": 68,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "Mine\n\n----------------------------------------\n\nFrom: x",
+        "removedChars": 0,
+        "totalChars": 55,
+        "incomplete": false
+      }
+    },
+    "nestedquote": {
+      "input": "<div class=\"gmail_quote\">outer<div class=\"gmail_quote\">inner</div>outer2</div><p>after</p>",
+      "marked": "<Q>\nouter\n<Q>\ninner\n<E>\nouter2\n<E>\n\nafter",
+      "full": "outer\ninner\nouter2\n\nafter",
+      "cut": false,
+      "body": {
+        "text": "[quoted text: 3 lines omitted, read with include_quoted: true]\n\nafter",
+        "removedChars": 0,
+        "totalChars": 69,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "outer\ninner\nouter2\n\nafter",
+        "removedChars": 0,
+        "totalChars": 25,
+        "incomplete": false
+      }
+    },
+    "forgedmark": {
+      "input": "<p>Visible</p><p>&#xE000;qxxxxxxxxxxxx&#xE000;</p><p>Still visible</p>",
+      "marked": "Visible\n\n\ue000qxxxxxxxxxxxx\ue000\n\nStill visible",
+      "full": "Visible\n\n\ue000qxxxxxxxxxxxx\ue000\n\nStill visible",
+      "cut": false,
+      "body": {
+        "text": "Visible\n\n\ue000qxxxxxxxxxxxx\ue000\n\nStill visible",
+        "removedChars": 0,
+        "totalChars": 39,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "Visible\n\n\ue000qxxxxxxxxxxxx\ue000\n\nStill visible",
+        "removedChars": 0,
+        "totalChars": 39,
+        "incomplete": false
+      }
+    },
+    "explicitbody999": {
+      "marked": "top\n\ndeep",
+      "full": "top\n\ndeep",
+      "cut": false,
+      "body": {
+        "text": "top\n\ndeep",
+        "removedChars": 0,
+        "totalChars": 9,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "top\n\ndeep",
+        "removedChars": 0,
+        "totalChars": 9,
+        "incomplete": false
+      }
+    },
+    "explicitbody1000": {
+      "marked": "top\n\n<CUT>",
+      "full": "top\n\n<CUT>",
+      "cut": true,
+      "body": {
+        "text": "top\n\n\u2026",
+        "removedChars": 0,
+        "totalChars": 6,
+        "incomplete": true
+      },
+      "bodyQ": {
+        "text": "top\n\n\u2026",
+        "removedChars": 0,
+        "totalChars": 6,
+        "incomplete": true
+      }
+    },
+    "html999": {
+      "marked": "top\n\ndeep",
+      "full": "top\n\ndeep",
+      "cut": false,
+      "body": {
+        "text": "top\n\ndeep",
+        "removedChars": 0,
+        "totalChars": 9,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "top\n\ndeep",
+        "removedChars": 0,
+        "totalChars": 9,
+        "incomplete": false
+      }
+    },
+    "html1000": {
+      "marked": "top\n\n<CUT>",
+      "full": "top\n\n<CUT>",
+      "cut": true,
+      "body": {
+        "text": "top\n\n\u2026",
+        "removedChars": 0,
+        "totalChars": 6,
+        "incomplete": true
+      },
+      "bodyQ": {
+        "text": "top\n\n\u2026",
+        "removedChars": 0,
+        "totalChars": 6,
+        "incomplete": true
+      }
+    },
+    "list1000": {
+      "marked": " * <CUT>",
+      "full": " * <CUT>",
+      "cut": true,
+      "body": {
+        "text": "* \u2026",
+        "removedChars": 0,
+        "totalChars": 3,
+        "incomplete": true
+      },
+      "bodyQ": {
+        "text": "* \u2026",
+        "removedChars": 0,
+        "totalChars": 3,
+        "incomplete": true
+      }
+    },
+    "list1001": {
+      "marked": " * <CUT>",
+      "full": " * <CUT>",
+      "cut": true,
+      "body": {
+        "text": "* \u2026",
+        "removedChars": 0,
+        "totalChars": 3,
+        "incomplete": true
+      },
+      "bodyQ": {
+        "text": "* \u2026",
+        "removedChars": 0,
+        "totalChars": 3,
+        "incomplete": true
+      }
+    },
+    "quoteDeep": {
+      "marked": "<Q>\n<CUT>\n<E>\nafter",
+      "full": "<CUT>\nafter",
+      "cut": true,
+      "body": {
+        "text": "[quoted text: 1 line omitted, read with include_quoted: true]\n\nafter",
+        "removedChars": 0,
+        "totalChars": 68,
+        "incomplete": true
+      },
+      "bodyQ": {
+        "text": "\u2026\nafter",
+        "removedChars": 0,
+        "totalChars": 7,
+        "incomplete": true
+      }
+    },
+    "astral": {
+      "input": "<p>\ud83d\ude00 emoji \ud835\udcb3</p>",
+      "marked": "\ud83d\ude00 emoji \ud835\udcb3",
+      "full": "\ud83d\ude00 emoji \ud835\udcb3",
+      "cut": false,
+      "body": {
+        "text": "\ud83d\ude00 emoji \ud835\udcb3",
+        "removedChars": 0,
+        "totalChars": 11,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "\ud83d\ude00 emoji \ud835\udcb3",
+        "removedChars": 0,
+        "totalChars": 11,
+        "incomplete": false
+      }
+    },
+    "invisible": {
+      "input": "<p>a\u200bb\u202ec\u2066d</p>",
+      "marked": "a b\u202ec\u2066d",
+      "full": "a b\u202ec\u2066d",
+      "cut": false,
+      "body": {
+        "text": "a bcd",
+        "removedChars": 2,
+        "totalChars": 5,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "a bcd",
+        "removedChars": 2,
+        "totalChars": 5,
+        "incomplete": false
+      }
+    },
+    "dl": {
+      "input": "<dl><dt>term</dt><dd>def</dd></dl><address>addr</address><center>c</center>",
+      "marked": "termdefaddrc",
+      "full": "termdefaddrc",
+      "cut": false,
+      "body": {
+        "text": "termdefaddrc",
+        "removedChars": 0,
+        "totalChars": 12,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "termdefaddrc",
+        "removedChars": 0,
+        "totalChars": 12,
+        "incomplete": false
+      }
+    },
+    "sections": {
+      "input": "<article>a</article><aside>b</aside><nav>n</nav><header>h</header><footer>f</footer><main>m</main><section>s</section><form>fo</form>",
+      "marked": "a\nb\nn\nh\nf\nm\ns\nfo",
+      "full": "a\nb\nn\nh\nf\nm\ns\nfo",
+      "cut": false,
+      "body": {
+        "text": "a\nb\nn\nh\nf\nm\ns\nfo",
+        "removedChars": 0,
+        "totalChars": 16,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "a\nb\nn\nh\nf\nm\ns\nfo",
+        "removedChars": 0,
+        "totalChars": 16,
+        "incomplete": false
+      }
+    },
+    "outlookText": {
+      "input": "<p>Reply</p><p>From: Alice<br>Sent: Monday<br>To: Bob<br>Subject: Hi</p><p>old text</p>",
+      "marked": "Reply\n\nFrom: Alice\nSent: Monday\nTo: Bob\nSubject: Hi\n\nold text",
+      "full": "Reply\n\nFrom: Alice\nSent: Monday\nTo: Bob\nSubject: Hi\n\nold text",
+      "cut": false,
+      "body": {
+        "text": "Reply\n\n[quoted text: 5 lines omitted, read with include_quoted: true]",
+        "removedChars": 0,
+        "totalChars": 69,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "Reply\n\nFrom: Alice\nSent: Monday\nTo: Bob\nSubject: Hi\n\nold text",
+        "removedChars": 0,
+        "totalChars": 61,
+        "incomplete": false
+      }
+    },
+    "crlf": {
+      "input": "<p>a\r\nb</p><pre>x\r\ny</pre>",
+      "marked": "a b\n\nx\r\ny",
+      "full": "a b\n\nx\r\ny",
+      "cut": false,
+      "body": {
+        "text": "a b\n\nx\ny",
+        "removedChars": 0,
+        "totalChars": 8,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "a b\n\nx\ny",
+        "removedChars": 0,
+        "totalChars": 8,
+        "incomplete": false
+      }
+    },
+    "nbspTrail": {
+      "input": "<p>line&nbsp;&nbsp;</p><p>next</p>",
+      "marked": "line\u00a0\u00a0\n\nnext",
+      "full": "line\u00a0\u00a0\n\nnext",
+      "cut": false,
+      "body": {
+        "text": "line\n\nnext",
+        "removedChars": 0,
+        "totalChars": 10,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "line\n\nnext",
+        "removedChars": 0,
+        "totalChars": 10,
+        "incomplete": false
+      }
+    }
+  },
+  "text": {
+    "sig_dashes": {
+      "input": "Body\n\n--\nName\n",
+      "body": {
+        "text": "Body\n\n[signature: 2 lines omitted, read with include_quoted: true]",
+        "removedChars": 0,
+        "totalChars": 66,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "Body\n\n--\nName",
+        "removedChars": 0,
+        "totalChars": 13,
+        "incomplete": false
+      }
+    },
+    "sig_sent": {
+      "input": "Body text\n\nSent from my iPhone",
+      "body": {
+        "text": "Body text\n\n[signature: 1 line omitted, read with include_quoted: true]",
+        "removedChars": 0,
+        "totalChars": 70,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "Body text\n\nSent from my iPhone",
+        "removedChars": 0,
+        "totalChars": 30,
+        "incomplete": false
+      }
+    },
+    "sig_regards": {
+      "input": "Body text\n\nBest regards,\nAle",
+      "body": {
+        "text": "Body text\n\n[signature: 2 lines omitted, read with include_quoted: true]",
+        "removedChars": 0,
+        "totalChars": 71,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "Body text\n\nBest regards,\nAle",
+        "removedChars": 0,
+        "totalChars": 28,
+        "incomplete": false
+      }
+    },
+    "de": {
+      "input": "Danke!\n\nAm 03.10.2026 um 14:12 schrieb Max Mustermann <max@example.org>:\n> Hallo\n> Welt",
+      "body": {
+        "text": "Danke!\n\n[quoted text: 3 lines omitted, read with include_quoted: true]",
+        "removedChars": 0,
+        "totalChars": 70,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "Danke!\n\nAm 03.10.2026 um 14:12 schrieb Max Mustermann <max@example.org>:\n> Hallo\n> Welt",
+        "removedChars": 0,
+        "totalChars": 87,
+        "incomplete": false
+      }
+    },
+    "fr": {
+      "input": "Merci\n\nLe 3 oct. 2026 \u00e0 14:12, Jean <jean@example.org> a \u00e9crit :\n> Bonjour",
+      "body": {
+        "text": "Merci\n\n[quoted text: 2 lines omitted, read with include_quoted: true]",
+        "removedChars": 0,
+        "totalChars": 69,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "Merci\n\nLe 3 oct. 2026 \u00e0 14:12, Jean <jean@example.org> a \u00e9crit :\n> Bonjour",
+        "removedChars": 0,
+        "totalChars": 74,
+        "incomplete": false
+      }
+    },
+    "es": {
+      "input": "Gracias\n\nEl 3 oct 2026, a las 14:12, Ana <ana@example.org> escribi\u00f3:\n> Hola",
+      "body": {
+        "text": "Gracias\n\n[quoted text: 2 lines omitted, read with include_quoted: true]",
+        "removedChars": 0,
+        "totalChars": 71,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "Gracias\n\nEl 3 oct 2026, a las 14:12, Ana <ana@example.org> escribi\u00f3:\n> Hola",
+        "removedChars": 0,
+        "totalChars": 75,
+        "incomplete": false
+      }
+    },
+    "it_da": {
+      "input": "Ok\n\nDa: Mario Rossi <mario@example.org>\nInviato: luned\u00ec\nA: me\nOggetto: x\n\ntesto vecchio",
+      "body": {
+        "text": "Ok\n\n[quoted text: 5 lines omitted, read with include_quoted: true]",
+        "removedChars": 0,
+        "totalChars": 66,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "Ok\n\nDa: Mario Rossi <mario@example.org>\nInviato: luned\u00ec\nA: me\nOggetto: x\n\ntesto vecchio",
+        "removedChars": 0,
+        "totalChars": 87,
+        "incomplete": false
+      }
+    },
+    "original": {
+      "input": "Top\n\n-----Original Message-----\nFrom: x\nold",
+      "body": {
+        "text": "Top\n\n[quoted text: 3 lines omitted, read with include_quoted: true]",
+        "removedChars": 0,
+        "totalChars": 67,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "Top\n\n-----Original Message-----\nFrom: x\nold",
+        "removedChars": 0,
+        "totalChars": 43,
+        "incomplete": false
+      }
+    },
+    "multi_on": {
+      "input": "Reply\n\nOn Mon, Oct 3, 2026 at 2:12 PM John Doe\n<john@example.org> wrote:\n> quoted\n> more",
+      "body": {
+        "text": "Reply\n\n[quoted text: 3 lines omitted, read with include_quoted: true]",
+        "removedChars": 0,
+        "totalChars": 69,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "Reply\n\nOn Mon, Oct 3, 2026 at 2:12 PM John Doe\n<john@example.org> wrote:\n> quoted\n> more",
+        "removedChars": 0,
+        "totalChars": 88,
+        "incomplete": false
+      }
+    },
+    "quoted_only": {
+      "input": "> a\n> b",
+      "body": {
+        "text": "[quoted text: 2 lines omitted, read with include_quoted: true]",
+        "removedChars": 0,
+        "totalChars": 62,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "> a\n> b",
+        "removedChars": 0,
+        "totalChars": 7,
+        "incomplete": false
+      }
+    },
+    "crlf": {
+      "input": "line1\r\nline2\r\n\r\n\r\n\r\nline3\rline4",
+      "body": {
+        "text": "line1\nline2\n\nline3\nline4",
+        "removedChars": 0,
+        "totalChars": 24,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "line1\nline2\n\nline3\nline4",
+        "removedChars": 0,
+        "totalChars": 24,
+        "incomplete": false
+      }
+    },
+    "dollar": {
+      "input": "Hi\n\nOn Mon $& $1 $$ x wrote:\n> q",
+      "body": {
+        "text": "Hi\n\n[quoted text: 2 lines omitted, read with include_quoted: true]",
+        "removedChars": 0,
+        "totalChars": 66,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "Hi\n\nOn Mon $& $1 $$ x wrote:\n> q",
+        "removedChars": 0,
+        "totalChars": 32,
+        "incomplete": false
+      }
+    },
+    "blank_runs": {
+      "input": "a\n\n\n\n\nb   \n  c\t\n",
+      "body": {
+        "text": "a\n\nb\n  c",
+        "removedChars": 0,
+        "totalChars": 8,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "a\n\nb\n  c",
+        "removedChars": 0,
+        "totalChars": 8,
+        "incomplete": false
+      }
+    },
+    "bom": {
+      "input": "\ufeffstart \u00a0 nb\u2028ls\u2029ps\u0085nel end",
+      "body": {
+        "text": "start \u00a0 nb\nls\npsnel end",
+        "removedChars": 2,
+        "totalChars": 23,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "start \u00a0 nb\nls\npsnel end",
+        "removedChars": 2,
+        "totalChars": 23,
+        "incomplete": false
+      }
+    },
+    "tilde": {
+      "input": "text~~~",
+      "body": {
+        "text": "text~~~",
+        "removedChars": 0,
+        "totalChars": 7,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "text~~~",
+        "removedChars": 0,
+        "totalChars": 7,
+        "incomplete": false
+      }
+    },
+    "nothing": {
+      "input": "",
+      "body": {
+        "text": "",
+        "removedChars": 0,
+        "totalChars": 0,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "",
+        "removedChars": 0,
+        "totalChars": 0,
+        "incomplete": false
+      }
+    },
+    "spaces_only": {
+      "input": "   \n\t\n",
+      "body": {
+        "text": "",
+        "removedChars": 0,
+        "totalChars": 0,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "",
+        "removedChars": 0,
+        "totalChars": 0,
+        "incomplete": false
+      }
+    },
+    "form": {
+      "input": "Meeting details\nDate: Monday\nTo: all staff\nSubject: budget\n\nBring numbers.",
+      "body": {
+        "text": "Meeting details\nDate: Monday\nTo: all staff\nSubject: budget\n\nBring numbers.",
+        "removedChars": 0,
+        "totalChars": 74,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "Meeting details\nDate: Monday\nTo: all staff\nSubject: budget\n\nBring numbers.",
+        "removedChars": 0,
+        "totalChars": 74,
+        "incomplete": false
+      }
+    },
+    "fwd_it": {
+      "input": "Vedi sotto\n\n---------- Messaggio inoltrato ----------\nDa: A <a@x>\nData: oggi\nOggetto: I: test\nA: B\n\ncorpo",
+      "body": {
+        "text": "Vedi sotto\n\n---------- Messaggio inoltrato ----------\nDa: A <a@x>\nData: oggi\nOggetto: I: test\nA: B\n\ncorpo",
+        "removedChars": 0,
+        "totalChars": 105,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "Vedi sotto\n\n---------- Messaggio inoltrato ----------\nDa: A <a@x>\nData: oggi\nOggetto: I: test\nA: B\n\ncorpo",
+        "removedChars": 0,
+        "totalChars": 105,
+        "incomplete": false
+      }
+    },
+    "outlook_en": {
+      "input": "Answer\n\nFrom: Alice <a@x.org>\nSent: Monday, October 3, 2026 2:12 PM\nTo: Bob\nSubject: Hi\n\nOld",
+      "body": {
+        "text": "Answer\n\n[quoted text: 5 lines omitted, read with include_quoted: true]",
+        "removedChars": 0,
+        "totalChars": 70,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "Answer\n\nFrom: Alice <a@x.org>\nSent: Monday, October 3, 2026 2:12 PM\nTo: Bob\nSubject: Hi\n\nOld",
+        "removedChars": 0,
+        "totalChars": 92,
+        "incomplete": false
+      }
+    },
+    "emoji_reverse": {
+      "input": "ok \ud83d\ude00\n\nOn Mon, \ud83d\ude00 Bob wrote:\n> \ud83d\ude00 q",
+      "body": {
+        "text": "ok \ud83d\ude00\n\n[quoted text: 2 lines omitted, read with include_quoted: true]",
+        "removedChars": 0,
+        "totalChars": 69,
+        "incomplete": false
+      },
+      "bodyQ": {
+        "text": "ok \ud83d\ude00\n\nOn Mon, \ud83d\ude00 Bob wrote:\n> \ud83d\ude00 q",
+        "removedChars": 0,
+        "totalChars": 35,
+        "incomplete": false
+      }
+    }
+  },
+  "headers": [
+    {
+      "input": "Hello\r\nBcc: v@x x",
+      "clean": "Hello Bcc: v@x x",
+      "clean10": "Hello Bcc\u2026",
+      "text": {
+        "text": "Hello\nBcc: v@x x",
+        "removed": 0
+      }
+    },
+    {
+      "input": "  a \u00a0 b\u3000c\ufeffd ",
+      "clean": "a b cd",
+      "clean10": "a b cd",
+      "text": {
+        "text": "  a \u00a0 b\u3000cd ",
+        "removed": 1
+      }
+    },
+    {
+      "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "clean": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "clean10": "xxxxxxxxx\u2026",
+      "text": {
+        "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "removed": 0
+      }
+    },
+    {
+      "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "clean": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "clean10": "xxxxxxxxx\u2026",
+      "text": {
+        "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "removed": 0
+      }
+    },
+    {
+      "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "clean": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\u2026",
+      "clean10": "xxxxxxxxx\u2026",
+      "text": {
+        "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "removed": 0
+      }
+    },
+    {
+      "input": "aa\ud83d\ude00bbbbbbbbbb",
+      "clean": "aa\ud83d\ude00bbbbbbbbbb",
+      "clean10": "aa\ud83d\ude00bbbbb\u2026",
+      "text": {
+        "text": "aa\ud83d\ude00bbbbbbbbbb",
+        "removed": 0
+      }
+    },
+    {
+      "input": "a\u200bb\u202ec",
+      "clean": "abc",
+      "clean10": "abc",
+      "text": {
+        "text": "abc",
+        "removed": 2
+      }
+    },
+    {
+      "input": "\u0085\u001cx\u001fy",
+      "clean": "xy",
+      "clean10": "xy",
+      "text": {
+        "text": "xy",
+        "removed": 3
+      }
+    },
+    {
+      "input": "tab\there\u000bvt\fff",
+      "clean": "tab herevtff",
+      "clean10": "tab herev\u2026",
+      "text": {
+        "text": "tab\therevtff",
+        "removed": 2
+      }
+    }
+  ],
+  "dates": {
+    "2026-10-03T12:12:00Z": {
+      "utc": "2026-10-03 12:12",
+      "rome": "2026-10-03 14:12",
+      "ny": "2026-10-03 08:12"
+    },
+    "2026-10-03": {
+      "utc": "2026-10-03 00:00",
+      "rome": "2026-10-03 02:00",
+      "ny": "2026-10-02 20:00"
+    },
+    "2026-10-03T12:12:00": {
+      "utc": "2026-10-03 12:12",
+      "rome": "2026-10-03 14:12",
+      "ny": "2026-10-03 08:12"
+    },
+    "2026-10-03T12:12:00+05:30": {
+      "utc": "2026-10-03 06:42",
+      "rome": "2026-10-03 08:42",
+      "ny": "2026-10-03 02:42"
+    },
+    "Sat, 03 Oct 2026 12:12:00 +0200": {
+      "utc": "2026-10-03 10:12",
+      "rome": "2026-10-03 12:12",
+      "ny": "2026-10-03 06:12"
+    },
+    "not a date": {
+      "utc": "unknown date",
+      "rome": "unknown date",
+      "ny": "unknown date"
+    },
+    "": {
+      "utc": "unknown date",
+      "rome": "unknown date",
+      "ny": "unknown date"
+    },
+    "2026-03-29T01:30:00Z": {
+      "utc": "2026-03-29 01:30",
+      "rome": "2026-03-29 03:30",
+      "ny": "2026-03-28 21:30"
+    },
+    "2026-12-31T23:59:59.999Z": {
+      "utc": "2026-12-31 23:59",
+      "rome": "2027-01-01 00:59",
+      "ny": "2026-12-31 18:59"
+    }
+  },
+  "sizes": [
+    [0, "0 B"],
+    [1023, "1023 B"],
+    [1024, "1 KB"],
+    [1536, "2 KB"],
+    [1048575, "1024 KB"],
+    [1048576, "1.0 MB"],
+    [5500000, "5.2 MB"]
+  ],
+  "note": "Outputs of src/render (TypeScript) for these inputs, generated with TZ=UTC; test_render_parity.py compares the Python port with them."
+}
