@@ -3,10 +3,11 @@ import { useTranslation } from 'react-i18next'
 
 import { changePassword } from '@/api/auth.ts'
 import { ApiRequestError } from '@/api/http.ts'
-import { useFeature } from '@/auth/auth-context.ts'
+import { useFeature, useMailLayer } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Input } from '@/components/ui/input.tsx'
 import { ConnectedApps } from '@/profile/connected-apps.tsx'
+import { LimitsForm } from '@/profile/limits-form.tsx'
 import { LinkedSignIn } from '@/profile/linked-sign-in.tsx'
 import { userErrorMessage } from '@/users/messages.ts'
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@/users/password.ts'
@@ -19,10 +20,14 @@ type Outcome =
   | { kind: 'changed' }
   | { kind: 'failed'; message: string; field: Field }
 
-/** The signed-in user's own page: their password, linked sign-ins and, with MCP, connected apps. */
+/**
+ * The signed-in user's own page: their password, linked sign-ins, their mail limits where the
+ * instance sends (mail or MCP) and, with MCP, connected apps.
+ */
 export function ProfileScreen(): ReactElement {
   const { t } = useTranslation()
   const mcp = useFeature('mcp')
+  const sends = useMailLayer()
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [repeated, setRepeated] = useState('')
@@ -131,6 +136,7 @@ export function ProfileScreen(): ReactElement {
         </Button>
       </form>
       <LinkedSignIn />
+      {sends && <LimitsForm />}
       {mcp && <ConnectedApps />}
     </main>
   )

@@ -1,4 +1,4 @@
-import type { z } from 'zod'
+import { z } from 'zod'
 import { getApiBaseUrl } from './api-base-url.ts'
 import { ApiResponseValidationError, parseResponseBody } from './validate.ts'
 
@@ -189,4 +189,22 @@ export function apiPatchJson<T>(
   const headers = new Headers(init.headers)
   headers.set('Content-Type', 'application/json')
   return apiRequest(path, { method: 'PATCH', ...init, headers, body: JSON.stringify(body) }, schema)
+}
+
+/** A field the API found wrong in what was sent: `path` inside it (`["imap", "port"]`). */
+export interface RefusalIssue {
+  path: (string | number)[]
+  message: string
+}
+
+const issuesSchema = z.object({
+  detail: z.object({
+    issues: z.array(z.object({ path: z.array(z.union([z.string(), z.number()])), message: z.string() })),
+  }),
+})
+
+/** The per-field problems of a refused request, if the refusal carried any. */
+export function refusalIssues(body: unknown): RefusalIssue[] {
+  const parsed = issuesSchema.safeParse(body)
+  return parsed.success ? parsed.data.detail.issues : []
 }

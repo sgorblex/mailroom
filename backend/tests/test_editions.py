@@ -37,8 +37,15 @@ MCP = Features(mail=False, mcp=True, filters=False)
 FILTERS = Features(mail=False, mcp=False, filters=True)
 
 BASE_PATHS = {"/api/v1/auth/me", "/api/v1/accounts", "/api/v1/users", "/api/v1/me/identities"}
-MAIL_PATHS = {"/api/v1/mail/accounts/{account_id}/messages", "/api/v1/mail/messages/{ref}"}
+# The user's limits come with the mail layer, which mail and MCP both bring.
+LIMITS_PATH = "/api/v1/me/limits"
+MAIL_PATHS = {
+    "/api/v1/mail/accounts/{account_id}/messages",
+    "/api/v1/mail/messages/{ref}",
+    LIMITS_PATH,
+}
 MCP_PATHS = {
+    LIMITS_PATH,
     "/mcp",
     METADATA_PATH,
     "/oauth/authorize",
@@ -229,6 +236,7 @@ def test_the_base_has_no_mail_layer_and_none_of_the_features(base: Instance, use
         "/api/v1/accounts/work/filter-settings",
         "/api/v1/accounts/work/rule-sets",
         "/api/v1/oauth/grants",
+        LIMITS_PATH,
         "/oauth/authorize",
         METADATA_PATH,
     ):

@@ -21,8 +21,8 @@ dates in UTC (the app keeps no time zone yet), a collapsed quote as a marker lin
 `include_quoted`, everything mail-derived inside the envelope. An attachment comes back as text,
 as an image, or as an embedded file, each type checked against the content. Their contract is
 the REST one in [`mail-client.md`](mail-client.md): the same service layer, so the same
-ownership, the user's limits (`body_chars`, `attachment_max_mb` in their mailroom-core settings)
-and 30 s deadline. Reading never sets `\Seen`. `folders_list` gives each folder's `path` (the
+ownership, the user's limits (`body_chars`, `attachment_max_mb` in their mailroom-core settings,
+set on their *Profile* page and never by a tool) and 30 s deadline. Reading never sets `\Seen`. `folders_list` gives each folder's `path` (the
 string `messages_list` and `messages_search` take as `folder`), `delimiter`, `segments` (what a
 rule set's folder and a `move_to` action take) and `role`; with `counts=true` it adds unread and
 total (`null` when the server would not say). An account that is not the user's is the same

@@ -311,6 +311,12 @@ bounded to one minor because the server relies on its handlers.
   before each save; a refusal is 400 `{"detail": {"code": "invalid_account" | "account_exists",
   "message", "issues": [{"path", "message"}]}}`, `path` inside the account. A save racing another
   is 409 `accounts_changed` or 503 `accounts_busy`.
+- **Limits** (`GET` / `PUT /api/v1/me/limits`, mounted with the mail layer): the signed-in user's
+  `send_per_hour`, `max_recipients`, `body_chars` and `attachment_max_mb`, in the same settings
+  document as the accounts. A `PUT` replaces all four, checked by mailroom-core's models plus the
+  25 MB attachment cap, every field at fault named at once; a refusal is 400 `invalid_limits`
+  with `issues`, a save at the same moment 409 `settings_changed` or 503 `settings_busy`. A stored attachment limit above the cap reads as
+  the cap. Logged as `limits_changed`.
 - **IMAP** goes through imap-thingy, implicit TLS only (`starttls_unsupported` otherwise), verified
   against the system CAs plus `MAILROOM_MAIL_CA_FILE` (the dev mail CA in dev), with a 20 s
   timeout on connecting and on every read. A failure is reported by kind (`login_failed`,

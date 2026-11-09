@@ -28,6 +28,7 @@ from mailroom.api.refusals import http_refusal
 from mailroom.api.routes.accounts import accounts_router
 from mailroom.api.routes.auth import auth_router
 from mailroom.api.routes.filters import filters_router
+from mailroom.api.routes.limits import limits_router
 from mailroom.api.routes.mail import NotStored, mail_router
 from mailroom.api.routes.oauth_consent import consent_router, grants_router
 from mailroom.api.routes.sso import identities_router, sso_router
@@ -332,6 +333,8 @@ def create_application(
     protected_v1.include_router(identities_router)
     if features.filters:
         protected_v1.include_router(filters_router)
+    if features.mail_layer:
+        protected_v1.include_router(limits_router)
     if features.mail:
         protected_v1.include_router(mail_router)
     if features.mcp:

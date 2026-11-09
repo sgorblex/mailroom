@@ -27,6 +27,7 @@ In order. The reasons are in [`CONTEXT.md`](CONTEXT.md) — *Where the family is
       base.
 - [ ] **Retire mailroom-mcp** once the app's MCP covers its use, per-connector profiles included.
       Then stop its deployment and archive the repository.
+  - [x] Mail limits on the *Profile* page.
 - [ ] **Go public:**
   - [ ] audit the whole history (secrets, infrastructure names);
   - [ ] make the repository public;

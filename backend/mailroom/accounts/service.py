@@ -105,7 +105,8 @@ def require_account(store: AccountStore, account_id: str) -> AccountConfig:
         raise account_not_found() from None
 
 
-def _account_refusal(error: AccountError) -> Refusal:
+def account_refusal(error: AccountError) -> Refusal:
+    """A refused change to the settings document, its issues by field."""
     if error.code == SECRETS_KEY_MISSING:
         return Refusal("unavailable", error.code, str(error))
     issues = [{"path": list(issue.path), "message": issue.message} for issue in error.issues]
@@ -185,7 +186,7 @@ def add_account(
     try:
         account = save_account(store, key, raw, password, new=True)
     except AccountError as exc:
-        raise _account_refusal(exc) from None
+        raise account_refusal(exc) from None
     except (RevisionConflict, SettingsBusy) as exc:
         raise _store_refusal(exc) from None
     _log("account_added", user_id, via, account_id=account.id)
@@ -213,7 +214,7 @@ def change_account(
     except AccountNotFound:
         raise account_not_found() from None
     except AccountError as exc:
-        raise _account_refusal(exc) from None
+        raise account_refusal(exc) from None
     except (RevisionConflict, SettingsBusy) as exc:
         raise _store_refusal(exc) from None
     ctx.drop_mail_connections(user_id, account_id)

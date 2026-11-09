@@ -445,6 +445,9 @@ disabled for an account whose send mode is `off`.
 
 ### Limits
 
+The user's own limits (`max_recipients`, `send_per_hour`, `attachment_max_mb`, and `body_chars`
+for reading) are set on their *Profile* page ([`../REQUIREMENTS.md`](../REQUIREMENTS.md)).
+
 | Limit | Value |
 | --- | --- |
 | Addresses per field (To, Cc, Bcc) | 50 |

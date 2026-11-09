@@ -33,3 +33,9 @@ export function useAuth(): AuthContextValue {
 export function useFeature(feature: Feature): boolean {
   return useAuth().features.has(feature)
 }
+
+/** Whether the instance reads and sends mail at all: the mail client or MCP. */
+export function useMailLayer(): boolean {
+  const { features } = useAuth()
+  return features.has('mail') || features.has('mcp')
+}

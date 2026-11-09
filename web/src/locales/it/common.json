@@ -171,6 +171,24 @@
     "passwordsDiffer": "Le nuove password non coincidono.",
     "unknownError": "Impossibile cambiare la password."
   },
+  "limits": {
+    "title": "Limiti della posta",
+    "intro": "Valgono per la tua posta qui e dalle app collegate, su tutti i tuoi account. Solo tu li cambi, qui: un'app collegata non può.",
+    "loading": "Caricamento dei limiti…",
+    "loadFailed": "Impossibile caricare i tuoi limiti.",
+    "retry": "Riprova",
+    "send_per_hour": "Messaggi all'ora",
+    "send_per_hourHint": "Messaggi inviati in un'ora qualsiasi, su tutti i tuoi account.",
+    "max_recipients": "Destinatari per messaggio",
+    "max_recipientsHint": "A, Cc e Ccn insieme.",
+    "attachment_max_mb": "Allegati per messaggio (MB)",
+    "attachment_max_mbHint": "Tutti gli allegati insieme, al massimo {{max}} MB.",
+    "body_chars": "Caratteri del testo di un messaggio letti per volta",
+    "body_charsHint": "Qui e dalle app collegate; il resto segue nella parte successiva. Almeno 500.",
+    "save": "Salva i limiti",
+    "saved": "Limiti salvati.",
+    "saveFailed": "Impossibile salvare i tuoi limiti."
+  },
   "connect": {
     "title": "Collega un'app",
     "loading": "Caricamento della richiesta…",

@@ -171,6 +171,24 @@
     "passwordsDiffer": "The new passwords differ.",
     "unknownError": "Could not change the password."
   },
+  "limits": {
+    "title": "Mail limits",
+    "intro": "They hold for your mail here and through connected apps, across all your accounts. Only you change them, here: a connected app cannot.",
+    "loading": "Loading your limits…",
+    "loadFailed": "Could not load your limits.",
+    "retry": "Try again",
+    "send_per_hour": "Messages per hour",
+    "send_per_hourHint": "Sent messages in any hour, across your accounts.",
+    "max_recipients": "Recipients per message",
+    "max_recipientsHint": "To, Cc and Bcc together.",
+    "attachment_max_mb": "Attachments per message (MB)",
+    "attachment_max_mbHint": "All attachments together, at most {{max}} MB.",
+    "body_chars": "Characters of a message's text read at a time",
+    "body_charsHint": "Here and by connected apps; the rest follows in the next part. At least 500.",
+    "save": "Save limits",
+    "saved": "Limits saved.",
+    "saveFailed": "Could not save your limits."
+  },
   "connect": {
     "title": "Connect an app",
     "loading": "Loading the request…",

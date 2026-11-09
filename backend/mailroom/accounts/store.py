@@ -19,11 +19,12 @@ if TYPE_CHECKING:
 
     from sqlalchemy.engine import Engine
 
-    from mailroom_core.config import ConfigIssue
+    from mailroom_core.config import ConfigIssue, Limits
     from mailroom_core.crypto import SecretsSubkey
     from mailroom_core.store import Json
 
 _ACCOUNTS: Final = "account"
+_LIMITS: Final = "limits"
 
 
 def core_user_id(user_id: int) -> str:
@@ -158,6 +159,30 @@ def save_account(
         )
     store.save_settings(doc, current.revision, secrets)
     return checked.account[index]
+
+
+def save_limits(store: AccountStore, raw: Mapping[str, Json], attachment_cap: float) -> Limits:
+    """Replace the user's limits with ``raw``, the accounts kept, with ``attachment_max_mb`` at
+    most ``attachment_cap``. Raises ``AccountError`` (``invalid_limits``), or mailroom-core's
+    ``RevisionConflict`` / ``SettingsBusy``."""
+    current = load_accounts(store)
+    doc: dict[str, Json] = {**current.doc, _LIMITS: dict(raw)}
+    checked = core_settings_or_issues(doc)
+    issues = (
+        []
+        if isinstance(checked, CoreSettings)
+        else [
+            Issue(tuple(issue.path[1:]) if issue.path[:1] == (_LIMITS,) else (), issue.message)
+            for issue in checked
+        ]
+    )
+    attachments = raw.get("attachment_max_mb")
+    if isinstance(attachments, (int, float)) and attachments > attachment_cap:
+        issues.append(Issue(("attachment_max_mb",), f"At most {attachment_cap:g}"))
+    if issues or not isinstance(checked, CoreSettings):
+        raise AccountError(_issues_text(issues), "invalid_limits", issues)
+    store.save_settings(doc, current.revision)
+    return checked.limits
 
 
 def remove_account(store: AccountStore, account_id: str) -> None:

@@ -11,12 +11,17 @@ const CURRENT = 'correct horse battery staple'
 const NEXT = 'a brand new passphrase'
 
 const PASSWORD_PATH = '/api/v1/auth/password'
+const LIMITS_PATH = '/api/v1/me/limits'
 
 /**
- * Anything but the password change: no connected apps (the MCP server off), and nothing else
- * found (the linked sign-ins section's requests).
+ * Anything but the password change: the default limits, no connected apps (the MCP server off),
+ * and nothing else found (the linked sign-ins section's requests).
  */
 function otherSections(path: string): Promise<Response> {
+  if (path === LIMITS_PATH) {
+    const limits = { send_per_hour: 20, max_recipients: 10, body_chars: 6000, attachment_max_mb: 10 }
+    return Promise.resolve(new Response(JSON.stringify(limits), { status: 200 }))
+  }
   if (path === '/api/v1/oauth/grants') {
     return Promise.resolve(new Response('{"auth":"off","grants":[]}', { status: 200 }))
   }
@@ -114,5 +119,18 @@ describe('ProfileScreen', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
     const grants = fetchMock.mock.calls.some(([path]) => path === '/api/v1/oauth/grants')
     expect(grants).toBe(asked)
+  })
+
+  it.each([
+    { features: ['mail' as const], shown: true },
+    { features: ['mcp' as const], shown: true },
+    { features: ['filters' as const], shown: false },
+  ])('shows the mail limits only where the instance sends ($features)', async ({ features, shown }) => {
+    const fetchMock = stubApi()
+    renderSignedIn(<ProfileScreen />, ALICE, features)
+    expect(await screen.findByRole('heading', { name: 'Change your password' })).toBeInTheDocument()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(screen.queryByRole('heading', { name: 'Mail limits' }) !== null).toBe(shown)
+    expect(fetchMock.mock.calls.some(([path]) => path === LIMITS_PATH)).toBe(shown)
   })
 })

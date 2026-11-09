@@ -50,6 +50,12 @@ through the Vite proxy. Engineering baseline:
   field. Removing a user removes their accounts, stored passwords and send log with them.
   How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md)
   — *Mail accounts*.
+- Where the instance reads and sends mail (mail or MCP), each user sets their own **mail limits**
+  on their *Profile* page: messages per hour, recipients per message, attachments per message (at
+  most 25 MB) and the window a message's text is read in. They hold for the web and MCP alike,
+  and no MCP tool changes them. Until changed, mailroom-core's defaults apply.
+  How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md)
+  — *Mail accounts*.
 
 ## Editions
 

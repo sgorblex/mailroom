@@ -4,14 +4,12 @@ import { useTranslation } from 'react-i18next'
 import {
   SEND_MODES,
   TLS_MODES,
-  accountIssues,
   type Account,
   type AccountFields,
-  type AccountIssue,
   type Endpoint,
 } from '@/api/accounts.ts'
-import { ApiRequestError } from '@/api/http.ts'
-import { useFeature } from '@/auth/auth-context.ts'
+import { ApiRequestError, refusalIssues, type RefusalIssue } from '@/api/http.ts'
+import { useMailLayer } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Input } from '@/components/ui/input.tsx'
 import { accountErrorMessage } from '@/accounts/messages.ts'
@@ -31,7 +29,7 @@ type Field =
   | 'send_mode'
 
 /** Where mailroom-core's issue belongs in this form; `null` for the account as a whole. */
-function fieldOf(issue: AccountIssue): Field | null {
+function fieldOf(issue: RefusalIssue): Field | null {
   const [first, second, third] = issue.path
   switch (first) {
     case 'id':
@@ -116,9 +114,7 @@ export function AccountForm({
   onCancel: () => void
 }): ReactElement {
   const { t } = useTranslation()
-  const mail = useFeature('mail')
-  const mcp = useFeature('mcp')
-  const sends = mail || mcp
+  const sends = useMailLayer()
   const prefix = useId()
   const editing = account !== undefined
   const [state, setState] = useState(() => initialState(account))
@@ -141,7 +137,7 @@ export function AccountForm({
       const byField: Partial<Record<Field, string>> = {}
       const general: string[] = []
       if (failure instanceof ApiRequestError) {
-        for (const issue of accountIssues(failure.body)) {
+        for (const issue of refusalIssues(failure.body)) {
           const field = fieldOf(issue)
           if (field === null) {
             general.push(issue.message)

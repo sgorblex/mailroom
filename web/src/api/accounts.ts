@@ -55,24 +55,6 @@ export const loginTestSchema = z.object({
 })
 export type LoginTest = z.infer<typeof loginTestSchema>
 
-/** A field mailroom-core found wrong: `path` inside the account (`["imap", "port"]`). */
-export interface AccountIssue {
-  path: (string | number)[]
-  message: string
-}
-
-const issuesSchema = z.object({
-  detail: z.object({
-    issues: z.array(z.object({ path: z.array(z.union([z.string(), z.number()])), message: z.string() })),
-  }),
-})
-
-/** The per-field problems of a refused add or edit, if the refusal carried any. */
-export function accountIssues(body: unknown): AccountIssue[] {
-  const parsed = issuesSchema.safeParse(body)
-  return parsed.success ? parsed.data.detail.issues : []
-}
-
 const base = '/api/v1/accounts'
 const one = (id: string): string => `${base}/${encodeURIComponent(id)}`
 
