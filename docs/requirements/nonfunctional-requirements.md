@@ -83,6 +83,28 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   stripped, and Bcc never goes in a transmitted header.
 - **Learning never acts** ([`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Filter suggestions*).
 
+### Editions
+
+What they are: [`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Editions*. Code:
+`mailroom.config.features`.
+
+- **`MAILROOM_FEATURES`** is read once, by `create_application` (after the root `.env`): comma
+  separated, case-insensitive, trimmed; unset is every feature, blank is none. An unknown name is a
+  `ValueError` naming the variable and the choices, so the API fails at import, as with an invalid
+  `MAILROOM_MCP_AUTH`. The lifespan logs the effective features once.
+- **What each one mounts:** `mail` the `/api/v1/mail` routes and their `NotStored` middleware;
+  `filters` the filters router (rule sets, runs, the schema, an account's folders and
+  `filter-settings`); `mcp` `/mcp` and its metadata, the built-in authorization server's routes and
+  `/api/v1/oauth/requests` and `/api/v1/oauth/grants`. Without `mcp` the MCP variables are not
+  read at all. `MailPool` and `SendRunner` exist only with `mail` or `mcp` (`AppContext.mail_pool`
+  and `send_runner` are None otherwise). The base always mounts sign-in, SSO, users, accounts and
+  linked identities.
+- **Account and user removal** still delete the filter rows of what they remove whatever the
+  features: cleaning up is the base's job.
+- **`/api/v1/auth/me` names the features to anyone,** signed in or not, so the web app knows them
+  before anyone signs in: an unauthenticated caller learns which features an instance runs,
+  nothing more.
+
 ### MCP server
 
 Specification: [`mcp.md`](mcp.md). Code: `mailroom.mcp`.
@@ -183,7 +205,7 @@ bounded to one minor because the server relies on its handlers.
   cookie `mailroom_session` carries a random token; the database keeps only its SHA-256. An absolute
   lifetime of `MAILROOM_SESSION_TTL_DAYS` (default 14), no sliding renewal; signing out deletes the
   row, and a login sweeps expired ones. Every route but health, readiness, version, login, logout
-  (idempotent, so an expired tab can still sign out), `auth/me` (which answers `{"user": …}`) and
+  (idempotent, so an expired tab can still sign out), `auth/me` (which answers `{"user": …, "features": […]}`) and
   SSO's `auth/oidc/*` depends on `require_user` (`backend/mailroom/api/deps.py`) and answers 401 without a valid
   session.
 - **Cookie:** `HttpOnly`, `SameSite=Strict`, `Path=/`, and `Secure` except with
@@ -507,6 +529,8 @@ clear (hash them, as mailroom-mcp's audit does).
   detached steps.
 - **Web:** Vitest; `*.node.test.ts(x)` in bare Node, everything else in jsdom with
   `src/test/setup.ts`. Test by accessible role and label.
+- **Editions:** the shared test apps pass `features=ALL_FEATURES`, so a developer's
+  `MAILROOM_FEATURES` does not change the suite; `tests/test_editions.py` builds the others.
 - **OIDC** tests run against `mailroom.dev.fake_idp` (also `mise run dev-idp`) through
   `httpx.MockTransport`, so they never reach the network.
 - No end-to-end browser test framework; browser checks by agents use chrome-devtools-mcp

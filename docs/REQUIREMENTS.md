@@ -45,11 +45,37 @@ through the Vite proxy. Engineering baseline:
   mailroom-core seals them (byte-compatible with mailroom-mcp, so its data imports unchanged).
 - Each user manages their own accounts on the *Accounts* page: add, edit (the id stays; an empty
   password keeps the stored one), test the IMAP login, remove (after a confirmation; the mail on
-  the server stays), and a per-account **Run filters** switch, off until turned on. mailroom-core's
-  config models check every change, so a refusal names the field. Removing a user removes their
-  accounts, stored passwords and send log with them.
+  the server stays), and, where the instance runs filters, a per-account **Run filters** switch,
+  off until turned on. mailroom-core's config models check every change, so a refusal names the
+  field. Removing a user removes their accounts, stored passwords and send log with them.
   How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md)
   — *Mail accounts*.
+
+## Editions
+
+**Maturity: Partial** — the API serves only an instance's features; the worker still runs
+whatever they are, and the web app still shows every screen.
+
+- An instance chooses its [features](GLOSSARY.md) with `MAILROOM_FEATURES`, any of `mail` (the
+  [mail client](#mail-client)), `mcp` (the [MCP server](#mcp-server)) and `filters` (the
+  [filters](#filters-ui) and the worker that runs them), comma separated. **Unset means all
+  three**, so a deployment that never set it keeps everything; **empty means none**, the base
+  only. A name that is no feature stops the API from starting.
+- **The base is always there:** users and sign-in (password and SSO), accounts and their sealed
+  secrets, the web app's *Profile*, *Accounts* and *Users* screens, and Postgres.
+- **A feature that is off runs nothing:** no routes, no worker, no screens. Without `filters`,
+  accounts have no *Run filters* switch and the MCP server serves no `filters_*` tool group.
+  Without `mcp`, there is no `/mcp`, no authorization server, no `/connect` consent screen and no
+  connected apps.
+- **The MCP mail tools do not need the mail client:** an instance with `mcp` alone serves the
+  mail tool groups, in place of mailroom-mcp.
+- **Turning a feature off keeps its data.** Rule sets wait until `filters` is back. Connected
+  apps cannot be revoked while `mcp` is off, and their unexpired grants work again when it comes
+  back: revoke them first. (`MAILROOM_MCP_AUTH=off` with `mcp` on turns off only `/mcp`; connected
+  apps can still be revoked.)
+
+How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md) —
+*Editions*.
 
 ## Mail client
 

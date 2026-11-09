@@ -81,8 +81,8 @@ function AccountRuleSets({ account }: { account: Account }): ReactElement {
           {account.id}
         </h2>
         <p className="text-sm text-muted-foreground">
-          {account.run_filters ? t('filters.runFiltersOn') : t('filters.runFiltersOff')}{' '}
-          {!account.run_filters && (
+          {account.run_filters === true ? t('filters.runFiltersOn') : t('filters.runFiltersOff')}{' '}
+          {account.run_filters !== true && (
             <Link to="/accounts" className="text-foreground underline underline-offset-4">
               {t('filters.goToAccounts')}
             </Link>

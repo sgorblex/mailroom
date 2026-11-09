@@ -44,8 +44,8 @@ Specification: [`requirements/mcp.md`](requirements/mcp.md). Variables:
 [`../deploy/quadlet/mailroom-api.env.example`](../deploy/quadlet/mailroom-api.env.example).
 
 1. Set `MAILROOM_PUBLIC_URL` to the origin users reach (`https://mail.example.com`; a `:443` is
-   dropped). Without it, or when it is not a plain origin with a valid host (the log says why),
-   the MCP server and SSO are off.
+   dropped), with `mcp` in `MAILROOM_FEATURES` (the default when unset). Without it, or when it is
+   not a plain origin with a valid host (the log says why), the MCP server and SSO are off.
 2. The host's reverse proxy sends every path to the pod (the web container's nginx routes `/mcp`,
    `/oauth/`, `/.well-known/oauth-` and `/.well-known/openid-configuration` to the API) and keeps the request's `Host`, as Traefik does
    by default: `/mcp` answers only `MAILROOM_PUBLIC_URL`'s host (421 otherwise).

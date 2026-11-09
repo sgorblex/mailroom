@@ -7,7 +7,7 @@ import logging
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Final, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from mailroom.accounts import app_data
 from mailroom.accounts.mail import mailbox_account
@@ -72,7 +72,8 @@ class ListedAccount(StoredAccount):
 
     id: str
     has_password: bool
-    run_filters: bool
+    run_filters: bool | None = Field(default=None, exclude_if=lambda value: value is None)
+    """None, and left out, where the instance does not run filters."""
     attachment_max_mb: float
     """The user's limit on a written message's attachments, at most ``ATTACHMENT_MAX_MB``."""
     max_recipients: int
@@ -120,7 +121,7 @@ def _store_refusal(error: RevisionConflict | SettingsBusy) -> Refusal:
 
 
 def _listed(
-    account: AccountConfig, limits: Limits, *, has_password: bool, run_filters: bool
+    account: AccountConfig, limits: Limits, *, has_password: bool, run_filters: bool | None
 ) -> ListedAccount:
     return ListedAccount.model_validate(
         {
@@ -137,17 +138,31 @@ def _log(event: str, user_id: int, via: Via, **extra: object) -> None:
     logger.info(event, extra={"event": event, "user_id": user_id, "via": via, **extra})
 
 
+def _run_filters_by_account(ctx: AppContext, db: Session, user_id: int) -> dict[str, bool] | None:
+    """Each account's Run filters switch by id, or None where the instance does not run
+    filters."""
+    if not ctx.features.filters:
+        return None
+    return app_data.run_filters_by_account(db, user_id)
+
+
+def _switch(by_account: dict[str, bool] | None, account_id: str) -> bool | None:
+    """``account_id``'s Run filters switch from ``by_account``, off when it has no row; None
+    where the instance does not run filters."""
+    return None if by_account is None else by_account.get(account_id, False)
+
+
 def listed_accounts(ctx: AppContext, db: Session, user_id: int) -> list[ListedAccount]:
     store = ctx.store(user_id)
     passwords = accounts_with_password(store)
-    run_filters = app_data.run_filters_by_account(db, user_id)
+    by_account = _run_filters_by_account(ctx, db, user_id)
     settings = load_accounts(store).settings
     return [
         _listed(
             account,
             settings.limits,
             has_password=account.id in passwords,
-            run_filters=run_filters.get(account.id, False),
+            run_filters=_switch(by_account, account.id),
         )
         for account in settings.account
     ]
@@ -175,7 +190,8 @@ def add_account(
         raise _store_refusal(exc) from None
     _log("account_added", user_id, via, account_id=account.id)
     limits = load_accounts(store).settings.limits
-    return _listed(account, limits, has_password=True, run_filters=False)
+    run_filters = False if ctx.features.filters else None
+    return _listed(account, limits, has_password=True, run_filters=run_filters)
 
 
 def change_account(
@@ -208,11 +224,12 @@ def change_account(
         account_id=account_id,
         password_changed=password is not None,
     )
+    by_account = _run_filters_by_account(ctx, db, user_id)
     return _listed(
         account,
         load_accounts(store).settings.limits,
         has_password=account_id in accounts_with_password(store),
-        run_filters=app_data.run_filters_by_account(db, user_id).get(account_id, False),
+        run_filters=_switch(by_account, account_id),
     )
 
 

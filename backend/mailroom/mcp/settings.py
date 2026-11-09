@@ -14,6 +14,7 @@ from mailroom.mcp.groups import TOOL_GROUPS_ENV, selected_groups
 from mailroom.mcp.verifier import AUTH_ENV, AUTH_MODES, AuthMode
 
 if TYPE_CHECKING:
+    from mailroom.config.features import Features
     from mailroom.config.public_url import PublicUrl
     from mailroom.mcp.groups import ToolGroup
 
@@ -112,10 +113,11 @@ def external_issuer_from_env() -> ExternalIssuer | None:
     return ExternalIssuer(issuer=issuer, audiences=audiences, required_scope=scope or None)
 
 
-def mcp_settings_from_env(public_url: PublicUrl | None) -> McpSettings | None:
+def mcp_settings_from_env(public_url: PublicUrl | None, features: Features) -> McpSettings | None:
     """The settings, or None (logged) when the MCP server is off: ``MAILROOM_MCP_AUTH=off``, no
     ``public_url`` (``MAILROOM_PUBLIC_URL`` as the API parsed it at startup), or external mode
-    without its provider. Raises ``ValueError`` for a ``MAILROOM_MCP_AUTH`` that is no mode."""
+    without its provider. Its tool groups are those ``features`` allow. Raises ``ValueError`` for
+    a ``MAILROOM_MCP_AUTH`` that is no mode."""
     auth = auth_mode_from_env()
     if auth == "off":
         logger.info("%s=off: the MCP server is off", AUTH_ENV)
@@ -128,5 +130,5 @@ def mcp_settings_from_env(public_url: PublicUrl | None) -> McpSettings | None:
         external = external_issuer_from_env()
         if external is None:
             return None
-    groups = selected_groups(os.environ.get(TOOL_GROUPS_ENV))
+    groups = selected_groups(os.environ.get(TOOL_GROUPS_ENV), features)
     return McpSettings(public_url=public_url.origin, auth=auth, groups=groups, external=external)

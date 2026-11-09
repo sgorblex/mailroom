@@ -158,8 +158,9 @@ def _shared_application(_worker_engine: Engine) -> Iterator[FastAPI]:
     from starlette.testclient import TestClient
 
     from mailroom.api.main import create_application
+    from mailroom.config.features import ALL_FEATURES
 
-    application = create_application()
+    application = create_application(features=ALL_FEATURES)
     with TestClient(application):
         yield application
 

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from mailroom.config.features import ALL_FEATURES
 from mailroom.oauth.routes import METADATA_PATH
 from tests.oauth.helpers import (
     ORIGIN,
@@ -51,7 +52,7 @@ def test_the_routes_are_mounted_in_builtin_mode_with_a_public_url(
             monkeypatch.delenv(name, raising=False)
         else:
             monkeypatch.setenv(name, value)
-    application = create_application()
+    application = create_application(features=ALL_FEATURES)
     paths = {getattr(route, "path", None) for route in application.router.routes}
     assert ({METADATA_PATH, "/oauth/authorize", "/oauth/token"} <= paths) is mounted
     server = application.state.oauth_server

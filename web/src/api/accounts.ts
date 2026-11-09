@@ -28,7 +28,8 @@ export const accountSchema = z.object({
   identities: z.array(identitySchema),
   auto_approve: z.array(z.string()),
   has_password: z.boolean(),
-  run_filters: z.boolean(),
+  /** Absent where the instance does not run filters. */
+  run_filters: z.boolean().optional(),
   /** The user's limit on a draft's attachments, at most 25; absent from an API older than slice C. */
   attachment_max_mb: z.number().optional(),
   /** The user's limit on To, Cc and Bcc together; absent from an API older than slice C. */

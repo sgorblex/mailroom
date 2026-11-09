@@ -78,11 +78,13 @@ Tools are registered in [tool groups](../GLOSSARY.md). `MAILROOM_MCP_TOOL_GROUPS
 groups are registered: by default the `stable` ones; a `preview` group only when named; a
 `planned` group never (an unknown or `planned` name is skipped with a warning in the log).
 `mail_organize`, `mail_draft` or `mail_send` without `mail_read` is served with a warning too: no
-served tool then gives the refs they take. Which tools a client gets is instance config, not OAuth scope.
+served tool then gives the refs they take. The `filters_*` groups need `filters` in
+`MAILROOM_FEATURES` ([`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Editions*): without it they are
+left out, with a warning when named. Which tools a client gets is instance config, not OAuth scope.
 
 | Group (status, default) | Tool | Annotations |
 | --- | --- | --- |
-| `filters_read` or any `mail_*` group (whichever is on) | `accounts_list` (id, login, `has_password`, `run_filters`, `send_mode`, `identities`) | readOnly, idempotent |
+| `filters_read` or any `mail_*` group (whichever is on) | `accounts_list` (id, login, `has_password`, `run_filters` where the instance runs filters, `send_mode`, `identities`) | readOnly, idempotent |
 | | `folders_list` (`path` as the mail tools take it, `delimiter`, `segments`, `role`; `counts=true` adds unread and total) | readOnly, idempotent, openWorld |
 | `filters_read` (stable, on) | `filter_schema`, `rule_sets_list`, `rule_set_get` (with its filters), `runs_list` | readOnly, idempotent |
 | `filters_write` (stable, on) | `rule_set_create`, `rule_set_update`, `filter_add`, `filter_update`, `filters_reorder` | none |
@@ -298,9 +300,10 @@ workers; expired rows are swept on writes.
 
 | Variable | Meaning |
 | --- | --- |
+| `MAILROOM_FEATURES` | The instance's features ([`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Editions*). Without `mcp`, the MCP server and its authorization server are not served, whatever the `MAILROOM_MCP_*` and `MAILROOM_OAUTH_*` variables say; web SSO still follows its own. |
 | `MAILROOM_PUBLIC_URL` | The instance's public origin. Required for SSO and the MCP server; unset, both are off. |
 | `MAILROOM_MCP_AUTH` | `builtin` (default), `external` or `off`. |
-| `MAILROOM_MCP_TOOL_GROUPS` | Registered tool groups; default `filters_read,filters_write,filters_run,mail_read,mail_organize,mail_draft,mail_send`. |
+| `MAILROOM_MCP_TOOL_GROUPS` | Registered tool groups; default `filters_read,filters_write,filters_run,mail_read,mail_organize,mail_draft,mail_send`. The `filters_*` groups need `filters` in `MAILROOM_FEATURES`; the mail groups do not need `mail`. |
 | `MAILROOM_OAUTH_EXTRA_REDIRECT_URIS` | Redirect URIs allowed beyond the built-in list. |
 | `MAILROOM_OAUTH_CIMD_HOSTS` | Hosts whose client ID metadata documents are fetched; default `claude.ai,claude.com`. |
 | `MAILROOM_OIDC_ISSUER`, `MAILROOM_OIDC_CLIENT_ID`, `MAILROOM_OIDC_CLIENT_SECRET` | Web SSO's provider and confidential client; SSO is off without them. |

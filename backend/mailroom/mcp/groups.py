@@ -1,5 +1,6 @@
 """Tool groups: the unit an instance turns on (``MAILROOM_MCP_TOOL_GROUPS``). A ``stable`` group is
-on by default, a ``preview`` one only when named, a ``planned`` one never."""
+on by default, a ``preview`` one only when named, a ``planned`` one never; a group that ``needs`` a
+feature the instance does not run (``MAILROOM_FEATURES``), never."""
 
 from __future__ import annotations
 
@@ -7,8 +8,12 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, Literal
 
+from mailroom.config.features import ALL_FEATURES, FEATURES_ENV
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from mailroom.config.features import Feature, Features
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +36,29 @@ class ToolGroup:
     name: GroupName
     status: GroupStatus
     description: str
+    needs: Feature | None = None
+    """The feature without which the group is not served."""
 
 
 GROUPS: Final[tuple[ToolGroup, ...]] = (
-    ToolGroup("filters_read", "stable", "accounts, folders, rule sets, filters and runs"),
-    ToolGroup("filters_write", "stable", "create and edit disabled rule sets and their filters"),
-    ToolGroup("filters_run", "stable", "dry runs, enabling rule sets, Run now, Run filters"),
+    ToolGroup(
+        "filters_read",
+        "stable",
+        "accounts, folders, rule sets, filters and runs",
+        needs="filters",
+    ),
+    ToolGroup(
+        "filters_write",
+        "stable",
+        "create and edit disabled rule sets and their filters",
+        needs="filters",
+    ),
+    ToolGroup(
+        "filters_run",
+        "stable",
+        "dry runs, enabling rule sets, Run now, Run filters",
+        needs="filters",
+    ),
     ToolGroup("mail_read", "stable", "list, search and read mail"),
     ToolGroup("mail_organize", "stable", "move, trash and flag mail"),
     ToolGroup("mail_draft", "stable", "write drafts"),
@@ -45,13 +67,27 @@ GROUPS: Final[tuple[ToolGroup, ...]] = (
 _BY_NAME: Final[dict[str, ToolGroup]] = {group.name: group for group in GROUPS}
 
 
-def selected_groups(raw: str | None) -> tuple[ToolGroup, ...]:
+def _served(group: ToolGroup, features: Features) -> bool:
+    return group.needs is None or group.needs in features.names
+
+
+def selected_groups(raw: str | None, features: Features = ALL_FEATURES) -> tuple[ToolGroup, ...]:
     """The groups to register for ``raw`` (``MAILROOM_MCP_TOOL_GROUPS``, comma separated): unset
     or blank, every ``stable`` one; otherwise those named that are ``stable`` or ``preview``, in
-    registry order. An unknown or ``planned`` name is skipped with a warning."""
+    registry order. An unknown or ``planned`` name is skipped with a warning. A group needing a
+    feature that is off is left out: with a warning when named, with one line for them all when
+    it would have been a default."""
     names = [] if raw is None else [name.strip() for name in raw.split(",") if name.strip()]
     if not names:
-        return tuple(group for group in GROUPS if group.status == "stable")
+        stable = [group for group in GROUPS if group.status == "stable"]
+        dropped = [group for group in stable if not _served(group, features)]
+        if dropped:
+            logger.info(
+                "Tool groups %s are not served: %s leaves out what they need",
+                ", ".join(group_names(dropped)),
+                FEATURES_ENV,
+            )
+        return tuple(group for group in stable if _served(group, features))
     wanted: set[str] = set()
     for name in names:
         group = _BY_NAME.get(name)
@@ -62,6 +98,14 @@ def selected_groups(raw: str | None) -> tuple[ToolGroup, ...]:
                 "%s names tool group %s, which is planned and has no tools yet: skipped",
                 TOOL_GROUPS_ENV,
                 name,
+            )
+        elif not _served(group, features):
+            logger.warning(
+                "%s names tool group %s, which needs %s, left out of %s: skipped",
+                TOOL_GROUPS_ENV,
+                name,
+                group.needs,
+                FEATURES_ENV,
             )
         else:
             wanted.add(name)

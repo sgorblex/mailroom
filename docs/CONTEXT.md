@@ -66,10 +66,12 @@ Decided on 2026-11-09, in this order ([`TODO.md`](TODO.md) — *Family roadmap*)
 - **mailroom-core folds into this repository** as a workspace package, since the app is now its
   only consumer. That ends the step of releasing core and then bumping the app's pin. Done:
   `backend/core`.
-- **Editions:** an instance chooses its features in config. There is always a base: users,
-  accounts and their secrets, sign-in, a settings UI with `/connect`, and Postgres. On top of it,
-  the mail client, the MCP server and filters are each optional. A disabled feature runs nothing:
-  no routes, worker or screens. Every edition uses Postgres.
+- **Editions:** an instance chooses its features in config (`MAILROOM_FEATURES`,
+  [`REQUIREMENTS.md`](REQUIREMENTS.md) — *Editions*). There is always a base: users, sign-in,
+  accounts and their secrets, the settings screens (profile, accounts, users), and Postgres. On
+  top of it, the mail client, the MCP server (with its `/connect` consent screen and connected
+  apps) and filters are each optional, and the MCP mail tools do not need the mail client. A
+  disabled feature runs nothing: no routes, worker or screens. Every edition uses Postgres.
 - **This repository goes public** once the app is in a decent state, after an audit of its whole
   history. **imap-thingy folds in then, not before**, because it is public already. It keeps its
   history and its PyPI name, and it never depends on mailroom-core.

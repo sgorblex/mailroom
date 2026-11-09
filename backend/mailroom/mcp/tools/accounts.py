@@ -90,10 +90,11 @@ ACCOUNT_TOOLS: Final[tuple[Tool[Any], ...]] = (
         name="accounts_list",
         title="List accounts",
         description=(
-            "The user's mail accounts: id, login, whether a password is stored, whether Run "
-            "filters is on (rule sets run only on an account where it is), the send mode "
+            "The user's mail accounts: id, login, whether a password is stored, the send mode "
             "(what an agent may send: off, drafts, approval or direct) and the identities it "
-            "can send as (`address`, `name`, and which is the `default`). Call this first."
+            "can send as (`address`, `name`, and which is the `default`); where the instance "
+            "runs filters, also whether Run filters is on (`run_filters`: rule sets run only on "
+            "an account where it is). Call this first."
         ),
         group="filters_read",
         also_in=("mail_read", "mail_organize", "mail_draft", "mail_send"),

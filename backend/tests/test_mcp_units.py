@@ -12,6 +12,7 @@ from imap_thingy.accounts import Account
 from mcp.server.auth.provider import AccessToken
 
 from mailroom.accounts.mail import LIST_TIMEOUT_MESSAGE, MailFailure, list_folders
+from mailroom.config.features import ALL_FEATURES, Features
 from mailroom.config.public_url import parse_public_url
 from mailroom.errors import Refusal
 from mailroom.mcp import groups
@@ -37,7 +38,7 @@ def test_the_settings_come_from_the_environment(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.delenv("MAILROOM_MCP_AUTH", raising=False)
     monkeypatch.delenv("MAILROOM_MCP_TOOL_GROUPS", raising=False)
     public_url = parse_public_url("https://mail.example.org/")
-    settings = mcp_settings_from_env(public_url)
+    settings = mcp_settings_from_env(public_url, ALL_FEATURES)
     assert settings is not None
     assert (settings.auth, settings.resource, settings.issuer) == (
         "builtin",
@@ -55,12 +56,12 @@ def test_the_settings_come_from_the_environment(monkeypatch: pytest.MonkeyPatch)
     ]
 
     monkeypatch.setenv("MAILROOM_MCP_AUTH", "off")
-    assert mcp_settings_from_env(public_url) is None
+    assert mcp_settings_from_env(public_url, ALL_FEATURES) is None
     monkeypatch.setenv("MAILROOM_MCP_AUTH", "sometimes")
     with pytest.raises(ValueError, match="MAILROOM_MCP_AUTH"):
-        mcp_settings_from_env(public_url)
+        mcp_settings_from_env(public_url, ALL_FEATURES)
     monkeypatch.setenv("MAILROOM_MCP_AUTH", "external")
-    assert mcp_settings_from_env(None) is None
+    assert mcp_settings_from_env(None, ALL_FEATURES) is None
 
 
 @pytest.fixture
@@ -93,6 +94,29 @@ def test_a_preview_group_only_when_named(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr(groups, "_BY_NAME", {group.name: group for group in registry})
     assert "mail_read" not in names(selected_groups(None))
     assert names(selected_groups("mail_read")) == ["mail_read"]
+
+
+NO_FILTERS = Features(mail=False, mcp=True, filters=False)
+
+
+def test_without_filters_their_groups_are_left_out(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO)
+    defaults = selected_groups(None, NO_FILTERS)
+    assert names(defaults) == ["mail_read", "mail_organize", "mail_draft", "mail_send"]
+    [record] = caplog.records
+    assert record.levelno == logging.INFO
+    assert "filters_read, filters_write, filters_run" in record.getMessage()
+
+    caplog.clear()
+    assert names(selected_groups("filters_run,mail_read", NO_FILTERS)) == ["mail_read"]
+    [record] = caplog.records
+    assert record.levelno == logging.WARNING
+    assert "filters_run" in record.getMessage()
+    assert "MAILROOM_FEATURES" in record.getMessage()
+
+    tools = {tool.name for tool in tools_for(defaults)}
+    assert {"accounts_list", "folders_list"} <= tools
+    assert not tools & {"account_run_filters", "filter_schema", "rule_sets_list", "dry_run"}
 
 
 def test_the_tools_follow_their_groups(planned_group: str) -> None:

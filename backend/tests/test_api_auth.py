@@ -8,16 +8,19 @@ from sqlalchemy import delete, update
 
 from mailroom.api.deps import CurrentUser  # noqa: TC001  (FastAPI reads it at runtime)
 from mailroom.auth.sessions import SESSION_COOKIE_NAME
+from mailroom.config.features import Features
 from mailroom.models import User, UserSession
 from tests.conftest import PASSWORD, USERNAME
 
 if TYPE_CHECKING:
+    from fastapi import FastAPI
     from sqlalchemy.orm import Session
     from starlette.testclient import TestClient
 
 
-SIGNED_IN = {"user": {"username": USERNAME, "is_admin": False}}
-SIGNED_OUT = {"user": None}
+EVERY_FEATURE = ["mail", "mcp", "filters"]
+SIGNED_IN = {"user": {"username": USERNAME, "is_admin": False}, "features": EVERY_FEATURE}
+SIGNED_OUT = {"user": None, "features": EVERY_FEATURE}
 CREDENTIALS = {"username": USERNAME, "password": PASSWORD}
 
 
@@ -49,6 +52,21 @@ def test_unknown_session_is_signed_out(api_client: TestClient) -> None:
     assert api_client.get("/api/v1/auth/me").json() == SIGNED_OUT
     api_client.cookies.set(SESSION_COOKIE_NAME, "not-a-session")
     assert api_client.get("/api/v1/auth/me").json() == SIGNED_OUT
+
+
+def test_me_names_the_instances_features(
+    user_client: TestClient, application: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        application.state, "features", Features(mail=False, mcp=True, filters=False)
+    )
+    assert user_client.get("/api/v1/auth/me").json()["features"] == ["mcp"]
+    monkeypatch.setattr(
+        application.state, "features", Features(mail=False, mcp=False, filters=False)
+    )
+    assert user_client.get("/api/v1/auth/me").json()["features"] == []
+    user_client.cookies.clear()
+    assert user_client.get("/api/v1/auth/me").json() == {"user": None, "features": []}
 
 
 @pytest.mark.parametrize("path", ["/api/v1/health", "/api/v1/ready", "/api/v1/version", "/healthz"])

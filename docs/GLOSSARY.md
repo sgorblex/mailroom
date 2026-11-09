@@ -30,4 +30,6 @@
 | **CIMD** | Client ID metadata document: an MCP client whose `client_id` is an https URL on an allowed host, serving its own metadata, which the built-in OAuth server fetches and caches instead of a registration. |
 | **Authorization request** | An MCP client's `/oauth/authorize` call, stored until a signed-in user approves or denies it on `/connect`; the first user to open it claims it. |
 | **Linked sign-in** | An identity at the SSO provider (issuer and subject) tied to one user, so they can sign in through SSO and, in external mode, use that provider's MCP tokens. |
+| **Feature** | One of the optional parts an instance runs on top of the base (users, sign-in, accounts, the settings screens): `mail` (the mail client), `mcp` (the MCP server) and `filters`. `MAILROOM_FEATURES` lists them. [`REQUIREMENTS.md`](REQUIREMENTS.md) — *Editions*. |
+| **Edition** | The set of features one instance runs, from the base alone to all three. |
 | **Worker** | The app's background process: IDLE, indexing, filter runs, learning. |

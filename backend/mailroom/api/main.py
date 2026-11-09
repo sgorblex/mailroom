@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, FastAPI, Request
@@ -36,6 +36,7 @@ from mailroom.auth.oidc import OidcProvider
 from mailroom.auth.sso import Sso, sso_from_env, sso_start_limit
 from mailroom.auth.throttle import LoginThrottle, client_key
 from mailroom.auth.users import user_count
+from mailroom.config.features import FEATURES_ENV, features_from_env
 from mailroom.config.public_url import public_url_from_env
 from mailroom.context import app_context
 from mailroom.database_connectivity import CONNECTIVITY_ERRORS
@@ -59,6 +60,7 @@ if TYPE_CHECKING:
     from mcp.server.auth.provider import TokenVerifier
     from sqlalchemy.engine import Engine
 
+    from mailroom.config.features import Features
     from mailroom.mcp.settings import McpSettings
 
 
@@ -179,14 +181,16 @@ def _external_verifier(
 @asynccontextmanager
 async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
     configure_logging()
+    features: Features = application.state.features
+    logger.info("%s: %s", FEATURES_ENV, features.description)
     application.state.database_startup_failure = None
     mailroom_db_migrations.apply_startup_migrations_if_configured()
     _initialize_database(application)
     _warn_if_nobody_can_sign_in(application)
     application.state.secrets_subkey = secrets_subkey_from_env()
     application.state.mail_ssl_context = mail_ssl_context()
-    application.state.mail_pool = MailPool()
-    application.state.send_runner = SendRunner()
+    application.state.mail_pool = MailPool() if features.mail_layer else None
+    application.state.send_runner = SendRunner() if features.mail_layer else None
     application.state.sso = sso_from_env(application.state.public_url)
     mcp_settings: McpSettings | None = application.state.mcp_settings
     verifier: TokenVerifier | None = application.state.mcp_verifier
@@ -196,9 +200,9 @@ async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
         verifier = token_verifier(
             mcp_settings.auth, builtin=application.state.oauth_server, external=external
         )
-    mcp: McpEndpoint = application.state.mcp
+    mcp: McpEndpoint | None = application.state.mcp
     try:
-        async with mcp.running(mcp_settings, verifier):
+        async with nullcontext() if mcp is None else mcp.running(mcp_settings, verifier):
             yield
     finally:
         runner: SendRunner | None = application.state.send_runner
@@ -246,29 +250,37 @@ def _builtin_oauth_server(
 
 def create_application(
     *,
+    features: Features | None = None,
     mcp_settings: McpSettings | None = None,
     mcp_verifier: TokenVerifier | None = None,
     mcp_oidc_transport: httpx.BaseTransport | None = None,
 ) -> FastAPI:
-    """The API. ``mcp_settings`` and ``mcp_verifier`` replace what the environment would choose
-    for the MCP server, and ``mcp_oidc_transport`` carries external mode's requests to its
-    provider (tests)."""
+    """The API, with the routes of ``features`` (``MAILROOM_FEATURES`` when None, which raises
+    ``ValueError`` for an unknown name). ``mcp_settings`` and ``mcp_verifier`` replace what the
+    environment would choose for the MCP server, and ``mcp_oidc_transport`` carries external
+    mode's requests to its provider (tests)."""
     mailroom_database.load_local_environment()
+    if features is None:
+        features = features_from_env()
     public_url = public_url_from_env()
-    if mcp_settings is None:
-        mcp_settings = mcp_settings_from_env(public_url)
+    if not features.mcp:
+        mcp_settings = None
+    elif mcp_settings is None:
+        mcp_settings = mcp_settings_from_env(public_url, features)
     application = FastAPI(title="Mailroom API", lifespan=_lifespan)
+    application.state.features = features
     application.state.public_url = public_url
     application.state.mcp_settings = mcp_settings
     application.state.mcp_verifier = mcp_verifier
     application.state.mcp_oidc_transport = mcp_oidc_transport
-    mcp = McpEndpoint(lambda: app_context(application.state))
+    mcp = McpEndpoint(lambda: app_context(application.state)) if features.mcp else None
     application.state.mcp = mcp
     application.add_exception_handler(Refusal, _refusal_answer)
     application.state.login_throttle = LoginThrottle()
     application.state.sso_start_limit = sso_start_limit()
     application.add_middleware(CrossSiteRequestMiddleware)
-    application.add_middleware(NotStored, prefix=f"/api/v1{mail_router.prefix}/")
+    if features.mail:
+        application.add_middleware(NotStored, prefix=f"/api/v1{mail_router.prefix}/")
     application.add_middleware(CorrelationLoggingMiddleware)
 
     @application.get("/healthz", include_in_schema=False)
@@ -317,20 +329,25 @@ def create_application(
     protected_v1.include_router(own_password_router)
     protected_v1.include_router(users_router)
     protected_v1.include_router(accounts_router)
-    protected_v1.include_router(filters_router)
-    protected_v1.include_router(mail_router)
     protected_v1.include_router(identities_router)
-    protected_v1.include_router(consent_router)
-    protected_v1.include_router(grants_router)
+    if features.filters:
+        protected_v1.include_router(filters_router)
+    if features.mail:
+        protected_v1.include_router(mail_router)
+    if features.mcp:
+        protected_v1.include_router(consent_router)
+        protected_v1.include_router(grants_router)
     application.include_router(protected_v1)
 
-    # Exact routes: a mount would redirect /mcp to /mcp/.
-    application.router.routes.append(Route("/mcp", mcp.endpoint))
-    application.router.routes.append(Route(METADATA_PATH, mcp.metadata))
-    oauth_server = _builtin_oauth_server(application, mcp_settings)
+    oauth_server = None
+    if mcp is not None:
+        # Exact routes: a mount would redirect /mcp to /mcp/.
+        application.router.routes.append(Route("/mcp", mcp.endpoint))
+        application.router.routes.append(Route(METADATA_PATH, mcp.metadata))
+        oauth_server = _builtin_oauth_server(application, mcp_settings)
+        if oauth_server is not None:
+            application.router.routes.extend(oauth_server.routes())
     application.state.oauth_server = oauth_server
-    if oauth_server is not None:
-        application.router.routes.extend(oauth_server.routes())
     return application
 
 

@@ -19,6 +19,7 @@ from mailroom.auth.sessions import (
 )
 from mailroom.auth.throttle import LoginThrottle, client_key
 from mailroom.auth.users import user_by_username
+from mailroom.config.features import Feature, Features
 from mailroom.models import User
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,8 @@ class UserOut(BaseModel):
 
 class MeResponse(BaseModel):
     user: UserOut | None
+    features: list[Feature]
+    """What the instance runs (``MAILROOM_FEATURES``), signed in or not."""
 
 
 @auth_router.post("/login")
@@ -71,11 +74,12 @@ def login(body: LoginRequest, request: Request, response: Response, db: DbSessio
 
 
 @auth_router.get("/me")
-def me(db: DbSession, session_cookie: SessionCookie = None) -> MeResponse:
+def me(request: Request, db: DbSession, session_cookie: SessionCookie = None) -> MeResponse:
     """Who this browser is signed in as; ``user`` is null rather than a 401, so the sign-in
     screen loads without a failed request."""
     user = session_user(db, session_cookie)
-    return MeResponse(user=UserOut.of(user) if user else None)
+    features: Features = request.app.state.features
+    return MeResponse(user=UserOut.of(user) if user else None, features=features.names)
 
 
 @auth_router.post("/logout", status_code=204)

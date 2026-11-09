@@ -14,6 +14,7 @@ from starlette.testclient import TestClient
 
 from mailroom.api.main import create_application
 from mailroom.auth.oidc import OidcProvider
+from mailroom.config.features import ALL_FEATURES
 from mailroom.config.public_url import parse_public_url
 from mailroom.dev.fake_idp import FakeIdp
 from mailroom.mcp.groups import selected_groups
@@ -285,14 +286,14 @@ def external_env(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
 def test_external_settings_come_from_the_environment(external_env: pytest.MonkeyPatch) -> None:
     external_env.setenv("MAILROOM_OIDC_ISSUER", ISSUER)
     external_env.setenv("MAILROOM_MCP_OIDC_AUDIENCES", f" {CLIENT}, ,other,{CLIENT}")
-    settings = mcp_settings_from_env(parse_public_url(PUBLIC_URL))
+    settings = mcp_settings_from_env(parse_public_url(PUBLIC_URL), ALL_FEATURES)
     assert settings is not None
     assert settings.external == ExternalIssuer(ISSUER, (CLIENT, "other"), None)
     assert settings.authorization_server == ISSUER
 
     external_env.setenv("MAILROOM_MCP_OIDC_ISSUER", "https://mcp-idp.example.test")
     external_env.setenv("MAILROOM_MCP_OIDC_REQUIRED_SCOPE", "mailroom")
-    settings = mcp_settings_from_env(parse_public_url(PUBLIC_URL))
+    settings = mcp_settings_from_env(parse_public_url(PUBLIC_URL), ALL_FEATURES)
     assert settings is not None
     assert settings.external == ExternalIssuer(
         "https://mcp-idp.example.test", (CLIENT, "other"), "mailroom"
@@ -319,7 +320,7 @@ def test_external_mode_without_a_usable_provider_is_off(
     for name, value in env.items():
         external_env.setenv(name, value)
     caplog.set_level(logging.WARNING)
-    assert mcp_settings_from_env(parse_public_url(PUBLIC_URL)) is None
+    assert mcp_settings_from_env(parse_public_url(PUBLIC_URL), ALL_FEATURES) is None
     assert "the MCP server is off" in caplog.text
 
 
@@ -328,7 +329,7 @@ def test_builtin_settings_send_clients_to_the_builtin_issuer(
 ) -> None:
     external_env.setenv("MAILROOM_MCP_AUTH", "builtin")
     external_env.setenv("MAILROOM_OIDC_ISSUER", ISSUER)
-    settings = mcp_settings_from_env(parse_public_url(PUBLIC_URL))
+    settings = mcp_settings_from_env(parse_public_url(PUBLIC_URL), ALL_FEATURES)
     assert settings is not None
     assert settings.external is None
     assert settings.authorization_server == f"{PUBLIC_URL}/oauth"
@@ -383,7 +384,7 @@ def test_the_sso_issuers_provider_is_shared_and_only_mcps_own_is_closed(
         groups=selected_groups(None),
         external=ExternalIssuer(issuer=mcp_issuer, audiences=(CLIENT,)),
     )
-    application = create_application(mcp_settings=settings)
+    application = create_application(features=ALL_FEATURES, mcp_settings=settings)
     with TestClient(application, base_url=PUBLIC_URL):
         (verifier,) = made
         sso_provider = application.state.sso.provider
@@ -407,7 +408,9 @@ def _external_application(
         external=ExternalIssuer(issuer=ISSUER, audiences=(CLIENT,)),
     )
     application = create_application(
-        mcp_settings=settings, mcp_oidc_transport=httpx.MockTransport(module_idp.handle)
+        features=ALL_FEATURES,
+        mcp_settings=settings,
+        mcp_oidc_transport=httpx.MockTransport(module_idp.handle),
     )
     # One client for the module: the MCP session manager runs in its event loop.
     with TestClient(application, base_url=PUBLIC_URL) as client:
@@ -468,7 +471,9 @@ def test_the_issuer_is_advertised_and_checked_exactly_as_configured(
         external=ExternalIssuer(issuer=issuer, audiences=(CLIENT,)),
     )
     application = create_application(
-        mcp_settings=settings, mcp_oidc_transport=httpx.MockTransport(idp.handle)
+        features=ALL_FEATURES,
+        mcp_settings=settings,
+        mcp_oidc_transport=httpx.MockTransport(idp.handle),
     )
     with TestClient(application, base_url=PUBLIC_URL) as client:
         application.state.session_maker = sessions

@@ -1,9 +1,11 @@
 """What the API's front ends (the REST routes, and any other) share: the database, the secrets
-subkey, the TLS context the users' mailboxes are reached with and their mail connections.
+subkey, the TLS context the users' mailboxes are reached with, their mail connections and the
+instance's features.
 
 ``mailroom.api.main``'s lifespan builds them once and keeps them on ``app.state``
 (``database_engine``, ``session_maker``, ``secrets_subkey``, ``mail_ssl_context``,
-``mail_pool``, ``send_runner``); ``app_context`` reads them back as one ``AppContext``.
+``mail_pool``, ``send_runner``; ``features`` is ``create_application``'s); ``app_context`` reads
+them back as one ``AppContext``.
 """
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from mailroom.accounts.store import user_store
+from mailroom.config.features import ALL_FEATURES
 
 if TYPE_CHECKING:
     import ssl
@@ -20,6 +23,7 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session, sessionmaker
     from starlette.datastructures import State
 
+    from mailroom.config.features import Features
     from mailroom.mail.pool import MailPool
     from mailroom.mail.sends import SendRunner
     from mailroom_core.crypto import SecretsSubkey
@@ -39,6 +43,8 @@ class AppContext:
     (``mailroom.mail.pool``); None without the mail layer."""
     send_runner: SendRunner | None = None
     """Where sends run once admitted (``mailroom.mail.sends``); None without the mail layer."""
+    features: Features = ALL_FEATURES
+    """What the instance runs (``MAILROOM_FEATURES``)."""
 
     def store(self, user_id: int) -> AccountStore:
         """The user's accounts, as mailroom-core keeps them."""
@@ -64,4 +70,5 @@ def app_context(state: State) -> AppContext | None:
         ssl_context=state.mail_ssl_context,
         mail_pool=state.mail_pool,
         send_runner=state.send_runner,
+        features=state.features,
     )

@@ -113,7 +113,7 @@ function AccountRow({ account, onChange }: { account: Account; onChange: () => v
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null)
-  const [runFilters, setRunFiltersState] = useState(account.run_filters)
+  const [runFilters, setRunFiltersState] = useState(account.run_filters === true)
   const editTrigger = useRef<HTMLButtonElement>(null)
   const removeTrigger = useRef<HTMLButtonElement>(null)
   const confirmRemoval = useRef<HTMLButtonElement>(null)

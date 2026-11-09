@@ -24,6 +24,7 @@ from mailroom.accounts.mail import mail_ssl_context
 from mailroom.accounts.store import load_accounts
 from mailroom.api.main import create_application
 from mailroom.auth.users import create_user
+from mailroom.config.features import ALL_FEATURES
 from mailroom.context import app_context
 from mailroom.errors import Refusal, mail_refusal
 from mailroom.filters import service as filters_service
@@ -158,7 +159,9 @@ class Mcp:
 def _mcp_application(_worker_engine: Engine) -> Iterator[tuple[TestClient, FakeVerifier, FastAPI]]:
     verifier = FakeVerifier()
     settings = McpSettings(public_url=PUBLIC_URL, auth="builtin", groups=selected_groups(None))
-    application = create_application(mcp_settings=settings, mcp_verifier=verifier)
+    application = create_application(
+        features=ALL_FEATURES, mcp_settings=settings, mcp_verifier=verifier
+    )
     # One client for the module: the MCP session manager runs in its event loop.
     with TestClient(application, base_url=PUBLIC_URL) as client:
         yield client, verifier, application
@@ -601,7 +604,7 @@ def test_mcp_is_off_without_a_public_url(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     monkeypatch.setenv("MAILROOM_PUBLIC_URL", "")
-    with TestClient(create_application()) as client:
+    with TestClient(create_application(features=ALL_FEATURES)) as client:
         assert client.post("/mcp", json={}).status_code == 404
         assert client.get("/.well-known/oauth-protected-resource/mcp").status_code == 404
         assert client.get("/healthz").status_code == 200
@@ -612,7 +615,7 @@ def test_mcp_is_off_without_a_public_url(
 def test_mcp_is_off_when_its_auth_is_off(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MAILROOM_PUBLIC_URL", PUBLIC_URL)
     monkeypatch.setenv("MAILROOM_MCP_AUTH", "off")
-    with TestClient(create_application(), base_url=PUBLIC_URL) as client:
+    with TestClient(create_application(features=ALL_FEATURES), base_url=PUBLIC_URL) as client:
         assert client.post("/mcp", json={}).status_code == 404
 
 

@@ -18,6 +18,7 @@ from starlette.testclient import TestClient
 
 from mailroom.api.main import create_application
 from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
+from mailroom.config.features import ALL_FEATURES
 from mailroom.mcp.groups import selected_groups
 from mailroom.mcp.settings import McpSettings
 from mailroom.oauth.models import OAuthAuthorizationRequest, OAuthGrant
@@ -52,7 +53,7 @@ def _query(url: str) -> dict[str, str]:
 @pytest.fixture(scope="module")
 def _builtin_application(_worker_engine: Engine) -> Iterator[tuple[TestClient, FastAPI]]:
     settings = McpSettings(public_url=PUBLIC_URL, auth="builtin", groups=selected_groups(None))
-    application = create_application(mcp_settings=settings)
+    application = create_application(features=ALL_FEATURES, mcp_settings=settings)
     assert application.state.oauth_server is not None
     # One client for the module: the MCP session manager runs in its event loop.
     with TestClient(application, base_url=PUBLIC_URL, follow_redirects=False) as client:
