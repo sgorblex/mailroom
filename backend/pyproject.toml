@@ -1,6 +1,6 @@
 [project]
 name = "mailroom"
-version = "0.5.1"
+version = "0.6.0"
 description = "Mailroom backend: mail client, filters and MCP server (API and domain logic)"
 readme = "README.md"
 requires-python = ">=3.14"

@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.0](https://github.com/sgorblex/mailroom/compare/v0.5.1...v0.6.0) (2026-11-09)
+
+
+### Features
+
+* add MAILROOM_FEATURES to choose which features an instance runs ([#66](https://github.com/sgorblex/mailroom/issues/66)) ([63268d3](https://github.com/sgorblex/mailroom/commit/63268d34d78f667f2e5c8aefdd95fdd3aacb06fe))
+* let users set their own mail limits from the Profile page ([#71](https://github.com/sgorblex/mailroom/issues/71)) ([fbda8e7](https://github.com/sgorblex/mailroom/commit/fbda8e72036c99b30c9b1ad9024fb73cb3308692))
+* **web:** edit every identity of an account in the account form ([#72](https://github.com/sgorblex/mailroom/issues/72)) ([9f2b8bd](https://github.com/sgorblex/mailroom/commit/9f2b8bd483f7a085f8ad92fb09668a86ab07ed53))
+* **web:** show only the features an instance runs ([#68](https://github.com/sgorblex/mailroom/issues/68)) ([0d6cb18](https://github.com/sgorblex/mailroom/commit/0d6cb184aeec605d3cafd26a472fe1f93b27a697))
+* **worker:** exit at startup unless the filters feature is enabled ([#67](https://github.com/sgorblex/mailroom/issues/67)) ([713dd66](https://github.com/sgorblex/mailroom/commit/713dd6624a93841015486c1818716e5694839a2b))
+
 ## [0.5.1](https://github.com/sgorblex/mailroom/compare/v0.5.0...v0.5.1) (2026-11-09)
 
 
