@@ -53,6 +53,7 @@ def test_the_settings_come_from_the_environment(monkeypatch: pytest.MonkeyPatch)
         "mail_organize",
         "mail_draft",
         "mail_send",
+        "audit_read",
     ]
 
     monkeypatch.setenv("MAILROOM_MCP_AUTH", "off")
@@ -102,7 +103,13 @@ NO_FILTERS = Features(mail=False, mcp=True, filters=False)
 def test_without_filters_their_groups_are_left_out(caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.INFO)
     defaults = selected_groups(None, NO_FILTERS)
-    assert names(defaults) == ["mail_read", "mail_organize", "mail_draft", "mail_send"]
+    assert names(defaults) == [
+        "mail_read",
+        "mail_organize",
+        "mail_draft",
+        "mail_send",
+        "audit_read",
+    ]
     [record] = caplog.records
     assert record.levelno == logging.INFO
     assert "filters_read, filters_write, filters_run" in record.getMessage()
@@ -155,6 +162,8 @@ def test_the_instructions_follow_the_groups() -> None:
     assert mail_only.startswith("mailroom-app reads the user's mail")
     assert "filters" not in mail_only.split(".")[0]
     assert "messages_move" not in mail_only
+    assert "audit_list" not in mail_only
+    assert "audit_list" in instructions(selected_groups("mail_read,audit_read"))
 
 
 def test_organizing_without_reading_names_no_missing_ref_source(

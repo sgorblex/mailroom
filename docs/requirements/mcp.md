@@ -98,6 +98,7 @@ left out, with a warning when named. Which tools a client gets is instance confi
 | `mail_draft` (stable, on) | `draft_create` | openWorld |
 | | `draft_update`, `draft_delete` | destructive, openWorld |
 | `mail_send` (stable, on) | `message_send`, `message_reply`, `message_forward`, `draft_send` | destructive, openWorld |
+| `audit_read` (stable, on) | `audit_list(cursor?, limit?, account_id?, action?, actor?, result?)`: the user's audit trail, newest first, the addresses and `Message-ID` in the envelope | readOnly, idempotent |
 
 A destructive hint makes clients such as claude.ai ask the user before each call. Of the
 organize tools only `messages_trash` has it. `messages_move` can move into Trash too (any folder
@@ -305,7 +306,7 @@ workers; expired rows are swept on writes.
 | `MAILROOM_FEATURES` | The instance's features ([`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Editions*). Without `mcp`, the MCP server and its authorization server are not served, whatever the `MAILROOM_MCP_*` and `MAILROOM_OAUTH_*` variables say; web SSO still follows its own. |
 | `MAILROOM_PUBLIC_URL` | The instance's public origin. Required for SSO and the MCP server; unset, both are off. |
 | `MAILROOM_MCP_AUTH` | `builtin` (default), `external` or `off`. |
-| `MAILROOM_MCP_TOOL_GROUPS` | Registered tool groups; default `filters_read,filters_write,filters_run,mail_read,mail_organize,mail_draft,mail_send`. The `filters_*` groups need `filters` in `MAILROOM_FEATURES`; the mail groups do not need `mail`. |
+| `MAILROOM_MCP_TOOL_GROUPS` | Registered tool groups; default `filters_read,filters_write,filters_run,mail_read,mail_organize,mail_draft,mail_send,audit_read`. The `filters_*` groups need `filters` in `MAILROOM_FEATURES`; the mail groups do not need `mail`. |
 | `MAILROOM_OAUTH_EXTRA_REDIRECT_URIS` | Redirect URIs allowed beyond the built-in list. |
 | `MAILROOM_OAUTH_CIMD_HOSTS` | Hosts whose client ID metadata documents are fetched; default `claude.ai,claude.com`. |
 | `MAILROOM_OIDC_ISSUER`, `MAILROOM_OIDC_CLIENT_ID`, `MAILROOM_OIDC_CLIENT_SECRET` | Web SSO's provider and confidential client; SSO is off without them. |

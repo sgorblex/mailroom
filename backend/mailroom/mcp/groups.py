@@ -26,6 +26,7 @@ GroupName = Literal[
     "mail_organize",
     "mail_draft",
     "mail_send",
+    "audit_read",
 ]
 
 TOOL_GROUPS_ENV: Final = "MAILROOM_MCP_TOOL_GROUPS"
@@ -63,6 +64,7 @@ GROUPS: Final[tuple[ToolGroup, ...]] = (
     ToolGroup("mail_organize", "stable", "move, trash and flag mail"),
     ToolGroup("mail_draft", "stable", "write drafts"),
     ToolGroup("mail_send", "stable", "send mail"),
+    ToolGroup("audit_read", "stable", "the audit trail of what was done to mail"),
 )
 _BY_NAME: Final[dict[str, ToolGroup]] = {group.name: group for group in GROUPS}
 

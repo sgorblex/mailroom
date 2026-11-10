@@ -26,6 +26,7 @@ from mailroom.api.csrf import CrossSiteRequestMiddleware
 from mailroom.api.deps import require_user
 from mailroom.api.refusals import http_refusal
 from mailroom.api.routes.accounts import accounts_router
+from mailroom.api.routes.audit import audit_router
 from mailroom.api.routes.auth import auth_router
 from mailroom.api.routes.filters import filters_router
 from mailroom.api.routes.limits import limits_router
@@ -335,6 +336,8 @@ def create_application(
         protected_v1.include_router(filters_router)
     if features.mail_layer:
         protected_v1.include_router(limits_router)
+    if features.mail_layer or features.filters:
+        protected_v1.include_router(audit_router)
     if features.mail:
         protected_v1.include_router(mail_router)
     if features.mcp:

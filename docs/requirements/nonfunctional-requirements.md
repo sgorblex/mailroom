@@ -435,7 +435,13 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   the error's type) and never changes the write's answer. Records outlive a removed account
   and go with their user; those older than `MAILROOM_AUDIT_RETENTION_DAYS` (default 365, 1-3650)
   are purged as new ones are written, at most once an hour in each process, in a transaction
-  apart (`audit_purge_failed` when it fails).
+  apart (`audit_purge_failed` when it fails). `GET /api/v1/me/audit` (mounted with the mail
+  layer or filters; `Cache-Control: private, no-store`) lists the user's own, newest first,
+  `limit` (1-100, default 50) at a time with an opaque `cursor` (400 `invalid_cursor` for any
+  other), filtered by `account_id`, `action`, `actor` and `result` (`failed`: every result but
+  `ok`, refusals included); each
+  carries the connected app's name and the rule set's while they exist. MCP's `audit_list` lists
+  the same ([`mcp.md`](mcp.md)).
 
 ### Filters
 

@@ -148,6 +148,21 @@ authorization server with its `/connect` consent screen, connected apps on the p
 - **Web SSO** over OIDC for users an admin created, through a [linked sign-in](GLOSSARY.md);
   nobody signs up through it.
 
+## Audit trail
+
+**Maturity: Partial** — records, the REST listing and MCP's `audit_list` are in; the web page to
+review them is not yet.
+
+- Every write to a user's mail leaves an [audit record](GLOSSARY.md) per message: a move,
+  archive, trash, flag, draft or send from the web or an agent, and what a filter run did,
+  refused attempts included. It says who acted (the user, an agent and its connected app, or a
+  rule set), what, and how it ended; never a subject or a body. The web's draft saves are left
+  out, being the user typing.
+- Records outlive a removed account, go with their user, and are kept a year by default.
+- The user reviews their own trail, and an agent can list it through MCP.
+  How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md)
+  — *Audit trail*.
+
 ## Non-functional requirements
 
 [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md) — stack,

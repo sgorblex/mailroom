@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Final
 
 from mailroom.mcp.tools.accounts import ACCOUNT_TOOLS
+from mailroom.mcp.tools.audit import AUDIT_TOOLS
 from mailroom.mcp.tools.filters import FILTER_TOOLS
 from mailroom.mcp.tools.mail_draft import MAIL_DRAFT_TOOLS
 from mailroom.mcp.tools.mail_organize import MAIL_ORGANIZE_TOOLS
@@ -21,4 +22,5 @@ TOOLS: Final[tuple[Tool[Any], ...]] = (
     *MAIL_ORGANIZE_TOOLS,
     *MAIL_DRAFT_TOOLS,
     *MAIL_SEND_TOOLS,
+    *AUDIT_TOOLS,
 )
