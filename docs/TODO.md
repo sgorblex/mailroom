@@ -8,9 +8,8 @@ exploratory work. Once an item is done, remove it.
 
 Mailroom is built on projects with their own repositories and checklists. As of 2026-11-10:
 
-- **mailroom-mcp** (`../mailroom-mcp`, GitHub `sgorblex/mailroom-mcp`): its Python port of the
-  server stopped at core, which now lives in `backend/core`. Its TypeScript server in production
-  is stopped, its data kept, while the app's MCP replaces it (*Family roadmap* below).
+- **mailroom-mcp** (`../mailroom-mcp`, GitHub `sgorblex/mailroom-mcp`): retired on 2026-11-10 and
+  archived; its Python port's core lives in `backend/core`.
 - **imap-thingy** (`../imap-thingy`, GitHub `sgorblex/imap-thingy`): rules as data (`to_spec()`,
   `imap_thingy.spec`) since 0.5.0, the runner (`imap_thingy.runner`: `run_rules`, `starred_only`,
   the IDLE `monitor`) since 0.6.0; 0.7.0 adds run reports (what each filter matched and did, also
@@ -25,13 +24,8 @@ In order. The reasons are in [`CONTEXT.md`](CONTEXT.md) — *Where the family is
 - [x] **Fold mailroom-core into this repository** as a workspace package, with its history.
 - [x] **Editions:** features chosen in config (mail client, MCP, filters) over an always-present
       base.
-- [ ] **Retire mailroom-mcp.** The app's MCP covers its use (mail limits and every identity are
-      edited in the app; per-connector profiles are not needed, as only one was in use), its
-      users moved to the app's connector, and its server has been stopped since 2026-11-10 for
-      a few days of use without it.
-  - [x] The **audit trail** of mail writes, which mailroom-mcp's audit lines gave: records per
-        message, the *Activity* page and MCP's `audit_list`.
-  - [ ] After those days: remove its deployment and archive the repository, pointing here.
+- [x] **Retire mailroom-mcp** (2026-11-10): the app's MCP covers its use, the audit trail
+      included; its deployment is gone and its repository archived.
 - [ ] **Go public:**
   - [ ] audit the whole history (secrets, infrastructure names);
   - [ ] make the repository public;

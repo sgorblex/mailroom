@@ -1,14 +1,14 @@
 # MCP server
 
-Mailroom's own MCP server, `mailroom-app`, at `/mcp` in the API process, with its OAuth
-(a built-in authorization server, or an external issuer such as Authentik or Keycloak) and web
-SSO. It exposes what a model needs to work on a user's filters: accounts, folders, rule sets,
-dry runs and runs, and, group by group, the mail tools: each mail group turns on (status
-`stable`) once the client does what it does; `mail_read` is the first, with slice A of the
-[mail client](mail-client.md), then `mail_organize`, with slice B, then `mail_draft` and
-`mail_send`, with slice C. Standalone mailroom-mcp is being retired now that this server covers its
-use ([`../CONTEXT.md`](../CONTEXT.md)). Product scope:
-[`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *MCP server*.
+Mailroom's own MCP server, `mailroom-app`, at `/mcp` in the API process, with its OAuth (a built-in
+authorization server, or an external issuer such as Authentik or Keycloak) and web SSO. It exposes
+what a model needs to work on a user's filters: accounts, folders, rule sets, dry runs and runs,
+and, group by group, the mail tools: each mail group turns on (status `stable`) once the client does
+what it does; `mail_read` is the first, with slice A of the [mail client](mail-client.md), then
+`mail_organize`, with slice B, then `mail_draft` and `mail_send`, with slice C. Standalone
+mailroom-mcp was retired on 2026-11-10, this server covering its use
+([`../CONTEXT.md`](../CONTEXT.md)). Product scope: [`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *MCP
+server*.
 
 ## Tools
 
