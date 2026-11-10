@@ -10,6 +10,7 @@ at most once an hour in each process, so no scheduler is needed.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import threading
@@ -23,7 +24,7 @@ from sqlalchemy import delete, func, insert
 from mailroom.models import AuditRecord
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable
 
     from sqlalchemy.orm import Session, sessionmaker
 
@@ -113,35 +114,61 @@ def purge_old(db: Session) -> None:
 
 
 def write_records(sessions: sessionmaker[Session], user_id: int, entries: Iterable[Entry]) -> None:
-    """Write ``entries`` for ``user_id`` in a transaction of their own, then purge in another when
-    due. Never raises: a failure is logged and the records are lost (a failed purge waits for the
-    next one)."""
+    """Write ``entries`` for ``user_id`` in a session and transaction of their own, then purge in
+    another when due. Never raises: a failure is logged and the records are lost (a failed purge
+    waits for the next one)."""
     rows = [_row(user_id, entry) for entry in entries]
     if not rows:
         return
     try:
-        with sessions() as db, db.begin():
-            db.execute(insert(AuditRecord), rows)
+        db = sessions()
     except Exception as exc:
-        _failed("audit_write_failed", user_id, exc, len(rows))
+        _log_failure("audit_write_failed", user_id, len(rows), exc)
+        return
+    with db:
+        _write(db, user_id, rows)
+
+
+def write_records_in(db: Session, user_id: int, entries: Iterable[Entry]) -> None:
+    """``write_records`` in ``db``, which must hold no open work: each step committed, or rolled
+    back on a failure."""
+    rows = [_row(user_id, entry) for entry in entries]
+    if rows:
+        _write(db, user_id, rows)
+
+
+def _write(db: Session, user_id: int, rows: list[dict[str, Any]]) -> None:
+    if not _committed(db, user_id, len(rows), "audit_write_failed", lambda: _insert(db, rows)):
         return
     if PURGE.due():
-        try:
-            with sessions() as db, db.begin():
-                purge_old(db)
-        except Exception as exc:
-            _failed("audit_purge_failed", user_id, exc, 0)
+        _committed(db, user_id, 0, "audit_purge_failed", lambda: purge_old(db))
 
 
-def _failed(event: str, user_id: int, exc: Exception, records: int) -> None:
+def _insert(db: Session, rows: list[dict[str, Any]]) -> None:
+    db.execute(insert(AuditRecord), rows)
+
+
+def _committed(
+    db: Session, user_id: int, records: int, event: str, work: Callable[[], None]
+) -> bool:
+    """``work`` committed; whether it was. A failure, the rollback's own included, is logged as
+    ``event`` and goes no further: the write it records already happened."""
+    try:
+        work()
+        db.commit()
+    except Exception as exc:
+        # The failure above is the one to report, whatever the rollback does.
+        with contextlib.suppress(Exception):
+            db.rollback()
+        _log_failure(event, user_id, records, exc)
+        return False
+    return True
+
+
+def _log_failure(event: str, user_id: int, records: int, exc: Exception) -> None:
     logger.warning(
         event,
-        extra={
-            "event": event,
-            "user_id": user_id,
-            "records": records,
-            "error": type(exc).__name__,
-        },
+        extra={"event": event, "user_id": user_id, "records": records, "error": type(exc).__name__},
     )
 
 

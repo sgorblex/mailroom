@@ -7,10 +7,13 @@ import threading
 from typing import TYPE_CHECKING
 
 import pytest
+from sqlalchemy import select
 
+from mailroom.models import AuditRecord
 from mailroom.worker.idle import MonitorWatch, WatchedFolder
 from mailroom.worker.runs import execute_run
 from mailroom.worker.tasks import queue_new_mail_runs
+from mailroom_core.mail.audit import subject_sha256
 from tests.test_api_accounts import new_account
 from tests.test_api_filters import SHOP_SPEC, add_filter
 from tests.test_filter_runner import add_rule_set, queued_run, run_out, set_run_filters
@@ -53,6 +56,7 @@ def starred(mailbox: Mailbox, folder: str) -> list[int]:
 
 def test_a_run_acts_on_the_folder_and_reports_it(
     user_client: TestClient,
+    user: User,
     db_session: Session,
     mailbox: Mailbox,
     account: str,
@@ -75,6 +79,12 @@ def test_a_run_acts_on_the_folder_and_reports_it(
     assert entry["filter_id"] == shop
     assert entry["executed"] is True
     assert [m["subject"] for m in entry["matched"]] == ["Autumn sale"]
+    [record] = db_session.scalars(select(AuditRecord).where(AuditRecord.user_id == user.id))
+    assert (record.actor, record.account_id, record.result) == ("filter", "work", "ok")
+    assert (record.rule_set_id, record.run_id) == (rule_set_id, run_id)
+    assert (record.detail["folder"], record.detail["filter"]) == ("INBOX", "Shop")
+    assert record.detail["subject_sha256"] == subject_sha256("Autumn sale")
+    assert "Autumn sale" not in str(record.detail)
 
 
 def test_a_starred_only_run_handles_starred_mail_only(

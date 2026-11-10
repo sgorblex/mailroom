@@ -34,7 +34,9 @@ in the browser, tried with a dry run, and run by the worker. Product scope:
   `match_timeout` in its history.
 - **Run history**: every run — on new mail, scheduled, run now or dry — records its trigger
   (`manual` for run now and dry runs), start and end, the report (what each filter matched and
-  did) and any error.
+  did) and any error. A real run also writes to the user's audit trail: a record per message a
+  filter acted on, as the report lists it, the subject only as its hash
+  ([`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *Audit trail*).
 - **One run at a time per account.** The worker never runs two runs on the same account at once;
   a run waits for the one in progress. Dry runs, which change nothing, are not held back.
 - **The worker** checks *Run filters* and the rule set's *enabled* again when a run starts; a run

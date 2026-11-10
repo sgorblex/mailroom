@@ -420,9 +420,14 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
 - **Audit trail** (`app.audit_record`, `mailroom.audit`): one record per message a write acted
   on or tried to, refused attempts included: the item's fields (account, folder, UID,
   `Message-ID`, sender and recipients in clear, the subject's SHA-256, destination, flags, junk,
-  removal, send mode and delivery stage) with who acted (`user` on the web, or `agent` with the
-  MCP `client_id` and `grant_id`), the action (`move`, `archive`, `trash`, `flag`, `draft_save`,
-  `draft_remove`, `send`) and the result. Never a subject or a body. The web's draft saves are
+  removal, send mode and delivery stage) with who acted (`user` on the web, `agent` with the
+  MCP `client_id` and `grant_id`, or `filter`, a real run, with its `rule_set_id` and `run_id`),
+  the action (`move`, `archive`, `trash`, `flag`, `draft_save`, `draft_remove`, `send`, or the
+  filter's action as its report names it) and the result. A run records each message its report
+  lists (the folder as its segments joined by `/`, UID, the sender's address, the date, the
+  subject's hash, the filter's id and name), one more record counting those past the report's
+  200, and, when the run failed partway, one `run_failed` record naming the filter it failed on,
+  which may have acted on some messages. Never a subject or a body. The web's draft saves are
   not recorded (they are the user typing; an agent's are); its explicit deletes and every send
   are. A record is written by the thread that did the work, as the work reports it (an organize
   call's items once its groups are done, so a call cut at its deadline still records what it

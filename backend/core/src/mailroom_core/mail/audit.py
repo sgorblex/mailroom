@@ -109,7 +109,9 @@ class AuditItem:
         return fields
 
 
-def _subject_hash(subject: str) -> str:
+def subject_sha256(subject: str) -> str:
+    """A decoded subject's SHA-256: what an audit record keeps of it, the same for any front end
+    that hashes it."""
     return hashlib.sha256(subject.encode("utf-8", "replace")).hexdigest()
 
 
@@ -140,7 +142,7 @@ def message_item(
         sender=None if sender is None else sender.address or None,
         # Hashed as imapflow hands the subject over: encoded words decoded, nothing else changed.
         subject_sha256=(
-            None if subject is None else _subject_hash(decode_words(text_value(subject)))
+            None if subject is None else subject_sha256(decode_words(text_value(subject)))
         ),
         destination=destination,
         copied=copied,
@@ -171,7 +173,7 @@ def outgoing_item(
             cc=tuple(m.address for m in message.cc),
             bcc=tuple(m.address for m in message.bcc),
         ),
-        subject_sha256=_subject_hash(message.subject),
+        subject_sha256=subject_sha256(message.subject),
         attachments=len(message.attachments),
         result=result,
     )
