@@ -120,11 +120,11 @@ describe('RootLayout', () => {
   })
 
   it.each([
-    { features: [], mail: false, filters: false },
-    { features: ['mcp'], mail: false, filters: false },
-    { features: ['mail'], mail: true, filters: false },
-    { features: ['filters'], mail: false, filters: true },
-  ])('links only to the features the instance runs ($features)', async ({ features, mail, filters }) => {
+    { features: [], mail: false, filters: false, activity: false },
+    { features: ['mcp'], mail: false, filters: false, activity: true },
+    { features: ['mail'], mail: true, filters: false, activity: true },
+    { features: ['filters'], mail: false, filters: true, activity: true },
+  ])('links only to the features the instance runs ($features)', async ({ features, mail, filters, activity }) => {
     stubApi(true, features)
     renderApp()
 
@@ -132,6 +132,7 @@ describe('RootLayout', () => {
     expect(screen.getByRole('link', { name: 'Profile' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Mail' }) !== null).toBe(mail)
     expect(screen.queryByRole('link', { name: 'Filters' }) !== null).toBe(filters)
+    expect(screen.queryByRole('link', { name: 'Activity' }) !== null).toBe(activity)
   })
 
   it('keeps the features it learned while signed out once signed in', async () => {

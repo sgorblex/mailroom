@@ -439,9 +439,9 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   layer or filters; `Cache-Control: private, no-store`) lists the user's own, newest first,
   `limit` (1-100, default 50) at a time with an opaque `cursor` (400 `invalid_cursor` for any
   other), filtered by `account_id`, `action`, `actor` and `result` (`failed`: every result but
-  `ok`, refusals included); each
-  carries the connected app's name and the rule set's while they exist. MCP's `audit_list` lists
-  the same ([`mcp.md`](mcp.md)).
+  `ok`, refusals included); each carries the connected app's name and the rule set's while they
+  exist; the web's *Activity* page (`/activity`, with mail, MCP or filters) reads it. MCP's
+  `audit_list` lists the same ([`mcp.md`](mcp.md)).
 
 ### Filters
 

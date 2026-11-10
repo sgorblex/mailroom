@@ -7,7 +7,7 @@ import type { Feature } from '@/api/auth.ts'
 import { routeTree } from '@/router.tsx'
 import { renderSignedIn } from '@/test/signed-in.tsx'
 
-const loaded = vi.hoisted(() => ({ mail: vi.fn(), filters: vi.fn() }))
+const loaded = vi.hoisted(() => ({ mail: vi.fn(), filters: vi.fn(), activity: vi.fn() }))
 
 function mailScreenModule(): { MailScreen: () => ReactElement } {
   loaded.mail()
@@ -15,6 +15,10 @@ function mailScreenModule(): { MailScreen: () => ReactElement } {
 }
 
 vi.mock('@/mail/mail-screen.tsx', () => mailScreenModule())
+vi.mock('@/activity/activity-screen.tsx', () => {
+  loaded.activity()
+  return { ActivityScreen: () => <p>Activity screen</p> }
+})
 vi.mock('@/filters/rule-set-screen.tsx', () => {
   loaded.filters()
   return { RuleSetRoute: () => <p>Rule set screen</p> }
@@ -39,12 +43,14 @@ afterEach(() => {
   vi.unstubAllGlobals()
   loaded.mail.mockClear()
   loaded.filters.mockClear()
+  loaded.activity.mockClear()
 })
 
 describe('featureRoute', () => {
   it.each([
     { path: '/mail', module: 'mail' as const },
     { path: '/filters/1', module: 'filters' as const },
+    { path: '/activity', module: 'activity' as const },
   ])('says $path is not available, never loading its screen', async ({ path, module }) => {
     stubFetch()
     renderApp(path, [])
@@ -52,6 +58,13 @@ describe('featureRoute', () => {
       await screen.findByRole('heading', { name: 'Not available on this instance' }),
     ).toBeInTheDocument()
     expect(loaded[module]).not.toHaveBeenCalled()
+  })
+
+  it('shows a screen of several features when any of them is on', async () => {
+    stubFetch()
+    renderApp('/activity', ['filters'])
+    expect(await screen.findByText('Activity screen')).toBeInTheDocument()
+    expect(loaded.activity).toHaveBeenCalled()
   })
 
   it('shows the screen when its feature is on', async () => {

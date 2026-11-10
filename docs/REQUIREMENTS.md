@@ -150,8 +150,7 @@ authorization server with its `/connect` consent screen, connected apps on the p
 
 ## Audit trail
 
-**Maturity: Partial** — records, the REST listing and MCP's `audit_list` are in; the web page to
-review them is not yet.
+**Maturity: Done** — records, the web's *Activity* page and MCP's `audit_list`.
 
 - Every write to a user's mail leaves an [audit record](GLOSSARY.md) per message: a move,
   archive, trash, flag, draft or send from the web or an agent, and what a filter run did,
@@ -159,7 +158,8 @@ review them is not yet.
   rule set), what, and how it ended; never a subject or a body. The web's draft saves are left
   out, being the user typing.
 - Records outlive a removed account, go with their user, and are kept a year by default.
-- The user reviews their own trail, and an agent can list it through MCP.
+- The user reviews their own trail on the *Activity* page, newest first, filtered by account, who
+  acted, action and result; an agent can list it through MCP.
   How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md)
   — *Audit trail*.
 

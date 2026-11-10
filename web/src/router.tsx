@@ -1,7 +1,7 @@
 import { createRootRoute, createRoute, createRouter, lazyRouteComponent } from '@tanstack/react-router'
 
 import { AccountsScreen } from '@/accounts/accounts-screen.tsx'
-import { featureRoute } from '@/auth/feature-route.tsx'
+import { featureRoute, WRITES_MAIL } from '@/auth/feature-route.tsx'
 import { RootLayout } from '@/auth/root-layout.tsx'
 import { HealthScreen } from '@/health/health-screen.tsx'
 import { validateMailSearch } from '@/mail/route-search.ts'
@@ -57,6 +57,16 @@ const mailRoute = createRoute({
   component: featureRoute('mail', lazyRouteComponent(() => import('@/mail/mail-screen.tsx'), 'MailScreen')),
 })
 
+// What was done to the user's mail: wherever the instance writes it (mail, MCP or filters).
+const activityRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/activity',
+  component: featureRoute(
+    WRITES_MAIL,
+    lazyRouteComponent(() => import('@/activity/activity-screen.tsx'), 'ActivityScreen'),
+  ),
+})
+
 const profileRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/profile',
@@ -78,6 +88,7 @@ export const routeTree = rootRoute.addChildren([
   mailRoute,
   filtersRoute,
   ruleSetRoute,
+  activityRoute,
   usersRoute,
   profileRoute,
   connectRoute,

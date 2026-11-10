@@ -1,0 +1,104 @@
+{
+  "title": "Attività",
+  "intro": "Cosa è stato fatto alla tua posta, da te, dalle app collegate e dai tuoi filtri, dalla più recente. Oggetti e testi non vengono mai conservati.",
+  "loading": "Caricamento dell'attività…",
+  "loadFailed": "Impossibile caricare l'attività.",
+  "retry": "Riprova",
+  "none": "Ancora nulla di registrato.",
+  "noMatches": "Nulla corrisponde a questi filtri.",
+  "loadMore": "Carica altro",
+  "loadingMore": "Caricamento…",
+  "list": "Attività registrata",
+  "filters": {
+    "label": "Filtra l'attività",
+    "account": "Account",
+    "who": "Chi",
+    "action": "Azione",
+    "result": "Esito",
+    "any": "Qualsiasi"
+  },
+  "who": {
+    "user": "Tu",
+    "agent": "App collegate",
+    "filter": "Filtri",
+    "agentNamed": "{{app}}",
+    "agentUnnamed": "Un'app collegata",
+    "filterNamed": "Regola: {{ruleSet}}",
+    "filterGone": "Una regola rimossa"
+  },
+  "actions": {
+    "move": "Spostato",
+    "archive": "Archiviato",
+    "trash": "Spostato nel Cestino",
+    "flag": "Contrassegni cambiati",
+    "draft_save": "Bozza salvata",
+    "draft_remove": "Bozza rimossa",
+    "send": "Inviato",
+    "run_failed": "Esecuzione dei filtri non riuscita"
+  },
+  "results": {
+    "ok": "Fatto",
+    "failed": "Non fatto"
+  },
+  "notListed_one": "e {{count}} altro messaggio",
+  "notListed_other": "e altri {{count}} messaggi",
+  "fields": {
+    "folder": "Cartella",
+    "destination": "Nella cartella",
+    "from": "Da",
+    "to": "A",
+    "cc": "Cc",
+    "bcc": "Ccn",
+    "message_id": "Message-ID",
+    "uid": "UID",
+    "subject_sha256": "Oggetto (hash)",
+    "attachments": "Allegati",
+    "delivery": "Consegna",
+    "filed": "Copia in Inviata",
+    "rejected": "Destinatari rifiutati",
+    "removed": "Rimozione",
+    "seen": "Letto",
+    "flagged": "Speciale",
+    "flag": "Contrassegno",
+    "junk": "Addestramento spam",
+    "mode": "Modalità di invio",
+    "by": "Chiesto da",
+    "copied": "Copiato",
+    "filter": "Filtro",
+    "matched": "Corrispondenze",
+    "error": "Errore",
+    "date": "Data",
+    "run": "Esecuzione",
+    "result": "Codice di esito"
+  },
+  "values": {
+    "yes": "Sì",
+    "no": "No",
+    "delivery": {
+      "sent": "Inviato",
+      "drafted": "Salvato come bozza",
+      "attempted": "Tentato",
+      "refused": "Rifiutato",
+      "repeated": "Già inviato"
+    },
+    "removed": {
+      "expunged": "Rimossa",
+      "trashed": "Spostata nel Cestino",
+      "failed": "Non rimossa"
+    },
+    "by": {
+      "user": "Tu",
+      "agent": "Un'app collegata"
+    },
+    "junk": {
+      "spam": "Spam",
+      "ham": "Non spam"
+    },
+    "mode": {
+      "off": "Disattivato",
+      "drafts": "Solo bozze",
+      "approval": "Dopo approvazione",
+      "direct": "Direttamente"
+    }
+  }
+}

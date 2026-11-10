@@ -29,8 +29,8 @@ In order. The reasons are in [`CONTEXT.md`](CONTEXT.md) — *Where the family is
       edited in the app; per-connector profiles are not needed, as only one was in use), its
       users moved to the app's connector, and its server has been stopped since 2026-11-10 for
       a few days of use without it.
-  - [ ] The **audit trail** of mail writes (*MCP and suggestions*): mailroom-mcp logged one audit
-        line per message an agent wrote, the app does not, so it lands before the archive.
+  - [x] The **audit trail** of mail writes, which mailroom-mcp's audit lines gave: records per
+        message, the *Activity* page and MCP's `audit_list`.
   - [ ] After those days: remove its deployment and archive the repository, pointing here.
 - [ ] **Go public:**
   - [ ] audit the whole history (secrets, infrastructure names);
@@ -64,19 +64,6 @@ In order. The reasons are in [`CONTEXT.md`](CONTEXT.md) — *Where the family is
 
 ## MCP and suggestions
 
-- [ ] **Audit trail of mail writes**, before mailroom-mcp is archived. mailroom-core yields an
-      audit item per message for every move, trash, flag, draft saved or removed and send, refused
-      attempts included; the app logs only counts and codes
-      ([`requirements/mail-client.md`](requirements/mail-client.md), *MCP*), so an agent's
-      writes leave no record of which messages or recipients they touched.
-  - Keep every item, from REST and MCP, per user: when, who acted (the user on the web, or an MCP
-    client and its grant), the route or tool, the account, the action and its result, and the
-    item's fields (folder, UID, `Message-ID`, sender, recipients, subject hash, attachment count,
-    destination, junk, removal, delivery stage). Never a subject or a body.
-  - A page to review them, newest first, filtered by account, action, who acted and result.
-  - To settle first: how long they are kept (a retention in days, purged nightly, or for good);
-    whether they outlive a removed account; whether MCP gets a read-only tool for them; whether
-    filter runs, which have their own run reports, join them.
 - [ ] **MCP server** ([`requirements/mcp.md`](requirements/mcp.md)), in this order:
   - [x] **Filters service layer** — rule-set and filter logic out of the routes, so the API and the
         MCP share it.

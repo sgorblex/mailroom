@@ -1,0 +1,104 @@
+{
+  "title": "Activity",
+  "intro": "What was done to your mail, by you, by connected apps and by your filters, newest first. Subjects and bodies are never kept.",
+  "loading": "Loading the activity…",
+  "loadFailed": "Could not load the activity.",
+  "retry": "Try again",
+  "none": "Nothing recorded yet.",
+  "noMatches": "Nothing matches these filters.",
+  "loadMore": "Load more",
+  "loadingMore": "Loading…",
+  "list": "Recorded activity",
+  "filters": {
+    "label": "Filter the activity",
+    "account": "Account",
+    "who": "Who",
+    "action": "Action",
+    "result": "Result",
+    "any": "Any"
+  },
+  "who": {
+    "user": "You",
+    "agent": "Connected apps",
+    "filter": "Filters",
+    "agentNamed": "{{app}}",
+    "agentUnnamed": "A connected app",
+    "filterNamed": "Rule set: {{ruleSet}}",
+    "filterGone": "A removed rule set"
+  },
+  "actions": {
+    "move": "Moved",
+    "archive": "Archived",
+    "trash": "Moved to Trash",
+    "flag": "Flags changed",
+    "draft_save": "Draft saved",
+    "draft_remove": "Draft removed",
+    "send": "Sent",
+    "run_failed": "Filter run failed"
+  },
+  "results": {
+    "ok": "Done",
+    "failed": "Not done"
+  },
+  "notListed_one": "and {{count}} more message",
+  "notListed_other": "and {{count}} more messages",
+  "fields": {
+    "folder": "Folder",
+    "destination": "To folder",
+    "from": "From",
+    "to": "To",
+    "cc": "Cc",
+    "bcc": "Bcc",
+    "message_id": "Message-ID",
+    "uid": "UID",
+    "subject_sha256": "Subject (hash)",
+    "attachments": "Attachments",
+    "delivery": "Delivery",
+    "filed": "Filed in Sent",
+    "rejected": "Refused recipients",
+    "removed": "Removal",
+    "seen": "Read",
+    "flagged": "Starred",
+    "flag": "Flag",
+    "junk": "Junk training",
+    "mode": "Send mode",
+    "by": "Asked by",
+    "copied": "Copied",
+    "filter": "Filter",
+    "matched": "Matched",
+    "error": "Error",
+    "date": "Date",
+    "run": "Run",
+    "result": "Result code"
+  },
+  "values": {
+    "yes": "Yes",
+    "no": "No",
+    "delivery": {
+      "sent": "Sent",
+      "drafted": "Saved as a draft",
+      "attempted": "Attempted",
+      "refused": "Refused",
+      "repeated": "Already sent"
+    },
+    "removed": {
+      "expunged": "Removed",
+      "trashed": "Moved to Trash",
+      "failed": "Not removed"
+    },
+    "by": {
+      "user": "You",
+      "agent": "A connected app"
+    },
+    "junk": {
+      "spam": "Spam",
+      "ham": "Not spam"
+    },
+    "mode": {
+      "off": "Off",
+      "drafts": "Drafts only",
+      "approval": "After approval",
+      "direct": "Directly"
+    }
+  }
+}

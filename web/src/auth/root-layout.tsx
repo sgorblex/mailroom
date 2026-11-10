@@ -2,6 +2,7 @@ import { useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, Outlet } from '@tanstack/react-router'
 
+import { WRITES_MAIL } from '@/auth/feature-route.tsx'
 import { useAuth } from '@/auth/auth-context.ts'
 import { LoginScreen } from '@/auth/login-screen.tsx'
 import { Button } from '@/components/ui/button.tsx'
@@ -39,6 +40,9 @@ export function RootLayout(): ReactElement {
           {auth.features.has('mail') && <NavLink to="/mail">{t('nav.mail')}</NavLink>}
           <NavLink to="/accounts">{t('nav.accounts')}</NavLink>
           {auth.features.has('filters') && <NavLink to="/filters">{t('nav.filters')}</NavLink>}
+          {WRITES_MAIL.some((feature) => auth.features.has(feature)) && (
+            <NavLink to="/activity">{t('nav.activity')}</NavLink>
+          )}
           {auth.user.is_admin && <NavLink to="/users">{t('nav.users')}</NavLink>}
           <NavLink to="/profile">{t('nav.profile')}</NavLink>
         </nav>
@@ -56,7 +60,7 @@ function NavLink({
   to,
   children,
 }: {
-  to: '/' | '/mail' | '/accounts' | '/filters' | '/users' | '/profile'
+  to: '/' | '/mail' | '/accounts' | '/filters' | '/activity' | '/users' | '/profile'
   children: string
 }): ReactElement {
   return (
