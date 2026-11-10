@@ -416,8 +416,21 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
     `rejected_count`; `mail_send_not_filed` and `mail_send_not_settled` with their `code`. Never an
     address, a subject, a body, a filename, a `Message-ID`, a ref or the server's wording.
     mailroom-core produces an audit item for each draft and send (recipients, and a `removed` tag
-    on a draft's removal), which the app does not keep yet ([`../TODO.md`](../TODO.md)): they are
-    not logged here either.
+    on a draft's removal), which goes to the audit trail (below), never to these logs.
+- **Audit trail** (`app.audit_record`, `mailroom.audit`): one record per message a write acted
+  on or tried to, refused attempts included: the item's fields (account, folder, UID,
+  `Message-ID`, sender and recipients in clear, the subject's SHA-256, destination, flags, junk,
+  removal, send mode and delivery stage) with who acted (`user` on the web, or `agent` with the
+  MCP `client_id` and `grant_id`), the action (`move`, `archive`, `trash`, `flag`, `draft_save`,
+  `draft_remove`, `send`) and the result. Never a subject or a body. The web's draft saves are
+  not recorded (they are the user typing; an agent's are); its explicit deletes and every send
+  are. A record is written by the thread that did the work, as the work reports it (an organize
+  call's items once its groups are done, so a call cut at its deadline still records what it
+  changed), in a transaction of its own; a failure is logged as `audit_write_failed` (counts and
+  the error's type) and never changes the write's answer. Records outlive a removed account
+  and go with their user; those older than `MAILROOM_AUDIT_RETENTION_DAYS` (default 365, 1-3650)
+  are purged as new ones are written, at most once an hour in each process, in a transaction
+  apart (`audit_purge_failed` when it fails).
 
 ### Filters
 

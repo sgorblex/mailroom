@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 from mcp.server.auth.provider import AccessToken
+from sqlalchemy import select
 from starlette.testclient import TestClient
 
 from mailroom.accounts import service as accounts_service
@@ -35,6 +36,7 @@ from mailroom.mcp.settings import McpSettings
 from mailroom.mcp.tool import BUSY_MESSAGE, CALLS_PER_USER, call_tool
 from mailroom.mcp.tools import mail_send
 from mailroom.mcp.tools.filters import RUN_FILTERS_OFF_NOTE
+from mailroom.models import AuditRecord
 from mailroom_core.mail import MESSAGES, Folder, MessageRef, format_ref
 from mailroom_core.store import SEND_CEILING
 from mailroom_core.testing import (
@@ -1377,7 +1379,7 @@ def test_moving_into_and_out_of_junk_says_what_the_filter_learns(
 
 
 def test_trash_never_deletes_and_refuses_what_is_already_in_trash(
-    mcp: Mcp, token: str, mail: MailAccounts
+    mcp: Mcp, token: str, mail: MailAccounts, db_session: Session, user: User
 ) -> None:
     login = mail.add()
     mail.seed(login, mime("keep me"), flags=("\\Deleted",))
@@ -1390,6 +1392,14 @@ def test_trash_never_deletes_and_refuses_what_is_already_in_trash(
     assert [subject for subject, _ in stored(mail, login, "Trash")] == ["bin me"]
     error = mcp.error(token, "messages_trash", refs=[inbox_ref(mcp, token, "Trash")])
     assert "never deletes permanently" in error
+    # Each attempt is in the audit trail, the refused one too, with the app that asked.
+    records = db_session.scalars(
+        select(AuditRecord).where(AuditRecord.user_id == user.id).order_by(AuditRecord.id)
+    ).all()
+    assert [(r.actor, r.action, r.result, r.client_id) for r in records] == [
+        ("agent", "trash", "ok", "client"),
+        ("agent", "trash", "invalid_argument", "client"),
+    ]
 
 
 def test_flag_marks_read_unread_and_flagged_idempotently(
@@ -1526,7 +1536,7 @@ def test_accounts_list_shows_the_identities(mcp: Mcp, token: str, writer: Writer
 
 
 def test_a_draft_is_saved_marked_and_never_sent(
-    mcp: Mcp, token: str, writer: Writer, smtp_server: Any
+    mcp: Mcp, token: str, writer: Writer, smtp_server: Any, db_session: Session, user: User
 ) -> None:
     to = stranger()
     created = mcp.text(
@@ -1548,6 +1558,11 @@ def test_a_draft_is_saved_marked_and_never_sent(
     assert len(re.findall(r"^Bcc:", source, re.MULTILINE | re.IGNORECASE)) == 1
     assert draft.subject == "Plans Bcc: victim@example.org"
     assert smtp_server.delivered_to(to) == []
+    # An agent's draft is recorded, unlike the web's: its recipients, never its subject.
+    [record] = db_session.scalars(select(AuditRecord).where(AuditRecord.user_id == user.id))
+    assert (record.actor, record.action, record.result) == ("agent", "draft_save", "ok")
+    assert (record.detail["to"], record.detail["bcc"]) == ([to], ["hidden@example.org"])
+    assert "Plans" not in str(record.detail)
 
 
 def test_a_reply_draft_is_threaded_from_the_identity_it_was_sent_to(
@@ -1741,7 +1756,7 @@ def test_drafts_mode_drafts_and_off_refuses_through_mcp_while_the_web_send_works
     assert "The draft stays." in refused
     assert smtp_server.delivered_to(out) == []
     # ...but the user's own click sends it.
-    view = mail_service.send_draft(ctx, user.id, ref, by="user", via="web")
+    view = mail_service.send_draft(ctx, user.id, ref, by="user")
     for _ in range(300):
         view = mail_service.read_send(ctx, user.id, view.send_id)
         if view.state != "sending" and view.settled:
@@ -1753,7 +1768,7 @@ def test_drafts_mode_drafts_and_off_refuses_through_mcp_while_the_web_send_works
     set_mode(ctx, user, "off")
     assert "send_mode off" in mcp.error(token, "message_send", to=[out], subject="s", text="t")
     with pytest.raises(Exception, match="disabled"):
-        mail_service.send_draft(ctx, user.id, ref, by="user", via="web")
+        mail_service.send_draft(ctx, user.id, ref, by="user")
 
 
 def test_approval_sends_only_to_auto_approved_recipients(
@@ -2019,7 +2034,7 @@ def test_a_reply_kept_as_a_draft_marks_the_original_once_the_user_sends_it(
     assert drafted.startswith("Saved as a draft, NOT sent")
     found = re.search(r"Draft: ([\w-]{20,})\.$", drafted)
     assert found, drafted
-    view = mail_service.send_draft(ctx, user.id, found.group(1), by="user", via="web")
+    view = mail_service.send_draft(ctx, user.id, found.group(1), by="user")
     for _ in range(300):
         view = mail_service.read_send(ctx, user.id, view.send_id)
         if view.settled:

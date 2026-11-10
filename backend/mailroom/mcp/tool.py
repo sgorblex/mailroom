@@ -25,6 +25,7 @@ import anyio.to_thread
 from mcp import types
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from mailroom.audit import MCP, Origin
 from mailroom.errors import Refusal
 from mailroom.mcp import audit
 from mailroom.mcp.verifier import grant_id_of, user_id_of
@@ -78,11 +79,13 @@ MAILBOX_READ: Final = Hints(read_only=True, idempotent=True, open_world=True)
 
 @dataclass(frozen=True, slots=True)
 class ToolCall:
-    """What a running tool gets: the app's context and the user the token speaks for."""
+    """What a running tool gets: the app's context, the user the token speaks for, and where the
+    call comes from (the connected app and its grant), for the audit trail of its writes."""
 
     ctx: AppContext
     user_id: int
     limiter: CapacityLimiter | None = None
+    origin: Origin = MCP
 
     async def thread[T](self, work: Callable[[], T]) -> T:
         """``work`` in a worker thread."""
@@ -227,11 +230,13 @@ async def call_tool(
         if ctx is None:
             outcome, code = "refused", "database_unavailable"
             return _error("The database is unavailable: try again later.")
+        origin = MCP if token is None else Origin("mcp", token.client_id, grant_id_of(token))
+        call = ToolCall(ctx, user_id, limiter, origin)
         if slots is None:
-            result = await tool.run(parsed, ToolCall(ctx, user_id, limiter))
+            result = await tool.run(parsed, call)
         else:
             with slots.slot(user_id):
-                result = await tool.run(parsed, ToolCall(ctx, user_id, limiter))
+                result = await tool.run(parsed, call)
         outcome, code = "ok", None
         return _result(result)
     except Refusal as refusal:

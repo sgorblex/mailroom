@@ -32,7 +32,7 @@ They hold across mailroom-core and its callers (the web client, the MCP mail too
 - **Email content is the adversary.** Mail-derived text an agent reads goes inside the untrusted-content envelope; CRLF is stripped from any header built from input; no remote fetches; server and library errors become `MailError`'s fixed messages; secrets never reach a log line, an error or a tool result.
 - **No destructive deletes.** Trash moves to `\Trash`. Nothing is expunged but what a move has copied elsewhere (UIDPLUS, exactly those UIDs) and a draft Mailroom wrote itself (`X-Mailroom-Draft`) when it is replaced or deleted. Filters are the one exception: their `delete` action is the user's own rule ([`docs/requirements/filters.md`](docs/requirements/filters.md)).
 - **Provider quirks by capability, not hostname** (Gmail is `X-GM-EXT-1`).
-- **Audit:** core yields an item for every write and send attempt, refused ones included, senders and recipients in clear, subjects only as a hash (the app does not keep them yet: [`docs/TODO.md`](docs/TODO.md)).
+- **Audit:** core yields an item for every write and send attempt, refused ones included, senders and recipients in clear, subjects only as a hash; the app keeps each as an audit record (`mailroom.audit`), and a new write path passes its trail; only the web's draft saves drop them (`kept_nowhere`: the user typing).
 
 ## Shell commands (mise)
 

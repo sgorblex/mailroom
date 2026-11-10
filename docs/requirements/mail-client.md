@@ -185,8 +185,9 @@ inside the untrusted envelope. When every group fails, the tool error is mailroo
 inside the envelope too: a lone group's error message, or the per-folder text when there were
 several. mailroom-core returns an audit item per message
 (account, folder, UID, `Message-ID`, sender address, a SHA-256 of the subject, destination, junk,
-result); the app does not keep them yet ([`../TODO.md`](../TODO.md)) and logs counts and codes
-only, never these fields.
+result), which the app keeps in the user's audit trail, from the web as from MCP
+([`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *Audit trail*); its logs
+keep counts and codes only, never these fields.
 
 ## Slice C: drafts and send
 
@@ -275,6 +276,9 @@ composer to server.
 - **Removing** a draft (`DELETE /drafts/{ref}`, or the old version of a save) follows
   [the own-draft exception](#the-own-draft-exception). On Gmail it leaves no copy in All Mail or
   Trash: a draft saved twice and then removed was gone from both (tried by hand, 2026-11-09).
+- **Audit trail:** an agent's saves are recorded, the web's are not (they are the user typing);
+  removing a draft and sending are, from either
+  ([`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *Audit trail*).
 - **`autosave`:** a save answers `autosave: false` when the server lacks `UIDPLUS`, because each
   version would then be moved to Trash instead of removed and autosave would fill it. The web
   client then saves only when the user asks (a *Save draft* button, and on Send).

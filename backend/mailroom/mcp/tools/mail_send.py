@@ -207,7 +207,7 @@ async def _message_send(args: MessageSendArguments, call: ToolCall) -> types.Cal
             subject=args.subject,
             text=args.text,
             attachments=keep,
-            via="mcp",
+            origin=call.origin,
         ),
     )
 
@@ -228,7 +228,7 @@ async def _message_reply(args: MessageReplyArguments, call: ToolCall) -> types.C
             bcc=bcc or (),
             attachments=keep,
             quote=args.quote,
-            via="mcp",
+            origin=call.origin,
         ),
     )
 
@@ -247,7 +247,7 @@ async def _message_forward(args: MessageForwardArguments, call: ToolCall) -> typ
             text=args.text,
             sender=args.sender,
             include_attachments=args.include_attachments,
-            via="mcp",
+            origin=call.origin,
         ),
     )
 
@@ -266,7 +266,10 @@ async def _draft_send(args: DraftSendArguments, call: ToolCall) -> types.CallToo
     # A replay delivered what the draft held then, which need not be what it holds now.
     already = stored is not None and stored.send is not None and stored.send.state == "sent"
     send = await _admitted(
-        call, lambda: service.send_draft(call.ctx, call.user_id, args.ref, by="agent", via="mcp")
+        call,
+        lambda: service.send_draft(
+            call.ctx, call.user_id, args.ref, by="agent", origin=call.origin
+        ),
     )
     if send is None:
         return text_result(UNCONFIRMED)

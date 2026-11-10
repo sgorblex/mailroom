@@ -17,14 +17,14 @@ from tests.support.worker_db import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from fastapi import FastAPI
     from sqlalchemy.engine import Engine
     from sqlalchemy.orm import Session, sessionmaker
     from starlette.testclient import TestClient
 
-    from mailroom.models import User
+    from mailroom.models import AuditRecord, User
     from mailroom.worker.context import Mailboxes
     from mailroom_core.crypto import SecretsSubkey
 
@@ -256,6 +256,28 @@ def sessions(db_session: Session) -> sessionmaker[Session]:
         join_transaction_mode="create_savepoint",
         expire_on_commit=False,
     )
+
+
+@pytest.fixture
+def audited(
+    application: FastAPI,
+    sessions: sessionmaker[Session],
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Callable[[int], list[AuditRecord]]:
+    """The web's audit records written inside the test's transaction (they need its user), and
+    a reader of a user's, oldest first."""
+    from sqlalchemy import select
+
+    from mailroom.models import AuditRecord
+
+    monkeypatch.setattr(application.state, "session_maker", sessions)
+
+    def read(user_id: int) -> list[AuditRecord]:
+        query = select(AuditRecord).where(AuditRecord.user_id == user_id).order_by(AuditRecord.id)
+        return list(db_session.scalars(query))
+
+    return read
 
 
 @pytest.fixture

@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING, Final, Literal, cast
 
 from mailroom.accounts.service import account_not_found, attachment_limit_mb, require_subkey
 from mailroom.accounts.store import AccountNotFound, account_password, load_accounts
+from mailroom.audit import WEB, AuditTrail, Origin, kept_nowhere
 from mailroom.errors import Refusal, mail_refusal
 from mailroom.mail.pool import DeadlineExceeded, PasswordMissing
 from mailroom_core import mail as core
@@ -59,7 +60,6 @@ if TYPE_CHECKING:
     from mailroom_core.mail import (
         Attachment,
         AttachmentSource,
-        AuditItem,
         Authoriser,
         Criteria,
         Draft,
@@ -707,14 +707,18 @@ def _organize(
     ctx: AppContext,
     user_id: int,
     event: str,
-    via: Via,
+    action: str,
+    origin: Origin,
     refs: Sequence[str],
     work: Callable[[MailConnections], OrganizeResult],
 ) -> OrganizeResult:
     """``work`` on the batch ``refs`` once each ref is checked (``_ref_accounts``), logged with
-    its accounts, counts and failure codes only: never a folder, a ref or a message's data (the
-    result's audit items, which the app does not keep). A call cut at the deadline writes no group
-    after the cut (``_Stoppable``); the ones done before it stay done."""
+    its accounts, counts and failure codes only: never a folder, a ref or a message's data, which
+    go to the audit trail as ``action`` (the result's items), recorded by the thread that did the
+    work. A call cut at the deadline writes no group after the cut (``_Stoppable``); the ones done
+    before it stay done, and are recorded once that thread finishes."""
+    via = origin.via
+    trail = AuditTrail(ctx.session_maker, user_id, origin, action)
     accounts = _accounts(ctx, user_id)
     used = _ref_accounts(ctx, user_id, accounts, refs)
     started = time.monotonic()
@@ -728,7 +732,9 @@ def _organize(
             accounts,
             event,
             used,
-            lambda connections: work(cast("MailConnections", _Stoppable(connections, stop))),
+            lambda connections: _recorded(
+                trail, work(cast("MailConnections", _Stoppable(connections, stop)))
+            ),
             on_deadline=stop.set,
         )
         outcome = result.outcome
@@ -757,7 +763,7 @@ def _organize(
 
 
 def move(
-    ctx: AppContext, user_id: int, refs: Sequence[str], folder: str, *, via: Via = "web"
+    ctx: AppContext, user_id: int, refs: Sequence[str], folder: str, *, origin: Origin = WEB
 ) -> OrganizeResult:
     """Moves the messages ``refs`` name (1 to ``MAX_REFS``, any folders and accounts) to
     ``folder`` of each one's account, never Drafts or Sent: mailroom-core's ``move_messages``,
@@ -766,14 +772,15 @@ def move(
         ctx,
         user_id,
         "mail_moved",
-        via,
+        "move",
+        origin,
         refs,
         lambda connections: core.move_messages(connections, refs, folder),
     )
 
 
 def archive(
-    ctx: AppContext, user_id: int, refs: Sequence[str], *, via: Via = "web"
+    ctx: AppContext, user_id: int, refs: Sequence[str], *, origin: Origin = WEB
 ) -> OrganizeResult:
     """Moves them to each account's folder with role ``archive``: ``unsupported`` for an
     account's group when it has none."""
@@ -781,14 +788,15 @@ def archive(
         ctx,
         user_id,
         "mail_archived",
-        via,
+        "archive",
+        origin,
         refs,
         lambda connections: core.archive_messages(connections, refs),
     )
 
 
 def trash(
-    ctx: AppContext, user_id: int, refs: Sequence[str], *, via: Via = "web"
+    ctx: AppContext, user_id: int, refs: Sequence[str], *, origin: Origin = WEB
 ) -> OrganizeResult:
     """Moves them to each account's Trash; never a permanent delete, so a group already in Trash
     is refused."""
@@ -796,7 +804,8 @@ def trash(
         ctx,
         user_id,
         "mail_trashed",
-        via,
+        "trash",
+        origin,
         refs,
         lambda connections: core.trash_messages(connections, refs),
     )
@@ -809,7 +818,7 @@ def flag(
     *,
     seen: bool | None = None,
     flagged: bool | None = None,
-    via: Via = "web",
+    origin: Origin = WEB,
 ) -> OrganizeResult:
     """Sets (True) or clears (False) ``\\Seen`` and ``\\Flagged``, at least one of them (else
     refused before anything connects), and reads them back; the refs stay valid."""
@@ -820,7 +829,8 @@ def flag(
         ctx,
         user_id,
         "mail_flagged",
-        via,
+        "flag",
+        origin,
         refs,
         lambda connections: core.set_flags(connections, refs, seen=seen, flagged=flagged),
     )
@@ -902,8 +912,15 @@ class _Outgoing:
     """The notes for when ``after`` did not run at all, given the same."""
 
 
-def _not_kept(_item: AuditItem) -> None:
-    """A write's audit item: the app does not keep them yet (``docs/TODO.md``)."""
+def _recorded(trail: AuditTrail, result: OrganizeResult) -> OrganizeResult:
+    """``result``, its items in ``trail``."""
+    trail.notes(result.items)
+    return result
+
+
+def _sending(ctx: AppContext, user_id: int, origin: Origin) -> AuditTrail:
+    """A send's audit trail: admission, delivery, filing and settling are all ``send``."""
+    return AuditTrail(ctx.session_maker, user_id, origin, "send")
 
 
 @contextmanager
@@ -1106,11 +1123,12 @@ def save_draft(
     fields: DraftFields,
     uploads: Sequence[OutgoingAttachment] = (),
     *,
-    via: Via = "web",
+    origin: Origin = WEB,
 ) -> SavedDraft:
     """Saves the draft, as a first version or as the next version of ``fields.ref``:
     mailroom-core's ``save_draft``, so a failure leaves the last good version where it was.
-    Every ref is the user's or the whole save is ``not_found``, before anything is written."""
+    Every ref is the user's or the whole save is ``not_found``, before anything is written. An
+    agent's save is recorded in the audit trail, the web's are not: they are the user typing."""
     accounts = _accounts(ctx, user_id)
     _usable(ctx, user_id, accounts, fields.account)
     named = [fields.ref, fields.answers, *(ref for ref, _part in fields.keep)]
@@ -1143,6 +1161,11 @@ def save_draft(
             elsewhere = "That message belongs to another account."
             raise mail_refusal("invalid_argument", elsewhere)
     keep = _attachment_sources(fields.keep)
+    note = (
+        kept_nowhere
+        if origin.via == "web"
+        else AuditTrail(ctx.session_maker, user_id, origin, "draft_save").note
+    )
 
     def saved(connections: MailConnections) -> SavedDraft:
         previous = _replaced(ctx, user_id, connections, replaces, fields.compose_id)
@@ -1151,7 +1174,7 @@ def save_draft(
             account,
             _threaded(connections, message, previous),
             cap=core.attachment_cap(limits),
-            note=_not_kept,
+            note=note,
             compose_id=fields.compose_id,
             replaces=replaces,
             keep=keep,
@@ -1162,7 +1185,7 @@ def save_draft(
         user_id,
         accounts,
         "mail_draft_saved",
-        via,
+        origin.via,
         account.id,
         saved,
         on=sorted({account.id, *used}),
@@ -1236,20 +1259,21 @@ def find_draft(
     return _call(ctx, user_id, accounts, "mail_draft_found", via, account_id, newest)
 
 
-def delete_draft(ctx: AppContext, user_id: int, ref: str, *, via: Via = "web") -> str:
+def delete_draft(ctx: AppContext, user_id: int, ref: str, *, origin: Origin = WEB) -> str:
     """Removes a draft: ``expunged`` for one mailroom wrote, by its UID alone; ``trashed`` for
     any other."""
     accounts = _accounts(ctx, user_id)
     message = _message_ref(ctx, user_id, accounts, ref)
     _writable(accounts.config(message.account))
+    removed = AuditTrail(ctx.session_maker, user_id, origin, "draft_remove")
     return _call(
         ctx,
         user_id,
         accounts,
         "mail_draft_deleted",
-        via,
+        origin.via,
         message.account,
-        lambda connections: core.remove_draft(connections, message, _not_kept),
+        lambda connections: core.remove_draft(connections, message, removed.note),
     )
 
 
@@ -1302,7 +1326,7 @@ def _run_send(
     ctx: AppContext,
     user_id: int,
     accounts: _Accounts,
-    via: Via,
+    origin: Origin,
     deps: gate.GateDeps,
     admitted: gate.Admitted,
     outgoing: _Outgoing,
@@ -1312,6 +1336,7 @@ def _run_send(
     how the delivery went, so there is nothing to add when it fails."""
     started = time.monotonic()
     account_id = admitted.account.id
+    trail = _sending(ctx, user_id, origin)
 
     def finished(
         state: SendState, outcome: str, *, filed: bool | None = None, rejected: int = 0
@@ -1321,7 +1346,7 @@ def _run_send(
             extra={
                 "event": "mail_send_finished",
                 "user_id": user_id,
-                "via": via,
+                "via": origin.via,
                 "account_id": account_id,
                 "send_id": admitted.send.id,
                 "state": state,
@@ -1334,7 +1359,7 @@ def _run_send(
         )
 
     try:
-        sent = gate.deliver(deps, admitted, _not_kept, transfer)
+        sent = gate.deliver(deps, admitted, trail.note, transfer)
     except MailError as error:
         delivered: SendState = "unknown" if error.code == "delivery_unknown" else "failed"
         finished(delivered, error.code)
@@ -1352,7 +1377,9 @@ def _run_send(
         accounts,
         "mail_send_not_filed",
         account_id,
-        lambda connections: gate.file_sent(replace(deps, connections=connections), sent, _not_kept),
+        lambda connections: gate.file_sent(
+            replace(deps, connections=connections), sent, trail.note
+        ),
         False,
     )
     notes = _after_delivery(
@@ -1386,7 +1413,7 @@ def _admit(
     user_id: int,
     accounts: _Accounts,
     account: AccountConfig,
-    via: Via,
+    origin: Origin,
     outgoing: Callable[[MailConnections], _Outgoing],
     *,
     by: Authoriser,
@@ -1421,14 +1448,14 @@ def _admit(
             deps,
             account,
             request.message,
-            _not_kept,
+            _sending(ctx, user_id, origin).note,
             by=by,
             prepared=request.prepared,
             key=request.key,
             confirm_resend=confirm_resend,
         )
         if isinstance(admitted, gate.Admitted):
-            slot.start(partial(_run_send, ctx, user_id, accounts, via, deps, admitted, request))
+            slot.start(partial(_run_send, ctx, user_id, accounts, origin, deps, admitted, request))
             return _send_view(admitted.send)
         if isinstance(admitted, gate.Earlier):
             return _send_view(admitted.send)
@@ -1440,7 +1467,7 @@ def _admit(
             user_id,
             accounts,
             "mail_send_requested",
-            via,
+            origin.via,
             account.id,
             admission,
             on=on,
@@ -1482,7 +1509,7 @@ def send_draft(
     *,
     by: Authoriser,
     confirm_resend: bool = False,
-    via: Via = "web",
+    origin: Origin = WEB,
 ) -> SendView:
     """Sends the draft ``ref`` as it is stored, and answers once it is admitted: ``sending``
     (follow it with ``read_send``), or ``sent`` when this draft was delivered before. Its key is
@@ -1502,14 +1529,14 @@ def send_draft(
             ready.prepared,
             _send_key(ready.draft),
             lambda settling, filed: gate.settle_draft(
-                settling, ready.draft, _not_kept, filed=filed
+                settling, ready.draft, _sending(ctx, user_id, origin).note, filed=filed
             ),
             partial(_draft_unsettled, ready.draft),
         )
 
     try:
         started = _admit(
-            ctx, user_id, accounts, account, via, stored, by=by, confirm_resend=confirm_resend
+            ctx, user_id, accounts, account, origin, stored, by=by, confirm_resend=confirm_resend
         )
     except Refusal as refusal:
         if refusal.code not in DRAFT_GONE:
@@ -1555,7 +1582,7 @@ def _dispatch(
     user_id: int,
     accounts: _Accounts,
     account: AccountConfig,
-    via: Via,
+    origin: Origin,
     build: Callable[[MailConnections], _Outgoing],
     *,
     on: Sequence[str],
@@ -1571,7 +1598,7 @@ def _dispatch(
         return request
 
     started = _admit(
-        ctx, user_id, accounts, account, via, outgoing, by="agent", confirm_resend=False, on=on
+        ctx, user_id, accounts, account, origin, outgoing, by="agent", confirm_resend=False, on=on
     )
     [message] = built
     if isinstance(started, gate.Drafted):
@@ -1625,7 +1652,7 @@ def send_message(
     subject: str,
     text: str,
     attachments: Sequence[tuple[str, str]] = (),
-    via: Via = "mcp",
+    origin: Origin,
 ) -> Dispatched:
     """A new message from an agent, as far as the account's send mode lets it. ``attachments``
     are ``(ref, part)`` of existing messages."""
@@ -1651,7 +1678,7 @@ def send_message(
             attachments=files,
         )
 
-    return _dispatch(ctx, user_id, accounts, account, via, _plain(message), on=used)
+    return _dispatch(ctx, user_id, accounts, account, origin, _plain(message), on=used)
 
 
 def send_reply(
@@ -1666,7 +1693,7 @@ def send_reply(
     bcc: Sequence[Mailbox] = (),
     attachments: Sequence[tuple[str, str]] = (),
     quote: bool = True,
-    via: Via = "mcp",
+    origin: Origin,
 ) -> Dispatched:
     """A reply from an agent: threaded, to the original's Reply-To or sender (everyone with
     ``reply_all``) and ``cc``, from the identity it was sent to, quoting it. It marks the
@@ -1701,12 +1728,12 @@ def send_reply(
         )
 
         def mark(settling: MailConnections, _filed: bool) -> tuple[gate.SendNote, ...]:
-            note = gate.mark_original(settling, original_ref, _not_kept)
+            note = gate.mark_original(settling, original_ref, _sending(ctx, user_id, origin).note)
             return () if note is None else (note,)
 
         return _Outgoing(message, None, None, mark, lambda _filed: (gate.ORIGINAL_NOT_MARKED,))
 
-    return _dispatch(ctx, user_id, accounts, account, via, build, on=used)
+    return _dispatch(ctx, user_id, accounts, account, origin, build, on=used)
 
 
 def send_forward(
@@ -1720,7 +1747,7 @@ def send_forward(
     text: str | None = None,
     sender: str | None = None,
     include_attachments: bool = True,
-    via: Via = "mcp",
+    origin: Origin,
 ) -> Dispatched:
     """A forward from an agent: the original inline, its attachments too by default, an optional
     note above it."""
@@ -1750,4 +1777,4 @@ def send_forward(
             attachments=core.attachments_from(connections, sources, core.attachment_cap(limits)),
         )
 
-    return _dispatch(ctx, user_id, accounts, account, via, _plain(message), on=used)
+    return _dispatch(ctx, user_id, accounts, account, origin, _plain(message), on=used)

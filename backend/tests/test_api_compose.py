@@ -44,7 +44,7 @@ from tests.conftest import PASSWORD
 from tests.test_api_accounts import new_account
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
     from email.message import EmailMessage
 
     from fastapi import FastAPI
@@ -52,7 +52,7 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
     from starlette.testclient import TestClient
 
-    from mailroom.models import User
+    from mailroom.models import AuditRecord, User
     from mailroom_core.testing import ImapTestServer, RawMessage
 
 MAIL = "/api/v1/mail"
@@ -837,7 +837,9 @@ def test_the_attachment_cap_is_clamped_and_listed(
     assert service.upload_limit(ctx, user.id) == (25 + 2) * 1024 * 1024
 
 
-def test_sending_delivers_files_and_removes_the_draft(composer: Composer) -> None:
+def test_sending_delivers_files_and_removes_the_draft(
+    composer: Composer, audited: Callable[[int], list[AuditRecord]], user: User
+) -> None:
     original = composer.seed(
         mime("Notes", sender="ada@example.org", to=ME, message_id="<one@example.org>", text="Hi")
     )
@@ -877,6 +879,17 @@ def test_sending_delivers_files_and_removes_the_draft(composer: Composer) -> Non
     assert "X-Mailroom-Draft" not in parsed(filed.source)
     inbox = composer.client.get(f"{MAIL}/messages/{original}").json()
     assert inbox["flags"]["answered"] is True
+
+    # The web's draft saves are the user typing: only the send is recorded, its draft's removal
+    # with it.
+    records = audited(user.id)
+    assert {(record.actor, record.action) for record in records} == {("user", "send")}
+    [delivered_record] = [r for r in records if r.detail.get("delivery") == "sent"]
+    assert delivered_record.result == "ok"
+    assert delivered_record.detail["filed"] is True
+    assert delivered_record.detail["bcc"] == [bcc]
+    assert "subject" not in delivered_record.detail
+    assert any(r.detail.get("removed") == "expunged" for r in records)
 
     # A retry reads the draft before it reaches the key, and the send removed it.
     assert detail(composer.post_send(ref)) == (404, "not_found")

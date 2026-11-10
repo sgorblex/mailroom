@@ -46,7 +46,7 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
     from starlette.testclient import TestClient
 
-    from mailroom.models import User
+    from mailroom.models import AuditRecord, User
     from mailroom_core.mail import Folder
     from mailroom_core.testing import ImapTestServer
 
@@ -1176,11 +1176,23 @@ def test_archive_moves_to_the_archive_folder_or_is_unsupported(
     assert subjects(mailbox, "Archive") == ["keep"]
 
 
-def test_trash_moves_to_trash_and_never_deletes(mailbox: Mailbox) -> None:
+def test_trash_moves_to_trash_and_never_deletes(
+    mailbox: Mailbox, audited: Callable[[int], list[AuditRecord]], user: User
+) -> None:
     mailbox.seed(mime("unwanted"))
     [group] = mailbox.organize("trash", refs=mailbox.refs())
     assert (group["ok"], group["count"], group["junk"]) == (True, 1, None)
     assert subjects(mailbox, "Trash") == ["unwanted"]
+    [record] = audited(user.id)
+    assert (record.actor, record.action, record.account_id, record.result) == (
+        "user",
+        "trash",
+        "work",
+        "ok",
+    )
+    assert (record.detail["folder"], record.detail["destination"]) == ("INBOX", "Trash")
+    assert "subject" not in record.detail
+    assert "subject_sha256" in record.detail
 
     refused = mailbox.client.post(f"{MAIL}/messages/trash", json={"refs": group["new_refs"]})
     assert detail(refused) == (400, "invalid_argument")
@@ -1188,6 +1200,33 @@ def test_trash_moves_to_trash_and_never_deletes(mailbox: Mailbox) -> None:
         "They are already in Trash; mailroom never deletes permanently."
     )
     assert subjects(mailbox, "Trash") == ["unwanted"]
+
+
+def test_a_trash_answers_the_same_when_its_record_cannot_be_written(
+    mailbox: Mailbox,
+    application: FastAPI,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def broken() -> None:
+        raise RuntimeError
+
+    monkeypatch.setattr(application.state, "session_maker", broken)
+    caplog.set_level(logging.WARNING)
+    mailbox.seed(mime("unwanted"))
+    [group] = mailbox.organize("trash", refs=mailbox.refs())
+    assert (group["ok"], group["count"]) == (True, 1)
+    assert subjects(mailbox, "Trash") == ["unwanted"]
+    assert [r.getMessage() for r in caplog.records].count("audit_write_failed") == 1
+
+
+def test_removing_an_account_keeps_its_records(
+    mailbox: Mailbox, audited: Callable[[int], list[AuditRecord]], user: User
+) -> None:
+    mailbox.seed(mime("unwanted"))
+    mailbox.organize("trash", refs=mailbox.refs())
+    assert mailbox.client.delete("/api/v1/accounts/work").status_code == 204
+    assert [(r.action, r.account_id) for r in audited(user.id)] == [("trash", "work")]
 
 
 def test_flags_change_read_back_and_repeat(mailbox: Mailbox) -> None:

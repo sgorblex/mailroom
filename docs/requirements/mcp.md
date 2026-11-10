@@ -152,7 +152,9 @@ while `draft_create` only adds one.
   tools wait 45 s for the delivery (above).
 - **Audit:** each call logs `mcp_tool_called` with the user, client, grant, tool, outcome and
   duration, and the argument *keys* only, never their values. Changes made through the service
-  layer log as they do from the web app, with `via="mcp"`.
+  layer log as they do from the web app, with `via="mcp"`, and go to the user's audit trail with
+  the client and grant
+  ([`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *Audit trail*).
 
 ## Authentication
 

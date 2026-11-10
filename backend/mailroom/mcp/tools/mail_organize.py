@@ -85,13 +85,13 @@ async def _organize(call: ToolCall, work: Callable[[], OrganizeResult]) -> types
 async def _messages_move(args: MessagesMoveArguments, call: ToolCall) -> types.CallToolResult:
     return await _organize(
         call,
-        lambda: service.move(call.ctx, call.user_id, args.refs, args.folder, via="mcp"),
+        lambda: service.move(call.ctx, call.user_id, args.refs, args.folder, origin=call.origin),
     )
 
 
 async def _messages_trash(args: MessagesTrashArguments, call: ToolCall) -> types.CallToolResult:
     return await _organize(
-        call, lambda: service.trash(call.ctx, call.user_id, args.refs, via="mcp")
+        call, lambda: service.trash(call.ctx, call.user_id, args.refs, origin=call.origin)
     )
 
 
@@ -99,7 +99,12 @@ async def _messages_flag(args: MessagesFlagArguments, call: ToolCall) -> types.C
     return await _organize(
         call,
         lambda: service.flag(
-            call.ctx, call.user_id, args.refs, seen=args.seen, flagged=args.flagged, via="mcp"
+            call.ctx,
+            call.user_id,
+            args.refs,
+            seen=args.seen,
+            flagged=args.flagged,
+            origin=call.origin,
         ),
     )
 

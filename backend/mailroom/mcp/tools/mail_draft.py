@@ -162,7 +162,9 @@ async def _draft_create(args: DraftCreateArguments, call: ToolCall) -> types.Cal
             text=f"{args.text}{prefilled.text}" if args.quote else args.text,
             keep=keep,
         )
-    saved = await call.thread(lambda: service.save_draft(call.ctx, call.user_id, fields, via="mcp"))
+    saved = await call.thread(
+        lambda: service.save_draft(call.ctx, call.user_id, fields, origin=call.origin)
+    )
     return text_result(await _saved(call, saved))
 
 
@@ -200,7 +202,9 @@ async def _draft_update(args: DraftUpdateArguments, call: ToolCall) -> types.Cal
         text=draft.text if args.text is None else args.text,
         keep=keep,
     )
-    saved = await call.thread(lambda: service.save_draft(call.ctx, call.user_id, fields, via="mcp"))
+    saved = await call.thread(
+        lambda: service.save_draft(call.ctx, call.user_id, fields, origin=call.origin)
+    )
     gone = {"expunged": "removed", "trashed": "moved to Trash"}.get(saved.replaced or "")
     if saved.ref is None:
         previous = " The previous version was left in place."
@@ -219,7 +223,7 @@ async def _draft_update(args: DraftUpdateArguments, call: ToolCall) -> types.Cal
 
 async def _draft_delete(args: DraftDeleteArguments, call: ToolCall) -> types.CallToolResult:
     removed = await call.thread(
-        lambda: service.delete_draft(call.ctx, call.user_id, args.ref, via="mcp")
+        lambda: service.delete_draft(call.ctx, call.user_id, args.ref, origin=call.origin)
     )
     return text_result("Draft deleted." if removed == "expunged" else "Draft moved to Trash.")
 
