@@ -1,7 +1,8 @@
 labels:
   platform: linux/arm64
 
-# Builds and pushes both images, then deploys them on the production host (docs/requirements/ci-cd.md).
+# Builds and pushes both images, then deploys them on the production host
+# (docs/requirements/ci-cd.md).
 when:
   - event: tag
     ref: refs/tags/v*

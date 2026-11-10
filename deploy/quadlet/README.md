@@ -12,8 +12,8 @@ the unit. Broader context: [`docs/deploy.md`](../../docs/deploy.md).
 | `mailroom-worker.container` | procrastinate worker on the API image (`python -m mailroom.worker`), same environment file. Never migrates: it waits for the API to bring the database to head, then runs jobs and watches the folders of new-mail rule sets over IMAP IDLE, so it reaches the mail servers. One instance only (a second exits with status 1). Only filters need it: without them in `MAILROOM_FEATURES` it exits 0 at once, and the unit may be left out. `Restart=on-failure`, so that exit is final while a failure still restarts: after adding `filters`, start the unit (`systemctl start mailroom-worker`), or install it if it was left out. |
 
 Images are `localhost/mailroom-api` and `localhost/mailroom-web` (`mise run build-containers`), or
-`registry.example.org/mailroom-api` / `mailroom-web` once pushed. **Never** `mailroom`: that name is
-the MCP server's image (`registry.example.org/mailroom:production`), which runs on the production host today.
+`<registry>/mailroom-api` / `mailroom-web` once pushed. **Never** `mailroom`: in the production
+registry that name is the standalone MCP server's image (`<registry>/mailroom:production`).
 
 The first user, once the API has migrated the database: `podman exec -it systemd-mailroom-api
 .venv/bin/python -m mailroom.dev.create_user <name> --admin` (the password is prompted for). Until the

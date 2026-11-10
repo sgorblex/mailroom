@@ -55,32 +55,31 @@ reports), Release Please branches skipped by `evaluate`. How to work on them:
 
 ## Release and deploy
 
-[`release.yaml`](../../.woodpecker/release.yaml) runs on a `v*` tag, on the the production host agent
-(`linux/arm64`), and only there:
+[`release.yaml`](../../.woodpecker/release.yaml) runs on a `v*` tag, on the production host's
+agent (`linux/arm64`), and only there:
 
 1. **build-push** (`scripts/containers-both.sh production`) builds both images through the docker
    CLI on the agent's Podman socket (so the repository is trusted for volumes), and only once both
    have built pushes `mailroom-{api,web}:<version>`, then `:latest` and `:production`, so a failed
    build never leaves the registry's `:production` split across two releases. A tag that does not
    match `version.txt` fails the build; a pre-release (`v1.2.3-rc.1`) pushes only `:<version>`.
-2. **deploy** (`scripts/ssh-deploy.sh`) signs in to the production host as `deploy`, logs root's Podman in to the
-   registry and runs `/usr/local/sbin/mailroom-app-deploy`, which pulls both `:production`
-   images, checks they are one release, dumps the database to
-   `<backup dir>/mailroom-pre-<version>-<date>.dump`, restarts `mailroom-pod.service` and waits
-   for the API's health check; it fails the step otherwise. If it stops before the restart, the
-   running release keeps its images. `deploy` may run only those two commands as root
-   (`a sudoers rule` on the production host), with the app's own `restrict`ed key. A pre-release is not
-   deployed.
+2. **deploy** (`scripts/ssh-deploy.sh`) signs in to the production host as `deploy`, logs root's
+   Podman in to the registry and runs `/usr/local/sbin/mailroom-app-deploy`, which pulls both
+   `:production` images, checks they are one release, dumps the database to a dated
+   `mailroom-pre-<version>-<date>.dump` in the host's backups, restarts `mailroom-pod.service` and
+   waits for the API's health check; it fails the step otherwise. If it stops before the restart,
+   the running release keeps its images. `deploy` may run only those two commands as root (a sudoers
+   rule on the host), with the app's own `restrict`ed key. A pre-release is not deployed.
 
 **One-time setup:** the repository trusted for volumes in Woodpecker, and these secrets, all
 limited to tag events: `mailroom_app_registry`, `mailroom_app_registry_user`,
 `mailroom_app_registry_password`, `mailroom_app_deploy_host` (`deploy@<host>`),
 `mailroom_app_deploy_ssh_key` (this repository's own key, revocable alone) and
 `mailroom_app_deploy_known_hosts`. `mailroom_app_registry` must be the bare host that the deploy
-host's sudo rule and script name (`registry.example.org`: no scheme, no trailing slash), and
-`mailroom_app_registry_user` the user its sudo rule allows (`<registry user>`); anything else
-fails the deploy step at sudo. The host side is the operator's (sudoers, key, script), installed
-on the production host before the first `v*` tag.
+host's sudo rule and script name (no scheme, no trailing slash), and
+`mailroom_app_registry_user` the user its sudo rule allows; anything else fails the deploy step
+at sudo. The host side is the operator's (sudoers, key, script), installed on the host before
+the first `v*` tag.
 
 **Rolling back** needs the dump as well as the images, because the API migrates at startup:
 

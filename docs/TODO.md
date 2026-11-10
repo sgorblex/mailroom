@@ -9,8 +9,8 @@ exploratory work. Once an item is done, remove it.
 Mailroom is built on projects with their own repositories and checklists. As of 2026-11-10:
 
 - **mailroom-mcp** (`../mailroom-mcp`, GitHub `sgorblex/mailroom-mcp`): its Python port of the
-  server stopped at core, which now lives in `backend/core`. Its TypeScript server on the production host is
-  stopped, its data kept, while the app's MCP replaces it (*Family roadmap* below).
+  server stopped at core, which now lives in `backend/core`. Its TypeScript server in production
+  is stopped, its data kept, while the app's MCP replaces it (*Family roadmap* below).
 - **imap-thingy** (`../imap-thingy`, GitHub `sgorblex/imap-thingy`): rules as data (`to_spec()`,
   `imap_thingy.spec`) since 0.5.0, the runner (`imap_thingy.runner`: `run_rules`, `starred_only`,
   the IDLE `monitor`) since 0.6.0; 0.7.0 adds run reports (what each filter matched and did, also
@@ -59,8 +59,8 @@ In order. The reasons are in [`CONTEXT.md`](CONTEXT.md) — *Where the family is
       compose, reply, reply all, forward, drafts and attachments through mailroom-core's send
       gate: compose, drafts and send in mailroom-core 0.1.3, the REST routes,
       the web composer and the `mail_draft` and `mail_send` MCP groups.
-- [x] **Host proxy limit for drafts** — the production host's proxy sets no body limit, and its read timeout is now
-      300 s, so a 30 MB draft has time to arrive.
+- [x] **Host proxy limit for drafts** — the production proxy sets no body limit, and its read
+      timeout is now 300 s, so a 30 MB draft has time to arrive.
 
 ## MCP and suggestions
 

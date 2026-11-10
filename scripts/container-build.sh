@@ -135,7 +135,7 @@ if [[ "$release" != "production" && "$release" != "staging" ]]; then
   exit 1
 fi
 
-# Never `mailroom`: that is the MCP server's image name (registry.example.org/mailroom:production).
+# Never `mailroom`: in the production registry, that is the standalone MCP server's image.
 case "$target" in
   api | web) image="localhost/mailroom-${target}" ;;
   *)

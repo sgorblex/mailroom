@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Deploys the images the release just pushed: on the production host, as the `deploy` user, log the root podman
-# in to the registry and run mailroom-app-deploy, which pulls both :production images, checks
-# they are one release, dumps the database, restarts the pod and waits for the API's health
-# check. Run by
-# .woodpecker/release.yaml; the sudo rules and the script live on the production host (docs/requirements/ci-cd.md).
+# Deploys the images the release just pushed: on the production host, as the `deploy` user, log
+# the root podman in to the registry and run mailroom-app-deploy, which pulls both :production
+# images, checks they are one release, dumps the database, restarts the pod and waits for the
+# API's health check. Run by .woodpecker/release.yaml; the sudo rules and the script live on the
+# host (docs/requirements/ci-cd.md).
 set -euo pipefail
 
 : "${MAILROOM_DEPLOY_HOST:?MAILROOM_DEPLOY_HOST must be set (user@host)}"

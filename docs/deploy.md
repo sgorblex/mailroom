@@ -11,8 +11,8 @@ below adapted to it. There is no staging yet. A release tag builds, pushes and d
 | `mailroom-api` | `backend/Containerfile` (context: repository root) | uvicorn on 8000, non-root, migrates at startup; `/healthz` for the healthcheck. Also the worker (`python -m mailroom.worker`, one instance: it runs the filters and watches folders over IMAP IDLE), which never migrates |
 | `mailroom-web` | `web/Containerfile` (context: `web/`) | nginx on 8080, non-root, serves the SPA (`/connect` included), proxies `/api/`, `/mcp`, `/oauth/`, `/.well-known/oauth-` and `/.well-known/openid-configuration` to `127.0.0.1:8000`, sets the SPA's CSP |
 
-**Never name an image `mailroom`**: `registry.example.org/mailroom:production` is the MCP server, running
-on the production host.
+**Never name an image `mailroom`**: in the production registry, `mailroom:production` is the
+standalone MCP server's image.
 
 ```bash
 mise run build-containers            # localhost/mailroom-{api,web}:{<version>,latest,production}
