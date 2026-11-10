@@ -135,9 +135,7 @@ def test_refuse_to_seal_without_the_variable_or_a_secrets_key_naming_neither_val
 
 
 def test_leave_a_malformed_secret_env_for_the_schema_to_refuse() -> None:
-    malformed = STORED_TEXT.replace(
-        'secret_env = "WORK_APP_PASSWORD"', 'secret_env = "x y"', 1
-    )
+    malformed = STORED_TEXT.replace('secret_env = "WORK_APP_PASSWORD"', 'secret_env = "x y"', 1)
     with pytest.raises(ConfigError, match="secret_env"):
         seeded(malformed)
 

@@ -1,6 +1,7 @@
-# Test fixture: mailroom-mcp's example config, as it stood when mailroom-core moved into the
-# Mailroom app. mailroom_core.testing reads it (`example_config_text`); core's config and sealed
-# secrets tests parse it. Nothing loads it at run time.
+# Test fixture: mailroom-mcp's example config, in the shape it had when mailroom-core moved into
+# the Mailroom app, with example accounts. mailroom_core.testing reads it
+# (`example_config_text`); core's config and sealed secrets tests parse it. Nothing loads it at
+# run time.
 
 # Origin the server is reached at; every OAuth and MCP URL derives from it.
 public_url = "https://mail.example.net"
