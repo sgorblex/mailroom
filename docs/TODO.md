@@ -27,8 +27,9 @@ In order. The reasons are in [`CONTEXT.md`](CONTEXT.md) — *Where the family is
 - [x] **Retire mailroom-mcp** (2026-11-10): the app's MCP covers its use, the audit trail
       included; its deployment is gone and its repository archived.
 - [ ] **Go public:**
-  - [ ] audit the whole history (secrets, infrastructure names);
-  - [ ] make the repository public;
+  - [x] audit the whole history (secrets, infrastructure names), rewritten where it named them;
+  - [x] make the repository public (2026-11-10; the earlier repository stays private as
+        `mailroom-archive`, with its pull requests);
   - [ ] fold in imap-thingy, keeping its history and PyPI name, and archive its old repository
         with a pointer.
 - [ ] **Command-line tools:**

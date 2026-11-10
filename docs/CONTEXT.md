@@ -73,9 +73,9 @@ Decided on 2026-11-09, in this order ([`TODO.md`](TODO.md) — *Family roadmap*)
   apps) and filters are each optional, and the MCP mail tools do not need the mail client. A
   disabled feature runs nothing: no routes, worker or screens. Every edition uses Postgres. Done:
   the API, the worker and the web app.
-- **This repository goes public** once the app is in a decent state, after an audit of its whole
-  history. **imap-thingy folds in then, not before**, because it is public already. It keeps its
-  history and its PyPI name, and it never depends on mailroom-core.
+- **This repository is public** since 2026-11-10, after an audit of its whole history, rewritten
+  where it named private things. **imap-thingy folds in next**, now that this repository is
+  public like it: it keeps its history and its PyPI name, and it never depends on mailroom-core.
 - **Command-line tools:**
   - a client for a running instance, after personal API tokens exist;
   - `imap-thingy run`, for filters with no server at all.
