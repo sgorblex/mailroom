@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.7.0](https://github.com/sgorblex/mailroom/compare/v0.6.0...v0.7.0) (2026-11-10)
+
+
+### Features
+
+* keep an audit trail of mail writes with configurable retention ([#76](https://github.com/sgorblex/mailroom/issues/76)) ([c472978](https://github.com/sgorblex/mailroom/commit/c472978df6f148242bfac611ce87bd2c5e96b89a))
+* list the audit trail through a REST endpoint and an MCP tool ([#78](https://github.com/sgorblex/mailroom/issues/78)) ([92f22fc](https://github.com/sgorblex/mailroom/commit/92f22fc2de3801229ba7ac26ee6f0066c842aae3))
+* **web:** add an Activity page to review the audit trail ([#79](https://github.com/sgorblex/mailroom/issues/79)) ([7029c94](https://github.com/sgorblex/mailroom/commit/7029c9451a8bb338b316061c5d200bc2f69abbeb))
+* **worker:** record filter runs in the audit trail ([#77](https://github.com/sgorblex/mailroom/issues/77)) ([19004cd](https://github.com/sgorblex/mailroom/commit/19004cd9fade1667c3c2f984b9c909eefe92e85f))
+
 ## [0.6.0](https://github.com/sgorblex/mailroom/compare/v0.5.1...v0.6.0) (2026-11-09)
 
 
