@@ -32,8 +32,9 @@ mailroom-mcp              standalone MCP server for mail (repo mailroom-mcp, bei
   listing they need. It writes its own mail tools over mailroom-core, turning them on group by
   group ([`requirements/mcp.md`](requirements/mcp.md)), `mail_read` first, `mail_draft` and
   `mail_send` with the compose slice.
-- **mailroom-mcp is to be retired** (decided on 2026-11-09). It keeps serving mail until the
-  app's MCP covers what it is used for, then its deployment stops and its repository is archived.
+- **mailroom-mcp is being retired** (decided on 2026-11-09). The app's MCP now covers what it was
+  used for, and its server is stopped (2026-11-10); its deployment goes and its repository is
+  archived once the app keeps an audit trail of mail writes ([`TODO.md`](TODO.md)).
   The app does not embed or import it. mailroom-core started there, as the Python port's
   shared layer, and accounts in schema `core` are byte-compatible, so mailroom-mcp's data imports
   unchanged.
@@ -89,7 +90,7 @@ features come later, one by one, when they earn their place.
 ## Reversed non-goals
 
 mailroom-mcp's design ruled out **a webmail UI** and **filter management**. Mailroom is where both
-now live — deliberately outside mailroom-mcp, which is to be retired (*The component family*). Filter management reaches models through the app's own MCP server instead.
+now live — deliberately outside mailroom-mcp, which is being retired (*The component family*). Filter management reaches models through the app's own MCP server instead.
 
 ## Non-goals (unless requirements say otherwise)
 

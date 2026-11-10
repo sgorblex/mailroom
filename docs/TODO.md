@@ -6,11 +6,11 @@ exploratory work. Once an item is done, remove it.
 
 ## Across the family
 
-Mailroom is built on projects with their own repositories and checklists. As of 2026-11-09:
+Mailroom is built on projects with their own repositories and checklists. As of 2026-11-10:
 
 - **mailroom-mcp** (`../mailroom-mcp`, GitHub `sgorblex/mailroom-mcp`): its Python port of the
-  server stopped at core, which now lives in `backend/core`. The TypeScript server keeps running on
-  the production host until it is retired (*Family roadmap* below).
+  server stopped at core, which now lives in `backend/core`. Its TypeScript server on the production host is
+  stopped, its data kept, while the app's MCP replaces it (*Family roadmap* below).
 - **imap-thingy** (`../imap-thingy`, GitHub `sgorblex/imap-thingy`): rules as data (`to_spec()`,
   `imap_thingy.spec`) since 0.5.0, the runner (`imap_thingy.runner`: `run_rules`, `starred_only`,
   the IDLE `monitor`) since 0.6.0; 0.7.0 adds run reports (what each filter matched and did, also
@@ -25,10 +25,13 @@ In order. The reasons are in [`CONTEXT.md`](CONTEXT.md) — *Where the family is
 - [x] **Fold mailroom-core into this repository** as a workspace package, with its history.
 - [x] **Editions:** features chosen in config (mail client, MCP, filters) over an always-present
       base.
-- [ ] **Retire mailroom-mcp** once the app's MCP covers its use, per-connector profiles included.
-      Then stop its deployment and archive the repository.
-  - [x] Mail limits on the *Profile* page.
-  - [x] Every identity of an account in the account form.
+- [ ] **Retire mailroom-mcp.** The app's MCP covers its use (mail limits and every identity are
+      edited in the app; per-connector profiles are not needed, as only one was in use), its
+      users moved to the app's connector, and its server has been stopped since 2026-11-10 for
+      a few days of use without it.
+  - [ ] The **audit trail** of mail writes (*MCP and suggestions*): mailroom-mcp logged one audit
+        line per message an agent wrote, the app does not, so it lands before the archive.
+  - [ ] After those days: remove its deployment and archive the repository, pointing here.
 - [ ] **Go public:**
   - [ ] audit the whole history (secrets, infrastructure names);
   - [ ] make the repository public;
@@ -58,12 +61,22 @@ In order. The reasons are in [`CONTEXT.md`](CONTEXT.md) — *Where the family is
       the web composer and the `mail_draft` and `mail_send` MCP groups.
 - [x] **Host proxy limit for drafts** — the production host's proxy sets no body limit, and its read timeout is now
       300 s, so a 30 MB draft has time to arrive.
-- [ ] **Try compose by hand** — a send to oneself from the web, then a Gmail account (it may keep
-      old draft versions in All Mail or Trash, which no test here can show), and a 25 MB
-      attachment through the host's proxy.
 
 ## MCP and suggestions
 
+- [ ] **Audit trail of mail writes**, before mailroom-mcp is archived. mailroom-core yields an
+      audit item per message for every move, trash, flag, draft saved or removed and send, refused
+      attempts included; the app logs only counts and codes
+      ([`requirements/mail-client.md`](requirements/mail-client.md), *MCP*), so an agent's
+      writes leave no record of which messages or recipients they touched.
+  - Keep every item, from REST and MCP, per user: when, who acted (the user on the web, or an MCP
+    client and its grant), the route or tool, the account, the action and its result, and the
+    item's fields (folder, UID, `Message-ID`, sender, recipients, subject hash, attachment count,
+    destination, junk, removal, delivery stage). Never a subject or a body.
+  - A page to review them, newest first, filtered by account, action, who acted and result.
+  - To settle first: how long they are kept (a retention in days, purged nightly, or for good);
+    whether they outlive a removed account; whether MCP gets a read-only tool for them; whether
+    filter runs, which have their own run reports, join them.
 - [ ] **MCP server** ([`requirements/mcp.md`](requirements/mcp.md)), in this order:
   - [x] **Filters service layer** — rule-set and filter logic out of the routes, so the API and the
         MCP share it.
@@ -79,11 +92,6 @@ In order. The reasons are in [`CONTEXT.md`](CONTEXT.md) — *Where the family is
         before `mail_read`, `mail_organize`, `mail_draft` or `mail_send` reads, moves and, within the
         send mode, sends mail without asking again); before other users join.
 - [ ] **Suggestions** — learn from manual moves, propose filters with evidence and dry run.
-- [ ] **Organize and send audit trail** — keep mailroom-core's audit item per moved, trashed or
-      flagged message and per draft saved or removed and message sent (REST and MCP; the sends'
-      recipients and a draft's `removed` tag included), per user, where the user can review it;
-      the app logs counts and codes only today
-      ([`requirements/mail-client.md`](requirements/mail-client.md), *MCP*).
 
 ## Engineering and operations
 

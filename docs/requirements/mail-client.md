@@ -273,7 +273,8 @@ composer to server.
   `compose` param names it by `compose_id` and account, not by ref, so a reload brings it back
   from `GET /drafts/find`; if nothing was saved there is nothing to bring back.
 - **Removing** a draft (`DELETE /drafts/{ref}`, or the old version of a save) follows
-  [the own-draft exception](#the-own-draft-exception).
+  [the own-draft exception](#the-own-draft-exception). On Gmail it leaves no copy in All Mail or
+  Trash: a draft saved twice and then removed was gone from both (tried by hand, 2026-11-09).
 - **`autosave`:** a save answers `autosave: false` when the server lacks `UIDPLUS`, because each
   version would then be moved to Trash instead of removed and autosave would fill it. The web
   client then saves only when the user asks (a *Save draft* button, and on Send).
