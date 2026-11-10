@@ -5,98 +5,98 @@
 
 ### Features
 
-* keep an audit trail of mail writes with configurable retention ([#76](https://github.com/sgorblex/mailroom/issues/76)) ([c472978](https://github.com/sgorblex/mailroom/commit/c472978df6f148242bfac611ce87bd2c5e96b89a))
-* list the audit trail through a REST endpoint and an MCP tool ([#78](https://github.com/sgorblex/mailroom/issues/78)) ([92f22fc](https://github.com/sgorblex/mailroom/commit/92f22fc2de3801229ba7ac26ee6f0066c842aae3))
-* **web:** add an Activity page to review the audit trail ([#79](https://github.com/sgorblex/mailroom/issues/79)) ([7029c94](https://github.com/sgorblex/mailroom/commit/7029c9451a8bb338b316061c5d200bc2f69abbeb))
-* **worker:** record filter runs in the audit trail ([#77](https://github.com/sgorblex/mailroom/issues/77)) ([19004cd](https://github.com/sgorblex/mailroom/commit/19004cd9fade1667c3c2f984b9c909eefe92e85f))
+* keep an audit trail of mail writes with configurable retention ([5b5f333](https://github.com/sgorblex/mailroom/commit/5b5f333da6eb6de07e67eaa7b4dc1c780bff390a))
+* list the audit trail through a REST endpoint and an MCP tool ([9792d1b](https://github.com/sgorblex/mailroom/commit/9792d1b89e995523d012f62b93fb840e61855409))
+* **web:** add an Activity page to review the audit trail ([0e70046](https://github.com/sgorblex/mailroom/commit/0e70046918291cd2216cbc71fafde455920f1c95))
+* **worker:** record filter runs in the audit trail ([1486aa0](https://github.com/sgorblex/mailroom/commit/1486aa0b22c8566a8f8ee43b8e0fc30971012b3e))
 
 ## [0.6.0](https://github.com/sgorblex/mailroom/compare/v0.5.1...v0.6.0) (2026-11-09)
 
 
 ### Features
 
-* add MAILROOM_FEATURES to choose which features an instance runs ([#66](https://github.com/sgorblex/mailroom/issues/66)) ([63268d3](https://github.com/sgorblex/mailroom/commit/63268d34d78f667f2e5c8aefdd95fdd3aacb06fe))
-* let users set their own mail limits from the Profile page ([#71](https://github.com/sgorblex/mailroom/issues/71)) ([fbda8e7](https://github.com/sgorblex/mailroom/commit/fbda8e72036c99b30c9b1ad9024fb73cb3308692))
-* **web:** edit every identity of an account in the account form ([#72](https://github.com/sgorblex/mailroom/issues/72)) ([9f2b8bd](https://github.com/sgorblex/mailroom/commit/9f2b8bd483f7a085f8ad92fb09668a86ab07ed53))
-* **web:** show only the features an instance runs ([#68](https://github.com/sgorblex/mailroom/issues/68)) ([0d6cb18](https://github.com/sgorblex/mailroom/commit/0d6cb184aeec605d3cafd26a472fe1f93b27a697))
-* **worker:** exit at startup unless the filters feature is enabled ([#67](https://github.com/sgorblex/mailroom/issues/67)) ([713dd66](https://github.com/sgorblex/mailroom/commit/713dd6624a93841015486c1818716e5694839a2b))
+* add MAILROOM_FEATURES to choose which features an instance runs ([be5c033](https://github.com/sgorblex/mailroom/commit/be5c03387e15bdb962f7a92e66a0f4814915eadf))
+* let users set their own mail limits from the Profile page ([f4c104c](https://github.com/sgorblex/mailroom/commit/f4c104cf15b75300bf78a147272862b5cb66e4d2))
+* **web:** edit every identity of an account in the account form ([3bf9420](https://github.com/sgorblex/mailroom/commit/3bf9420bd2ae93d0dfe20d087d239521c29e7eae))
+* **web:** show only the features an instance runs ([58ce154](https://github.com/sgorblex/mailroom/commit/58ce154846d21d17cefb287fe59bab167f598da3))
+* **worker:** exit at startup unless the filters feature is enabled ([5b0b49e](https://github.com/sgorblex/mailroom/commit/5b0b49e8c1e88602849309718c3002acf59f7e09))
 
 ## [0.5.1](https://github.com/sgorblex/mailroom/compare/v0.5.0...v0.5.1) (2026-11-09)
 
 
 ### Bug Fixes
 
-* **mail:** add name attributes to message list and search inputs ([#58](https://github.com/sgorblex/mailroom/issues/58)) ([1604a93](https://github.com/sgorblex/mailroom/commit/1604a937f6d82b7574493cb6380e05a567250816))
-* **mail:** keep composer text selectable while a send is running ([#57](https://github.com/sgorblex/mailroom/issues/57)) ([95b7755](https://github.com/sgorblex/mailroom/commit/95b775562560edac817223f40cc95abf04307e5e))
+* **mail:** add name attributes to message list and search inputs ([b701832](https://github.com/sgorblex/mailroom/commit/b70183272a332b0252f38830b970b0a2adeffc70))
+* **mail:** keep composer text selectable while a send is running ([6802776](https://github.com/sgorblex/mailroom/commit/68027768384240e41649b8c6f1601a1d0e9c68ed))
 
 ## [0.5.0](https://github.com/sgorblex/mailroom/compare/v0.4.0...v0.5.0) (2026-11-07)
 
 
 ### Features
 
-* add drafts and send REST API for the mail client ([#52](https://github.com/sgorblex/mailroom/issues/52)) ([2ac9424](https://github.com/sgorblex/mailroom/commit/2ac9424db5d1c2fe23c0707254c54bf01a0591d1))
-* add mail_draft and mail_send tools to the MCP server ([#54](https://github.com/sgorblex/mailroom/issues/54)) ([ced4f5e](https://github.com/sgorblex/mailroom/commit/ced4f5e5bd0a0469861d884cc84a0af708128acd))
-* **mail:** compose, reply, forward and send in the web client ([#53](https://github.com/sgorblex/mailroom/issues/53)) ([e458b81](https://github.com/sgorblex/mailroom/commit/e458b81c67b2e68433fc8aa6ef95076f8959084d))
+* add drafts and send REST API for the mail client ([2813eed](https://github.com/sgorblex/mailroom/commit/2813eed30ab4423e2dcd3e755cc292e790c41de7))
+* add mail_draft and mail_send tools to the MCP server ([6fac09b](https://github.com/sgorblex/mailroom/commit/6fac09b663f3c2660b176acb6dc93fea490430cd))
+* **mail:** compose, reply, forward and send in the web client ([a75a197](https://github.com/sgorblex/mailroom/commit/a75a197b9bdaa82a7ccb86da72cc5185a739d1cf))
 
 ## [0.4.0](https://github.com/sgorblex/mailroom/compare/v0.3.0...v0.4.0) (2026-11-05)
 
 
 ### Features
 
-* add mail organize REST API (move, archive, trash, flag) ([#42](https://github.com/sgorblex/mailroom/issues/42)) ([16bf612](https://github.com/sgorblex/mailroom/commit/16bf61211ea0e2580cd9251ce980de087e2d49bc))
-* add mail_organize tools to the MCP server ([#44](https://github.com/sgorblex/mailroom/issues/44)) ([e341dc1](https://github.com/sgorblex/mailroom/commit/e341dc1e103f486111ed7b9578b6aaf42e56e1cc))
-* add web mail triage with toolbar, multi-select, and keyboard shortcuts ([#43](https://github.com/sgorblex/mailroom/issues/43)) ([60df4fc](https://github.com/sgorblex/mailroom/commit/60df4fcd2b31e5308efd0f2220aaec53ab07e558))
-* move, archive, trash and flag mail through the REST API ([16bf612](https://github.com/sgorblex/mailroom/commit/16bf61211ea0e2580cd9251ce980de087e2d49bc))
-* **web:** triage mail: select, archive, trash, move, star and mark read, with shortcuts ([60df4fc](https://github.com/sgorblex/mailroom/commit/60df4fcd2b31e5308efd0f2220aaec53ab07e558))
+* add mail organize REST API (move, archive, trash, flag) ([27eee0c](https://github.com/sgorblex/mailroom/commit/27eee0cc837ef32feb420657fcbddd517ff9cfd4))
+* add mail_organize tools to the MCP server ([77772bf](https://github.com/sgorblex/mailroom/commit/77772bfc319a6ae9b3b31a1b5640f9030aeece9b))
+* add web mail triage with toolbar, multi-select, and keyboard shortcuts ([6ba0289](https://github.com/sgorblex/mailroom/commit/6ba02895f484657743b1a29f0012aba3b3bd3b51))
+* move, archive, trash and flag mail through the REST API ([27eee0c](https://github.com/sgorblex/mailroom/commit/27eee0cc837ef32feb420657fcbddd517ff9cfd4))
+* **web:** triage mail: select, archive, trash, move, star and mark read, with shortcuts ([6ba0289](https://github.com/sgorblex/mailroom/commit/6ba02895f484657743b1a29f0012aba3b3bd3b51))
 
 
 ### Bug Fixes
 
-* search Gmail accounts for attachments through X-GM-RAW ([fc2e6b9](https://github.com/sgorblex/mailroom/commit/fc2e6b90a1160568bbc4721742123c798b02b0ed))
-* use Gmail's has:attachment in all-accounts search ([#45](https://github.com/sgorblex/mailroom/issues/45)) ([fc2e6b9](https://github.com/sgorblex/mailroom/commit/fc2e6b90a1160568bbc4721742123c798b02b0ed))
+* search Gmail accounts for attachments through X-GM-RAW ([391a92f](https://github.com/sgorblex/mailroom/commit/391a92f8a86e8540507776f96025789066c5bad7))
+* use Gmail's has:attachment in all-accounts search ([391a92f](https://github.com/sgorblex/mailroom/commit/391a92f8a86e8540507776f96025789066c5bad7))
 
 ## [0.3.0](https://github.com/sgorblex/mailroom/compare/v0.2.0...v0.3.0) (2026-11-03)
 
 
 ### Features
 
-* add a web mail client with folders, message list, search, and sandboxed HTML view ([#38](https://github.com/sgorblex/mailroom/issues/38)) ([707d641](https://github.com/sgorblex/mailroom/commit/707d641e3a045e9c516644ed2c8d7cad428aacb5))
-* add mail_read tools to the MCP server ([#39](https://github.com/sgorblex/mailroom/issues/39)) ([763dc8d](https://github.com/sgorblex/mailroom/commit/763dc8d0f532f6ea4bab2ebad4376f6ade8aee7f))
-* add read-only mail client REST API ([#37](https://github.com/sgorblex/mailroom/issues/37)) ([7c63744](https://github.com/sgorblex/mailroom/commit/7c637441042eadb05660665a955a5353cd235d60))
+* add a web mail client with folders, message list, search, and sandboxed HTML view ([2c88bae](https://github.com/sgorblex/mailroom/commit/2c88baeeae79e167aaa9d69ac93a3b5570c59981))
+* add mail_read tools to the MCP server ([69aa7a1](https://github.com/sgorblex/mailroom/commit/69aa7a1b6e8f68ae2803baf63f98c433b1218c1d))
+* add read-only mail client REST API ([e33bb39](https://github.com/sgorblex/mailroom/commit/e33bb394864953d420216b93a388b3486e5f9aa7))
 
 
 ### Bug Fixes
 
-* set dry run created_at to its start time ([#31](https://github.com/sgorblex/mailroom/issues/31)) ([df099d3](https://github.com/sgorblex/mailroom/commit/df099d3f048b0c46ef966efe7d3992cbd6101e90))
-* show every filter action in plain words in run reports ([#34](https://github.com/sgorblex/mailroom/issues/34)) ([e187850](https://github.com/sgorblex/mailroom/commit/e187850401c47ded11e0cd058f55465b6372232b))
+* set dry run created_at to its start time ([a630784](https://github.com/sgorblex/mailroom/commit/a63078420aee20ab7ab2437c87c3bf917fc3548b))
+* show every filter action in plain words in run reports ([7801fa0](https://github.com/sgorblex/mailroom/commit/7801fa0b3f0ec67d0d4ec576668541cb58654866))
 
 ## [0.2.0](https://github.com/sgorblex/mailroom/compare/v0.1.0...v0.2.0) (2026-10-26)
 
 
 ### Features
 
-* accept external OIDC issuer JWTs on the MCP endpoint ([#27](https://github.com/sgorblex/mailroom/issues/27)) ([ebe6c3f](https://github.com/sgorblex/mailroom/commit/ebe6c3fdd24354705832822f691afbdfd68726f9))
-* add a built-in OAuth server for MCP, with a consent screen ([#25](https://github.com/sgorblex/mailroom/issues/25)) ([de534ab](https://github.com/sgorblex/mailroom/commit/de534aba1756740e8e590ea49b5c71114b0b852e))
-* add an MCP server at /mcp with filter tools ([#24](https://github.com/sgorblex/mailroom/issues/24)) ([8147a56](https://github.com/sgorblex/mailroom/commit/8147a56878bd0d77d0510969845134a0e8db002a))
-* add OIDC single sign-on with linked sign-ins ([#23](https://github.com/sgorblex/mailroom/issues/23)) ([c65bf35](https://github.com/sgorblex/mailroom/commit/c65bf35538bc0bdf574ad186d8e3ae24d18c5d5a))
-* let users list and revoke their connected apps ([#26](https://github.com/sgorblex/mailroom/issues/26)) ([88f7134](https://github.com/sgorblex/mailroom/commit/88f713462bf1264a7937c01d0ec73dfee8ef894c))
+* accept external OIDC issuer JWTs on the MCP endpoint ([b80f01f](https://github.com/sgorblex/mailroom/commit/b80f01ff0c0229b785d4f85c2a51a7cd7c24bf7f))
+* add a built-in OAuth server for MCP, with a consent screen ([ddc4362](https://github.com/sgorblex/mailroom/commit/ddc4362280afed574f3628444d9bf11c4cfb0d84))
+* add an MCP server at /mcp with filter tools ([52559af](https://github.com/sgorblex/mailroom/commit/52559af21e2e12b5e6b2ef6eddeace16147d91bb))
+* add OIDC single sign-on with linked sign-ins ([7394dd7](https://github.com/sgorblex/mailroom/commit/7394dd78050111bc2afb36b9efbea8c64945d7f2))
+* let users list and revoke their connected apps ([310f09d](https://github.com/sgorblex/mailroom/commit/310f09d70b601b7b746546a37742d0e0c706d083))
 
 
 ### Bug Fixes
 
-* override dev defaults in mise.local.toml and isolate the migration check ([#28](https://github.com/sgorblex/mailroom/issues/28)) ([5c74f7f](https://github.com/sgorblex/mailroom/commit/5c74f7fde9e8eb66ae07a682b4cecae447d29d46))
-* polish OIDC/MCP issuer handling, fake IdP algorithms, and confirm-removal focus ([#30](https://github.com/sgorblex/mailroom/issues/30)) ([e6db9f8](https://github.com/sgorblex/mailroom/commit/e6db9f825c77421c805ee5e1fa97fd8872a2c73c))
+* override dev defaults in mise.local.toml and isolate the migration check ([5e8f576](https://github.com/sgorblex/mailroom/commit/5e8f576da0e4acc88eb5cf93ddf4f21f32312880))
+* polish OIDC/MCP issuer handling, fake IdP algorithms, and confirm-removal focus ([6bfbc81](https://github.com/sgorblex/mailroom/commit/6bfbc8145d73054d5af624015dbe6425ceb37f3c))
 
 ## 0.1.0 (2026-10-25)
 
 
 ### Features
 
-* add filters API with rule sets, dry runs and queued runs ([#18](https://github.com/sgorblex/mailroom/issues/18)) ([d83d580](https://github.com/sgorblex/mailroom/commit/d83d58013f0868ec6dd4569ef6f55db72b4baddb))
-* add the filters screens ([#20](https://github.com/sgorblex/mailroom/issues/20)) ([52c6f5b](https://github.com/sgorblex/mailroom/commit/52c6f5bdce078202b65db51a5c0d1342f5aa15be))
-* depend on mailroom-core and imap-thingy, with a task for local editable checkouts ([#15](https://github.com/sgorblex/mailroom/issues/15)) ([bc273ab](https://github.com/sgorblex/mailroom/commit/bc273abb3d74f2c1c3d07aeff17949b88ac0ff6b))
-* let admins manage users and users change their password ([#8](https://github.com/sgorblex/mailroom/issues/8)) ([559ed52](https://github.com/sgorblex/mailroom/commit/559ed52ab5708700fbdef80fe8806d2f06a40490))
-* let users manage their mail accounts ([#17](https://github.com/sgorblex/mailroom/issues/17)) ([d5a05e4](https://github.com/sgorblex/mailroom/commit/d5a05e496e5a667db5b26fbd029b41300e0ba810))
-* run queued filter runs in the worker, with scheduled and IDLE new-mail triggers ([#19](https://github.com/sgorblex/mailroom/issues/19)) ([4050c51](https://github.com/sgorblex/mailroom/commit/4050c51ced777a6de811cc545ec722d0676f22a5))
-* scaffold a procrastinate background worker ([#16](https://github.com/sgorblex/mailroom/issues/16)) ([d36878f](https://github.com/sgorblex/mailroom/commit/d36878f939e2f38e8af3b01b627c0b1c3fb2ac03))
-* sign users in with a password session ([#6](https://github.com/sgorblex/mailroom/issues/6)) ([bc4309f](https://github.com/sgorblex/mailroom/commit/bc4309f4b2a9fe472c2214bde14094c96ab4010f))
+* add filters API with rule sets, dry runs and queued runs ([631e027](https://github.com/sgorblex/mailroom/commit/631e027d12b4993f6e1e77e3c611e7fe2f4a1c6a))
+* add the filters screens ([7331a91](https://github.com/sgorblex/mailroom/commit/7331a91efe72922a5d6bbfe5c12bd01eb6c93050))
+* depend on mailroom-core and imap-thingy, with a task for local editable checkouts ([df4c17a](https://github.com/sgorblex/mailroom/commit/df4c17ac72d2ecde67e8d90961703e0b0f752605))
+* let admins manage users and users change their password ([a261823](https://github.com/sgorblex/mailroom/commit/a261823fbc09638bcb44db37d290f675f84671d0))
+* let users manage their mail accounts ([1a7133f](https://github.com/sgorblex/mailroom/commit/1a7133f73652e01978fd8d4a24b82711f6defa78))
+* run queued filter runs in the worker, with scheduled and IDLE new-mail triggers ([d25370b](https://github.com/sgorblex/mailroom/commit/d25370b84182184e148ffeec8be6b48e56258184))
+* scaffold a procrastinate background worker ([8f99a96](https://github.com/sgorblex/mailroom/commit/8f99a96ecbc655418be5c231ee0c4f17ef309185))
+* sign users in with a password session ([494150a](https://github.com/sgorblex/mailroom/commit/494150a9c1b22ba7aeeef3dfbbe10d13c8c477cd))
