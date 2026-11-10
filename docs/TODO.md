@@ -62,6 +62,28 @@ In order. The reasons are in [`CONTEXT.md`](CONTEXT.md) — *Where the family is
 - [x] **Host proxy limit for drafts** — the production proxy sets no body limit, and its read
       timeout is now 300 s, so a 30 MB draft has time to arrive.
 
+## Folders and moves across accounts
+
+In this order: each builds on the one before.
+
+- [ ] **Folder management** — create, rename (moving it in the hierarchy) and delete an account's
+      folders, from the web and MCP. A rename updates the rule sets that name the folder. The
+      first change that deletes permanently also brings the safeguards every later one keeps:
+      the docs' "never deletes permanently" becomes "deletes only deliberately" (the rule was
+      lifted on 2026-11-10), a confirmation on the web, a destructive-marked MCP tool, never a
+      side effect, refusal tests and audit records.
+- [ ] **Move messages across accounts** — written once in imap-thingy (which never depends on
+      mailroom-core): copy the raw message with its flags and date, confirm it arrived by
+      `Message-ID`, then remove it from the source (to Trash, or for good). A retry first checks
+      the target, so it never copies twice; an append whose removal failed is reported, the
+      message then in both. Gmail's All Mail and size limits apply. Mailroom offers it as
+      *Move to account…* on the web and an MCP tool, both recorded on each side.
+- [ ] **Filters that move to another account** — an imap-thingy action naming the target account,
+      resolved by the host at load time (the user's own only, checked on save and at run), with
+      an account and folder picker in the filter editor. Needs a guard against loops (A to B and
+      B to A, or the target's new-mail filters picking the message up again) and a run that
+      writes to two mailboxes.
+
 ## MCP and suggestions
 
 - [ ] **MCP server** ([`requirements/mcp.md`](requirements/mcp.md)), in this order:
