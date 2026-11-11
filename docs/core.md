@@ -39,6 +39,20 @@ the tools answer with, and the app's MCP writes thin tools over it.
 | `send` | SMTP and the send gate |
 | `testing` | A pytest plugin (no-network guard, store and mail fixtures) the app's tests load too |
 
+imap-thingy's filter engine joins as `filters`, and then runs on `mail`
+([`CONTEXT.md`](CONTEXT.md) — *Where the family is heading*).
+
+**Public API.** What each subpackage exports in `__all__`; everything else is how it is done.
+Rules, each kept by a check once the TODO's *Core's public API* lands:
+
+- every public name has a docstring (ruff's `D1` rules), in the style the code already uses;
+- the app imports a subpackage, never one of its modules;
+- inside core, `filters` may use `mail`, never the other way round, and nothing imports `mailroom`;
+- core works with no app, database or server for filtering: accounts from plain config, rules,
+  runs, an IDLE monitor and their reports;
+- no semver while core is unpublished: a breaking change fixes its callers in the same pull
+  request and is marked `!` with scope `core`.
+
 **Integration points.** Core takes its host's database and its users: the host runs core's
 `migrate` (the app's `migrate` task runs it before the app's own), and binds an `AccountStore` to
 one user. Every row in schema `core` carries its `user_id`; `STANDALONE_USER` (`owner`) is the
