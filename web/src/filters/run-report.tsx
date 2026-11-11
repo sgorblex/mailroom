@@ -84,7 +84,7 @@ function FilterReportView({
     try {
       action = describeActions({ t, language: i18n.language, vocabulary }, readSpec(entry.spec).actions)
     } catch {
-      // The action's own words, as imap-thingy wrote them.
+      // The action's own words, as the filter engine wrote them.
     }
   }
   const total = entry.matched_total ?? entry.matched.length

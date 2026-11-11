@@ -1,5 +1,5 @@
-"""Filter specs: imap-thingy's rules as data (``imap_thingy.spec``), checked before they are
-kept."""
+"""Filter specs: the filter engine's rules as data (``mailroom_core.filters.spec``), checked before
+they are kept."""
 
 from __future__ import annotations
 
@@ -7,23 +7,24 @@ import functools
 from typing import TYPE_CHECKING, Any
 
 import regex
-from imap_thingy.spec import SpecError, json_schema, load_filter
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import best_match
+
+from mailroom_core.filters import SpecError, json_schema, load_filter
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from imap_thingy.filters import Filter
+    from mailroom_core.filters import Filter
 
 
 class InvalidSpecError(ValueError):
-    """A spec imap-thingy does not load. The message is imap-thingy's ``SpecError`` text, the
+    """A spec the filter engine does not load. The message is the engine's ``SpecError`` text, the
     schema's complaint, or the regular expression's error."""
 
 
 def loaded_filter(spec: Mapping[str, Any]) -> Filter:
-    """imap-thingy's filter for ``spec``. Raises ``InvalidSpecError``."""
+    """The filter engine's filter for ``spec``. Raises ``InvalidSpecError``."""
     try:
         return load_filter(spec)
     except SpecError as exc:
@@ -34,8 +35,8 @@ def loaded_filter(spec: Mapping[str, Any]) -> Filter:
 
 
 def normalized_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
-    """``spec`` as imap-thingy serialises the filter it loads to (defaults filled in, chains of
-    one combinator flattened): the form a filter is stored in. Also refused: a spec imap-thingy
+    """``spec`` as the filter engine serialises the filter it loads to (defaults filled in, chains
+    of one combinator flattened): the form a filter is stored in. Also refused: a spec the engine
     loads but its schema does not describe (an argument of the wrong type, say), and a ``pattern``
     that is no regular expression. Raises ``InvalidSpecError``."""
     normalized = loaded_filter(spec).to_spec()
@@ -59,7 +60,7 @@ def _validator() -> Draft202012Validator:
 
 def _check_patterns(node: object) -> None:
     """Every leaf's ``pattern`` argument (the ``*_matches`` criteria) compiles, with ``regex`` as
-    imap-thingy matches it."""
+    the filter engine matches it."""
     if isinstance(node, list):
         for item in node:
             _check_patterns(item)

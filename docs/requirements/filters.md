@@ -1,6 +1,6 @@
 # Filters
 
-The filters feature: [rule sets](../GLOSSARY.md) of imap-thingy filters per account folder, edited
+The filters feature: [rule sets](../GLOSSARY.md) of filters per account folder, edited
 in the browser, tried with a dry run, and run by the worker. Product scope:
 [`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Filters UI*.
 
@@ -15,11 +15,11 @@ in the browser, tried with a dry run, and run by the worker. Product scope:
   - `manual` — runs only on *Run now*.
 
   Any enabled rule set can also be run now. **Starred only** restricts a rule set to starred
-  (`\Flagged`) messages, which it unstars once handled (imap-thingy's `starred_only`).
-- A rule set holds **ordered filters**, each an imap-thingy filter spec (criteria plus actions),
-  stored as imap-thingy serialises it and validated with `imap_thingy.spec.load_filter`, its JSON
-  Schema, and every `pattern` compiled as a regular expression (with `regex`, the engine
-  imap-thingy matches with). A rule set holds at most 100 filters. Every imap-thingy action is
+  (`\Flagged`) messages, which it unstars once handled (the filter engine's `starred_only`).
+- A rule set holds **ordered filters**, each a filter spec (criteria plus actions), stored as
+  the [filter engine](../GLOSSARY.md) serialises it and validated with its `load_filter`, its JSON
+  Schema, and every `pattern` compiled as a regular expression (with `regex`, which the engine
+  matches with). A rule set holds at most 100 filters. Every action of the engine is
   allowed, `delete` (*Delete for good*) too: a filter is the one place Mailroom removes mail
   permanently, because the user wrote it, saw its dry run and enabled it. Filters run in order; a disabled filter is skipped, by dry runs too. A disabled rule set never runs (no
   trigger fires, *Run now* is refused) but can still be dry-run; a new rule set starts disabled.
@@ -29,7 +29,7 @@ in the browser, tried with a dry run, and run by the worker. Product scope:
   earlier filters applied, so a dry run may over-report: a message an earlier filter would move
   can show up under a later one too. It looks at the folder's newest 500 messages, for about
   30 s. A user runs one dry run at a time; another one meanwhile is refused.
-- **Patterns are matched under a timeout**: imap-thingy stops a match that takes longer than its
+- **Patterns are matched under a timeout**: the filter engine stops a match that takes longer than its
   match timeout (1 s on one message), and the run — dry or not — fails with the error code
   `match_timeout` in its history.
 - **Run history**: every run — on new mail, scheduled, run now or dry — records its trigger
@@ -53,8 +53,8 @@ Schema `app`; every row belongs to the user who owns the account.
 | Table | Columns |
 | --- | --- |
 | `rule_set` | `id`, `user_id`, `account_id`, `folder` (`text[]`, path segments), `name`, `trigger` (`new_mail` \| `scheduled` \| `manual`), `interval_minutes` (`scheduled` only), `starred_only`, `enabled`, timestamps |
-| `filter` | `id`, `rule_set_id`, `position`, `name`, `enabled`, `spec` (`jsonb`, an imap-thingy filter spec), timestamps |
-| `filter_run` | `id`, `rule_set_id`, `trigger`, `created_at`, `started_at` (null while queued), `finished_at`, `dry_run`, `result` (`jsonb`, imap-thingy's run report), `error` |
+| `filter` | `id`, `rule_set_id`, `position`, `name`, `enabled`, `spec` (`jsonb`, a filter spec), timestamps |
+| `filter_run` | `id`, `rule_set_id`, `trigger`, `created_at`, `started_at` (null while queued), `finished_at`, `dry_run`, `result` (`jsonb`, the filter engine's run report), `error` |
 
 The per-account toggle is `account_filter_settings(user_id, account_id, run_filters bool default
 false)`.
@@ -67,7 +67,7 @@ Under `/api/v1`, signed-in user's own data only (another user's id is a 404).
 | --- | --- |
 | `GET /accounts/{id}/folders` | An account's folders, for the folder picker (`[{"path": [segments]}]`) |
 | `GET`, `PUT /accounts/{id}/filter-settings` | Read, set *Run filters* (`{"run_filters": bool}`) |
-| `GET /filters/schema` | imap-thingy's filter spec JSON Schema (`json_schema()`) |
+| `GET /filters/schema` | The filter spec's JSON Schema (`json_schema()`) |
 | `GET`, `POST /accounts/{id}/rule-sets` | List, create an account's rule sets |
 | `GET`, `PATCH`, `DELETE /rule-sets/{id}` | Read (with its filters), edit, remove a rule set |
 | `POST /rule-sets/{id}/filters` | Add a filter (at the end) |
@@ -80,13 +80,13 @@ Under `/api/v1`, signed-in user's own data only (another user's id is a 404).
 An unknown or foreign id is a `404` with a plain `detail` (`"No such rule set"`). Refusals answer
 `{"detail": {"code": …, "message": …}}`:
 
-- `400` `invalid_spec`, carrying imap-thingy's `SpecError` text, the schema's or the regular
+- `400` `invalid_spec`, carrying the filter engine's `SpecError` text, the schema's or the regular
   expression's complaint;
 - `400` `invalid_rule_set` (an `interval_minutes` exactly when `scheduled`), `invalid_order`;
 - adding a filter: `400` `too_many_filters` when the rule set already holds 100;
 - *Run now*: `400` `run_filters_off` while the account's *Run filters* is off, `400`
   `rule_set_disabled`, `409` `run_pending` while a run of that rule set is still waiting;
-- dry run: `404` `account_not_found`, `400` `invalid_spec` for a stored spec this imap-thingy no
+- dry run: `404` `account_not_found`, `400` `invalid_spec` for a stored spec the filter engine no
   longer loads, `400` `match_timeout` when a pattern takes too long on a message, `504`
   `dry_run_timeout`, `429` `dry_run_busy` while another dry run of the user's is still going (not
   recorded), `500` `run_failed: <exception type>` for anything else (its text is neither kept nor

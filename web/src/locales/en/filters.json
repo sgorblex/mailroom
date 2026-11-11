@@ -120,7 +120,7 @@
       "tree": "Conditions and actions",
       "json": "JSON",
       "jsonLabel": "Filter spec (JSON)",
-      "jsonHint": "imap-thingy's filter spec: {\"criterion\": …, \"action\": …}. The server checks it when you save.",
+      "jsonHint": "The filter spec: {\"criterion\": …, \"action\": …}. The server checks it when you save.",
       "jsonNotObject": "The spec must be a JSON object.",
       "jsonInvalid": "That is not valid JSON: {{message}}",
       "treeCannotShow": "This spec cannot be shown as conditions and actions: {{message}}",

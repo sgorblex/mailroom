@@ -41,8 +41,8 @@ function parseJson(text: string): { spec: Record<string, unknown> } | { problem:
 
 /**
  * Adds a filter (no `filter`) or edits one: its name, whether it runs, and its spec, either as a
- * tree of criteria and a list of actions or as the raw JSON imap-thingy stores. The server checks
- * the spec; its refusal shows above the buttons.
+ * tree of criteria and a list of actions or as the raw JSON the filter engine stores. The server
+ * checks the spec; its refusal shows above the buttons.
  */
 export function FilterEditor({
   filter,

@@ -358,10 +358,9 @@ def test_a_pattern_out_of_time_fails_the_run(
 ) -> None:
     """Not reported as the mailbox's timeout (``MatchTimeoutError`` is a ``TimeoutError``), and
     the pattern its text quotes stays out of the record and the log."""
-    from imap_thingy.filters import MatchTimeoutError
-
     from mailroom.filters.imap import RuleSetFolder
     from mailroom.filters.runs import MATCH_TIMEOUT_MESSAGE
+    from mailroom_core.filters import MatchTimeoutError
 
     add_account(user_client)
     rule_set_id = add_rule_set(user_client)

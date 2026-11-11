@@ -15,7 +15,6 @@ from email.utils import parseaddr
 from functools import partial
 from typing import TYPE_CHECKING, Any, Final
 
-from imap_thingy.filters import MatchTimeoutError
 from sqlalchemy import BigInteger, column, func, text, update
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -27,13 +26,14 @@ from mailroom.filters.runs import (
     MATCH_TIMEOUT_MESSAGE,
     RunRefused,
     enabled_filters,
+    engine_filters,
     labelled_report,
     run_filters_on,
-    thingy_filters,
 )
 from mailroom.filters.spec import InvalidSpecError
 from mailroom.models import FilterRun, RuleSet
 from mailroom.worker.app import PROCRASTINATE_SCHEMA
+from mailroom_core.filters import MatchTimeoutError
 from mailroom_core.mail.audit import subject_sha256
 
 if TYPE_CHECKING:
@@ -262,7 +262,7 @@ def _run(
         raise RunRefused(unusable.code, unusable.message) from None
     folder = RuleSetFolder(account, rule_set.folder)
     try:
-        loaded = thingy_filters(rule_set, folder, filters)
+        loaded = engine_filters(rule_set, folder, filters)
     except InvalidSpecError as exc:
         raise RunRefused("invalid_spec", str(exc)) from None
     report = folder.new_report(dry_run=False)

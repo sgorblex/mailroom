@@ -587,20 +587,6 @@ wheels = [
 ]
 
 [[package]]
-name = "imap-thingy"
-version = "0.8.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "imapclient" },
-    { name = "mail-parser" },
-    { name = "regex" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/ac/db/8684f9e926cea366b708014299ce077da085e225b8964adaabc5a0e80f69/imap_thingy-0.8.0.tar.gz", hash = "sha256:56290dcf9cff316683cbce38c6040be3e282179986133446a2debad8f1713534", size = 69892, upload-time = "2026-10-29T16:37:31.841Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ed/55/712751ceff1d58f16f4083d0db34120687d55306b8aaad50551c32edd536/imap_thingy-0.8.0-py3-none-any.whl", hash = "sha256:e8f730a80ad150e3b91def670ac298c8572cc6baeac73c5a35c99118f4f29c72", size = 59009, upload-time = "2026-10-29T16:37:30.317Z" },
-]
-
-[[package]]
 name = "imapclient"
 version = "4.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -808,7 +794,6 @@ dependencies = [
     { name = "fastapi" },
     { name = "httptools" },
     { name = "httpx" },
-    { name = "imap-thingy" },
     { name = "imapclient" },
     { name = "jsonschema" },
     { name = "mailroom-core" },
@@ -845,7 +830,6 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httptools", specifier = ">=0.6" },
     { name = "httpx", specifier = ">=0.28" },
-    { name = "imap-thingy", specifier = ">=0.8.0" },
     { name = "imapclient", specifier = ">=3.1.0" },
     { name = "jsonschema", specifier = ">=4.23" },
     { name = "mailroom-core", editable = "core" },
@@ -884,9 +868,11 @@ dependencies = [
     { name = "cryptography" },
     { name = "imapclient" },
     { name = "lxml" },
+    { name = "mail-parser" },
     { name = "nh3" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
+    { name = "regex" },
     { name = "sqlalchemy" },
     { name = "tzdata" },
 ]
@@ -902,10 +888,12 @@ requires-dist = [
     { name = "cryptography", specifier = ">=50.0.2" },
     { name = "imapclient", specifier = ">=4.1.0,<4.2" },
     { name = "lxml", specifier = ">=6.1.3" },
+    { name = "mail-parser", specifier = ">=4.8.0" },
     { name = "nh3", specifier = ">=0.3.7" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.6" },
     { name = "pydantic", specifier = ">=2.14.1" },
     { name = "pytest", marker = "extra == 'testing'", specifier = ">=8.3" },
+    { name = "regex", specifier = ">=2024.11.6" },
     { name = "sqlalchemy", specifier = ">=2.1.5" },
     { name = "tzdata", specifier = ">=2026.5" },
 ]

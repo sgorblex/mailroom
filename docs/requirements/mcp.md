@@ -118,7 +118,7 @@ while `draft_create` only adds one.
   account's *Run filters* is off), `run_now` (with the same guards as *Run now* in the web app) and
   `account_run_filters`, the account's [Run filters](../GLOSSARY.md) switch.
 - `dry_run` changes nothing and shares the user's one-dry-run-at-a-time slot with the web app.
-- **A filter may delete for good:** the filter tools accept imap-thingy's `delete` action, as the
+- **A filter may delete for good:** the filter tools accept the filter engine's `delete` action, as the
   web app does ([`filters.md`](filters.md)). It acts only once the rule set is enabled, by the
   separate call above.
 - **The send mode is the guard against an agent tricked by an email.** It limits agents only

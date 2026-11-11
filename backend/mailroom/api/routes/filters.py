@@ -10,7 +10,6 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Path, Query
-from imap_thingy.spec import json_schema
 from pydantic import BaseModel, Field
 
 from mailroom.api.deps import Context, CurrentUser, DbSession
@@ -25,6 +24,7 @@ from mailroom.filters.service import (
     RuleSetPatch,
     RunOut,
 )
+from mailroom_core.filters import json_schema
 
 filters_router = APIRouter()
 
@@ -48,7 +48,7 @@ class FilterOrder(BaseModel):
 
 @filters_router.get("/filters/schema")
 def filter_schema() -> dict[str, Any]:
-    """imap-thingy's JSON Schema (draft 2020-12) of a filter spec."""
+    """The filter engine's JSON Schema (draft 2020-12) of a filter spec."""
     return json_schema()
 
 

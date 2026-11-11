@@ -5,7 +5,7 @@ export const TRIGGERS = ['new_mail', 'scheduled', 'manual'] as const
 export type Trigger = (typeof TRIGGERS)[number]
 
 /**
- * An imap-thingy filter spec (`{"criterion": …, "action": …}`), kept as the server sent it: the
+ * A filter spec (`{"criterion": …, "action": …}`), kept as the server sent it: the
  * server validates it, and the editor reads it with `@/filters/spec.ts`.
  */
 const specSchema = z.record(z.string(), z.unknown())
@@ -51,7 +51,7 @@ export interface FilterFields {
   spec: Record<string, unknown>
 }
 
-/** A message a filter matched, as imap-thingy summarises it. Mail content: shown as text only. */
+/** A message a filter matched, as the engine summarises it. Mail content: shown as text only. */
 const matchedMessageSchema = z.object({
   uid: z.number(),
   from: z.string().nullable(),
@@ -72,7 +72,7 @@ const filterReportSchema = z.object({
 })
 export type FilterReport = z.infer<typeof filterReportSchema>
 
-/** imap-thingy's report of one folder run: per filter that ran, what it matched and did. */
+/** The filter engine's report of one folder run: per filter that ran, what it matched and did. */
 const runReportSchema = z.object({
   folder: z.array(z.string()),
   dry_run: z.boolean(),
@@ -119,7 +119,7 @@ export async function setRunFilters(accountId: string, runFilters: boolean): Pro
   return settings.run_filters
 }
 
-/** imap-thingy's JSON Schema of a filter spec: the editor builds its fields from it. */
+/** The filter engine's JSON Schema of a filter spec: the editor builds its fields from it. */
 export function getFilterSchema(signal?: AbortSignal): Promise<unknown> {
   return apiGetJson('/api/v1/filters/schema', { init: { signal } })
 }

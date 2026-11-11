@@ -22,13 +22,13 @@ from tests.test_filter_runner import add_account, add_rule_set, runs, set_run_fi
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from imap_thingy.accounts import Account
     from sqlalchemy.engine import Engine
     from sqlalchemy.orm import Session, sessionmaker
     from starlette.testclient import TestClient
 
     from mailroom.models import User
     from mailroom.worker.context import Mailboxes
+    from mailroom_core.filters import Account
 
 INBOX = WatchedFolder(1, "work", ("INBOX",))
 ARCHIVE = WatchedFolder(1, "work", ("Archive",))

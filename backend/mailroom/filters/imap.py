@@ -1,4 +1,4 @@
-"""The folder a rule set runs on, through imap-thingy (the account from
+"""The folder a rule set runs on, through the filter engine (the account from
 ``mailroom.accounts.mail.mailbox_account``).
 
 The API's dry run and the worker's runs both reach mail this way.
@@ -11,25 +11,23 @@ import threading
 from contextlib import suppress
 from typing import TYPE_CHECKING
 
-from imap_thingy.accounts import Folder
-from imap_thingy.core import All, IMAPQuery, Path, Q
-from imap_thingy.filters import Criterion
-
 from mailroom.accounts.mail import hierarchy_delimiter
+from mailroom_core.filters import All, Criterion, Folder, IMAPQuery, Path, Q
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from imap_thingy.accounts import Account
     from imapclient import IMAPClient
+
+    from mailroom_core.filters import Account
 
 logger = logging.getLogger(__name__)
 
 
 class RuleSetFolder(Folder):
-    """imap-thingy's folder at ``segments``, joined with the delimiter the server reports.
+    """The filter engine's folder at ``segments``, joined with the delimiter the server reports.
 
-    Every connection asks the server for its delimiter before selecting (imap-thingy's default is
+    Every connection asks the server for its delimiter before selecting (the engine's default is
     ``.``), and remembers how many messages the folder holds. ``abort()``, from any thread, closes
     the open connections and refuses new ones: the run in progress then fails.
     """

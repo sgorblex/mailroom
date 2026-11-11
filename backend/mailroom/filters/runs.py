@@ -1,9 +1,9 @@
-"""Running a rule set: its enabled filters as imap-thingy filters, the dry run, and the run
+"""Running a rule set: its enabled filters as the filter engine's filters, the dry run, and the run
 history (``app.filter_run``).
 
-A run's ``result`` is imap-thingy's folder report (``imap_thingy.report.FolderReport``) with each
-filter's entry carrying the ``filter_id`` it came from and the spec as stored; a dry run adds
-``limited_to_newest``.
+A run's ``result`` is the filter engine's folder report (``mailroom_core.filters.FolderReport``)
+with each filter's entry carrying the ``filter_id`` it came from and the spec as stored; a dry run
+adds ``limited_to_newest``.
 """
 
 from __future__ import annotations
@@ -14,9 +14,6 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final
 
-from imap_thingy.filters import Filter as ImapFilter
-from imap_thingy.filters import MatchTimeoutError
-from imap_thingy.runner import starred_only
 from sqlalchemy import delete, select, text
 
 from mailroom.accounts.mail import MailFailure, mail_failure, mailbox_account
@@ -24,17 +21,19 @@ from mailroom.accounts.store import AccountNotFound
 from mailroom.filters.imap import RuleSetFolder
 from mailroom.filters.spec import InvalidSpecError, loaded_filter
 from mailroom.models import AccountFilterSettings, Filter, FilterRun
+from mailroom_core.filters import Filter as EngineFilter
+from mailroom_core.filters import MatchTimeoutError, starred_only
 
 if TYPE_CHECKING:
     import ssl
     from collections.abc import Iterator, Sequence
 
-    from imap_thingy.report import FolderReport
     from sqlalchemy.engine import Engine
     from sqlalchemy.orm import Session
 
     from mailroom.models import RuleSet
     from mailroom_core.crypto import SecretsSubkey
+    from mailroom_core.filters import FolderReport
     from mailroom_core.store import AccountStore
 
 logger = logging.getLogger(__name__)
@@ -70,12 +69,12 @@ def enabled_filters(db: Session, rule_set_id: int) -> list[Filter]:
     )
 
 
-def thingy_filters(
+def engine_filters(
     rule_set: RuleSet, folder: RuleSetFolder, filters: Sequence[Filter]
-) -> list[ImapFilter]:
-    """``filters`` as imap-thingy runs them on ``folder``: limited to starred messages, which
+) -> list[EngineFilter]:
+    """``filters`` as the filter engine runs them on ``folder``: limited to starred messages, which
     they unstar, when the rule set is ``starred_only``. Raises ``InvalidSpecError`` for a stored
-    spec this imap-thingy no longer loads."""
+    spec the filter engine no longer loads."""
     loaded = [loaded_filter(row.spec) for row in filters]
     if rule_set.starred_only:
         [(_folder, loaded)] = starred_only([(folder, loaded)])
@@ -83,16 +82,16 @@ def thingy_filters(
 
 
 def labelled_report(
-    report: FolderReport, filters: Sequence[Filter], loaded: Sequence[ImapFilter]
+    report: FolderReport, filters: Sequence[Filter], loaded: Sequence[EngineFilter]
 ) -> dict[str, Any]:
     """``report`` as a run's ``result``: each filter's entry with its ``filter_id``, the spec as
     stored (the one run may be wrapped, e.g. for starred only), the action's name as ``loaded``
     (what ran) has it, and no NUL character, which ``jsonb`` refuses (a message header may carry
     one).
 
-    The name is set here because imap-thingy writes a filter's ``repr`` (``Star()``) when it can
-    serialise the filter and its name (``star``) when not, and a dry run's filters, bounded to the
-    newest messages, cannot be: a dry run and a real run would name one action two ways."""
+    The name is set here because the filter engine writes a filter's ``repr`` (``Star()``) when it
+    can serialise the filter and its name (``star``) when not, and a dry run's filters, bounded to
+    the newest messages, cannot be: a dry run and a real run would name one action two ways."""
     entries = [
         {
             **_without_nul(entry),
@@ -118,7 +117,7 @@ def _without_nul(value: Any) -> Any:  # noqa: ANN401 -- any JSON value
 MATCH_TIMEOUT_MESSAGE: Final = (
     "A filter's regular expression took too long on a message: simplify the pattern."
 )
-"""A run stopped by imap-thingy's ``MatchTimeoutError`` (whose text quotes the pattern)."""
+"""A run stopped by the filter engine's ``MatchTimeoutError`` (whose text quotes the pattern)."""
 
 
 class DryRunBusy(Exception):  # noqa: N818 -- the outcome of a dry run, not a bug
@@ -158,7 +157,7 @@ class DryRun:
 
 def dry_run(
     folder: RuleSetFolder,
-    filters: Sequence[ImapFilter],
+    filters: Sequence[EngineFilter],
     *,
     max_messages: int = DRY_RUN_MAX_MESSAGES,
     seconds: float = DRY_RUN_SECONDS,
@@ -167,7 +166,7 @@ def dry_run(
     ``max_messages`` messages, for ``seconds`` at most. Raises ``DryRunTimeout``, or what the
     mailbox raises (``mailroom.accounts.mail.mail_failure`` names it)."""
     newest = folder.newest(max_messages)
-    bounded = [ImapFilter(newest & f.criterion, f.action) for f in filters]
+    bounded = [EngineFilter(newest & f.criterion, f.action) for f in filters]
     timer = threading.Timer(seconds, folder.abort)
     timer.daemon = True
     timer.start()
@@ -206,7 +205,7 @@ def dry_run_result(
 ) -> dict[str, Any]:
     """The ``result`` of a dry run of ``rule_set``'s ``filters`` (``dry_run``). Raises
     ``RunRefused``: ``account_not_found``, ``invalid_spec``, ``dry_run_timeout``,
-    ``match_timeout`` (a pattern took longer than imap-thingy's match timeout), a mailbox
+    ``match_timeout`` (a pattern took longer than the filter engine's match timeout), a mailbox
     failure's code (``mailroom.accounts.mail.MailFailure``), or ``run_failed`` for anything else,
     whose text is neither kept nor logged (it may quote anything, mail included)."""
     try:
@@ -234,7 +233,7 @@ def _dry_run_result(
         raise RunRefused(failure.code, failure.message) from None
     folder = RuleSetFolder(account, rule_set.folder)
     try:
-        loaded = thingy_filters(rule_set, folder, filters)
+        loaded = engine_filters(rule_set, folder, filters)
     except InvalidSpecError as exc:
         raise RunRefused("invalid_spec", str(exc)) from None
     try:

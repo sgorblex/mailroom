@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Annotated, Any, Final
 
-from imap_thingy.spec import json_schema
 from pydantic import Field
 
 from mailroom.filters import service
@@ -28,6 +27,7 @@ from mailroom.filters.service import (
 from mailroom.mcp.envelope import wrapped_result
 from mailroom.mcp.tool import READ, Arguments, Hints, JsonObject, Tool
 from mailroom.mcp.tools.accounts import AccountArguments, AccountId, NoArguments
+from mailroom_core.filters import json_schema
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -46,7 +46,7 @@ Folder = Annotated[
     ),
 ]
 FilterSpec = Annotated[
-    Spec, Field(description="An imap-thingy filter spec: criterion and action (filter_schema).")
+    Spec, Field(description="A filter spec: criterion and action (filter_schema).")
 ]
 
 _INTERVAL = "Minutes between runs: for trigger scheduled only, and required there."

@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/sgorblex/imap-thingy/blob/main/imap_thingy/spec/schema.json",
-  "title": "imap-thingy rule spec",
-  "description": "Data form of imap-thingy filters, criteria and actions (see imap_thingy.spec). The root is a filter.",
+  "$id": "https://github.com/sgorblex/mailroom/blob/main/backend/core/src/mailroom_core/filters/spec/schema.json",
+  "title": "Mailroom filter spec",
+  "description": "Data form of Mailroom's filters, criteria and actions (see mailroom_core.filters.spec). The root is a filter.",
   "$ref": "#/$defs/filter",
   "$defs": {
     "filter": {

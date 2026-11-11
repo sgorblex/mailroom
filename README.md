@@ -1,10 +1,10 @@
 # Mailroom
 
 A self-hosted mail app for a few separate users: a web mail client (read, triage, compose, over a local index
-with live updates), a web UI for [imap-thingy](https://pypi.org/project/imap-thingy/) filters, its own
+with live updates), a web UI for filters that sort mail on the server, its own
 **MCP server**, and — later — filter **suggestions** learned
-from how each user files mail. It composes standalone components rather than absorbing them:
-[`docs/CONTEXT.md`](docs/CONTEXT.md).
+from how each user files mail. Its mail layer and filter engine are mailroom-core, a library in this
+repository: [`docs/CONTEXT.md`](docs/CONTEXT.md).
 
 **Status:** scaffold. The API answers `/api/v1/health` and the web app shows it; everything else is
 in [`docs/TODO.md`](docs/TODO.md).
@@ -13,7 +13,7 @@ in [`docs/TODO.md`](docs/TODO.md).
 
 | Part | What |
 | --- | --- |
-| `backend/` | Python 3.14+, FastAPI, SQLAlchemy 2 + psycopg 3, Alembic (schema `app`), procrastinate worker, uv; mailroom-core (the mail layer, in `backend/core`), imap-thingy |
+| `backend/` | Python 3.14+, FastAPI, SQLAlchemy 2 + psycopg 3, Alembic (schema `app`), procrastinate worker, uv; mailroom-core (the mail layer and the filter engine, in `backend/core`) |
 | `web/` | React 19, Vite, TanStack Router, Tailwind 4 + shadcn, i18next, Zod, Vitest |
 | Database | PostgreSQL 18 (`compose.yml` for dev) |
 | Images | `mailroom-api`, `mailroom-web` (Podman; Quadlet sketch in `deploy/quadlet/`) |
@@ -56,7 +56,6 @@ Defaults live in `mise.toml`'s `[env]`. To change one, set it in a gitignored `m
 | Task | Does |
 | --- | --- |
 | `setup` | Install Python and Node dependencies |
-| `deps-local` / `deps-pinned` | Swap imap-thingy for a local editable checkout / back to the pinned one |
 | `dev` | `dev-db` + `dev-api` + `dev-worker` + `dev-web` together |
 | `dev-db` / `dev-db-down` | Start (foreground) / stop the dev Postgres; data stays |
 | `dev-api` / `dev-web` | API with reload (migrates at startup) / Vite |

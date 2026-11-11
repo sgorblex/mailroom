@@ -1,0 +1,68 @@
+"""Subject-based email filtering criteria."""
+
+from typing import TYPE_CHECKING
+
+from mailroom_core.filters.criteria.criterion import Criterion
+from mailroom_core.filters.pattern import Pattern
+from mailroom_core.filters.query import Q
+
+if TYPE_CHECKING:
+    from mailroom_core.filters.message import Message
+
+
+class SubjectContains(Criterion):
+    """Matches messages with subject containing the given substring."""
+
+    spec_type = "subject_contains"
+
+    def __init__(self, substring: str) -> None:
+        """Initialize a SubjectContains criterion.
+
+        Args:
+            substring: Substring to search for in the subject.
+
+        """
+
+        def func(msg: Message) -> bool:
+            return substring in (msg.parsed.subject or "")
+
+        super().__init__(func, Q(("SUBJECT", substring)), is_efficient=True)
+
+
+class SubjectIs(Criterion):
+    """Matches messages with the exact subject line."""
+
+    spec_type = "subject_is"
+
+    def __init__(self, subj: str) -> None:
+        """Initialize a SubjectIs criterion.
+
+        Args:
+            subj: Exact subject line to match.
+
+        """
+
+        def func(msg: Message) -> bool:
+            return (msg.parsed.subject or "") == subj
+
+        super().__init__(func, imap_query=Q(("SUBJECT", subj)), is_efficient=False)
+
+
+class SubjectMatches(Criterion):
+    """Matches messages with subject matching the regex pattern."""
+
+    spec_type = "subject_matches"
+
+    def __init__(self, pattern: str) -> None:
+        """Initialize a SubjectMatches criterion.
+
+        Args:
+            pattern: Regular expression pattern to match against the subject.
+
+        """
+        compiled = Pattern(pattern)
+
+        def func(msg: Message) -> bool:
+            return compiled.fullmatch(msg.parsed.subject or "")
+
+        super().__init__(func)

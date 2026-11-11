@@ -62,7 +62,7 @@ class RuleSet(Base):
 
 
 class Filter(Base):
-    """One imap-thingy filter of a rule set, as its spec (``imap_thingy.spec``)."""
+    """One filter of a rule set, as its spec (``mailroom_core.filters.spec``)."""
 
     __tablename__ = "filter"
     __table_args__ = (
@@ -104,6 +104,6 @@ class FilterRun(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     result: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
-    """imap-thingy's folder report, each filter's entry with its ``filter_id``
+    """The filter engine's folder report, each filter's entry with its ``filter_id``
     (``mailroom.filters.runs.labelled_report``)."""
     error: Mapped[str | None] = mapped_column(Text)

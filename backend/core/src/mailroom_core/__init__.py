@@ -1,1 +1,1 @@
-"""Mailroom's mail layer, shared by mailroom-mcp and the Mailroom app."""
+"""Mailroom's mail layer and filter engine, under the Mailroom app."""

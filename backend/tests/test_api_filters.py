@@ -6,8 +6,6 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import pytest
-from imap_thingy.filters import MatchTimeoutError
-from imap_thingy.spec import json_schema, load_filter
 from imapclient import IMAPClient
 from sqlalchemy import select, text
 
@@ -20,6 +18,7 @@ from mailroom.filters.runs import RunRefused, dry_run_slot, labelled_report, pru
 from mailroom.filters.service import MAX_FILTERS
 from mailroom.models import Filter, FilterRun, RuleSet
 from mailroom.worker.app import PROCRASTINATE_SCHEMA
+from mailroom_core.filters import MatchTimeoutError, json_schema, load_filter
 from tests.conftest import PASSWORD
 from tests.test_api_accounts import dev_mailbox_account, new_account
 
@@ -74,7 +73,7 @@ def test_signed_out_browsers_are_refused(api_client: TestClient) -> None:
     assert api_client.post("/api/v1/rule-sets/1/run").status_code == 401
 
 
-def test_the_schema_is_imap_thingys(user_client: TestClient) -> None:
+def test_the_schema_is_the_engines(user_client: TestClient) -> None:
     assert user_client.get("/api/v1/filters/schema").json() == json_schema()
 
 
@@ -134,7 +133,7 @@ def test_the_dev_mailbox_lists_folders(
     folders = user_client.get("/api/v1/accounts/work/folders").json()
     assert {"path": ["INBOX"]} in folders
     assert {"path": ["Archive"]} in folders
-    # Split on the server's delimiter ("/" here), not imap-thingy's default.
+    # Split on the server's delimiter ("/" here), not the filter engine's default.
     assert {"path": ["Archive", "2026"]} in folders
 
 
@@ -282,7 +281,7 @@ def test_filters_are_kept_in_order(user_client: TestClient, rule_set_id: int) ->
     assert order()[-1][1] == 2
 
 
-def test_specs_are_kept_as_imap_thingy_serialises_them(
+def test_specs_are_kept_as_the_engine_serialises_them(
     user_client: TestClient, rule_set_id: int
 ) -> None:
     nested = {
@@ -322,7 +321,7 @@ def test_specs_are_kept_as_imap_thingy_serialises_them(
     ],
     ids=["no action", "unknown type", "bad argument", "argument type", "regular expression"],
 )
-def test_an_invalid_spec_is_refused_with_imap_thingys_words(
+def test_an_invalid_spec_is_refused_with_the_engines_words(
     user_client: TestClient, rule_set_id: int, spec: dict[str, Any], message: str
 ) -> None:
     response = user_client.post(
@@ -642,7 +641,7 @@ def test_a_report_carries_no_nul() -> None:
 def test_a_dry_run_and_a_real_run_name_an_action_alike() -> None:
     spec = {"criterion": FROM_SHOP, "action": {"type": "star"}}
     row = Filter(id=7, rule_set_id=1, position=0, name="x", spec=spec)
-    # imap-thingy writes the repr of a filter it can serialise (a real run's) and the name of one
+    # The filter engine writes the repr of a filter it can serialise (a real run's) and the name of one
     # it cannot (a dry run's, bounded to the newest messages).
     labels = {
         labelled_report(

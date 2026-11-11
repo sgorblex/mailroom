@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Any, cast
 
 import anyio
 import pytest
-from imap_thingy.accounts import Account
 from mcp.server.auth.provider import AccessToken
 
 from mailroom.accounts.mail import LIST_TIMEOUT_MESSAGE, MailFailure, list_folders
@@ -23,6 +22,7 @@ from mailroom.mcp.settings import mcp_settings_from_env
 from mailroom.mcp.tool import BUSY_MESSAGE, READ, Arguments, Tool, ToolCall, UserSlots, call_tool
 from mailroom.mcp.tools import TOOLS
 from mailroom.mcp.verifier import RefusingVerifier, token_verifier, user_id_of
+from mailroom_core.filters import Account
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

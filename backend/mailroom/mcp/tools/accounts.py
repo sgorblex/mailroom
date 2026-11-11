@@ -3,7 +3,7 @@ folders, and the Run filters switch.
 
 ``folders_list`` lists through ``mailroom.mail.service`` (mailroom-core's LIST, the server's
 paths and delimiter, ``segments`` split on it); the REST folder picker of a rule set still lists
-through ``mailroom.filters.service.account_folders`` (imap-thingy's segments). Both name a
+through ``mailroom.filters.service.account_folders`` (the filter engine's segments). Both name a
 folder by the same segments."""
 
 from __future__ import annotations

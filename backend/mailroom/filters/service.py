@@ -54,8 +54,8 @@ MAX_FILTERS: Final = 100
 class RuleSetFields(BaseModel):
     name: Name
     folder: list[Segment] = Field(min_length=1, max_length=32)
-    """Path segments, as the REST folder picker lists them (``account_folders``, imap-thingy's)
-    and MCP's ``folders_list`` gives them as ``segments`` (mailroom-core's LIST through
+    """Path segments, as the REST folder picker lists them (``account_folders``, the engine's) and
+    MCP's ``folders_list`` gives them as ``segments`` (mailroom-core's LIST through
     ``mailroom.mail.service``)."""
     trigger: Trigger
     interval_minutes: IntervalMinutes | None = None
@@ -108,7 +108,7 @@ class FilterFields(BaseModel):
     name: Name
     enabled: bool = True
     spec: Spec
-    """An imap-thingy filter spec (``imap_thingy.spec.json_schema``); kept as imap-thingy
+    """A filter spec (``mailroom_core.filters.json_schema``); kept as the filter engine
     serialises it."""
 
 
@@ -216,7 +216,7 @@ def check_schedule(trigger: str, interval_minutes: int | None) -> None:
 
 
 def checked_spec(spec: Spec) -> Spec:
-    """``spec`` as imap-thingy serialises it, or ``invalid_spec``."""
+    """``spec`` as the filter engine serialises it, or ``invalid_spec``."""
     try:
         return normalized_spec(spec)
     except InvalidSpecError as exc:

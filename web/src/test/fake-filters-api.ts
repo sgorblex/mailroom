@@ -82,7 +82,7 @@ const invalidSpecResponse = (): Response =>
 
 /**
  * A fake filters API over `state`, as `docs/requirements/filters.md` specifies it. A spec whose
- * criterion type is `bogus` is refused as imap-thingy would; Run now is refused while the
+ * criterion type is `bogus` is refused as the filter engine would; Run now is refused while the
  * account's Run filters is off, and queues a run the worker never starts.
  */
 export function stubFiltersApi(state: FakeState): Mock {
