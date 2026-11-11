@@ -21,7 +21,8 @@ Mailroom the app is the top of a small family, and **dependencies only point dow
 Mailroom app (this repo)  web client, filters UI, own MCP server at /mcp (OAuth, SSO)
   ├─ mailroom-core        accounts, sealed secrets, IMAP/SMTP, send gate,  (backend/core,
   │                       rendering, audit                                  workspace package)
-  └─ imap-thingy          IMAP filter library and runner                   (PyPI)
+  └─ imap-thingy          IMAP filter library and runner                   (PyPI; folding into
+                                                                             mailroom-core)
 
 mailroom-mcp              standalone MCP server for mail (repo mailroom-mcp, retired, archived)
 ```
@@ -46,9 +47,10 @@ mailroom-mcp              standalone MCP server for mail (repo mailroom-mcp, ret
   part of the app. It never imports `mailroom`. The app keeps the accounts (`AccountStore`) in
   mailroom-core's schema `core` in the app's database, under mailroom-core's own Alembic history
   (`core.alembic_version`); the app's tables live in schema `app`.
-- **imap-thingy** stays a general-purpose library on PyPI; the app reads and writes its rules
-  through the library's own serialisation, never a private format, and runs them with its runner
-  (`imap_thingy.runner`: run, IDLE monitor, starred-only).
+- **imap-thingy** is the filter engine: the app reads and writes its rules through the library's
+  own serialisation, never a private format, and runs them with its runner
+  (`imap_thingy.runner`: run, IDLE monitor, starred-only). It comes from PyPI until it folds into
+  mailroom-core as `mailroom_core.filters` (*Where the family is heading*).
 - **No component imports the app**, and none learns about it. A need that seems to require that is a
   design question, answered by an integration point in the lower component.
 
@@ -74,11 +76,47 @@ Decided on 2026-11-09, in this order ([`TODO.md`](TODO.md) — *Family roadmap*)
   disabled feature runs nothing: no routes, worker or screens. Every edition uses Postgres. Done:
   the API, the worker and the web app.
 - **This repository is public** since 2026-11-10, after an audit of its whole history, rewritten
-  where it named private things. **imap-thingy folds in next**, now that this repository is
-  public like it: it keeps its history and its PyPI name, and it never depends on mailroom-core.
+  where it named private things.
+
+Decided on 2026-11-11: **one library under one app.**
+
+```
+Mailroom app (mailroom)   users, sign-in, OAuth, editions, storage of accounts and rule sets,
+  │                       audit, REST API, MCP server, worker, web
+  ▼
+mailroom-core             render, mail (IMAP, IDLE included), send, filters, crypto, store
+(mailroom_core)
+```
+
+- **imap-thingy folds into mailroom-core** as `mailroom_core.filters`, with its history, and is
+  no longer published: its last PyPI release says where it went. Nearly every change to it came
+  from the app, each costing a release and a pin bump; unpublished, a package of its own would only
+  add a second build, config and test setup; and once it runs on core's IMAP layer, nothing sets
+  it apart. Core and the app already pair this way: `mailroom_core.mail` is the library,
+  `mailroom.mail` the feature, and so for `filters`.
+- **One IMAP stack.** The engine runs on core's connections: its criteria become core's searches
+  and its actions core's moves and flags, so a filter's move is the same operation as one in the
+  client. IDLE moves into `mailroom_core.mail`, for the worker's monitor and the client's live
+  updates alike, and the app's own bridge to imap-thingy (`mailroom.accounts.mail`) goes. This
+  comes before folder management, so that it, the move across accounts and the filter action
+  that moves to another account are each written once, in core.
+- **Core has a public API:** what each of its subpackages exports in `__all__`, with a docstring
+  on every public name. The app imports those, never a submodule, and inside core `filters` may
+  use `mail`, never the other way round. There is no semver while core is unpublished: a breaking
+  change fixes its callers in the same pull request and is marked `!` with scope `core`, so the
+  app's changelog shows it.
+- **Core filters on its own:** accounts from plain config, rules in Python or as specs, a run, a
+  dry run or an IDLE monitor, and their reports, with no app, database or server. A test keeps it
+  so. A script installs core from this repository, pinned to a Mailroom tag.
+- **Core is published again** only when someone besides the owner wants to use it, or when the
+  `run` command (below) is meant for others to install: then as `mailroom-core` on PyPI, in
+  semver from 0.x, with `store` and its database packages an optional extra.
+- **Open: core without the database.** Moving the store, the send gate's claims and the config
+  into the app, with core taking its accounts through an interface, pays off only if a core free
+  of the database matters. Decided when the `run` command is designed.
 - **Command-line tools:**
   - a client for a running instance, after personal API tokens exist;
-  - `imap-thingy run`, for filters with no server at all.
+  - `run`, for filters with no server at all, over mailroom-core.
 
 ## Client scope
 

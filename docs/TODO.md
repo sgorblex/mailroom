@@ -10,12 +10,8 @@ Mailroom is built on projects with their own repositories and checklists. As of 
 
 - **mailroom-mcp** (`../mailroom-mcp`, GitHub `sgorblex/mailroom-mcp`): retired on 2026-11-10 and
   archived; its Python port's core lives in `backend/core`.
-- **imap-thingy** (`../imap-thingy`, GitHub `sgorblex/imap-thingy`): rules as data (`to_spec()`,
-  `imap_thingy.spec`) since 0.5.0, the runner (`imap_thingy.runner`: `run_rules`, `starred_only`,
-  the IDLE `monitor`) since 0.6.0; 0.7.0 adds run reports (what each filter matched and did, also
-  for a dry run), the `older_than_days` criterion, SSL and timeout options and `list_folders()` on
-  `Account`, a stoppable `monitor` and regex match timeouts; 0.8.0 names every built-in action in
-  plain words (`star`, `mark as read`), as run reports show them.
+- **imap-thingy** (`../imap-thingy`, GitHub `sgorblex/imap-thingy`): 0.8.0 on PyPI, the app's
+  pin, is its last feature release; it folds into mailroom-core next (*Family roadmap*).
 
 ## Family roadmap
 
@@ -26,15 +22,30 @@ In order. The reasons are in [`CONTEXT.md`](CONTEXT.md) — *Where the family is
       base.
 - [x] **Retire mailroom-mcp** (2026-11-10): the app's MCP covers its use, the audit trail
       included; its deployment is gone and its repository archived.
-- [ ] **Go public:**
-  - [x] audit the whole history (secrets, infrastructure names), rewritten where it named them;
-  - [x] make the repository public (2026-11-10; the earlier repository stays private as
-        `mailroom-archive`, with its pull requests);
-  - [ ] fold in imap-thingy, keeping its history and PyPI name, and archive its old repository
-        with a pointer.
+- [x] **Go public:** the whole history audited and rewritten where it named private things, and
+      the repository public since 2026-11-10 (the earlier one stays private as
+      `mailroom-archive`, with its pull requests).
+- [ ] **One library under one app**, in this order:
+  - [ ] **Fold imap-thingy into mailroom-core** as `mailroom_core.filters`, with its history, its
+        tests among core's, and the app's imports moved over. The helpers only scripts used go:
+        `setup_logging` (already deprecated), `accounts_from_json`, `GMailAccount`,
+        `utils.matches`; `get_mail` becomes private. A last PyPI release, 0.8.1, says it is now
+        part of Mailroom's mailroom-core and not on PyPI for now; then its repository is archived
+        with a pointer, and its Woodpecker repository and PyPI trusted publisher removed.
+  - [ ] **Core's public API:** ruff's `D1` rules on `mailroom_core`, with the missing docstrings
+        written; a test that the app imports only the subpackages' facades, and that `mail`
+        never imports `filters`.
+  - [ ] **One IMAP stack**, before folder management: the engine on core's connections, searches
+        and moves; IDLE in `mailroom_core.mail`; the worker on the same connections as the API,
+        and `mailroom.accounts.mail` gone. With it, a short way to connect from plain config, and
+        a test that runs filters with no app or database.
+  - [ ] **Tidy-ups**, whenever convenient: mailroom-mcp's leftovers out of core
+        (`STANDALONE_USER`, docs that name it); `mailroom/mail/service.py` and
+        `mailroom/api/routes/mail.py` split by concern, as core's `mail` is.
 - [ ] **Command-line tools:**
   - [ ] a client for a running instance, after personal API tokens;
-  - [ ] `imap-thingy run`, for filters with no server.
+  - [ ] `run`, for filters with no server, over mailroom-core; it settles whether core keeps the
+        database ([`CONTEXT.md`](CONTEXT.md) — *Where the family is heading*).
 
 ## Client
 
@@ -59,7 +70,7 @@ In order. The reasons are in [`CONTEXT.md`](CONTEXT.md) — *Where the family is
 
 ## Folders and moves across accounts
 
-In this order: each builds on the one before.
+In this order, after *One IMAP stack* (*Family roadmap*): each builds on the one before.
 
 - [ ] **Folder management** — create, rename (moving it in the hierarchy) and delete an account's
       folders, from the web and MCP. A rename updates the rule sets that name the folder. The
@@ -67,15 +78,15 @@ In this order: each builds on the one before.
       the docs' "never deletes permanently" becomes "deletes only deliberately" (the rule was
       lifted on 2026-11-10), a confirmation on the web, a destructive-marked MCP tool, never a
       side effect, refusal tests and audit records.
-- [ ] **Move messages across accounts** — written once in imap-thingy (which never depends on
-      mailroom-core): copy the raw message with its flags and date, confirm it arrived by
+- [ ] **Move messages across accounts** — written once in `mailroom_core.mail`, so filters can
+      use it too: copy the raw message with its flags and date, confirm it arrived by
       `Message-ID`, then remove it from the source (to Trash, or for good). A retry first checks
       the target, so it never copies twice; an append whose removal failed is reported, the
       message then in both. Gmail's All Mail and size limits apply. Mailroom offers it as
       *Move to account…* on the web and an MCP tool, both recorded on each side.
-- [ ] **Filters that move to another account** — an imap-thingy action naming the target account,
-      resolved by the host at load time (the user's own only, checked on save and at run), with
-      an account and folder picker in the filter editor. Needs a guard against loops (A to B and
+- [ ] **Filters that move to another account** — a `mailroom_core.filters` action naming the
+      target account, resolved by the host at load time (the user's own only, checked on save
+      and at run), with an account and folder picker in the filter editor. Needs a guard against loops (A to B and
       B to A, or the target's new-mail filters picking the message up again) and a run that
       writes to two mailboxes.
 
