@@ -92,6 +92,8 @@ ORIGINAL_NOT_MARKED: Final = SendNote(
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class GateDeps:
+    """What the gate works with: mail connections, the SMTP sender, the send log and the limits."""
+
     connections: MailConnections
     smtp: Sender
     send_log: SendLog
@@ -121,6 +123,7 @@ class Admitted:
         send: SendRecord,
         item: AuditItem,
     ) -> None:
+        """Make an `Admitted`; raises `TypeError` unless `seal` is the one only `admit` holds."""
         if seal is not _SEAL:
             raise TypeError("only admit() makes an Admitted")
         self.account: Final = account
@@ -131,6 +134,7 @@ class Admitted:
         self._spent = False
 
     def spend(self) -> None:
+        """Use up the one delivery, raising `ValueError` if it was already used."""
         with self._lock:
             if self._spent:
                 raise ValueError("this Admitted has been delivered already")
@@ -166,6 +170,8 @@ class SentMessage:
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class GateResult:
+    """How a send ended for the host: sent, still sending, or kept as a draft."""
+
     outcome: Literal["sent", "sending", "drafted"]
     """`sending`: an earlier attempt with this key is still running."""
     ref: MessageRef | None = None

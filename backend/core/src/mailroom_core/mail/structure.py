@@ -49,6 +49,8 @@ class MimePart:
 
 @dataclass(frozen=True, slots=True)
 class Structure:
+    """A message's parts by role: body, HTML, attachments, inline parts, invite and every leaf."""
+
     body: MimePart | None
     """The body part to show: the first unnamed inline text/plain, else such a text/html."""
     html: MimePart | None
@@ -66,6 +68,7 @@ class Structure:
 
     @property
     def body_format(self) -> Literal["text", "html"] | None:
+        """``"html"`` when the body part is HTML, ``"text"`` for another body, None for none."""
         if self.body is None:
             return None
         return "html" if self.body.type == "text/html" else "text"

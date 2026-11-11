@@ -36,6 +36,7 @@ def js_json(value: object) -> str:
 
 
 def b64url_encode(text: str) -> str:
+    """``text`` as unpadded base64url of its UTF-8 bytes."""
     return base64.urlsafe_b64encode(text.encode("utf-8")).rstrip(b"=").decode("ascii")
 
 
@@ -66,6 +67,7 @@ def js_integer(value: object) -> int | None:
 
 
 def format_ref(ref: MessageRef) -> str:
+    """The string form of ``ref``, which ``parse_ref`` reads back."""
     return b64url_encode(
         js_json([_VERSION, ref.account, ref.folder, str(ref.uid_validity), ref.uid])
     )

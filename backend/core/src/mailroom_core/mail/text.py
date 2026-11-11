@@ -53,6 +53,7 @@ def page_text(
 
 
 def empty_folder_text(folder: str) -> str:
+    """The line shown for a folder with no messages."""
     return f"No messages in {clean_header(folder, 200)}."
 
 
@@ -97,6 +98,7 @@ def read_text(
 
 
 def thread_text(page: Page, time_zone: str) -> str:
+    """A thread result: the lines, a count, and a note when cut short or a source failed."""
     lines = page.lines(time_zone)
     more = (
         ""

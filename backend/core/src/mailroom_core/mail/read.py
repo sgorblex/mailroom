@@ -111,6 +111,7 @@ class MessageView:
     """The header section as received, when asked for."""
 
     def header_view(self) -> HeaderView:
+        """The header fields a read shows."""
         return HeaderView(
             sender=self.sender,
             to=self.to,

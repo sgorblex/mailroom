@@ -23,6 +23,7 @@ class ImapTestServer:
 
     @classmethod
     def from_env(cls) -> Self | None:
+        """The server `IMAP_TEST_HOST` names, or None if it is unset."""
         host = os.environ.get("IMAP_TEST_HOST")
         if host is None:
             return None
@@ -54,6 +55,7 @@ class SmtpTestServer:
 
     @classmethod
     def from_env(cls) -> Self | None:
+        """The implicit-TLS server `SMTP_TEST_HOST` names, or None if it is unset."""
         host = os.environ.get("SMTP_TEST_HOST")
         if host is None:
             return None

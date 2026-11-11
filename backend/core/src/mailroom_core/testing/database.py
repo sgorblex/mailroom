@@ -33,12 +33,14 @@ class ThrowawayDatabases:
     __test__: ClassVar = False
 
     def __init__(self, url: str) -> None:
+        """Connect to the server `url` names, only to create and drop databases on it."""
         self._admin = database_engine(url).execution_options(isolation_level="AUTOCOMMIT")
         self._templates: dict[Migrate, str] = {}
         self._created: list[str] = []
 
     @classmethod
     def from_env(cls) -> Self | None:
+        """The databases on `TEST_DATABASE_URL`'s server, or None if it is unset or empty."""
         url = os.environ.get("TEST_DATABASE_URL")
         return None if not url else cls(url)
 

@@ -80,6 +80,7 @@ def _format_addresses(addresses: Sequence[Address] | None) -> str:
 
 
 def format_size(size: int) -> str:
+    """A size in bytes as `B`, `KB` or `MB`, as the TypeScript writes it."""
     if size < 1024:
         return f"{size} B"
     if size < 1024 * 1024:
@@ -116,6 +117,8 @@ def _format_flags(flags: AbstractSet[str] | None, has_attachments: bool) -> str:
 
 @dataclass(frozen=True, slots=True)
 class ListItem:
+    """One message as `list_line` shows it."""
+
     ref: str
     date: DateValue
     sender: Sequence[Address] | None
@@ -143,6 +146,8 @@ def list_line(item: ListItem, time_zone: str) -> str:
 
 @dataclass(frozen=True, slots=True)
 class HeaderView:
+    """The headers, attachments and calendar part of one message, as `header_block` shows them."""
+
     sender: Sequence[Address] | None
     """The From header (`from` in the TypeScript)."""
     to: Sequence[Address] | None

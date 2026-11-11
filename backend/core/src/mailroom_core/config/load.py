@@ -33,6 +33,8 @@ class CoreConfig:
 
 @dataclass(frozen=True, slots=True)
 class LoadedCore:
+    """The core config as loaded, with what the load found worth saying."""
+
     config: CoreConfig
     warnings: tuple[str, ...]
     """Problems worth logging that do not stop the server."""

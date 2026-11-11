@@ -65,6 +65,8 @@ class Threading:
 
 @dataclass(frozen=True, slots=True)
 class ReplyRecipients:
+    """The To and Cc of a reply."""
+
     to: tuple[Mailbox, ...]
     cc: tuple[Mailbox, ...]
 

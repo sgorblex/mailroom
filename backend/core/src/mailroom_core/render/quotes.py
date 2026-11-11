@@ -49,6 +49,8 @@ def default_marker(what: Omitted, lines: int) -> str:
 
 @dataclass(frozen=True, slots=True)
 class Collapsed:
+    """Text with its quoted lines or trailing signature collapsed, and how many lines went."""
+
     text: str
     quoted_lines: int
     """Lines of quoted text hidden (blank lines not counted); 0 if none."""

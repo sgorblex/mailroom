@@ -87,6 +87,8 @@ _LINK: Final = re.compile(r"(?:https?://|mailto:)", re.IGNORECASE)
 
 @dataclass(frozen=True, slots=True)
 class SafeHtml:
+    """A sanitised HTML fragment, and whether the message had remote images."""
+
     html: str
     """The sanitised fragment, for the body of a document the host builds."""
     has_remote: bool

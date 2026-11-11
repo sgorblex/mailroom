@@ -75,11 +75,14 @@ class GroupResult:
 
     @property
     def ok(self) -> bool:
+        """Whether the group succeeded."""
         return self.error is None
 
 
 @dataclass(frozen=True, slots=True)
 class OrganizeResult:
+    """The result of an organize call: one result per group, one audit item per message."""
+
     groups: tuple[GroupResult, ...]
     items: tuple[AuditItem, ...]
     """One per message acted on or refused, for the host's audit record."""
@@ -96,6 +99,7 @@ class OrganizeResult:
 
     @property
     def outcome(self) -> AuditOutcome:
+        """The call's audit outcome, from its items' results."""
         return audit_outcome(item.result for item in self.items)
 
 

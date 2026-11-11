@@ -70,12 +70,14 @@ class MailError(Exception):
     detail: str | None
 
     def __init__(self, code: MailErrorCode, detail: str | None = None) -> None:
+        """Sets the code and detail: the text is the code's fixed message, then the detail."""
         self.code = code
         self.detail = detail
         super().__init__(MESSAGES[code] if detail is None else f"{MESSAGES[code]} {detail}")
 
     @property
     def message(self) -> str:
+        """The error's text, as ``str(error)``."""
         return str(self)
 
 

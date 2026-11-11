@@ -122,12 +122,16 @@ class StrictModel(BaseModel):
 
 
 class Endpoint(StrictModel):
+    """Host, port and TLS mode of an account's IMAP or SMTP server."""
+
     host: NonEmpty
     port: Annotated[StrictInt, Field(ge=1, le=65_535)]
     tls: Literal["implicit", "starttls"]
 
 
 class Identity(StrictModel):
+    """An address an account may send from, with an optional display name."""
+
     address: _Email
     name: NonEmpty | None = None
     default: StrictBool = False
@@ -148,6 +152,8 @@ type AccountAuth = PasswordAuth
 
 
 class AccountConfig(StrictModel):
+    """One mail account: login, send mode, servers, identities and auto-approved recipients."""
+
     id: Slug
     login: NonEmpty
     send_mode: SendMode
@@ -160,6 +166,8 @@ class AccountConfig(StrictModel):
 
 
 class Limits(StrictModel):
+    """Sends per hour and recipients per send, body characters a read shows, attachment size."""
+
     send_per_hour: _Count = 20
     max_recipients: _Count = 10
     body_chars: Annotated[StrictInt, Field(ge=500, le=MAX_SAFE_INTEGER)] = 6000

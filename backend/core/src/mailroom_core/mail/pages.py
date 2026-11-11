@@ -88,10 +88,12 @@ class Position:
     before_uid: int
 
     def json(self) -> list[object]:
+        """The position as a cursor entry: account, folder, UIDVALIDITY and before-UID."""
         return [self.account, self.folder, self.uid_validity, self.before_uid]
 
 
 def encode_cursor(positions: Sequence[Position]) -> str:
+    """The cursor for the next page: ``positions`` as base64url-encoded, versioned JSON."""
     return b64url_encode(js_json([_CURSOR_VERSION, [p.json() for p in positions]]))
 
 
@@ -156,9 +158,11 @@ class MessageSummary:
 
     @property
     def message_ref(self) -> MessageRef:
+        """The summary's message ref."""
         return MessageRef(self.account, self.folder, self.uid_validity, self.uid)
 
     def list_item(self) -> ListItem:
+        """The summary as the item its list line is made from."""
         return ListItem(
             ref=self.ref,
             date=self.date,
@@ -187,6 +191,7 @@ class PageFailure:
 
     @classmethod
     def of(cls, account: str, folder: str | None, error: MailError) -> PageFailure:
+        """The failure of one source, from the error that stopped it."""
         return cls(account, folder, error.code, error.message)
 
     @property
@@ -202,12 +207,15 @@ class PageFailure:
 
 @dataclass(frozen=True, slots=True)
 class Page:
+    """A page of messages, the cursor for the next one and the sources that failed."""
+
     messages: tuple[MessageSummary, ...]
     next_cursor: str | None
     """Set when more messages follow: pass it back, with the same query, as `cursor`."""
     failures: tuple[PageFailure, ...] = field(default=())
 
     def lines(self, time_zone: str) -> list[str]:
+        """The messages as list lines, with dates in ``time_zone``."""
         return [message.list_line(time_zone) for message in self.messages]
 
 

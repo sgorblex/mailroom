@@ -59,6 +59,7 @@ class SmtpTimeouts:
     watchdog: float = SEND_CEILING.total_seconds()
 
     def for_data(self, size: int) -> float:
+        """Seconds allowed for DATA with a message of `size` bytes."""
         return self.data + size / self.data_rate
 
 
@@ -80,16 +81,19 @@ class Transfer:
     """
 
     def __init__(self) -> None:
+        """Start with no socket attached and not aborted."""
         self._lock = threading.Lock()
         self._socket: socket.socket | None = None
         self._aborted = False
 
     @property
     def aborted(self) -> bool:
+        """Whether `abort` has been called."""
         with self._lock:
             return self._aborted
 
     def abort(self) -> None:
+        """Mark the transfer aborted and shut its socket down; a later `attach` is shut down too."""
         with self._lock:
             self._aborted = True
             self._shut_down()
@@ -102,6 +106,7 @@ class Transfer:
                 self._shut_down()
 
     def release(self) -> None:
+        """Close the duplicate socket, if one is attached, once the send is over."""
         with self._lock:
             if self._socket is not None:
                 self._socket.close()
@@ -297,6 +302,7 @@ class SmtpSender:
         ssl_context: ssl.SSLContext | None = None,
         timeouts: SmtpTimeouts = SmtpTimeouts(),  # noqa: B008  (frozen)
     ) -> None:
+        """Both lookups take an account id and give None for one they do not know."""
         self._lookup_account = account
         self._lookup_password = password
         self._ssl_context = ssl_context if ssl_context is not None else ssl.create_default_context()

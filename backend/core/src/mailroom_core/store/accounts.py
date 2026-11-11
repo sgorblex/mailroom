@@ -60,6 +60,8 @@ class SendsBusy(Exception):  # noqa: N818 -- named as RevisionConflict is
 
 @dataclass(frozen=True, slots=True)
 class StoredSettings:
+    """A saved revision of a user's settings."""
+
     revision: int
     doc: Json
     """The JSON document as stored; validated by the caller."""
@@ -85,6 +87,7 @@ class SendLimitReached(Exception):  # noqa: N818 -- named as RevisionConflict is
     """The hourly limit is used up: nothing was claimed. `recent` says when the next send fits."""
 
     def __init__(self, recent: SendCount) -> None:
+        """Keep `recent`, the sends counted in the hour."""
         super().__init__(f"{recent.count} sends in the last hour")
         self.recent: Final = recent
 
@@ -115,9 +118,13 @@ class SendClaim:
 class SendLog(Protocol):
     """Messages handed to SMTP: the hourly send limit and each send's outcome."""
 
-    def sends_since(self, since: datetime) -> SendCount: ...
+    def sends_since(self, since: datetime) -> SendCount:
+        """Count this user's sends after `since`."""
+        ...
 
-    def record_send(self, at: datetime) -> None: ...
+    def record_send(self, at: datetime) -> None:
+        """Write down a send made at `at`."""
+        ...
 
     def claim_send(
         self,
@@ -127,15 +134,21 @@ class SendLog(Protocol):
         *,
         confirm_resend: bool = False,
         now: datetime | None = None,
-    ) -> SendClaim: ...
+    ) -> SendClaim:
+        """Claim an attempt before SMTP, as `AccountStore.claim_send` does."""
+        ...
 
-    def finish_send(
-        self, send: SendRecord, state: FinishedSendState, result: Json = None
-    ) -> bool: ...
+    def finish_send(self, send: SendRecord, state: FinishedSendState, result: Json = None) -> bool:
+        """Record how a claimed attempt ended; False if nothing changed."""
+        ...
 
-    def send_state(self, send_id: int, now: datetime | None = None) -> SendRecord | None: ...
+    def send_state(self, send_id: int, now: datetime | None = None) -> SendRecord | None:
+        """This user's send `send_id`, if still kept."""
+        ...
 
-    def send_state_by_key(self, key: str, now: datetime | None = None) -> SendRecord | None: ...
+    def send_state_by_key(self, key: str, now: datetime | None = None) -> SendRecord | None:
+        """This user's send of `key`, if any is still kept."""
+        ...
 
 
 def current_settings(connection: Connection, user_id: str) -> StoredSettings | None:
@@ -306,11 +319,13 @@ class AccountStore:
     def __init__(
         self, engine: Engine, user_id: str, lock_timeout: timedelta = LOCK_TIMEOUT
     ) -> None:
+        """Work on `engine` for `user_id` only; `lock_timeout` bounds the wait for its locks."""
         self._engine = engine
         self.user_id: Final = user_id
         self._lock_timeout = lock_timeout
 
     def settings(self) -> StoredSettings | None:
+        """The user's latest settings, if any were saved."""
         with self._engine.connect() as connection:
             return current_settings(connection, self.user_id)
 
@@ -355,10 +370,12 @@ class AccountStore:
             return {row.account_id: row.blob for row in rows}
 
     def sends_since(self, since: datetime) -> SendCount:
+        """Count this user's sends after `since`."""
         with self._engine.connect() as connection:
             return _sends_since(connection, self.user_id, since)
 
     def record_send(self, at: datetime) -> None:
+        """Write down a send made at `at`, dropping this user's rows nothing can still need."""
         with self._engine.begin() as connection:
             _prune_sends(connection, self.user_id, at)
             connection.execute(insert(sends).values(user_id=self.user_id, at=at))

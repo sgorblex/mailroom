@@ -17,6 +17,8 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class Mailbox:
+    """An address with an optional display name."""
+
     address: str
     name: str | None = None
 
