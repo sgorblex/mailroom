@@ -31,9 +31,9 @@ In order. The reasons are in [`CONTEXT.md`](CONTEXT.md) — *Where the family is
         history, its tests among core's and the app's imports moved over; the helpers only
         scripts used gone. Its last PyPI release, 0.8.1, says where it went; its repository is
         archived, and its Woodpecker repository and PyPI trusted publisher are gone.
-  - [ ] **Core's public API:** ruff's `D1` rules on `mailroom_core`, with the missing docstrings
-        written; a test that the app imports only the subpackages' facades, and that `mail`
-        never imports `filters`.
+  - [x] **Core's public API** (2026-11-11): ruff's `D1` rules on core's source, with the missing
+        docstrings written; tests that the app imports only the subpackages' facades, that
+        `mail` never imports `filters` and that core never imports the app.
   - [ ] **One IMAP stack**, before folder management: the engine on core's connections, searches
         and moves; IDLE in `mailroom_core.mail`; the worker on the same connections as the API,
         and `mailroom.accounts.mail` gone. With it, a short way to connect from plain config, and

@@ -11,7 +11,7 @@ from mailroom import audit
 from mailroom.audit import WEB, AuditTrail, Entry, Origin, retention, write_records
 from mailroom.models import AuditRecord
 from mailroom.worker.runs import run_records
-from mailroom_core.mail.audit import AuditItem, AuditRecipients, subject_sha256
+from mailroom_core.mail import AuditItem, AuditRecipients, subject_sha256
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session, sessionmaker

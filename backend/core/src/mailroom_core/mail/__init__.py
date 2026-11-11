@@ -17,6 +17,7 @@ from mailroom_core.mail.audit import (
     audit_result,
     message_item,
     outgoing_item,
+    subject_sha256,
 )
 from mailroom_core.mail.compose import (
     DRAFT_HEADER,
@@ -292,6 +293,7 @@ __all__ = [
     "search_messages",
     "searchable_folders",
     "set_flags",
+    "subject_sha256",
     "thread_page",
     "thread_text",
     "threading",

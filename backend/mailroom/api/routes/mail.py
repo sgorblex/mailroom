@@ -47,7 +47,7 @@ if TYPE_CHECKING:
         Page,
         SavedDraft,
     )
-    from mailroom_core.render.message import Address, PartInfo
+    from mailroom_core.render import Address, PartInfo
 
 PAGE_SIZE: Final = 25
 MAX_PAGE_SIZE: Final = 50

@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session, sessionmaker
 
     from mailroom.accounts.service import Via
-    from mailroom_core.mail.audit import AuditItem
+    from mailroom_core.mail import AuditItem
 
 logger = logging.getLogger(__name__)
 

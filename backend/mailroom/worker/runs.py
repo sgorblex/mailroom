@@ -34,7 +34,7 @@ from mailroom.filters.spec import InvalidSpecError
 from mailroom.models import FilterRun, RuleSet
 from mailroom.worker.app import PROCRASTINATE_SCHEMA
 from mailroom_core.filters import MatchTimeoutError
-from mailroom_core.mail.audit import subject_sha256
+from mailroom_core.mail import subject_sha256
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
