@@ -5,9 +5,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from imap_thingy.core.spec import SpecNode
-    from imap_thingy.filters.actions import Action
-    from imap_thingy.filters.criteria import Criterion
+    from mailroom_core.filters.actions.action import Action
+    from mailroom_core.filters.criteria.criterion import Criterion
+    from mailroom_core.filters.spec.nodes import SpecNode
 
 
 class FilterBuilder:
@@ -39,7 +39,7 @@ class Filter:
         self.action = action
 
     def to_spec(self) -> SpecNode:
-        """Return ``{"criterion": ..., "action": ...}`` (see :mod:`imap_thingy.spec`).
+        """Return ``{"criterion": ..., "action": ...}`` (see :mod:`mailroom_core.filters.spec`).
 
         Raises:
             NotSerializableError: The criterion or the action has no data form.

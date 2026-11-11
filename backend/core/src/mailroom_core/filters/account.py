@@ -7,17 +7,18 @@ from typing import TYPE_CHECKING
 
 from imapclient import IMAPClient
 
-from imap_thingy.core import Message, Path
-from imap_thingy.core.spec import NotSerializableError
-from imap_thingy.filters.filter import Filter
-from imap_thingy.get_mail import fetch_mail, search_mail, summarize_mail
+from mailroom_core.filters._fetch import fetch_mail, search_mail, summarize_mail
+from mailroom_core.filters.filter import Filter
+from mailroom_core.filters.path import Path
+from mailroom_core.filters.spec.nodes import NotSerializableError
 
 if TYPE_CHECKING:
     import ssl
     from collections.abc import Iterable
 
-    from imap_thingy.core.spec import SpecNode
-    from imap_thingy.report import FilterReport, FolderReport
+    from mailroom_core.filters.message import Message
+    from mailroom_core.filters.report import FilterReport, FolderReport
+    from mailroom_core.filters.spec.nodes import SpecNode
 
 
 _UNSELECTABLE = frozenset({b"\\noselect", b"\\nonexistent"})
@@ -77,7 +78,7 @@ class Folder:
         all see the folder as it is, so a message an earlier filter would have
         moved can also be reported by a later one.
 
-        Returns a report (see :mod:`imap_thingy.report`): per filter its spec,
+        Returns a report (see :mod:`mailroom_core.filters.report`): per filter its spec,
         the matched messages (UID, From, Subject, Date, fetched as ENVELOPE)
         and whether its action was executed. An exception from the server or an
         action propagates; the report of the filters before it is then lost

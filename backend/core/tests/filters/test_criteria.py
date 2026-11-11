@@ -7,36 +7,33 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from imap_thingy.filters.criteria import (
-    Anything,
+from mailroom_core.filters.criteria.address import (
     BccContains,
     BccIs,
     BccMatches,
-    BodyContains,
-    BodyMatches,
     CcContains,
     CcIs,
     CcMatches,
-    Criterion,
     FromContains,
     FromIs,
     FromMatches,
     FromMatchesName,
+    ToContains,
+    ToIs,
+    ToMatches,
+)
+from mailroom_core.filters.criteria.body import BodyContains, BodyMatches
+from mailroom_core.filters.criteria.criterion import Anything, Criterion
+from mailroom_core.filters.criteria.date import OlderThan, OlderThanDays
+from mailroom_core.filters.criteria.flags import (
     IsAnswered,
     IsRead,
     IsStarred,
     IsUnanswered,
     IsUnread,
     IsUnstarred,
-    OlderThan,
-    OlderThanDays,
-    SubjectContains,
-    SubjectIs,
-    SubjectMatches,
-    ToContains,
-    ToIs,
-    ToMatches,
 )
+from mailroom_core.filters.criteria.subject import SubjectContains, SubjectIs, SubjectMatches
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -80,8 +77,9 @@ class TestCriteriaCombination:
 
     def test_if_then_returns_filter(self) -> None:
         """Test If(c).then(action) returns Filter."""
-        from imap_thingy.accounts import Path
-        from imap_thingy.filters import Filter, If, MoveTo
+        from mailroom_core.filters.actions.move import MoveTo
+        from mailroom_core.filters.filter import Filter, If
+        from mailroom_core.filters.path import Path
 
         c = FromIs("a@x.com")
         a = MoveTo(Path("Dest"))
@@ -176,7 +174,7 @@ class TestAddressCriteria:
 
     def test_to_matches_default_does_not_include_cc_bcc(self) -> None:
         """Test ToMatches default excludes CC and BCC."""
-        from imap_thingy.core import Message
+        from mailroom_core.filters.message import Message
 
         parsed = MagicMock()
         parsed.to = []
@@ -247,7 +245,7 @@ class TestSubjectCriteria:
         """SubjectIs.select matches only when parsed subject equals exactly."""
         from mailparser.core import MailParser
 
-        from imap_thingy.core import Message
+        from mailroom_core.filters.message import Message
 
         exact = "Exact Subject"
         p_match = MagicMock(spec=MailParser)
@@ -321,7 +319,7 @@ class TestDateCriteria:
         """OlderThanDays computes its cutoff each time it is used, not when built."""
         criterion = OlderThanDays(30)
         assert criterion.is_efficient is True
-        today_path = "imap_thingy.filters.criteria.date._today"
+        today_path = "mailroom_core.filters.criteria.date._today"
         with patch(today_path, return_value=date(2026, 3, 31)) as today:
             assert criterion.imap_query.build() == ("SENTBEFORE", "01-Mar-2026")
             assert (criterion & IsRead()).imap_query.build() == [
@@ -337,7 +335,7 @@ class TestDateCriteria:
 
     def test_older_than_days_zero_is_before_today(self) -> None:
         """OlderThanDays(0) selects mail sent before today."""
-        with patch("imap_thingy.filters.criteria.date._today", return_value=date(2026, 3, 31)):
+        with patch("mailroom_core.filters.criteria.date._today", return_value=date(2026, 3, 31)):
             assert OlderThanDays(0).imap_query.build() == ("SENTBEFORE", "31-Mar-2026")
 
     @pytest.mark.parametrize(
@@ -407,7 +405,7 @@ class TestCriteriaFiltering:
         """Test that Anything().select(messages) returns all messages."""
         from mailparser.core import MailParser
 
-        from imap_thingy.core import Message
+        from mailroom_core.filters.message import Message
 
         criterion = Anything()
         p1 = MagicMock(spec=MailParser)
@@ -433,7 +431,7 @@ class TestCriteriaFiltering:
         """BodyContains.select matches substring on normalized plain body."""
         from mailparser.core import MailParser
 
-        from imap_thingy.core import Message
+        from mailroom_core.filters.message import Message
 
         p = MagicMock(spec=MailParser)
         p.text_plain = ["hello invoice"]
@@ -446,7 +444,7 @@ class TestCriteriaFiltering:
         """When plain is empty, body text falls back to HTML parts."""
         from mailparser.core import MailParser
 
-        from imap_thingy.core import Message
+        from mailroom_core.filters.message import Message
 
         p = MagicMock(spec=MailParser)
         p.text_plain = []
@@ -458,7 +456,7 @@ class TestCriteriaFiltering:
         """BodyMatches uses re.search with DOTALL across newlines."""
         from mailparser.core import MailParser
 
-        from imap_thingy.core import Message
+        from mailroom_core.filters.message import Message
 
         p = MagicMock(spec=MailParser)
         p.text_plain = ["line1\nline2"]

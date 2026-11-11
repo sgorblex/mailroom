@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import TypedDict
 
-from imap_thingy.core.spec import SpecNode  # noqa: TC001 -- runtime, for get_type_hints()
+from mailroom_core.filters.spec.nodes import SpecNode  # noqa: TC001 -- runtime, for get_type_hints
 
 MessageSummary = TypedDict(
     "MessageSummary",

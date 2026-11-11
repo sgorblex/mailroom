@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from imap_thingy.accounts import Account
+from mailroom_core.filters.account import Account
 
 
 class MockEMailAccount(Account):

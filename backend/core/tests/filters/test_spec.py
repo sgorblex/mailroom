@@ -1,4 +1,4 @@
-"""Tests for rule specs: to_spec(), imap_thingy.spec loaders, schema, derived eq/repr."""
+"""Tests for rule specs: to_spec(), spec loaders, schema, derived eq/repr."""
 
 import json
 from datetime import date, datetime
@@ -8,28 +8,39 @@ from typing import Any, cast
 import jsonschema
 import pytest
 
-import imap_thingy.filters as filters_module
-from imap_thingy.core import Flag, Message, Path
-from imap_thingy.filters import (
-    Action,
-    Anything,
+import mailroom_core.filters as filters_module
+from mailroom_core.filters.actions.action import Action
+from mailroom_core.filters.actions.delete import Delete
+from mailroom_core.filters.actions.flags import (
+    MarkAsAnswered,
+    MarkAsRead,
+    MarkAsUnanswered,
+    MarkAsUnread,
+    Star,
+    Unstar,
+)
+from mailroom_core.filters.actions.move import MoveTo, Trash
+from mailroom_core.filters.actions.noop import NoOp
+from mailroom_core.filters.criteria.address import (
     BccContains,
     BccIs,
     BccMatches,
-    BodyContains,
-    BodyMatches,
     CcContains,
     CcIs,
     CcMatches,
-    Criterion,
-    Delete,
-    Filter,
     FromContains,
     FromIs,
     FromMatches,
     FromMatchesName,
+    ToContains,
+    ToIs,
+    ToMatches,
+)
+from mailroom_core.filters.criteria.body import BodyContains, BodyMatches
+from mailroom_core.filters.criteria.criterion import Anything, Criterion
+from mailroom_core.filters.criteria.date import OlderThan, OlderThanDays
+from mailroom_core.filters.criteria.flags import (
     HasFlag,
-    If,
     IsAnswered,
     IsRead,
     IsStarred,
@@ -37,25 +48,13 @@ from imap_thingy.filters import (
     IsUnread,
     IsUnstarred,
     LacksFlag,
-    MarkAsAnswered,
-    MarkAsRead,
-    MarkAsUnanswered,
-    MarkAsUnread,
-    MoveTo,
-    NoOp,
-    OlderThan,
-    OlderThanDays,
-    Star,
-    SubjectContains,
-    SubjectIs,
-    SubjectMatches,
-    ToContains,
-    ToIs,
-    ToMatches,
-    Trash,
-    Unstar,
 )
-from imap_thingy.spec import (
+from mailroom_core.filters.criteria.subject import SubjectContains, SubjectIs, SubjectMatches
+from mailroom_core.filters.filter import Filter, If
+from mailroom_core.filters.flags import Flag
+from mailroom_core.filters.message import Message
+from mailroom_core.filters.path import Path
+from mailroom_core.filters.spec import (
     NotSerializableError,
     SpecError,
     json_schema,
@@ -130,7 +129,7 @@ COMBINED_ACTIONS: list[Action] = [
 ]
 
 
-def _msg(**fields: Any) -> Message:  # noqa: ANN401
+def _msg(**fields: Any) -> Message:
     flags = fields.pop("flags", [])
     parsed = {
         "from_": [],
@@ -205,7 +204,7 @@ class MagicConn:
     def __init__(self) -> None:
         self.calls: list[tuple[str, tuple[Any, ...]]] = []
 
-    def __getattr__(self, name: str) -> Any:  # noqa: ANN401
+    def __getattr__(self, name: str) -> Any:
         return lambda *args: self.calls.append((name, args))
 
 
@@ -365,7 +364,7 @@ class TestEqualityAndRepr:
         assert repr(Filter(IsRead(), Star())) == "Filter(IsRead(), Star())"
 
     def test_custom_repr_falls_back(self) -> None:
-        assert repr(Criterion(lambda _: True)).startswith("<imap_thingy.")
+        assert repr(Criterion(lambda _: True)).startswith("<mailroom_core.filters.")
 
 
 class TestNotSerializable:

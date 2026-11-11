@@ -6,15 +6,15 @@ from typing import TYPE_CHECKING
 
 from imapclient.imapclient import TRASH
 
-from imap_thingy.core.spec import OPTIONAL_PATH, PATH, codecs
-from imap_thingy.filters.actions.action import Action
+from mailroom_core.filters.actions.action import Action
+from mailroom_core.filters.spec.nodes import OPTIONAL_PATH, PATH, codecs
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from imapclient import IMAPClient
 
-    from imap_thingy.core import Path
+    from mailroom_core.filters.path import Path
 
 
 class MoveTo(Action):

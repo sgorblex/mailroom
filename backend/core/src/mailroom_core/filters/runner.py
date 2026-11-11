@@ -8,16 +8,18 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import TYPE_CHECKING, Any
 
-from imap_thingy.accounts import Folder
-from imap_thingy.filters import Filter, IsStarred, Unstar
-from imap_thingy.idle_monitor import IdleHandler, IdleMonitor, on_new_mail
+from mailroom_core.filters.account import Folder
+from mailroom_core.filters.actions.flags import Unstar
+from mailroom_core.filters.criteria.flags import IsStarred
+from mailroom_core.filters.filter import Filter
+from mailroom_core.filters.idle import IdleHandler, IdleMonitor, on_new_mail
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from types import FrameType
 
-    from imap_thingy.idle_monitor import IdleResponse
-    from imap_thingy.report import FolderReport
+    from mailroom_core.filters.idle import IdleResponse
+    from mailroom_core.filters.report import FolderReport
 
 Rules = list[tuple[Folder, list[Filter]]]
 """Filters grouped by the folder they run on, in order."""

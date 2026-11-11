@@ -23,8 +23,10 @@ from collections.abc import Mapping
 from importlib import resources
 from typing import TYPE_CHECKING, Any, cast
 
-from imap_thingy.core.spec import NotSerializableError, SpecNode, SpecSerializable
-from imap_thingy.filters import Action, Criterion, Filter
+from mailroom_core.filters.actions.action import Action
+from mailroom_core.filters.criteria.criterion import Criterion
+from mailroom_core.filters.filter import Filter
+from mailroom_core.filters.spec.nodes import NotSerializableError, SpecNode, SpecSerializable
 
 if TYPE_CHECKING:
     from collections.abc import Callable

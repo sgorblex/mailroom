@@ -10,22 +10,28 @@ from unittest.mock import patch
 
 import pytest
 
-from imap_thingy.accounts import Folder, Path
-from imap_thingy.filters import Filter, FromIs, IsStarred, MarkAsRead, MoveTo, Unstar
-from imap_thingy.idle_monitor import IdleHandler, IdleMonitor
-from imap_thingy.runner import Rules, RunRulesError, monitor, run_rules, starred_only
+from mailroom_core.filters.account import Folder
+from mailroom_core.filters.actions.flags import MarkAsRead, Unstar
+from mailroom_core.filters.actions.move import MoveTo
+from mailroom_core.filters.criteria.address import FromIs
+from mailroom_core.filters.criteria.flags import IsStarred
+from mailroom_core.filters.filter import Filter
+from mailroom_core.filters.idle import IdleHandler, IdleMonitor
+from mailroom_core.filters.path import Path
+from mailroom_core.filters.runner import Rules, RunRulesError, monitor, run_rules, starred_only
 
 if TYPE_CHECKING:
-    from imap_thingy.idle_monitor import IdleResponse
-    from imap_thingy.report import FolderReport
     from tests.conftest import MockEMailAccount
+
+    from mailroom_core.filters.idle import IdleResponse
+    from mailroom_core.filters.report import FolderReport
 
 POLL = 0.05
 
 
 @pytest.fixture(autouse=True)
 def _fast_idle_poll() -> Iterator[None]:
-    with patch("imap_thingy.idle_monitor.IDLE_POLL", POLL):
+    with patch("mailroom_core.filters.idle.IDLE_POLL", POLL):
         yield
 
 

@@ -14,8 +14,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
     from types import FrameType
 
-    from imap_thingy.accounts import Folder
-    from imap_thingy.filters import Filter
+    from mailroom_core.filters.account import Folder
+    from mailroom_core.filters.filter import Filter
 
 IdleResponse = list[tuple[Any, ...]]
 IDLE_TIMEOUT = 25 * 60

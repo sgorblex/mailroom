@@ -3,22 +3,22 @@
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
-from imap_thingy.accounts import Path
-from imap_thingy.core import Flag
-from imap_thingy.filters import (
-    Action,
-    Delete,
+from mailroom_core.filters.actions.action import Action
+from mailroom_core.filters.actions.delete import Delete
+from mailroom_core.filters.actions.flags import (
+    AddFlag,
     MarkAsAnswered,
     MarkAsRead,
     MarkAsUnanswered,
     MarkAsUnread,
-    MoveTo,
-    NoOp,
+    RemoveFlag,
     Star,
-    Trash,
     Unstar,
 )
-from imap_thingy.filters.actions.flags import AddFlag, RemoveFlag
+from mailroom_core.filters.actions.move import MoveTo, Trash
+from mailroom_core.filters.actions.noop import NoOp
+from mailroom_core.filters.flags import Flag
+from mailroom_core.filters.path import Path
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -168,7 +168,7 @@ class TestActionExecution:
         mock_account.connect.return_value.move = MagicMock()
         action = Trash()
 
-        with patch("imap_thingy.filters.actions.move.TRASH", "TRASH"):
+        with patch("mailroom_core.filters.actions.move.TRASH", "TRASH"):
             action.execute(mock_account.connect.return_value, [1, 2, 3])
 
         mock_account.connect.return_value.find_special_folder.assert_called_once()

@@ -6,8 +6,8 @@ constructor arguments, bound with defaults applied, are recorded as the leaf nod
 JSON scalars go through the class's ``spec_codecs``. Combinators build ``{"and": [...]}``,
 ``{"or": [...]}``, ``{"not": node}`` and ``{"seq": [...]}`` from their operands' nodes.
 
-Loading lives in :mod:`imap_thingy.spec`; this module only records and renders nodes, so that
-the criterion and action base classes can use it without import cycles.
+Loading lives in :mod:`mailroom_core.filters.spec`; this module only records and renders nodes,
+so that the criterion and action base classes can use it without import cycles.
 """
 
 from __future__ import annotations
@@ -19,8 +19,8 @@ from datetime import date, datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple, Self
 
-from imap_thingy.core.flags import Flag
-from imap_thingy.core.path import Path
+from mailroom_core.filters.flags import Flag
+from mailroom_core.filters.path import Path
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -87,7 +87,7 @@ def _decode_date(value: object) -> date:
 
 
 PATH = Codec(_encode_path, _decode_path)
-"""Path ↔ list of segments (delimiter-agnostic, as :class:`~imap_thingy.core.Path`)."""
+"""Path ↔ list of segments (delimiter-agnostic, as :class:`~mailroom_core.filters.Path`)."""
 OPTIONAL_PATH = Codec(
     lambda v: None if v is None else _encode_path(v),
     lambda v: None if v is None else _decode_path(v),

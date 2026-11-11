@@ -13,10 +13,11 @@ from imapclient.response_parser import parse_message_list
 from imapclient.util import to_bytes
 from mailparser import parse_from_bytes
 
-from imap_thingy.core import IMAPQuery, Message
+from mailroom_core.filters.message import Message
 
 if TYPE_CHECKING:
-    from imap_thingy.report import MessageSummary
+    from mailroom_core.filters.query import IMAPQuery
+    from mailroom_core.filters.report import MessageSummary
 
 log = logging.getLogger(__name__)
 

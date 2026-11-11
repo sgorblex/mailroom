@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from imap_thingy.core.spec import SpecSerializable, combine, wrap_repr
+from mailroom_core.filters.spec.nodes import SpecSerializable, combine, wrap_repr
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -16,7 +16,7 @@ class Action(SpecSerializable):
     """Represents an action to perform on email messages.
 
     Built-in actions and their sequences serialise with ``to_spec()``
-    (see :mod:`imap_thingy.spec`).
+    (see :mod:`mailroom_core.filters.spec`).
     """
 
     _spec_registry: ClassVar[dict[str, type[Any]]] = {}

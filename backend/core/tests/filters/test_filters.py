@@ -3,21 +3,17 @@
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
-from imap_thingy.accounts import Account, Path
-from imap_thingy.filters import (
-    Anything,
-    Filter,
-    FromIs,
-    If,
-    MarkAsRead,
-    MoveTo,
-    SubjectIs,
-    SubjectMatches,
-    ToIs,
-)
+from mailroom_core.filters.actions.flags import MarkAsRead
+from mailroom_core.filters.actions.move import MoveTo
+from mailroom_core.filters.criteria.address import FromIs, ToIs
+from mailroom_core.filters.criteria.criterion import Anything
+from mailroom_core.filters.criteria.subject import SubjectIs, SubjectMatches
+from mailroom_core.filters.filter import Filter, If
+from mailroom_core.filters.path import Path
 
 if TYPE_CHECKING:
-    from tests.conftest import MockEMailAccount
+    from conftest import MockEMailAccount
+    from mailroom_core.filters.account import Account
 
 
 def _body_fetches(conn: MagicMock) -> int:
@@ -25,16 +21,9 @@ def _body_fetches(conn: MagicMock) -> int:
     return sum(1 for c in conn.fetch.call_args_list if c.args[1] == ["BODY.PEEK[]", "FLAGS"])
 
 
-def test_readme_imports_and_usage() -> None:
-    """README example imports and filter construction work."""
-    from imap_thingy.accounts import Path, accounts_from_json
-    from imap_thingy.filters import Filter, MoveTo
-
-    _ = Path("INBOX")
-    _ = accounts_from_json
-    f = Filter(
-        ToIs("members@boringassociation.org"), MarkAsRead() + MoveTo(Path("Boring Association"))
-    )
+def test_filter_construction() -> None:
+    """Both ways of building a filter give one with a criterion and an action."""
+    f = Filter(ToIs("members@club.example.org"), MarkAsRead() + MoveTo(Path("Club")))
     assert f.criterion is not None
     assert f.action is not None
     f2 = If(FromIs("x@y.edu") & SubjectMatches(r"List Digest")).then(
@@ -124,7 +113,7 @@ class TestFilter:
         """FromIs & SubjectIs fetches candidates and applies client-side exact subject match."""
         folder = mock_account / "INBOX"
         conn = mock_account.connect.return_value
-        sender = "ice.team@cignahealthcare.com"
+        sender = "team@insurer.example.com"
         exact_subject = "Important - Claims settlement Information"
         conn._raw_command_untagged = MagicMock(return_value=[b"1 2"])
         conn.fetch = MagicMock(

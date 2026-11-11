@@ -10,24 +10,20 @@ import pytest
 from imapclient.exceptions import IMAPClientError
 from imapclient.response_types import Address, Envelope
 
-from imap_thingy.accounts import Account, Folder, Path, accounts_from_json
-from imap_thingy.accounts.presets import GMailAccount
-from imap_thingy.core import Message
-from imap_thingy.filters import (
-    Action,
-    Anything,
-    Filter,
-    FromIs,
-    MarkAsRead,
-    MoveTo,
-    OlderThanDays,
-    SubjectMatches,
-)
-from imap_thingy.get_mail import summarize_mail
+from mailroom_core.filters._fetch import summarize_mail
+from mailroom_core.filters.account import Account, Folder
+from mailroom_core.filters.actions.action import Action
+from mailroom_core.filters.actions.flags import MarkAsRead
+from mailroom_core.filters.actions.move import MoveTo
+from mailroom_core.filters.criteria.address import FromIs
+from mailroom_core.filters.criteria.criterion import Anything
+from mailroom_core.filters.criteria.date import OlderThanDays
+from mailroom_core.filters.criteria.subject import SubjectMatches
+from mailroom_core.filters.filter import Filter
+from mailroom_core.filters.message import Message
+from mailroom_core.filters.path import Path
 
 if TYPE_CHECKING:
-    import pathlib
-
     from tests.conftest import MockEMailAccount
 
 
@@ -132,7 +128,7 @@ class TestFolderRun:
         conn._raw_command_untagged = MagicMock(return_value=[b""])
         f = Filter(OlderThanDays(30), MarkAsRead())
 
-        with patch("imap_thingy.filters.criteria.date._today") as today:
+        with patch("mailroom_core.filters.criteria.date._today") as today:
             today.return_value = date(2026, 3, 31)
             folder.run(f, dry_run=False)
             today.return_value = date(2026, 4, 30)
@@ -161,8 +157,8 @@ class TestFolderRun:
             return result
 
         with (
-            patch("imap_thingy.accounts.account.search_mail", side_effect=[[1, 2, 3], [2, 3, 4]]),
-            patch("imap_thingy.accounts.account.fetch_mail", side_effect=record_fetch),
+            patch("mailroom_core.filters.account.search_mail", side_effect=[[1, 2, 3], [2, 3, 4]]),
+            patch("mailroom_core.filters.account.fetch_mail", side_effect=record_fetch),
         ):
             f1 = Filter(SubjectMatches("one"), MoveTo(Path("D1")))
             f2 = Filter(SubjectMatches("four"), MoveTo(Path("D2")))
@@ -188,8 +184,8 @@ class TestFolderRun:
             return result
 
         with (
-            patch("imap_thingy.accounts.account.search_mail", return_value=[1, 2, 3]),
-            patch("imap_thingy.accounts.account.fetch_mail", side_effect=fetch_return_subset),
+            patch("mailroom_core.filters.account.search_mail", return_value=[1, 2, 3]),
+            patch("mailroom_core.filters.account.fetch_mail", side_effect=fetch_return_subset),
         ):
             f = Filter(SubjectMatches("match"), MoveTo(Path("Dest")))
             folder.run(f, dry_run=False)
@@ -217,10 +213,10 @@ class TestFolderRun:
 
         with (
             patch(
-                "imap_thingy.accounts.account.search_mail",
+                "mailroom_core.filters.account.search_mail",
                 side_effect=[[1, 2, 3], [2, 3], [2, 3, 4]],
             ),
-            patch("imap_thingy.accounts.account.fetch_mail", side_effect=record_fetch),
+            patch("mailroom_core.filters.account.fetch_mail", side_effect=record_fetch),
         ):
             f1 = Filter(SubjectMatches("one"), MoveTo(Path("D1")))
             f2 = Filter(Anything(), MarkAsRead())
@@ -398,7 +394,7 @@ class TestAccountConnection:
     def test_connect_passes_ssl_context(self) -> None:
         context = ssl.create_default_context()
         account = Account("a", "imap.example.com", 993, "u", "p", ssl_context=context)
-        with patch("imap_thingy.accounts.account.IMAPClient") as client:
+        with patch("mailroom_core.filters.account.IMAPClient") as client:
             conn = account.connect()
         client.assert_called_once_with(
             "imap.example.com", 993, ssl=True, ssl_context=context, timeout=None
@@ -407,14 +403,14 @@ class TestAccountConnection:
 
     def test_connect_defaults_to_no_ssl_context_or_timeout(self) -> None:
         account = Account("a", "imap.example.com", 993, "u", "p")
-        with patch("imap_thingy.accounts.account.IMAPClient") as client:
+        with patch("mailroom_core.filters.account.IMAPClient") as client:
             account.connect()
         assert client.call_args.kwargs["ssl_context"] is None
         assert client.call_args.kwargs["timeout"] is None
 
     def test_connect_passes_timeout(self) -> None:
         account = Account("a", "imap.example.com", 993, "u", "p", timeout=7.5)
-        with patch("imap_thingy.accounts.account.IMAPClient") as client:
+        with patch("mailroom_core.filters.account.IMAPClient") as client:
             account.connect()
         assert client.call_args.kwargs["timeout"] == 7.5
 
@@ -459,24 +455,3 @@ class TestAccountConnection:
         conn.list_folders.return_value = [((), b".", "INBOX")]
         conn.logout.side_effect = OSError("gone")
         assert [p.segments for p in mock_account.list_folders()] == [["INBOX"]]
-
-    def test_gmail_account_passes_ssl_context(self) -> None:
-        context = ssl.create_default_context()
-        assert GMailAccount("g", "u", "p", ssl_context=context).ssl_context is context
-
-    def test_gmail_account_passes_timeout(self) -> None:
-        assert GMailAccount("g", "u", "p", timeout=3).timeout == 3
-
-    def test_accounts_from_json_reads_timeout(self, tmp_path: pathlib.Path) -> None:
-        config = tmp_path / "accounts.json"
-        config.write_text(
-            json.dumps(
-                [
-                    {"name": "g", "type": "gmail", "username": "u", "password": "p", "timeout": 5},
-                    {"name": "c", "host": "h", "port": 993, "username": "u", "password": "p"},
-                ]
-            )
-        )
-        accounts = accounts_from_json(str(config))
-        assert accounts["g"].timeout == 5
-        assert accounts["c"].timeout is None

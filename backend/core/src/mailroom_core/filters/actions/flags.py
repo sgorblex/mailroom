@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from imap_thingy.core import Flag
-from imap_thingy.filters.actions.action import Action
+from mailroom_core.filters.actions.action import Action
+from mailroom_core.filters.flags import Flag
 
 
 class AddFlag(Action):

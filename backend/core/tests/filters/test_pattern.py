@@ -7,32 +7,35 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from imap_thingy.core import Message, Path
-from imap_thingy.filters import (
-    DEFAULT_MATCH_TIMEOUT,
+from mailroom_core.filters.actions.flags import MarkAsRead
+from mailroom_core.filters.actions.move import MoveTo
+from mailroom_core.filters.criteria.address import (
     BccMatches,
-    BodyMatches,
     CcMatches,
-    Criterion,
-    Filter,
     FromMatches,
     FromMatchesName,
-    MarkAsRead,
-    MatchTimeoutError,
-    MoveTo,
-    SubjectMatches,
     ToMatches,
+)
+from mailroom_core.filters.criteria.body import BodyMatches
+from mailroom_core.filters.criteria.subject import SubjectMatches
+from mailroom_core.filters.filter import Filter
+from mailroom_core.filters.message import Message
+from mailroom_core.filters.path import Path
+from mailroom_core.filters.pattern import (
+    DEFAULT_MATCH_TIMEOUT,
+    MatchTimeoutError,
     get_match_timeout,
     set_match_timeout,
 )
-from imap_thingy.runner import RunRulesError, run_rules
-from imap_thingy.spec import SpecError, load_filter
-from imap_thingy.utils import matches
+from mailroom_core.filters.runner import RunRulesError, run_rules
+from mailroom_core.filters.spec import SpecError, load_filter
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
     from tests.conftest import MockEMailAccount
+
+    from mailroom_core.filters.criteria.criterion import Criterion
 
 # Exponential backtracking: every split of the a's into "a" and "aa" is tried before failing.
 CATASTROPHIC = r"(a|aa)+$"
@@ -45,7 +48,7 @@ def _restore_timeout() -> Iterator[None]:
     set_match_timeout(DEFAULT_MATCH_TIMEOUT)
 
 
-def _msg(**fields: Any) -> Message:  # noqa: ANN401
+def _msg(**fields: Any) -> Message:
     parsed = {
         "from_": [],
         "to": [],
@@ -85,11 +88,6 @@ class TestMatchTimeout:
     def test_is_a_timeout_error(self) -> None:
         assert issubclass(MatchTimeoutError, TimeoutError)
 
-    def test_utils_matches_is_timed(self) -> None:
-        set_match_timeout(0.05)
-        with pytest.raises(MatchTimeoutError):
-            matches(CATASTROPHIC, VICTIM)
-
     def test_none_disables_and_non_positive_is_rejected(self) -> None:
         set_match_timeout(None)
         assert get_match_timeout() is None
@@ -111,7 +109,7 @@ class TestMatchTimeout:
 
         with (
             patch(
-                "imap_thingy.accounts.account.fetch_mail",
+                "mailroom_core.filters.account.fetch_mail",
                 return_value={1: _msg(subject=VICTIM)},
             ),
             pytest.raises(MatchTimeoutError),
@@ -129,7 +127,7 @@ class TestMatchTimeout:
 
         with (
             patch(
-                "imap_thingy.accounts.account.fetch_mail",
+                "mailroom_core.filters.account.fetch_mail",
                 return_value={1: _msg(subject=VICTIM)},
             ),
             pytest.raises(RunRulesError) as exc_info,

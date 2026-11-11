@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from imap_thingy.filters.actions.action import Action
+from mailroom_core.filters.actions.action import Action
 
 if TYPE_CHECKING:
     from collections.abc import Iterable

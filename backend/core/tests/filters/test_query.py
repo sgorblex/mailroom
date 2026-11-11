@@ -4,8 +4,12 @@ from unittest.mock import MagicMock
 
 from imapclient.imapclient import _normalise_search_criteria
 
-from imap_thingy.core import IMAPQuery, Q
-from imap_thingy.get_mail import SearchCriteria, _normalise_search_criteria_utf8, search_mail
+from mailroom_core.filters._fetch import (
+    SearchCriteria,
+    _normalise_search_criteria_utf8,
+    search_mail,
+)
+from mailroom_core.filters.query import IMAPQuery, Q
 
 
 class TestIMAPQueryBuildStructure:

@@ -1,10 +1,14 @@
 """Date-based email filtering criteria."""
 
 from datetime import date, datetime, timedelta
+from typing import TYPE_CHECKING
 
-from imap_thingy.core import IMAPQuery, Message, Q
-from imap_thingy.core.spec import DATE, as_date, codecs
-from imap_thingy.filters.criteria.criterion import Criterion
+from mailroom_core.filters.criteria.criterion import Criterion
+from mailroom_core.filters.query import IMAPQuery, Q
+from mailroom_core.filters.spec.nodes import DATE, as_date, codecs
+
+if TYPE_CHECKING:
+    from mailroom_core.filters.message import Message
 
 
 class OlderThan(Criterion):

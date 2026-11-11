@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
-from imap_thingy.core import Flag, Message, Q
-from imap_thingy.core.spec import FLAG, codecs
-from imap_thingy.filters.criteria.criterion import Criterion
+from typing import TYPE_CHECKING
+
+from mailroom_core.filters.criteria.criterion import Criterion
+from mailroom_core.filters.flags import Flag
+from mailroom_core.filters.query import Q
+from mailroom_core.filters.spec.nodes import FLAG, codecs
+
+if TYPE_CHECKING:
+    from mailroom_core.filters.message import Message
 
 
 class HasFlag(Criterion):

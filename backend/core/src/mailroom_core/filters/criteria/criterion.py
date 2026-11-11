@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from imap_thingy.core import All, IMAPQuery, Message
-from imap_thingy.core.spec import SpecSerializable, combine, wrap_repr
+from mailroom_core.filters.query import All, IMAPQuery
+from mailroom_core.filters.spec.nodes import SpecSerializable, combine, wrap_repr
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from mailroom_core.filters.message import Message
 
 
 class Criterion(SpecSerializable):
@@ -16,7 +18,7 @@ class Criterion(SpecSerializable):
 
     Has imap_query for the server-side prefilter and select() for the client-side filter.
     Built-in criteria and their combinations serialise with ``to_spec()``
-    (see :mod:`imap_thingy.spec`).
+    (see :mod:`mailroom_core.filters.spec`).
     """
 
     _spec_registry: ClassVar[dict[str, type[Any]]] = {}

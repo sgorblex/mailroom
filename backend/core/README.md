@@ -1,7 +1,7 @@
 # mailroom-core
 
-Mailroom's mail layer: accounts and their sealed secrets, IMAP and SMTP, the send gate,
-rendering and audit, for the Mailroom app. It lives in the app's backend as a uv workspace
+Mailroom's mail layer and filter engine: accounts and their sealed secrets, IMAP and SMTP, the
+send gate, rendering, audit and filters, for the Mailroom app. It lives in the app's backend as a uv workspace
 package and never imports the app. It came from the
 [mailroom-mcp](https://github.com/sgorblex/mailroom-mcp) repository (`packages/core`) with its
 history; 0.1.3 was its last release on PyPI, and it is no longer published.
