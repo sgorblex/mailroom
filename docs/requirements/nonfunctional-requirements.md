@@ -12,7 +12,7 @@ Engineering baseline for Mailroom. Product scope: [`../REQUIREMENTS.md`](../REQU
 | Database | PostgreSQL 18 |
 | Tests | pytest (+ xdist, one database per worker cloned from the migrated `mailroom_test`), Vitest (`node` and `jsdom` projects) |
 | Containers | Podman, `mailroom-api` and `mailroom-web` images; Quadlet for deploy |
-| Component family | mailroom-core, the mail layer, as a uv workspace member in `backend/core` (its own tests run from there: `mise run test-core`); imap-thingy from PyPI; mailroom-mcp, retired, never was a dependency ([`../CONTEXT.md`](../CONTEXT.md)) |
+| Component family | mailroom-core, the mail layer, as a uv workspace member in `backend/core` (its own tests run from there: `mise run test-core`); the filter engine inside it (`mailroom_core.filters`, imap-thingy until 2026-11-11); mailroom-mcp, retired, never was a dependency ([`../CONTEXT.md`](../CONTEXT.md)) |
 | MCP server | the `mcp` SDK's low-level server, Streamable HTTP session manager and bearer-auth middleware, bounded to one minor because the app uses them directly ([`mcp.md`](mcp.md)) |
 
 Tool pins: `mise.toml` (dev), the digest-pinned `.woodpecker/*.yaml` step images (CI), the
@@ -317,7 +317,7 @@ bounded to one minor because the server relies on its handlers.
   25 MB attachment cap, every field at fault named at once; a refusal is 400 `invalid_limits`
   with `issues`, a save at the same moment 409 `settings_changed` or 503 `settings_busy`. A stored attachment limit above the cap reads as
   the cap. Logged as `limits_changed`.
-- **IMAP** goes through imap-thingy, implicit TLS only (`starttls_unsupported` otherwise), verified
+- **IMAP** goes through the filter engine, implicit TLS only (`starttls_unsupported` otherwise), verified
   against the system CAs plus `MAILROOM_MAIL_CA_FILE` (the dev mail CA in dev), with a 20 s
   timeout on connecting and on every read. A failure is reported by kind (`login_failed`,
   `unreachable`, `timeout`, `tls_failed`, `imap_error`, `password_missing`) with the server's
@@ -449,22 +449,22 @@ What they do and the route list: [`filters.md`](filters.md). How:
 
 - **Storage** (schema `app`): `rule_set` (by `user_id` and the account's id in schema `core`),
   `filter` (`position` unique per rule set, deferred so a reorder swaps freely; `spec` as
-  imap-thingy's `load_filter(spec).to_spec()` gives it back), `filter_run`. Removing an account
+  the filter engine's `load_filter(spec).to_spec()` gives it back), `filter_run`. Removing an account
   removes its rule sets, and a rule set its filters and runs; removing a user removes all of
   theirs, with their accounts. Each rule
   set keeps its newest 100 runs, and every run still queued or in progress. A report is stored
   without NUL characters (`jsonb` refuses them; a header may decode to one).
-- **The folder picker's** `GET /accounts/{id}/folders` lists through imap-thingy.
-- **Refusals** are 400 `{"detail": {"code", "message"}}`: `invalid_spec` (imap-thingy's
+- **The folder picker's** `GET /accounts/{id}/folders` lists through the filter engine.
+- **Refusals** are 400 `{"detail": {"code", "message"}}`: `invalid_spec` (the filter engine's
   `SpecError` text, or the JSON Schema's or the regular expression's complaint, compiled with
-  `regex` as imap-thingy matches it), `invalid_rule_set` (an `interval_minutes` exactly when
+  `regex` as the filter engine matches it), `invalid_rule_set` (an `interval_minutes` exactly when
   `scheduled`), `invalid_order` (not every filter once), `too_many_filters` (a rule set holds 100
   at most), `run_filters_off`, `rule_set_disabled`; 409 `run_pending`.
-- **Regular expressions** are matched by imap-thingy with the `regex` package, each match bounded
+- **Regular expressions** are matched by the filter engine with the `regex` package, each match bounded
   by its match timeout (`DEFAULT_MATCH_TIMEOUT`, 1 s per message, process-wide): a pattern that
   backtracks past it raises `MatchTimeoutError`, which fails the run with `match_timeout`.
 - **Dry run** (`POST /rule-sets/{id}/dry-run`), synchronous: the enabled filters, wrapped for
-  starred only, run through imap-thingy's `Folder.run(dry_run=True)` (read-only select) on the
+  starred only, run through the filter engine's `Folder.run(dry_run=True)` (read-only select) on the
   folder's newest 500 messages, for about 30 s (then the connection is closed: 504
   `dry_run_timeout`). A pattern out of time is 400 `match_timeout`. The folder path is joined with
   the delimiter the server reports. Mailbox failures answer as a folder listing does (by
@@ -483,8 +483,8 @@ What they do and the route list: [`filters.md`](filters.md). How:
   a disabled rule set:
   - `run_rule_set` checks both again when it starts (else the run's error is `run_filters_off` or
     `rule_set_disabled`), commits `started_at`, runs the enabled filters (wrapped for starred only)
-    through imap-thingy's `Folder.run_into` with no transaction open, and records `finished_at`,
-    the report and the error (the filters finished so far kept). A pattern out of imap-thingy's
+    through the filter engine's `Folder.run_into` with no transaction open, and records `finished_at`,
+    the report and the error (the filters finished so far kept). A pattern out of the filter engine's
     match timeout is `match_timeout`, logged by its exception's type only (its text quotes the
     pattern); anything unexpected is `run_failed`, its exception's type name only.
     A run removed meanwhile (with its rule set or account) is left alone. A run whose job is
@@ -493,7 +493,7 @@ What they do and the route list: [`filters.md`](filters.md). How:
   - `dispatch_scheduled`, a procrastinate periodic task every minute, queues each runnable
     `scheduled` rule set whose last scheduled run was queued at least `interval_minutes` ago
     (30 s early, for the minute's start), or never.
-  - The **IDLE supervisor**, a thread of the worker process, keeps one imap-thingy `monitor` (on
+  - The **IDLE supervisor**, a thread of the worker process, keeps one filter-engine `monitor` (on
     its own thread, stoppable) per (user, account, folder) of the runnable `new_mail` rule sets.
     Every 30 s it starts and stops watches to match the rule sets and Run filters, restarts one
     whose account's server, login or password changed, and starts again one that died (its first
@@ -507,7 +507,7 @@ What they do and the route list: [`filters.md`](filters.md). How:
     twice, so it exits.
   - SIGTERM or SIGINT: procrastinate gives the jobs in progress 60 s, then the watches are stopped
     (each within the 20 s IMAP timeout).
-- **A run's `result`** is imap-thingy's folder report, each filter's entry with its `filter_id` and
+- **A run's `result`** is the filter engine's folder report, each filter's entry with its `filter_id` and
   the spec as stored; a dry run's adds `limited_to_newest` (null when the whole folder was looked
   at). A real run keeps the first 200 matched messages per filter, with `matched_total` when there
   were more; when it fails part way, `result` holds the filters finished before the failure and

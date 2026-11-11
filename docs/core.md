@@ -1,8 +1,8 @@
 # mailroom-core
 
-The mail layer under the app's web client and MCP mail tools: accounts and their sealed secrets,
-IMAP and SMTP, the send gate, rendering and the audit items, in `backend/core` (package
-`mailroom-core`, module `mailroom_core`). It never imports `mailroom`
+The mail layer under the app's web client and MCP mail tools, and the filter engine under its
+filters: accounts and their sealed secrets, IMAP and SMTP, the send gate, rendering, the audit
+items and filters, in `backend/core` (package `mailroom-core`, module `mailroom_core`). It never imports `mailroom`
 ([`CONTEXT.md`](CONTEXT.md) — *The component family*). Its tests run on their own:
 `mise run test-core`, or `mise run test-core-mail` with throwaway Dovecot and Mailpits.
 
@@ -10,7 +10,8 @@ It started as the Python port of mailroom-mcp's TypeScript server, released as m
 to 0.1.3 on PyPI, with the same behaviour, so that the server and the app could share it. Where it
 differs from that server, the differences are deliberate, and each section below lists them. Core
 has no tool layer: it holds the logic (refs, pages, rendering, the envelope, the gate) and the text
-the tools answer with, and the app's MCP writes thin tools over it.
+the tools answer with, and the app's MCP writes thin tools over it. The filter engine
+(*Filters*) was imap-thingy, a library on PyPI, and joined with its history on 2026-11-11.
 
 ## Stack
 
@@ -26,6 +27,7 @@ the tools answer with, and the app's MCP writes thin tools over it.
 | Crypto | `cryptography`: AES-256-GCM, HKDF. |
 | Validation | pydantic v2, for the config and the settings; TOML through `tomllib`. |
 | Store | Postgres through SQLAlchemy 2 (Core, synchronous) on psycopg 3, and Alembic. |
+| Filters | `mail-parser` for the messages the engine fetches, until it runs on `mail`; `regex` for user patterns, which can time out. |
 
 ## Modules
 
@@ -37,10 +39,11 @@ the tools answer with, and the app's MCP writes thin tools over it.
 | `render` | Bodies to text, quotes, the untrusted-content envelope, `safe_html` |
 | `mail` | Connections (`mail.imap`), refs, read, organize, compose, drafts, the tools' text, audit items |
 | `send` | SMTP and the send gate |
+| `filters` | The filter engine: criteria, actions, rules as data (specs), runs, the runner and IDLE monitor, reports |
 | `testing` | A pytest plugin (no-network guard, store and mail fixtures) the app's tests load too |
 
-imap-thingy's filter engine joins as `filters`, and then runs on `mail`
-([`CONTEXT.md`](CONTEXT.md) — *Where the family is heading*).
+The filter engine has an IMAP connection of its own until it runs on `mail`
+([`TODO.md`](TODO.md) — *One IMAP stack*).
 
 **Public API.** What each subpackage exports in `__all__`; everything else is how it is done.
 Rules, each kept by a check once the TODO's *Core's public API* lands:
@@ -279,6 +282,47 @@ sending, and `settle_draft` and `mark_original` do what follows a sent draft or 
   found again in Sent, and would audit as nothing.
 - A stored draft may reach 1.5 times `attachment_max_mb` plus 2 MiB, not `attachment_max_mb`, or a
   draft with attachments near the cap, which base64 grows by 37%, could be saved and never sent.
+
+## Filters
+
+The filter engine, `mailroom_core.filters`: rules that sort mail on an IMAP server, built in Python
+or loaded from their data form. Its tests are in `tests/filters`.
+
+- **A filter** is a criterion and an action: `Filter(criterion, action)` or
+  `If(criterion).then(action)`.
+- **A criterion** has two halves that must agree: an IMAP SEARCH query (`IMAPQuery`, run by the
+  server) and a predicate on the fetched `Message`. `is_efficient` says the query alone is exact,
+  so nothing is fetched; a looser query (`SUBJECT` matches substrings, pattern criteria search
+  wider) is only a prefilter, and the predicate decides. `&`, `|` and `~` combine both halves,
+  efficient only if every operand is. `IMAPQuery.Deferred` builds its query at search time, for
+  criteria relative to the run (`OlderThanDays`).
+- **User patterns** compile when the criterion is built (a bad one is a `SpecError` on load) and
+  match with `regex`, never `re`, under the process-wide match timeout (1 s for each match by
+  default; past it, `MatchTimeoutError`).
+- **An action** acts on a set of UIDs, given the account's folder delimiter; `+` or `.then()`
+  chains actions. `delete` removes for good, which a filter may do because the user wrote it, saw
+  its dry run and enabled it ([`requirements/filters.md`](requirements/filters.md)).
+- **Specs** are the rules as data, the form the app stores (`spec`): leaves
+  `{"type", "args"}`, the combinators `and`, `or`, `not`, `seq` for actions, and a filter
+  `{"criterion", "action"}`. `load_filter` rebuilds an equal filter, `to_spec()` gives it back and
+  `json_schema()` describes the format. A new criterion or action needs its `spec_type`, an entry
+  in `spec/schema.json`, its name in the facade's `__all__` and a case in
+  `tests/filters/test_spec.py` (whose coverage test, over that `__all__`, fails otherwise). **A change to an existing spec ships with a migration of the stored filters**, in
+  the same pull request.
+- **A run** (`Folder.run`, `run_into`) takes one connection for all the filters given, in order,
+  each seeing what the earlier ones did: search, fetch only what the query cannot decide (cached
+  for the run, dropped once acted on), act, or in a dry run only report, with the folder selected
+  read-only. Its `FolderReport` gives per filter what it matched (from one `ENVELOPE` fetch) and
+  did; `run_into` fills it as filters finish, so a failure keeps what was done.
+- **Searches** go out as raw `SEARCH CHARSET UTF-8`, past `imapclient.search()`, which drops the
+  charset on nested criteria and breaks non-ASCII values.
+- **The runner**: `Rules` pairs folders with their filters; `run_rules` runs them in turn, or one
+  thread per folder with every failure raised together (`RunRulesError`); `starred_only` limits
+  rules to starred messages, unstarring them first; `monitor` runs a folder's filters on new mail
+  through IDLE until stopped. The watcher has a read-only connection of its own and waits in short
+  slices, so `stop()` only sets an event and the watcher's thread ends IDLE and logs out.
+- **Connections** are the engine's own `Account` (implicit TLS, the host's SSL context and
+  timeout), until it runs on `mail`'s. Its loggers sit under `mailroom_core.filters`.
 
 ## Safety
 

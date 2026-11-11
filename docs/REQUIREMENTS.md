@@ -107,12 +107,12 @@ the index and live updates; tier 3 items arrive one at a time.
 
 **Maturity: Done** — as specified in [`requirements/filters.md`](requirements/filters.md).
 
-- Per account, **rule sets** of **imap-thingy** filters, one folder each, stored through the
-  library's own rule serialisation, triggered on new mail, on a schedule or by hand, optionally
+- Per account, **rule sets** of filters, one folder each, stored through the filter engine's own
+  rule serialisation, triggered on new mail, on a schedule or by hand, optionally
   for starred mail only.
 - **Dry run** against real mail before enabling: which messages each filter would match and what it
   would do.
-- The worker runs them through **imap-thingy**'s runner, only for accounts whose user turned
+- The worker runs them through the filter engine's runner, only for accounts whose user turned
   **Run filters** on (off by default), one run at a time per account; each run is kept in
   the rule set's history.
 

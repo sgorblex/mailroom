@@ -19,7 +19,8 @@
 | **Trash** | Moving messages to the account's folder with role `trash`. Never a permanent delete: trashing does not delete or expunge mail. The one expunge is of a draft Mailroom wrote ([`requirements/mail-client.md`](requirements/mail-client.md#the-own-draft-exception)). |
 | **Message view** | A message as the client shows it: headers, the text body, attachments, and the HTML view when the message has an HTML body. |
 | **Rule set** | An ordered list of filters for one account folder, with one trigger. [`requirements/filters.md`](requirements/filters.md). |
-| **Filter** | An imap-thingy rule (criteria plus actions) that sorts mail on the server, stored as its imap-thingy spec and run by imap-thingy's runner in the app's worker. |
+| **Filter** | A rule (criteria plus actions) that sorts mail on the server, stored as its spec and run by the filter engine in the app's worker. |
+| **Filter engine** | `mailroom_core.filters`: criteria, actions, rules as data (specs), the runner and the IDLE monitor. It was imap-thingy, a library of its own on PyPI, until 2026-11-11; [`core.md`](core.md) — *Filters*. Not the app's `mailroom.filters`, the feature built on it. |
 | **Trigger** | What starts a rule set's run: `new_mail` (IMAP IDLE), `scheduled` (every so many minutes) or `manual` (only *Run now*). |
 | **Run filters** | The per-account switch, off by default, without which the worker runs no rule set of that account. |
 | **Dry run** | Evaluating a rule set against real mail and reporting what each filter would match and do, changing nothing. |

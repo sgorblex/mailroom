@@ -11,4 +11,4 @@ Exploratory, not scoped, not scheduled, no maturity. Promote to [`TODO.md`](TODO
 - **Filters over several messages at once**, rather than each message alone: duplicates first.
   Within one folder is the easy case (the same `Message-ID`, or the same sender, date and
   body); across folders, and across accounts (the same mail received by several mailboxes), is
-  the hard one. imap-thingy's filters look at one message at a time today.
+  the hard one. Mailroom's filters look at one message at a time today.

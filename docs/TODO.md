@@ -6,12 +6,12 @@ exploratory work. Once an item is done, remove it.
 
 ## Across the family
 
-Mailroom is built on projects with their own repositories and checklists. As of 2026-11-10:
+Mailroom is built on projects with their own repositories and checklists. As of 2026-11-11:
 
 - **mailroom-mcp** (`../mailroom-mcp`, GitHub `sgorblex/mailroom-mcp`): retired on 2026-11-10 and
   archived; its Python port's core lives in `backend/core`.
-- **imap-thingy** (`../imap-thingy`, GitHub `sgorblex/imap-thingy`): 0.8.0 on PyPI, the app's
-  pin, is its last feature release; it folds into mailroom-core next (*Family roadmap*).
+- **imap-thingy** (`../imap-thingy`, GitHub `sgorblex/imap-thingy`): folded into mailroom-core
+  as `mailroom_core.filters` on 2026-11-11; its last feature release on PyPI is 0.8.0.
 
 ## Family roadmap
 
@@ -26,12 +26,12 @@ In order. The reasons are in [`CONTEXT.md`](CONTEXT.md) — *Where the family is
       the repository public since 2026-11-10 (the earlier one stays private as
       `mailroom-archive`, with its pull requests).
 - [ ] **One library under one app**, in this order:
-  - [ ] **Fold imap-thingy into mailroom-core** as `mailroom_core.filters`, with its history, its
-        tests among core's, and the app's imports moved over. The helpers only scripts used go:
-        `setup_logging` (already deprecated), `accounts_from_json`, `GMailAccount`,
-        `utils.matches`; `get_mail` becomes private. A last PyPI release, 0.8.1, says it is now
-        part of Mailroom's mailroom-core and not on PyPI for now; then its repository is archived
-        with a pointer, and its Woodpecker repository and PyPI trusted publisher removed.
+  - [ ] **Fold imap-thingy into mailroom-core:**
+    - [x] as `mailroom_core.filters`, with its history, its tests among core's and the app's
+          imports moved over; the helpers only scripts used gone (2026-11-11);
+    - [ ] a last PyPI release, 0.8.1, saying it is now part of Mailroom's mailroom-core and not on
+          PyPI for now; then its repository archived with a pointer, and its Woodpecker
+          repository and PyPI trusted publisher removed.
   - [ ] **Core's public API:** ruff's `D1` rules on `mailroom_core`, with the missing docstrings
         written; a test that the app imports only the subpackages' facades, and that `mail`
         never imports `filters`.

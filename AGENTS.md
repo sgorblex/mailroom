@@ -9,7 +9,7 @@ This file is the **shared** guide for AI-assisted work in this repository. **Cla
 **Cheap path:** **[`docs/README.md`](docs/README.md)** (which doc to open next), then only the **REQUIREMENTS** section you are changing plus any linked split file. Locate with **`grep -n`**, then read that range.
 
 1. Match behaviour to **`docs/REQUIREMENTS.md`**. **Maturity** (**Planned** / **Current** / **Partial** / **Done**) tracks what we are building; clarify with the user if a section is **Current** but intentionally not implemented yet.
-2. Respect the **component boundaries** in **`docs/CONTEXT.md`**: dependencies only point **downwards**. **mailroom-core** (`backend/core`, a workspace package) never imports `mailroom`; imap-thingy and mailroom-mcp are **standalone projects** the app never makes depend on it. A change that needs a lower component to know about the app is a design question for the user, not an import.
+2. Respect the **component boundaries** in **`docs/CONTEXT.md`**: dependencies only point **downwards**. **mailroom-core** (`backend/core`, a workspace package, the filter engine `mailroom_core.filters` included) never imports `mailroom`, and inside it `mail` never imports `filters`. A change that needs a lower component to know about the app is a design question for the user, not an import.
 3. For **stack, security, migrations, logging, or testing**, read **`docs/requirements/nonfunctional-requirements.md`** and keep it aligned with what you implement. **Mail content is untrusted input** — the security section there is not optional reading for anything that displays or acts on mail.
 4. For **CI/CD, SemVer, changelog, or release automation**, read **`docs/requirements/ci-cd.md`**.
 5. For **container images or Quadlet**, read **`docs/deploy.md`** and **`deploy/quadlet/README.md`**. Image names are **`mailroom-api`** and **`mailroom-web`** — never **`mailroom`**, which is the MCP server's production image.
@@ -23,7 +23,7 @@ This file is the **shared** guide for AI-assisted work in this repository. **Cla
 
 ## Mail invariants
 
-They hold across mailroom-core and its callers (the web client, the MCP mail tools); filters run through imap-thingy instead. Each is specified in **[`docs/core.md`](docs/core.md)**; this is the checklist, not the spec.
+They hold across mailroom-core and its callers (the web client, the MCP mail tools); filters run on the filter engine's own IMAP connection for now. Each is specified in **[`docs/core.md`](docs/core.md)**; this is the checklist, not the spec.
 
 - **One send gate.** Every send, reply, forward and draft send goes through `admit`, with `by` saying whether the user or an agent acts; nothing else reaches SMTP.
 - **`from` resolution:** an explicit `from` must be one of the account's identities; else the original's To, Cc, then delivery headers; else the default. The MCP tools always echo the choice.
@@ -71,8 +71,9 @@ Update documentation in the **same change**. Prefer **links** over duplicating a
 | --- | --- |
 | User-visible behaviour or agreed product scope | **`docs/REQUIREMENTS.md`** (maturity, notes, open questions), or a linked **`docs/requirements/<kebab-topic>.md`** for a new feature area |
 | What Mailroom is for, the component family, or a non-goal | **`docs/CONTEXT.md`** |
-| A dependency on imap-thingy or mailroom-mcp, or what mailroom-core offers the app | **`docs/CONTEXT.md`** (component family) and **`docs/requirements/nonfunctional-requirements.md`** (stack) |
+| A dependency of the app, or what mailroom-core offers it | **`docs/CONTEXT.md`** (component family) and **`docs/requirements/nonfunctional-requirements.md`** (stack) |
 | mailroom-core's behaviour or design (`backend/core`) | **`docs/core.md`**; **Mail invariants** above if one changes |
+| A criterion or action of the filter engine | Its `spec_type`, `spec/schema.json`, the facade's `__all__` and a `tests/filters/test_spec.py` case (**`docs/core.md`** — *Filters*); **`web/src/test/filter-schema.json`** written out again |
 | Security engineering, stack, migrations, logging, testing | **`docs/requirements/nonfunctional-requirements.md`** |
 | CI pipelines, versioning, changelog, release automation | **`docs/requirements/ci-cd.md`** |
 | **Containerfile**s, **`.dockerignore`**, **`deploy/quadlet/`** | **`docs/deploy.md`**, **`deploy/quadlet/README.md`** |
