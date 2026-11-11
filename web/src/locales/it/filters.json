@@ -120,7 +120,7 @@
       "tree": "Condizioni e azioni",
       "json": "JSON",
       "jsonLabel": "Specifica del filtro (JSON)",
-      "jsonHint": "La specifica di imap-thingy: {\"criterion\": …, \"action\": …}. Il server la controlla al salvataggio.",
+      "jsonHint": "La specifica del filtro: {\"criterion\": …, \"action\": …}. Il server la controlla al salvataggio.",
       "jsonNotObject": "La specifica deve essere un oggetto JSON.",
       "jsonInvalid": "Non è JSON valido: {{message}}",
       "treeCannotShow": "Questa specifica non si può mostrare come condizioni e azioni: {{message}}",

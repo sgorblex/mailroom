@@ -1,4 +1,4 @@
-"""Reaching an account's mailbox over IMAP, through imap-thingy.
+"""Reaching an account's mailbox over IMAP, through the filter engine.
 
 Every connection verifies TLS: against the system CAs, plus the one ``MAILROOM_MAIL_CA_FILE``
 names (the dev mail backends' CA, ``dev/.state/certs/ca.pem``). Failures are reported by kind,
@@ -15,10 +15,10 @@ import threading
 from contextlib import suppress
 from typing import TYPE_CHECKING, Final
 
-from imap_thingy.accounts import Account
 from imapclient.exceptions import LoginError
 
 from mailroom.accounts.store import account_password, load_accounts
+from mailroom_core.filters import Account
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -64,8 +64,8 @@ class MailFailure(Exception):  # noqa: N818 -- the outcome of a mail check, not 
 
 
 def imap_account(account: AccountConfig, password: str, ssl_context: ssl.SSLContext) -> Account:
-    """imap-thingy's view of ``account``. Raises ``MailFailure`` for an IMAP endpoint it cannot
-    reach (STARTTLS: imap-thingy connects with implicit TLS only)."""
+    """The filter engine's view of ``account``. Raises ``MailFailure`` for an IMAP endpoint it
+    cannot reach (STARTTLS: the engine connects with implicit TLS only)."""
     if account.imap.tls != "implicit":
         msg = "Only implicit TLS (IMAPS, usually port 993) is supported for IMAP."
         raise MailFailure("starttls_unsupported", msg)
@@ -86,7 +86,7 @@ def mailbox_account(
     ssl_context: ssl.SSLContext,
     account_id: str,
 ) -> Account:
-    """imap-thingy's account for the store user's ``account_id``, its password opened. Raises
+    """The filter engine's account for the store user's ``account_id``, its password opened. Raises
     ``AccountNotFound``, or ``MailFailure`` (``secrets_key_missing``, ``password_missing``,
     ``starttls_unsupported``) before any connection."""
     account = load_accounts(store).account(account_id)
@@ -134,7 +134,7 @@ def list_folders(account: Account, *, seconds: float | None = None) -> list[list
     if seconds is None:
         return _list_folders(account)
     deadline = _Deadline(account.connect, seconds)
-    # imap-thingy's Account.list_folders opens its own connection through self.connect and has
+    # The filter engine's Account.list_folders opens its own connection through self.connect and has
     # no other hook, so the instance's connect goes through the deadline while it lists.
     account.connect = deadline.connect  # type: ignore[method-assign]
     deadline.start()

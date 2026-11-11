@@ -1,5 +1,5 @@
 /**
- * The editor's form of an imap-thingy filter spec, and the way back.
+ * The editor's form of a filter spec, and the way back.
  *
  * A spec is `{"criterion": …, "action": …}`. A criterion is a leaf `{"type", "args"}` or a group:
  * `{"and": […]}`, `{"or": […]}`, `{"not": …}`. An action is a leaf or `{"seq": […]}`, which the

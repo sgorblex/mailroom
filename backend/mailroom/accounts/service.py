@@ -25,12 +25,12 @@ from mailroom_core.store import RevisionConflict, SettingsBusy
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from imap_thingy.accounts import Account
     from sqlalchemy.orm import Session
 
     from mailroom.context import AppContext
     from mailroom_core.config import AccountConfig, Limits
     from mailroom_core.crypto import SecretsSubkey
+    from mailroom_core.filters import Account
     from mailroom_core.store import AccountStore, Json
 
 logger = logging.getLogger(__name__)
@@ -249,7 +249,7 @@ def remove_account(
 
 
 def imap_account(ctx: AppContext, user_id: int, account_id: str) -> Account:
-    """imap-thingy's account for one of the user's, password opened. Refuses ``not_found`` and
+    """The filter engine's account for one of the user's, password opened. Refuses ``not_found`` and
     without the secrets key; raises ``MailFailure`` when there is no usable password or IMAP
     endpoint."""
     key = require_subkey(ctx.subkey)

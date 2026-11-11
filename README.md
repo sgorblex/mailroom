@@ -56,7 +56,6 @@ Defaults live in `mise.toml`'s `[env]`. To change one, set it in a gitignored `m
 | Task | Does |
 | --- | --- |
 | `setup` | Install Python and Node dependencies |
-| `deps-local` / `deps-pinned` | Swap imap-thingy for a local editable checkout / back to the pinned one |
 | `dev` | `dev-db` + `dev-api` + `dev-worker` + `dev-web` together |
 | `dev-db` / `dev-db-down` | Start (foreground) / stop the dev Postgres; data stays |
 | `dev-api` / `dev-web` | API with reload (migrates at startup) / Vite |

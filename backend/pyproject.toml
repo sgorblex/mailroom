@@ -9,12 +9,10 @@ dependencies = [
   "alembic>=1.15",
   "argon2-cffi>=25.1",
   "fastapi>=0.115",
-  # `mise run deps-local` swaps imap-thingy for a local editable checkout (scripts/deps.sh).
-  "imap-thingy>=0.8.0",
   "imapclient>=3.1.0",
   "jsonschema>=4.23",
-  # Mail layer: accounts, sealed secrets, IMAP/SMTP, the send gate, rendering. A workspace member
-  # in core/, never released on its own.
+  # Mail layer: accounts, sealed secrets, IMAP/SMTP, the send gate, rendering, the filter engine.
+  # A workspace member in core/, never released on its own.
   "mailroom-core",
   # The worker's job queue. Bounded to one minor: see nonfunctional-requirements.md (procrastinate).
   "procrastinate>=3.10,<3.11",
@@ -22,7 +20,7 @@ dependencies = [
   "python-dotenv>=1.0",
   # Starlette's parser for the one multipart route, POST /api/v1/mail/drafts.
   "python-multipart>=0.0.20",
-  # The engine imap-thingy matches user patterns with (it can time a match out): the API checks
+  # What the filter engine matches user patterns with (it can time a match out): the API checks
   # them with it too.
   "regex>=2024.11.6",
   "sqlalchemy>=2.0",

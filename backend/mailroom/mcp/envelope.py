@@ -52,11 +52,12 @@ def untrusted(content: str) -> str:
 
 
 _MAIL_FIELDS: Final = ("from", "subject")
-"""What a run's matched message carries from the mail itself (``MessageSummary``)."""
+"""What a run's matched message carries from the mail itself (the filter engine's
+``MessageSummary``)."""
 
 
 def wrapped_result(result: dict[str, Any] | None) -> dict[str, Any] | None:
-    """A run's ``result`` (imap-thingy's folder report) with each matched message's sender and
+    """A run's ``result`` (the filter engine's folder report) with each matched message's sender and
     subject in the envelope; the rest as it is."""
     if result is None:
         return None

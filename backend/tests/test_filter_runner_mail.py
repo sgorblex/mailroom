@@ -117,7 +117,7 @@ def test_a_watched_folder_queues_runs_that_move_new_mail(
     account: str,
     mailboxes: Mailboxes,
 ) -> None:
-    """imap-thingy's monitor on the folder: once on connecting, then on new mail. The runs are
+    """The filter engine's monitor on the folder: once on connecting, then on new mail. The runs are
     queued and carried out here, as the supervisor and the worker's jobs would."""
     set_run_filters(user_client, account, on=True)
     rule_set_id = add_rule_set(user_client, account, trigger="new_mail")

@@ -1,6 +1,7 @@
 /**
- * The criteria and actions a filter can use, read from imap-thingy's JSON Schema of a filter spec
- * (`GET /filters/schema`), so a new imap-thingy leaf shows up in the editor without a web change.
+ * The criteria and actions a filter can use, read from the filter engine's JSON Schema of a filter
+ * spec (`GET /filters/schema`), so a criterion or action the engine adds shows up in the editor
+ * without a web change.
  */
 
 /**
@@ -16,7 +17,7 @@ export type ArgField =
   | { kind: 'folder'; optional: boolean }
   | { kind: 'unknown' }
 
-/** imap-thingy's folder path, by the name its schema defines it under. */
+/** The filter engine's folder path, by the name its schema defines it under. */
 const FOLDER_REF = '#/$defs/path'
 
 /** The strings an `enum` or a `const` allows; `undefined` when it has neither. */
@@ -65,7 +66,7 @@ export function readVocabulary(schema: unknown): Vocabulary {
   const defs = schema['$defs']
   const resolve = (node: unknown): unknown => {
     let current = node
-    // A chain of references ends: imap-thingy's schema has no reference cycle without an object.
+    // A chain of references ends: the engine's schema has no reference cycle without an object.
     for (let depth = 0; depth < 16 && isObject(current) && typeof current['$ref'] === 'string'; depth++) {
       const name = /^#\/\$defs\/(.+)$/.exec(current['$ref'])?.[1]
       current = name === undefined ? undefined : defs[name]

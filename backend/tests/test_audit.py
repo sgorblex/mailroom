@@ -174,7 +174,7 @@ def test_a_run_counts_what_its_report_did_not_list() -> None:
 
 
 def test_a_run_that_failed_partway_records_the_filter_it_failed_on() -> None:
-    # imap-thingy reports the filters that finished; the one that raised is not in the report.
+    # The filter engine reports the filters that finished; the one that raised is not in the report.
     entries = run_records(
         _report(matched=_matched(1)),
         {3: "Shop", 4: "Bank", 5: "Later"},

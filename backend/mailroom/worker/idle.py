@@ -7,7 +7,7 @@ which folders to watch — the runnable ``new_mail`` rule sets'
 and starts, stops or restarts one watch per (user, account, folder) to match: a watch whose
 account changed (server, login, password) is restarted, and one that died (its mailbox
 unreachable) is started again, backing off up to ``MAX_RETRY_SECONDS`` while it keeps failing.
-Each watch is imap-thingy's stoppable ``monitor`` on its own thread. New mail does not run the
+Each watch is the filter engine's stoppable ``monitor`` on its own thread. New mail does not run the
 filters on the IDLE connection: it queues ``run_rule_set`` jobs, which run one at a time per
 mailbox and record their reports like any other run. So does every (re)connection of a watch, for
 the mail that arrived while the folder was not watched.
@@ -22,25 +22,21 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, Protocol
 
-from imap_thingy.runner import monitor
-
 from mailroom.accounts.mail import MailFailure, mail_failure
 from mailroom.accounts.store import AccountNotFound
 from mailroom.filters.imap import RuleSetFolder
 from mailroom.models import RuleSet
 from mailroom.worker.tasks import queue_new_mail_runs, runnable_rule_sets
+from mailroom_core.filters import monitor
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping, Sequence
 
-    from imap_thingy.accounts import Account
-    from imap_thingy.filters import Filter
-    from imap_thingy.report import FolderReport
-    from imap_thingy.runner import Rules
     from imapclient import IMAPClient
     from sqlalchemy.orm import Session, sessionmaker
 
     from mailroom.worker.context import Mailboxes
+    from mailroom_core.filters import Account, Filter, FolderReport, Rules
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +111,7 @@ def watch_changes(
 
 
 class _NewMailFolder(RuleSetFolder):
-    """The watched folder as imap-thingy's ``monitor`` takes it. ``monitor`` runs a folder's
+    """The watched folder as the filter engine's ``monitor`` takes it. ``monitor`` runs a folder's
     filters on new mail: here that run is ``on_new_mail``, which queues the real runs."""
 
     def __init__(
@@ -142,8 +138,8 @@ class _NewMailFolder(RuleSetFolder):
 
 
 class MonitorWatch:
-    """imap-thingy's ``monitor`` on one folder, on its own thread, until stopped. The thread ends
-    early when the first connection fails; the supervisor then starts the watch again."""
+    """The filter engine's ``monitor`` on one folder, on its own thread, until stopped. The thread
+    ends early when the first connection fails; the supervisor then starts the watch again."""
 
     def __init__(
         self, folder: WatchedFolder, account: Account, on_new_mail: Callable[[], None]

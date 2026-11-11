@@ -7,13 +7,12 @@ from email.message import EmailMessage
 from typing import TYPE_CHECKING, Any
 
 import pytest
-from imap_thingy.filters import get_match_timeout, set_match_timeout
-from imap_thingy.spec import load_filter
 from imapclient import IMAPClient
 
 from mailroom.accounts.mail import imap_account, mail_ssl_context
 from mailroom.filters.imap import RuleSetFolder
 from mailroom.filters.runs import DryRunTimeout, dry_run
+from mailroom_core.filters import get_match_timeout, load_filter, set_match_timeout
 from tests.test_api_accounts import new_account
 from tests.test_api_filters import SHOP_SPEC, add_filter, rule_set
 
@@ -226,7 +225,7 @@ def quick_match_timeout() -> Any:
 def test_a_pattern_out_of_time_fails_the_dry_run(
     user_client: TestClient, mailbox: Mailbox, account: str
 ) -> None:
-    """imap-thingy times the match out; the run records the kind, not the pattern."""
+    """The filter engine times the match out; the run records the kind, not the pattern."""
     mailbox.append("INBOX", (SHOP, "a" * 40 + "!", False))
     rule_set_id = user_client.post(f"/api/v1/accounts/{account}/rule-sets", json=rule_set()).json()[
         "id"

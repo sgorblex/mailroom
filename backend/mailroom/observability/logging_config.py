@@ -80,7 +80,7 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, ensure_ascii=False)
 
 
-_LIBRARY_LOGGERS = {"procrastinate": logging.INFO, "imap_thingy": logging.WARNING}
+_LIBRARY_LOGGERS = {"procrastinate": logging.INFO, "mailroom_core.filters": logging.WARNING}
 """Libraries whose records go through Mailroom's handler too (not Python's last-resort one), each
 from at least its level."""
 

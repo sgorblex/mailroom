@@ -23,12 +23,12 @@ from tests.conftest import PASSWORD
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
-    from imap_thingy.accounts import Account
     from sqlalchemy.engine import Engine
     from sqlalchemy.orm import Session
     from starlette.testclient import TestClient
 
     from mailroom_core.crypto import SecretsSubkey
+    from mailroom_core.filters import Account
     from mailroom_core.testing import ImapTestServer
 
 

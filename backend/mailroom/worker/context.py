@@ -15,16 +15,16 @@ from mailroom.database import create_database_engine, create_session_factory, ge
 if TYPE_CHECKING:
     import ssl
 
-    from imap_thingy.accounts import Account
     from sqlalchemy.engine import Engine
     from sqlalchemy.orm import Session, sessionmaker
 
     from mailroom_core.crypto import SecretsSubkey
+    from mailroom_core.filters import Account
 
 
 @dataclass(frozen=True, slots=True)
 class Mailboxes:
-    """The users' accounts as imap-thingy reaches them."""
+    """The users' accounts as the filter engine reaches them."""
 
     engine: Engine
     """The app's database, where mailroom-core keeps the accounts (schema ``core``)."""
