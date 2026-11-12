@@ -39,7 +39,9 @@ Operator environment, `MAILROOM_SECRETS_KEY` included:
 [`../deploy/quadlet/mailroom-api.env.example`](../deploy/quadlet/mailroom-api.env.example).
 `MAILROOM_FEATURES` chooses what the instance runs ([`REQUIREMENTS.md`](REQUIREMENTS.md) —
 *Editions*); unset, everything. Only filters need the worker: without them it exits 0 at start, so
-its unit may be left out, and it restarts only on failure. After adding `filters`, start the worker
+its unit may be left out, and it restarts only on failure. A worker that loses its database (a
+PostgreSQL restart) exits 1, so `Restart=on-failure` starts it again; only a stop it was asked for
+(SIGTERM, SIGINT) exits 0. After adding `filters`, start the worker
 unit (`systemctl start mailroom-worker`), or install it if it was left out.
 
 ## MCP server and OAuth
