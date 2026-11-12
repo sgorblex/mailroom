@@ -2,8 +2,16 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from mailroom_core.filters.actions.action import Action
 from mailroom_core.filters.flags import Flag
+from mailroom_core.mail import store_flags
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from mailroom_core.filters.selected import Selected
 
 
 class AddFlag(Action):
@@ -11,11 +19,12 @@ class AddFlag(Action):
 
     def __init__(self, flag: Flag, name: str | None = None) -> None:
         """Build an action that adds the given flag; name defaults to "add <flag>"."""
-        flagname = flag.value.flagname
-        super().__init__(
-            lambda conn, msgids, *, delimiter="/": conn.add_flags(msgids, [flagname]),
-            name=name if name is not None else f"add {flag.name}",
-        )
+        flagname = flag.value.flagname.decode()
+
+        def func(selected: Selected, uids: Sequence[int]) -> None:
+            store_flags(selected.context, uids, add=[flagname])
+
+        super().__init__(func, name=name if name is not None else f"add {flag.name}")
 
 
 class RemoveFlag(Action):
@@ -23,11 +32,12 @@ class RemoveFlag(Action):
 
     def __init__(self, flag: Flag, name: str | None = None) -> None:
         """Build an action that removes the given flag; name defaults to "remove <flag>"."""
-        flagname = flag.value.flagname
-        super().__init__(
-            lambda conn, msgids, *, delimiter="/": conn.remove_flags(msgids, [flagname]),
-            name=name if name is not None else f"remove {flag.name}",
-        )
+        flagname = flag.value.flagname.decode()
+
+        def func(selected: Selected, uids: Sequence[int]) -> None:
+            store_flags(selected.context, uids, remove=[flagname])
+
+        super().__init__(func, name=name if name is not None else f"remove {flag.name}")
 
 
 class MarkAsRead(AddFlag):

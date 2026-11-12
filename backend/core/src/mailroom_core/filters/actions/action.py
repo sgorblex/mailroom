@@ -1,4 +1,4 @@
-"""Base action type: callable over (conn, msgids), composable with + and .then()."""
+"""Base action type: a function over (selected folder, UIDs), composable with + and .then()."""
 
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from mailroom_core.filters.spec.nodes import SpecSerializable, combine, wrap_repr
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable, Sequence
 
-    from imapclient import IMAPClient
+    from mailroom_core.filters.selected import Selected
 
 
 class Action(SpecSerializable):
@@ -21,8 +21,10 @@ class Action(SpecSerializable):
 
     _spec_registry: ClassVar[dict[str, type[Any]]] = {}
 
-    def __init__(self, func: Callable[..., None], name: str | None = None) -> None:
-        """Create an action from a function (conn, msgids, *, delimiter) -> None.
+    def __init__(
+        self, func: Callable[[Selected, Sequence[int]], None], name: str | None = None
+    ) -> None:
+        """Create an action from a function (selected, uids) -> None.
 
         name defaults to the class name.
         """
@@ -30,25 +32,14 @@ class Action(SpecSerializable):
         self.name = name if name is not None else type(self).__name__
         self._spec = None
 
-    def execute(
-        self,
-        conn: IMAPClient,
-        msgids: Iterable[int],
-        *,
-        delimiter: str = "/",
-    ) -> None:
-        """Run this action; delimiter is forwarded from the account folder the filter runs on."""
-        self.func(conn, msgids, delimiter=delimiter)
+    def execute(self, selected: Selected, uids: Sequence[int]) -> None:
+        """Run this action on the messages `uids` of the selected folder."""
+        self.func(selected, uids)
 
     def __add__(self, other: Action) -> Action:
-        def newfunc(
-            conn: IMAPClient,
-            msg: Iterable[int],
-            *,
-            delimiter: str = "/",
-        ) -> None:
-            self.func(conn, msg, delimiter=delimiter)
-            other.func(conn, msg, delimiter=delimiter)
+        def newfunc(selected: Selected, uids: Sequence[int]) -> None:
+            self.func(selected, uids)
+            other.func(selected, uids)
 
         result = Action(newfunc, self.name + "; " + other.name)
         result._spec = combine("seq", self, other)

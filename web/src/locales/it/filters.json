@@ -261,7 +261,8 @@
     "invalidRuleSet": "Una regola programmata richiede un intervallo in minuti; gli altri avvii non ne prevedono.",
     "accountNotFound": "L'account di questa regola non c'è più.",
     "interrupted": "L'esecuzione è stata interrotta e non si è conclusa.",
-    "runFailed": "L'esecuzione si è fermata per un errore imprevisto ({{message}})."
+    "runFailed": "L'esecuzione si è fermata per un errore imprevisto ({{message}}).",
+    "copiedNotRemoved": "Uno spostamento ha copiato alcuni messaggi ma potrebbe non averli rimossi da questa cartella, quindi la regola è stata disattivata: controlla entrambe le cartelle prima di riattivarla."
   },
   "filterPhrases": {
     "anything": "qualsiasi messaggio",

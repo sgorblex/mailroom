@@ -6,7 +6,7 @@ exploratory work. Once an item is done, remove it.
 
 ## Across the family
 
-Mailroom is built on projects with their own repositories and checklists. As of 2026-11-11:
+Mailroom is built on projects with their own repositories and checklists. As of 2026-11-12:
 
 - **mailroom-mcp** (`../mailroom-mcp`, GitHub `sgorblex/mailroom-mcp`): retired on 2026-11-10 and
   archived; its Python port's core lives in `backend/core`.
@@ -34,10 +34,14 @@ In order. The reasons are in [`CONTEXT.md`](CONTEXT.md) — *Where the family is
   - [x] **Core's public API** (2026-11-11): ruff's `D1` rules on core's source, with the missing
         docstrings written; tests that the app imports only the subpackages' facades, that
         `mail` never imports `filters` and that core never imports the app.
-  - [ ] **One IMAP stack**, before folder management: the engine on core's connections, searches
-        and moves; IDLE in `mailroom_core.mail`; the worker on the same connections as the API,
-        and `mailroom.accounts.mail` gone. With it, a short way to connect from plain config, and
-        a test that runs filters with no app or database.
+  - [x] **One IMAP stack** (2026-11-12): the engine on core's connections, its searches, moves
+        and flags core's, the client's move checks included; IDLE in `mailroom_core.mail`; the
+        worker's watches and runs and the API's dry run on the app's mail pools, and
+        `mailroom.accounts.mail` gone, so STARTTLS accounts filter too. Connections from plain
+        config (`connections_from`), and `core/tests/filters/test_engine_mail.py` running
+        filters with no app or database.
+  - [ ] **Engine parsing on core's MIME**: the engine's criteria read the messages they fetch
+        through core's MIME handling instead of mail-parser, which then leaves the dependencies.
   - [ ] **Tidy-ups**, whenever convenient: mailroom-mcp's leftovers out of core
         (`STANDALONE_USER`, docs that name it); `mailroom/mail/service.py` and
         `mailroom/api/routes/mail.py` split by concern, as core's `mail` is.

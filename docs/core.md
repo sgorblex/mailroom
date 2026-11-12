@@ -27,7 +27,7 @@ the tools answer with, and the app's MCP writes thin tools over it. The filter e
 | Crypto | `cryptography`: AES-256-GCM, HKDF. |
 | Validation | pydantic v2, for the config and the settings; TOML through `tomllib`. |
 | Store | Postgres through SQLAlchemy 2 (Core, synchronous) on psycopg 3, and Alembic. |
-| Filters | `mail-parser` for the messages the engine fetches, until it runs on `mail`; `regex` for user patterns, which can time out. |
+| Filters | `mail-parser` parses the sources the engine fetches through `mail` for its predicates, until they read messages through core ([`TODO.md`](TODO.md) — *Engine parsing on core's MIME*); `regex` for user patterns, which can time out. |
 
 ## Modules
 
@@ -42,12 +42,8 @@ the tools answer with, and the app's MCP writes thin tools over it. The filter e
 | `filters` | The filter engine: criteria, actions, rules as data (specs), runs, the runner and IDLE monitor, reports |
 | `testing` | A pytest plugin (no-network guard, store and mail fixtures) the app's tests load too |
 
-The filter engine has an IMAP connection of its own until it runs on `mail`
-([`TODO.md`](TODO.md) — *One IMAP stack*).
-
 **Public API.** What each subpackage exports in `__all__`; everything else is how it is done.
-Rules, the first three kept by checks and the fourth by a test that comes with the TODO's
-*One IMAP stack*:
+Rules, the first three kept by checks and the fourth by a test:
 
 - every public name has a docstring, in the style the code already uses (ruff's `D1` rules on
   `core/src`; magic methods excepted, since their operator says what they do);
@@ -56,7 +52,9 @@ Rules, the first three kept by checks and the fourth by a test that comes with t
 - inside core, `filters` may use `mail`, never the other way round, and nothing imports `mailroom`
   (`core/tests/test_boundaries.py`);
 - core works with no app, database or server for filtering: accounts from plain config, rules,
-  runs, an IDLE monitor and their reports;
+  runs, an IDLE monitor and their reports (`core/tests/filters/test_engine_mail.py`, which builds
+  everything from `connections_from` and a settings dict; `test_boundaries.py` keeps `filters`
+  and `mail` from importing `store`);
 - no semver while core is unpublished: a breaking change fixes its callers in the same pull
   request and is marked `!` with scope `core`.
 
@@ -189,7 +187,7 @@ They are built on `mailroom_core.mail.selected`, as `reply.mark_answered` and
 (`move_target`). Whatever acts inside a session of its own uses them, folders included,
 since a second connection of the account would wait for the one it holds. `store_flags` sets only
 `\Seen`, `\Flagged` and `\Answered`; `delete_uids` needs UIDPLUS and serves only a draft
-Mailroom wrote (*Safety*).
+Mailroom wrote (*Safety*) and a filter's `delete`. The filter engine runs on them too (*Filters*).
 
 imapclient's `move()` needs MOVE, so without it core issues UID COPY, STORE `\Deleted` and UID
 EXPUNGE of exactly those UIDs itself, which only UIDPLUS allows; a server with neither is refused.
@@ -330,9 +328,15 @@ or loaded from their data form. Its tests are in `tests/filters`.
 - **User patterns** compile when the criterion is built (a bad one is a `SpecError` on load) and
   match with `regex`, never `re`, under the process-wide match timeout (1 s for each match by
   default; past it, `MatchTimeoutError`).
-- **An action** acts on a set of UIDs, given the account's folder delimiter; `+` or `.then()`
-  chains actions. `delete` removes for good, which a filter may do because the user wrote it, saw
-  its dry run and enabled it ([`requirements/filters.md`](requirements/filters.md)).
+- **An action** acts on a set of UIDs of the selected folder (`Selected`: the run's
+  `MailboxContext` and the server's delimiter); `+` or `.then()` chains actions. They are core's
+  operations (*Organize*): `move_to` and `trash` are the client's moves (`move_target`, then
+  `move_uids`, with its COPY and `UID EXPUNGE` fallback under UIDPLUS), so a folder that is not
+  there is `mailbox_missing` and Drafts or Sent are refused, while a move into the folder being
+  filtered (Trash from Trash too) is skipped; `trash` without a folder takes the special-use
+  Trash (`unsupported` without one). Flag actions are `store_flags`. `delete` removes for good
+  (`delete_uids`, UIDPLUS only), which a filter may do because the user wrote it, saw its dry run
+  and enabled it ([`requirements/filters.md`](requirements/filters.md)).
 - **Specs** are the rules as data, the form the app stores (`spec`): leaves
   `{"type", "args"}`, the combinators `and`, `or`, `not`, `seq` for actions, and a filter
   `{"criterion", "action"}`. `load_filter` rebuilds an equal filter, `to_spec()` gives it back and
@@ -340,20 +344,32 @@ or loaded from their data form. Its tests are in `tests/filters`.
   in `spec/schema.json`, its name in the facade's `__all__` and a case in
   `tests/filters/test_spec.py` (whose coverage test, over that `__all__`, fails otherwise). **A change to an existing spec ships with a migration of the stored filters**, in
   the same pull request.
-- **A run** (`Folder.run`, `run_into`) takes one connection for all the filters given, in order,
-  each seeing what the earlier ones did: search, fetch only what the query cannot decide (cached
-  for the run, dropped once acted on), act, or in a dry run only report, with the folder selected
-  read-only. Its `FolderReport` gives per filter what it matched (from one `ENVELOPE` fetch) and
-  did; `run_into` fills it as filters finish, so a failure keeps what was done.
-- **Searches** go out as raw `SEARCH CHARSET UTF-8`, past `imapclient.search()`, which drops the
-  charset on nested criteria and breaks non-ASCII values.
+- **A run** (`Folder.run`, `run_into`) is one `with_mailbox` session for all the filters given,
+  in order, each seeing what the earlier ones did: search, fetch only what the query cannot decide
+  (`fetch_sources`, which never sets `\Seen`, parsed by mail-parser; cached for the run, dropped
+  once acted on), act, or in a dry run only report, with the folder selected read-only (a dry run
+  that lost its connection is retried once, its report started afresh). The folder's name is
+  joined with the server's delimiter, asked before the session. Every search ANDs `UNDELETED`, so
+  an original a move copied but could not expunge never matches again. `newest=n` (at least 1)
+  looks the folder's newest `n` messages up once (`exists-n+1:exists`), ANDs their UID range into
+  every search, so an earlier filter's expunge does not shift it, and sets the report's
+  `limited_to_newest`. Its `FolderReport` gives per filter what it matched (from one `ENVELOPE`
+  fetch) and did; `run_into` fills it as filters finish, so a failure keeps what was done. Mail
+  failures are `MailError`s; anything else (a pattern's `MatchTimeoutError`, a bug) leaves the
+  session as itself, never as a `server_error`.
+- **Searches**: `IMAPQuery.criteria()` writes a query as core's criteria, an AND flat, an AND
+  inside OR or NOT as a group, and `search_uids` sends them (`CHARSET UTF-8` only for non-ASCII
+  text; a line break in a value is `invalid_argument`).
 - **The runner**: `Rules` pairs folders with their filters; `run_rules` runs them in turn, or one
   thread per folder with every failure raised together (`RunRulesError`); `starred_only` limits
-  rules to starred messages, unstarring them first; `monitor` runs a folder's filters on new mail
-  through IDLE until stopped. The watcher has a read-only connection of its own and waits in short
-  slices, so `stop()` only sets an event and the watcher's thread ends IDLE and logs out.
-- **Connections** are the engine's own `Account` (implicit TLS, the host's SSL context and
-  timeout), until it runs on `mail`'s. Its loggers sit under `mailroom_core.filters`.
+  rules to starred messages, unstarring them first; `monitor` keeps an `IdleWatch` per folder
+  until stopped and runs the folder's filters when it connects and on new mail, on a pooled
+  connection, never on the watch's own; a folder whose name cannot be looked up is logged by
+  code and skipped, the others watched. A run holds one of its account's connections throughout,
+  so folders of one account run in parallel only as far as the connections' `pool_size`.
+- **Connections** are the host's `MailConnections`: `Account(connections, account_id)` names one
+  of their accounts, so the engine has the client's TLS (STARTTLS too), logins, pool, retries and
+  `interrupt`. Its loggers sit under `mailroom_core.filters`.
 
 ## Safety
 
@@ -372,7 +388,9 @@ share of the defence:
 - **No destructive deletes:** trash moves to `\Trash`. Nothing is expunged but what a move has
   copied elsewhere on a server without MOVE (*Organize*), and a draft Mailroom wrote itself
   (`X-Mailroom-Draft`) when it is replaced or deleted, always by `UID EXPUNGE` of exactly those UIDs
-  (UIDPLUS required); a draft written anywhere else is moved to Trash.
+  (UIDPLUS required); a draft written anywhere else is moved to Trash. A filter's `delete`, the
+  user's own rule, is the one exception, and expunges exactly its UIDs too: without UIDPLUS it is
+  `unsupported`.
 - **Audit items:** each write and send, refused ones included, yields items (which the app does
   not keep yet: [`TODO.md`](TODO.md)) naming the account,
   folder, UID, Message-ID, sender and recipients in clear, and the subject only as a SHA-256.

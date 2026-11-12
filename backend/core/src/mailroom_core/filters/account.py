@@ -1,31 +1,62 @@
-"""Email account management and IMAP connection handling."""
+"""An account's folders as the filter engine runs on them, over mailroom-core's connections.
+
+A run is one `MailConnections.with_mailbox` session: its folder selected once (read-only for a
+dry run), every filter searching, fetching and acting through `mailroom_core.mail` on that one
+connection. The connections are the host's (`connections_from` for plain config, the app's pool):
+pooled, retried, interruptible, with STARTTLS and AUTH PLAIN.
+"""
 
 from __future__ import annotations
 
+import imaplib
 import logging
 from typing import TYPE_CHECKING
 
-from imapclient import IMAPClient
+from mailparser import parse_from_bytes
 
-from mailroom_core.filters._fetch import fetch_mail, search_mail, summarize_mail
 from mailroom_core.filters.filter import Filter
+from mailroom_core.filters.message import Message
 from mailroom_core.filters.path import Path
+from mailroom_core.filters.pattern import MatchTimeoutError
+from mailroom_core.filters.report import summaries
+from mailroom_core.filters.selected import Selected
 from mailroom_core.filters.spec.nodes import NotSerializableError
+from mailroom_core.mail import MailError, fetch_envelopes, fetch_sources, search_uids
 
 if TYPE_CHECKING:
-    import ssl
     from collections.abc import Iterable
 
-    from mailroom_core.filters.message import Message
-    from mailroom_core.filters.report import FilterReport, FolderReport
+    from mailroom_core.filters.report import FilterReport, FolderReport, MessageSummary
     from mailroom_core.filters.spec.nodes import SpecNode
+    from mailroom_core.mail import MailboxContext, MailConnections
+
+_SAMPLE = 10
+"""UIDs a log line lists at most."""
+_UNDELETED = "UNDELETED"
+"""ANDed into every search: a message marked ``\\Deleted`` (an original a move copied but could
+not expunge) never matches again, so no run acts on it twice."""
 
 
-_UNSELECTABLE = frozenset({b"\\noselect", b"\\nonexistent"})
+class _Escaped(BaseException):
+    """A non-mail exception (a pattern's `MatchTimeoutError`, a bug) carried out of
+    `with_mailbox`, which would otherwise report it as the server's `server_error`. A
+    BaseException, so the session drops its connection, whose state is then unknown."""
+
+    def __init__(self, error: Exception) -> None:
+        super().__init__()
+        self.error = error
+
+
+def _is_mail_error(error: Exception) -> bool:
+    """Whether `error` is the server's or the connection's, for `with_mailbox` to map. A
+    `MatchTimeoutError` is a TimeoutError, which is an OSError, but it is the engine's."""
+    if isinstance(error, MatchTimeoutError):
+        return False
+    return isinstance(error, MailError | imaplib.IMAP4.error | OSError | EOFError)
 
 
 class Folder:
-    """An account plus a folder path; supports run(filter) and path navigation."""
+    """An account plus a folder path; supports run(filters) and path navigation."""
 
     path: Path
     account: Account
@@ -34,64 +65,56 @@ class Folder:
         """Build a Folder from an account and a path."""
         self.path = path
         self.account = account
-        self.log = account.log.getChild(self.imap_name())
+        self.log = account.log.getChild("/".join(path.segments) or "root")
 
     def imap_name(self) -> str:
-        """Return the IMAP folder name (e.g. INBOX or delimiter-joined path)."""
-        return self.path.as_string(self.account.delimiter)
+        """The folder's name on the server: its segments joined with the account's delimiter
+        (asked of the server once, on a connection of the pool, then cached)."""
+        return self.path.as_string(self.account.delimiter() or ".")
 
     def __str__(self) -> str:
-        return f"{self.account.name}.{self.imap_name()}"
-
-    def connect(self, readonly: bool = False) -> IMAPClient:
-        """Open IMAP connection and select this folder."""
-        conn = self.account.connect()
-        conn.select_folder(self.imap_name(), readonly=readonly)
-        return conn
+        return f"{self.account.account_id}.{'/'.join(self.path.segments)}"
 
     def run(
         self,
         filter_or_filters: Filter | Iterable[Filter],
+        *,
         dry_run: bool = False,
+        newest: int | None = None,
     ) -> FolderReport:
-        """Run one or more filters on this folder using a shared IMAP connection.
+        """Run one or more filters on this folder, in one session of the account's connections.
 
-        A single IMAP connection is opened and this folder is selected once per
-        call to run(). All filters passed in filter_or_filters are then executed
-        sequentially using that same connection and session state, before the
-        connection is logged out.
+        The folder is selected once (EXAMINE for a dry run, so nothing can change) and every
+        filter searches, fetches and acts on that connection, in order: an earlier filter's
+        action (a move, say) changes what a later one finds. A dry run applies no action, so its
+        filters all see the folder as it is.
 
-        Because the connection is shared, actions executed by earlier filters
-        can affect subsequent filters via changes to server or session state
-        (for example, moving messages to other folders).
+        Criteria with is_efficient=True (e.g. FromIs, ToIs, SubjectContains) are answered by
+        the server's SEARCH alone. The others fetch the candidates' source (`BODY.PEEK[]`,
+        which never sets ``\\Seen``), parse it with mail-parser and match it here; a message is
+        fetched once per run, and fetched again only after an action of the run acted on it.
 
-        Criteria with is_efficient=True (e.g. FromIs, ToIs, SubjectContains)
-        use IMAP SEARCH only and do not fetch message bodies. Criteria that
-        need parsed headers or bodies (e.g. SubjectIs with SUBJECT prefilter,
-        SubjectMatches with regex, BodyMatches) use a best-effort per-run fetch
-        cache: messages are fetched once when first
-        needed and kept in memory until evicted. Messages that were acted on
-        are evicted after each action and may be fetched again later in the
-        same run if selected by another filter.
-
-        A dry run selects the folder read-only and applies no action. Its filters
-        all see the folder as it is, so a message an earlier filter would have
-        moved can also be reported by a later one.
+        Every search skips messages marked ``\\Deleted``. ``newest`` (at least 1, else a
+        ValueError) bounds every search to the folder's newest ``newest`` messages as it was when
+        selected, resolved to their UIDs first, so an earlier filter's move leaves the window in
+        place and later mail stays out; the report's ``limited_to_newest`` says so when the
+        folder held more.
 
         Returns a report (see :mod:`mailroom_core.filters.report`): per filter its spec,
         the matched messages (UID, From, Subject, Date, fetched as ENVELOPE)
-        and whether its action was executed. An exception from the server or an
-        action propagates; the report of the filters before it is then lost
-        (``run_into`` keeps it).
+        and whether its action was executed. Mail errors are `mailroom_core.mail.MailError`s
+        (a dry run that lost its connection is retried once); anything else, such as a
+        pattern's `MatchTimeoutError`, is raised as it is. Either way the report of the filters
+        before it is then lost (``run_into`` keeps it).
         """
         report = self.new_report(dry_run)
-        self.run_into(report, filter_or_filters, dry_run=dry_run)
+        self.run_into(report, filter_or_filters, dry_run=dry_run, newest=newest)
         return report
 
     def new_report(self, dry_run: bool) -> FolderReport:
         """Return an empty report for a run of this folder."""
         return {
-            "account": self.account.name,
+            "account": self.account.account_id,
             "folder": list(self.path.segments),
             "dry_run": dry_run,
             "filters": [],
@@ -104,11 +127,15 @@ class Folder:
         filter_or_filters: Filter | Iterable[Filter],
         *,
         dry_run: bool,
+        newest: int | None = None,
     ) -> None:
         """Like run(), appending each filter's report to report as soon as it finishes.
 
         For callers that need the partial report when the run raises.
         """
+        if newest is not None and newest < 1:
+            msg = f"newest must be at least 1, not {newest}"
+            raise ValueError(msg)
         filters = (
             [filter_or_filters]
             if isinstance(filter_or_filters, Filter)
@@ -116,21 +143,59 @@ class Folder:
         )
         if not filters:
             return
-        conn = self.connect(readonly=dry_run)
-        fetched: dict[int, Message] = {}
+        # Before the session: asking it inside would need a second connection of the account.
+        delimiter = self.account.delimiter()
+        path = self.path.as_string(delimiter or ".")
+        start = len(report["filters"])
+
+        def session(context: MailboxContext) -> None:
+            # A read-only attempt that lost its connection is run again from the start.
+            del report["filters"][start:]
+            report.pop("limited_to_newest", None)
+            try:
+                self._run_all(report, filters, Selected(context, delimiter), dry_run, newest)
+            except Exception as error:
+                if _is_mail_error(error):
+                    raise
+                raise _Escaped(error) from None
+
         self.log.info("running %s filter(s)", len(filters))
         try:
-            for f in filters:
-                report["filters"].append(self._run_one(f, dry_run, conn, fetched))
-        finally:
-            try:
-                conn.logout()
-                self.log.debug("Disconnected from %s:%s", self.account.host, self.account.port)
-            except Exception as exc:
-                self.log.debug("Logout failed: %s", exc, exc_info=True)
+            self.account.connections.with_mailbox(self.account.account_id, path, dry_run, session)
+        except _Escaped as escaped:
+            raise escaped.error from None
+
+    def _run_all(
+        self,
+        report: FolderReport,
+        filters: list[Filter],
+        selected: Selected,
+        dry_run: bool,
+        newest: int | None,
+    ) -> None:
+        context = selected.context
+        exists = context.exists
+        window: list[object] = []
+        if newest is not None and exists > newest:
+            # An explicit range: `*` would also take the last message when the folder is empty.
+            # Sequence numbers shift when an earlier filter expunges, UIDs never do.
+            in_range = f"{exists - newest + 1}:{exists}"
+            newest_uids = search_uids(context, [in_range])
+            window = [in_range]
+            if newest_uids:
+                window = ["UID", f"{min(newest_uids)}:{max(newest_uids)}"]
+            report["limited_to_newest"] = newest
+        fetched: dict[int, Message] = {}
+        for f in filters:
+            report["filters"].append(self._run_one(f, selected, dry_run, window, fetched))
 
     def _run_one(
-        self, f: Filter, dry_run: bool, conn: IMAPClient, fetched: dict[int, Message]
+        self,
+        f: Filter,
+        selected: Selected,
+        dry_run: bool,
+        window: list[object],
+        fetched: dict[int, Message],
     ) -> FilterReport:
         spec: SpecNode | None
         try:
@@ -143,174 +208,103 @@ class Folder:
             "matched": [],
             "executed": False,
         }
-        selected_msg_ids = search_mail(conn, f.criterion.imap_query)
-        if f.criterion.is_efficient and selected_msg_ids:
-            self.log.debug(
-                "IMAP-only (efficient), no fetch for %s message(s)", len(selected_msg_ids)
-            )
+        context = selected.context
+        uids = search_uids(context, [*window, _UNDELETED, *f.criterion.imap_query.criteria()])
         if not f.criterion.is_efficient:
-            to_fetch = [i for i in selected_msg_ids if i not in fetched]
-            self.log.debug(
-                "cache: %s candidates, %s in cache, fetching %s",
-                len(selected_msg_ids),
-                len(selected_msg_ids) - len(to_fetch),
-                len(to_fetch),
-            )
-            if to_fetch:
-                added = fetch_mail(conn, to_fetch)
-                fetched.update(added)
-                self.log.debug("fetched %s message(s), cache size %s", len(added), len(fetched))
-            messages_this = {i: fetched[i] for i in selected_msg_ids if i in fetched}
-            if len(messages_this) < len(selected_msg_ids):
-                missing_ids = [i for i in selected_msg_ids if i not in messages_this]
-                sample_size = 10
-                sample = missing_ids[:sample_size]
-                truncated = " (first 10 shown)" if len(missing_ids) > sample_size else ""
-                self.log.warning(
-                    "Skipping %s message(s) that could not be fetched or parsed%s. Sample: %s",
-                    len(missing_ids),
-                    truncated,
-                    sample,
-                )
-            selected_msg_ids = list(f.criterion.select(messages_this).keys())
-        if selected_msg_ids:
-            result["matched"] = summarize_mail(conn, selected_msg_ids)
-            _sample_size = 10
-            _sample = selected_msg_ids[:_sample_size]
-            _truncated = (
-                f" (first {len(_sample)} shown)" if len(selected_msg_ids) > _sample_size else ""
-            )
-            if dry_run:
-                self.log.info(
-                    "[Dry-Run] would select %s message(s)%s and execute %s: %s",
-                    len(selected_msg_ids),
-                    _truncated,
-                    f.action,
-                    _sample,
-                )
-            else:
-                self.log.info(
-                    "selected %s message(s)%s: %s",
-                    len(selected_msg_ids),
-                    _truncated,
-                    _sample,
-                )
-                f.action.execute(
-                    conn,
-                    selected_msg_ids,
-                    delimiter=self.account.delimiter,
-                )
-                self.log.info("executed %s", f.action)
-                result["executed"] = True
-                evicted_count = 0
-                for i in selected_msg_ids:
-                    if fetched.pop(i, None) is not None:
-                        evicted_count += 1
-                if evicted_count:
-                    self.log.debug(
-                        "evicted %s message(s) from cache (acted on), cache size %s",
-                        evicted_count,
-                        len(fetched),
-                    )
-        else:
+            uids = self._select(f, context, uids, fetched)
+        if not uids:
             self.log.debug("no messages matched for action %s", f.action)
+            return result
+        result["matched"] = self._summaries(context, uids)
+        sample = uids[:_SAMPLE]
+        if dry_run:
+            self.log.info(
+                "[Dry-Run] would select %s message(s) and execute %s: %s",
+                len(uids),
+                f.action,
+                sample,
+            )
+            return result
+        self.log.info("selected %s message(s): %s", len(uids), sample)
+        f.action.execute(selected, uids)
+        self.log.info("executed %s", f.action)
+        result["executed"] = True
+        for uid in uids:
+            fetched.pop(uid, None)
         return result
+
+    def _select(
+        self, f: Filter, context: MailboxContext, uids: list[int], fetched: dict[int, Message]
+    ) -> list[int]:
+        """The candidates `uids` that `f`'s criterion selects once fetched and parsed."""
+        missing = [uid for uid in uids if uid not in fetched]
+        if missing:
+            for uid, message in fetch_sources(context, missing).items():
+                try:
+                    parsed = parse_from_bytes(message.source)
+                except Exception as error:
+                    self.log.debug("uid %s: parse error: %s", uid, type(error).__name__)
+                    continue
+                fetched[uid] = Message(uid, parsed, [flag.encode() for flag in message.flags])
+        candidates = {uid: fetched[uid] for uid in uids if uid in fetched}
+        if len(candidates) < len(uids):
+            skipped = [uid for uid in uids if uid not in candidates]
+            self.log.warning(
+                "Skipping %s message(s) that could not be fetched or parsed: %s",
+                len(skipped),
+                skipped[:_SAMPLE],
+            )
+        return list(f.criterion.select(candidates))
+
+    def _summaries(self, context: MailboxContext, uids: list[int]) -> list[MessageSummary]:
+        """The matched messages' summaries; a refused ENVELOPE fetch leaves them their UIDs
+        only, since the report must not block the action."""
+        try:
+            envelopes = fetch_envelopes(context, uids)
+        except imaplib.IMAP4.abort:
+            raise
+        except imaplib.IMAP4.error as error:
+            self.log.warning("ENVELOPE fetch failed: %s", type(error).__name__)
+            envelopes = {}
+        return summaries(uids, envelopes)
 
     def __truediv__(self, path: str) -> Folder:
         return Folder(self.account, (self.path / path))
 
 
 class Account:
-    """Represents an email account with IMAP connection management.
+    """One account of a `mailroom_core.mail.MailConnections`, as the filter engine sees it.
 
-    Handles connection creation, reuse, and cleanup for IMAP operations.
+    Builds nothing: the connections are the host's (`mailroom_core.mail.connections_from` for
+    plain config), with their pool, TLS and login rules. A run takes one connection of the
+    account for its whole length, so with a pool of one, two runs on one account take turns
+    (the second waits up to `Timeouts.lock`, then fails `busy`).
     """
 
-    def __init__(
-        self,
-        name: str,
-        host: str,
-        port: int,
-        username: str,
-        password: str,
-        address: str | None = None,
-        delimiter: str = ".",
-        ssl_context: ssl.SSLContext | None = None,
-        timeout: float | None = None,
-    ) -> None:
-        """Initialize an email account.
-
-        Args:
-            name: Display name for the account.
-            host: IMAP server hostname.
-            port: IMAP server port.
-            username: IMAP username.
-            password: IMAP password.
-            address: Email address (defaults to username if not provided).
-            delimiter: Character used to delimit folder subdirectories (default: ".").
-            ssl_context: TLS settings for the connection, e.g. to trust a private CA
-                (default: imapclient's, which verifies against the system CAs).
-            timeout: Seconds to wait for the connection and for each socket read or
-                write before failing with a socket timeout (default: wait forever).
-
-        """
-        self.name = name
-        self.host = host
-        self.port = port
-        self.username = username
-        self.password = password
-        self.address = address if address is not None else username
-        self.delimiter = delimiter
-        self.ssl_context = ssl_context
-        self.timeout = timeout
-        self.log: logging.Logger = logging.getLogger(__name__).getChild(self.name)
+    def __init__(self, connections: MailConnections, account_id: str) -> None:
+        """The account `account_id` of `connections`."""
+        self.connections = connections
+        self.account_id = account_id
+        self.log: logging.Logger = logging.getLogger(__name__).getChild(account_id)
         self.inbox = Folder(self, Path("INBOX"))
 
-    def connect(self) -> IMAPClient:
-        """Create a new IMAP connection. Caller must call conn.logout() when done."""
-        conn = IMAPClient(
-            self.host, self.port, ssl=True, ssl_context=self.ssl_context, timeout=self.timeout
-        )
-        conn.login(self.username, self.password)
-        self.log.debug("Connected to %s:%s", self.host, self.port)
-        return conn
+    def delimiter(self) -> str | None:
+        """The server's hierarchy delimiter (None without a hierarchy), asked once, then cached
+        until the account's connections are closed."""
+        return self.connections.delimiter(self.account_id)
 
-    def list_folders(self) -> list[Path]:
-        r"""Return the paths of the folders that can hold mail, in the server's order.
-
-        Names are split on the account's ``delimiter``, so ``account / path`` selects the listed
-        folder again; a server reporting another delimiter is logged as a misconfiguration. A
-        folder with no reported delimiter (a flat namespace) is a single segment. Folders flagged
-        ``\Noselect`` or ``\NonExistent`` (e.g. bare parents of other folders) are left out.
-        """
-        conn = self.connect()
-        try:
-            listed = conn.list_folders()
-        finally:
-            try:
-                conn.logout()
-            except Exception as exc:
-                self.log.debug("Logout failed: %s", exc, exc_info=True)
-        paths: list[Path] = []
-        server_delimiters: set[str] = set()
-        for flags, delimiter, name in listed:
-            if {f.lower() for f in flags} & _UNSELECTABLE:
-                continue
-            if delimiter is None:
-                paths.append(Path([name]))
-                continue
-            server_delimiters.add(delimiter.decode())
-            paths.append(Path(name.split(self.delimiter)))
-        if server_delimiters - {self.delimiter}:
-            self.log.warning(
-                "server folder delimiter %s differs from the account's %r",
-                ", ".join(map(repr, sorted(server_delimiters))),
-                self.delimiter,
-            )
-        return paths
+    def folders(self) -> list[Path]:
+        r"""The paths of the folders that can hold mail, in mailroom-core's order (special-use
+        first, then the rest by path), each split on its own delimiter, so ``account / path``
+        selects it again. Folders flagged ``\Noselect`` or ``\NonExistent`` are left out."""
+        return [
+            Path(folder.path.split(folder.delimiter) if folder.delimiter else [folder.path])
+            for folder in self.connections.folders(self.account_id)
+            if folder.selectable
+        ]
 
     def __truediv__(self, path: str | Path) -> Folder:
         return Folder(self, path if isinstance(path, Path) else Path(path))
 
     def __str__(self) -> str:
-        return self.name
+        return self.account_id

@@ -280,35 +280,23 @@ def test_an_account_that_cannot_be_watched_is_logged_once(
     assert warnings == ["Cannot watch INBOX: secrets_key_missing"]
 
 
-def test_a_starttls_account_is_not_watched_yet(
-    user_client: TestClient,
-    user: User,
-    supervisor: IdleSupervisor,
-    watches: Watches,
-    caplog: pytest.LogCaptureFixture,
+def test_a_starttls_account_is_watched_and_the_tls_mode_alone_restarts_it(
+    user_client: TestClient, user: User, supervisor: IdleSupervisor, watches: Watches
 ) -> None:
-    """Its runs still go through the filter engine, which refuses STARTTLS."""
     inbox = WatchedFolder(user.id, "work", ("INBOX",))
     add_account(user_client)
     add_rule_set(user_client, trigger="new_mail")
     supervisor.reconcile()
     watch = watches.latest(inbox)
 
-    starttls = new_account(imap={"host": "127.0.0.1", "port": 143, "tls": "starttls"})
+    starttls = new_account(imap={"host": "127.0.0.1", "port": 9, "tls": "starttls"})
     del starttls["id"], starttls["password"]
     assert user_client.put("/api/v1/accounts/work", json=starttls).status_code == 200
-    caplog.set_level(logging.WARNING, logger="mailroom.worker.idle")
-    supervisor.reconcile()
     supervisor.reconcile()
     assert watch.joined
-    assert supervisor.watched == frozenset()
-    assert len(watches.started) == 1
-    warnings = [
-        r.getMessage()
-        for r in caplog.records
-        if r.name == "mailroom.worker.idle" and r.levelno >= logging.WARNING
-    ]
-    assert warnings == ["Cannot watch INBOX: starttls_unsupported"]
+    assert watches.latest(inbox) is not watch
+    assert supervisor.watched == {inbox}
+    assert len(watches.started) == 2
 
 
 def test_a_password_that_no_longer_opens_ends_the_watch_with_the_app_s_code() -> None:

@@ -318,20 +318,18 @@ bounded to one minor because the server relies on its handlers.
   25 MB attachment cap, every field at fault named at once; a refusal is 400 `invalid_limits`
   with `issues`, a save at the same moment 409 `settings_changed` or 503 `settings_busy`. A stored attachment limit above the cap reads as
   the cap. Logged as `limits_changed`.
-- **IMAP:** an account's login test (mailroom-core's `test_login`: a login and logout on a
-  connection of its own, each reply bounded by its 10 s probe timeout) and the folder picker's
-  listing go through mailroom-core's connections in the API's mail pool, with its gates and 30 s
-  deadline ([Mail client](#mail-client)), implicit TLS or STARTTLS as the account says; so do
-  the worker's IDLE watches, on the worker's own pool (below), on implicit TLS only for now. The
-  worker's runs and the dry run still go through the filter engine: implicit TLS only
-  (`starttls_unsupported` otherwise), a 20 s timeout on connecting and on every read. Both verify
-  TLS against the system CAs plus `MAILROOM_MAIL_CA_FILE` (the dev mail CA in dev). A failure
-  carries mailroom-core's mail error code and fixed message (`auth_failed`, `unreachable`,
-  `timeout`, `busy`, `mailbox_missing`, `server_error`, …; an `unreachable` whose certificate did
-  not verify ends with core's fixed `CERTIFICATE_DETAIL`, which the web says in the reader's
-  language), or the app's own `password_missing` or `secrets_key_missing`, and on the filter
-  engine's path `starttls_unsupported`; never the server's wording. A folder listing answers it
-  by `mail_status` (502 by default, 504 for `timeout`, 429 for `busy`, 404 for
+- **IMAP:** everything goes through mailroom-core's connections, implicit TLS or STARTTLS as the
+  account says. An account's login test (mailroom-core's `test_login`: a login and logout on a
+  connection of its own, each reply bounded by its 10 s probe timeout), the folder picker's
+  listing and the dry run use the API's mail pool, with its gates and deadline
+  ([Mail client](#mail-client); a dry run's is 30 s, *Filters* below); the worker's runs and IDLE
+  watches use the worker's own pool (below). TLS is verified against the system CAs plus
+  `MAILROOM_MAIL_CA_FILE` (the dev mail CA in dev). A failure carries mailroom-core's mail error
+  code and fixed message (`auth_failed`, `unreachable`, `timeout`, `busy`, `mailbox_missing`,
+  `server_error`, …; an `unreachable` whose certificate did not verify ends with core's fixed
+  `CERTIFICATE_DETAIL`, which the web says in the reader's language), or the app's own
+  `password_missing` or `secrets_key_missing`; never the server's wording. A folder listing
+  answers it by `mail_status` (502 by default, 504 for `timeout`, 429 for `busy`, 404 for
   `mailbox_missing`, 409 for `auth_failed` / `password_missing`), and anything unexpected with
   500 `failed`. Migration `202611121200` rewrote the runs recorded earlier to these codes and
   their fixed messages.
@@ -478,12 +476,17 @@ What they do and the route list: [`filters.md`](filters.md). How:
   by its match timeout (`DEFAULT_MATCH_TIMEOUT`, 1 s per message, process-wide): a pattern that
   backtracks past it raises `MatchTimeoutError`, which fails the run with `match_timeout`.
 - **Dry run** (`POST /rule-sets/{id}/dry-run`), synchronous: the enabled filters, wrapped for
-  starred only, run through the filter engine's `Folder.run(dry_run=True)` (read-only select) on the
-  folder's newest 500 messages, for about 30 s (then the connection is closed: 504
-  `dry_run_timeout`). A pattern out of time is 400 `match_timeout`. The folder path is joined with
-  the delimiter the server reports. Mailbox failures answer by `mail_status`: 502, 504
-  `timeout`, 404 `mailbox_missing` for a folder that is not there, 409 `auth_failed` /
-  `password_missing` / `starttls_unsupported`; 503 `secrets_key_missing`. Any other failure is 500
+  starred only, run through the filter engine's `Folder.run(dry_run=True, newest=500)`
+  (read-only select, every search bounded to the folder's newest 500 messages) on the user's
+  connections from the API's mail pool, under its gates and a 30 s deadline (`MailPool.call`):
+  past it, the user's connections to the account in use are cut and the answer is 504
+  `dry_run_timeout`. It holds one of the account's two API connections meanwhile. A pattern out of
+  time is 400 `match_timeout`. The folder path is joined with the delimiter the server reports.
+  Mailbox failures answer by `mail_status`: 502, 504 `timeout`, 429 `busy`, 404
+  `mailbox_missing` for a folder that is not there, 409 `auth_failed` / `password_missing`; 503
+  `secrets_key_missing`; a line break in a search value is 400 `invalid_argument`. A dry run
+  executes no action, so a move's refusals (a missing folder, Drafts or Sent, no Trash) show only
+  in a real run. Any other failure is 500
   `run_failed`, its exception's type name only. Either way the run joins the history. One dry run
   per user at a time, across API processes: a session advisory lock on a connection of its own,
   taken with `pg_try_advisory_lock`; a second one meanwhile is 429 `dry_run_busy` and not
@@ -497,10 +500,15 @@ What they do and the route list: [`filters.md`](filters.md). How:
   a disabled rule set:
   - `run_rule_set` checks both again when it starts (else the run's error is `run_filters_off` or
     `rule_set_disabled`), commits `started_at`, runs the enabled filters (wrapped for starred only)
-    through the filter engine's `Folder.run_into` with no transaction open, and records `finished_at`,
-    the report and the error (the filters finished so far kept). A pattern out of the filter engine's
-    match timeout is `match_timeout`, logged by its exception's type only (its text quotes the
-    pattern); anything unexpected is `run_failed`, its exception's type name only.
+    through the filter engine's `Folder.run_into`, on the user's connections leased from the
+    worker's mail pool, with no transaction open, and records `finished_at`, the report and the
+    error (the filters finished so far kept). A mailbox failure is `<code>: <message>`,
+    mailroom-core's code and fixed message. A pattern out of the filter engine's match timeout is
+    `match_timeout`, logged by its exception's type only (its text quotes the pattern); anything
+    unexpected is `run_failed`, its exception's type name only. A move that copied messages but
+    could not remove them (no MOVE, the removal refused) is `copied_not_removed`, and the run
+    turns its rule set off (`enabled` false, logged as `rule_set_turned_off`), since every trigger
+    would copy them again; the engine's searches also skip messages marked `\Deleted`.
     A run removed meanwhile (with its rule set or account) is left alone. A run whose job is
     neither waiting nor running when the worker starts (its worker stopped during it) is closed
     with the error `interrupted`.
@@ -509,16 +517,16 @@ What they do and the route list: [`filters.md`](filters.md). How:
     (30 s early, for the minute's start), or never.
   - The **IDLE supervisor**, a thread of the worker process, keeps one mailroom-core `IdleWatch`
     per (user, account, folder) of the runnable `new_mail` rule sets, on mailroom-core's
-    connections from the worker's own mail pool (`Mailboxes`: one connection per account, 15 s to
-    connect, 120 s per reply, 60 s to wait for the account's connection; no gates, no deadline).
+    connections (implicit TLS or STARTTLS as the account says) from the worker's own mail pool
+    (`Mailboxes`: one connection per account, 15 s to connect, 120 s per reply, 60 s to wait for
+    the account's connection; no gates, no deadline).
     The folder's name is its segments joined with the delimiter the server reports, looked up on
     the pool's connection under a lease held only for that and for building the watch, so the pool
     logs that connection out once unused; the watch itself idles on a connection of its own,
-    outside the pool, selected read-only. An account on STARTTLS is not watched yet
-    (`starttls_unsupported`, logged once), as its runs still go through the filter engine. Every
-    30 s the supervisor starts and stops watches to match the rule sets and Run filters, restarts
-    one whose account's IMAP server (host, port, TLS mode), login or password changed, and
-    starts again one that died (its first connection failed, or the server refused
+    outside the pool, selected read-only. Every 30 s the supervisor starts and stops watches to
+    match the rule sets and Run filters, restarts one whose account's IMAP server (host, port, TLS
+    mode), login or password changed, and starts again one that died (its first connection
+    failed, or the server refused
     the login, has no such folder or cannot IDLE: mailroom-core's code and fixed message): at
     once, then after 30 s, doubling up to 30 min while it keeps failing without reaching its
     folder; each new reason is logged once. A watch that loses its connection reconnects by

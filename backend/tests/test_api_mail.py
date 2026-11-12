@@ -694,6 +694,23 @@ def test_a_call_may_have_a_deadline_of_its_own() -> None:
         pool.close()
 
 
+def test_the_work_s_own_timeout_error_is_no_deadline() -> None:
+    """A filter's MatchTimeoutError is a TimeoutError, as concurrent.futures' own is."""
+    pool = MailPool(deadline_seconds=30.0)
+    connections: Any = _Cuttable()
+
+    def times_out() -> None:
+        msg = "the work's own"
+        raise TimeoutError(msg)
+
+    try:
+        with pytest.raises(TimeoutError, match="the work's own"):
+            pool.call(connections, 1, ["a"], times_out)
+        assert connections.interrupted == []
+    finally:
+        pool.close()
+
+
 def test_the_account_gate_is_as_wide_as_the_pool_s_connections_per_account() -> None:
     pool = MailPool(gate_seconds=0.2, connections_per_account=1)
     connections: Any = _Cuttable()

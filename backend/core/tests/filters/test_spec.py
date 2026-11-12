@@ -4,6 +4,7 @@ import json
 from datetime import date, datetime
 from types import SimpleNamespace
 from typing import Any, cast
+from unittest.mock import MagicMock, patch
 
 import jsonschema
 import pytest
@@ -54,6 +55,7 @@ from mailroom_core.filters.filter import Filter, If
 from mailroom_core.filters.flags import Flag
 from mailroom_core.filters.message import Message
 from mailroom_core.filters.path import Path
+from mailroom_core.filters.selected import Selected
 from mailroom_core.filters.spec import (
     NotSerializableError,
     SpecError,
@@ -62,6 +64,7 @@ from mailroom_core.filters.spec import (
     load_criterion,
     load_filter,
 )
+from mailroom_core.mail import MailboxContext
 
 CRITERIA: list[Criterion] = [
     Anything(),
@@ -170,7 +173,7 @@ def _same_criterion(a: Criterion, b: Criterion) -> None:
     assert type(a) is type(b)
     assert a == b
     assert a.to_spec() == b.to_spec()
-    assert a.imap_query.build() == b.imap_query.build()
+    assert a.imap_query.criteria() == b.imap_query.criteria()
     assert a.is_efficient == b.is_efficient
     assert [a.func(m) for m in MESSAGES] == [b.func(m) for m in MESSAGES]
 
@@ -198,14 +201,12 @@ def _exported(base: type) -> set[type]:
     }
 
 
-class MagicConn:
-    """Records the IMAP calls an action makes."""
-
-    def __init__(self) -> None:
-        self.calls: list[tuple[str, tuple[Any, ...]]] = []
-
-    def __getattr__(self, name: str) -> Any:
-        return lambda *args: self.calls.append((name, args))
+def _selected() -> Selected:
+    """A Selected on a MagicMock client whose LIST answers Archive and Archive.2025."""
+    client = MagicMock()
+    client.list_folders.return_value = [((), b".", "Archive"), ((), b".", "Archive.2025")]
+    context = MailboxContext(client, "INBOX", False, 1, 1, None, "a")
+    return Selected(context, ".")
 
 
 class TestCoverage:
@@ -251,12 +252,14 @@ class TestActionRoundTrip:
         _validator("action").validate(action.to_spec())
 
     def test_move_to_executes_same_move(self) -> None:
-        conn_a, conn_b = MagicConn(), MagicConn()
+        on_a, on_b = _selected(), _selected()
         action = MarkAsRead() + MoveTo(Path(["Archive", "2025"]))
-        action.execute(cast("Any", conn_a), [1], delimiter=".")
-        load_action(action.to_spec()).execute(cast("Any", conn_b), [1], delimiter=".")
-        assert conn_a.calls == conn_b.calls
-        assert conn_a.calls == [("add_flags", ([1], [b"\\Seen"])), ("move", ([1], "Archive.2025"))]
+        with patch("mailroom_core.filters.actions.move.move_uids") as move:
+            action.execute(on_a, [1])
+            load_action(action.to_spec()).execute(on_b, [1])
+        assert [c.args[1:] for c in move.call_args_list] == [([1], "Archive.2025")] * 2
+        for on in (on_a, on_b):
+            on.context.client.add_flags.assert_called_once_with([1], [b"\\Seen"], silent=True)
 
 
 class TestFilterRoundTrip:

@@ -1,7 +1,7 @@
 """Operations on the folder a `with_mailbox` session has selected, by UID: searching, fetching,
 moving, flagging and the one permanent delete. Organize, drafts and replies are built on them,
-and so can anything else that acts inside a session of its own, which never needs a second
-connection: the folders come from the one it holds.
+and so is anything else that acts inside a session of its own (the filter engine), which never
+needs a second connection: the folders come from the one it holds.
 
 Each takes the session's `MailboxContext`. Refusals are `MailError`s raised before anything is
 written; server and connection errors come out as raised, for `with_mailbox` to map. None of

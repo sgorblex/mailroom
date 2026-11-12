@@ -65,11 +65,8 @@ const CERTIFICATE_DETAIL = 'Its TLS certificate did not verify.'
  * does not know. `message`, the API's own wording, adds the one reason it may carry: a certificate that did not verify.
  */
 export function mailboxMessage(t: TFunction, code: string | undefined, message?: string): string | null {
-  switch (code) {
-    case 'starttls_unsupported':
-      return t('accountErrors.starttlsUnsupported')
-    case 'password_missing':
-      return t('accountErrors.passwordMissing')
+  if (code === 'password_missing') {
+    return t('accountErrors.passwordMissing')
   }
   const key = code === undefined ? undefined : MAIL_CODES[code]
   if (key === undefined) {

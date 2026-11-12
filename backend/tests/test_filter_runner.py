@@ -3,6 +3,7 @@ starts, and how it records a failure. Runs that reach real mail: ``test_filter_r
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -13,13 +14,21 @@ from mailroom.models import FilterRun, RuleSet
 from mailroom.worker import tasks
 from mailroom.worker.app import PROCRASTINATE_SCHEMA
 from mailroom.worker.context import Mailboxes, WorkerContext
-from mailroom.worker.runs import INTERRUPTED, MATCHED_KEPT, close_interrupted_runs, execute_run
+from mailroom.worker.runs import (
+    COPIED_NOT_REMOVED,
+    COPIED_NOT_REMOVED_TEXT,
+    INTERRUPTED,
+    MATCHED_KEPT,
+    close_interrupted_runs,
+    execute_run,
+)
 from mailroom.worker.tasks import (
     queue_new_mail_runs,
     queue_scheduled_runs,
     run_rule_set,
 )
-from mailroom_core.mail import MESSAGES
+from mailroom_core.filters import Folder
+from mailroom_core.mail import MESSAGES, CopiedNotRemovedError, Moved
 from tests.test_api_accounts import new_account
 from tests.test_api_filters import SHOP_SPEC, add_filter, jobs, rule_set
 
@@ -280,7 +289,6 @@ def test_a_run_failing_part_way_keeps_the_finished_filters_report(
     mailboxes: Mailboxes,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from mailroom.filters.imap import RuleSetFolder
 
     add_account(user_client)
     rule_set_id = add_rule_set(user_client)
@@ -293,12 +301,41 @@ def test_a_run_failing_part_way_keeps_the_finished_filters_report(
         msg = "Subject: a secret"
         raise RuntimeError(msg)
 
-    monkeypatch.setattr(RuleSetFolder, "run_into", first_then_fail)
+    monkeypatch.setattr(Folder, "run_into", first_then_fail)
     execute_run(db_session, run_id, mailboxes)
     run = run_out(user_client, rule_set_id, run_id)
     assert run["error"] == "run_failed: RuntimeError"
     assert [entry["filter_id"] for entry in run["result"]["filters"]] == [first]
     assert run["result"]["error"] == run["error"]
+
+
+def test_a_move_that_copied_without_removing_turns_the_rule_set_off(
+    user_client: TestClient,
+    db_session: Session,
+    mailboxes: Mailboxes,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Every new trigger would copy the originals again: the rule set stops until the user
+    enables it, and the run's history says why."""
+    add_account(user_client)
+    rule_set_id = add_rule_set(user_client)
+    add_filter(user_client, rule_set_id, "Shop", SHOP_SPEC)
+    run_id = queued_run(user_client, rule_set_id)
+
+    def copied(_self: object, _report: Any, *_args: object, **_kwargs: object) -> None:
+        raise CopiedNotRemovedError("server_error", Moved("Archive", None, {}))
+
+    monkeypatch.setattr(Folder, "run_into", copied)
+    caplog.set_level(logging.WARNING, logger="mailroom.worker.runs")
+    execute_run(db_session, run_id, mailboxes)
+    run = run_out(user_client, rule_set_id, run_id)
+    assert run["error"] == f"{COPIED_NOT_REMOVED}: {COPIED_NOT_REMOVED_TEXT}"
+    assert user_client.get(f"/api/v1/rule-sets/{rule_set_id}").json()["enabled"] is False
+    turned_off = [r for r in caplog.records if r.name == "mailroom.worker.runs"]
+    assert [(r.getMessage(), r.levelno) for r in turned_off] == [
+        ("rule_set_turned_off", logging.WARNING)
+    ]
 
 
 def set_job_status(db: Session, run_id: int, status: str) -> None:
@@ -359,7 +396,6 @@ def test_a_pattern_out_of_time_fails_the_run(
 ) -> None:
     """Not reported as the mailbox's timeout (``MatchTimeoutError`` is a ``TimeoutError``), and
     the pattern its text quotes stays out of the record and the log."""
-    from mailroom.filters.imap import RuleSetFolder
     from mailroom.filters.runs import MATCH_TIMEOUT_MESSAGE
     from mailroom_core.filters import MatchTimeoutError
 
@@ -374,7 +410,7 @@ def test_a_pattern_out_of_time_fails_the_run(
         msg = "regular expression '(secret|secrets)+$' timed out after 1.0s"
         raise MatchTimeoutError(msg)
 
-    monkeypatch.setattr(RuleSetFolder, "run_into", first_then_slow)
+    monkeypatch.setattr(Folder, "run_into", first_then_slow)
     execute_run(db_session, run_id, mailboxes)
     run = run_out(user_client, rule_set_id, run_id)
     assert run["error"] == f"match_timeout: {MATCH_TIMEOUT_MESSAGE}"

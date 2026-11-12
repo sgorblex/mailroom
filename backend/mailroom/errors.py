@@ -52,6 +52,7 @@ SECRETS_KEY_MISSING = "secrets_key_missing"
 
 
 def mail_refusal(code: str, message: str) -> Refusal:
-    """A mailbox failure (``MailFailure``'s or a run's code) as a refusal: ``unavailable`` without
-    the secrets key, ``mail`` otherwise."""
+    """A mailbox failure (mailroom-core's ``MailError`` code, the app's ``password_missing`` or
+    ``secrets_key_missing``, or a run's code) as a refusal: ``unavailable`` without the secrets
+    key, ``mail`` otherwise."""
     return Refusal("unavailable" if code == SECRETS_KEY_MISSING else "mail", code, message)

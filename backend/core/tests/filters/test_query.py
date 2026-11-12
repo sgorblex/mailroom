@@ -1,113 +1,97 @@
-"""Tests for IMAPQuery build() structure: list (AND), tuple (OR/NOT), str/tuple (single)."""
+"""IMAPQuery.criteria(): core's SEARCH criteria, flat for AND, a group for an AND inside OR or NOT."""
 
-from unittest.mock import MagicMock
+from datetime import date
 
-from imapclient.imapclient import _normalise_search_criteria
-
-from mailroom_core.filters._fetch import (
-    SearchCriteria,
-    _normalise_search_criteria_utf8,
-    search_mail,
-)
 from mailroom_core.filters.query import IMAPQuery, Q
+from mailroom_core.mail import search_arguments
 
 
-class TestIMAPQueryBuildStructure:
-    """Test that build() returns the shape expected by client.search()."""
+class TestCriteria:
+    """The criteria each kind of query gives."""
 
-    def test_base_returns_raw_criterion(self) -> None:
-        b = Q(("FROM", "x@y.com")).build()
-        assert b == ("FROM", "x@y.com")
-        assert Q("ALL").build() == "ALL"
+    def test_base_is_its_key_and_value(self) -> None:
+        assert Q(("FROM", "x@y.com")).criteria() == ["FROM", "x@y.com"]
+        assert Q("ALL").criteria() == ["ALL"]
+        assert Q(("SENTBEFORE", date(2026, 3, 1))).criteria() == ["SENTBEFORE", date(2026, 3, 1)]
 
-    def test_standalone_or_returns_nested_tuple(self) -> None:
+    def test_and_concatenates(self) -> None:
+        assert (Q(("FROM", "a")) & Q(("TO", "b")) & Q("UNSEEN")).criteria() == [
+            "FROM",
+            "a",
+            "TO",
+            "b",
+            "UNSEEN",
+        ]
+
+    def test_or_and_not_take_single_keys_flat(self) -> None:
         a, b = Q(("FROM", "a")), Q(("TO", "b"))
-        built = (a | b).build()
-        assert built == ("OR", ("FROM", "a"), ("TO", "b"))
+        assert (a | b).criteria() == ["OR", "FROM", "a", "TO", "b"]
+        assert (~a).criteria() == ["NOT", "FROM", "a"]
 
-    def test_or_three_way_is_nested_binary(self) -> None:
+    def test_or_and_not_are_single_keys_themselves(self) -> None:
         a, b, c = Q(("FROM", "a")), Q(("TO", "b")), Q(("SUBJECT", "c"))
-        built = (a | b | c).build()
-        assert built == ("OR", ("OR", ("FROM", "a"), ("TO", "b")), ("SUBJECT", "c"))
+        assert (a | b | c).criteria() == ["OR", "OR", "FROM", "a", "TO", "b", "SUBJECT", "c"]
+        assert (~(a | b)).criteria() == ["NOT", "OR", "FROM", "a", "TO", "b"]
+        assert (~~a).criteria() == ["NOT", "NOT", "FROM", "a"]
 
-    def test_standalone_not_returns_tuple(self) -> None:
-        built = (~Q(("FROM", "x"))).build()
-        assert built == ("NOT", ("FROM", "x"))
-
-    def test_and_of_two_base_returns_list_of_tuples(self) -> None:
-        built = (Q(("FROM", "a")) & Q(("TO", "b"))).build()
-        assert built == [("FROM", "a"), ("TO", "b")]
-
-    def test_or_and_base_returns_list_with_or_tuple_then_criterion(self) -> None:
+    def test_an_and_inside_or_or_not_is_a_group(self) -> None:
         a, b, c = Q(("FROM", "a")), Q(("TO", "b")), Q(("SUBJECT", "c"))
-        built = ((a | b) & c).build()
-        assert built == [("OR", ("FROM", "a"), ("TO", "b")), ("SUBJECT", "c")]
+        assert ((a & b) | c).criteria() == ["OR", ["FROM", "a", "TO", "b"], "SUBJECT", "c"]
+        assert (~(a & b)).criteria() == ["NOT", ["FROM", "a", "TO", "b"]]
 
-    def test_or_and_or_returns_list_of_two_or_tuples(self) -> None:
+    def test_or_inside_and_stays_flat(self) -> None:
         a, b, c, d = Q(("FROM", "a")), Q(("TO", "b")), Q(("SUBJECT", "c")), Q(("BCC", "d"))
-        built = ((a | b) & (c | d)).build()
-        assert built == [("OR", ("FROM", "a"), ("TO", "b")), ("OR", ("SUBJECT", "c"), ("BCC", "d"))]
-
-    def test_base_and_or_and_base_returns_list_crit_or_crit(self) -> None:
-        a, b, c, d = Q(("FROM", "a")), Q(("TO", "b")), Q(("SUBJECT", "c")), Q(("BCC", "d"))
-        built = (a & (b | c) & d).build()
-        assert built == [("FROM", "a"), ("OR", ("TO", "b"), ("SUBJECT", "c")), ("BCC", "d")]
-
-    def test_imapclient_normalises_built_output(self) -> None:
-        a, b, c = Q(("FROM", "a")), Q(("TO", "b")), Q(("SUBJECT", "c"))
-        for query in [Q(("FROM", "a")).build(), (a | b).build(), ((a | b) & c).build()]:
-            out = _normalise_search_criteria(query)
-            assert isinstance(out, list)
-            assert len(out) >= 1
-
-    def test_utf8_criteria_normalises_nested_and_with_euro(self) -> None:
-        """UTF-8 AND lists flatten simple pairs (no parens around each criterion)."""
-        a, b = Q(("FROM", "a")), Q(("SUBJECT", "Price \u20ac99"))
-        built = (a & b).build()
-        out = _normalise_search_criteria_utf8(built, "UTF-8")
-        subj = "Price \u20ac99"
-        assert out == [
-            b"FROM",
-            b"a",
-            b"SUBJECT",
-            _normalise_search_criteria_utf8(("SUBJECT", subj), "UTF-8")[1],
+        assert (a & (b | c) & d).criteria() == [
+            "FROM",
+            "a",
+            "OR",
+            "TO",
+            "b",
+            "SUBJECT",
+            "c",
+            "BCC",
+            "d",
         ]
-        assert b"(" not in out
-        assert b")" not in out
 
-    def test_utf8_deferred_inside_not_and_or(self) -> None:
-        """A Deferred node normalises like the query it builds."""
-        base = Q(("SENTBEFORE", "01-Mar-2026"))
+    def test_deferred_is_made_at_each_call(self) -> None:
+        made: list[int] = []
+
+        def make() -> IMAPQuery:
+            made.append(1)
+            return Q(("SENTBEFORE", date(2026, 3, len(made))))
+
+        deferred = IMAPQuery(IMAPQuery.Deferred(make))
+        assert deferred.criteria() == ["SENTBEFORE", date(2026, 3, 1)]
+        assert deferred.criteria() == ["SENTBEFORE", date(2026, 3, 2)]
+
+    def test_deferred_inside_not_and_or_is_its_query(self) -> None:
+        base = Q(("SENTBEFORE", date(2026, 3, 1)))
         deferred = IMAPQuery(IMAPQuery.Deferred(lambda: base))
-        out = _normalise_search_criteria_utf8((~deferred | Q(("FROM", "a"))).build(), "UTF-8")
-        assert out == _normalise_search_criteria_utf8((~base | Q(("FROM", "a"))).build(), "UTF-8")
-        assert out == [b"OR", b"(NOT", b"SENTBEFORE", b"01-Mar-2026)", b"FROM", b"a"]
+        both = IMAPQuery(IMAPQuery.Deferred(lambda: base & Q("SEEN")))
+        assert (~deferred | Q(("FROM", "a"))).criteria() == (~base | Q(("FROM", "a"))).criteria()
+        assert (~both).criteria() == ["NOT", ["SENTBEFORE", date(2026, 3, 1), "SEEN"]]
 
-    def test_utf8_flagged_and_body_euro_is_flat(self) -> None:
-        body = "Importo: 0,00 \u20ac EUR"
-        built: SearchCriteria = ["FLAGGED", ("BODY", body)]
-        out = _normalise_search_criteria_utf8(built, "UTF-8")
-        assert out == [
+
+class TestWritten:
+    """What core's `search_arguments` writes of them."""
+
+    def test_a_group_and_a_date(self) -> None:
+        a = Q(("FROM", "a")) & Q(("SENTBEFORE", date(2026, 3, 1)))
+        arguments, utf8 = search_arguments((~a | Q("FLAGGED")).criteria())
+        assert arguments == [
+            b"OR",
+            b"NOT",
+            b"(FROM",
+            b"a",
+            b"SENTBEFORE",
+            b"01-Mar-2026)",
             b"FLAGGED",
-            b"BODY",
-            _normalise_search_criteria_utf8(("BODY", body), "UTF-8")[1],
         ]
-        assert b"(" not in out
+        assert not utf8
 
-    def test_utf8_flagged_and_or_keeps_group_parens(self) -> None:
-        built: SearchCriteria = ["FLAGGED", ("OR", ("TO", "a"), ("CC", "a"))]
-        out = _normalise_search_criteria_utf8(built, "UTF-8")
-        assert out[0] == b"FLAGGED"
-        assert out[1] == b"(OR"
-        assert out[-1] == b"a)"
-        assert b"TO" in out
-        assert b"CC" in out
-
-    def test_search_mail_uses_uid_search_path(self) -> None:
-        client = MagicMock()
-        client._raw_command_untagged.return_value = [b""]
-        search_mail(client, Q(("SUBJECT", "Price \u20ac99")))
-        client._raw_command_untagged.assert_called_once()
-        args, _kwargs = client._raw_command_untagged.call_args
-        assert args[0] == b"SEARCH"
-        assert args[1][0:2] == [b"CHARSET", b"UTF-8"]
+    def test_non_ascii_text_needs_charset_utf8(self) -> None:
+        arguments, utf8 = search_arguments(
+            (Q("FLAGGED") & Q(("BODY", "Importo: 0,00 €"))).criteria()
+        )
+        assert arguments[:2] == [b"FLAGGED", b"BODY"]
+        assert utf8

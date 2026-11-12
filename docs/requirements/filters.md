@@ -21,14 +21,25 @@ in the browser, tried with a dry run, and run by the worker. Product scope:
   Schema, and every `pattern` compiled as a regular expression (with `regex`, which the engine
   matches with). A rule set holds at most 100 filters. Every action of the engine is
   allowed, `delete` (*Delete for good*) too: a filter is the one place Mailroom removes mail
-  permanently, because the user wrote it, saw its dry run and enabled it. Filters run in order; a disabled filter is skipped, by dry runs too. A disabled rule set never runs (no
+  permanently, because the user wrote it, saw its dry run and enabled it (on a server with
+  UIDPLUS, which expunges exactly those messages; elsewhere the action fails `unsupported`).
+  **Moves are the mail client's moves**: `move_to` and `trash` need a folder of the account
+  (`mailbox_missing` otherwise), never move into Drafts or Sent (`invalid_argument`), and without
+  MOVE copy then expunge exactly the copied messages; a move into the folder the rule set runs on
+  is skipped. A filter never matches a message marked deleted (`\Deleted`), so an original that
+  a move copied but could not remove is not copied again; and a run whose move copied messages
+  it could not remove turns its rule set off, with the error `copied_not_removed` in its history,
+  until the user has checked both folders and enables it again. `trash` without a folder needs
+  the account's special-use Trash (`unsupported` without one). Filters run in order; a disabled filter is skipped, by dry runs too. A disabled rule set never runs (no
   trigger fires, *Run now* is refused) but can still be dry-run; a new rule set starts disabled.
 - **Dry run** evaluates the rule set against the folder's real mail and reports, per filter, the
   messages it matches (uid, from, subject, date) and what it would do, changing nothing (the folder
   is selected read-only). Each filter is evaluated against the folder as it is, without the
   earlier filters applied, so a dry run may over-report: a message an earlier filter would move
-  can show up under a later one too. It looks at the folder's newest 500 messages, for about
-  30 s. A user runs one dry run at a time; another one meanwhile is refused.
+  can show up under a later one too. It looks at the folder's newest 500 messages, for 30 s at
+  most, on one of the user's two API connections to the account: past that, the pool cuts that
+  user's connections to the account in use, and the dry run fails `dry_run_timeout`. A user runs
+  one dry run at a time; another one meanwhile is refused.
 - **Patterns are matched under a timeout**: the filter engine stops a match that takes longer than its
   match timeout (1 s on one message), and the run — dry or not — fails with the error code
   `match_timeout` in its history.
@@ -40,7 +51,9 @@ in the browser, tried with a dry run, and run by the worker. Product scope:
 - **One run at a time per account.** The worker never runs two runs on the same account at once;
   a run waits for the one in progress. Dry runs, which change nothing, are not held back.
 - **The worker** checks *Run filters* and the rule set's *enabled* again when a run starts; a run
-  refused then is recorded with its error. A `new_mail` rule set also runs each time the worker
+  refused then is recorded with its error. A run's mailbox failure is recorded as
+  `<code>: <message>`, mailroom-core's code and fixed message (the app's `password_missing` and
+  `secrets_key_missing` aside). A `new_mail` rule set also runs each time the worker
   (re)connects to its folder, to catch mail that arrived meanwhile, so it runs once at worker
   start. A failed run keeps the report of the filters that finished. A run's report keeps the
   first 200 matches per filter, with the total. A run cut short by the worker stopping is closed

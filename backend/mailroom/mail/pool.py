@@ -31,8 +31,7 @@ import logging
 import threading
 import time
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import TimeoutError as FutureTimeout
+from concurrent.futures import ThreadPoolExecutor, wait
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final
@@ -220,15 +219,17 @@ class MailPool:
             future = self._executor.submit(work)
             held = entered.pop_all()
         future.add_done_callback(lambda _: held.close())
-        try:
-            return future.result(timeout=self.deadline_seconds if deadline is None else deadline)
-        except FutureTimeout:
-            if on_deadline is not None:
-                on_deadline()
-            if not future.cancel():
-                for account_id in accounts:
-                    connections.interrupt(account_id)
-            raise DeadlineExceeded from None
+        # Waited for rather than `result(timeout=…)`: the work's own TimeoutError (a filter's
+        # MatchTimeoutError) is concurrent.futures' TimeoutError too, and is no deadline.
+        done, _ = wait([future], timeout=self.deadline_seconds if deadline is None else deadline)
+        if done:
+            return future.result()
+        if on_deadline is not None:
+            on_deadline()
+        if not future.cancel():
+            for account_id in accounts:
+                connections.interrupt(account_id)
+        raise DeadlineExceeded
 
     def invalidate(self, user_id: int, account_id: str | None = None) -> None:
         """Drop the connections of one of the user's accounts, or of all of them."""

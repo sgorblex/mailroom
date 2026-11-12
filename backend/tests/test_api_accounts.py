@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import imaplib
 import logging
 import os
 import ssl
@@ -10,18 +9,15 @@ from functools import partial
 from typing import TYPE_CHECKING, Any
 
 import pytest
-from imapclient.exceptions import LoginError
 from sqlalchemy import text
 
 from mailroom.accounts import service as accounts_service
-from mailroom.accounts.mail import mail_failure
 from mailroom.accounts.store import load_accounts, user_store
 from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
 from mailroom.auth.users import create_user
 from mailroom.mail.connections import mail_ssl_context
 from mailroom.models import User
 from mailroom_core.crypto import open_secret
-from mailroom_core.filters import Account
 from mailroom_core.mail import CERTIFICATE_DETAIL, MESSAGES, MailConnections, MailError
 from mailroom_core.store import RevisionConflict, SettingsBusy, forget_user
 from mailroom_core.testing import SmtpStub
@@ -441,79 +437,8 @@ def test_the_dev_mailbox_logs_in(
     }
 
 
-def test_mail_connections_time_out() -> None:
-    from mailroom.accounts.mail import IMAP_TIMEOUT_SECONDS, imap_account
-    from mailroom_core.config import AccountConfig
-
-    raw = new_account()
-    del raw["password"]
-    config = AccountConfig.model_validate(raw | {"auth": {"type": "password"}})
-    account = imap_account(config, MAILBOX_PASSWORD, mail_ssl_context())
-    assert account.timeout == IMAP_TIMEOUT_SECONDS
-
-
 def test_the_mail_ssl_context_verifies(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MAILROOM_MAIL_CA_FILE", "/nonexistent/ca.pem")
     context = mail_ssl_context()
     assert context.verify_mode == ssl.CERT_REQUIRED
     assert context.check_hostname
-
-
-def _mailbox() -> Account:
-    return Account("work", "imap.example", 993, "me", MAILBOX_PASSWORD)
-
-
-@pytest.mark.parametrize(
-    ("error", "code"),
-    [
-        (imaplib.IMAP4.error("[AUTHENTICATIONFAILED] Authentication failed."), "auth_failed"),
-        (imaplib.IMAP4.error("select failed: [NONEXISTENT] Unknown Mailbox"), "mailbox_missing"),
-        (imaplib.IMAP4.error("BAD something odd"), "server_error"),
-        (ssl.SSLError("handshake"), "unreachable"),
-        (ConnectionRefusedError(111, "Connection refused"), "unreachable"),
-        (TimeoutError("timed out"), "timeout"),
-    ],
-)
-def test_a_mailbox_failure_has_core_s_code_and_message(error: Exception, code: str) -> None:
-    failure = mail_failure(error, _mailbox())
-    assert failure is not None
-    assert (failure.code, failure.message) == (code, MESSAGES[code])
-
-
-def test_a_certificate_that_does_not_verify_is_said() -> None:
-    failure = mail_failure(ssl.SSLCertVerificationError(1, "certificate verify failed"), _mailbox())
-    assert failure is not None
-    assert failure.code == "unreachable"
-    assert failure.message == f"{MESSAGES['unreachable']} {CERTIFICATE_DETAIL}"
-
-
-def test_a_failure_quoting_the_password_is_logged_by_type_only(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    caplog.set_level(logging.WARNING, logger="mailroom_core.mail")
-    failure = mail_failure(imaplib.IMAP4.error(f"LOGIN me {MAILBOX_PASSWORD}"), _mailbox())
-    assert failure is not None
-    assert MAILBOX_PASSWORD not in failure.message
-    assert caplog.records
-    assert all(MAILBOX_PASSWORD not in str(vars(record)) for record in caplog.records)
-
-
-@pytest.mark.parametrize("password", ['it\'s "secret"', "back\\slash-secret", "perché-secret"])
-def test_a_login_error_is_logged_by_type_only(
-    caplog: pytest.LogCaptureFixture, password: str
-) -> None:
-    """imaplib prints the server's reply as bytes, so an echoed password comes back escaped:
-    a login's error is never logged by its text."""
-    echoed = repr(password.encode())
-    assert password not in echoed
-    caplog.set_level(logging.DEBUG, logger="mailroom_core.mail")
-    error = LoginError(f"LOGIN command error: BAD [{echoed}]")
-    failure = mail_failure(error, Account("work", "imap.example", 993, "me", password))
-    assert failure is not None
-    assert failure.code == "auth_failed"
-    assert caplog.records
-    assert all("secret" not in str(vars(record)) for record in caplog.records)
-
-
-def test_a_bug_is_no_mailbox_failure() -> None:
-    assert mail_failure(ValueError("bug"), _mailbox()) is None

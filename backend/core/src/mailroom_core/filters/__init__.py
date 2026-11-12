@@ -2,8 +2,9 @@
 
 Rules are built in Python or loaded from their data form (`load_filter`, `json_schema`), run on a
 folder (`Folder.run`, `run_rules`) or on new mail through IDLE (`monitor`), and report what they
-matched and did (`FolderReport`). It was imap-thingy, a library of its own, until it joined
-mailroom-core.
+matched and did (`FolderReport`). They run on mailroom-core's connections
+(`mailroom_core.mail.MailConnections`): searches, fetches, moves and flags are `mail`'s. It was
+imap-thingy, a library of its own, until it joined mailroom-core.
 """
 
 from mailroom_core.filters.account import Account, Folder
@@ -61,6 +62,7 @@ from mailroom_core.filters.pattern import (
 from mailroom_core.filters.query import All, IMAPQuery, Q
 from mailroom_core.filters.report import FilterReport, FolderReport, MessageSummary
 from mailroom_core.filters.runner import Rules, RunRulesError, monitor, run_rules, starred_only
+from mailroom_core.filters.selected import Selected
 from mailroom_core.filters.spec import (
     NotSerializableError,
     SpecError,
@@ -122,6 +124,7 @@ __all__ = [
     "Q",
     "Rules",
     "RunRulesError",
+    "Selected",
     "SpecError",
     "SpecNode",
     "Star",

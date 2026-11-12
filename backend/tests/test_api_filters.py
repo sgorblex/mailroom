@@ -504,6 +504,22 @@ def test_run_now_queues_a_run_for_the_worker(
     assert len(jobs(db_session)) == 1
 
 
+def test_a_dry_run_says_a_certificate_did_not_verify(user_client: TestClient) -> None:
+    """On the filter engine's path too: the stub's TLS certificate is self-signed."""
+    with SmtpStub() as stub:
+        account = new_account(imap={"host": "127.0.0.1", "port": stub.port, "tls": "implicit"})
+        assert user_client.post("/api/v1/accounts", json=account).status_code == 201
+        created = user_client.post("/api/v1/accounts/work/rule-sets", json=rule_set())
+        rule_set_id = created.json()["id"]
+        add_filter(user_client, rule_set_id, "Shop", SHOP_SPEC)
+        response = user_client.post(f"/api/v1/rule-sets/{rule_set_id}/dry-run")
+    unverified = f"{MESSAGES['unreachable']} {CERTIFICATE_DETAIL}"
+    assert response.status_code == 502
+    assert response.json()["detail"] == {"code": "unreachable", "message": unverified}
+    [run] = user_client.get(f"/api/v1/rule-sets/{rule_set_id}/runs").json()
+    assert run["error"] == f"unreachable: {unverified}"
+
+
 def test_a_dry_run_failure_is_answered_and_kept(user_client: TestClient, rule_set_id: int) -> None:
     """The account's IMAP port 9 on loopback is closed."""
     add_filter(user_client, rule_set_id, "Shop", SHOP_SPEC)
@@ -563,7 +579,7 @@ def test_an_unexpected_dry_run_failure_keeps_its_text_out(
         msg = "Subject: a private matter"
         raise TypeError(msg)
 
-    monkeypatch.setattr(filter_runs, "dry_run", failing)
+    monkeypatch.setattr(filter_runs.Folder, "run", failing)
     caplog.set_level(logging.INFO)
     response = user_client.post(f"/api/v1/rule-sets/{rule_set_id}/dry-run")
     assert response.status_code == 500
@@ -583,7 +599,7 @@ def test_a_pattern_out_of_time_fails_the_dry_run(
         msg = "regular expression '(a|aa)+$' timed out after 1.0s"
         raise MatchTimeoutError(msg)
 
-    monkeypatch.setattr(filter_runs, "dry_run", slow)
+    monkeypatch.setattr(filter_runs.Folder, "run", slow)
     response = user_client.post(f"/api/v1/rule-sets/{rule_set_id}/dry-run")
     assert (response.status_code, response.json()["detail"]["code"]) == (400, "match_timeout")
     [run] = user_client.get(f"/api/v1/rule-sets/{rule_set_id}/runs").json()

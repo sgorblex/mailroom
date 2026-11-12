@@ -610,8 +610,8 @@ Mailbox failures carry the 14 codes of mailroom-mcp, plus `delivery_unknown` (`s
 | `server_error` | 502 | The mail server reported an error. |
 
 The send group (`send_disabled`, `rate_limited`, `recipient_refused`, `delivery_unknown`) belongs
-to slice C; slices A and B never answer them. The app's own codes keep their statuses: `password_missing`,
-`starttls_unsupported` and `draft_not_editable` 409, `secrets_key_missing` 503, an unknown account `not_found` 404
+to slice C; slices A and B never answer them. The app's own codes keep their statuses: `password_missing`
+and `draft_not_editable` 409, `secrets_key_missing` 503, an unknown account `not_found` 404
 (coded). A mailbox failure carrying a code not in this table keeps its code, with status 502. The
 account's login test, its folder listing and the filters' runs report mailbox failures with the
 same codes and messages. An `unreachable` whose cause is a TLS certificate that did not verify ends

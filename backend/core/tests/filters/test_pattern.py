@@ -1,9 +1,10 @@
 """Tests for timed matching of user patterns."""
 
 import time
+from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -29,12 +30,12 @@ from mailroom_core.filters.pattern import (
 )
 from mailroom_core.filters.runner import RunRulesError, run_rules
 from mailroom_core.filters.spec import SpecError, load_filter
+from mailroom_core.mail import FetchedMessage
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
-    from tests.conftest import MockEMailAccount
-
+    from mailroom_core.filters.account import Account
     from mailroom_core.filters.criteria.criterion import Criterion
 
 # Exponential backtracking: every split of the a's into "a" and "aa" is tried before failing.
@@ -95,48 +96,43 @@ class TestMatchTimeout:
         with pytest.raises(ValueError, match="positive"):
             set_match_timeout(0)
 
-    def test_timeout_fails_the_filter_and_keeps_the_partial_report(
-        self, mock_account: MockEMailAccount
-    ) -> None:
+    def test_timeout_fails_the_filter_and_keeps_the_partial_report(self, account: Account) -> None:
         set_match_timeout(0.05)
-        conn: MagicMock = mock_account.connect.return_value
-        conn._raw_command_untagged = MagicMock(return_value=[b"1"])
-        conn.fetch = MagicMock(return_value={})
-        folder = mock_account / "INBOX"
+        folder = account / "INBOX"
         report = folder.new_report(dry_run=True)
         first = Filter(SubjectMatches("nothing"), MarkAsRead())
         slow = Filter(SubjectMatches(CATASTROPHIC), MoveTo(Path("D")))
 
-        with (
-            patch(
-                "mailroom_core.filters.account.fetch_mail",
-                return_value={1: _msg(subject=VICTIM)},
-            ),
-            pytest.raises(MatchTimeoutError),
-        ):
+        with _one_message(), pytest.raises(MatchTimeoutError):
             folder.run_into(report, [first, slow], dry_run=True)
 
         assert [r["spec"] for r in report["filters"]] == [first.to_spec()]
-        conn.logout.assert_called_once()
 
-    def test_parallel_runner_reports_the_timeout(self, mock_account: MockEMailAccount) -> None:
+    def test_parallel_runner_reports_the_timeout(self, account: Account) -> None:
         set_match_timeout(0.05)
-        conn: MagicMock = mock_account.connect.return_value
-        conn._raw_command_untagged = MagicMock(return_value=[b"1"])
         slow = Filter(SubjectMatches(CATASTROPHIC), MoveTo(Path("D")))
 
-        with (
-            patch(
-                "mailroom_core.filters.account.fetch_mail",
-                return_value={1: _msg(subject=VICTIM)},
-            ),
-            pytest.raises(RunRulesError) as exc_info,
-        ):
-            run_rules([(mock_account / "INBOX", [slow])], dry_run=True, parallel=True)
+        with _one_message(), pytest.raises(RunRulesError) as exc_info:
+            run_rules([(account / "INBOX", [slow])], dry_run=True, parallel=True)
 
         error = exc_info.value.reports[0]["error"]
         assert error is not None
         assert "timed out" in error
+
+
+@contextmanager
+def _one_message() -> Iterator[None]:
+    """Every search finds message 1, whose subject is VICTIM."""
+    source = f"From: a@b.example\r\nSubject: {VICTIM}\r\n\r\n".encode()
+    with (
+        patch("mailroom_core.filters.account.search_uids", return_value=[1]),
+        patch(
+            "mailroom_core.filters.account.fetch_sources",
+            return_value={1: FetchedMessage(1, source, frozenset())},
+        ),
+        patch("mailroom_core.filters.account.fetch_envelopes", return_value={}),
+    ):
+        yield
 
 
 class TestPatterns:

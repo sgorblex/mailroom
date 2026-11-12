@@ -9,9 +9,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 from imapclient import IMAPClient
 
-from mailroom.accounts.mail import imap_account
-from mailroom.filters.imap import RuleSetFolder
-from mailroom.filters.runs import DryRunTimeout, dry_run
+from mailroom.filters import runs
 from mailroom.mail.connections import mail_ssl_context
 from mailroom_core.filters import get_match_timeout, load_filter, set_match_timeout
 from mailroom_core.mail import MESSAGES
@@ -247,36 +245,35 @@ def test_a_pattern_out_of_time_fails_the_dry_run(
     assert "(a|aa)" not in run["error"]
 
 
-def test_a_dry_run_looks_at_the_newest_messages_only(mailbox: Mailbox) -> None:
+def test_a_dry_run_looks_at_the_newest_messages_only(
+    user_client: TestClient, mailbox: Mailbox, account: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     mailbox.append("INBOX", *[(SHOP, f"Sale {n}", False) for n in range(5)])
-    account = imap_account_for(mailbox)
-    folder = RuleSetFolder(account, ["INBOX"])
-    outcome = dry_run(folder, [load_filter(SHOP_SPEC)], max_messages=3)
-    assert outcome.limited_to_newest == 3
-    assert [m["subject"] for m in outcome.report["filters"][0]["matched"]] == [
-        "Sale 2",
-        "Sale 3",
-        "Sale 4",
+    rule_set_id = user_client.post(f"/api/v1/accounts/{account}/rule-sets", json=rule_set()).json()[
+        "id"
     ]
+    add_filter(user_client, rule_set_id, "Shop", SHOP_SPEC)
 
-    folder = RuleSetFolder(account, ["INBOX"])
-    outcome = dry_run(folder, [load_filter(SHOP_SPEC)], max_messages=5)
-    assert outcome.limited_to_newest is None
-    assert len(outcome.report["filters"][0]["matched"]) == 5
+    monkeypatch.setattr(runs, "DRY_RUN_MAX_MESSAGES", 3)
+    result = dry_run_of(user_client, rule_set_id)["result"]
+    assert result["limited_to_newest"] == 3
+    assert [m["subject"] for m in result["filters"][0]["matched"]] == ["Sale 2", "Sale 3", "Sale 4"]
+
+    monkeypatch.setattr(runs, "DRY_RUN_MAX_MESSAGES", 5)
+    result = dry_run_of(user_client, rule_set_id)["result"]
+    assert result["limited_to_newest"] is None
+    assert len(result["filters"][0]["matched"]) == 5
 
 
-def test_a_dry_run_out_of_time_is_stopped(mailbox: Mailbox) -> None:
+def test_a_dry_run_out_of_time_is_stopped(
+    user_client: TestClient, mailbox: Mailbox, account: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The pool's deadline: the call is abandoned and the account's connection in use cut."""
     mailbox.append("INBOX", (SHOP, "Sale", False))
-    folder = RuleSetFolder(imap_account_for(mailbox), ["INBOX"])
-    with pytest.raises(DryRunTimeout):
-        dry_run(folder, [load_filter(SHOP_SPEC)], seconds=0)
-
-
-def imap_account_for(mailbox: Mailbox) -> Any:
-    from mailroom_core.config import AccountConfig
-
-    server = mailbox.server
-    endpoint = {"host": server.host, "port": server.port, "tls": "implicit"}
-    raw = new_account(login=mailbox.login, imap=endpoint) | {"auth": {"type": "password"}}
-    del raw["password"]
-    return imap_account(AccountConfig.model_validate(raw), server.password, mail_ssl_context())
+    rule_set_id = user_client.post(f"/api/v1/accounts/{account}/rule-sets", json=rule_set()).json()[
+        "id"
+    ]
+    add_filter(user_client, rule_set_id, "Shop", SHOP_SPEC)
+    monkeypatch.setattr(runs, "DRY_RUN_SECONDS", 0)
+    response = user_client.post(f"/api/v1/rule-sets/{rule_set_id}/dry-run")
+    assert (response.status_code, response.json()["detail"]["code"]) == (504, "dry_run_timeout")
