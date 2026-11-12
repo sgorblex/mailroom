@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.2](https://github.com/sgorblex/mailroom/compare/v0.8.1...v0.8.2) (2026-11-12)
+
+
+### Bug Fixes
+
+* a worker that loses its database exits 1, not 0 ([#17](https://github.com/sgorblex/mailroom/issues/17)) ([824571b](https://github.com/sgorblex/mailroom/commit/824571b6d3b7f9ded1c506066fed6a352160b12a))
+
 ## [0.8.1](https://github.com/sgorblex/mailroom/compare/v0.8.0...v0.8.1) (2026-11-12)
 
 
