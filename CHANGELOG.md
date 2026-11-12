@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.8.0](https://github.com/sgorblex/mailroom/compare/v0.7.0...v0.8.0) (2026-11-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* **core:** the filter engine's public API changes. `Account` takes `(connections: MailConnections, account_id)` instead of a name, host, port, credentials, address, delimiter, SSL context and timeout; `.name` is now `.account_id`, the connection attributes and `Account.connect()` / `Folder.connect()` are gone, and `delimiter()` is a method that asks the server (was an attribute). `folders()` (was `list_folders`) lists special-use folders first, then by path, split on each folder's own delimiter. `Folder.run`, `run_rules` and `folders()` raise `MailError` with core's codes instead of imaplib or socket errors, and a Trash action with no Trash folder is `MailError("unsupported")` (was `ValueError`). `run_rules(parallel=True)` shares the account's pool between its folders, so with a pool of one they wait for each other and may fail `busy`. `monitor` also runs on every connect and ends a watch on a refused login or a missing folder. `mailroom_core.filters.idle` is removed. `Folder.run` takes `dry_run` and `newest` (at least 1) as keywords. An `Action`'s function is `(selected: Selected, uids)` and `Action.execute(selected, uids)`, with `Selected` exported. `IMAPQuery.build()` is replaced by `criteria()`, core's search criteria. `FolderReport` gains `limited_to_newest`.
+* mailbox failure codes are renamed in the API, the MCP tools' answers and the recorded runs: `login_failed` becomes `auth_failed` (409 in the folder listing and dry run, was 502); `tls_failed` becomes `unreachable`, whose message ends with "Its TLS certificate did not verify." when that is the reason; `imap_error` becomes `auth_failed`, `mailbox_missing` (404), `unsupported`, `unreachable` or `server_error`. Every message is core's fixed text, never the server's. `timeout` and `unreachable` keep their codes; `password_missing`, `secrets_key_missing` and `starttls_unsupported` stay the app's own.
+
+### Features
+
+* **core:** connections from plain config ([#9](https://github.com/sgorblex/mailroom/issues/9)) ([f78295f](https://github.com/sgorblex/mailroom/commit/f78295f8539426ac744828fb0bacc11732e332da))
+* **core:** IDLE and a login test in mail ([#8](https://github.com/sgorblex/mailroom/issues/8)) ([eb18dd9](https://github.com/sgorblex/mailroom/commit/eb18dd96373c679d66b10eae7343ad14feee0479))
+* **core:** operations on the selected folder, organize built on them ([#7](https://github.com/sgorblex/mailroom/issues/7)) ([4847cb7](https://github.com/sgorblex/mailroom/commit/4847cb7f4749cce2c44d618d5f181f24fbffee81))
+* **core:** the filter engine on core's connections ([#13](https://github.com/sgorblex/mailroom/issues/13)) ([2057875](https://github.com/sgorblex/mailroom/commit/20578752a2ed48b862de406785cab07293ae0ad4))
+* mailbox failures use core's error codes ([#10](https://github.com/sgorblex/mailroom/issues/10)) ([07b8f52](https://github.com/sgorblex/mailroom/commit/07b8f5215bbb76c8463f19c5e1a9634df97e386a))
+* test login and the folder picker on the mail pool ([#11](https://github.com/sgorblex/mailroom/issues/11)) ([6be325e](https://github.com/sgorblex/mailroom/commit/6be325e38b2c4b480b8fe31daee620a8c89f8e92))
+* the worker watches folders with core's IdleWatch ([#12](https://github.com/sgorblex/mailroom/issues/12)) ([3a77f89](https://github.com/sgorblex/mailroom/commit/3a77f89a8c7426e85fff32dbcede15a81f1ba457))
+
 ## [0.7.0](https://github.com/sgorblex/mailroom/compare/v0.6.0...v0.7.0) (2026-11-10)
 
 
