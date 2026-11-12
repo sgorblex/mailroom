@@ -52,6 +52,7 @@ from mailroom_core.mail.drafts import (
     try_remove_draft,
 )
 from mailroom_core.mail.errors import (
+    CERTIFICATE_DETAIL,
     MAIL_ERROR_CODES,
     MESSAGES,
     MailError,
@@ -181,6 +182,7 @@ from mailroom_core.mail.text import (
 __all__ = [
     "ALL_FOLDERS",
     "ATTACHMENT_FILE_NOTE",
+    "CERTIFICATE_DETAIL",
     "DISPLAYED_IMAGES",
     "DRAFT_FLAGS",
     "DRAFT_HEADER",

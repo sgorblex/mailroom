@@ -377,6 +377,8 @@ share of the defence:
   not keep yet: [`TODO.md`](TODO.md)) naming the account,
   folder, UID, Message-ID, sender and recipients in clear, and the subject only as a SHA-256.
 - **Errors** are `MailError` codes with fixed messages, never the server's or a library's wording.
+  An `unreachable` caused by a certificate that did not verify (itself, or wrapped in a login
+  error) ends with the fixed `CERTIFICATE_DETAIL`, which a host may recognise.
   Secrets never reach a log line, an error or a tool's text.
 
 ## Compatibility

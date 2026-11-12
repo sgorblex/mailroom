@@ -90,4 +90,6 @@ An unknown or foreign id is a `404` with a plain `detail` (`"No such rule set"`)
   longer loads, `400` `match_timeout` when a pattern takes too long on a message, `504`
   `dry_run_timeout`, `429` `dry_run_busy` while another dry run of the user's is still going (not
   recorded), `500` `run_failed: <exception type>` for anything else (its text is neither kept nor
-  logged), and mailbox failures as for the account's folder listing.
+  logged), and mailbox failures as for the account's folder listing (mailroom-core's codes, as
+  the mail client's: `auth_failed` 409, `mailbox_missing` 404 for a folder that is not there,
+  `unreachable` 502, …).

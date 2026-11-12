@@ -6,7 +6,7 @@ import ssl
 import pytest
 from imapclient.exceptions import CapabilityError, IllegalStateError, LoginError
 
-from mailroom_core.mail import MAIL_ERROR_CODES, MESSAGES, MailError, mail_error
+from mailroom_core.mail import CERTIFICATE_DETAIL, MAIL_ERROR_CODES, MESSAGES, MailError, mail_error
 
 
 def _login_error_during(error: BaseException) -> LoginError:
@@ -58,6 +58,16 @@ def _login_error_during(error: BaseException) -> LoginError:
 )
 def test_maps(error: BaseException, code: str) -> None:
     assert mail_error(error, "acc").code == code
+
+
+def test_says_when_the_certificate_did_not_verify() -> None:
+    unverified = ssl.SSLCertVerificationError(1, "certificate verify failed: self-signed")
+    for error in (unverified, _login_error_during(unverified)):
+        mapped = mail_error(error, "acc")
+        assert mapped.code == "unreachable"
+        assert mapped.message == f"{MESSAGES['unreachable']} {CERTIFICATE_DETAIL}"
+    for error in (ssl.SSLError("handshake failure"), ConnectionRefusedError(111, "refused")):
+        assert mail_error(error, "acc").detail is None
 
 
 def test_keeps_server_text_out_of_the_message_but_logs_it(caplog: pytest.LogCaptureFixture) -> None:

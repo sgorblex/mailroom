@@ -612,7 +612,10 @@ Mailbox failures carry the 14 codes of mailroom-mcp, plus `delivery_unknown` (`s
 The send group (`send_disabled`, `rate_limited`, `recipient_refused`, `delivery_unknown`) belongs
 to slice C; slices A and B never answer them. The app's own codes keep their statuses: `password_missing`,
 `starttls_unsupported` and `draft_not_editable` 409, `secrets_key_missing` 503, an unknown account `not_found` 404
-(coded). A mailbox failure carrying a code not in this table keeps its code, with status 502.
+(coded). A mailbox failure carrying a code not in this table keeps its code, with status 502. The
+account's login test, its folder listing and the filters' runs report mailbox failures with the
+same codes and messages. An `unreachable` whose cause is a TLS certificate that did not verify ends
+with "Its TLS certificate did not verify."; the web adds that reason, translated, to its wording.
 
 In a list or search page a failing source does not fail the page: it is reported in `failures` by
 code, below.

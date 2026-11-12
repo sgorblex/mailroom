@@ -17,6 +17,20 @@ describe('runErrorMessage', () => {
     expect(runErrorMessage(t, 'something odd')).toBe('something odd')
   })
 
+  it('adds a certificate that did not verify to unreachable, in English and Italian', () => {
+    const unreachable = 'unreachable: The mail server for this account could not be reached.'
+    const unverified = `${unreachable} Its TLS certificate did not verify.`
+    expect(runErrorMessage(i18n.getFixedT('en', FILTERS_NS), unverified)).toBe(
+      'The mail server for this account could not be reached. Its TLS certificate did not verify.',
+    )
+    expect(runErrorMessage(i18n.getFixedT('it', FILTERS_NS), unverified)).toBe(
+      'Impossibile raggiungere il server di posta di questo account. Il suo certificato TLS non è stato verificato.',
+    )
+    expect(runErrorMessage(i18n.getFixedT('en', FILTERS_NS), unreachable)).toBe(
+      'The mail server for this account could not be reached.',
+    )
+  })
+
   it('words a pattern out of time, in English and Italian', () => {
     const error = "match_timeout: A filter's regular expression took too long on a message: simplify the pattern."
     expect(runErrorMessage(i18n.getFixedT('en', FILTERS_NS), error)).toBe(

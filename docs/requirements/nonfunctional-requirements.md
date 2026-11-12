@@ -319,10 +319,15 @@ bounded to one minor because the server relies on its handlers.
   the cap. Logged as `limits_changed`.
 - **IMAP** goes through the filter engine, implicit TLS only (`starttls_unsupported` otherwise), verified
   against the system CAs plus `MAILROOM_MAIL_CA_FILE` (the dev mail CA in dev), with a 20 s
-  timeout on connecting and on every read. A failure is reported by kind (`login_failed`,
-  `unreachable`, `timeout`, `tls_failed`, `imap_error`, `password_missing`) with the server's
-  wording, the password masked; a folder listing answers it by `mail_status` (502 by default,
-  504 for `timeout`, 409 for `password_missing` / `starttls_unsupported`).
+  timeout on connecting and on every read. A failure carries mailroom-core's mail error code and
+  fixed message (`mail_error`: `auth_failed`, `unreachable`, `timeout`, `mailbox_missing`,
+  `server_error`, …; an `unreachable` whose certificate did not verify ends with core's fixed
+  `CERTIFICATE_DETAIL`, which the web says in the reader's language), or the
+  app's own `password_missing`, `secrets_key_missing` or `starttls_unsupported`; never the
+  server's wording. A folder listing answers it by `mail_status` (502 by default, 504 for
+  `timeout`, 404 for `mailbox_missing`, 409 for `auth_failed` / `password_missing` /
+  `starttls_unsupported`). Migration `202611121200` rewrote the runs recorded earlier to these
+  codes and their fixed messages.
 - **Logs:** `account_added`, `account_changed`, `account_removed`, `account_tested` (with
   `outcome`), each with `user_id` and `account_id`, and the changes with `via` (`web`, or `mcp`
   for the MCP server); never a login, a host or a password.
@@ -468,7 +473,8 @@ What they do and the route list: [`filters.md`](filters.md). How:
   folder's newest 500 messages, for about 30 s (then the connection is closed: 504
   `dry_run_timeout`). A pattern out of time is 400 `match_timeout`. The folder path is joined with
   the delimiter the server reports. Mailbox failures answer as a folder listing does (by
-  `mail_status`: 502, 504 `timeout`, 409 `password_missing` / `starttls_unsupported`; 503
+  `mail_status`: 502, 504 `timeout`, 404 `mailbox_missing` for a folder that is not there, 409
+  `auth_failed` / `password_missing` / `starttls_unsupported`; 503
   `secrets_key_missing`); any other failure is 500
   `run_failed`, its exception's type name only. Either way the run joins the history. One dry run
   per user at a time, across API processes: a session advisory lock on a connection of its own,

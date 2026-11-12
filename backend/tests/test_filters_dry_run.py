@@ -13,6 +13,7 @@ from mailroom.accounts.mail import imap_account, mail_ssl_context
 from mailroom.filters.imap import RuleSetFolder
 from mailroom.filters.runs import DryRunTimeout, dry_run
 from mailroom_core.filters import get_match_timeout, load_filter, set_match_timeout
+from mailroom_core.mail import MESSAGES
 from tests.test_api_accounts import new_account
 from tests.test_api_filters import SHOP_SPEC, add_filter, rule_set
 
@@ -201,7 +202,7 @@ def test_a_nested_folder_is_found_with_the_servers_delimiter(
     assert [m["subject"] for m in result["filters"][0]["matched"]] == ["Kept"]
 
 
-def test_a_missing_folder_is_a_mailbox_error(
+def test_a_missing_folder_is_mailbox_missing(
     user_client: TestClient, mailbox: Mailbox, account: str
 ) -> None:
     _ = mailbox
@@ -209,8 +210,11 @@ def test_a_missing_folder_is_a_mailbox_error(
     rule_set_id = user_client.post(f"/api/v1/accounts/{account}/rule-sets", json=body).json()["id"]
     add_filter(user_client, rule_set_id, "Shop", SHOP_SPEC)
     response = user_client.post(f"/api/v1/rule-sets/{rule_set_id}/dry-run")
-    assert response.status_code == 502
-    assert response.json()["detail"]["code"] == "imap_error"
+    assert response.status_code == 404
+    assert response.json()["detail"] == {
+        "code": "mailbox_missing",
+        "message": MESSAGES["mailbox_missing"],
+    }
 
 
 @pytest.fixture

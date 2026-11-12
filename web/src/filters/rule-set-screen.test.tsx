@@ -451,13 +451,38 @@ describe('RuleSetScreen', () => {
     expect(old).not.toBeChecked()
   })
 
+  it('says why the folders cannot be listed when a certificate did not verify', async () => {
+    stubFiltersApi(
+      state({
+        refuse: {
+          'GET /api/v1/accounts/work/folders': {
+            status: 502,
+            body: {
+              detail: {
+                code: 'unreachable',
+                message: 'The mail server for this account could not be reached. Its TLS certificate did not verify.',
+              },
+            },
+          },
+        },
+      }),
+    )
+    renderFiltersApp('/filters/1')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit settings' }))
+    const form = screen.getByRole('form', { name: 'Edit Inbox sorting' })
+    expect(within(form).getByLabelText('Folder')).toHaveAccessibleDescription(
+      /could not be reached\. Its TLS certificate did not verify\./,
+    )
+  })
+
   it('takes a typed folder path when the folders cannot be listed', async () => {
     const fetchMock = stubFiltersApi(
       state({
         refuse: {
           'GET /api/v1/accounts/work/folders': {
             status: 502,
-            body: { detail: { code: 'unreachable', message: 'connection refused' } },
+            body: { detail: { code: 'unreachable', message: 'The mail server for this account could not be reached.' } },
           },
         },
       }),
@@ -467,7 +492,7 @@ describe('RuleSetScreen', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Edit settings' }))
     const form = screen.getByRole('form', { name: 'Edit Inbox sorting' })
     const folder = within(form).getByLabelText('Folder')
-    expect(folder).toHaveAccessibleDescription(/Could not reach the server: connection refused/)
+    expect(folder).toHaveAccessibleDescription(/The mail server for this account could not be reached\./)
     await userEvent.clear(folder)
     await userEvent.type(folder, 'Archive/2026')
     expect(folder).toHaveValue('Archive/2026')
@@ -495,9 +520,9 @@ describe('RuleSetScreen', () => {
               folder: ['INBOX'],
               dry_run: false,
               filters: [],
-              error: 'login_failed: bad password',
+              error: 'auth_failed: The mail server rejected the login for this account.',
             },
-            error: 'login_failed: bad password',
+            error: 'auth_failed: The mail server rejected the login for this account.',
           },
         ],
       }),
@@ -507,7 +532,9 @@ describe('RuleSetScreen', () => {
     const history = await screen.findByRole('list', { name: 'Run history' })
     await userEvent.click(within(history).getByText('Scheduled'))
     expect(
-      within(history).getAllByText('Stopped by an error: The server refused the login: bad password'),
+      within(history).getAllByText(
+        'Stopped by an error: The mail server rejected the login for this account. Check its password in Accounts.',
+      ),
     ).toHaveLength(1)
   })
 

@@ -244,7 +244,7 @@ def _dry_run_result(
     except MatchTimeoutError:
         raise RunRefused("match_timeout", MATCH_TIMEOUT_MESSAGE) from None
     except Exception as exc:
-        mailbox = mail_failure(exc, account.password)
+        mailbox = mail_failure(exc, account)
         if mailbox is None:
             raise
         raise RunRefused(mailbox.code, mailbox.message) from None

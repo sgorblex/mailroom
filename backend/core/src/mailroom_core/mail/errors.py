@@ -57,6 +57,10 @@ MESSAGES: Final[Mapping[MailErrorCode, str]] = {
     "server_error": "The mail server reported an error.",
 }
 
+CERTIFICATE_DETAIL: Final = "Its TLS certificate did not verify."
+"""The detail of an `unreachable` whose reason is a server certificate that did not verify:
+fixed, so a host may recognise it at the end of the message."""
+
 _log = logging.getLogger("mailroom_core.mail")
 
 
@@ -85,7 +89,8 @@ def mail_error(error: BaseException, account: str, *, secret: bool = False) -> M
     """`error` as a MailError; a MailError passes through as it is.
 
     The original goes to the log with the account id: its text may echo server responses, so it
-    never reaches the MailError. An error that is neither an IMAP nor a socket error is a bug
+    never reaches the MailError. An `unreachable` caused by a certificate that did not verify
+    carries `CERTIFICATE_DETAIL`. An error that is neither an IMAP nor a socket error is a bug
     and is logged with its traceback. `secret` (the login step, whose errors can quote the
     credentials, as a UnicodeEncodeError does) logs only the error's type.
     """
@@ -102,7 +107,22 @@ def mail_error(error: BaseException, account: str, *, secret: bool = False) -> M
         extra["error"] = str(error)
     unexpected = not secret and not is_connection_error(error)
     _log.warning("imap_error", extra=extra, exc_info=error if unexpected else None)
+    if code == "unreachable" and _certificate_unverified(error):
+        return MailError(code, CERTIFICATE_DETAIL)
     return MailError(code)
+
+
+def _certificate_unverified(error: BaseException) -> bool:
+    """Whether `error`, or an error it was raised from or while handling, is a certificate that
+    did not verify (a LoginError wraps what failed during the login)."""
+    seen: set[int] = set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        if isinstance(current, ssl.SSLCertVerificationError):
+            return True
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+    return False
 
 
 def is_connection_error(error: BaseException) -> bool:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import imaplib
 import logging
 import os
 import ssl
@@ -8,17 +9,21 @@ from functools import partial
 from typing import TYPE_CHECKING, Any
 
 import pytest
+from imapclient.exceptions import LoginError
 from sqlalchemy import text
 
 from mailroom.accounts import service as accounts_service
-from mailroom.accounts.mail import MailFailure, mail_ssl_context
+from mailroom.accounts.mail import MailFailure, mail_failure, mail_ssl_context
 from mailroom.accounts.store import load_accounts, user_store
 from mailroom.api.routes import accounts as accounts_routes
 from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
 from mailroom.auth.users import create_user
 from mailroom.models import User
 from mailroom_core.crypto import open_secret
+from mailroom_core.filters import Account
+from mailroom_core.mail import CERTIFICATE_DETAIL, MESSAGES
 from mailroom_core.store import RevisionConflict, SettingsBusy, forget_user
+from mailroom_core.testing import SmtpStub
 from tests.conftest import PASSWORD
 
 if TYPE_CHECKING:
@@ -28,7 +33,6 @@ if TYPE_CHECKING:
     from starlette.testclient import TestClient
 
     from mailroom_core.crypto import SecretsSubkey
-    from mailroom_core.filters import Account
     from mailroom_core.testing import ImapTestServer
 
 
@@ -243,13 +247,13 @@ def test_a_refused_login_is_an_answer(
     assert user_client.post("/api/v1/accounts", json=new_account()).status_code == 201
 
     def check_login(_account: Account) -> None:
-        raise MailFailure("login_failed", "[AUTHENTICATIONFAILED] Authentication failed.")
+        raise MailFailure("auth_failed", MESSAGES["auth_failed"])
 
     monkeypatch.setattr(accounts_routes, "check_login", check_login)
     assert user_client.post("/api/v1/accounts/work/test").json() == {
         "ok": False,
-        "code": "login_failed",
-        "message": "[AUTHENTICATIONFAILED] Authentication failed.",
+        "code": "auth_failed",
+        "message": MESSAGES["auth_failed"],
     }
 
 
@@ -258,7 +262,17 @@ def test_an_unreachable_server_is_reported(user_client: TestClient) -> None:
     assert user_client.post("/api/v1/accounts", json=new_account()).status_code == 201
     result = user_client.post("/api/v1/accounts/work/test").json()
     assert (result["ok"], result["code"]) == (False, "unreachable")
-    assert MAILBOX_PASSWORD not in result["message"]
+    assert result["message"] == MESSAGES["unreachable"]
+
+
+def test_a_certificate_that_does_not_verify_is_said_by_the_test(user_client: TestClient) -> None:
+    """The stub's TLS certificate is self-signed: the handshake fails before any IMAP."""
+    with SmtpStub() as stub:
+        account = new_account(imap={"host": "127.0.0.1", "port": stub.port, "tls": "implicit"})
+        assert user_client.post("/api/v1/accounts", json=account).status_code == 201
+        result = user_client.post("/api/v1/accounts/work/test").json()
+    assert (result["ok"], result["code"]) == (False, "unreachable")
+    assert result["message"] == f"{MESSAGES['unreachable']} {CERTIFICATE_DETAIL}"
 
 
 def test_starttls_imap_is_refused_before_connecting(user_client: TestClient) -> None:
@@ -387,7 +401,11 @@ def test_the_dev_mailbox_logs_in(
 
     change = edited(account) | {"password": "wrong password"}
     assert user_client.put("/api/v1/accounts/work", json=change).status_code == 200
-    assert user_client.post("/api/v1/accounts/work/test").json()["code"] == "login_failed"
+    assert user_client.post("/api/v1/accounts/work/test").json() == {
+        "ok": False,
+        "code": "auth_failed",
+        "message": MESSAGES["auth_failed"],
+    }
 
 
 def test_mail_connections_time_out() -> None:
@@ -406,3 +424,63 @@ def test_the_mail_ssl_context_verifies(monkeypatch: pytest.MonkeyPatch) -> None:
     context = mail_ssl_context()
     assert context.verify_mode == ssl.CERT_REQUIRED
     assert context.check_hostname
+
+
+def _mailbox() -> Account:
+    return Account("work", "imap.example", 993, "me", MAILBOX_PASSWORD)
+
+
+@pytest.mark.parametrize(
+    ("error", "code"),
+    [
+        (imaplib.IMAP4.error("[AUTHENTICATIONFAILED] Authentication failed."), "auth_failed"),
+        (imaplib.IMAP4.error("select failed: [NONEXISTENT] Unknown Mailbox"), "mailbox_missing"),
+        (imaplib.IMAP4.error("BAD something odd"), "server_error"),
+        (ssl.SSLError("handshake"), "unreachable"),
+        (ConnectionRefusedError(111, "Connection refused"), "unreachable"),
+        (TimeoutError("timed out"), "timeout"),
+    ],
+)
+def test_a_mailbox_failure_has_core_s_code_and_message(error: Exception, code: str) -> None:
+    failure = mail_failure(error, _mailbox())
+    assert failure is not None
+    assert (failure.code, failure.message) == (code, MESSAGES[code])
+
+
+def test_a_certificate_that_does_not_verify_is_said() -> None:
+    failure = mail_failure(ssl.SSLCertVerificationError(1, "certificate verify failed"), _mailbox())
+    assert failure is not None
+    assert failure.code == "unreachable"
+    assert failure.message == f"{MESSAGES['unreachable']} {CERTIFICATE_DETAIL}"
+
+
+def test_a_failure_quoting_the_password_is_logged_by_type_only(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.WARNING, logger="mailroom_core.mail")
+    failure = mail_failure(imaplib.IMAP4.error(f"LOGIN me {MAILBOX_PASSWORD}"), _mailbox())
+    assert failure is not None
+    assert MAILBOX_PASSWORD not in failure.message
+    assert caplog.records
+    assert all(MAILBOX_PASSWORD not in str(vars(record)) for record in caplog.records)
+
+
+@pytest.mark.parametrize("password", ['it\'s "secret"', "back\\slash-secret", "perché-secret"])
+def test_a_login_error_is_logged_by_type_only(
+    caplog: pytest.LogCaptureFixture, password: str
+) -> None:
+    """imaplib prints the server's reply as bytes, so an echoed password comes back escaped:
+    a login's error is never logged by its text."""
+    echoed = repr(password.encode())
+    assert password not in echoed
+    caplog.set_level(logging.DEBUG, logger="mailroom_core.mail")
+    error = LoginError(f"LOGIN command error: BAD [{echoed}]")
+    failure = mail_failure(error, Account("work", "imap.example", 993, "me", password))
+    assert failure is not None
+    assert failure.code == "auth_failed"
+    assert caplog.records
+    assert all("secret" not in str(vars(record)) for record in caplog.records)
+
+
+def test_a_bug_is_no_mailbox_failure() -> None:
+    assert mail_failure(ValueError("bug"), _mailbox()) is None

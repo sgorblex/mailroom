@@ -10,7 +10,7 @@ import anyio
 import pytest
 from mcp.server.auth.provider import AccessToken
 
-from mailroom.accounts.mail import LIST_TIMEOUT_MESSAGE, MailFailure, list_folders
+from mailroom.accounts.mail import MailFailure, list_folders
 from mailroom.config.features import ALL_FEATURES, Features
 from mailroom.config.public_url import parse_public_url
 from mailroom.errors import Refusal
@@ -23,6 +23,7 @@ from mailroom.mcp.tool import BUSY_MESSAGE, READ, Arguments, Tool, ToolCall, Use
 from mailroom.mcp.tools import TOOLS
 from mailroom.mcp.verifier import RefusingVerifier, token_verifier, user_id_of
 from mailroom_core.filters import Account
+from mailroom_core.mail import MESSAGES
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -311,7 +312,7 @@ def test_a_stalled_folder_listing_stops_at_its_deadline() -> None:
     with pytest.raises(MailFailure) as failure:
         list_folders(account, seconds=0.2)
     assert time.monotonic() - started < 5
-    assert (failure.value.code, failure.value.message) == ("timeout", LIST_TIMEOUT_MESSAGE)
+    assert (failure.value.code, failure.value.message) == ("timeout", MESSAGES["timeout"])
     assert [conn.shut.is_set() for conn in account.opened] == [True]
     assert "connect" not in vars(account)
 

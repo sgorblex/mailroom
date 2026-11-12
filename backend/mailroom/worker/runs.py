@@ -275,7 +275,7 @@ def _run(
         error = f"match_timeout: {MATCH_TIMEOUT_MESSAGE}"
         report["error"] = error
     except Exception as exc:
-        failure = mail_failure(exc, account.password)
+        failure = mail_failure(exc, account)
         if failure is None:
             # Not about reaching the mailbox: its text may quote anything, mail included, so
             # neither the record nor the log carries it.
