@@ -407,7 +407,7 @@ def test_each_account_gets_its_own_search() -> None:
         def with_mailbox(
             self, account: str, path: str, read_only: bool, fn: Callable[[MailboxContext], object]
         ) -> object:
-            return fn(MailboxContext(Client(account), path, read_only, 1, 0, None))  # type: ignore[arg-type]
+            return fn(MailboxContext(Client(account), path, read_only, 1, 0, None, account))  # type: ignore[arg-type]
 
     connections = cast("MailConnections", Connections())
     page = search_messages(
@@ -482,7 +482,7 @@ def test_search_arguments_quote_or_refuse_what_would_change_the_command() -> Non
             args("SUBJECT", value)
         assert caught.value.code == "invalid_argument"
     with pytest.raises(MailError):
-        args(["SUBJECT", "perché"])
+        args(["perché", "SUBJECT"])
     with pytest.raises(MailError):
         args("SUBJECT", "x", [])
 

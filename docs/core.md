@@ -37,7 +37,7 @@ the tools answer with, and the app's MCP writes thin tools over it. The filter e
 | `crypto` | Sealed secrets |
 | `store` | `AccountStore` and core's migrations, in schema `core` |
 | `render` | Bodies to text, quotes, the untrusted-content envelope, `safe_html` |
-| `mail` | Connections (`mail.imap`), refs, read, organize, compose, drafts, the tools' text, audit items |
+| `mail` | Connections (`mail.imap`), operations on a selected folder (`mail.selected`), refs, read, organize, compose, drafts, the tools' text, audit items |
 | `send` | SMTP and the send gate |
 | `filters` | The filter engine: criteria, actions, rules as data (specs), runs, the runner and IDLE monitor, reports |
 | `testing` | A pytest plugin (no-network guard, store and mail fixtures) the app's tests load too |
@@ -144,9 +144,10 @@ sanitising pass), `has_remote_content`. A ref's error names no tool. Deliberate 
 - **Search text is never syntax:** SEARCH arguments are written here, not by imapclient, which
   sends `(`, `)` or `{5}` unquoted: text is an atom only when it is one, else a quoted string, or a
   literal under `CHARSET UTF-8` when not ASCII. Text with CR, LF or NUL is refused
-  (`invalid_argument`), and so is non-ASCII text opening or closing a parenthesised group, where a
-  literal cannot go. The arguments still go out through imapclient's private sender
-  (`_raw_command_untagged`, which writes the literals), so core pins imapclient below 4.2.
+  (`invalid_argument`), and so is non-ASCII text opening a parenthesised group; one closing it
+  gets `ALL` before the parenthesis, which cannot follow a literal. The arguments still go out
+  through imapclient's private sender (`_raw_command_untagged`, which writes the literals), so core
+  pins imapclient below 4.2.
 - **A charset is a text encoding:** a sender's charset naming one of Python's other codecs (`hex`,
   `rot13`, `zlib`, `idna`…) counts as unknown, and decoding never raises.
 - **Provider quirks by capability**, never by hostname: Gmail is `X-GM-EXT-1` in CAPABILITY.
@@ -163,6 +164,15 @@ They return an `OrganizeResult`: per folder a `GroupResult` (count, new refs fro
 training, flags read back, or the `MailError`), and per message an `AuditItem`
 (`mailroom_core.mail.audit`, the sender's address and a hash of the subject) with the call's
 `outcome`. `organize_text` writes the tools' text; a host raises a lone folder's error itself.
+
+They are built on `mailroom_core.mail.selected`, as `reply.mark_answered` and
+`drafts.remove_draft` are: operations by UID on the folder a `with_mailbox` session holds
+(`search_uids`, `fetch_sources` with `BODY.PEEK[]`, `fetch_envelopes`, `move_uids`,
+`store_flags`, `delete_uids`, `listed_folders`), with the refusals of a move
+(`move_target`). Whatever acts inside a session of its own uses them, folders included,
+since a second connection of the account would wait for the one it holds. `store_flags` sets only
+`\Seen`, `\Flagged` and `\Answered`; `delete_uids` needs UIDPLUS and serves only a draft
+Mailroom wrote (*Safety*).
 
 imapclient's `move()` needs MOVE, so without it core issues UID COPY, STORE `\Deleted` and UID
 EXPUNGE of exactly those UIDs itself, which only UIDPLUS allows; a server with neither is refused.

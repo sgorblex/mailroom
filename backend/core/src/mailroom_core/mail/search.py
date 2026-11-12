@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from datetime import date
 
     from mailroom_core.mail.imap import MailboxContext, MailConnections
-    from mailroom_core.mail.pages import Criteria
+    from mailroom_core.mail.selected import Criteria
 
 ALL_FOLDERS: Final = "*"
 """A search's folder (or account) meaning all of them."""

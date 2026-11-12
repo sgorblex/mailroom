@@ -1,6 +1,7 @@
-"""Mail over IMAP: connections and error mapping (`src/imap/`), the read and organize operations
-on them, and messages composed to be written (`src/mail/`, `src/mcp/tools/` minus the tool
-plumbing). Synchronous: an async host calls it from a worker thread."""
+"""Mail over IMAP: connections and error mapping (`src/imap/`), the operations on a selected
+folder, the read and organize operations built on them, and messages composed to be written
+(`src/mail/`, `src/mcp/tools/` minus the tool plumbing). Synchronous: an async host calls it
+from a worker thread."""
 
 from mailroom_core.mail.attachments import AttachmentSource, attachments_from
 from mailroom_core.mail.audit import (
@@ -92,7 +93,6 @@ from mailroom_core.mail.outgoing import (
 )
 from mailroom_core.mail.pages import (
     PREVIEW_LENGTH,
-    Criteria,
     MessageSummary,
     Page,
     PageFailure,
@@ -102,7 +102,6 @@ from mailroom_core.mail.pages import (
     encode_cursor,
     preview_of,
     read_page,
-    search_arguments,
 )
 from mailroom_core.mail.read import (
     MAX_BODY_BYTES,
@@ -144,6 +143,24 @@ from mailroom_core.mail.search import (
     searchable_folders,
     thread_page,
 )
+from mailroom_core.mail.selected import (
+    SETTABLE_FLAGS,
+    CopiedNotRemovedError,
+    Criteria,
+    FetchedMessage,
+    Moved,
+    check_movable,
+    delete_uids,
+    fetch_envelopes,
+    fetch_sources,
+    listed_folders,
+    move_target,
+    move_uids,
+    search_arguments,
+    search_uids,
+    special_folder_in,
+    store_flags,
+)
 from mailroom_core.mail.structure import MimePart, Structure, analyse_structure
 from mailroom_core.mail.text import (
     ATTACHMENT_FILE_NOTE,
@@ -178,6 +195,7 @@ __all__ = [
     "MESSAGES",
     "PREVIEW_LENGTH",
     "REFUSALS",
+    "SETTABLE_FLAGS",
     "TYPESCRIPT_TOOLS",
     "Addressed",
     "Attachment",
@@ -189,10 +207,12 @@ __all__ = [
     "Authoriser",
     "Capabilities",
     "Composed",
+    "CopiedNotRemovedError",
     "Criteria",
     "DeliveryStage",
     "Draft",
     "Envelope",
+    "FetchedMessage",
     "FlagState",
     "Folder",
     "FolderRole",
@@ -208,6 +228,7 @@ __all__ = [
     "MessageSummary",
     "MessageView",
     "MimePart",
+    "Moved",
     "Note",
     "OrganizeResult",
     "Original",
@@ -240,6 +261,7 @@ __all__ = [
     "check_fields",
     "check_fresh",
     "check_in_drafts",
+    "check_movable",
     "check_recipient_count",
     "check_removable",
     "check_sendable",
@@ -247,12 +269,15 @@ __all__ = [
     "compose",
     "content_type",
     "decode_cursor",
+    "delete_uids",
     "deliverable_address",
     "draft_answers",
     "draft_source",
     "empty_folder_text",
     "encode_cursor",
     "envelope_mailboxes",
+    "fetch_envelopes",
+    "fetch_sources",
     "find_drafts",
     "folders_block",
     "format_ref",
@@ -263,12 +288,15 @@ __all__ = [
     "is_own_draft",
     "is_text_type",
     "list_messages",
+    "listed_folders",
     "mail_error",
     "mailbox_text",
     "mark_answered",
     "matches_rule",
     "message_item",
     "move_messages",
+    "move_target",
+    "move_uids",
     "new_message_id",
     "organize_text",
     "original_message",
@@ -291,8 +319,11 @@ __all__ = [
     "save_draft",
     "search_arguments",
     "search_messages",
+    "search_uids",
     "searchable_folders",
     "set_flags",
+    "special_folder_in",
+    "store_flags",
     "subject_sha256",
     "thread_page",
     "thread_text",

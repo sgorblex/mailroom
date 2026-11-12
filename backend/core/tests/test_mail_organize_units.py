@@ -26,7 +26,7 @@ from mailroom_core.mail import (
     set_flags,
     trash_messages,
 )
-from mailroom_core.mail.organize import FlagState, _copy_uids
+from mailroom_core.mail.organize import FlagState
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -116,6 +116,7 @@ class StubConnections:
                 uid_validity=1,
                 exists=len(self.client.uids),
                 uid_next=None,
+                account=account_id,
             )
         )
 
@@ -360,15 +361,6 @@ def test_set_flags_stores_and_reads_back() -> None:
     client.shutdown = refuse_shutdown  # type: ignore[attr-defined]
     [still_ok] = set_flags(connections, [ref()], flagged=True).groups
     assert still_ok.ok  # a failing shutdown does not undo the change
-
-
-def test_copyuid() -> None:
-    assert _copy_uids([b"1 1:2 3:4", b"9 5,7 11:12"], 2) == (9, {5: 11, 7: 12})
-    assert _copy_uids([b"9 3:1 4:6"], 3) == (9, {3: 4, 2: 5, 1: 6})
-    assert _copy_uids(None, 1) is None
-    assert _copy_uids([b"9 1:2 3"], 2) is None  # sets of different sizes
-    assert _copy_uids([b"9 1:4294967295 1:4294967295"], 2) is None  # more than was copied
-    assert _copy_uids([b"nonsense"], 1) is None
 
 
 def test_audit_outcome() -> None:

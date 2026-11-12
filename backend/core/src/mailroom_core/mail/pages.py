@@ -10,12 +10,7 @@ import re
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import date, datetime
 from typing import TYPE_CHECKING, Final, Literal
-
-from imapclient.datetime_util import format_criteria_date
-from imapclient.imapclient import _literal
-from imapclient.response_parser import parse_message_list
 
 from mailroom_core.mail._mime import addresses, aware_date, header_text, text_value
 from mailroom_core.mail.download import body_text, part_contents
@@ -28,6 +23,7 @@ from mailroom_core.mail.ref import (
     js_integer,
     js_json,
 )
+from mailroom_core.mail.selected import Criteria, search_arguments, search_uids
 from mailroom_core.mail.structure import Structure, analyse_structure
 from mailroom_core.render import (
     Address,
@@ -40,14 +36,9 @@ from mailroom_core.render._js import WHITESPACE, trim, utf16_prefix
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
-
-    from imapclient import IMAPClient
+    from datetime import datetime
 
     from mailroom_core.mail.imap import MailboxContext, MailConnections
-
-type Criteria = Sequence[object]
-"""Core's own SEARCH criteria, written by `search_arguments` (not imapclient's), e.g.
-`["SUBJECT", "invoice", "UNSEEN"]`; nested lists are parenthesised groups."""
 
 _CURSOR_VERSION: Final = 1
 _MAX_UID: Final = 0xFFFFFFFF
@@ -237,75 +228,6 @@ def _timestamp(value: datetime | None) -> float:
         return 0.0
 
 
-# SEARCH arguments, written here rather than by imapclient: it sends a value unquoted unless it
-# holds a space, a quote or a backslash, so `(`, `)` or `{5}` in a search would change the
-# command (a literal the server then waits for), and it never refuses CR or LF, which would end
-# the command and start another. imapflow sends such values as strings or literals.
-
-_ATOM: Final = re.compile(rb"[!#$&'+,\-./0-9:;<=>?@A-Z\[^_`a-z|}~]+")
-"""An atom (RFC 3501): no space, control, `(`, `)`, `{`, `"`, `\\`, `%`, `*` or `]`."""
-_LINE_BREAKS: Final = re.compile("[\r\n\0]")
-
-
-def _token(item: object) -> bytes:
-    """One argument: a number or date as IMAP writes it, a text as an atom when it is one, else
-    as a quoted string (ASCII) or a literal (anything else, sent under CHARSET UTF-8)."""
-    if isinstance(item, bool):
-        msg = "a search argument cannot be a bool"
-        raise TypeError(msg)
-    if isinstance(item, int):
-        return str(item).encode("ascii")
-    if isinstance(item, datetime | date):
-        return bytes(format_criteria_date(item))
-    text = item.decode("utf-8", "replace") if isinstance(item, bytes) else str(item)
-    if _LINE_BREAKS.search(text):
-        raise MailError("invalid_argument", "Search text cannot contain line breaks.")
-    raw = text.encode("utf-8")
-    if _ATOM.fullmatch(raw):
-        return raw
-    if raw.isascii():
-        return b'"' + raw.replace(b"\\", b"\\\\").replace(b'"', b'\\"') + b'"'
-    literal: bytes = _literal(raw)
-    return literal
-
-
-def search_arguments(criteria: Criteria) -> tuple[list[bytes], bool]:
-    """`criteria` as UID SEARCH arguments, and whether they need CHARSET UTF-8; nested lists
-    become parenthesised groups. `invalid_argument` for text with a line break, or for non-ASCII
-    text closing a group (a literal cannot be followed by the parenthesis)."""
-    out: list[bytes] = []
-
-    def walk(items: Sequence[object], depth: int) -> None:
-        if not items:
-            raise MailError("invalid_argument", "A search group cannot be empty.")
-        start = len(out)
-        for item in items:
-            if isinstance(item, list | tuple):
-                walk(item, depth + 1)
-            else:
-                out.append(_token(item))
-        if depth > 0:
-            if isinstance(out[start], _literal) or isinstance(out[-1], _literal):
-                raise MailError(
-                    "invalid_argument", "Non-ASCII text cannot open or close a search group."
-                )
-            out[start] = b"(" + out[start]
-            out[-1] = out[-1] + b")"
-
-    walk(criteria or ["ALL"], 0)
-    return out, any(isinstance(token, _literal) for token in out)
-
-
-def search_uids(client: IMAPClient, criteria: Criteria) -> list[int]:
-    """UID SEARCH in the selected folder: the matching UIDs."""
-    arguments, utf8 = search_arguments(criteria)
-    charset = [b"CHARSET", b"UTF-8"] if utf8 else []
-    # imapclient's own sender, which writes a `_literal` as an IMAP literal (LITERAL+ when the
-    # server has it) and the other arguments as they are.
-    data = client._raw_command_untagged(b"SEARCH", [*charset, *arguments])  # noqa: SLF001
-    return [int(uid) for uid in parse_message_list(data)]
-
-
 def preview_of(content: str, format: Literal["text", "html"]) -> str:  # noqa: A002
     """A body's start as a list preview: rendered as a read renders it (entities decoded,
     quotes collapsed), minus the markers, links as their text (a URL would fill it), one line."""
@@ -470,7 +392,7 @@ def read_page(
                 return []
             own = by_account[source.account]
             scoped = list(own) if before is None else ["UID", f"1:{before - 1}", *own]
-            uids = sorted(search_uids(context.client, scoped or ["ALL"]), reverse=True)[:limit]
+            uids = sorted(search_uids(context, scoped or ["ALL"]), reverse=True)[:limit]
             if len(uids) < limit:
                 exhausted.add(index)
             return _fetch_candidates(context, uids, index)

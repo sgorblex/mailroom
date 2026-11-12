@@ -119,6 +119,7 @@ class StubConnections:
                 uid_validity=1,
                 exists=1,
                 uid_next=7,
+                account=_account,
             )
         )
 
