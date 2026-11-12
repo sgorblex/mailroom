@@ -5,22 +5,26 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import TYPE_CHECKING
+from contextlib import contextmanager
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
+from mailroom.accounts.store import load_accounts, user_store
 from mailroom.worker.idle import (
     MAX_RETRY_SECONDS,
+    FolderWatch,
     IdleSupervisor,
-    MonitorWatch,
     WatchedFolder,
+    account_fingerprint,
+    folder_path,
     watch_changes,
 )
 from tests.test_api_accounts import new_account
 from tests.test_filter_runner import add_account, add_rule_set, runs, set_run_filters
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
     from sqlalchemy.engine import Engine
     from sqlalchemy.orm import Session, sessionmaker
@@ -28,7 +32,7 @@ if TYPE_CHECKING:
 
     from mailroom.models import User
     from mailroom.worker.context import Mailboxes
-    from mailroom_core.filters import Account
+    from mailroom_core.config import AccountConfig
 
 INBOX = WatchedFolder(1, "work", ("INBOX",))
 ARCHIVE = WatchedFolder(1, "work", ("Archive",))
@@ -53,21 +57,56 @@ def test_the_plan_leaves_what_matches() -> None:
     assert (changes.stop, changes.start) == (frozenset(), frozenset())
 
 
+def test_a_folder_is_named_with_the_server_delimiter() -> None:
+    assert folder_path(["INBOX"], None) == "INBOX"
+    assert folder_path(["Archive", "2026"], "/") == "Archive/2026"
+    assert folder_path(["Archive", "2026"], ".") == "Archive.2026"
+
+
+def stored_account(engine: Engine, user: User, account_id: str = "work") -> AccountConfig:
+    return load_accounts(user_store(engine, user.id)).account(account_id)
+
+
+def test_the_fingerprint_follows_the_server_the_login_and_the_password(
+    user_client: TestClient, user: User, migrated_engine: Engine
+) -> None:
+    add_account(user_client)
+    account = stored_account(migrated_engine, user)
+    imap = account.imap
+    same = account_fingerprint(account, "secret")
+    assert account_fingerprint(account, "secret") == same
+    assert account_fingerprint(account, "other") != same
+    changes = [
+        {"login": "other@example.org"},
+        {"imap": imap.model_copy(update={"host": "imap.example.org"})},
+        {"imap": imap.model_copy(update={"port": 143})},
+        {"imap": imap.model_copy(update={"tls": "starttls"})},
+    ]
+    for change in changes:
+        assert account_fingerprint(account.model_copy(update=change), "secret") != same
+    # The SMTP server or the send mode are not the watch's business.
+    unrelated = account.model_copy(update={"send_mode": "approval"})
+    assert account_fingerprint(unrelated, "secret") == same
+
+
 class FakeWatch:
-    def __init__(self, account: Account, on_new_mail: Callable[[], None]) -> None:
-        self.account = account
+    def __init__(self, revision: int, on_new_mail: Callable[[], None]) -> None:
+        self.revision = revision
         self.on_new_mail = on_new_mail
         self.running = True
         self.joined = False
         self.reached = False
         self.reason: str | None = None
 
+    @property
     def alive(self) -> bool:
         return self.running
 
+    @property
     def connected(self) -> bool:
         return self.reached
 
+    @property
     def failure(self) -> str | None:
         return self.reason
 
@@ -78,7 +117,7 @@ class FakeWatch:
     def stop(self) -> None:
         self.running = False
 
-    def join(self) -> None:
+    def join(self, timeout: float | None = None) -> None:
         self.joined = True
 
 
@@ -87,9 +126,9 @@ class Watches:
         self.started: list[tuple[WatchedFolder, FakeWatch]] = []
 
     def __call__(
-        self, folder: WatchedFolder, account: Account, on_new_mail: Callable[[], None]
+        self, folder: WatchedFolder, revision: int, on_new_mail: Callable[[], None]
     ) -> FakeWatch:
-        watch = FakeWatch(account, on_new_mail)
+        watch = FakeWatch(revision, on_new_mail)
         self.started.append((folder, watch))
         return watch
 
@@ -123,7 +162,6 @@ def test_the_supervisor_follows_the_rule_sets(
     supervisor.reconcile()
     assert supervisor.watched == {inbox}
     watch = watches.latest(inbox)
-    assert watch.account.username == "work@example.org"
 
     # Unchanged: left running.
     supervisor.reconcile()
@@ -155,7 +193,11 @@ def test_the_supervisor_follows_the_rule_sets(
 
 
 def test_the_supervisor_restarts_changed_and_dead_watches(
-    user_client: TestClient, user: User, supervisor: IdleSupervisor, watches: Watches
+    user_client: TestClient,
+    user: User,
+    migrated_engine: Engine,
+    supervisor: IdleSupervisor,
+    watches: Watches,
 ) -> None:
     inbox = WatchedFolder(user.id, "work", ("INBOX",))
     add_account(user_client)
@@ -170,12 +212,28 @@ def test_the_supervisor_restarts_changed_and_dead_watches(
     second = watches.latest(inbox)
     assert second is not first
     assert first.joined
-    assert second.account.username == "other@example.org"
+    assert second.revision > first.revision
 
-    second.running = False
+    # The port alone is a change too.
+    moved = changed | {"imap": changed["imap"] | {"port": 994}}
+    assert user_client.put("/api/v1/accounts/work", json=moved).status_code == 200
     supervisor.reconcile()
-    assert watches.latest(inbox) is not second
-    assert len(watches.started) == 3
+    third = watches.latest(inbox)
+    assert third is not second
+    assert second.joined
+    assert stored_account(migrated_engine, user).imap.port == 994
+
+    # An edit the watch does not depend on leaves it running.
+    approval = moved | {"send_mode": "approval"}
+    assert user_client.put("/api/v1/accounts/work", json=approval).status_code == 200
+    supervisor.reconcile()
+    assert watches.latest(inbox) is third
+    assert third.running
+
+    third.running = False
+    supervisor.reconcile()
+    assert watches.latest(inbox) is not third
+    assert len(watches.started) == 4
 
     supervisor.stop_all()
     assert supervisor.watched == frozenset()
@@ -211,12 +269,64 @@ def test_an_account_that_cannot_be_watched_is_logged_once(
     keyless = Mailboxes(migrated_engine, None, mail_ssl_context())
     supervisor = IdleSupervisor(sessions, keyless, start_watch=watches)
     caplog.set_level(logging.WARNING, logger="mailroom.worker.idle")
-    supervisor.reconcile()
-    supervisor.reconcile()
+    try:
+        supervisor.reconcile()
+        supervisor.reconcile()
+    finally:
+        keyless.close()
     assert supervisor.watched == frozenset()
     assert watches.started == []
     warnings = [r.getMessage() for r in caplog.records if r.name == "mailroom.worker.idle"]
     assert warnings == ["Cannot watch INBOX: secrets_key_missing"]
+
+
+def test_a_starttls_account_is_not_watched_yet(
+    user_client: TestClient,
+    user: User,
+    supervisor: IdleSupervisor,
+    watches: Watches,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Its runs still go through the filter engine, which refuses STARTTLS."""
+    inbox = WatchedFolder(user.id, "work", ("INBOX",))
+    add_account(user_client)
+    add_rule_set(user_client, trigger="new_mail")
+    supervisor.reconcile()
+    watch = watches.latest(inbox)
+
+    starttls = new_account(imap={"host": "127.0.0.1", "port": 143, "tls": "starttls"})
+    del starttls["id"], starttls["password"]
+    assert user_client.put("/api/v1/accounts/work", json=starttls).status_code == 200
+    caplog.set_level(logging.WARNING, logger="mailroom.worker.idle")
+    supervisor.reconcile()
+    supervisor.reconcile()
+    assert watch.joined
+    assert supervisor.watched == frozenset()
+    assert len(watches.started) == 1
+    warnings = [
+        r.getMessage()
+        for r in caplog.records
+        if r.name == "mailroom.worker.idle" and r.levelno >= logging.WARNING
+    ]
+    assert warnings == ["Cannot watch INBOX: starttls_unsupported"]
+
+
+def test_a_password_that_no_longer_opens_ends_the_watch_with_the_app_s_code() -> None:
+    from mailroom.mail.connections import PASSWORD_MISSING_TEXT, PasswordMissing
+
+    class Connections:
+        def delimiter(self, _account_id: str) -> str:
+            raise PasswordMissing
+
+    class Pool:
+        @contextmanager
+        def lease(self, _user_id: int, _revision: int) -> Iterator[Connections]:
+            yield Connections()
+
+    watch = FolderWatch(cast("Mailboxes", Pool()), INBOX, 1, lambda: None)
+    watch.join(5)
+    assert not watch.alive
+    assert watch.failure == f"password_missing: {PASSWORD_MISSING_TEXT}"
 
 
 class Clock:
@@ -277,17 +387,18 @@ def test_a_watch_that_keeps_failing_is_retried_less_and_less_often(
 
 
 def test_a_watch_whose_first_connection_fails_ends(
-    user_client: TestClient, user: User, mailboxes: Mailboxes
+    user_client: TestClient, user: User, migrated_engine: Engine, mailboxes: Mailboxes
 ) -> None:
     """The test account's IMAP port 9 on loopback is closed."""
     add_account(user_client)
     folder = WatchedFolder(user.id, "work", ("INBOX",))
+    revision = load_accounts(user_store(migrated_engine, user.id)).revision
     queued: list[None] = []
-    watch = MonitorWatch(folder, mailboxes.account(user.id, "work"), lambda: queued.append(None))
-    watch.join()
-    assert not watch.alive()
-    assert not watch.connected()
-    assert (watch.failure() or "").startswith("unreachable: ")
+    watch = FolderWatch(mailboxes, folder, revision, lambda: queued.append(None))
+    watch.join(30)
+    assert not watch.alive
+    assert not watch.connected
+    assert (watch.failure or "").startswith("unreachable: ")
     assert queued == []
 
 

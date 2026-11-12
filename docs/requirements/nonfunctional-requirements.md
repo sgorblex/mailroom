@@ -321,7 +321,8 @@ bounded to one minor because the server relies on its handlers.
 - **IMAP:** an account's login test (mailroom-core's `test_login`: a login and logout on a
   connection of its own, each reply bounded by its 10 s probe timeout) and the folder picker's
   listing go through mailroom-core's connections in the API's mail pool, with its gates and 30 s
-  deadline ([Mail client](#mail-client)), implicit TLS or STARTTLS as the account says. The
+  deadline ([Mail client](#mail-client)), implicit TLS or STARTTLS as the account says; so do
+  the worker's IDLE watches, on the worker's own pool (below), on implicit TLS only for now. The
   worker's runs and the dry run still go through the filter engine: implicit TLS only
   (`starttls_unsupported` otherwise), a 20 s timeout on connecting and on every read. Both verify
   TLS against the system CAs plus `MAILROOM_MAIL_CA_FILE` (the dev mail CA in dev). A failure
@@ -506,20 +507,32 @@ What they do and the route list: [`filters.md`](filters.md). How:
   - `dispatch_scheduled`, a procrastinate periodic task every minute, queues each runnable
     `scheduled` rule set whose last scheduled run was queued at least `interval_minutes` ago
     (30 s early, for the minute's start), or never.
-  - The **IDLE supervisor**, a thread of the worker process, keeps one filter-engine `monitor` (on
-    its own thread, stoppable) per (user, account, folder) of the runnable `new_mail` rule sets.
-    Every 30 s it starts and stops watches to match the rule sets and Run filters, restarts one
-    whose account's server, login or password changed, and starts again one that died (its first
-    connection failed): at once, then after 30 s, doubling up to 30 min while it keeps failing
-    without reaching its folder; each new reason is logged once. New mail, and every (re)connection of a watch
-    (for mail that came while unwatched), queues the folder's `new_mail` runs; the IDLE
+  - The **IDLE supervisor**, a thread of the worker process, keeps one mailroom-core `IdleWatch`
+    per (user, account, folder) of the runnable `new_mail` rule sets, on mailroom-core's
+    connections from the worker's own mail pool (`Mailboxes`: one connection per account, 15 s to
+    connect, 120 s per reply, 60 s to wait for the account's connection; no gates, no deadline).
+    The folder's name is its segments joined with the delimiter the server reports, looked up on
+    the pool's connection under a lease held only for that and for building the watch, so the pool
+    logs that connection out once unused; the watch itself idles on a connection of its own,
+    outside the pool, selected read-only. An account on STARTTLS is not watched yet
+    (`starttls_unsupported`, logged once), as its runs still go through the filter engine. Every
+    30 s the supervisor starts and stops watches to match the rule sets and Run filters, restarts
+    one whose account's IMAP server (host, port, TLS mode), login or password changed, and
+    starts again one that died (its first connection failed, or the server refused
+    the login, has no such folder or cannot IDLE: mailroom-core's code and fixed message): at
+    once, then after 30 s, doubling up to 30 min while it keeps failing without reaching its
+    folder; each new reason is logged once. A watch that loses its connection reconnects by
+    itself, backing off from 5 s to 5 min. New mail (an EXISTS), and every (re)connection of a
+    watch (for mail that came while unwatched), queues the folder's `new_mail` runs; the IDLE
     connection itself never acts. Filter edits need no restart: each run loads them.
   - Jobs run 4 at a time (synchronous tasks, each on a thread); besides being notified of new jobs,
     the worker looks for them every second, so a run held back by its mailbox's lock starts within
     a second of the lock freeing. One worker process (below): a second would watch every folder
     twice, so it exits.
   - SIGTERM or SIGINT: procrastinate gives the jobs in progress 60 s, then the watches are stopped
-    (each within the 20 s IMAP timeout).
+    (an idling watch within about a second, its logout within 5 s; the supervisor waits 10 s at
+    most for them all, and one still connecting ends on its own and acts on nothing), then the
+    worker's mail pool is logged out.
 - **A run's `result`** is the filter engine's folder report, each filter's entry with its `filter_id` and
   the spec as stored; a dry run's adds `limited_to_newest` (null when the whole folder was looked
   at). A real run keeps the first 200 matched messages per filter, with `matched_total` when there

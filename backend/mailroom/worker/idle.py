@@ -5,12 +5,17 @@ rule sets run on, and queues their runs when it gets new mail.
 which folders to watch — the runnable ``new_mail`` rule sets'
 (``mailroom.worker.tasks.runnable_rule_sets``): enabled, on an account whose Run filters is on —
 and starts, stops or restarts one watch per (user, account, folder) to match: a watch whose
-account changed (server, login, password) is restarted, and one that died (its mailbox
-unreachable) is started again, backing off up to ``MAX_RETRY_SECONDS`` while it keeps failing.
-Each watch is the filter engine's stoppable ``monitor`` on its own thread. New mail does not run the
-filters on the IDLE connection: it queues ``run_rule_set`` jobs, which run one at a time per
-mailbox and record their reports like any other run. So does every (re)connection of a watch, for
-the mail that arrived while the folder was not watched.
+account changed (server, port, TLS mode, login, password) is restarted, and one that died (its
+mailbox unreachable) is started again, backing off up to ``MAX_RETRY_SECONDS`` while it keeps
+failing.
+
+Each watch is mailroom-core's ``IdleWatch`` on the user's connections from the worker's pool
+(``Mailboxes.lease``, held only to look the folder's name up and build the watch), on a
+connection of its own outside the pool's. Accounts on STARTTLS are not watched yet: their runs
+still go through the filter engine, which refuses them. New mail does not run the filters on the
+IDLE connection: it queues ``run_rule_set`` jobs, which run one at a time per mailbox and record
+their reports like any other run. So does every (re)connection of a watch, for the mail that
+arrived while the folder was not watched.
 """
 
 from __future__ import annotations
@@ -22,21 +27,21 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, Protocol
 
-from mailroom.accounts.mail import MailFailure, mail_failure
-from mailroom.accounts.store import AccountNotFound
-from mailroom.filters.imap import RuleSetFolder
+from mailroom.accounts.store import AccountNotFound, account_password, load_accounts, user_store
+from mailroom.errors import SECRETS_KEY_MISSING
+from mailroom.mail.connections import PASSWORD_MISSING, PASSWORD_MISSING_TEXT, PasswordMissing
 from mailroom.models import RuleSet
 from mailroom.worker.tasks import queue_new_mail_runs, runnable_rule_sets
-from mailroom_core.filters import monitor
+from mailroom_core.mail import IdleWatch, MailError
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping, Sequence
 
-    from imapclient import IMAPClient
     from sqlalchemy.orm import Session, sessionmaker
 
     from mailroom.worker.context import Mailboxes
-    from mailroom_core.filters import Account, Filter, FolderReport, Rules
+    from mailroom_core.config import AccountConfig
+    from mailroom_core.mail import IdleChange
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +50,10 @@ RECONCILE_SECONDS: Final = 30.0
 MAX_RETRY_SECONDS: Final = 30 * 60.0
 """The longest wait before starting again a watch that keeps failing: a dead watch starts again
 at once, then after ``RECONCILE_SECONDS``, doubling each time it fails again."""
+STOP_SECONDS: Final = 10.0
+"""How long the supervisor waits, in all, for the watches it stops at once. A watch stops within
+about a second of idling, and logs out within 5; one still opening its connection (bounded by
+the connect and read timeouts) is left to end on its own: it acts on nothing once stopped."""
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -57,12 +66,17 @@ class WatchedFolder:
 
 
 class Watch(Protocol):
+    """A running watch, as ``IdleWatch`` reports itself, its failure as text."""
+
+    @property
     def alive(self) -> bool: ...
 
+    @property
     def connected(self) -> bool:
         """Whether the watch ever reached its folder."""
         ...
 
+    @property
     def failure(self) -> str | None:
         """Why the watch ended on its own (``code: message`` or an exception's type name)."""
         ...
@@ -70,7 +84,7 @@ class Watch(Protocol):
     def stop(self) -> None:
         """Ask the watch to stop; ``join`` waits for it."""
 
-    def join(self) -> None: ...
+    def join(self, timeout: float | None = None) -> None: ...
 
 
 def watched_folders(db: Session) -> set[WatchedFolder]:
@@ -83,9 +97,11 @@ def watched_folders(db: Session) -> set[WatchedFolder]:
     return {WatchedFolder(user, account, tuple(folder)) for user, account, folder in rows}
 
 
-def account_fingerprint(account: Account) -> str:
-    """Changes when the account's server, login or password does: its watch then restarts."""
-    parts = (account.host, str(account.port), account.username, account.password)
+def account_fingerprint(account: AccountConfig, password: str) -> str:
+    """Changes when the account's IMAP server (host, port, TLS mode), login or password does: its
+    watch then restarts."""
+    imap = account.imap
+    parts = (imap.host, str(imap.port), imap.tls, account.login, password)
     return hashlib.sha256("\0".join(parts).encode()).hexdigest()
 
 
@@ -110,82 +126,121 @@ def watch_changes(
     return Changes(stop=stop, start=start)
 
 
-class _NewMailFolder(RuleSetFolder):
-    """The watched folder as the filter engine's ``monitor`` takes it. ``monitor`` runs a folder's
-    filters on new mail: here that run is ``on_new_mail``, which queues the real runs."""
+def folder_path(segments: Sequence[str], delimiter: str | None) -> str:
+    """A rule set's folder (path segments) as the server names it: joined with its hierarchy
+    delimiter, or with ``.`` (the filter engine's default) when it reports none."""
+    return (delimiter or ".").join(segments)
+
+
+def _failure_text(error: MailError) -> str:
+    return f"{error.code}: {error.message}"
+
+
+class FolderWatch:
+    """One folder's ``IdleWatch``, on the user's connections from the worker's pool. Its thread
+    leases them only to look the server's delimiter up (on a connection of the pool) and build the
+    ``IdleWatch``, so the pool can log that connection out once unused; then it starts the watch
+    and waits for it to end. The watch keeps the connections, which open its own connection, outside
+    the pool, even once the pool has closed them. ``on_new_mail`` runs on every (re)connect and
+    whenever the folder announces its size (new mail)."""
 
     def __init__(
-        self, account: Account, segments: Sequence[str], on_new_mail: Callable[[], None]
-    ) -> None:
-        super().__init__(account, segments)
-        self._on_new_mail = on_new_mail
-
-    def connect(self, readonly: bool = False) -> IMAPClient:
-        conn = super().connect(readonly=readonly)
-        # Never aborted: a watch lives for months and reconnects many times.
-        self.untrack(conn)
-        # Mail may have arrived while the folder was not watched.
-        self._on_new_mail()
-        return conn
-
-    def run(
         self,
-        filter_or_filters: Filter | Iterable[Filter],
-        dry_run: bool = False,
-    ) -> FolderReport:
-        self._on_new_mail()
-        return self.new_report(dry_run)
-
-
-class MonitorWatch:
-    """The filter engine's ``monitor`` on one folder, on its own thread, until stopped. The thread
-    ends early when the first connection fails; the supervisor then starts the watch again."""
-
-    def __init__(
-        self, folder: WatchedFolder, account: Account, on_new_mail: Callable[[], None]
+        mailboxes: Mailboxes,
+        folder: WatchedFolder,
+        revision: int,
+        on_new_mail: Callable[[], None],
     ) -> None:
-        self._account = account
         self._stop = threading.Event()
-        self._connected = threading.Event()
+        self._lock = threading.Lock()
+        self._idle: IdleWatch | None = None
         self._failure: str | None = None
-
-        def on_connection_or_mail() -> None:
-            self._connected.set()
-            on_new_mail()
-
-        rules: Rules = [(_NewMailFolder(account, folder.folder, on_connection_or_mail), [])]
         name = f"idle:{folder.user_id}:{folder.account_id}:{'/'.join(folder.folder)}"
-        self._thread = threading.Thread(target=self._watch, args=(rules,), name=name)
+        self._name = name
+        self._thread = threading.Thread(
+            target=self._run,
+            args=(mailboxes, folder, revision, on_new_mail),
+            name=f"{name}:lease",
+            daemon=True,
+        )
         self._thread.start()
 
-    def _watch(self, rules: Rules) -> None:
-        try:
-            monitor(rules, dry_run=False, stop=self._stop, install_signal_handlers=False)
-        except Exception as exc:
-            failure = mail_failure(exc, self._account)
-            # mail_failure has had core log the error (its text at warning, a login's by type
-            # only) and the supervisor logs the reason; anything else's traceback only at debug,
-            # as its text may quote anything the server said.
-            logger.debug("The watch ended.", exc_info=failure is None)
-            self._failure = f"{failure.code}: {failure.message}" if failure else type(exc).__name__
-        else:
-            if not self._stop.is_set():
-                self._failure = "ended"
+    def _run(
+        self,
+        mailboxes: Mailboxes,
+        folder: WatchedFolder,
+        revision: int,
+        on_new_mail: Callable[[], None],
+    ) -> None:
+        def on_change(change: IdleChange) -> None:
+            if change.new_mail:
+                on_new_mail()
 
+        try:
+            with mailboxes.lease(folder.user_id, revision) as connections:
+                path = folder_path(folder.folder, connections.delimiter(folder.account_id))
+                idle = IdleWatch(
+                    connections,
+                    folder.account_id,
+                    path,
+                    on_change=on_change,
+                    on_connect=on_new_mail,
+                    name=self._name,
+                )
+            with self._lock:
+                if self._stop.is_set():
+                    return
+                self._idle = idle.start()
+            idle.join()
+            if idle.failure is not None:
+                self._failure = _failure_text(idle.failure)
+            elif not self._stop.is_set():
+                self._failure = "ended"
+        except MailError as error:
+            if not self._stop.is_set():
+                self._failure = _failure_text(error)
+        except PasswordMissing:
+            if not self._stop.is_set():
+                self._failure = f"{PASSWORD_MISSING}: {PASSWORD_MISSING_TEXT}"
+        except Exception as error:
+            # The supervisor logs the reason; the traceback only at debug, as its text may quote
+            # anything the server said.
+            logger.debug("The watch ended.", exc_info=error)
+            if not self._stop.is_set():
+                self._failure = type(error).__name__
+
+    @property
     def alive(self) -> bool:
         return self._thread.is_alive()
 
+    @property
     def connected(self) -> bool:
-        return self._connected.is_set()
+        with self._lock:
+            idle = self._idle
+        return idle is not None and idle.connected
 
+    @property
     def failure(self) -> str | None:
         return self._failure
 
     def stop(self) -> None:
-        self._stop.set()
+        with self._lock:
+            self._stop.set()
+            idle = self._idle
+        if idle is not None:
+            idle.stop()
 
-    def join(self) -> None:
-        self._thread.join()
+    def join(self, timeout: float | None = None) -> None:
+        self._thread.join(timeout)
+
+
+@dataclass(frozen=True, slots=True)
+class _Target:
+    """What a folder's watch is started with: its account's fingerprint, and the revision of the
+    user's settings it was read at (for the lease)."""
+
+    fingerprint: str
+    revision: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -206,13 +261,18 @@ class IdleSupervisor:
         sessions: sessionmaker[Session],
         mailboxes: Mailboxes,
         *,
-        start_watch: Callable[[WatchedFolder, Account, Callable[[], None]], Watch] = MonitorWatch,
+        start_watch: Callable[[WatchedFolder, int, Callable[[], None]], Watch] | None = None,
         interval: float = RECONCILE_SECONDS,
         clock: Callable[[], float] = time.monotonic,
+        stop_seconds: float = STOP_SECONDS,
     ) -> None:
+        """``start_watch(folder, revision, on_new_mail)`` starts a folder's watch (``FolderWatch``
+        on ``mailboxes`` by default); ``revision`` is the user's settings' when the account was
+        read."""
         self._sessions = sessions
         self._mailboxes = mailboxes
-        self._start_watch = start_watch
+        self._start_watch = start_watch or self._folder_watch
+        self._stop_seconds = stop_seconds
         self._interval = interval
         self._watches: dict[WatchedFolder, tuple[str, Watch]] = {}
         self._problems: dict[WatchedFolder, str] = {}
@@ -241,20 +301,16 @@ class IdleSupervisor:
         """Start, stop and restart watches to match the rule sets."""
         with self._sessions() as db:
             folders = watched_folders(db)
-        accounts = self._accounts(folders)
-        wanted = {folder: account_fingerprint(account) for folder, account in accounts.items()}
+        targets = self._targets(folders)
+        wanted = {folder: target.fingerprint for folder, target in targets.items()}
         now = self._clock()
         self._note_failures(now)
         running = {
-            folder: (fingerprint, watch.alive())
+            folder: (fingerprint, watch.alive)
             for folder, (fingerprint, watch) in self._watches.items()
         }
         changes = watch_changes(running, wanted)
-        stopped = [self._watches.pop(folder)[1] for folder in sorted(changes.stop)]
-        for watch in stopped:
-            watch.stop()
-        for watch in stopped:
-            watch.join()
+        self._stop_watches([self._watches.pop(folder)[1] for folder in sorted(changes.stop)])
         self._retries = {
             folder: retry
             for folder, retry in self._retries.items()
@@ -265,7 +321,8 @@ class IdleSupervisor:
             retry = self._retries.get(folder)
             if retry is not None and now < retry.after:
                 continue
-            watch = self._start_watch(folder, accounts[folder], self._queue_runs_of(folder))
+            revision = targets[folder].revision
+            watch = self._start_watch(folder, revision, self._queue_runs_of(folder))
             self._watches[folder] = (wanted[folder], watch)
             started += 1
         if changes.stop or started:
@@ -280,11 +337,11 @@ class IdleSupervisor:
         """Remember each dead watch's reason and when to try again; forget a folder whose watch
         reached it. A reason is logged when it first comes, not on every retry."""
         for folder, (fingerprint, watch) in self._watches.items():
-            if watch.connected():
+            if watch.connected:
                 self._retries.pop(folder, None)
-            if watch.alive():
+            if watch.alive:
                 continue
-            reason = watch.failure() or "ended"
+            reason = watch.failure or "ended"
             previous = self._retries.get(folder)
             if previous is not None and previous.fingerprint != fingerprint:
                 previous = None
@@ -304,23 +361,39 @@ class IdleSupervisor:
     def stop_all(self) -> None:
         watches = [watch for _fingerprint, watch in self._watches.values()]
         self._watches.clear()
+        self._stop_watches(watches)
+
+    def _stop_watches(self, watches: Sequence[Watch]) -> None:
+        """Stop ``watches`` and wait for them, ``stop_seconds`` at most in all."""
         for watch in watches:
             watch.stop()
+        until = time.monotonic() + self._stop_seconds
         for watch in watches:
-            watch.join()
+            watch.join(max(0.0, until - time.monotonic()))
+        left = sum(1 for watch in watches if watch.alive)
+        if left:
+            logger.info("%d stopped watch(es) still ending on their own.", left)
 
-    def _accounts(self, folders: Iterable[WatchedFolder]) -> dict[WatchedFolder, Account]:
-        """The account of each folder that can be watched; the others are logged once per
+    def _folder_watch(
+        self, folder: WatchedFolder, revision: int, on_new_mail: Callable[[], None]
+    ) -> Watch:
+        return FolderWatch(self._mailboxes, folder, revision, on_new_mail)
+
+    def _targets(self, folders: Iterable[WatchedFolder]) -> dict[WatchedFolder, _Target]:
+        """What each folder that can be watched is watched with; the others are logged once per
         reason."""
-        accounts: dict[WatchedFolder, Account] = {}
+        accounts: dict[tuple[int, str], _Target | str] = {}
+        targets: dict[WatchedFolder, _Target] = {}
         problems: dict[WatchedFolder, str] = {}
         for folder in folders:
-            try:
-                accounts[folder] = self._mailboxes.account(folder.user_id, folder.account_id)
-            except AccountNotFound:
-                problems[folder] = "account_not_found"
-            except MailFailure as failure:
-                problems[folder] = failure.code
+            key = (folder.user_id, folder.account_id)
+            if key not in accounts:
+                accounts[key] = self._target(*key)
+            found = accounts[key]
+            if isinstance(found, _Target):
+                targets[folder] = found
+            else:
+                problems[folder] = found
         for folder, problem in problems.items():
             if self._problems.get(folder) != problem:
                 logger.warning(
@@ -330,7 +403,28 @@ class IdleSupervisor:
                     extra={"user_id": folder.user_id, "account_id": folder.account_id},
                 )
         self._problems = problems
-        return accounts
+        return targets
+
+    def _target(self, user_id: int, account_id: str) -> _Target | str:
+        """The account's target, or why it cannot be watched before any connection: the app's
+        code (``secrets_key_missing``, ``password_missing``), ``starttls_unsupported`` or
+        ``account_not_found``. One read of the store, one opening of the password."""
+        store = user_store(self._mailboxes.engine, user_id)
+        subkey = self._mailboxes.subkey
+        try:
+            loaded = load_accounts(store)
+            account = loaded.account(account_id)
+        except AccountNotFound:
+            return "account_not_found"
+        if subkey is None:
+            return SECRETS_KEY_MISSING
+        password = account_password(store, subkey, account_id)
+        if password is None:
+            return PASSWORD_MISSING
+        if account.imap.tls != "implicit":
+            # The runs a watch queues still go through the filter engine, which refuses STARTTLS.
+            return "starttls_unsupported"
+        return _Target(account_fingerprint(account, password), loaded.revision)
 
     def _queue_runs_of(self, folder: WatchedFolder) -> Callable[[], None]:
         def queue_runs() -> None:
