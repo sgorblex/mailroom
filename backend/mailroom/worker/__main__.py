@@ -7,7 +7,8 @@ One worker runs at a time (it holds a database lock while it runs): a second one
 start, jobs a stopped worker left running are marked failed, and their runs closed as
 interrupted. Beside procrastinate's job loop, a thread runs the IDLE supervisor
 (``mailroom.worker.idle``). On SIGTERM or SIGINT procrastinate gives the jobs in progress
-`SHUTDOWN_SECONDS` to finish, then aborts them; the watches are then stopped too.
+`SHUTDOWN_SECONDS` to finish, then aborts them; the watches are then stopped too, and the
+worker's mail connections logged out.
 """
 
 from __future__ import annotations
@@ -87,6 +88,7 @@ def main() -> None:
         finally:
             stop.set()
             watching.join()
+            context.mailboxes.close()
     logger.info("Worker stopped.")
 
 

@@ -4,13 +4,15 @@
 from __future__ import annotations
 
 import threading
+import time
 from typing import TYPE_CHECKING
 
 import pytest
 from sqlalchemy import select
 
+from mailroom.accounts.store import load_accounts, user_store
 from mailroom.models import AuditRecord
-from mailroom.worker.idle import MonitorWatch, WatchedFolder
+from mailroom.worker.idle import FolderWatch, WatchedFolder
 from mailroom.worker.runs import execute_run
 from mailroom.worker.tasks import queue_new_mail_runs
 from mailroom_core.mail import subject_sha256
@@ -117,7 +119,7 @@ def test_a_watched_folder_queues_runs_that_move_new_mail(
     account: str,
     mailboxes: Mailboxes,
 ) -> None:
-    """The filter engine's monitor on the folder: once on connecting, then on new mail. The runs are
+    """mailroom-core's IdleWatch on the folder: once on connecting, then on new mail. The runs are
     queued and carried out here, as the supervisor and the worker's jobs would."""
     set_run_filters(user_client, account, on=True)
     rule_set_id = add_rule_set(user_client, account, trigger="new_mail")
@@ -138,15 +140,22 @@ def test_a_watched_folder_queues_runs_that_move_new_mail(
         with changed:
             assert changed.wait_for(lambda: calls >= count, WAIT_SECONDS)
 
-    watch = MonitorWatch(folder, mailboxes.account(user.id, account), on_new_mail)
+    revision = load_accounts(user_store(mailboxes.engine, user.id)).revision
+    watch = FolderWatch(mailboxes, folder, revision, on_new_mail)
     try:
         wait_for(1)
+        assert watch.connected
+        # The lease ended with the delimiter's lookup: the pool logs that connection out, and
+        # the watch, on a connection of its own, goes on.
+        pool = mailboxes.pool
+        assert pool.close_idle(time.monotonic() + pool.idle_seconds + 1) == 1
         mailbox.append("INBOX", (SHOP, "Autumn sale", False), (BANK, "Statement", False))
         wait_for(2)
     finally:
         watch.stop()
-        watch.join()
-    assert not watch.alive()
+        watch.join(WAIT_SECONDS)
+    assert not watch.alive
+    assert watch.failure is None
 
     [run_id] = queue_new_mail_runs(db_session, user.id, account, folder.folder)
     execute_run(db_session, run_id, mailboxes)
@@ -154,3 +163,17 @@ def test_a_watched_folder_queues_runs_that_move_new_mail(
     assert (run["trigger"], run["error"]) == ("new_mail", None)
     assert mailbox.subjects("INBOX") == ["Statement"]
     assert mailbox.subjects("Archive") == ["Autumn sale"]
+
+
+def test_a_watch_on_a_missing_folder_ends_with_its_code(
+    user: User, account: str, mailboxes: Mailboxes
+) -> None:
+    folder = WatchedFolder(user.id, account, ("Nowhere",))
+    revision = load_accounts(user_store(mailboxes.engine, user.id)).revision
+    queued: list[None] = []
+    watch = FolderWatch(mailboxes, folder, revision, lambda: queued.append(None))
+    watch.join(WAIT_SECONDS)
+    assert not watch.alive
+    assert not watch.connected
+    assert (watch.failure or "").startswith("mailbox_missing: ")
+    assert queued == []
