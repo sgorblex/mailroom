@@ -138,6 +138,8 @@ def _code(error: BaseException) -> MailErrorCode:
         cause = error.__cause__ or error.__context__
         if isinstance(cause, imaplib.IMAP4.abort | OSError | EOFError):
             return _code(cause)
+        if _is_temporary(str(error)):
+            return "unreachable"
         return "auth_failed"
     if isinstance(error, CapabilityError):
         return "unsupported"
@@ -153,9 +155,17 @@ def _code(error: BaseException) -> MailErrorCode:
         return "unreachable"
     if isinstance(error, imaplib.IMAP4.error):
         text = str(error)
+        if _is_temporary(text):
+            return "unreachable"
         if "[AUTHENTICATIONFAILED]" in text:
             return "auth_failed"
         # NONEXISTENT on SELECT, EXAMINE and STATUS; TRYCREATE on APPEND, COPY and MOVE.
         if "[NONEXISTENT]" in text or "[TRYCREATE]" in text:
             return "mailbox_missing"
     return "server_error"
+
+
+def _is_temporary(text: str) -> bool:
+    """Whether a NO answer says the server is down for now (RFC 5530's UNAVAILABLE), as Dovecot
+    answers a login while its auth backend is unavailable: no wrong password, worth retrying."""
+    return "[UNAVAILABLE]" in text or "Temporary authentication failure" in text

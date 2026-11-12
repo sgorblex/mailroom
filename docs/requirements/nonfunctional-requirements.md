@@ -585,8 +585,10 @@ What they do and the route list: [`filters.md`](filters.md). How:
 ## Structured logging
 
 Logs go to stderr: JSON lines in production, one human-readable line per record in development
-(`MAILROOM_LOG_FORMAT`, `MAILROOM_LOG_LEVEL`). Every HTTP request gets an `X-Request-ID` (accepted
-from the client when sane) carried on each record. Never log message subjects, bodies or secrets in
+(`MAILROOM_LOG_FORMAT`, `MAILROOM_LOG_LEVEL`). mailroom-core's records (`mailroom_core.*`, the
+filter engine's from WARNING) and procrastinate's take the same handler, with their fields (account,
+folder, mapped code). Every HTTP request gets an `X-Request-ID` (accepted from the client when sane)
+carried on each record. Never log message subjects, bodies or secrets in
 clear (hash them, as mailroom-mcp's audit does).
 
 ## Automated testing

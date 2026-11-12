@@ -29,6 +29,16 @@ def _login_error_during(error: BaseException) -> LoginError:
         (_login_error_during(imaplib.IMAP4.abort("socket error: EOF")), "unreachable"),
         (_login_error_during(ConnectionResetError(104, "reset")), "unreachable"),
         (imaplib.IMAP4.error("login failed: [AUTHENTICATIONFAILED] no"), "auth_failed"),
+        # The server's auth backend is down for now (Dovecot, RFC 5530): no wrong password.
+        (
+            LoginError("b'[UNAVAILABLE] Temporary authentication failure. [mail:2026-11-12]'"),
+            "unreachable",
+        ),
+        (
+            _login_error_during(imaplib.IMAP4.error("Temporary authentication failure.")),
+            "unreachable",
+        ),
+        (imaplib.IMAP4.error("select failed: [UNAVAILABLE] Try again later"), "unreachable"),
         (
             imaplib.IMAP4.error("select failed: [NONEXISTENT] Mailbox doesn't exist: Nope"),
             "mailbox_missing",

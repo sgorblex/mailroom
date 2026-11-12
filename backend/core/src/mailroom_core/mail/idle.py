@@ -199,6 +199,7 @@ class IdleWatch:
                                 extra={
                                     "event": "idle_reconnecting",
                                     "account": self._account,
+                                    "folder": self._path,
                                     "backoff": backoff,
                                 },
                             )
@@ -226,6 +227,7 @@ class IdleWatch:
                         extra={
                             "event": "idle_disconnected",
                             "account": self._account,
+                            "folder": self._path,
                             "mapped": mapped.code,
                         },
                     )
@@ -303,6 +305,7 @@ class IdleWatch:
                 extra={
                     "event": "idle_callback_failed",
                     "account": self._account,
+                    "folder": self._path,
                     "error_type": type(error).__name__,
                 },
             )
@@ -311,7 +314,12 @@ class IdleWatch:
         self._failure = error
         _log.warning(
             "idle_ended",
-            extra={"event": "idle_ended", "account": self._account, "mapped": error.code},
+            extra={
+                "event": "idle_ended",
+                "account": self._account,
+                "folder": self._path,
+                "mapped": error.code,
+            },
         )
 
     def _discard(self) -> None:
