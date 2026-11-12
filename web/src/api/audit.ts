@@ -5,7 +5,18 @@ export const ACTORS = ['user', 'agent', 'filter'] as const
 export type Actor = (typeof ACTORS)[number]
 
 /** The actions the web and MCP record; a filter's record names its own action instead. */
-export const MAIL_ACTIONS = ['move', 'archive', 'trash', 'flag', 'draft_save', 'draft_remove', 'send'] as const
+export const MAIL_ACTIONS = [
+  'move',
+  'archive',
+  'trash',
+  'flag',
+  'draft_save',
+  'draft_remove',
+  'send',
+  'folder_create',
+  'folder_rename',
+  'folder_delete',
+] as const
 
 /** One message a write acted on, or tried to: never its subject or body. */
 export const auditRecordSchema = z.object({

@@ -119,6 +119,29 @@ describe('ActivityScreen', () => {
     expect(within(row).queryByText('Error')).not.toBeInTheDocument()
   })
 
+  it('words a folder action and what it changed', async () => {
+    stubApi(() =>
+      json({
+        records: [
+          record(2, { action: 'folder_rename', detail: { folder: 'Old', destination: 'Lists/New', rule_sets: [4, 9], filters: [12] } }),
+          record(1, { action: 'folder_delete', result: 'folder_changed', detail: { folder: 'Lists', messages: 3 } }),
+        ],
+        next_cursor: null,
+      }),
+    )
+    renderSignedIn(<ActivityScreen />, ALICE)
+    const [renamed, deleted] = (await screen.findAllByRole('listitem')) as [HTMLElement, HTMLElement]
+    expect(renamed).toHaveTextContent('Folder renamed')
+    expect(renamed).toHaveTextContent('Old → Lists/New')
+    await userEvent.click(within(renamed).getByText('Folder renamed'))
+    expect(within(renamed).getByText('Rule sets')).toBeVisible()
+    expect(within(renamed).getByText('4, 9')).toBeVisible()
+    expect(deleted).toHaveTextContent('Folder deleted')
+    expect(deleted).toHaveTextContent('Not done: folder_changed')
+    await userEvent.click(within(deleted).getByText('Folder deleted'))
+    expect(within(deleted).getByText('Messages')).toBeVisible()
+  })
+
   it('loads more with the cursor, and filters by who acted', async () => {
     const fetchMock = stubApi((query) => {
       if (query.get('actor') === 'agent') {

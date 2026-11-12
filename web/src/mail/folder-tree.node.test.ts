@@ -2,7 +2,20 @@ import { describe, expect, it } from 'vitest'
 
 import type { MailFolder } from '@/api/mail.ts'
 
-import { accountDelimiter, ancestorPaths, folderTree, initiallyExpanded, subtreeUnread, visibleNodes, type FolderNode } from './folder-tree.ts'
+import {
+  accountDelimiter,
+  ancestorPaths,
+  childPath,
+  folderRefusals,
+  folderTree,
+  initiallyExpanded,
+  isWithin,
+  nameProblem,
+  renamedPath,
+  subtreeUnread,
+  visibleNodes,
+  type FolderNode,
+} from './folder-tree.ts'
 
 function folder(path: string, changes: Partial<MailFolder> = {}): MailFolder {
   return { path, role: null, unread: 0, total: 0, delimiter: '/', selectable: true, ...changes }
@@ -106,5 +119,55 @@ describe('the tree helpers', () => {
     ]
     expect(initiallyExpanded(folders)).toEqual(['[Gmail]'])
     expect(accountDelimiter([folder('INBOX', { delimiter: null }), folder('A.B', { delimiter: '.' })])).toBe('.')
+  })
+})
+
+describe('the action rules', () => {
+  it('refuses what the server would: role folders, a folder holding one, a delete with subfolders', () => {
+    const tree = folderTree([
+      folder('INBOX', { role: null }),
+      folder('Trash', { role: 'trash' }),
+      folder('Mail', { selectable: false }),
+      folder('Mail/Sent', { role: 'sent' }),
+      folder('Lists'),
+      folder('Lists/Rust'),
+    ])
+    const of = (path: string): ReturnType<typeof folderRefusals> => {
+      const find = (nodes: FolderNode[]): FolderNode | undefined =>
+        nodes.map((node) => (node.path === path ? node : find(node.children))).find((node) => node !== undefined)
+      const node = find(tree)
+      if (node?.folder == null) {
+        throw new Error(path)
+      }
+      return folderRefusals({ ...node, folder: node.folder })
+    }
+    expect(of('INBOX')).toEqual({ rename: 'protected', delete: 'protected' })
+    expect(of('Trash')).toEqual({ rename: 'protected', delete: 'protected' })
+    expect(of('Mail')).toEqual({ rename: 'holdsRole', delete: 'hasSubfolders' })
+    expect(of('Lists')).toEqual({ rename: null, delete: 'hasSubfolders' })
+    expect(of('Lists/Rust')).toEqual({ rename: null, delete: null })
+  })
+
+  it('checks a name as mailroom-core does', () => {
+    expect(nameProblem('', '/', null)).toBe('empty')
+    expect(nameProblem('x'.repeat(256), '/', null)).toBe('tooLong')
+    expect(nameProblem('x'.repeat(255), '/', null)).toBeNull()
+    for (const name of ['a/b', 'a*', '50%', 'tab\there']) {
+      expect(nameProblem(name, '/', null)).toBe('characters')
+    }
+    expect(nameProblem('a/b', null, null)).toBeNull()
+    expect(nameProblem(' padded', '/', null)).toBe('spaces')
+    expect(nameProblem('inbox', '/', null)).toBe('inbox')
+    expect(nameProblem('inbox', '/', 'Lists')).toBeNull()
+  })
+
+  it('follows a rename to the folders under it, and no others', () => {
+    expect(renamedPath('Old', 'Old', 'New/Old', '/')).toBe('New/Old')
+    expect(renamedPath('Old/Sub', 'Old', 'Top', '/')).toBe('Top/Sub')
+    expect(renamedPath('Older', 'Old', 'Top', '/')).toBe('Older')
+    expect(isWithin('Old/Sub', 'Old', '/')).toBe(true)
+    expect(isWithin('Older', 'Old', '/')).toBe(false)
+    expect(childPath(null, 'A', '/')).toBe('A')
+    expect(childPath('A', 'B', '.')).toBe('A.B')
   })
 })

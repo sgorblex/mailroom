@@ -141,8 +141,9 @@ export function useMailShortcuts(accountId: string): void {
         (event.repeat && !REPEATING.has(event.key)) ||
         event.defaultPrevented ||
         isTyping(event.target) ||
-        // A modal leaves the page behind it out of reach, and Escape to the dialog.
-        document.querySelector('dialog[open]') !== null
+        // A modal leaves the page behind it out of reach, and Escape to the dialog; an open menu
+        // takes the keys too.
+        document.querySelector('dialog[open], [role="menu"]') !== null
       ) {
         return
       }

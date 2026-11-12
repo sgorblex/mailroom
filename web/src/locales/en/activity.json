@@ -34,6 +34,9 @@
     "draft_save": "Draft saved",
     "draft_remove": "Draft removed",
     "send": "Sent",
+    "folder_create": "Folder created",
+    "folder_rename": "Folder renamed",
+    "folder_delete": "Folder deleted",
     "run_failed": "Filter run failed"
   },
   "results": {
@@ -69,7 +72,11 @@
     "error": "Error",
     "date": "Date",
     "run": "Run",
-    "result": "Result code"
+    "result": "Result code",
+    "messages": "Messages",
+    "rule_sets": "Rule sets",
+    "filters": "Filters",
+    "rule_sets_error": "Rule sets not updated"
   },
   "values": {
     "yes": "Yes",

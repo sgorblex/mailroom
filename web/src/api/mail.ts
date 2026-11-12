@@ -138,6 +138,42 @@ export async function listMailFolders(accountId: string, signal?: AbortSignal): 
   return list.folders
 }
 
+const folderCreatedSchema = z.object({ account_id: z.string(), path: z.string() })
+
+const folderRenamedSchema = z.object({
+  account_id: z.string(),
+  /** The old path. */
+  folder: z.string(),
+  path: z.string(),
+  /** The rule sets and filters pointed at the new path. */
+  rule_sets: z.array(z.number()),
+  filters: z.array(z.number()),
+  /** `false`: the folder was renamed but its rule sets still name the old path. */
+  rule_sets_updated: z.boolean(),
+})
+export type FolderRenamed = z.infer<typeof folderRenamedSchema>
+
+const folderDeletedSchema = z.object({ account_id: z.string(), folder: z.string(), messages: z.number() })
+
+/** Creates `name` under `parent` (`null`: the top level); the new folder's path. */
+export async function createFolder(accountId: string, parent: string | null, name: string): Promise<string> {
+  const created = await apiPostJson(`${accountPath(accountId)}/folders`, { parent, name }, { schema: folderCreatedSchema })
+  return created.path
+}
+
+/** Renames `folder` to `name` under `parent`, its subfolders and mail with it, and its rule sets. */
+export function renameFolder(accountId: string, folder: string, parent: string | null, name: string): Promise<FolderRenamed> {
+  return apiPostJson(`${accountPath(accountId)}/folders/rename`, { folder, parent, name }, { schema: folderRenamedSchema })
+}
+
+/**
+ * Deletes `folder` and its mail for good. `messages` is the count the user confirmed: a different
+ * count now is refused as `folder_changed`, carrying it.
+ */
+export async function deleteFolder(accountId: string, folder: string, messages: number): Promise<void> {
+  await apiPostJson(`${accountPath(accountId)}/folders/delete`, { folder, messages }, { schema: folderDeletedSchema })
+}
+
 export function listMessages(
   accountId: string,
   options: { folder: string; cursor?: string | null; limit?: number },

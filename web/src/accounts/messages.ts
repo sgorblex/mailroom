@@ -55,6 +55,9 @@ export const MAIL_CODES: Record<string, string> = {
   recipient_refused: 'mailErrors.recipientRefused',
   delivery_unknown: 'mailErrors.deliveryUnknown',
   draft_not_editable: 'mailErrors.draftNotEditable',
+  folder_exists: 'mailErrors.folderExists',
+  folder_changed: 'mailErrors.folderChanged',
+  folder_in_use: 'mailErrors.folderInUse',
 }
 
 /** The fixed detail mailroom-core's `unreachable` ends with when the server's TLS certificate did not verify (`CERTIFICATE_DETAIL`). */
