@@ -1,7 +1,7 @@
 """Mail over IMAP: connections and error mapping (`src/imap/`), the operations on a selected
-folder, the read and organize operations built on them, and messages composed to be written
-(`src/mail/`, `src/mcp/tools/` minus the tool plumbing). Synchronous: an async host calls it
-from a worker thread."""
+folder and the read and organize operations built on them, watching a folder through IDLE, and
+messages composed to be written (`src/mail/`, `src/mcp/tools/` minus the tool plumbing).
+Synchronous: an async host calls it from a worker thread."""
 
 from mailroom_core.mail.attachments import AttachmentSource, attachments_from
 from mailroom_core.mail.audit import (
@@ -59,6 +59,7 @@ from mailroom_core.mail.errors import (
     mail_error,
 )
 from mailroom_core.mail.identity import Addressed, from_identity
+from mailroom_core.mail.idle import IdleChange, IdleWatch
 from mailroom_core.mail.imap import (
     FOLDER_ROLES,
     Capabilities,
@@ -217,6 +218,8 @@ __all__ = [
     "Folder",
     "FolderRole",
     "GroupResult",
+    "IdleChange",
+    "IdleWatch",
     "Junk",
     "MailConnections",
     "MailError",
