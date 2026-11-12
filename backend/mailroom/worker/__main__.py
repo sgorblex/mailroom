@@ -8,13 +8,16 @@ start, jobs a stopped worker left running are marked failed, and their runs clos
 interrupted. Beside procrastinate's job loop, a thread runs the IDLE supervisor
 (``mailroom.worker.idle``). On SIGTERM or SIGINT procrastinate gives the jobs in progress
 `SHUTDOWN_SECONDS` to finish, then aborts them; the watches are then stopped too, and the
-worker's mail connections logged out.
+worker's mail connections logged out, and it exits 0. A worker that stops without being asked
+(procrastinate stops itself when its database connection fails, as when PostgreSQL restarts)
+exits 1, so its unit's ``Restart=on-failure`` starts it again.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import signal
 import sys
 import threading
 from typing import Final
@@ -45,6 +48,50 @@ mailbox's lock waits at most this long once the lock frees (procrastinate's defa
 async def _settle() -> None:
     async with app.open_async():
         await fail_interrupted_jobs()
+
+
+_STOP_SIGNALS: Final = (signal.SIGINT, signal.SIGTERM)
+
+
+async def run_jobs() -> bool:
+    """Run procrastinate's job loop until it stops: whether it was asked to (SIGTERM, SIGINT).
+
+    Procrastinate stops the same way when one of its side tasks fails (its heartbeat or LISTEN
+    connection, on a database that went away) as on a signal, so the worker takes the signals
+    itself: one cancels the loop, procrastinate's graceful stop, and a second is left to
+    Python's default."""
+    loop = asyncio.get_running_loop()
+    asked = False
+    async with app.open_async():
+        jobs = asyncio.create_task(
+            app.run_worker_async(
+                concurrency=CONCURRENCY,
+                fetch_job_polling_interval=POLL_SECONDS,
+                shutdown_graceful_timeout=SHUTDOWN_SECONDS,
+                install_signal_handlers=False,
+            ),
+            name="jobs",
+        )
+
+        def stop() -> None:
+            nonlocal asked
+            logger.info("Stop requested.")
+            asked = True
+            for stop_signal in _STOP_SIGNALS:
+                loop.remove_signal_handler(stop_signal)
+            jobs.cancel()
+
+        for stop_signal in _STOP_SIGNALS:
+            loop.add_signal_handler(stop_signal, stop)
+        try:
+            await jobs
+        except asyncio.CancelledError:
+            if not asked:
+                raise
+        finally:
+            for stop_signal in _STOP_SIGNALS:
+                loop.remove_signal_handler(stop_signal)
+    return asked
 
 
 def main() -> None:
@@ -80,15 +127,14 @@ def main() -> None:
         watching = threading.Thread(target=supervisor.run, args=(stop,), name="idle-supervisor")
         watching.start()
         try:
-            app.run_worker(
-                concurrency=CONCURRENCY,
-                fetch_job_polling_interval=POLL_SECONDS,
-                shutdown_graceful_timeout=SHUTDOWN_SECONDS,
-            )
+            asked = asyncio.run(run_jobs())
         finally:
             stop.set()
             watching.join()
             context.mailboxes.close()
+    if not asked:
+        logger.error("The worker stopped without being asked (its database went away?); exiting 1.")
+        sys.exit(1)
     logger.info("Worker stopped.")
 
 
