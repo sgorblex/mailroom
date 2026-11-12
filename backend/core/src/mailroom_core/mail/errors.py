@@ -30,6 +30,8 @@ type MailErrorCode = Literal[
     "rate_limited",
     "recipient_refused",
     "delivery_unknown",
+    "folder_exists",
+    "folder_changed",
     "server_error",
 ]
 MAIL_ERROR_CODES: Final[tuple[MailErrorCode, ...]] = get_args(MailErrorCode.__value__)
@@ -54,6 +56,8 @@ MESSAGES: Final[Mapping[MailErrorCode, str]] = {
         "Delivery could not be confirmed: the message may already have gone out, so it was not "
         "sent again."
     ),
+    "folder_exists": "A folder with that name already exists.",
+    "folder_changed": "The folder changed since it was read.",
     "server_error": "The mail server reported an error.",
 }
 

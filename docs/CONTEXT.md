@@ -39,7 +39,7 @@ mailroom-mcp              standalone MCP server for mail (repo mailroom-mcp, ret
 - **The app's built-in OAuth authorization server is self-contained** (the database and a small
   user interface, no app routes), so it may move to a shared package later.
 - **mailroom-core** ([`core.md`](core.md)) is the mail layer: `render`, `mail` (connections in
-  `mail.imap`, read, organize, compose, drafts) and `send` (SMTP and the send gate), which the mail
+  `mail.imap`, read, organize, folders, compose, drafts) and `send` (SMTP and the send gate), which the mail
   client and the MCP mail tools are built on. It lived in mailroom-mcp until 0.1.3, its last PyPI
   release, and is now a workspace package in `backend/core`, with its history, released only as
   part of the app. It never imports `mailroom`. The app keeps the accounts (`AccountStore`) in

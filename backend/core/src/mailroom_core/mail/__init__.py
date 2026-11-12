@@ -1,7 +1,8 @@
 """Mail over IMAP: connections and error mapping (`src/imap/`), the operations on a selected
-folder and the read and organize operations built on them, watching a folder through IDLE, and
-messages composed to be written (`src/mail/`, `src/mcp/tools/` minus the tool plumbing).
-Synchronous: an async host calls it from a worker thread."""
+folder and the read and organize operations built on them, creating, renaming and deleting an
+account's folders, watching a folder through IDLE, and messages composed to be written
+(`src/mail/`, `src/mcp/tools/` minus the tool plumbing). Synchronous: an async host calls it
+from a worker thread."""
 
 from mailroom_core.mail.attachments import AttachmentSource, attachments_from
 from mailroom_core.mail.audit import (
@@ -58,6 +59,17 @@ from mailroom_core.mail.errors import (
     MailError,
     MailErrorCode,
     mail_error,
+)
+from mailroom_core.mail.folders import (
+    MAX_FOLDER_DEPTH,
+    MAX_FOLDER_NAME,
+    FolderChange,
+    FolderChangedError,
+    check_folder_name,
+    create_folder,
+    delete_folder,
+    rename_folder,
+    subfolders_of,
 )
 from mailroom_core.mail.identity import Addressed, from_identity
 from mailroom_core.mail.idle import IdleChange, IdleWatch
@@ -191,6 +203,8 @@ __all__ = [
     "MAX_ADDRESSES",
     "MAX_BODY_BYTES",
     "MAX_DRAFT_BYTES",
+    "MAX_FOLDER_DEPTH",
+    "MAX_FOLDER_NAME",
     "MAX_ORIGINAL_BYTES",
     "MAX_REFS",
     "MAX_SUBJECT_CHARS",
@@ -219,6 +233,8 @@ __all__ = [
     "FetchedMessage",
     "FlagState",
     "Folder",
+    "FolderChange",
+    "FolderChangedError",
     "FolderRole",
     "GroupResult",
     "IdleChange",
@@ -265,6 +281,7 @@ __all__ = [
     "audit_result",
     "body_text",
     "check_fields",
+    "check_folder_name",
     "check_fresh",
     "check_in_drafts",
     "check_movable",
@@ -275,7 +292,9 @@ __all__ = [
     "compose",
     "connections_from",
     "content_type",
+    "create_folder",
     "decode_cursor",
+    "delete_folder",
     "delete_uids",
     "deliverable_address",
     "draft_answers",
@@ -320,6 +339,7 @@ __all__ = [
     "read_text",
     "recipient_list",
     "remove_draft",
+    "rename_folder",
     "reply_recipients",
     "reply_subject",
     "retriable",
@@ -331,6 +351,7 @@ __all__ = [
     "set_flags",
     "special_folder_in",
     "store_flags",
+    "subfolders_of",
     "subject_sha256",
     "thread_page",
     "thread_text",

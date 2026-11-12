@@ -125,7 +125,7 @@ type Stage = Literal["lock", "fn"]
 
 def retriable(stage: Stage, code: MailErrorCode, read_only: bool) -> bool:
     """Whether a failed attempt may run again on a fresh connection, by the stage it failed in
-    (`lock`: selecting the folder, before `fn` started).
+    (`lock`: selecting the folder, or readying a connection, before `fn` started).
 
     Selecting a folder changes nothing, so a lost connection before `fn` always qualifies. A
     read-only `fn` is idempotent, so it also retries on a server error: a folder deleted by
@@ -254,6 +254,28 @@ class MailConnections:
                 raise failure.error from None
         try:
             return self._attempt(account_id, path, read_only, fn, fresh=True)
+        except _AttemptFailedError as failure:
+            raise failure.error from None
+
+    def with_connection[T](self, account_id: str, fn: Callable[[IMAPClient], T]) -> T:
+        """Runs `fn` on a connection of the account with no mailbox selected: for commands on
+        folders themselves (CREATE, RENAME, DELETE), which must not meet a mailbox this
+        connection still holds open.
+
+        A connection a `with_mailbox` left selected leaves its mailbox with UNSELECT when the
+        server has it (IMAP4rev2 includes it); otherwise it is dropped for a newly opened one,
+        since CLOSE would expunge. A reused connection that was not selected answers a NOOP
+        first, so that a dead one is found before `fn`. Readying it may be retried once, on a
+        newly opened connection; `fn` is never repeated, as it may have written. Errors come
+        out as MailErrors, `busy` when no connection is free within `Timeouts.lock`.
+        """
+        try:
+            return self._bare_attempt(account_id, fn, fresh=False)
+        except _AttemptFailedError as failure:
+            if not failure.retry:
+                raise failure.error from None
+        try:
+            return self._bare_attempt(account_id, fn, fresh=True)
         except _AttemptFailedError as failure:
             raise failure.error from None
 
@@ -567,6 +589,40 @@ class MailConnections:
                 self._discard(slot)
                 raise
 
+    def _bare_attempt[T](self, account_id: str, fn: Callable[[IMAPClient], T], *, fresh: bool) -> T:
+        with self._slot(account_id, fresh=fresh) as (state, slot):
+            reused = slot.client is not None
+            client = self._client(account_id, state, slot)
+            try:
+                client = self._unselected(account_id, state, slot, client, reused=reused)
+            except Exception as error:
+                raise self._failure(account_id, state, slot, error, "lock", False) from None
+            except BaseException:
+                self._discard(slot)
+                raise
+            try:
+                return fn(client)
+            except Exception as error:
+                raise self._failure(account_id, state, slot, error, "fn", False) from None
+            except BaseException:
+                # Interrupted mid-command, the connection's state is unknown.
+                self._discard(slot)
+                raise
+
+    def _unselected(
+        self, account_id: str, state: _Account, slot: _Slot, client: IMAPClient, *, reused: bool
+    ) -> IMAPClient:
+        """The slot's connection with no mailbox selected: UNSELECT, or a new connection when
+        the server has no UNSELECT (never CLOSE, which expunges `\\Deleted` messages)."""
+        if client._imap.state != "SELECTED":  # noqa: SLF001
+            if reused:
+                client.noop()
+            return client
+        if _unselect(client):
+            return client
+        self._discard(slot)
+        return self._client(account_id, state, slot)
+
     def _failure(
         self,
         account_id: str,
@@ -717,6 +773,20 @@ def _drop(client: IMAPClient) -> None:
     """Closes the socket without a LOGOUT: for a connection that is dead or in an unknown state."""
     with suppress(Exception):
         client.shutdown()
+
+
+def _unselect(client: IMAPClient) -> bool:
+    """Leaves the selected mailbox with UNSELECT, which expunges nothing, when the server offers
+    it (IMAP4rev2 includes it); False when it does not, or refused it."""
+    if client.has_capability("UNSELECT"):
+        client.unselect_folder()
+    elif client.has_capability("IMAP4rev2"):
+        # imapclient's unselect_folder asks for UNSELECT by name; this is what it sends.
+        typ, _data = client._imap._simple_command("UNSELECT")  # noqa: SLF001
+        if typ == "OK":
+            client._imap.state = "AUTH"  # noqa: SLF001
+    # imapclient answers a NO without raising, leaving the state as it was.
+    return bool(client._imap.state != "SELECTED")  # noqa: SLF001
 
 
 def _log_out(client: IMAPClient) -> None:

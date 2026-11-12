@@ -292,9 +292,9 @@ def delete_uids(context: MailboxContext, uids: Sequence[int]) -> None:
     any other message marked `\\Deleted` where it is. Needs UIDPLUS: without it, `unsupported`
     before anything is marked.
 
-    Mailroom never deletes mail but in two cases (docs/core.md, *Safety*): a draft it wrote
-    itself, when replaced or deleted, and a filter's `delete` action, the user's own rule.
-    Nothing else calls this.
+    Mailroom deletes mail only deliberately (docs/core.md, *Safety*). This is for two of those
+    cases: a draft it wrote itself, when replaced or deleted, and a filter's `delete` action, the
+    user's own rule (a folder's delete, the third, is `delete_folder`). Nothing else calls this.
     """
     if not context.client.has_capability("UIDPLUS"):
         raise MailError(
