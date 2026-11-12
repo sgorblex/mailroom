@@ -309,6 +309,14 @@ class MailConnections:
                 state.health = (time.monotonic(), result)
         return result
 
+    def test_login(self, account_id: str) -> None:
+        """Logs in to the account and out again on a connection of its own, outside the pool,
+        so a busy account is still tested; every connect and reply is bounded by
+        `Timeouts.probe`, with no retry. A failure is a MailError (`auth_failed`,
+        `unreachable`, `timeout`…); a missing password is the host's RuntimeError, as for
+        every connection."""
+        _log_out(self._open_unpooled(account_id, read_timeout=self._timeouts.probe))
+
     def interrupt(self, account_id: str) -> int:
         """Cuts the account's connections that are in use, and returns how many.
 
@@ -435,6 +443,22 @@ class MailConnections:
     def _open(
         self, account_id: str, state: _Account, generation: int, read: float | None
     ) -> IMAPClient:
+        client = self._open_unpooled(account_id, read_timeout=read)
+        try:
+            # From the login's response, so this costs no round trip.
+            capabilities = _capabilities(client.capabilities())
+        except Exception as error:
+            _drop(client)
+            raise mail_error(error, account_id) from None
+        with state.free:
+            if state.generation == generation:
+                state.capabilities = capabilities
+        return client
+
+    def _open_unpooled(self, account_id: str, *, read_timeout: float | None = None) -> IMAPClient:
+        """A logged-in connection to the account, owned by the caller and outside the slots:
+        implicit TLS or STARTTLS, then the login `_log_in` chooses. `read_timeout` bounds the
+        opening's replies instead of `Timeouts.read`, and stays set on the connection."""
         account = self._lookup_account(account_id)
         if account is None:
             raise MailError("invalid_argument", f'Unknown account "{account_id}".')
@@ -445,8 +469,8 @@ class MailConnections:
         implicit = account.imap.tls == "implicit"
         timeout = (
             SocketTimeout(connect=self._timeouts.connect, read=self._timeouts.read)
-            if read is None
-            else SocketTimeout(connect=min(self._timeouts.connect, read), read=read)
+            if read_timeout is None
+            else SocketTimeout(connect=min(self._timeouts.connect, read_timeout), read=read_timeout)
         )
         try:
             client = IMAPClient(
@@ -472,15 +496,6 @@ class MailConnections:
             _drop(client)
             # Its text can quote the credentials: only the error's type is logged.
             raise mail_error(error, account_id, secret=True) from None
-        try:
-            # From the login's response, so this costs no round trip.
-            capabilities = _capabilities(client.capabilities())
-        except Exception as error:
-            _drop(client)
-            raise mail_error(error, account_id) from None
-        with state.free:
-            if state.generation == generation:
-                state.capabilities = capabilities
         _log.info("imap_connected", extra={"event": "imap_connected", "account": account_id})
         return client
 
