@@ -75,8 +75,7 @@ if TYPE_CHECKING:
         OutgoingAttachment,
         SavedDraft,
     )
-    from mailroom_core.render import Marker, PartInfo
-    from mailroom_core.render.safe_html import SafeHtml
+    from mailroom_core.render import Marker, PartInfo, SafeHtml
     from mailroom_core.send import Transfer
     from mailroom_core.store import Json, SendRecord, SendState
 

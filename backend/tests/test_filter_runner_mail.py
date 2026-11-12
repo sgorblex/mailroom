@@ -13,7 +13,7 @@ from mailroom.models import AuditRecord
 from mailroom.worker.idle import MonitorWatch, WatchedFolder
 from mailroom.worker.runs import execute_run
 from mailroom.worker.tasks import queue_new_mail_runs
-from mailroom_core.mail.audit import subject_sha256
+from mailroom_core.mail import subject_sha256
 from tests.test_api_accounts import new_account
 from tests.test_api_filters import SHOP_SPEC, add_filter
 from tests.test_filter_runner import add_rule_set, queued_run, run_out, set_run_filters

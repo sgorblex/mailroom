@@ -46,12 +46,15 @@ The filter engine has an IMAP connection of its own until it runs on `mail`
 ([`TODO.md`](TODO.md) — *One IMAP stack*).
 
 **Public API.** What each subpackage exports in `__all__`; everything else is how it is done.
-Rules, each kept by a check once the TODO's *Core's public API* lands:
+Rules, the first three kept by checks and the fourth by a test that comes with the TODO's
+*One IMAP stack*:
 
 - every public name has a docstring, in the style the code already uses (ruff's `D1` rules on
   `core/src`; magic methods excepted, since their operator says what they do);
-- the app imports a subpackage, never one of its modules;
-- inside core, `filters` may use `mail`, never the other way round, and nothing imports `mailroom`;
+- the app imports a subpackage, never one of its modules (the app's
+  `tests/test_component_deps.py`);
+- inside core, `filters` may use `mail`, never the other way round, and nothing imports `mailroom`
+  (`core/tests/test_boundaries.py`);
 - core works with no app, database or server for filtering: accounts from plain config, rules,
   runs, an IDLE monitor and their reports;
 - no semver while core is unpublished: a breaking change fixes its callers in the same pull
