@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/sgorblex/mailroom/compare/v0.8.0...v0.8.1) (2026-11-12)
+
+
+### Bug Fixes
+
+* structured core logs, and a temporary login failure is not a rejected login ([#15](https://github.com/sgorblex/mailroom/issues/15)) ([9a933ec](https://github.com/sgorblex/mailroom/commit/9a933ecc580dbe240a3f64e02d789b5be40d56d8))
+
 ## [0.8.0](https://github.com/sgorblex/mailroom/compare/v0.7.0...v0.8.0) (2026-11-12)
 
 
