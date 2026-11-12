@@ -14,7 +14,7 @@ export interface TriageActions {
   /** Mark read when a target is unread, else mark unread: `seen` is what it sets. */
   read: { seen: boolean; run: () => void } | null
   markUnread: (() => void) | null
-  /** The folders to move to: the account's, without Drafts, Sent and the folder they are in. */
+  /** The folders to move to: the account's selectable ones, without Drafts, Sent and the folder they are in. */
   moveChoices: MailFolder[] | null
   move: (folder: MailFolder) => void
 }
@@ -69,6 +69,7 @@ export function useTriageActions(): TriageActions {
     moveChoices:
       folders?.filter(
         (folder) =>
+          folder.selectable &&
           folder.role !== 'drafts' &&
           folder.role !== 'sent' &&
           !(sources.length === 1 && source !== undefined && isSameFolder(folder.path, source)),

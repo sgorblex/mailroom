@@ -81,8 +81,9 @@ export function isSameFolder(a: string, b: string): boolean {
   return a === b || (a.toUpperCase() === 'INBOX' && b.toUpperCase() === 'INBOX')
 }
 
-export function roleFolder(folders: MailFolder[] | undefined, role: FolderRole): MailFolder | undefined {
-  return folders?.find((folder) => folder.role === role)
+/** The account's folder with `role` that can hold mail: a `\Noselect` one named for a role cannot. */
+export function roleFolder(folders: readonly MailFolder[] | undefined, role: FolderRole): MailFolder | undefined {
+  return folders?.find((folder) => folder.role === role && folder.selectable)
 }
 
 export function loadedFolders(state: FolderState | undefined): MailFolder[] | undefined {

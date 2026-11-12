@@ -23,8 +23,15 @@ live updates yet.
   route below.
 
 The screens live under `/mail`: account and folder sidebar with counts, message list, message view
-(three panes on desktop, stacked on a phone). The text body is the default; a message whose text
-body is empty opens on the HTML view. The HTML view is an
+(three panes on desktop, stacked on a phone). The sidebar shows an account's folders as a tree
+(the ARIA tree pattern, from `?all=true`): the folders with a role first, then the others by
+name; each level opens and closes, by mouse or with the arrow keys, and this browser remembers
+which are open per account (at first, those above the role folders; always those above the
+folder shown). A level that holds only folders (`\Noselect`, or not listed at all) is not a
+link, and a closed level shows the unread count of everything under it (All Mail and Starred
+left out, as they count it again). The move picker and the role actions (Archive, Trash, Drafts,
+Sent) use selectable folders only. The text body is the default; a message whose text body is
+empty opens on the HTML view. The HTML view is an
 `<iframe src="/api/v1/mail/messages/{ref}/html">` with `sandbox="allow-popups
 allow-popups-to-escape-sandbox"`, never `allow-scripts` or `allow-same-origin`. Links open
 top-level with `noopener noreferrer`. Security:
@@ -119,8 +126,8 @@ MCP `message_read` still never set `\Seen`.
 
 - **Multi-select:** a checkbox per row, and a select-all for the loaded page.
 - **Toolbar** acting on the selection, or on the open message when nothing is selected: Archive
-  (hidden when the account has no archive-role folder), Trash, Move to… (a picker over the
-  account's folders, Drafts, Sent and the folder the messages are in left out), Star/Unstar, Mark
+  (hidden when the account has no selectable archive-role folder), Trash, Move to… (a picker over
+  the account's selectable folders, Drafts, Sent and the folder the messages are in left out), Star/Unstar, Mark
   read/unread.
 - Results update the list in place: moved or trashed rows disappear, flags change on the row, and
   failed groups are shown with the mail error wording.

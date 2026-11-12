@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -90,11 +90,15 @@ describe('MailScreen', () => {
     stubMailApi(state())
     renderMailApp('/mail')
 
-    const folders = await screen.findByRole('list', { name: 'Folders of work' })
-    const inboxLink = within(folders).getByRole('link', { name: 'Inbox, 3 unread' })
+    const folders = await screen.findByRole('tree', { name: 'Folders of work' })
+    const inboxLink = within(folders).getByRole('treeitem', { name: 'Inbox, 3 unread' })
     expect(inboxLink).toHaveAttribute('aria-current', 'page')
-    expect(within(folders).getByRole('link', { name: 'Sent' })).toHaveAttribute('title', 'Sent Messages')
-    expect(within(folders).getByRole('link', { name: 'Archive/2025' })).toBeInTheDocument()
+    expect(within(folders).getByRole('treeitem', { name: 'Sent' })).toHaveAttribute('title', 'Sent Messages')
+    // Archive is a level the server did not list: not a link, closed until opened.
+    const archive = within(folders).getByRole('treeitem', { name: 'Archive' })
+    expect(archive.tagName).toBe('SPAN')
+    expect(archive).toHaveAttribute('aria-expanded', 'false')
+    expect(within(folders).queryByRole('treeitem', { name: '2025' })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'home' })).toBeInTheDocument()
 
     const list = await messagesList()
@@ -163,13 +167,78 @@ describe('MailScreen', () => {
     stubMailApi(state())
     const history = renderMailApp('/mail')
 
-    await userEvent.click(await screen.findByRole('link', { name: 'Archive/2025' }))
+    const folders = await screen.findByRole('tree', { name: 'Folders of work' })
+    await userEvent.click(within(folders).getByRole('treeitem', { name: 'Archive' }))
+    await userEvent.click(within(folders).getByRole('treeitem', { name: '2025' }))
     expect(await screen.findByRole('link', { name: /Old news/ })).toBeInTheDocument()
     expect(history.location.search).toContain('folder=Archive%2F2025')
+    expect(within(folders).getByRole('treeitem', { name: '2025' })).toHaveAttribute('aria-current', 'page')
 
     await userEvent.click(screen.getByRole('link', { name: 'home' }))
     expect(await screen.findByRole('link', { name: /From home/ })).toBeInTheDocument()
-    expect(await screen.findByRole('list', { name: 'Folders of home' })).toBeInTheDocument()
+    expect(await screen.findByRole('tree', { name: 'Folders of home' })).toBeInTheDocument()
+  })
+
+  it('shows nested folders as a tree that opens, closes and remembers', async () => {
+    const folders = {
+      work: [
+        { path: 'INBOX', role: 'inbox' as const, unread: 1, total: 1 },
+        { path: 'Lists', role: null, unread: 0, total: 0, selectable: false },
+        { path: 'Lists/Rust', role: null, unread: 2, total: 3 },
+        { path: 'Lists/Rust/Async', role: null, unread: 5, total: 5 },
+        { path: 'Projects', role: null, unread: 0, total: 0 },
+      ],
+      home: [{ path: 'INBOX', role: 'inbox' as const, unread: 0, total: 1 }],
+    }
+    const messages = { ...state().messages, 'work/Lists/Rust': [] }
+    stubMailApi(state({ folders, messages }))
+    const history = renderMailApp('/mail')
+
+    const tree = await screen.findByRole('tree', { name: 'Folders of work' })
+    // A closed level counts the unread of everything under it.
+    const lists = within(tree).getByRole('treeitem', { name: 'Lists, 7 unread' })
+    expect(lists).toHaveAttribute('aria-level', '1')
+    expect(lists).not.toHaveAttribute('href')
+    expect(within(tree).getAllByRole('treeitem').map((item) => item.getAttribute('data-path'))).toEqual([
+      'INBOX',
+      'Lists',
+      'Projects',
+    ])
+
+    // ↓ and ↑ move, → opens and then goes in, ← closes and then goes up.
+    const inbox = within(tree).getByRole('treeitem', { name: 'Inbox, 1 unread' })
+    expect(inbox).toHaveAttribute('tabindex', '0')
+    inbox.focus()
+    await userEvent.keyboard('{ArrowDown}')
+    expect(lists).toHaveFocus()
+    await userEvent.keyboard('{ArrowRight}')
+    expect(lists).toHaveAttribute('aria-expanded', 'true')
+    expect(lists).toHaveAccessibleName('Lists')
+    await userEvent.keyboard('{ArrowRight}')
+    const rust = within(tree).getByRole('treeitem', { name: 'Rust, 7 unread' })
+    expect(rust).toHaveFocus()
+    expect(rust).toHaveAttribute('aria-level', '2')
+    await userEvent.keyboard('{ArrowRight}{ArrowRight}')
+    expect(within(tree).getByRole('treeitem', { name: 'Async, 5 unread' })).toHaveFocus()
+    await userEvent.keyboard('{ArrowLeft}')
+    expect(rust).toHaveFocus()
+    await userEvent.keyboard('{ArrowLeft}{ArrowLeft}')
+    expect(lists).toHaveFocus()
+    await userEvent.keyboard('{End}')
+    expect(within(tree).getByRole('treeitem', { name: 'Projects' })).toHaveFocus()
+    await userEvent.keyboard('{Home}{ArrowDown}{Enter}')
+    expect(lists).toHaveAttribute('aria-expanded', 'false')
+    await userEvent.keyboard('{Enter}{ArrowDown}{Enter}')
+    expect(await screen.findByText('No messages in this folder.')).toBeInTheDocument()
+    expect(history.location.search).toContain('folder=Lists%2FRust')
+
+    // Another visit opens the levels as they were left.
+    cleanup()
+    stubMailApi(state({ folders, messages }))
+    renderMailApp('/mail')
+    const again = await screen.findByRole('tree', { name: 'Folders of work' })
+    expect(within(again).getByRole('treeitem', { name: 'Lists' })).toHaveAttribute('aria-expanded', 'true')
+    expect(within(again).getByRole('treeitem', { name: 'Rust, 7 unread' })).toHaveAttribute('aria-expanded', 'false')
   })
 
   it('shows a text message as text, with its attachments, and no iframe', async () => {

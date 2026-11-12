@@ -10,7 +10,9 @@
     "loading": "Caricamento delle cartelle…",
     "loadFailed": "Impossibile elencare le cartelle.",
     "unread_one": "{{count}} non letto",
-    "unread_other": "{{count}} non letti"
+    "unread_other": "{{count}} non letti",
+    "expand": "Espandi",
+    "collapse": "Comprimi"
   },
   "roles": {
     "inbox": "Posta in arrivo",
