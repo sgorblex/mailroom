@@ -396,7 +396,9 @@ share of the defence:
   folder, UID, Message-ID, sender and recipients in clear, and the subject only as a SHA-256.
 - **Errors** are `MailError` codes with fixed messages, never the server's or a library's wording.
   An `unreachable` caused by a certificate that did not verify (itself, or wrapped in a login
-  error) ends with the fixed `CERTIFICATE_DETAIL`, which a host may recognise.
+  error) ends with the fixed `CERTIFICATE_DETAIL`, which a host may recognise. A server's
+  temporary failure (RFC 5530's `[UNAVAILABLE]`, as Dovecot answers a login while its auth backend
+  restarts) is `unreachable`, not `auth_failed`, so an IDLE watch reconnects instead of ending.
   Secrets never reach a log line, an error or a tool's text.
 
 ## Compatibility

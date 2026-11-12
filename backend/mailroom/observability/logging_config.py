@@ -51,6 +51,15 @@ _EXTRA_LOG_KEYS = (
     "code",
     "kind",
     "reason",
+    # mailroom-core's mail and send loggers.
+    "account",
+    "folder",
+    "mapped",
+    "error",
+    "backoff",
+    "smtp_code",
+    "aborted",
+    "entered_data",
 )
 
 
@@ -80,9 +89,14 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, ensure_ascii=False)
 
 
-_LIBRARY_LOGGERS = {"procrastinate": logging.INFO, "mailroom_core.filters": logging.WARNING}
-"""Libraries whose records go through Mailroom's handler too (not Python's last-resort one), each
-from at least its level."""
+_LIBRARY_LOGGERS = {
+    "procrastinate": logging.INFO,
+    "mailroom_core": logging.INFO,
+    "mailroom_core.filters": logging.WARNING,
+}
+"""Libraries whose records go through Mailroom's handler too (not Python's last-resort one, which
+prints the bare message), each from at least its level. ``mailroom_core`` covers its mail and send
+loggers; the filter engine's own is quieter."""
 
 _REQUEST_ID_DISPLAY_LEN = 8
 
