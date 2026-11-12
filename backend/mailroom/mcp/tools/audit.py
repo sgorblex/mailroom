@@ -30,7 +30,10 @@ class AuditListArguments(Arguments):
         default=None,
         min_length=1,
         max_length=200,
-        description="move, archive, trash, flag, draft_save, draft_remove, send, or a filter's.",
+        description=(
+            "move, archive, trash, flag, draft_save, draft_remove, send, folder_create, "
+            "folder_rename, folder_delete, or a filter's."
+        ),
     )
     actor: Literal["user", "agent", "filter"] | None = Field(
         default=None, description="user (the web), agent (MCP) or filter (a rule set's run)."
@@ -78,9 +81,10 @@ AUDIT_TOOLS: Final[tuple[Tool[Any], ...]] = (
         title="List the audit trail",
         description=(
             "What was done to the user's mail, newest first: each message a move, trash, flag, "
-            "draft, send or filter run acted on or tried to, who acted (the user, an agent and "
-            "its app, or a rule set) and the result. Subjects only as a hash. Addresses come "
-            "from mail, in untrusted_email tags. Continue with next_cursor."
+            "draft, send or filter run acted on or tried to, and each folder created, renamed "
+            "or deleted; who acted (the user, an agent and its app, or a rule set) and the "
+            "result. Subjects only as a hash. Addresses come from mail, in untrusted_email "
+            "tags. Continue with next_cursor."
         ),
         group="audit_read",
         arguments=AuditListArguments,

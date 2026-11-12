@@ -309,6 +309,19 @@ def test_without_a_secrets_key_no_account_is_added(
         (mail_refusal("mailbox_missing", "m"), 404, {"code": "mailbox_missing", "message": "m"}),
         (mail_refusal("busy", "m"), 429, {"code": "busy", "message": "m"}),
         (mail_refusal("invalid_argument", "m"), 400, {"code": "invalid_argument", "message": "m"}),
+        (mail_refusal("folder_exists", "m"), 409, {"code": "folder_exists", "message": "m"}),
+        (
+            Refusal("mail", "folder_changed", "m", extra={"messages": 3}),
+            409,
+            {"messages": 3, "code": "folder_changed", "message": "m"},
+        ),
+        (
+            Refusal(
+                "conflict", "folder_in_use", "m", extra={"rule_sets": [{"id": 1, "name": "n"}]}
+            ),
+            409,
+            {"rule_sets": [{"id": 1, "name": "n"}], "code": "folder_in_use", "message": "m"},
+        ),
         (mail_refusal("some_new_code", "m"), 502, {"code": "some_new_code", "message": "m"}),
         (mail_refusal("password_missing", "m"), 409, {"code": "password_missing", "message": "m"}),
         (

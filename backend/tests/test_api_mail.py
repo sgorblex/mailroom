@@ -11,7 +11,7 @@ import os
 import threading
 import time
 from dataclasses import replace
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import quote
 
 import pytest
@@ -22,6 +22,7 @@ from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
 from mailroom.auth.users import create_user
 from mailroom.mail.connections import mail_ssl_context
 from mailroom.mail.pool import DeadlineExceeded, MailPool
+from mailroom.models import Filter, RuleSet
 from mailroom_core.crypto import secrets_subkey
 from mailroom_core.mail import (
     MESSAGES,
@@ -35,7 +36,14 @@ from mailroom_core.mail import (
     parse_ref,
 )
 from mailroom_core.store import SecretChanges
-from mailroom_core.testing import MimeAttachment, folder_contents, mime, seed
+from mailroom_core.testing import (
+    MimeAttachment,
+    create_folders,
+    folder_contents,
+    mime,
+    raw_client,
+    seed,
+)
 from tests.conftest import PASSWORD
 from tests.test_api_accounts import new_account
 
@@ -146,7 +154,14 @@ def test_folders_carry_roles_and_counts(mailbox: Mailbox) -> None:
     listed = mailbox.get("/accounts/work/folders")
     assert listed["account_id"] == "work"
     folders = {folder["path"]: folder for folder in listed["folders"]}
-    assert folders["INBOX"] == {"path": "INBOX", "role": "inbox", "unread": 1, "total": 2}
+    assert folders["INBOX"] == {
+        "path": "INBOX",
+        "role": "inbox",
+        "unread": 1,
+        "total": 2,
+        "delimiter": "/",
+        "selectable": True,
+    }
     assert folders["Junk"]["role"] == "junk"
     assert listed["folders"][0]["path"] == "INBOX"
 
@@ -927,6 +942,49 @@ def test_an_all_accounts_search_asks_gmail_for_attachments_its_own_way(
     assert read["criteria"] == {"gmail": ["UNSEEN"], "plain": ["UNSEEN"]}
 
 
+class _Sessions:
+    """A connection's sessions without a mailbox, and its folder lists, counted; ``readied``
+    runs while a session readies, before its ``fn``."""
+
+    def __init__(self) -> None:
+        self.sessions = 0
+        self.lists = 0
+        self.readied: Callable[[], None] = lambda: None
+
+    def with_connection(self, _account_id: str, fn: Callable[[object], Any]) -> Any:
+        self.sessions += 1
+        self.readied()
+        return fn(object())
+
+    def folders(self, _account_id: str, *, with_status: bool = False) -> list[Folder]:
+        self.lists += 1
+        return []
+
+
+def test_a_folder_call_past_its_deadline_opens_no_session_but_may_confirm_a_write() -> None:
+    from mailroom.mail import service
+
+    sessions = _Sessions()
+    stop = threading.Event()
+    stoppable = service._Stoppable(  # noqa: SLF001 - the deadline's stop, without IMAP
+        cast("MailConnections", sessions), stop, confirming=True
+    )
+    ran: list[str] = []
+    assert stoppable.with_connection("work", lambda _client: "done") == "done"
+    sessions.readied = stop.set  # the deadline passes while the session readies
+    with pytest.raises(MailError) as cut:
+        stoppable.with_connection("work", lambda _client: ran.append("fn"))
+    assert (cut.value.code, ran, sessions.sessions) == ("timeout", [], 2)
+    with pytest.raises(MailError):
+        stoppable.with_connection("work", lambda _client: ran.append("fn"))
+    assert (ran, sessions.sessions) == ([], 2)
+    assert stoppable.folders("work") == []
+    plain = service._Stoppable(cast("MailConnections", sessions), stop)  # noqa: SLF001
+    with pytest.raises(MailError):
+        plain.folders("work")
+    assert sessions.lists == 1
+
+
 def test_an_unexpected_failure_is_a_failed_refusal(
     mailbox: Mailbox, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -1400,3 +1458,334 @@ def test_a_cross_site_organize_is_refused(mailbox: Mailbox) -> None:
         assert response.status_code == 403
         assert response.headers["cache-control"] == "private, no-store"
     assert subjects(mailbox, "INBOX") == ["mine"]
+
+
+def folder_paths(mailbox: Mailbox, **params: Any) -> dict[str, dict[str, Any]]:
+    listed = mailbox.get("/accounts/work/folders", **params)["folders"]
+    return {folder["path"]: folder for folder in listed}
+
+
+def server_folders(mailbox: Mailbox) -> set[str]:
+    with raw_client(mailbox.server, mailbox.login) as client:
+        return {name for _flags, _delimiter, name in client.list_folders()}
+
+
+def folder_call(mailbox: Mailbox, action: str, **body: Any) -> Any:
+    """``POST /accounts/work/folders[/<action>]``: the response."""
+    path = f"{MAIL}/accounts/work/folders" + (f"/{action}" if action != "create" else "")
+    return mailbox.client.post(path, json=body)
+
+
+def add_rule_set(
+    db: Session,
+    user_id: int,
+    folder: list[str],
+    *specs: dict[str, Any],
+    account_id: str = "work",
+    enabled: bool = False,
+    name: str = "rules",
+) -> RuleSet:
+    rule_set = RuleSet(
+        user_id=user_id,
+        account_id=account_id,
+        folder=folder,
+        name=name,
+        trigger="new_mail",
+        enabled=enabled,
+    )
+    db.add(rule_set)
+    db.flush()
+    for position, spec in enumerate(specs):
+        db.add(Filter(rule_set_id=rule_set.id, position=position, name="f", spec=spec))
+    db.commit()
+    return rule_set
+
+
+def moving_to(*folder: str) -> dict[str, Any]:
+    return {
+        "criterion": {"type": "from_contains", "args": {"addr": "shop"}},
+        "action": {"seq": [{"type": "star"}, {"type": "move_to", "args": {"folder": [*folder]}}]},
+    }
+
+
+def test_folders_are_created_renamed_and_deleted(
+    mailbox: Mailbox, audited: Callable[[int], list[AuditRecord]], user: User
+) -> None:
+    created = folder_call(mailbox, "create", parent=None, name="Projects")
+    assert (created.status_code, created.json()) == (
+        201,
+        {"account_id": "work", "path": "Projects"},
+    )
+    assert created.headers["cache-control"] == "private, no-store"
+    inner = folder_call(mailbox, "create", parent="Projects", name="Città 2026")
+    assert inner.json() == {"account_id": "work", "path": "Projects/Città 2026"}
+    assert {"Projects", "Projects/Città 2026"} <= set(folder_paths(mailbox))
+
+    renamed = folder_call(mailbox, "rename", folder="Projects", parent=None, name="Work")
+    assert (renamed.status_code, renamed.json()) == (
+        200,
+        {
+            "account_id": "work",
+            "folder": "Projects",
+            "path": "Work",
+            "rule_sets": [],
+            "filters": [],
+            "rule_sets_updated": True,
+        },
+    )
+    assert {"Work", "Work/Città 2026"} <= server_folders(mailbox)
+    assert "Projects" not in server_folders(mailbox)
+
+    mailbox.seed(mime("one"), folder="Work/Città 2026")
+    mailbox.seed(mime("two"), folder="Work/Città 2026")
+    deleted = folder_call(mailbox, "delete", folder="Work/Città 2026", messages=2)
+    assert (deleted.status_code, deleted.json()) == (
+        200,
+        {"account_id": "work", "folder": "Work/Città 2026", "messages": 2},
+    )
+    assert "Work/Città 2026" not in server_folders(mailbox)
+
+    records = audited(user.id)
+    assert [(r.actor, r.action, r.account_id, r.result, r.detail) for r in records] == [
+        ("user", "folder_create", "work", "ok", {"folder": "Projects"}),
+        ("user", "folder_create", "work", "ok", {"folder": "Projects/Città 2026"}),
+        (
+            "user",
+            "folder_rename",
+            "work",
+            "ok",
+            {"folder": "Projects", "destination": "Work", "rule_sets": [], "filters": []},
+        ),
+        ("user", "folder_delete", "work", "ok", {"folder": "Work/Città 2026", "messages": 2}),
+    ]
+
+
+def test_all_folders_include_the_unselectable_ones(mailbox: Mailbox) -> None:
+    create_folders(mailbox.server, mailbox.login, "Box/Leaf")
+    assert "Box" not in folder_paths(mailbox)
+    every = folder_paths(mailbox, all="true")
+    assert every["Box"] == {
+        "path": "Box",
+        "role": None,
+        "unread": 0,
+        "total": 0,
+        "delimiter": "/",
+        "selectable": False,
+    }
+    assert every["Box/Leaf"]["selectable"] is True
+    assert every["INBOX"]["selectable"] is True
+
+
+def test_folder_writes_are_refused_and_write_nothing(
+    mailbox: Mailbox, audited: Callable[[int], list[AuditRecord]], user: User
+) -> None:
+    create_folders(mailbox.server, mailbox.login, "Lists", "Kept")
+    mailbox.seed(mime("news"), folder="Lists")
+    before = server_folders(mailbox)
+    for action, body, status, code in (
+        ("create", {"parent": None, "name": "Lists"}, 409, "folder_exists"),
+        ("create", {"parent": "Nowhere", "name": "Inner"}, 404, "mailbox_missing"),
+        ("create", {"parent": None, "name": "a/b"}, 400, "invalid_argument"),
+        ("create", {"parent": None, "name": "inbox"}, 400, "invalid_argument"),
+        ("rename", {"folder": "INBOX", "parent": None, "name": "Box"}, 400, "invalid_argument"),
+        ("rename", {"folder": "Trash", "parent": None, "name": "Bin"}, 400, "invalid_argument"),
+        ("rename", {"folder": "Lists", "parent": None, "name": "Kept"}, 409, "folder_exists"),
+        ("rename", {"folder": "Lists", "parent": "Lists", "name": "In"}, 400, "invalid_argument"),
+        ("rename", {"folder": "Gone", "parent": None, "name": "New"}, 404, "mailbox_missing"),
+        ("delete", {"folder": "Trash", "messages": 0}, 400, "invalid_argument"),
+        ("delete", {"folder": "Gone", "messages": 0}, 404, "mailbox_missing"),
+    ):
+        response = folder_call(mailbox, action, **body)
+        assert detail(response) == (status, code), (action, body)
+    assert server_folders(mailbox) == before
+
+    changed = folder_call(mailbox, "delete", folder="Lists", messages=0)
+    assert detail(changed) == (409, "folder_changed")
+    assert changed.json()["detail"]["messages"] == 1
+    assert changed.json()["detail"]["message"].endswith(
+        "It holds 1 message now; nothing was deleted."
+    )
+    assert subjects(mailbox, "Lists") == ["news"]
+
+    records = audited(user.id)
+    assert len(records) == 12
+    assert (records[-1].action, records[-1].result, records[-1].detail) == (
+        "folder_delete",
+        "folder_changed",
+        {"folder": "Lists", "messages": 0},
+    )
+
+
+def test_folder_requests_are_checked_before_anything_connects(mailbox: Mailbox) -> None:
+    for action, body in (
+        ("create", {"name": "No parent given"}),
+        ("create", {"parent": None, "name": ""}),
+        ("create", {"parent": None, "name": "x" * 256}),
+        ("create", {"parent": None, "name": "x", "role": "trash"}),
+        ("rename", {"folder": "Lists", "name": "x"}),
+        ("rename", {"folder": "", "parent": None, "name": "x"}),
+        ("delete", {"folder": "Lists"}),
+        ("delete", {"folder": "Lists", "messages": -1}),
+        ("delete", {"folder": "Lists", "messages": "1"}),
+        ("delete", {"folder": "Lists", "messages": True}),
+        ("delete", {"folder": "x" * 1001, "messages": 0}),
+    ):
+        response = folder_call(mailbox, action, **body)
+        assert response.status_code == 422, (action, body)
+    unknown = mailbox.client.post(
+        f"{MAIL}/accounts/home/folders/delete", json={"folder": "Lists", "messages": 0}
+    )
+    assert detail(unknown) == (404, "not_found")
+    for headers in ({"Sec-Fetch-Site": "cross-site"}, {"Origin": "https://evil.example"}):
+        response = mailbox.client.post(
+            f"{MAIL}/accounts/work/folders",
+            json={"parent": None, "name": "Evil"},
+            headers=headers,
+        )
+        assert response.status_code == 403
+    assert "Evil" not in server_folders(mailbox)
+
+
+def test_a_rename_carries_the_rule_sets_with_it(
+    mailbox: Mailbox,
+    audited: Callable[[int], list[AuditRecord]],
+    user: User,
+    db_session: Session,
+) -> None:
+    create_folders(mailbox.server, mailbox.login, "Old", "Old/Sub", "Older")
+    enabled = add_rule_set(db_session, user.id, ["Old"], enabled=True)
+    below = add_rule_set(db_session, user.id, ["Old", "Sub"])
+    mover = add_rule_set(
+        db_session, user.id, ["INBOX"], moving_to("Older"), moving_to("Old", "Sub")
+    )
+    other_account = add_rule_set(db_session, user.id, ["Old"], account_id="home")
+    bob = create_user(db_session, "bob", PASSWORD)
+    bobs = add_rule_set(db_session, bob.id, ["Old"], moving_to("Old"))
+    [stays, moves] = db_session.query(Filter).filter_by(rule_set_id=mover.id).order_by(Filter.id)
+
+    answer = folder_call(mailbox, "rename", folder="Old", parent="Older", name="New")
+    assert answer.status_code == 200, answer.text
+    assert answer.json() == {
+        "account_id": "work",
+        "folder": "Old",
+        "path": "Older/New",
+        "rule_sets": [enabled.id, below.id, mover.id],
+        "filters": [moves.id],
+        "rule_sets_updated": True,
+    }
+    assert {"Older/New", "Older/New/Sub"} <= server_folders(mailbox)
+    db_session.expire_all()
+    assert (enabled.folder, enabled.enabled) == (["Older", "New"], True)
+    assert below.folder == ["Older", "New", "Sub"]
+    assert moves.spec == moving_to("Older", "New", "Sub")
+    assert stays.spec == moving_to("Older")
+    assert other_account.folder == ["Old"]
+    assert bobs.folder == ["Old"]
+    assert db_session.query(Filter).filter_by(rule_set_id=bobs.id).one().spec == moving_to("Old")
+
+    [record] = audited(user.id)
+    assert (record.action, record.result, record.detail) == (
+        "folder_rename",
+        "ok",
+        {
+            "folder": "Old",
+            "destination": "Older/New",
+            "rule_sets": [enabled.id, below.id, mover.id],
+            "filters": [moves.id],
+        },
+    )
+
+
+def test_a_rename_stands_when_its_rule_sets_cannot_follow(
+    mailbox: Mailbox,
+    audited: Callable[[int], list[AuditRecord]],
+    user: User,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from mailroom.mail import service
+
+    def broken(*_args: object) -> None:
+        raise RuntimeError("SELECT … 'Old' …")
+
+    create_folders(mailbox.server, mailbox.login, "Old")
+    rule_set = add_rule_set(db_session, user.id, ["Old"])
+    monkeypatch.setattr(service, "rewrite_folder", broken)
+    with caplog.at_level(logging.INFO, logger="mailroom.mail.service"):
+        answer = folder_call(mailbox, "rename", folder="Old", parent=None, name="New")
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["rule_sets_updated"] is False
+    assert (answer.json()["rule_sets"], answer.json()["filters"]) == ([], [])
+    assert "New" in server_folders(mailbox)
+    assert "Old" not in server_folders(mailbox)
+    db_session.expire_all()
+    assert rule_set.folder == ["Old"]
+    failed = next(r for r in caplog.records if r.msg == "folder_rule_sets_failed")
+    assert failed.__dict__["error"] == "RuntimeError"
+    assert "Old" not in str(failed.__dict__)
+    logged = next(r for r in caplog.records if r.msg == "mail_folder_renamed")
+    assert (logged.__dict__["outcome"], logged.__dict__["rule_sets_updated"]) == ("ok", False)
+    [record] = audited(user.id)
+    assert record.detail == {"folder": "Old", "destination": "New", "rule_sets_error": True}
+
+
+def test_a_folder_a_rule_set_names_is_not_deleted(
+    mailbox: Mailbox,
+    audited: Callable[[int], list[AuditRecord]],
+    user: User,
+    db_session: Session,
+) -> None:
+    create_folders(mailbox.server, mailbox.login, "Lists", "Other")
+    mailbox.seed(mime("news"), folder="Lists")
+    mover = add_rule_set(db_session, user.id, ["INBOX"], moving_to("Lists"), name="Newsletters")
+    add_rule_set(db_session, user.id, ["Lists"], account_id="home", name="Elsewhere")
+
+    refused = folder_call(mailbox, "delete", folder="Lists", messages=1)
+    assert detail(refused) == (409, "folder_in_use")
+    assert refused.json()["detail"]["rule_sets"] == [{"id": mover.id, "name": "Newsletters"}]
+    assert '"Newsletters"' in refused.json()["detail"]["message"]
+    assert subjects(mailbox, "Lists") == ["news"]
+    [record] = audited(user.id)
+    assert (record.action, record.result, record.detail) == (
+        "folder_delete",
+        "folder_in_use",
+        {"folder": "Lists", "messages": 1},
+    )
+
+    named = [add_rule_set(db_session, user.id, ["Other"], name=f"r{n}") for n in range(11)]
+    many = folder_call(mailbox, "delete", folder="Other", messages=0)
+    assert detail(many) == (409, "folder_in_use")
+    assert [r["id"] for r in many.json()["detail"]["rule_sets"]] == [r.id for r in named[:10]]
+    assert '"r9" and 1 more.' in many.json()["detail"]["message"]
+    assert "Other" in server_folders(mailbox)
+
+
+def test_folder_logs_carry_counts_never_names(
+    mailbox: Mailbox, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.INFO, logger="mailroom.mail.service"):
+        folder_call(mailbox, "create", parent=None, name="Secret Plans")
+        folder_call(mailbox, "rename", folder="Secret Plans", parent=None, name="Hidden Things")
+        mailbox.seed(mime("plan"), folder="Hidden Things")
+        folder_call(mailbox, "delete", folder="Hidden Things", messages=0)
+        folder_call(mailbox, "delete", folder="Hidden Things", messages=1)
+    records = {
+        (r.msg, r.__dict__["outcome"]): r
+        for r in caplog.records
+        if str(r.msg).startswith("mail_folder_")
+    }
+    assert set(records) == {
+        ("mail_folder_created", "ok"),
+        ("mail_folder_renamed", "ok"),
+        ("mail_folder_deleted", "folder_changed"),
+        ("mail_folder_deleted", "ok"),
+    }
+    renamed = records["mail_folder_renamed", "ok"].__dict__
+    assert (renamed["via"], renamed["account_id"]) == ("web", "work")
+    assert (renamed["rule_sets"], renamed["filters"], renamed["rule_sets_updated"]) == (0, 0, True)
+    assert records["mail_folder_deleted", "ok"].__dict__["messages"] == 1
+    for record in records.values():
+        assert isinstance(record.__dict__["duration_ms"], int)
+        for name in ("Secret", "Hidden", "Plans", "Things"):
+            assert name not in str(record.__dict__)
