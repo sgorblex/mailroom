@@ -12,6 +12,7 @@ from mailroom_core.mail.identity import Addressed
 from mailroom_core.mail.read import fetch_structure, fetched_headers
 from mailroom_core.mail.recipients import envelope_mailboxes, mailbox_text
 from mailroom_core.mail.ref import MessageRef, check_fresh
+from mailroom_core.mail.selected import store_flags
 from mailroom_core.render import clean_header, format_date, render_body
 
 if TYPE_CHECKING:
@@ -29,7 +30,6 @@ _MAX_REFERENCES: Final = 20
 """References kept when answering: the most recent ones, as the thread read uses them too."""
 _MAX_QUOTED_CHARS: Final = 20_000
 _HEADERS: Final = ("REFERENCES", "X-ORIGINAL-TO", "DELIVERED-TO")
-_ANSWERED: Final = b"\\Answered"
 _MESSAGE_ID: Final = re.compile(r"<[^<>\s]+@[^<>\s]+>")
 _ADDRESS: Final = re.compile(r"[^\s<>,]+@[^\s<>,]+")
 _ANSWER_PREFIX: Final = re.compile(r"\s*(?:re|r|aw|sv)\s*:", re.IGNORECASE)
@@ -133,7 +133,7 @@ def mark_answered(connections: MailConnections, ref: MessageRef) -> None:
 
     def run(context: MailboxContext) -> None:
         check_fresh(ref, context.uid_validity)
-        context.client.add_flags([ref.uid], [_ANSWERED], silent=True)
+        store_flags(context, [ref.uid], add=["\\Answered"])
 
     connections.with_mailbox(ref.account, ref.folder, False, run)
 

@@ -35,6 +35,7 @@ from mailroom_core.mail.read import fetch_structure, fetched_headers
 from mailroom_core.mail.recipients import envelope_mailboxes
 from mailroom_core.mail.ref import MessageRef, check_fresh, format_ref, parse_ref
 from mailroom_core.mail.reply import references_in
+from mailroom_core.mail.selected import delete_uids
 from mailroom_core.render import html_to_text
 
 if TYPE_CHECKING:
@@ -53,7 +54,6 @@ if TYPE_CHECKING:
 MAX_DRAFT_BYTES: Final = 2 * 1024 * 1024
 """Of a draft's text when read back; a longer one reads as `lossy`."""
 DRAFT_FLAGS: Final = ("\\Draft", "\\Seen")
-_DELETED: Final = b"\\Deleted"
 _MARK: Final = f"BODY.PEEK[HEADER.FIELDS ({DRAFT_HEADER.upper()})]"
 _MAX_UID: Final = 0xFFFFFFFF
 _APPENDUID: Final = re.compile(rb"\[APPENDUID ([0-9]{1,10}) ([0-9]{1,10})\]", re.IGNORECASE)
@@ -359,8 +359,7 @@ def remove_draft(connections: MailConnections, ref: MessageRef, note: Note) -> R
             return False
         envelope = data.get(b"ENVELOPE")
         try:
-            client.add_flags([ref.uid], [_DELETED], silent=True)
-            client.uid_expunge([ref.uid])
+            delete_uids(context, [ref.uid])
         except Exception as error:
             raise mail_error(error, ref.account) from None
         note(message_item(ref.account, ref.folder, ref.uid, envelope, "ok", removed="expunged"))

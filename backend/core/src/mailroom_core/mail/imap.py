@@ -80,6 +80,8 @@ class MailboxContext:
     uid_validity: int
     exists: int
     uid_next: int | None
+    account: str
+    """The account's id, as `with_mailbox` was given it."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,6 +160,8 @@ class _Account:
     generation: int = 0
     """Bumped by `close`: a connection opened under an older one is dropped when released."""
     capabilities: Capabilities | None = None
+    delimiter: tuple[str | None] | None = None
+    """Once asked: a one-tuple, since a server without a hierarchy has None."""
     health: tuple[float, Reachability] | None = None
 
 
@@ -238,12 +242,26 @@ class MailConnections:
                 state.capabilities = found
         return found
 
+    def delimiter(self, account_id: str) -> str | None:
+        """The account's hierarchy delimiter (`LIST "" ""`), None when it has no hierarchy;
+        asked once, then cached until the account's connections are closed."""
+        state = self._state(account_id)
+        known = state.delimiter
+        if known is not None:
+            return known[0]
+        generation = state.generation
+        found = self._on_connection(account_id, _delimiter)
+        with state.free:
+            if state.generation == generation:
+                state.delimiter = (found,)
+        return found
+
     def folders(self, account_id: str, *, with_status: bool = False) -> list[Folder]:
         """The account's folders: special-use ones first in `FOLDER_ROLES` order, then the rest
         by path. `with_status` adds the counts (one STATUS per selectable folder)."""
 
         def run(client: IMAPClient) -> list[Folder]:
-            folders = _folders(client.list_folders())
+            folders = folders_from(client.list_folders())
             if not with_status:
                 return folders
             return [_with_status(client, f) if f.selectable else f for f in folders]
@@ -486,6 +504,7 @@ class MailConnections:
                     uid_validity=int(selected[b"UIDVALIDITY"]),
                     exists=int(selected[b"EXISTS"]),
                     uid_next=int(selected[b"UIDNEXT"]) if b"UIDNEXT" in selected else None,
+                    account=account_id,
                 )
             except Exception as error:
                 raise self._failure(account_id, state, slot, error, "lock", read_only) from None
@@ -599,6 +618,7 @@ class MailConnections:
         with state.free:
             state.generation += 1
             state.capabilities = None
+            state.delimiter = None
             state.health = None
             for slot in state.slots:
                 if not slot.busy and slot.client is not None:
@@ -709,11 +729,18 @@ def _name_role(name: str) -> tuple[FolderRole, str] | None:
     return None
 
 
+def _delimiter(client: IMAPClient) -> str | None:
+    for _flags, delimiter, _name in client.list_folders("", ""):
+        if delimiter:
+            return _text(delimiter)
+    return None
+
+
 def _text(value: bytes | str) -> str:
     return value.decode("utf-8", "replace") if isinstance(value, bytes) else value
 
 
-def _folders(listing: list[tuple[tuple[bytes, ...], bytes | None, str]]) -> list[Folder]:
+def folders_from(listing: list[tuple[tuple[bytes, ...], bytes | None, str]]) -> list[Folder]:
     """LIST results as Folders with roles, in imapflow's order."""
     entries: list[tuple[str, str | None, tuple[str, ...]]] = []
     candidates: list[tuple[int, str, FolderRole, int]] = []

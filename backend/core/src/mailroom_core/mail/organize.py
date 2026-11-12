@@ -1,5 +1,5 @@
 """Moving, trashing, archiving and flagging messages: `src/mail/organize.ts`, with the grouping,
-refusals and Junk training of `src/mcp/tools/organize.ts`.
+refusals and Junk training of `src/mcp/tools/organize.ts`, on the operations of `selected`.
 
 Refs may come from several folders and accounts. Every one is parsed and its account checked
 before anything is written; then each folder is one group, done in one mailbox session, and a
@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
 from mailroom_core.mail.audit import (
-    REFUSALS,
     AuditItem,
     AuditOutcome,
     Junk,
@@ -22,25 +21,27 @@ from mailroom_core.mail.audit import (
 )
 from mailroom_core.mail.errors import MailError, is_connection_error, mail_error
 from mailroom_core.mail.ref import MessageRef, check_fresh, format_ref, parse_ref
+from mailroom_core.mail.selected import (
+    CopiedNotRemovedError,
+    check_movable,
+    fetch_envelopes,
+    move_target,
+    move_uids,
+    special_folder_in,
+    store_flags,
+)
 from mailroom_core.render import clean_header
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
-    from imapclient import IMAPClient
-
     from mailroom_core.mail.audit import AuditResult
-    from mailroom_core.mail.errors import MailErrorCode
     from mailroom_core.mail.imap import Folder, MailboxContext, MailConnections
+    from mailroom_core.mail.selected import Moved
 
 MAX_REFS: Final = 50
-_SEEN: Final = b"\\Seen"
-_FLAGGED: Final = b"\\Flagged"
-_DELETED: Final = b"\\Deleted"
-_NOT_REMOVED: Final = (
-    "They were copied to the destination but may not have been removed from this folder: do not "
-    "repeat the move."
-)
+_SEEN: Final = "\\Seen"
+_FLAGGED: Final = "\\Flagged"
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,15 +125,7 @@ def move_messages(connections: MailConnections, refs: Sequence[str], folder: str
 
     def act(group: _Group, note: _Note) -> GroupResult:
         folders = folders_of(group.account)
-        target = next(
-            (f for f in folders if f.path == folder or (_is_inbox(f.path) and _is_inbox(folder))),
-            None,
-        )
-        if target is None or not target.selectable:
-            raise MailError(
-                "mailbox_missing",
-                f'"{clean_header(folder, 200)}" is not a folder of {group.account}; see folders.',
-            )
+        target = move_target(group.folder, folder, folders, account=group.account)
         return _move_to(connections, group, folders, target, note)
 
     return _each_group(groups, act)
@@ -145,10 +138,11 @@ def archive_messages(connections: MailConnections, refs: Sequence[str]) -> Organ
 
     def act(group: _Group, note: _Note) -> GroupResult:
         folders = folders_of(group.account)
-        archive = next((f for f in folders if f.role == "archive" and f.selectable), None)
-        if archive is None:
+        archive = special_folder_in(folders, "archive")
+        if archive is None or not archive.selectable:
             raise MailError("unsupported", f"{group.account} has no Archive folder.")
-        return _move_to(connections, group, folders, archive, note)
+        target = move_target(group.folder, archive.path, folders, account=group.account)
+        return _move_to(connections, group, folders, target, note)
 
     return _each_group(groups, act)
 
@@ -162,7 +156,7 @@ def trash_messages(
     folders_of = _folder_lookup(connections)
 
     def act(group: _Group, note: _Note) -> GroupResult:
-        trash = next((f for f in folders_of(group.account) if f.role == "trash"), None)
+        trash = special_folder_in(folders_of(group.account), "trash")
         if trash is None:
             raise MailError("unsupported", f"{group.account} has no Trash folder.")
         if trash.path == group.folder:
@@ -195,7 +189,7 @@ def set_flags(
             for ref in group.refs:
                 check_fresh(ref, context.uid_validity)
             client = context.client
-            envelopes = _envelopes(client, group)
+            envelopes = _envelopes(context, group)
             uids = sorted(envelopes)
 
             def note_all(result: AuditResult) -> None:
@@ -213,10 +207,7 @@ def set_flags(
                     )
 
             try:
-                if add:
-                    client.add_flags(uids, add, silent=True)
-                if remove:
-                    client.remove_flags(uids, remove, silent=True)
+                store_flags(context, uids, add=add, remove=remove)
             except Exception as error:
                 mapped = mail_error(error, group.account)
                 note_all(mapped.code)
@@ -234,7 +225,7 @@ def set_flags(
                     uid: tuple(after[uid].get(b"FLAGS", ())) for uid in uids if uid in after
                 }
                 states = tuple(
-                    FlagState(ref_of(uid), _SEEN in flags, _FLAGGED in flags)
+                    FlagState(ref_of(uid), _SEEN.encode() in flags, _FLAGGED.encode() in flags)
                     for uid, flags in read_back.items()
                 )
             except Exception as error:
@@ -283,7 +274,7 @@ def _each_group(
         noted = len(items)
         try:
             results.append(act(group, items.append))
-        except _CopiedNotRemovedError as error:
+        except _CopiedGroupError as error:
             results.append(error.result)
         except MailError as error:
             if len(items) == noted:
@@ -301,7 +292,7 @@ def _each_group(
     return OrganizeResult(tuple(results), tuple(items))
 
 
-class _CopiedNotRemovedError(MailError):
+class _CopiedGroupError(MailError):
     """A move without MOVE that copied the messages but could not remove them from the source:
     the group failed, and `result` says where the copies are. Its items are noted already."""
 
@@ -322,10 +313,6 @@ def _folder_lookup(connections: MailConnections) -> Callable[[str], list[Folder]
     return lookup
 
 
-def _is_inbox(path: str) -> bool:
-    return path.upper() == "INBOX"
-
-
 def _move_to(
     connections: MailConnections,
     group: _Group,
@@ -333,16 +320,7 @@ def _move_to(
     target: Folder,
     note: _Note,
 ) -> GroupResult:
-    """A move's refusals and Junk training, then the move."""
-    if target.path == group.folder:
-        raise MailError("invalid_argument", "They are already in that folder.")
-    # Drafts are what a draft send sends, and Sent is the owner's own history: neither may be
-    # filled with someone else's message.
-    if target.role in ("drafts", "sent"):
-        raise MailError(
-            "invalid_argument",
-            "Messages cannot be moved into Drafts or Sent; drafts come only from the draft tools.",
-        )
+    """A move's Junk training, then the move; `move_target` refused what it had to."""
     source = next((f for f in folders if f.path == group.folder), None)
     # Mailu's imapsieve learns spam on the way into Junk and ham on the way out, except into
     # Trash.
@@ -363,24 +341,15 @@ def _move(
     *,
     removed: Removal | None = None,
 ) -> GroupResult:
-    """Moves the group's messages to `destination` and notes each one. Without MOVE it copies,
-    marks \\Deleted and expunges exactly those UIDs, which only UIDPLUS allows: a server with
-    neither is refused, since a plain EXPUNGE would also remove other messages marked
-    \\Deleted. When the copy succeeded and the removal did not, the group fails with the copies'
-    refs and an error saying not to repeat the move."""
+    """Moves the group's messages to `destination` with `move_uids` and notes each one. When
+    the copy succeeded and the removal did not, the group fails with the copies' refs and an
+    error saying not to repeat the move."""
 
     def run(context: MailboxContext) -> GroupResult:
         for ref in group.refs:
             check_fresh(ref, context.uid_validity)
-        client = context.client
-        move = client.has_capability("MOVE")
-        if not move and not client.has_capability("UIDPLUS"):
-            raise MailError(
-                "unsupported",
-                "This server can only move mail by also deleting other messages marked for "
-                "deletion.",
-            )
-        envelopes = _envelopes(client, group)
+        check_movable(context)
+        envelopes = _envelopes(context, group)
         uids = sorted(envelopes)
 
         def note_all(result: AuditResult, *, copied: bool | None = None) -> None:
@@ -399,32 +368,29 @@ def _move(
                     )
                 )
 
-        def refs_of(copied: tuple[int, dict[int, int]] | None) -> tuple[str, ...] | None:
-            if copied is None:
+        def refs_of(moved: Moved) -> tuple[str, ...] | None:
+            validity = moved.uid_validity
+            if validity is None:
                 return None
-            validity, new_uids = copied
             return tuple(
-                format_ref(MessageRef(group.account, destination, validity, new_uids[uid]))
+                format_ref(MessageRef(group.account, destination, validity, moved.new_uids[uid]))
                 for uid in uids
-                if uid in new_uids
+                if uid in moved.new_uids
             )
 
         try:
-            copied = _transfer(client, uids, destination, move=move)
-        except _NotRemovedError as failure:
+            moved = move_uids(context, uids, destination)
+        except CopiedNotRemovedError as failure:
             # The copies exist: a failure, but one that must not be repeated.
-            code: MailErrorCode = mail_error(failure.cause, group.account).code
-            if code in REFUSALS:
-                code = "server_error"  # something was written
-            note_all(code, copied=True)
-            new_refs = refs_of(failure.copied)
+            note_all(failure.code, copied=True)
+            new_refs = refs_of(failure.moved)
             # The refs are core's own text, so the error carries them: a host that raises a
             # lone folder's error still shows where the copies are.
+            detail = failure.detail or ""
             failed = MailError(
-                code,
-                f"{_NOT_REMOVED} New refs: {', '.join(new_refs)}" if new_refs else _NOT_REMOVED,
+                failure.code, f"{detail} New refs: {', '.join(new_refs)}" if new_refs else detail
             )
-            raise _CopiedNotRemovedError(
+            raise _CopiedGroupError(
                 failed,
                 GroupResult(
                     group.account,
@@ -444,7 +410,7 @@ def _move(
             group.account,
             group.folder,
             count=len(uids),
-            new_refs=refs_of(copied),
+            new_refs=refs_of(moved),
             junk=junk,
             destination=destination,
         )
@@ -452,12 +418,10 @@ def _move(
     return connections.with_mailbox(group.account, group.folder, False, run)
 
 
-def _envelopes(client: IMAPClient, group: _Group) -> dict[int, object]:
+def _envelopes(context: MailboxContext, group: _Group) -> dict[int, object]:
     """The ENVELOPE of each of the group's messages, all of which must still be in the selected
     folder."""
-    wanted = list(dict.fromkeys(ref.uid for ref in group.refs))
-    fetched = client.fetch(wanted, ["ENVELOPE"])
-    found = {uid: fetched[uid].get(b"ENVELOPE") for uid in wanted if uid in fetched}
+    found = fetch_envelopes(context, (ref.uid for ref in group.refs))
     missing = sum(1 for ref in group.refs if ref.uid not in found)
     if missing > 0:
         raise MailError(
@@ -465,63 +429,4 @@ def _envelopes(client: IMAPClient, group: _Group) -> dict[int, object]:
             f"{missing} of these messages are no longer in {clean_header(group.folder, 200)}; "
             "search again.",
         )
-    return found
-
-
-def _transfer(
-    client: IMAPClient, uids: list[int], destination: str, *, move: bool
-) -> tuple[int, dict[int, int]] | None:
-    """MOVE, or UID COPY + STORE \\Deleted + UID EXPUNGE of exactly `uids`; returns the
-    destination's UIDVALIDITY and each old UID's new one, when the server reported them
-    (COPYUID, untagged for MOVE and tagged for COPY: imaplib files both under its code). A
-    failure after the COPY raises `_NotRemovedError`."""
-    # imapclient's move() and copy() drop the response codes; imaplib keeps them here.
-    responses = client._imap.untagged_responses  # noqa: SLF001
-    responses.pop("COPYUID", None)
-    if move:
-        client.move(uids, destination)
-        return _copy_uids(responses.pop("COPYUID", None), len(uids))
-    client.copy(uids, destination)
-    copied = _copy_uids(responses.pop("COPYUID", None), len(uids))
-    try:
-        client.add_flags(uids, [_DELETED], silent=True)
-        client.uid_expunge(uids)
-    except Exception as error:
-        raise _NotRemovedError(error, copied) from error
-    return copied
-
-
-class _NotRemovedError(Exception):
-    """The COPY of a move without MOVE succeeded, the removal from the source did not."""
-
-    def __init__(self, cause: Exception, copied: tuple[int, dict[int, int]] | None) -> None:
-        super().__init__(type(cause).__name__)
-        self.cause = cause
-        self.copied = copied
-
-
-def _copy_uids(data: Sequence[bytes] | None, count: int) -> tuple[int, dict[int, int]] | None:
-    """A COPYUID response code's data (`<uidvalidity> <source set> <destination set>`, RFC
-    4315; the last one when several came) as the destination's UIDVALIDITY and old UID → new
-    UID; None when there is none, or it does not parse or names more than `count` messages."""
-    if not data:
-        return None
-    try:
-        validity, source, target = data[-1].split()
-        pairs = zip(_uid_set(source, count), _uid_set(target, count), strict=True)
-        return int(validity), dict(pairs)
-    except ValueError:
-        return None
-
-
-def _uid_set(text: bytes, limit: int) -> list[int]:
-    """A UID set of numbers and ranges, in its order (the two sets of COPYUID correspond);
-    ValueError past `limit` UIDs, so a hostile range cannot fill memory."""
-    out: list[int] = []
-    for piece in text.split(b","):
-        low, _, high = piece.partition(b":")
-        first, last = int(low), int(high or low)
-        if len(out) + abs(last - first) + 1 > limit:
-            raise ValueError("more UIDs than were copied")
-        out.extend(range(first, last + 1) if first <= last else range(first, last - 1, -1))
-    return out
+    return dict(found)

@@ -17,7 +17,7 @@ from mailroom_core.mail import (
     Timeouts,
     retriable,
 )
-from mailroom_core.mail.imap import _folders
+from mailroom_core.mail.imap import folders_from
 from mailroom_core.testing import (
     ImapTestServer,
     connections_for,
@@ -65,7 +65,7 @@ def test_folder_roles_and_order() -> None:
         ((b"\\NonExistent",), b"/", "Archive"),
         ((b"\\HasNoChildren",), None, "Archivio"),
     ]
-    folders = _folders(listing)
+    folders = folders_from(listing)
     assert [(f.path, f.role) for f in folders] == [
         ("INBOX", "inbox"),
         ("Inviata", "sent"),  # the flag beats the name "Sent Messages"
