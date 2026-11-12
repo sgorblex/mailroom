@@ -31,25 +31,53 @@ export function loginTestMessage(t: TFunction, result: LoginTest): string {
   if (result.ok) {
     return t('accounts.testOk')
   }
-  return mailboxMessage(t, result.code ?? undefined, result.message ?? '') ?? t('accounts.testFailed', { message: result.message ?? '' })
+  return (
+    mailboxMessage(t, result.code ?? undefined, result.message ?? undefined) ??
+    t('accounts.testFailed', { message: result.message ?? '' })
+  )
 }
 
-export function mailboxMessage(t: TFunction, code: string | undefined, message: string): string | null {
+/** mailroom-core's mail error codes (`docs/requirements/mail-client.md`, *Errors*) and the mail routes' own, with their wording key. */
+export const MAIL_CODES: Record<string, string> = {
+  auth_failed: 'mailErrors.authFailed',
+  unreachable: 'mailErrors.unreachable',
+  timeout: 'mailErrors.timeout',
+  mailbox_missing: 'mailErrors.mailboxMissing',
+  unsupported: 'mailErrors.unsupported',
+  busy: 'mailErrors.busy',
+  stale_reference: 'mailErrors.staleReference',
+  not_found: 'mailErrors.notFound',
+  invalid_argument: 'mailErrors.invalidArgument',
+  too_large: 'mailErrors.tooLarge',
+  server_error: 'mailErrors.serverError',
+  send_disabled: 'mailErrors.sendDisabled',
+  rate_limited: 'mailErrors.rateLimited',
+  recipient_refused: 'mailErrors.recipientRefused',
+  delivery_unknown: 'mailErrors.deliveryUnknown',
+  draft_not_editable: 'mailErrors.draftNotEditable',
+}
+
+/** The fixed detail mailroom-core's `unreachable` ends with when the server's TLS certificate did not verify (`CERTIFICATE_DETAIL`). */
+const CERTIFICATE_DETAIL = 'Its TLS certificate did not verify.'
+
+/**
+ * A mailbox failure's code in the reader's language: the app's own account codes, then mailroom-core's; `null` for a code it
+ * does not know. `message`, the API's own wording, adds the one reason it may carry: a certificate that did not verify.
+ */
+export function mailboxMessage(t: TFunction, code: string | undefined, message?: string): string | null {
   switch (code) {
-    case 'login_failed':
-      return t('accountErrors.loginFailed', { message })
-    case 'unreachable':
-    case 'timeout':
-      return t('accountErrors.unreachable', { message })
-    case 'tls_failed':
-      return t('accountErrors.tlsFailed', { message })
     case 'starttls_unsupported':
       return t('accountErrors.starttlsUnsupported')
     case 'password_missing':
       return t('accountErrors.passwordMissing')
-    case 'imap_error':
-      return t('accounts.testFailed', { message })
-    default:
-      return null
   }
+  const key = code === undefined ? undefined : MAIL_CODES[code]
+  if (key === undefined) {
+    return null
+  }
+  const worded = t(key)
+  if (code === 'unreachable' && message?.endsWith(CERTIFICATE_DETAIL) === true) {
+    return `${worded} ${t('mailErrors.certificateUnverified')}`
+  }
+  return worded
 }

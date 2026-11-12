@@ -201,24 +201,5 @@
     "keepEditing": "Keep editing",
     "closeAnyway": "Close anyway",
     "cancel": "Cancel"
-  },
-  "mailErrors": {
-    "authFailed": "The mail server rejected the login for this account. Check its password in Accounts.",
-    "unreachable": "The mail server for this account could not be reached.",
-    "timeout": "The mail server did not answer in time.",
-    "mailboxMissing": "That folder does not exist on this account.",
-    "unsupported": "The mail server does not support this.",
-    "busy": "The account is busy with another request. Try again.",
-    "staleReference": "This message is out of date: the folder changed. Open it again from the list.",
-    "notFound": "No such message or attachment.",
-    "accountNotFound": "This mail account does not exist (any more).",
-    "invalidArgument": "That request was not valid.",
-    "tooLarge": "Too large: the message, attachment or upload is over its limit.",
-    "serverError": "The mail server reported an error.",
-    "sendDisabled": "Sending is off for this account: no drafts or sends.",
-    "rateLimited": "The hourly send limit is reached. Nothing was sent.",
-    "recipientRefused": "A recipient is not a deliverable address, or the mail server refused the message. Nothing was sent.",
-    "deliveryUnknown": "Delivery could not be confirmed: the message may have been sent.",
-    "draftNotEditable": "This draft was sent, or may have been, so it can't be changed."
   }
 }

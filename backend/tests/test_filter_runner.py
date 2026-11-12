@@ -19,6 +19,7 @@ from mailroom.worker.tasks import (
     queue_scheduled_runs,
     run_rule_set,
 )
+from mailroom_core.mail import MESSAGES
 from tests.test_api_accounts import new_account
 from tests.test_api_filters import SHOP_SPEC, add_filter, jobs, rule_set
 
@@ -186,7 +187,7 @@ def test_a_run_records_why_the_mailbox_failed(
     monkeypatch.setattr(tasks, "worker_context", lambda: WorkerContext(sessions, mailboxes))
     run_rule_set(run_id)
     run = run_out(user_client, rule_set_id, run_id)
-    assert run["error"].startswith("unreachable: ")
+    assert run["error"] == f"unreachable: {MESSAGES['unreachable']}"
     assert run["finished_at"] is not None
     # The report so far: no filter had finished.
     assert (run["result"]["filters"], run["result"]["error"]) == ([], run["error"])

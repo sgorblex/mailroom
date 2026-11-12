@@ -85,7 +85,13 @@ function stubApi(initial: StoredAccount[] = [WORK]): ReturnType<typeof vi.fn> {
       return Promise.resolve(
         json(200, account.login.startsWith('alice')
           ? { ok: true, code: null, message: null }
-          : { ok: false, code: 'login_failed', message: 'Authentication failed.' }),
+          : account.login.startsWith('carol')
+            ? {
+                ok: false,
+                code: 'unreachable',
+                message: 'The mail server for this account could not be reached. Its TLS certificate did not verify.',
+              }
+            : { ok: false, code: 'auth_failed', message: 'The mail server rejected the login for this account.' }),
       )
     }
     if (rest === '/filter-settings' && method === 'PUT') {
@@ -250,7 +256,17 @@ describe('AccountsScreen', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Test the login of old' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'The server refused the login: Authentication failed.',
+      'The mail server rejected the login for this account. Check its password in Accounts.',
+    )
+  })
+
+  it('says when the login test met a certificate that did not verify', async () => {
+    stubApi([{ ...WORK, id: 'selfsigned', login: 'carol@example.org' }])
+    renderSignedIn(<AccountsScreen />, ALICE)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Test the login of selfsigned' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The mail server for this account could not be reached. Its TLS certificate did not verify.',
     )
   })
 

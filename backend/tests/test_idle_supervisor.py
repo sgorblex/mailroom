@@ -262,18 +262,18 @@ def test_a_watch_that_keeps_failing_is_retried_less_and_less_often(
     assert warnings == ["Could not watch INBOX: unreachable: refused"]
 
     # A new reason is logged; a watch that reached its folder starts the count again.
-    watches.latest(inbox).die("login_failed: no")
+    watches.latest(inbox).die("auth_failed: no")
     supervisor.reconcile()
     clock.now += MAX_RETRY_SECONDS
     supervisor.reconcile()
     assert started() == 10
     watches.latest(inbox).reached = True
     supervisor.reconcile()
-    watches.latest(inbox).die("login_failed: no")
+    watches.latest(inbox).die("auth_failed: no")
     supervisor.reconcile()
     assert started() == 11
     warnings = [r.getMessage() for r in caplog.records if r.name == "mailroom.worker.idle"]
-    assert warnings[1:] == ["Could not watch INBOX: login_failed: no"] * 2
+    assert warnings[1:] == ["Could not watch INBOX: auth_failed: no"] * 2
 
 
 def test_a_watch_whose_first_connection_fails_ends(

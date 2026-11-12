@@ -201,24 +201,5 @@
     "keepEditing": "Continua a scrivere",
     "closeAnyway": "Chiudi comunque",
     "cancel": "Annulla"
-  },
-  "mailErrors": {
-    "authFailed": "Il server di posta ha rifiutato l'accesso per questo account. Controlla la password in Account.",
-    "unreachable": "Impossibile raggiungere il server di posta di questo account.",
-    "timeout": "Il server di posta non ha risposto in tempo.",
-    "mailboxMissing": "Questa cartella non esiste in questo account.",
-    "unsupported": "Il server di posta non lo supporta.",
-    "busy": "L'account è occupato con un'altra richiesta. Riprova.",
-    "staleReference": "Questo messaggio non è aggiornato: la cartella è cambiata. Riaprilo dall'elenco.",
-    "notFound": "Messaggio o allegato inesistente.",
-    "accountNotFound": "Questo account di posta non esiste (più).",
-    "invalidArgument": "La richiesta non era valida.",
-    "tooLarge": "Troppo grande: il messaggio, l'allegato o il caricamento supera il limite.",
-    "serverError": "Il server di posta ha segnalato un errore.",
-    "sendDisabled": "L'invio è disattivato per questo account: niente bozze né invii.",
-    "rateLimited": "Il limite orario di invii è raggiunto. Non è stato inviato nulla.",
-    "recipientRefused": "Un destinatario non è un indirizzo raggiungibile, oppure il server di posta ha rifiutato il messaggio. Non è stato inviato nulla.",
-    "deliveryUnknown": "Impossibile confermare la consegna: il messaggio potrebbe essere stato inviato.",
-    "draftNotEditable": "Questa bozza potrebbe essere già stata inviata, quindi non si può modificare."
   }
 }

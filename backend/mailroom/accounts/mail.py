@@ -19,6 +19,7 @@ from imapclient.exceptions import LoginError
 
 from mailroom.accounts.store import account_password, load_accounts
 from mailroom_core.filters import Account
+from mailroom_core.mail import MESSAGES, mail_error
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -34,8 +35,6 @@ logger = logging.getLogger(__name__)
 MAIL_CA_FILE_ENV: Final = "MAILROOM_MAIL_CA_FILE"
 IMAP_TIMEOUT_SECONDS: Final = 20.0
 """For connecting and for every read: a test or folder listing never hangs a request."""
-_MAX_MESSAGE: Final = 300
-LIST_TIMEOUT_MESSAGE: Final = "Listing the folders took too long: try again later."
 
 
 def mail_ssl_context() -> ssl.SSLContext:
@@ -54,8 +53,10 @@ def mail_ssl_context() -> ssl.SSLContext:
 
 
 class MailFailure(Exception):  # noqa: N818 -- the outcome of a mail check, not a bug
-    """The mailbox could not be reached or would not let us in. ``code`` names the kind;
-    ``message`` is the server's or the system's wording, without the password."""
+    """The mailbox could not be reached or would not let us in. ``code`` is mailroom-core's mail
+    error code (``mailroom_core.mail.MailErrorCode``) or one of the app's own
+    (``secrets_key_missing``, ``password_missing``, ``starttls_unsupported``); ``message`` is
+    fixed wording, never the server's."""
 
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
@@ -105,7 +106,7 @@ def check_login(account: Account) -> None:
     try:
         account.connect().logout()
     except Exception as exc:
-        failure = mail_failure(exc, account.password)
+        failure = mail_failure(exc, account)
         if failure is None:
             raise
         raise failure from None
@@ -142,7 +143,7 @@ def list_folders(account: Account, *, seconds: float | None = None) -> list[list
         return _list_folders(account)
     except Exception:
         if deadline.expired:
-            raise MailFailure("timeout", LIST_TIMEOUT_MESSAGE) from None
+            raise MailFailure("timeout", MESSAGES["timeout"]) from None
         raise
     finally:
         deadline.cancel()
@@ -161,7 +162,7 @@ def _list_folders(account: Account) -> list[list[str]]:
             account.delimiter = delimiter
         return [list(path.segments) for path in account.list_folders()]
     except Exception as exc:
-        failure = mail_failure(exc, account.password)
+        failure = mail_failure(exc, account)
         if failure is None:
             raise
         raise failure from None
@@ -209,21 +210,16 @@ def _shut(conn: IMAPClient) -> None:
         conn.shutdown()
 
 
-def mail_failure(exc: Exception, password: str) -> MailFailure | None:
-    """``exc`` as a ``MailFailure``, or None when it is not about reaching the mailbox."""
-    if isinstance(exc, LoginError):
-        code = "login_failed"
-    elif isinstance(exc, ssl.SSLError):
-        code = "tls_failed"
-    elif isinstance(exc, TimeoutError):
-        code = "timeout"
-    elif isinstance(exc, OSError):
-        code = "unreachable"
-    elif isinstance(exc, imaplib.IMAP4.error):
-        code = "imap_error"
-    else:
+def mail_failure(exc: Exception, account: Account) -> MailFailure | None:
+    """``exc``, raised for ``account``, as a ``MailFailure``: mailroom-core's code and fixed
+    message (``mailroom_core.mail.mail_error``, which logs the original with the account id), or
+    None when it is not about reaching the mailbox. A login's error, whose text can echo the
+    credentials escaped beyond recognition, and any error quoting the password are logged by
+    their type only."""
+    if not isinstance(exc, imaplib.IMAP4.error | OSError | EOFError):
         return None
-    message = str(exc) or type(exc).__name__
-    if password:
-        message = message.replace(password, "***")
-    return MailFailure(code, message[:_MAX_MESSAGE])
+    secret = isinstance(exc, LoginError) or (
+        bool(account.password) and account.password in str(exc)
+    )
+    error = mail_error(exc, account.name, secret=secret)
+    return MailFailure(error.code, error.message)

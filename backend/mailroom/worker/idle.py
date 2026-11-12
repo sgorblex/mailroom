@@ -144,7 +144,7 @@ class MonitorWatch:
     def __init__(
         self, folder: WatchedFolder, account: Account, on_new_mail: Callable[[], None]
     ) -> None:
-        self._password = account.password
+        self._account = account
         self._stop = threading.Event()
         self._connected = threading.Event()
         self._failure: str | None = None
@@ -162,9 +162,10 @@ class MonitorWatch:
         try:
             monitor(rules, dry_run=False, stop=self._stop, install_signal_handlers=False)
         except Exception as exc:
-            failure = mail_failure(exc, self._password)
-            # The supervisor logs the reason; the traceback only at debug, as its text may quote
-            # anything the server said.
+            failure = mail_failure(exc, self._account)
+            # mail_failure has had core log the error (its text at warning, a login's by type
+            # only) and the supervisor logs the reason; anything else's traceback only at debug,
+            # as its text may quote anything the server said.
             logger.debug("The watch ended.", exc_info=failure is None)
             self._failure = f"{failure.code}: {failure.message}" if failure else type(exc).__name__
         else:

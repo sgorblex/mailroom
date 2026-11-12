@@ -2,7 +2,9 @@ import type { TFunction } from 'i18next'
 import { describe, expect, it } from 'vitest'
 
 import { FOLDER_ROLES } from '@/api/mail.ts'
+import enCommon from '@/locales/en/common.json'
 import en from '@/locales/en/mail.json'
+import itCommon from '@/locales/it/common.json'
 import it_ from '@/locales/it/mail.json'
 
 import { formatListDate, formatSize } from './format.ts'
@@ -27,7 +29,7 @@ function keys(strings: object, prefix = ''): string[] {
 describe('the compose strings', () => {
   it('exist in both languages', () => {
     expect(keys(it_.compose).sort()).toEqual(keys(en.compose).sort())
-    expect(keys(it_.mailErrors).sort()).toEqual(keys(en.mailErrors).sort())
+    expect(keys(itCommon.mailErrors).sort()).toEqual(keys(enCommon.mailErrors).sort())
   })
 })
 

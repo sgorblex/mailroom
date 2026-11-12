@@ -1,50 +1,27 @@
 import type { TFunction } from 'i18next'
 
-import { accountErrorMessage, mailboxMessage } from '@/accounts/messages.ts'
+import { MAIL_CODES, accountErrorMessage, mailboxMessage } from '@/accounts/messages.ts'
 import { ApiRequestError } from '@/api/http.ts'
 import type { MailFolder } from '@/api/mail.ts'
-
-/** The mailbox codes of the mail routes (`docs/requirements/mail-client.md`), with their wording key. */
-const MAIL_CODES: Record<string, string> = {
-  auth_failed: 'mailErrors.authFailed',
-  unreachable: 'mailErrors.unreachable',
-  timeout: 'mailErrors.timeout',
-  mailbox_missing: 'mailErrors.mailboxMissing',
-  unsupported: 'mailErrors.unsupported',
-  busy: 'mailErrors.busy',
-  stale_reference: 'mailErrors.staleReference',
-  not_found: 'mailErrors.notFound',
-  invalid_argument: 'mailErrors.invalidArgument',
-  too_large: 'mailErrors.tooLarge',
-  server_error: 'mailErrors.serverError',
-  send_disabled: 'mailErrors.sendDisabled',
-  rate_limited: 'mailErrors.rateLimited',
-  recipient_refused: 'mailErrors.recipientRefused',
-  delivery_unknown: 'mailErrors.deliveryUnknown',
-  draft_not_editable: 'mailErrors.draftNotEditable',
-}
 
 /** `not_found` from the account routes (folders, a list, a search): the account is not there. */
 export const ACCOUNT_NOT_FOUND = 'mailErrors.accountNotFound'
 
 /**
- * A code of a mail route in the reader's language: the mailbox codes, then the app's own account
- * codes as Accounts words them (`password_missing`, `starttls_unsupported`,
- * `secrets_key_missing`); one it does not know reads as a server error. `notFound` words
- * `not_found` where it names an account rather than a message.
+ * A code of a mail route in the reader's language, as Accounts words mailbox failures
+ * (`mailboxMessage`: mailroom-core's codes and the app's `password_missing`,
+ * `starttls_unsupported`), plus `secrets_key_missing`; one it does not know reads as a server
+ * error. `notFound` words `not_found` where it names an account rather than a message; `message`, the API's wording, as
+ * `mailboxMessage` reads it.
  */
-export function mailCodeMessage(t: TFunction, code: string, notFound?: string): string {
+export function mailCodeMessage(t: TFunction, code: string, notFound?: string, message?: string): string {
   if (code === 'not_found' && notFound !== undefined) {
     return t(notFound)
-  }
-  const mailbox = MAIL_CODES[code]
-  if (mailbox !== undefined) {
-    return t(mailbox)
   }
   if (code === 'secrets_key_missing') {
     return t('accountErrors.secretsKeyMissing')
   }
-  return mailboxMessage(t, code, '') ?? t('mailErrors.serverError')
+  return mailboxMessage(t, code, message) ?? t('mailErrors.serverError')
 }
 
 /**
@@ -59,7 +36,7 @@ export function mailErrorMessage(t: TFunction, failure: unknown, fallback: strin
       return fallback
     }
     if (code in MAIL_CODES) {
-      return mailCodeMessage(t, code, notFound)
+      return mailCodeMessage(t, code, notFound, failure.message)
     }
   }
   return accountErrorMessage(t, failure, fallback)

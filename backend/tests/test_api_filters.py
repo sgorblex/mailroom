@@ -19,6 +19,8 @@ from mailroom.filters.service import MAX_FILTERS
 from mailroom.models import Filter, FilterRun, RuleSet
 from mailroom.worker.app import PROCRASTINATE_SCHEMA
 from mailroom_core.filters import MatchTimeoutError, json_schema, load_filter
+from mailroom_core.mail import CERTIFICATE_DETAIL, MESSAGES
+from mailroom_core.testing import SmtpStub
 from tests.conftest import PASSWORD
 from tests.test_api_accounts import dev_mailbox_account, new_account
 
@@ -114,6 +116,19 @@ def test_the_folder_picker_answers_mailbox_failures(
     monkeypatch.setattr(application.state, "secrets_subkey", secrets_subkey(os.urandom(32)))
     response = user_client.get(f"/api/v1/accounts/{account}/folders")
     assert (response.status_code, response.json()["detail"]["code"]) == (409, "password_missing")
+
+
+def test_the_folder_picker_says_a_certificate_did_not_verify(user_client: TestClient) -> None:
+    """The stub's TLS certificate is self-signed: the handshake fails before any IMAP."""
+    with SmtpStub() as stub:
+        account = new_account(imap={"host": "127.0.0.1", "port": stub.port, "tls": "implicit"})
+        assert user_client.post("/api/v1/accounts", json=account).status_code == 201
+        response = user_client.get("/api/v1/accounts/work/folders")
+    assert response.status_code == 502
+    assert response.json()["detail"] == {
+        "code": "unreachable",
+        "message": f"{MESSAGES['unreachable']} {CERTIFICATE_DETAIL}",
+    }
 
 
 def test_the_dev_mailbox_lists_folders(
@@ -499,7 +514,7 @@ def test_a_dry_run_failure_is_answered_and_kept(user_client: TestClient, rule_se
     [run] = user_client.get(f"/api/v1/rule-sets/{rule_set_id}/runs").json()
     assert run["dry_run"] is True
     assert run["result"] is None
-    assert run["error"].startswith("unreachable: ")
+    assert run["error"] == f"unreachable: {MESSAGES['unreachable']}"
     assert run["finished_at"] is not None
 
 
