@@ -18,12 +18,12 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 from starlette.datastructures import UploadFile
 
-from mailroom.accounts.mail import mail_ssl_context
 from mailroom.accounts.store import load_accounts, user_store
 from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
 from mailroom.auth.users import create_user
 from mailroom.context import app_context
 from mailroom.mail import service
+from mailroom.mail.connections import mail_ssl_context
 from mailroom.mail.pool import USER_UPLOADS
 from mailroom.mail.sends import SendRunner
 from mailroom_core import send as gate

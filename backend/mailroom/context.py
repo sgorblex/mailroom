@@ -38,9 +38,9 @@ class AppContext:
     subkey: SecretsSubkey | None
     """None without ``MAILROOM_SECRETS_KEY``: no password can be stored or opened."""
     ssl_context: ssl.SSLContext
-    mail_pool: MailPool | None = None
-    """The users' IMAP connections for the mail client and the MCP mail tools
-    (``mailroom.mail.pool``); None without the mail layer."""
+    mail_pool: MailPool
+    """The users' IMAP connections (``mailroom.mail.pool``): the mail client's, the MCP mail
+    tools', an account's login test and the folder picker's."""
     send_runner: SendRunner | None = None
     """Where sends run once admitted (``mailroom.mail.sends``); None without the mail layer."""
     features: Features = ALL_FEATURES
@@ -51,10 +51,8 @@ class AppContext:
         return user_store(self.engine, user_id)
 
     def drop_mail_connections(self, user_id: int, account_id: str | None = None) -> None:
-        """Close the user's open mail connections, of one account or of all; nothing without the
-        mail layer."""
-        if self.mail_pool is not None:
-            self.mail_pool.invalidate(user_id, account_id)
+        """Close the user's open mail connections, of one account or of all."""
+        self.mail_pool.invalidate(user_id, account_id)
 
 
 def app_context(state: State) -> AppContext | None:

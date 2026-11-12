@@ -9,9 +9,10 @@ from typing import TYPE_CHECKING, Any
 import pytest
 from imapclient import IMAPClient
 
-from mailroom.accounts.mail import imap_account, mail_ssl_context
+from mailroom.accounts.mail import imap_account
 from mailroom.filters.imap import RuleSetFolder
 from mailroom.filters.runs import DryRunTimeout, dry_run
+from mailroom.mail.connections import mail_ssl_context
 from mailroom_core.filters import get_match_timeout, load_filter, set_match_timeout
 from mailroom_core.mail import MESSAGES
 from tests.test_api_accounts import new_account

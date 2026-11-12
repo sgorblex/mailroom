@@ -16,8 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from mailroom.accounts import app_data
-from mailroom.accounts.mail import MailFailure, list_folders
-from mailroom.accounts.service import Via, imap_account, require_account
+from mailroom.accounts.service import Via, require_account
 from mailroom.errors import Refusal, mail_refusal
 from mailroom.filters.runs import (
     DryRunBusy,
@@ -30,6 +29,7 @@ from mailroom.filters.runs import (
     runs_of,
 )
 from mailroom.filters.spec import InvalidSpecError, normalized_spec
+from mailroom.mail import service as mail_service
 from mailroom.models import Filter, FilterRun, RuleSet
 from mailroom.worker.tasks import queue_run
 
@@ -54,9 +54,9 @@ MAX_FILTERS: Final = 100
 class RuleSetFields(BaseModel):
     name: Name
     folder: list[Segment] = Field(min_length=1, max_length=32)
-    """Path segments, as the REST folder picker lists them (``account_folders``, the engine's) and
-    MCP's ``folders_list`` gives them as ``segments`` (mailroom-core's LIST through
-    ``mailroom.mail.service``)."""
+    """Path segments, as the REST folder picker lists them (``account_folders``) and MCP's
+    ``folders_list`` gives them as ``segments``: mailroom-core's LIST through
+    ``mailroom.mail.service``, split on the server's delimiter."""
     trigger: Trigger
     interval_minutes: IntervalMinutes | None = None
     """``scheduled`` only, and required there."""
@@ -223,15 +223,13 @@ def checked_spec(spec: Spec) -> Spec:
         raise Refusal("invalid", "invalid_spec", str(exc)) from None
 
 
-def account_folders(
-    ctx: AppContext, user_id: int, account_id: str, *, seconds: float | None = None
-) -> list[list[str]]:
-    """The account's folders, each as its path segments (``["Archive", "2026"]``), within
-    ``seconds`` when given (``mailroom.accounts.mail.list_folders``)."""
-    try:
-        return list_folders(imap_account(ctx, user_id, account_id), seconds=seconds)
-    except MailFailure as failure:
-        raise mail_refusal(failure.code, failure.message) from None
+def account_folders(ctx: AppContext, user_id: int, account_id: str) -> list[list[str]]:
+    """The account's selectable folders, each as its path segments split on the server's
+    delimiter (``["Archive", "2026"]``), in mailroom-core's order: ``mailroom.mail.service``'s
+    listing, under the mail pool's gates and deadline, as MCP's ``folders_list`` gives them."""
+    require_account(ctx.store(user_id), account_id)  # a plain 404, as the filters' other routes
+    listed = mail_service.folders(ctx, user_id, account_id, counts=False)
+    return [mail_service.folder_segments(folder) for folder in listed]
 
 
 def run_filters(ctx: AppContext, db: Session, user_id: int, account_id: str) -> bool:

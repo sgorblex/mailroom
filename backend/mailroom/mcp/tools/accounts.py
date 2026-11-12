@@ -2,9 +2,8 @@
 folders, and the Run filters switch.
 
 ``folders_list`` lists through ``mailroom.mail.service`` (mailroom-core's LIST, the server's
-paths and delimiter, ``segments`` split on it); the REST folder picker of a rule set still lists
-through ``mailroom.filters.service.account_folders`` (the filter engine's segments). Both name a
-folder by the same segments."""
+paths and delimiter, ``segments`` split on it), as the REST folder picker of a rule set does
+(``mailroom.filters.service.account_folders``): both name a folder by the same segments."""
 
 from __future__ import annotations
 
@@ -64,7 +63,7 @@ async def _folders_list(args: FoldersArguments, call: ToolCall) -> JsonObject:
     for folder in listed:
         entry: JsonObject = {
             "path": folder.path,
-            "segments": folder.path.split(folder.delimiter) if folder.delimiter else [folder.path],
+            "segments": mail_service.folder_segments(folder),
             "delimiter": folder.delimiter,
             "role": folder.role,
         }

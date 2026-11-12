@@ -14,7 +14,6 @@ from starlette.routing import Route
 
 from mailroom import database as mailroom_database
 from mailroom import db_migrations as mailroom_db_migrations
-from mailroom.accounts.mail import mail_ssl_context
 from mailroom.accounts.secrets_key import secrets_subkey_from_env
 from mailroom.api.build_info import (
     api_deploy_env,
@@ -43,6 +42,7 @@ from mailroom.config.public_url import public_url_from_env
 from mailroom.context import app_context
 from mailroom.database_connectivity import CONNECTIVITY_ERRORS
 from mailroom.errors import Refusal
+from mailroom.mail.connections import mail_ssl_context
 from mailroom.mail.pool import MailPool
 from mailroom.mail.sends import SendRunner
 from mailroom.mcp.app import METADATA_PATH, McpEndpoint
@@ -191,7 +191,8 @@ async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
     _warn_if_nobody_can_sign_in(application)
     application.state.secrets_subkey = secrets_subkey_from_env()
     application.state.mail_ssl_context = mail_ssl_context()
-    application.state.mail_pool = MailPool() if features.mail_layer else None
+    # Test login is the base's and the folder picker the filters': the pool is always there.
+    application.state.mail_pool = MailPool()
     application.state.send_runner = SendRunner() if features.mail_layer else None
     application.state.sso = sso_from_env(application.state.public_url)
     mcp_settings: McpSettings | None = application.state.mcp_settings
@@ -210,9 +211,8 @@ async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
         runner: SendRunner | None = application.state.send_runner
         if runner is not None:
             runner.close()
-        pool: MailPool | None = application.state.mail_pool
-        if pool is not None:
-            pool.close()
+        pool: MailPool = application.state.mail_pool
+        pool.close()
         if mcp_provider is not None:
             mcp_provider.close()
         sso: Sso | None = application.state.sso

@@ -2,18 +2,16 @@ from __future__ import annotations
 
 import json
 import logging
-import threading
-import time
 from typing import TYPE_CHECKING, Any, cast
 
 import anyio
 import pytest
 from mcp.server.auth.provider import AccessToken
 
-from mailroom.accounts.mail import MailFailure, list_folders
 from mailroom.config.features import ALL_FEATURES, Features
 from mailroom.config.public_url import parse_public_url
 from mailroom.errors import Refusal
+from mailroom.mail.service import folder_segments
 from mailroom.mcp import groups
 from mailroom.mcp.app import instructions, tools_for
 from mailroom.mcp.envelope import untrusted, wrapped_result
@@ -22,8 +20,7 @@ from mailroom.mcp.settings import mcp_settings_from_env
 from mailroom.mcp.tool import BUSY_MESSAGE, READ, Arguments, Tool, ToolCall, UserSlots, call_tool
 from mailroom.mcp.tools import TOOLS
 from mailroom.mcp.verifier import RefusingVerifier, token_verifier, user_id_of
-from mailroom_core.filters import Account
-from mailroom_core.mail import MESSAGES
+from mailroom_core.mail import Folder
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -278,43 +275,14 @@ def test_builtin_mode_verifies_with_the_builtin_server() -> None:
     assert token_verifier("external", builtin=server) is not server
 
 
-class StalledConnection:
-    """An IMAP connection whose server stops answering: reads block until the socket is shut."""
+def test_a_folder_is_named_by_its_segments_on_its_own_delimiter() -> None:
+    def folder(path: str, delimiter: str | None) -> Folder:
+        return Folder(path, delimiter, None, ())
 
-    def __init__(self) -> None:
-        self.shut = threading.Event()
-
-    def list_folders(self, *_args: object) -> list[object]:
-        self.shut.wait(10)
-        raise OSError(9, "Bad file descriptor")
-
-    def shutdown(self) -> None:
-        self.shut.set()
-
-    def logout(self) -> None:
-        pass
-
-
-class StalledAccount(Account):
-    def __init__(self) -> None:
-        super().__init__("work", "imap.example", 993, "me", "secret")
-        self.opened: list[StalledConnection] = []
-
-    def connect(self) -> Any:
-        conn = StalledConnection()
-        self.opened.append(conn)
-        return conn
-
-
-def test_a_stalled_folder_listing_stops_at_its_deadline() -> None:
-    account = StalledAccount()
-    started = time.monotonic()
-    with pytest.raises(MailFailure) as failure:
-        list_folders(account, seconds=0.2)
-    assert time.monotonic() - started < 5
-    assert (failure.value.code, failure.value.message) == ("timeout", MESSAGES["timeout"])
-    assert [conn.shut.is_set() for conn in account.opened] == [True]
-    assert "connect" not in vars(account)
+    assert folder_segments(folder("Archive.2026", ".")) == ["Archive", "2026"]
+    assert folder_segments(folder("Archive/2026", "/")) == ["Archive", "2026"]
+    assert folder_segments(folder("Archive.2026", None)) == ["Archive.2026"]
+    assert folder_segments(folder("INBOX", "/")) == ["INBOX"]
 
 
 def test_a_users_tool_calls_are_capped() -> None:

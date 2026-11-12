@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from mailroom.accounts import service as accounts
-from mailroom.accounts.mail import mail_ssl_context
 from mailroom.api.refusals import http_refusal
 from mailroom.auth.users import create_user
 from mailroom.context import AppContext
@@ -18,6 +17,7 @@ from mailroom.errors import Refusal, mail_refusal
 from mailroom.filters import service as filters
 from mailroom.filters.runs import dry_run_slot
 from mailroom.filters.service import FilterFields, FilterPatch, RuleSetFields, RuleSetPatch
+from mailroom.mail.connections import mail_ssl_context
 from mailroom.mail.pool import MailPool
 from mailroom.mail.sends import SendRunner
 from mailroom_core.mail import MESSAGES
@@ -241,7 +241,7 @@ def test_writes_log_where_they_came_from(
 def test_accounts_change_without_the_mail_layer(
     ctx: AppContext, db_session: Session, user: User, account: str
 ) -> None:
-    bare = replace(ctx, mail_pool=None, send_runner=None)
+    bare = replace(ctx, send_runner=None)
     changed = accounts.change_account(bare, db_session, user.id, account, _fields(), None)
     assert changed.id == account
     accounts.remove_account(bare, db_session, user.id, account)

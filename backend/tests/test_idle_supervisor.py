@@ -203,7 +203,7 @@ def test_an_account_that_cannot_be_watched_is_logged_once(
     watches: Watches,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    from mailroom.accounts.mail import mail_ssl_context
+    from mailroom.mail.connections import mail_ssl_context
     from mailroom.worker.context import Mailboxes
 
     add_account(user_client)

@@ -9,7 +9,6 @@ filters on. The database must be migrated (``mise run migrate``) and ``MAILROOM_
 from __future__ import annotations
 
 import argparse
-import imaplib
 import os
 import sys
 from datetime import UTC, datetime, timedelta
@@ -20,15 +19,17 @@ from typing import TYPE_CHECKING, Final
 from sqlalchemy.exc import SQLAlchemyError
 
 from mailroom import database
-from mailroom.accounts.mail import MailFailure, imap_account, mail_ssl_context
 from mailroom.accounts.secrets_key import secrets_subkey_from_env
 from mailroom.accounts.store import AccountError, load_accounts, save_account, user_store
 from mailroom.auth.users import user_by_username
 from mailroom.db_migrations import applied_revisions, expected_heads
+from mailroom.mail.connections import mail_ssl_context
+from mailroom_core.mail import MailConnections, MailError
 from mailroom_core.store import RevisionConflict, SettingsBusy
 
 if TYPE_CHECKING:
     from mailroom_core.config import AccountConfig
+    from mailroom_core.mail import MailboxContext
     from mailroom_core.store import Json
 
 DEV_HOST: Final = "127.0.0.1"
@@ -74,6 +75,23 @@ def _message(sender: str, subject: str, recipient: str, date: datetime) -> bytes
     return message.as_bytes()
 
 
+def _seeded(context: MailboxContext) -> int:
+    """Put the samples in the selected INBOX if it is empty; how many went in."""
+    if context.exists:
+        return 0
+    now = datetime.now(UTC)
+    recipient = f"{context.account}@{DEV_DOMAIN}"
+    for sender, subject, age, starred in _SAMPLES:
+        date = now - timedelta(days=age)
+        context.client.append(
+            "INBOX",
+            _message(sender, subject, recipient, date),
+            flags=(b"\\Flagged",) if starred else (),
+            msg_time=date,
+        )
+    return len(_SAMPLES)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="seed-dev-mail", description=__doc__)
     parser.add_argument("username", help="the Mailroom user who gets the accounts")
@@ -117,35 +135,28 @@ def main(argv: list[str] | None = None) -> int:
         engine.dispose()
     print(f"{user.username} has the accounts {', '.join(ACCOUNTS)}.")
 
-    ssl_context = mail_ssl_context()
-    now = datetime.now(UTC)
-    for config in configs:
-        account_id = config.id
-        try:
-            conn = imap_account(config, password, ssl_context).connect()
-        except (MailFailure, OSError, imaplib.IMAP4.error) as exc:
-            print(
-                f"{account_id}: cannot reach the dev Dovecot ({exc}); `mise run dev-mail`, and "
-                "MAILROOM_MAIL_CA_FILE naming its CA.",
-                file=sys.stderr,
-            )
-            return 1
-        try:
-            if conn.select_folder("INBOX")[b"EXISTS"]:
-                print(f"{account_id}: INBOX already has mail; left as it is.")
-                continue
-            recipient = f"{account_id}@{DEV_DOMAIN}"
-            for sender, subject, age, starred in _SAMPLES:
-                date = now - timedelta(days=age)
-                conn.append(
-                    "INBOX",
-                    _message(sender, subject, recipient, date),
-                    flags=(b"\\Flagged",) if starred else (),
-                    msg_time=date,
+    connections = MailConnections.from_accounts(
+        configs,
+        {config.id: password for config in configs},
+        ssl_context=mail_ssl_context(),
+    )
+    try:
+        for config in configs:
+            try:
+                added = connections.with_mailbox(config.id, "INBOX", False, _seeded)
+            except MailError as exc:
+                print(
+                    f"{config.id}: cannot seed the dev Dovecot ({exc}); `mise run dev-mail`, and "
+                    "MAILROOM_MAIL_CA_FILE naming its CA.",
+                    file=sys.stderr,
                 )
-            print(f"{account_id}: {len(_SAMPLES)} sample messages in INBOX.")
-        finally:
-            conn.logout()
+                return 1
+            if added:
+                print(f"{config.id}: {added} sample messages in INBOX.")
+            else:
+                print(f"{config.id}: INBOX already has mail; left as it is.")
+    finally:
+        connections.close_all()
     return 0
 
 

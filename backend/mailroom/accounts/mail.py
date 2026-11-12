@@ -1,28 +1,29 @@
-"""Reaching an account's mailbox over IMAP, through the filter engine.
+"""Reaching an account's mailbox over IMAP through the filter engine, as the worker's runs and the
+API's dry run still do (everything else goes through ``mailroom.mail.connections``).
 
-Every connection verifies TLS: against the system CAs, plus the one ``MAILROOM_MAIL_CA_FILE``
-names (the dev mail backends' CA, ``dev/.state/certs/ca.pem``). Failures are reported by kind,
-never with the password.
+TLS is verified as ``mailroom.mail.connections.mail_ssl_context`` sets it. Failures are reported by
+kind, never with the password.
 """
 
 from __future__ import annotations
 
 import imaplib
-import logging
-import os
-import ssl
-import threading
-from contextlib import suppress
 from typing import TYPE_CHECKING, Final
 
 from imapclient.exceptions import LoginError
 
 from mailroom.accounts.store import account_password, load_accounts
+from mailroom.errors import SECRETS_KEY_MISSING
+from mailroom.mail.connections import (
+    PASSWORD_MISSING,
+    PASSWORD_MISSING_TEXT,
+    SECRETS_KEY_MISSING_TEXT,
+)
 from mailroom_core.filters import Account
-from mailroom_core.mail import MESSAGES, mail_error
+from mailroom_core.mail import mail_error
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    import ssl
 
     from imapclient import IMAPClient
 
@@ -30,26 +31,8 @@ if TYPE_CHECKING:
     from mailroom_core.crypto import SecretsSubkey
     from mailroom_core.store import AccountStore
 
-logger = logging.getLogger(__name__)
-
-MAIL_CA_FILE_ENV: Final = "MAILROOM_MAIL_CA_FILE"
 IMAP_TIMEOUT_SECONDS: Final = 20.0
-"""For connecting and for every read: a test or folder listing never hangs a request."""
-
-
-def mail_ssl_context() -> ssl.SSLContext:
-    """The TLS settings of every mail connection: system CAs, plus ``MAILROOM_MAIL_CA_FILE``."""
-    context = ssl.create_default_context()
-    ca_file = os.environ.get(MAIL_CA_FILE_ENV, "").strip()
-    if ca_file:
-        try:
-            context.load_verify_locations(cafile=ca_file)
-        except (OSError, ssl.SSLError) as exc:
-            logger.warning(
-                "MAILROOM_MAIL_CA_FILE could not be loaded (%s): trusting the system CAs only.",
-                type(exc).__name__,
-            )
-    return context
+"""For connecting and for every read: a dry run never hangs a request on one reply."""
 
 
 class MailFailure(Exception):  # noqa: N818 -- the outcome of a mail check, not a bug
@@ -92,24 +75,11 @@ def mailbox_account(
     ``starttls_unsupported``) before any connection."""
     account = load_accounts(store).account(account_id)
     if subkey is None:
-        msg = "MAILROOM_SECRETS_KEY is not set: no stored password can be opened."
-        raise MailFailure("secrets_key_missing", msg)
+        raise MailFailure(SECRETS_KEY_MISSING, SECRETS_KEY_MISSING_TEXT)
     password = account_password(store, subkey, account_id)
     if password is None:
-        msg = "No stored password opens for this account: enter it again."
-        raise MailFailure("password_missing", msg)
+        raise MailFailure(PASSWORD_MISSING, PASSWORD_MISSING_TEXT)
     return imap_account(account, password, ssl_context)
-
-
-def check_login(account: Account) -> None:
-    """Log in and out again. Raises ``MailFailure``."""
-    try:
-        account.connect().logout()
-    except Exception as exc:
-        failure = mail_failure(exc, account)
-        if failure is None:
-            raise
-        raise failure from None
 
 
 def hierarchy_delimiter(conn: IMAPClient) -> str | None:
@@ -120,94 +90,6 @@ def hierarchy_delimiter(conn: IMAPClient) -> str | None:
         if isinstance(delimiter, str) and delimiter:
             return delimiter
     return None
-
-
-def list_folders(account: Account, *, seconds: float | None = None) -> list[list[str]]:
-    """The folders that can hold mail, as path segments split on the server's delimiter, in the
-    server's order. With ``seconds``, a listing still going after that long is stopped (its
-    connections closed) and fails as ``timeout``: each IMAP read has its own timeout, but a slow
-    server answering just in time could otherwise keep it going much longer. Raises
-    ``MailFailure``.
-
-    With ``seconds``, ``account`` must be a fresh one of the caller's own (as
-    ``mailroom.accounts.service.imap_account`` builds per call), never shared with another
-    thread: for the listing, its ``connect`` is replaced on the instance and restored after."""
-    if seconds is None:
-        return _list_folders(account)
-    deadline = _Deadline(account.connect, seconds)
-    # The filter engine's Account.list_folders opens its own connection through self.connect and has
-    # no other hook, so the instance's connect goes through the deadline while it lists.
-    account.connect = deadline.connect  # type: ignore[method-assign]
-    deadline.start()
-    try:
-        return _list_folders(account)
-    except Exception:
-        if deadline.expired:
-            raise MailFailure("timeout", MESSAGES["timeout"]) from None
-        raise
-    finally:
-        deadline.cancel()
-        del account.connect
-
-
-def _list_folders(account: Account) -> list[list[str]]:
-    try:
-        conn = account.connect()
-        try:
-            delimiter = hierarchy_delimiter(conn)
-        finally:
-            with suppress(Exception):
-                conn.logout()
-        if delimiter is not None:
-            account.delimiter = delimiter
-        return [list(path.segments) for path in account.list_folders()]
-    except Exception as exc:
-        failure = mail_failure(exc, account)
-        if failure is None:
-            raise
-        raise failure from None
-
-
-class _Deadline:
-    """Closes the connections ``connect`` opened once ``seconds`` have passed, from a timer
-    thread, and refuses any opened after: the work using them then fails."""
-
-    def __init__(self, connect: Callable[[], IMAPClient], seconds: float) -> None:
-        self._connect = connect
-        self._lock = threading.Lock()
-        self._connections: list[IMAPClient] = []
-        self.expired = False
-        self._timer = threading.Timer(seconds, self._expire)
-        self._timer.daemon = True
-
-    def start(self) -> None:
-        self._timer.start()
-
-    def cancel(self) -> None:
-        self._timer.cancel()
-
-    def connect(self) -> IMAPClient:
-        conn = self._connect()
-        with self._lock:
-            if not self.expired:
-                self._connections.append(conn)
-                return conn
-        _shut(conn)
-        msg = "the folder listing was stopped"
-        raise TimeoutError(msg)
-
-    def _expire(self) -> None:
-        with self._lock:
-            self.expired = True
-            connections = list(self._connections)
-        for conn in connections:
-            _shut(conn)
-
-
-def _shut(conn: IMAPClient) -> None:
-    """Close the socket under ``conn``, even while another thread reads from it."""
-    with suppress(Exception):
-        conn.shutdown()
 
 
 def mail_failure(exc: Exception, account: Account) -> MailFailure | None:

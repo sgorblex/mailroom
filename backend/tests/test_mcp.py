@@ -21,7 +21,6 @@ from sqlalchemy import select
 from starlette.testclient import TestClient
 
 from mailroom.accounts import service as accounts_service
-from mailroom.accounts.mail import mail_ssl_context
 from mailroom.accounts.store import load_accounts
 from mailroom.api.main import create_application
 from mailroom.auth.users import create_user
@@ -30,6 +29,7 @@ from mailroom.context import app_context
 from mailroom.errors import Refusal, mail_refusal
 from mailroom.filters import service as filters_service
 from mailroom.mail import service as mail_service
+from mailroom.mail.connections import mail_ssl_context
 from mailroom.mcp.app import instructions, tools_for
 from mailroom.mcp.groups import selected_groups
 from mailroom.mcp.settings import McpSettings

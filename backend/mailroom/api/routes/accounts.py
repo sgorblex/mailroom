@@ -10,7 +10,6 @@ from fastapi import APIRouter, Path
 from pydantic import BaseModel, Field
 
 from mailroom.accounts import service
-from mailroom.accounts.mail import MailFailure, check_login
 from mailroom.accounts.service import ListedAccount, StoredAccount, StoredEndpoint, StoredIdentity
 from mailroom.api.deps import Context, CurrentUser, DbSession
 
@@ -95,11 +94,11 @@ def delete_account(account_id: AccountId, ctx: Context, db: DbSession, user: Cur
 @accounts_router.post("/{account_id}/test")
 def test_account(account_id: AccountId, ctx: Context, user: CurrentUser) -> LoginTest:
     """Log in to IMAP and out again. A refused login is an answer, not an error: ``ok`` false."""
-    try:
-        check_login(service.imap_account(ctx, user.id, account_id))
-    except MailFailure as failure:
-        _log_test(user.id, account_id, failure.code)
-        return LoginTest(ok=False, code=failure.code, message=failure.message)
+    failure = service.try_login(ctx, user.id, account_id)
+    if failure is not None:
+        code, message = failure
+        _log_test(user.id, account_id, code)
+        return LoginTest(ok=False, code=code, message=message)
     _log_test(user.id, account_id, "ok")
     return LoginTest(ok=True)
 
