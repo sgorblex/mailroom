@@ -74,11 +74,10 @@ def connections_for(
 ) -> MailConnections:
     """MailConnections over `accounts`, each with the test password unless `passwords` names
     another; trusting the self-signed certificate, without a health cache."""
-    by_id = {account.id: account for account in accounts}
-    other = dict(passwords or {})
-    return MailConnections(
-        by_id.get,
-        lambda account_id: other.get(account_id, server.password),
+    listed = tuple(accounts)
+    return MailConnections.from_accounts(
+        listed,
+        {account.id: server.password for account in listed} | dict(passwords or {}),
         ssl_context=unverified_context(),
         pool_size=pool_size,
         timeouts=timeouts or Timeouts(),

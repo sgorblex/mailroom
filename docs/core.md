@@ -66,6 +66,23 @@ one user. Every row in schema `core` carries its `user_id`; `STANDALONE_USER` (`
 user rows written by mailroom-mcp belong to. The tools' text takes the host's tool names
 (`ToolNames`), so the app's MCP points the model at its own tools.
 
+**Plain config.** Without the app, `mail.connections_from` builds the connections from the
+settings the app stores, `[[account]]` tables and an optional `[limits]`, checked by
+`core_settings_or_issues` (`ConfigError` lists every problem), and each account's password by id;
+`smtp` and an identity are required as in the app, and the passwords stay out of the file.
+`MailConnections.from_accounts` does the same from `AccountConfig`s.
+
+```python
+import os
+import tomllib
+
+from mailroom_core.mail import connections_from
+
+with open("accounts.toml", "rb") as file:
+    settings = tomllib.load(file)
+connections = connections_from(settings, {"personal": os.environ["PERSONAL_PASSWORD"]})
+```
+
 ## Store
 
 Schema `core`, with its own Alembic history whose version table lives in that schema, so it
