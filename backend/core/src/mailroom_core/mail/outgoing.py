@@ -31,6 +31,7 @@ def check_sendable(account: AccountConfig) -> None:
 
 
 def attachments_too_large(cap: int) -> MailError:
+    """The error for attachments that together pass ``cap`` bytes."""
     return MailError("too_large", f"Attachments may total {format_size(cap)} per message.")
 
 

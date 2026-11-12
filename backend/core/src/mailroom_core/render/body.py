@@ -14,6 +14,8 @@ _BLANK_RUNS: Final = re.compile(r"\n{3,}")
 
 @dataclass(frozen=True, slots=True)
 class RenderedBody:
+    """A window of the rendered body text, with what was removed or collapsed."""
+
     text: str
     removed_chars: int
     """Invisible characters removed from the whole body."""

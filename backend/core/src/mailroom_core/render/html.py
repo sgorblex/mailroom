@@ -465,6 +465,8 @@ class _Converter:
 
 @dataclass(frozen=True, slots=True)
 class HtmlText:
+    """The text of an HTML body, and whether part of it was dropped."""
+
     text: str
     cut: bool
     """Whether anything was dropped: past the size limit, or nested too deeply (at CUT_MARK)."""

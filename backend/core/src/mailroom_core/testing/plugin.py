@@ -20,6 +20,7 @@ _guard = pytest.StashKey[ExitStack]()
 
 
 def pytest_configure(config: pytest.Config) -> None:
+    """Register the `integration` marker and block network access for the whole run."""
     config.addinivalue_line(
         "markers",
         "integration: needs the Dovecot and Mailpit test servers; `mise run test-core-mail`",
@@ -30,6 +31,7 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 def pytest_unconfigure(config: pytest.Config) -> None:
+    """Lift the network block."""
     config.stash[_guard].close()
 
 

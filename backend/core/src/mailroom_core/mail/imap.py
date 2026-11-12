@@ -58,6 +58,8 @@ class Timeouts:
 
 @dataclass(frozen=True, slots=True)
 class Capabilities:
+    """What an account's server offers, from its CAPABILITY answer."""
+
     gmail: bool
     """Gmail's IMAP extensions (X-GM-RAW search, X-GM-THRID threads, labels)."""
     thread: bool
@@ -82,6 +84,8 @@ class MailboxContext:
 
 @dataclass(frozen=True, slots=True)
 class Reachability:
+    """Whether an account's server could be reached, with the error code when not."""
+
     ok: bool
     code: MailErrorCode | None = None
 
@@ -93,6 +97,8 @@ FOLDER_ROLES: Final[tuple[FolderRole, ...]] = get_args(FolderRole.__value__)
 
 @dataclass(frozen=True, slots=True)
 class Folder:
+    """A mailbox as listed, with its role and, when asked for, its STATUS counts."""
+
     path: str
     delimiter: str | None
     role: FolderRole | None
@@ -107,6 +113,7 @@ class Folder:
 
     @property
     def selectable(self) -> bool:
+        """Whether the folder can be selected: the server did not flag it ``\\Noselect``."""
         return "\\Noselect" not in self.flags
 
 
@@ -323,6 +330,7 @@ class MailConnections:
             self._close(state)
 
     def close_all(self) -> None:
+        """Logs out every account's connections, as ``close`` does for one."""
         with self._lock:
             states = list(self._accounts.values())
         for state in states:

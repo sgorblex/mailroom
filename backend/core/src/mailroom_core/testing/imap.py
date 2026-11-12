@@ -133,6 +133,8 @@ def seed(
 
 @dataclass(frozen=True)
 class MimeAttachment:
+    """A file attached to a message built by `mime`."""
+
     name: str
     type: str
     data: bytes
@@ -195,6 +197,8 @@ def mime(
 
 @dataclass(frozen=True)
 class RawMessage:
+    """A message as a raw IMAP client fetched it."""
+
     uid: int
     subject: str
     flags: tuple[str, ...]
@@ -232,6 +236,7 @@ def _subject(raw: bytes | None) -> str:
 
 
 def create_folders(server: ImapTestServer, user: str, *paths: str) -> None:
+    """Create `paths` as folders in `user`'s mailbox."""
     with raw_client(server, user) as client:
         for path in paths:
             client.create_folder(path)

@@ -56,6 +56,8 @@ _BARE_CR: Final = re.compile(rb"\r(?!\n)")
 
 @dataclass(frozen=True, slots=True)
 class OutgoingAttachment:
+    """A file to attach to an outgoing message: its name, media type and bytes."""
+
     filename: str
     content_type: str
     content: bytes
@@ -63,6 +65,8 @@ class OutgoingAttachment:
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class MessageInput:
+    """What a message is composed from: identity, recipients, subject, text and attachments."""
+
     sender: Mailbox
     """The From identity (`from_identity`)."""
     to: tuple[Mailbox, ...] = ()
@@ -89,6 +93,8 @@ class Envelope:
 
 @dataclass(frozen=True, slots=True)
 class Composed:
+    """A composed message: the bytes to file, the bytes to send, its Message-ID and envelope."""
+
     stored: bytes
     """With its Bcc header and, on a draft, its marker: what is filed in Drafts or Sent."""
     wire: bytes

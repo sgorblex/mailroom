@@ -32,6 +32,8 @@ _SPACE_RUNS: Final = re.compile(f"[{re.escape(WHITESPACE)}]+")
 
 @dataclass(frozen=True, slots=True)
 class CleanText:
+    """Text with its invisible characters removed, and how many there were."""
+
     text: str
     removed: int
     """How many invisible characters were removed: worth telling the model, it is a phishing

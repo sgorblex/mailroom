@@ -82,8 +82,10 @@ src = ["mailroom", "alembic", "tests", "core/src", "core/tests"]
 select = [
   "A", "ANN", "B", "C4", "DTZ", "E", "EXE", "F", "FA", "I", "ICN", "ISC", "LOG", "N",
   "PIE", "PLE", "PLW", "PT", "PYI", "Q", "RET", "RSE", "RUF", "SIM", "SLF", "SLOT", "TCH",
-  "TID", "UP", "W", "YTT",
+  "TID", "UP", "W", "YTT", "D1",
 ]
+# Magic methods take their meaning from the operator they implement.
+ignore = ["D105"]
 
 [tool.ruff.lint.flake8-annotations]
 allow-star-arg-any = false
@@ -102,6 +104,10 @@ known-third-party = ["mcp"]
 # The filter engine's tests check its connections' and monitors' private state.
 "core/tests/filters/**/*.py" = ["SLF001"]
 "mailroom/api/routes/**/*.py" = ["B008", "TC001", "TC002", "TC003"]
+# Docstrings on every public name are mailroom-core's public API, not the app's or any tests'.
+"!core/src/**" = ["D1"]
+# Alembic calls `upgrade` and `downgrade`; the module docstring says what the revision does.
+"core/src/mailroom_core/store/migrations/versions/*.py" = ["D103"]
 
 [tool.ruff.lint.flake8-type-checking]
 # SQLAlchemy and Pydantic read these classes' annotations at runtime.

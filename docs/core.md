@@ -48,7 +48,8 @@ The filter engine has an IMAP connection of its own until it runs on `mail`
 **Public API.** What each subpackage exports in `__all__`; everything else is how it is done.
 Rules, each kept by a check once the TODO's *Core's public API* lands:
 
-- every public name has a docstring (ruff's `D1` rules), in the style the code already uses;
+- every public name has a docstring, in the style the code already uses (ruff's `D1` rules on
+  `core/src`; magic methods excepted, since their operator says what they do);
 - the app imports a subpackage, never one of its modules;
 - inside core, `filters` may use `mail`, never the other way round, and nothing imports `mailroom`;
 - core works with no app, database or server for filtering: accounts from plain config, rules,
