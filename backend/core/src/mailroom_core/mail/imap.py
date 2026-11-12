@@ -28,10 +28,11 @@ from typing import TYPE_CHECKING, Final, Literal, get_args
 from imapclient import IMAPClient, SocketTimeout
 from imapclient.exceptions import IMAPClientAbortError, IMAPClientError
 
+from mailroom_core.config import ConfigError, CoreSettings, core_settings_or_issues, issues_text
 from mailroom_core.mail.errors import MailError, MailErrorCode, is_connection_error, mail_error
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Iterable, Iterator, Mapping
 
     from mailroom_core.config import AccountConfig
 
@@ -197,6 +198,37 @@ class MailConnections:
         self._health_cache = health_cache
         self._lock = threading.Lock()
         self._accounts: dict[str, _Account] = {}
+
+    @classmethod
+    def from_accounts(
+        cls,
+        accounts: Iterable[AccountConfig],
+        passwords: Mapping[str, str],
+        *,
+        ssl_context: ssl.SSLContext | None = None,
+        pool_size: int = 1,
+        timeouts: Timeouts = Timeouts(),  # noqa: B008  (frozen)
+        health_cache: float = 60.0,
+    ) -> MailConnections:
+        """Connections for a fixed set of accounts and their passwords (by account id), both
+        copied now; the options are the constructor's. Two accounts with one id are a
+        ValueError; an account with no password, or an empty one, fails with a RuntimeError
+        when it opens."""
+        by_id: dict[str, AccountConfig] = {}
+        for account in accounts:
+            if account.id in by_id:
+                raise ValueError(f'duplicate account id "{account.id}"')
+            by_id[account.id] = account
+        # An empty password is a missing one: never an empty-password login.
+        secrets = {account_id: secret for account_id, secret in passwords.items() if secret}
+        return cls(
+            by_id.get,
+            secrets.get,
+            ssl_context=ssl_context,
+            pool_size=pool_size,
+            timeouts=timeouts,
+            health_cache=health_cache,
+        )
 
     # Public API
 
@@ -641,6 +673,30 @@ class MailConnections:
                     slot.client = None
         for client in idle:
             _log_out(client)
+
+
+def connections_from(
+    settings: Mapping[str, object] | CoreSettings,
+    passwords: Mapping[str, str],
+    *,
+    ssl_context: ssl.SSLContext | None = None,
+    pool_size: int = 1,
+    timeouts: Timeouts = Timeouts(),  # noqa: B008  (frozen)
+) -> MailConnections:
+    """Connections for the accounts of plain config: the settings the app stores (`[[account]]`,
+    optionally `[limits]`), as `tomllib` reads them, and each account's password by id.
+
+    A mapping is checked by `core_settings_or_issues`, every problem listed in the `ConfigError`.
+    An account with no password, or an empty one, fails with a RuntimeError when it opens.
+    """
+    if not isinstance(settings, CoreSettings):
+        checked = core_settings_or_issues(settings)
+        if not isinstance(checked, CoreSettings):
+            raise ConfigError(f"invalid settings:\n{issues_text(checked)}")
+        settings = checked
+    return MailConnections.from_accounts(
+        settings.account, passwords, ssl_context=ssl_context, pool_size=pool_size, timeouts=timeouts
+    )
 
 
 def _log_in(client: IMAPClient, login: str, password: str) -> None:

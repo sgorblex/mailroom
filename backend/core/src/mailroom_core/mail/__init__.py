@@ -69,6 +69,7 @@ from mailroom_core.mail.imap import (
     MailConnections,
     Reachability,
     Timeouts,
+    connections_from,
     retriable,
 )
 from mailroom_core.mail.organize import (
@@ -270,6 +271,7 @@ __all__ = [
     "check_sendable",
     "check_uploads",
     "compose",
+    "connections_from",
     "content_type",
     "decode_cursor",
     "delete_uids",
