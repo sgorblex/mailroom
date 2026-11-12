@@ -97,8 +97,9 @@ What they are: [`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Editions*. Code:
   `filters` the filters router (rule sets, runs, the schema, an account's folders and
   `filter-settings`); `mcp` `/mcp` and its metadata, the built-in authorization server's routes and
   `/api/v1/oauth/requests` and `/api/v1/oauth/grants`. Without `mcp` the MCP variables are not
-  read at all. `MailPool` and `SendRunner` exist only with `mail` or `mcp` (`AppContext.mail_pool`
-  and `send_runner` are None otherwise). The base always mounts sign-in, SSO, users, accounts and
+  read at all. `MailPool` is always built (an account's login test and the filters' folder
+  picker use it); `SendRunner` exists only with `mail` or `mcp` (`AppContext.send_runner` is
+  None otherwise). The base always mounts sign-in, SSO, users, accounts and
   linked identities.
 - **The worker** reads it first, before the database: without `filters` it logs why and exits 0,
   and an unknown name exits 1.
@@ -317,17 +318,22 @@ bounded to one minor because the server relies on its handlers.
   25 MB attachment cap, every field at fault named at once; a refusal is 400 `invalid_limits`
   with `issues`, a save at the same moment 409 `settings_changed` or 503 `settings_busy`. A stored attachment limit above the cap reads as
   the cap. Logged as `limits_changed`.
-- **IMAP** goes through the filter engine, implicit TLS only (`starttls_unsupported` otherwise), verified
-  against the system CAs plus `MAILROOM_MAIL_CA_FILE` (the dev mail CA in dev), with a 20 s
-  timeout on connecting and on every read. A failure carries mailroom-core's mail error code and
-  fixed message (`mail_error`: `auth_failed`, `unreachable`, `timeout`, `mailbox_missing`,
-  `server_error`, …; an `unreachable` whose certificate did not verify ends with core's fixed
-  `CERTIFICATE_DETAIL`, which the web says in the reader's language), or the
-  app's own `password_missing`, `secrets_key_missing` or `starttls_unsupported`; never the
-  server's wording. A folder listing answers it by `mail_status` (502 by default, 504 for
-  `timeout`, 404 for `mailbox_missing`, 409 for `auth_failed` / `password_missing` /
-  `starttls_unsupported`). Migration `202611121200` rewrote the runs recorded earlier to these
-  codes and their fixed messages.
+- **IMAP:** an account's login test (mailroom-core's `test_login`: a login and logout on a
+  connection of its own, each reply bounded by its 10 s probe timeout) and the folder picker's
+  listing go through mailroom-core's connections in the API's mail pool, with its gates and 30 s
+  deadline ([Mail client](#mail-client)), implicit TLS or STARTTLS as the account says. The
+  worker's runs and the dry run still go through the filter engine: implicit TLS only
+  (`starttls_unsupported` otherwise), a 20 s timeout on connecting and on every read. Both verify
+  TLS against the system CAs plus `MAILROOM_MAIL_CA_FILE` (the dev mail CA in dev). A failure
+  carries mailroom-core's mail error code and fixed message (`auth_failed`, `unreachable`,
+  `timeout`, `busy`, `mailbox_missing`, `server_error`, …; an `unreachable` whose certificate did
+  not verify ends with core's fixed `CERTIFICATE_DETAIL`, which the web says in the reader's
+  language), or the app's own `password_missing` or `secrets_key_missing`, and on the filter
+  engine's path `starttls_unsupported`; never the server's wording. A folder listing answers it
+  by `mail_status` (502 by default, 504 for `timeout`, 429 for `busy`, 404 for
+  `mailbox_missing`, 409 for `auth_failed` / `password_missing`), and anything unexpected with
+  500 `failed`. Migration `202611121200` rewrote the runs recorded earlier to these codes and
+  their fixed messages.
 - **Logs:** `account_added`, `account_changed`, `account_removed`, `account_tested` (with
   `outcome`), each with `user_id` and `account_id`, and the changes with `via` (`web`, or `mcp`
   for the MCP server); never a login, a host or a password.
@@ -336,7 +342,7 @@ bounded to one minor because the server relies on its handlers.
   a save of their accounts holds them past mailroom-core's lock timeout, nothing is removed: 503
   `user_accounts_busy`.
 - **Known risk — outbound connections:** a login test or a folder listing connects to whatever
-  host and port the user entered, so any signed-in user can make the server open a TLS connection
+  host and port the user entered, so any signed-in user can make the server open a connection
   from its network to any `host:port` (internal services included) and learn from the failure kind
   whether something answered. Accepted because only admin-created users sign in;
   revisit before anyone else can.
@@ -346,8 +352,9 @@ bounded to one minor because the server relies on its handlers.
 What it does and the routes: [`mail-client.md`](mail-client.md). How:
 
 - **Connections** go through mailroom-core's `MailConnections` (imapclient; implicit TLS or
-  STARTTLS, verified as above), one per user per API process (`mailroom.mail.pool`), up to two
-  connections per account, built on first use from the user's settings and sealed passwords. They
+  STARTTLS, verified as above), one per user per API process (`mailroom.mail.pool`, built on
+  every instance: the login test and the folder picker use it too), up to two connections per
+  account, built on first use from the user's settings and sealed passwords. They
   are logged out after 5 minutes unused, when an account is changed or removed, when its user is
   removed, and when the user's settings are found at a new revision (a change made by another
   process). The lifespan closes them all.
@@ -459,7 +466,8 @@ What they do and the route list: [`filters.md`](filters.md). How:
   theirs, with their accounts. Each rule
   set keeps its newest 100 runs, and every run still queued or in progress. A report is stored
   without NUL characters (`jsonb` refuses them; a header may decode to one).
-- **The folder picker's** `GET /accounts/{id}/folders` lists through the filter engine.
+- **The folder picker's** `GET /accounts/{id}/folders` lists through the mail service, as MCP's
+  `folders_list` does: the selectable folders, each split on its own delimiter, without counts.
 - **Refusals** are 400 `{"detail": {"code", "message"}}`: `invalid_spec` (the filter engine's
   `SpecError` text, or the JSON Schema's or the regular expression's complaint, compiled with
   `regex` as the filter engine matches it), `invalid_rule_set` (an `interval_minutes` exactly when
@@ -472,10 +480,9 @@ What they do and the route list: [`filters.md`](filters.md). How:
   starred only, run through the filter engine's `Folder.run(dry_run=True)` (read-only select) on the
   folder's newest 500 messages, for about 30 s (then the connection is closed: 504
   `dry_run_timeout`). A pattern out of time is 400 `match_timeout`. The folder path is joined with
-  the delimiter the server reports. Mailbox failures answer as a folder listing does (by
-  `mail_status`: 502, 504 `timeout`, 404 `mailbox_missing` for a folder that is not there, 409
-  `auth_failed` / `password_missing` / `starttls_unsupported`; 503
-  `secrets_key_missing`); any other failure is 500
+  the delimiter the server reports. Mailbox failures answer by `mail_status`: 502, 504
+  `timeout`, 404 `mailbox_missing` for a folder that is not there, 409 `auth_failed` /
+  `password_missing` / `starttls_unsupported`; 503 `secrets_key_missing`. Any other failure is 500
   `run_failed`, its exception's type name only. Either way the run joins the history. One dry run
   per user at a time, across API processes: a session advisory lock on a connection of its own,
   taken with `pg_try_advisory_lock`; a second one meanwhile is 429 `dry_run_busy` and not

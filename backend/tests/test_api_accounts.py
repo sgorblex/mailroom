@@ -4,6 +4,7 @@ import imaplib
 import logging
 import os
 import ssl
+import threading
 from datetime import UTC, datetime, timedelta
 from functools import partial
 from typing import TYPE_CHECKING, Any
@@ -13,15 +14,15 @@ from imapclient.exceptions import LoginError
 from sqlalchemy import text
 
 from mailroom.accounts import service as accounts_service
-from mailroom.accounts.mail import MailFailure, mail_failure, mail_ssl_context
+from mailroom.accounts.mail import mail_failure
 from mailroom.accounts.store import load_accounts, user_store
-from mailroom.api.routes import accounts as accounts_routes
 from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
 from mailroom.auth.users import create_user
+from mailroom.mail.connections import mail_ssl_context
 from mailroom.models import User
 from mailroom_core.crypto import open_secret
 from mailroom_core.filters import Account
-from mailroom_core.mail import CERTIFICATE_DETAIL, MESSAGES
+from mailroom_core.mail import CERTIFICATE_DETAIL, MESSAGES, MailConnections, MailError
 from mailroom_core.store import RevisionConflict, SettingsBusy, forget_user
 from mailroom_core.testing import SmtpStub
 from tests.conftest import PASSWORD
@@ -224,21 +225,19 @@ def test_without_a_secrets_key_nothing_is_stored(
     assert user_client.get("/api/v1/accounts").json() == []
 
 
-def test_a_test_logs_in_with_the_stored_password(
+def test_a_test_logs_in_on_the_mail_pool(
     user_client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     assert user_client.post("/api/v1/accounts", json=new_account()).status_code == 201
-    logins: list[tuple[str, str, int, str, str]] = []
+    tested: list[str] = []
 
-    def check_login(account: Account) -> None:
-        logins.append(
-            (account.name, account.host, account.port, account.username, account.password)
-        )
+    def fake_login(_connections: MailConnections, account_id: str) -> None:
+        tested.append(account_id)
 
-    monkeypatch.setattr(accounts_routes, "check_login", check_login)
+    monkeypatch.setattr(MailConnections, "test_login", fake_login)
     response = user_client.post("/api/v1/accounts/work/test")
     assert response.json() == {"ok": True, "code": None, "message": None}
-    assert logins == [("work", "127.0.0.1", 9, "work@example.org", MAILBOX_PASSWORD)]
+    assert tested == ["work"]
 
 
 def test_a_refused_login_is_an_answer(
@@ -246,15 +245,36 @@ def test_a_refused_login_is_an_answer(
 ) -> None:
     assert user_client.post("/api/v1/accounts", json=new_account()).status_code == 201
 
-    def check_login(_account: Account) -> None:
-        raise MailFailure("auth_failed", MESSAGES["auth_failed"])
+    def fake_login(_connections: MailConnections, _account_id: str) -> None:
+        raise MailError("auth_failed")
 
-    monkeypatch.setattr(accounts_routes, "check_login", check_login)
+    monkeypatch.setattr(MailConnections, "test_login", fake_login)
     assert user_client.post("/api/v1/accounts/work/test").json() == {
         "ok": False,
         "code": "auth_failed",
         "message": MESSAGES["auth_failed"],
     }
+
+
+def test_a_test_still_going_at_the_pool_s_deadline_is_a_timeout(
+    user_client: TestClient, application: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert user_client.post("/api/v1/accounts", json=new_account()).status_code == 201
+    released = threading.Event()
+
+    def fake_login(_connections: MailConnections, _account_id: str) -> None:
+        released.wait(5)
+
+    monkeypatch.setattr(MailConnections, "test_login", fake_login)
+    monkeypatch.setattr(application.state.mail_pool, "deadline_seconds", 0.2)
+    try:
+        assert user_client.post("/api/v1/accounts/work/test").json() == {
+            "ok": False,
+            "code": "timeout",
+            "message": MESSAGES["timeout"],
+        }
+    finally:
+        released.set()
 
 
 def test_an_unreachable_server_is_reported(user_client: TestClient) -> None:
@@ -275,11 +295,24 @@ def test_a_certificate_that_does_not_verify_is_said_by_the_test(user_client: Tes
     assert result["message"] == f"{MESSAGES['unreachable']} {CERTIFICATE_DETAIL}"
 
 
-def test_starttls_imap_is_refused_before_connecting(user_client: TestClient) -> None:
-    account = new_account(imap={"host": "127.0.0.1", "port": 143, "tls": "starttls"})
+def test_a_starttls_account_is_tested_too(user_client: TestClient) -> None:
+    """mailroom-core speaks STARTTLS: the test connects (to a closed port) rather than refusing."""
+    account = new_account(imap={"host": "127.0.0.1", "port": 9, "tls": "starttls"})
     assert user_client.post("/api/v1/accounts", json=account).status_code == 201
     result = user_client.post("/api/v1/accounts/work/test").json()
-    assert (result["ok"], result["code"]) == (False, "starttls_unsupported")
+    assert (result["ok"], result["code"]) == (False, "unreachable")
+
+
+def test_without_a_secrets_key_a_test_is_refused(
+    user_client: TestClient, application: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert user_client.post("/api/v1/accounts", json=new_account()).status_code == 201
+    monkeypatch.setattr(application.state, "secrets_subkey", None)
+    response = user_client.post("/api/v1/accounts/work/test")
+    assert (response.status_code, response.json()["detail"]["code"]) == (
+        503,
+        "secrets_key_missing",
+    )
 
 
 def test_a_password_that_does_not_open_is_reported(

@@ -317,7 +317,7 @@ def silent_server() -> Iterator[int]:
 @pytest.fixture
 def mailboxes(migrated_engine: Engine, secrets_subkey: SecretsSubkey) -> Mailboxes:
     """The worker's way to the test users' mailboxes."""
-    from mailroom.accounts.mail import mail_ssl_context
+    from mailroom.mail.connections import mail_ssl_context
     from mailroom.worker.context import Mailboxes
 
     return Mailboxes(migrated_engine, secrets_subkey, mail_ssl_context())

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select, text
 
-from mailroom.accounts.mail import mail_ssl_context
+from mailroom.mail.connections import mail_ssl_context
 from mailroom.models import FilterRun, RuleSet
 from mailroom.worker import tasks
 from mailroom.worker.app import PROCRASTINATE_SCHEMA

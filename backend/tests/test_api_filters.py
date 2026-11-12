@@ -9,13 +9,13 @@ import pytest
 from imapclient import IMAPClient
 from sqlalchemy import select, text
 
-from mailroom.accounts.mail import mail_ssl_context
 from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
 from mailroom.auth.users import create_user
 from mailroom.filters import runs as filter_runs
 from mailroom.filters import service as filters_service
 from mailroom.filters.runs import RunRefused, dry_run_slot, labelled_report, prune_runs
 from mailroom.filters.service import MAX_FILTERS
+from mailroom.mail.connections import mail_ssl_context
 from mailroom.models import Filter, FilterRun, RuleSet
 from mailroom.worker.app import PROCRASTINATE_SCHEMA
 from mailroom_core.filters import MatchTimeoutError, json_schema, load_filter
@@ -105,13 +105,11 @@ def test_the_folder_picker_answers_mailbox_failures(
     response = user_client.get(f"/api/v1/accounts/{account}/folders")
     assert (response.status_code, response.json()["detail"]["code"]) == (502, "unreachable")
 
-    starttls = new_account("home", imap={"host": "127.0.0.1", "port": 143, "tls": "starttls"})
+    # STARTTLS is tried too, not refused up front.
+    starttls = new_account("home", imap={"host": "127.0.0.1", "port": 9, "tls": "starttls"})
     assert user_client.post("/api/v1/accounts", json=starttls).status_code == 201
     response = user_client.get("/api/v1/accounts/home/folders")
-    assert (response.status_code, response.json()["detail"]["code"]) == (
-        409,
-        "starttls_unsupported",
-    )
+    assert (response.status_code, response.json()["detail"]["code"]) == (502, "unreachable")
 
     monkeypatch.setattr(application.state, "secrets_subkey", secrets_subkey(os.urandom(32)))
     response = user_client.get(f"/api/v1/accounts/{account}/folders")
@@ -141,6 +139,8 @@ def test_the_dev_mailbox_lists_folders(
     conn = IMAPClient(imap_server.host, imap_server.port, ssl=True, ssl_context=mail_ssl_context())
     try:
         conn.login(account["login"], imap_server.password)
+        if not conn.folder_exists("Archive"):
+            conn.create_folder("Archive")
         conn.create_folder("Archive/2026")
     finally:
         conn.logout()

@@ -7,10 +7,11 @@ import functools
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from mailroom.accounts.mail import mail_ssl_context, mailbox_account
+from mailroom.accounts.mail import mailbox_account
 from mailroom.accounts.secrets_key import secrets_subkey_from_env
 from mailroom.accounts.store import user_store
 from mailroom.database import create_database_engine, create_session_factory, get_sync_database_url
+from mailroom.mail.connections import mail_ssl_context
 
 if TYPE_CHECKING:
     import ssl

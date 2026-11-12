@@ -11,14 +11,14 @@ Every call runs on the pool's shared threads under a deadline (``DEADLINE_SECOND
 gets one, it passes gates in the caller's own thread. The process's (``PROCESS_CALLS``, holding or
 waiting) bounds how many request threads mail calls take in all; past it a call is ``busy`` at
 once. Then the user's (``USER_CALLS`` at once) and, for a call on one account, the account's
-(``CONNECTIONS_PER_ACCOUNT``): at each only ``WAITING_CALLS`` may wait, and ``GATE_SECONDS`` is
+(``connections_per_account``): at each only ``WAITING_CALLS`` may wait, and ``GATE_SECONDS`` is
 the wait at both together, beyond which the call is ``busy``. So one user's slow server, or one
 user's burst, holds neither the shared threads nor more than a few request threads, though many
 users at once can still fill the process's gate. A gate is let go when the work ends, not when
-its caller stops waiting. At the deadline the caller gets ``DeadlineExceeded`` and the account's
-connections in use are cut (``MailConnections.interrupt``), which ends the work at once; a
-caller's ``on_deadline`` runs first, so work that would go on to open another mailbox can refuse
-to.
+its caller stops waiting. At the deadline (the pool's, or the call's own) the caller gets
+``DeadlineExceeded`` and the account's connections in use are cut (``MailConnections.interrupt``),
+which ends the work at once; a caller's ``on_deadline`` runs first, so work that would go on to
+open another mailbox can refuse to.
 
 A save's body is held back by a gate of its own (``upload``), which nothing waits at: the mail
 gates come only once the body has been read, so without it a user's burst would all be read in,
@@ -37,14 +37,13 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final
 
-from mailroom.accounts.store import AccountNotFound, account_password, load_accounts, user_store
+from mailroom.mail.connections import user_connections
 from mailroom_core.mail import MailConnections, MailError, Timeouts
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
 
-    from mailroom.context import AppContext
-    from mailroom_core.config import AccountConfig
+    from mailroom.mail.connections import MailSource
 
 logger = logging.getLogger(__name__)
 
@@ -71,10 +70,6 @@ saves one at a time, so this is for several tabs, not for a burst."""
 
 class DeadlineExceeded(Exception):  # noqa: N818 -- the outcome of a call, not a bug
     """The call was still running at its deadline; its connections were cut."""
-
-
-class PasswordMissing(Exception):  # noqa: N818 -- a state of the account, not a bug
-    """No stored password opens for the account any more (changed since the call began)."""
 
 
 class _Gate:
@@ -132,8 +127,10 @@ class MailPool:
         timeouts: Timeouts = TIMEOUTS,
         workers: int = WORKERS,
         process_calls: int = PROCESS_CALLS,
+        connections_per_account: int = CONNECTIONS_PER_ACCOUNT,
     ) -> None:
         self.idle_seconds = idle_seconds
+        self.connections_per_account = connections_per_account
         self.deadline_seconds = deadline_seconds
         self.gate_seconds = gate_seconds
         self._timeouts = timeouts
@@ -149,7 +146,7 @@ class MailPool:
         self._closed = False
 
     @contextmanager
-    def lease(self, ctx: AppContext, user_id: int, revision: int) -> Iterator[MailConnections]:
+    def lease(self, source: MailSource, user_id: int, revision: int) -> Iterator[MailConnections]:
         """The user's connections for the block. ``revision`` is their settings' current one:
         connections built under an older one are dropped first; a caller that read the settings
         before a newer revision was seen reuses the newer connections."""
@@ -163,7 +160,7 @@ class MailPool:
             if entry is not None and entry.revision < revision:
                 stale, entry = entry, None
             if entry is None:
-                entry = _UserMail(self._connections(ctx, user_id), revision)
+                entry = _UserMail(self._connections(source, user_id), revision)
                 self._users[user_id] = entry
             entry.leases += 1
             entry.last_used = time.monotonic()
@@ -200,14 +197,15 @@ class MailPool:
         work: Callable[[], T],
         *,
         on_deadline: Callable[[], None] | None = None,
+        deadline: float | None = None,
     ) -> T:
         """``work`` on ``accounts`` of the user, on the pool's threads once the gates let it
-        through (``MailError("busy")`` otherwise); ``DeadlineExceeded`` after
-        ``deadline_seconds``, ``on_deadline`` then called and the accounts' connections in use
-        cut."""
+        through (``MailError("busy")`` otherwise); ``DeadlineExceeded`` after ``deadline``
+        seconds (``deadline_seconds`` when None), ``on_deadline`` then called and the accounts'
+        connections in use cut."""
         keys: list[tuple[int, str | None, int]] = [(user_id, None, USER_CALLS)]
         if len(accounts) == 1:
-            keys.append((user_id, accounts[0], CONNECTIONS_PER_ACCOUNT))
+            keys.append((user_id, accounts[0], self.connections_per_account))
         with ExitStack() as entered:
             if not self._process.enter(0):
                 raise MailError("busy")
@@ -223,7 +221,7 @@ class MailPool:
             held = entered.pop_all()
         future.add_done_callback(lambda _: held.close())
         try:
-            return future.result(timeout=self.deadline_seconds)
+            return future.result(timeout=self.deadline_seconds if deadline is None else deadline)
         except FutureTimeout:
             if on_deadline is not None:
                 on_deadline()
@@ -313,26 +311,7 @@ class MailPool:
             except Exception:
                 logger.exception("mail_idle_close_failed")
 
-    def _connections(self, ctx: AppContext, user_id: int) -> MailConnections:
-        store = user_store(ctx.engine, user_id)
-        subkey = ctx.subkey
-
-        def account(account_id: str) -> AccountConfig | None:
-            try:
-                return load_accounts(store).account(account_id)
-            except AccountNotFound:
-                return None
-
-        def password(account_id: str) -> str:
-            found = account_password(store, subkey, account_id)
-            if found is None:
-                raise PasswordMissing
-            return found
-
-        return MailConnections(
-            account,
-            password,
-            ssl_context=ctx.ssl_context,
-            pool_size=CONNECTIONS_PER_ACCOUNT,
-            timeouts=self._timeouts,
+    def _connections(self, source: MailSource, user_id: int) -> MailConnections:
+        return user_connections(
+            source, user_id, pool_size=self.connections_per_account, timeouts=self._timeouts
         )

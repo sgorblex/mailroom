@@ -230,7 +230,7 @@ def mcp_only(
 
 
 def test_the_base_has_no_mail_layer_and_none_of_the_features(base: Instance, user: User) -> None:
-    assert base.application.state.mail_pool is None
+    assert base.application.state.mail_pool is not None  # for an account's login test
     assert base.application.state.send_runner is None
     client = base.sign_in(user)
     assert client.get("/api/v1/auth/me").json()["features"] == []
@@ -260,6 +260,9 @@ def test_the_base_keeps_accounts_and_users(base: Instance, user: User, admin: Us
     changed = client.put("/api/v1/accounts/work", json=edited(new_account(login="w@example.org")))
     assert changed.status_code == 200
     assert "run_filters" not in changed.json()
+    # Port 9 on loopback is closed: the login test reaches it through the mail pool.
+    tested = client.post("/api/v1/accounts/work/test").json()
+    assert (tested["ok"], tested["code"]) == (False, "unreachable")
     assert client.delete("/api/v1/accounts/work").status_code == 204
 
     bob = create_user(base.db, "bob", PASSWORD)
@@ -270,7 +273,7 @@ def test_the_base_keeps_accounts_and_users(base: Instance, user: User, admin: Us
 
 
 def test_a_filters_only_instance_needs_no_mail_layer(filters_only: Instance, user: User) -> None:
-    assert filters_only.application.state.mail_pool is None
+    assert filters_only.application.state.mail_pool is not None  # for the folder picker
     assert filters_only.application.state.send_runner is None
     client = filters_only.sign_in(user)
     assert client.get("/api/v1/auth/me").json()["features"] == ["filters"]
@@ -281,6 +284,8 @@ def test_a_filters_only_instance_needs_no_mail_layer(filters_only: Instance, use
     assert settings.status_code == 200
     assert client.get("/api/v1/accounts/work/filter-settings").json() == {"run_filters": True}
     assert client.get("/api/v1/accounts").json()[0]["run_filters"] is True
+    folders = client.get("/api/v1/accounts/work/folders")
+    assert (folders.status_code, folders.json()["detail"]["code"]) == (502, "unreachable")
     assert client.get("/api/v1/mail/accounts/work/messages").status_code == 404
 
 

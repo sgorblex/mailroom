@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Final, Literal
 from pydantic import BaseModel, Field
 
 from mailroom.accounts import app_data
-from mailroom.accounts.mail import mailbox_account
 from mailroom.accounts.store import (
     AccountError,
     AccountNotFound,
@@ -20,6 +19,14 @@ from mailroom.accounts.store import (
     save_account,
 )
 from mailroom.errors import SECRETS_KEY_MISSING, Refusal
+from mailroom.mail.connections import (
+    PASSWORD_MISSING,
+    PASSWORD_MISSING_TEXT,
+    PasswordMissing,
+    unusable,
+)
+from mailroom.mail.pool import DeadlineExceeded
+from mailroom_core.mail import MESSAGES, MailError
 from mailroom_core.store import RevisionConflict, SettingsBusy
 
 if TYPE_CHECKING:
@@ -30,7 +37,6 @@ if TYPE_CHECKING:
     from mailroom.context import AppContext
     from mailroom_core.config import AccountConfig, Limits
     from mailroom_core.crypto import SecretsSubkey
-    from mailroom_core.filters import Account
     from mailroom_core.store import AccountStore, Json
 
 logger = logging.getLogger(__name__)
@@ -248,12 +254,31 @@ def remove_account(
     _log("account_removed", user_id, via, account_id=account_id)
 
 
-def imap_account(ctx: AppContext, user_id: int, account_id: str) -> Account:
-    """The filter engine's account for one of the user's, password opened. Refuses ``not_found`` and
-    without the secrets key; raises ``MailFailure`` when there is no usable password or IMAP
-    endpoint."""
+def try_login(ctx: AppContext, user_id: int, account_id: str) -> tuple[str, str] | None:
+    """Log in to the account's IMAP server and out again on a connection of its own
+    (mailroom-core's ``test_login``), under the mail pool's gates and deadline. None when it logged
+    in; else why not, as a code and its fixed message: mailroom-core's (``auth_failed``,
+    ``unreachable``, ``timeout``, ``busy``…) or the app's ``password_missing``. Refuses
+    ``not_found``, and without the secrets key."""
     key = require_subkey(ctx.subkey)
+    store = ctx.store(user_id)
     try:
-        return mailbox_account(ctx.store(user_id), key, ctx.ssl_context, account_id)
+        reason = unusable(store, key, account_id)
+        revision = load_accounts(store).revision
     except AccountNotFound:
         raise account_not_found() from None
+    if reason is not None:
+        return reason
+    pool = ctx.mail_pool
+    try:
+        with pool.lease(ctx, user_id, revision) as connections:
+            # On no account's gate: the login takes none of the account's pooled connections, and
+            # at the deadline there is nothing of the account's to cut (its replies are bounded).
+            pool.call(connections, user_id, (), lambda: connections.test_login(account_id))
+    except MailError as error:
+        return error.code, error.message
+    except DeadlineExceeded:
+        return "timeout", MESSAGES["timeout"]
+    except PasswordMissing:
+        return PASSWORD_MISSING, PASSWORD_MISSING_TEXT
+    return None

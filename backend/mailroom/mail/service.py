@@ -42,7 +42,8 @@ from mailroom.accounts.service import account_not_found, attachment_limit_mb, re
 from mailroom.accounts.store import AccountNotFound, account_password, load_accounts
 from mailroom.audit import WEB, AuditTrail, Origin, kept_nowhere
 from mailroom.errors import Refusal, mail_refusal
-from mailroom.mail.pool import DeadlineExceeded, PasswordMissing
+from mailroom.mail.connections import PASSWORD_MISSING, PASSWORD_MISSING_TEXT, PasswordMissing
+from mailroom.mail.pool import DeadlineExceeded
 from mailroom_core import mail as core
 from mailroom_core import send as gate
 from mailroom_core.mail import MESSAGES, MailError, Page, PageFailure, SearchQuery, Source
@@ -54,7 +55,6 @@ if TYPE_CHECKING:
     from mailroom.accounts.service import Via
     from mailroom.accounts.store import UserAccounts
     from mailroom.context import AppContext
-    from mailroom.mail.pool import MailPool
     from mailroom.mail.sends import SendRunner
     from mailroom_core.config import AccountConfig, Limits
     from mailroom_core.mail import (
@@ -96,8 +96,6 @@ MAX_REF_LENGTH: Final = 4096
 INLINE_IMAGE_BYTES: Final = 5 * 1024 * 1024
 """The ``cid:`` images inlined into one HTML view, in total; past it an image keeps only its
 alt text."""
-PASSWORD_MISSING: Final = "password_missing"
-_PASSWORD_MISSING_TEXT: Final = "No stored password opens for this account: enter it again."
 _FAILED_TEXT: Final = "Reading the mail failed unexpectedly."
 SOURCES_SECONDS: Final = 12.0
 """How long an all-accounts search waits for an account's folders and, when the query needs them
@@ -137,13 +135,6 @@ def unknown_account() -> Refusal:
 def unknown_message() -> Refusal:
     """A ref naming an account that is not the user's: answered as a missing message."""
     return Refusal("not_found", "not_found", MESSAGES["not_found"], coded=True)
-
-
-def _pool(ctx: AppContext) -> MailPool:
-    if ctx.mail_pool is None:
-        msg = "The mail layer is off: nothing that reads or writes mail is served."
-        raise RuntimeError(msg)
-    return ctx.mail_pool
 
 
 def _runner(ctx: AppContext) -> SendRunner:
@@ -193,7 +184,7 @@ def _missing_password(ctx: AppContext, user_id: int, account_id: str) -> bool:
 
 def _password_missing_failure(account_id: str, folder: str | None) -> PageFailure:
     code = cast("MailErrorCode", PASSWORD_MISSING)  # the app's own code
-    return PageFailure(account_id, folder, code, _PASSWORD_MISSING_TEXT)
+    return PageFailure(account_id, folder, code, PASSWORD_MISSING_TEXT)
 
 
 def _usable(ctx: AppContext, user_id: int, accounts: _Accounts, account_id: str) -> None:
@@ -203,7 +194,7 @@ def _usable(ctx: AppContext, user_id: int, accounts: _Accounts, account_id: str)
         raise unknown_account()
     require_subkey(ctx.subkey)
     if _missing_password(ctx, user_id, account_id):
-        raise mail_refusal(PASSWORD_MISSING, _PASSWORD_MISSING_TEXT)
+        raise mail_refusal(PASSWORD_MISSING, PASSWORD_MISSING_TEXT)
 
 
 def _message_ref(ctx: AppContext, user_id: int, accounts: _Accounts, ref: str) -> MessageRef:
@@ -229,7 +220,7 @@ def _run[T](
 ) -> T:
     """``work`` on the user's connections, on the accounts ``used``, under the pool's gates and
     deadline (``on_deadline`` called when it passes); every failure a ``Refusal``."""
-    pool = _pool(ctx)
+    pool = ctx.mail_pool
     try:
         with pool.lease(ctx, user_id, accounts.revision) as connections:
             return pool.call(
@@ -240,7 +231,7 @@ def _run[T](
     except DeadlineExceeded:
         raise mail_refusal("timeout", MESSAGES["timeout"]) from None
     except PasswordMissing:
-        raise mail_refusal(PASSWORD_MISSING, _PASSWORD_MISSING_TEXT) from None
+        raise mail_refusal(PASSWORD_MISSING, PASSWORD_MISSING_TEXT) from None
     except Refusal:
         raise
     except Exception:
@@ -328,6 +319,11 @@ def folders(
         lambda connections: connections.folders(account_id, with_status=counts),
     )
     return [folder for folder in listed if folder.selectable]
+
+
+def folder_segments(folder: Folder) -> list[str]:
+    """``folder``'s path split on its delimiter: how a rule set names a folder."""
+    return folder.path.split(folder.delimiter) if folder.delimiter else [folder.path]
 
 
 def list_messages(
@@ -1112,7 +1108,7 @@ def upload_limit(ctx: AppContext, user_id: int) -> int:
 @contextmanager
 def upload_place(ctx: AppContext, user_id: int) -> Iterator[None]:
     """The user's place for a save's body while it is held, or ``busy`` at once."""
-    with _as_refusals(), _pool(ctx).upload(user_id):
+    with _as_refusals(), ctx.mail_pool.upload(user_id):
         yield
 
 

@@ -16,11 +16,11 @@ from urllib.parse import quote
 
 import pytest
 
-from mailroom.accounts.mail import mail_ssl_context
 from mailroom.accounts.store import load_accounts, user_store
 from mailroom.api.routes.mail import download_name, served_type
 from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
 from mailroom.auth.users import create_user
+from mailroom.mail.connections import mail_ssl_context
 from mailroom.mail.pool import DeadlineExceeded, MailPool
 from mailroom_core.crypto import secrets_subkey
 from mailroom_core.mail import (
@@ -681,6 +681,41 @@ def test_the_deadline_cuts_the_accounts_connections_and_frees_the_gate() -> None
         pool.close()
 
 
+def test_a_call_may_have_a_deadline_of_its_own() -> None:
+    pool = MailPool(deadline_seconds=30.0)
+    connections: Any = _Cuttable()
+    try:
+        started = time.monotonic()
+        with pytest.raises(DeadlineExceeded):
+            pool.call(connections, 1, ["a"], lambda: connections.released.wait(5), deadline=0.2)
+        assert time.monotonic() - started < 5
+        assert connections.interrupted == ["a"]
+    finally:
+        pool.close()
+
+
+def test_the_account_gate_is_as_wide_as_the_pool_s_connections_per_account() -> None:
+    pool = MailPool(gate_seconds=0.2, connections_per_account=1)
+    connections: Any = _Cuttable()
+    started = threading.Event()
+
+    def blocked() -> None:
+        started.set()
+        connections.released.wait(5)
+
+    running = threading.Thread(target=pool.call, args=(connections, 1, ["a"], blocked))
+    try:
+        running.start()
+        assert started.wait(5)
+        with pytest.raises(MailError) as busy:
+            pool.call(connections, 1, ["a"], lambda: None)
+        assert busy.value.code == "busy"
+    finally:
+        connections.released.set()
+        running.join(5)
+        pool.close()
+
+
 def test_the_process_gate_bounds_every_users_calls_at_once() -> None:
     pool = MailPool(process_calls=2)
     connections: Any = _Cuttable()
@@ -897,16 +932,16 @@ def test_a_password_removed_once_the_call_began_is_password_missing(
 ) -> None:
     """mailroom-core reports the pool's ``PasswordMissing`` from inside a page read as the
     source's ``server_error``; the service answers what it is."""
-    from mailroom.mail import pool
+    from mailroom.mail import connections
 
-    real = pool.account_password
+    real = connections.account_password
 
     def removed_meanwhile(store: Any, subkey: Any, account_id: str) -> str | None:
         current = load_accounts(store)
         store.save_settings(current.doc, current.revision, SecretChanges(remove=[account_id]))
         return real(store, subkey, account_id)
 
-    monkeypatch.setattr(pool, "account_password", removed_meanwhile)
+    monkeypatch.setattr(connections, "account_password", removed_meanwhile)
     response = mailbox.client.get(f"{MAIL}/accounts/work/messages")
     assert detail(response) == (409, "password_missing")
     assert user_store(migrated_engine, user.id).secrets() == {}
@@ -915,16 +950,16 @@ def test_a_password_removed_once_the_call_began_is_password_missing(
 def test_an_all_accounts_search_reports_a_password_removed_meanwhile(
     mailbox: Mailbox, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from mailroom.mail import pool
+    from mailroom.mail import connections
 
-    real = pool.account_password
+    real = connections.account_password
 
     def removed_meanwhile(store: Any, subkey: Any, account_id: str) -> str | None:
         current = load_accounts(store)
         store.save_settings(current.doc, current.revision, SecretChanges(remove=[account_id]))
         return real(store, subkey, account_id)
 
-    monkeypatch.setattr(pool, "account_password", removed_meanwhile)
+    monkeypatch.setattr(connections, "account_password", removed_meanwhile)
     page = mailbox.search()
     assert page["failures"] == [
         {"account_id": "work", "folder": "INBOX", "code": "password_missing"}
