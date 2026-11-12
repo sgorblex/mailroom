@@ -23,7 +23,7 @@ This file is the **shared** guide for AI-assisted work in this repository. **Cla
 
 ## Mail invariants
 
-They hold across mailroom-core and its callers (the web client, the MCP mail tools); filters run on the filter engine's own IMAP connection for now. Each is specified in **[`docs/core.md`](docs/core.md)**; this is the checklist, not the spec.
+They hold across mailroom-core and its callers (the web client, the MCP mail tools, the filter engine). Each is specified in **[`docs/core.md`](docs/core.md)**; this is the checklist, not the spec.
 
 - **One send gate.** Every send, reply, forward and draft send goes through `admit`, with `by` saying whether the user or an agent acts; nothing else reaches SMTP.
 - **`from` resolution:** an explicit `from` must be one of the account's identities; else the original's To, Cc, then delivery headers; else the default. The MCP tools always echo the choice.

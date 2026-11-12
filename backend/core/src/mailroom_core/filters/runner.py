@@ -12,14 +12,13 @@ from mailroom_core.filters.account import Folder
 from mailroom_core.filters.actions.flags import Unstar
 from mailroom_core.filters.criteria.flags import IsStarred
 from mailroom_core.filters.filter import Filter
-from mailroom_core.filters.idle import IdleHandler, IdleMonitor, on_new_mail
+from mailroom_core.mail import IdleWatch, MailError
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from types import FrameType
 
-    from mailroom_core.filters.idle import IdleResponse
     from mailroom_core.filters.report import FolderReport
+    from mailroom_core.mail import IdleChange
 
 Rules = list[tuple[Folder, list[Filter]]]
 """Filters grouped by the folder they run on, in order."""
@@ -56,6 +55,11 @@ def run_rules(rules: Rules, *, dry_run: bool, parallel: bool = False) -> list[Fo
     parallel=True each folder runs on its own thread; every folder runs even if others fail,
     then a single :class:`RunRulesError` (a RuntimeError) lists the failures and carries all
     the reports, the failed folders' with ``error`` set.
+
+    A run holds one of its account's connections throughout: in parallel, folders of one
+    account run only as many at once as the connections' ``pool_size``, the others waiting up
+    to ``Timeouts.lock`` and then failing ``busy``. Give the connections a pool as large as the
+    most folders of one account in ``rules``.
     """
     if not parallel:
         return [folder.run(filters, dry_run=dry_run) for folder, filters in rules]
@@ -84,14 +88,26 @@ def run_rules(rules: Rules, *, dry_run: bool, parallel: bool = False) -> list[Fo
     return reports
 
 
-def _new_mail_handler(
-    folder: Folder, filters: list[Filter], dry_run: bool
-) -> Callable[[IdleResponse], None]:
-    def handler(responses: IdleResponse) -> None:
-        if on_new_mail.triggers(responses):
-            folder.run(filters, dry_run=dry_run)
+def _watch(folder: Folder, filters: list[Filter], dry_run: bool) -> IdleWatch:
+    """An IdleWatch on `folder` running its filters on every connect and on new mail, on a
+    connection of the pool (never the watch's own); a run's failure is logged by the watch."""
+    account = folder.account
 
-    return handler
+    def run() -> None:
+        folder.run(filters, dry_run=dry_run)
+
+    def on_change(change: IdleChange) -> None:
+        if change.new_mail:
+            run()
+
+    return IdleWatch(
+        account.connections,
+        account.account_id,
+        folder.imap_name(),
+        on_change=on_change,
+        on_connect=run,
+        name=f"filters:{folder}",
+    )
 
 
 def monitor(
@@ -101,16 +117,23 @@ def monitor(
     stop: threading.Event | None = None,
     install_signal_handlers: bool = True,
 ) -> None:
-    """Run IDLE: apply each folder's filters on new mail, until stopped.
+    """Watch each folder through IDLE (`mailroom_core.mail.IdleWatch`) and run its filters when
+    the watch connects and on new mail, until stopped.
+
+    Each watch holds a connection of its own; the runs take one of the account's pooled
+    connections, so a watch's runs wait for any other run on that account. A watch that ends
+    on its own (its first connect failed, the login was refused, the folder is missing) is
+    logged and not started again; so is a folder whose name cannot be looked up (the account
+    unreachable at the start, say), and the other folders' watches keep running.
 
     Returns once ``stop`` is set (when given) or, with ``install_signal_handlers``, on
-    SIGTERM or SIGINT; the monitors are then stopped and joined. Signal handlers can only be
+    SIGTERM or SIGINT; the watches are then stopped and joined. Signal handlers can only be
     installed from the main thread, and the previous ones are restored on return. With
     ``install_signal_handlers=False`` it runs in any thread, stopped by setting ``stop``.
     """
     stop = stop if stop is not None else threading.Event()
     previous: dict[signal.Signals, Any] = {}
-    monitors: list[IdleMonitor] = []
+    watches: list[IdleWatch] = []
     try:
         if install_signal_handlers:
 
@@ -123,15 +146,20 @@ def monitor(
         for folder, filters in rules:
             if stop.is_set():
                 break
-            mon = IdleMonitor(folder, IdleHandler(_new_mail_handler(folder, filters, dry_run)))
-            mon.start()
-            monitors.append(mon)
+            try:
+                watch = _watch(folder, filters, dry_run)
+            except MailError as error:
+                log.warning("Not watching %s: %s.", folder, error.code)
+                continue
+            watches.append(watch.start())
         stop.wait()
     finally:
-        for m in monitors:
-            m.stop()
-        for m in monitors:
-            m.join()
+        for watch in watches:
+            watch.stop()
+        for watch in watches:
+            watch.join()
+            if watch.failure is not None:
+                log.warning("a watch ended: %s", watch.failure.code)
         for signum, handler in previous.items():
             # None: the previous handler was not installed from Python; fall back to the default.
             signal.signal(signum, handler if handler is not None else signal.SIG_DFL)

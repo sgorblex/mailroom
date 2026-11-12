@@ -87,14 +87,14 @@ mailroom-core             render, mail (IMAP, IDLE included), send, filters, cry
   no longer published: its last PyPI release says where it went (folded in on 2026-11-11).
   Nearly every change to it came from the app, each costing a release and a pin bump;
   unpublished, a package of its own would only add a second build, config and test setup; and
-  once it runs on core's IMAP layer, nothing sets it apart. Core and the app already pair this way: `mailroom_core.mail` is the library,
+  running on core's IMAP layer, nothing sets it apart. Core and the app already pair this way: `mailroom_core.mail` is the library,
   `mailroom.mail` the feature, and so for `filters`.
-- **One IMAP stack.** The engine runs on core's connections: its criteria become core's searches
-  and its actions core's moves and flags, so a filter's move is the same operation as one in the
-  client. IDLE moves into `mailroom_core.mail`, for the worker's monitor and the client's live
-  updates alike, and the app's own bridge to the engine's connection (`mailroom.accounts.mail`) goes. This
-  comes before folder management, so that it, the move across accounts and the filter action
-  that moves to another account are each written once, in core.
+- **One IMAP stack** (done 2026-11-12). The engine runs on core's connections: its criteria are
+  core's searches and its actions core's moves and flags, so a filter's move is the same
+  operation as one in the client. IDLE lives in `mailroom_core.mail`, for the worker's watches and
+  the client's live updates alike, and the worker and the API reach mail through the same
+  `MailPool`. It came before folder management, so that it, the move across accounts and the
+  filter action that moves to another account are each written once, in core.
 - **Core has a public API:** what each of its subpackages exports in `__all__`, with a docstring
   on every public name. The app imports those, never a submodule, and inside core `filters` may
   use `mail`, never the other way round. There is no semver while core is unpublished: a breaking
@@ -102,7 +102,8 @@ mailroom-core             render, mail (IMAP, IDLE included), send, filters, cry
   app's changelog shows it.
 - **Core filters on its own:** accounts from plain config, rules in Python or as specs, a run, a
   dry run or an IDLE monitor, and their reports, with no app, database or server. A test keeps it
-  so. A script installs core from this repository, pinned to a Mailroom tag.
+  so: `core/tests/filters/test_engine_mail.py`, built from `connections_from` and a settings
+  dict. A script installs core from this repository, pinned to a Mailroom tag.
 - **Core is published again** only when someone besides the owner wants to use it, or when the
   `run` command (below) is meant for others to install: then as `mailroom-core` on PyPI, in
   semver from 0.x, with `store` and its database packages an optional extra.

@@ -3,45 +3,50 @@ history (``app.filter_run``).
 
 A run's ``result`` is the filter engine's folder report (``mailroom_core.filters.FolderReport``)
 with each filter's entry carrying the ``filter_id`` it came from and the spec as stored; a dry run
-adds ``limited_to_newest``.
+adds ``limited_to_newest``. The engine runs on the users' mailroom-core connections: the API's
+``MailPool`` for a dry run, the worker's for a run (``mailroom.worker.runs``).
 """
 
 from __future__ import annotations
 
 import logging
-import threading
 from contextlib import contextmanager
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final
 
 from sqlalchemy import delete, select, text
 
-from mailroom.accounts.mail import MailFailure, mail_failure, mailbox_account
-from mailroom.accounts.store import AccountNotFound
-from mailroom.filters.imap import RuleSetFolder
+from mailroom.accounts.store import AccountNotFound, load_accounts
 from mailroom.filters.spec import InvalidSpecError, loaded_filter
+from mailroom.mail.connections import (
+    PASSWORD_MISSING,
+    PASSWORD_MISSING_TEXT,
+    PasswordMissing,
+    unusable,
+)
+from mailroom.mail.pool import DeadlineExceeded
 from mailroom.models import AccountFilterSettings, Filter, FilterRun
+from mailroom_core.filters import Account, Folder, MatchTimeoutError, Path, starred_only
 from mailroom_core.filters import Filter as EngineFilter
-from mailroom_core.filters import MatchTimeoutError, starred_only
+from mailroom_core.mail import MailError
 
 if TYPE_CHECKING:
-    import ssl
     from collections.abc import Iterator, Sequence
 
     from sqlalchemy.engine import Engine
     from sqlalchemy.orm import Session
 
+    from mailroom.context import AppContext
     from mailroom.models import RuleSet
-    from mailroom_core.crypto import SecretsSubkey
     from mailroom_core.filters import FolderReport
-    from mailroom_core.store import AccountStore
+    from mailroom_core.mail import MailConnections
 
 logger = logging.getLogger(__name__)
 
 DRY_RUN_MAX_MESSAGES: Final = 500
 """A dry run looks at the folder's newest messages only, this many at most."""
 DRY_RUN_SECONDS: Final = 30.0
-"""A dry run still going after this long is stopped (its connection closed)."""
+"""A dry run still going after this long is stopped: the pool cuts the user's connections to the
+account that are in use (``MailPool.call``'s deadline)."""
 RUNS_KEPT: Final = 100
 """Run history kept per rule set; older runs are pruned as new ones are recorded."""
 
@@ -69,8 +74,14 @@ def enabled_filters(db: Session, rule_set_id: int) -> list[Filter]:
     )
 
 
+def rule_set_folder(connections: MailConnections, rule_set: RuleSet) -> Folder:
+    """The filter engine's folder the rule set runs on, on ``connections``: its segments joined
+    with the delimiter the server reports when it runs."""
+    return Folder(Account(connections, rule_set.account_id), Path(list(rule_set.folder)))
+
+
 def engine_filters(
-    rule_set: RuleSet, folder: RuleSetFolder, filters: Sequence[Filter]
+    rule_set: RuleSet, folder: Folder, filters: Sequence[Filter]
 ) -> list[EngineFilter]:
     """``filters`` as the filter engine runs them on ``folder``: limited to starred messages, which
     they unstar, when the rule set is ``starred_only``. Raises ``InvalidSpecError`` for a stored
@@ -90,8 +101,8 @@ def labelled_report(
     one).
 
     The name is set here because the filter engine writes a filter's ``repr`` (``Star()``) when it
-    can serialise the filter and its name (``star``) when not, and a dry run's filters, bounded to
-    the newest messages, cannot be: a dry run and a real run would name one action two ways."""
+    can serialise the filter and its name (``star``) when not: every run names an action the one
+    way, whatever the filter it ran."""
     entries = [
         {
             **_without_nul(entry),
@@ -144,44 +155,6 @@ def dry_run_slot(engine: Engine, user_id: int) -> Iterator[None]:
             connection.commit()
 
 
-class DryRunTimeout(Exception):  # noqa: N818 -- the outcome of a dry run, not a bug
-    """The dry run took longer than it may."""
-
-
-@dataclass(frozen=True, slots=True)
-class DryRun:
-    report: FolderReport
-    limited_to_newest: int | None
-    """The number of newest messages looked at, when the folder holds more; None when all were."""
-
-
-def dry_run(
-    folder: RuleSetFolder,
-    filters: Sequence[EngineFilter],
-    *,
-    max_messages: int = DRY_RUN_MAX_MESSAGES,
-    seconds: float = DRY_RUN_SECONDS,
-) -> DryRun:
-    """Run ``filters`` on ``folder`` without acting (selected read-only), on its newest
-    ``max_messages`` messages, for ``seconds`` at most. Raises ``DryRunTimeout``, or what the
-    mailbox raises (``mailroom.accounts.mail.mail_failure`` names it)."""
-    newest = folder.newest(max_messages)
-    bounded = [EngineFilter(newest & f.criterion, f.action) for f in filters]
-    timer = threading.Timer(seconds, folder.abort)
-    timer.daemon = True
-    timer.start()
-    try:
-        report = folder.run(bounded, dry_run=True)
-    except Exception:
-        if folder.aborted:
-            raise DryRunTimeout from None
-        raise
-    finally:
-        timer.cancel()
-    total = folder.message_count or 0
-    return DryRun(report, max_messages if total > max_messages else None)
-
-
 class RunRefused(Exception):  # noqa: N818 -- the outcome of a run, not a bug
     """Why a run did not run, or stopped: ``code`` names the kind, ``message`` words it."""
 
@@ -197,19 +170,17 @@ class RunRefused(Exception):  # noqa: N818 -- the outcome of a run, not a bug
 
 
 def dry_run_result(
-    store: AccountStore,
-    subkey: SecretsSubkey | None,
-    ssl_context: ssl.SSLContext,
-    rule_set: RuleSet,
-    filters: Sequence[Filter],
+    ctx: AppContext, user_id: int, rule_set: RuleSet, filters: Sequence[Filter]
 ) -> dict[str, Any]:
-    """The ``result`` of a dry run of ``rule_set``'s ``filters`` (``dry_run``). Raises
-    ``RunRefused``: ``account_not_found``, ``invalid_spec``, ``dry_run_timeout``,
-    ``match_timeout`` (a pattern took longer than the filter engine's match timeout), a mailbox
-    failure's code (``mailroom.accounts.mail.MailFailure``), or ``run_failed`` for anything else,
-    whose text is neither kept nor logged (it may quote anything, mail included)."""
+    """The ``result`` of a dry run of ``rule_set``'s ``filters``: selected read-only, on the
+    folder's newest ``DRY_RUN_MAX_MESSAGES`` messages, on a connection of the API's mail pool for
+    ``DRY_RUN_SECONDS`` at most. Raises ``RunRefused``: ``account_not_found``, ``invalid_spec``,
+    ``dry_run_timeout``, ``match_timeout`` (a pattern took longer than the filter engine's match
+    timeout), the app's ``secrets_key_missing`` and ``password_missing``, mailroom-core's mail
+    error codes, or ``run_failed`` for anything else, whose text is neither kept nor logged (it
+    may quote anything, mail included)."""
     try:
-        return _dry_run_result(store, subkey, ssl_context, rule_set, filters)
+        return _dry_run_result(ctx, user_id, rule_set, filters)
     except RunRefused:
         raise
     except Exception as exc:
@@ -219,38 +190,42 @@ def dry_run_result(
 
 
 def _dry_run_result(
-    store: AccountStore,
-    subkey: SecretsSubkey | None,
-    ssl_context: ssl.SSLContext,
-    rule_set: RuleSet,
-    filters: Sequence[Filter],
+    ctx: AppContext, user_id: int, rule_set: RuleSet, filters: Sequence[Filter]
 ) -> dict[str, Any]:
+    store = ctx.store(user_id)
+    account_id = rule_set.account_id
     try:
-        account = mailbox_account(store, subkey, ssl_context, rule_set.account_id)
+        refused = unusable(store, ctx.subkey, account_id)
     except AccountNotFound:
         raise RunRefused("account_not_found", "No such account") from None
-    except MailFailure as failure:
-        raise RunRefused(failure.code, failure.message) from None
-    folder = RuleSetFolder(account, rule_set.folder)
+    if refused is not None:
+        raise RunRefused(*refused)
+    pool = ctx.mail_pool
     try:
-        loaded = engine_filters(rule_set, folder, filters)
+        with pool.lease(ctx, user_id, load_accounts(store).revision) as connections:
+            folder = rule_set_folder(connections, rule_set)
+            loaded = engine_filters(rule_set, folder, filters)
+            report = pool.call(
+                connections,
+                user_id,
+                [account_id],
+                lambda: folder.run(loaded, dry_run=True, newest=DRY_RUN_MAX_MESSAGES),
+                deadline=DRY_RUN_SECONDS,
+            )
     except InvalidSpecError as exc:
         raise RunRefused("invalid_spec", str(exc)) from None
-    try:
-        outcome = dry_run(folder, loaded)
-    except DryRunTimeout:
+    except DeadlineExceeded:
         msg = "The dry run took too long: try a narrower filter or a smaller folder."
         raise RunRefused("dry_run_timeout", msg) from None
     except MatchTimeoutError:
         raise RunRefused("match_timeout", MATCH_TIMEOUT_MESSAGE) from None
-    except Exception as exc:
-        mailbox = mail_failure(exc, account)
-        if mailbox is None:
-            raise
-        raise RunRefused(mailbox.code, mailbox.message) from None
+    except MailError as error:
+        raise RunRefused(error.code, error.message) from None
+    except PasswordMissing:
+        raise RunRefused(PASSWORD_MISSING, PASSWORD_MISSING_TEXT) from None
     return {
-        **labelled_report(outcome.report, filters, loaded),
-        "limited_to_newest": outcome.limited_to_newest,
+        **labelled_report(report, filters, loaded),
+        "limited_to_newest": report.get("limited_to_newest"),
     }
 
 

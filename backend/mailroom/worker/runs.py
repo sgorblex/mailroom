@@ -4,7 +4,8 @@ report or the error recorded in its ``app.filter_run`` row.
 The rule set is checked again when the run starts: one whose account's Run filters was turned off,
 or which was disabled, since it was queued records that as its error and touches no mail. A run
 whose job is gone (a worker stopped during it) is closed as ``interrupted`` when the next worker
-starts (``close_interrupted_runs``).
+starts (``close_interrupted_runs``). A run whose move copied messages it then could not remove
+turns its rule set off (``COPIED_NOT_REMOVED``), so no trigger copies them again.
 """
 
 from __future__ import annotations
@@ -18,23 +19,28 @@ from typing import TYPE_CHECKING, Any, Final
 from sqlalchemy import BigInteger, column, func, text, update
 from sqlalchemy.exc import SQLAlchemyError
 
-from mailroom.accounts.mail import MailFailure, mail_failure
-from mailroom.accounts.store import AccountNotFound
+from mailroom.accounts.store import AccountNotFound, load_accounts, user_store
 from mailroom.audit import Entry, write_records_in
-from mailroom.filters.imap import RuleSetFolder
 from mailroom.filters.runs import (
     MATCH_TIMEOUT_MESSAGE,
     RunRefused,
     enabled_filters,
     engine_filters,
     labelled_report,
+    rule_set_folder,
     run_filters_on,
 )
 from mailroom.filters.spec import InvalidSpecError
+from mailroom.mail.connections import (
+    PASSWORD_MISSING,
+    PASSWORD_MISSING_TEXT,
+    PasswordMissing,
+    unusable,
+)
 from mailroom.models import FilterRun, RuleSet
 from mailroom.worker.app import PROCRASTINATE_SCHEMA
 from mailroom_core.filters import MatchTimeoutError
-from mailroom_core.mail import subject_sha256
+from mailroom_core.mail import CopiedNotRemovedError, MailError, subject_sha256
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -53,6 +59,13 @@ when there were more."""
 
 INTERRUPTED: Final = "interrupted: the worker stopped during the run."
 """The error of a run whose job ended with its worker."""
+COPIED_NOT_REMOVED: Final = "copied_not_removed"
+"""The error code of a run whose move copied messages but may not have removed them (a server
+without MOVE): its rule set is turned off, as a new trigger would copy them again."""
+COPIED_NOT_REMOVED_TEXT: Final = (
+    "Some messages were copied to the destination but may not have been removed from this "
+    "folder, so the rule set was turned off: check both folders before you enable it again."
+)
 
 
 def execute_run(db: Session, run_id: int, mailboxes: Mailboxes) -> None:
@@ -90,6 +103,8 @@ def execute_run(db: Session, run_id: int, mailboxes: Mailboxes) -> None:
         logger.error("A run of rule set %s failed: %s.", rule_set_id, type(exc).__name__)
         error = f"run_failed: {type(exc).__name__}"
     recorded = _finish(db, run_id, started_at, result, error)
+    if recorded and error is not None and error.startswith(f"{COPIED_NOT_REMOVED}: "):
+        _turn_off(db, user_id, rule_set_id)
     if recorded and result is not None:
         _record_run(db, user_id, result, names, account_id, rule_set_id, run_id, error)
     outcome = "ok" if error is None else error.split(":", 1)[0]
@@ -102,6 +117,21 @@ def execute_run(db: Session, run_id: int, mailboxes: Mailboxes) -> None:
             "run_id": run_id,
             "trigger": trigger,
             "outcome": outcome if recorded else "gone",
+        },
+    )
+
+
+def _turn_off(db: Session, user_id: int, rule_set_id: int) -> None:
+    """Disable the rule set: its run copied messages it could not remove. Commits ``db``."""
+    db.execute(update(RuleSet).where(RuleSet.id == rule_set_id).values(enabled=False))
+    db.commit()
+    logger.warning(
+        "rule_set_turned_off",
+        extra={
+            "event": "rule_set_turned_off",
+            "user_id": user_id,
+            "rule_set_id": rule_set_id,
+            "reason": COPIED_NOT_REMOVED,
         },
     )
 
@@ -253,36 +283,42 @@ def close_interrupted_runs(db: Session) -> list[int]:
 def _run(
     rule_set: RuleSet, filters: Sequence[Filter], mailboxes: Mailboxes
 ) -> tuple[dict[str, Any] | None, str | None]:
-    """The run's ``result`` and ``error``. Raises ``RunRefused`` when it cannot start."""
+    """The run's ``result`` and ``error``: the rule set's filters on its folder, on the user's
+    connections from the worker's pool. Raises ``RunRefused`` when it cannot start."""
+    store = user_store(mailboxes.engine, rule_set.user_id)
     try:
-        account = mailboxes.account(rule_set.user_id, rule_set.account_id)
+        refused = unusable(store, mailboxes.subkey, rule_set.account_id)
     except AccountNotFound:
         raise RunRefused("account_not_found", "No such account") from None
-    except MailFailure as unusable:
-        raise RunRefused(unusable.code, unusable.message) from None
-    folder = RuleSetFolder(account, rule_set.folder)
-    try:
-        loaded = engine_filters(rule_set, folder, filters)
-    except InvalidSpecError as exc:
-        raise RunRefused("invalid_spec", str(exc)) from None
-    report = folder.new_report(dry_run=False)
-    error = None
-    try:
-        folder.run_into(report, loaded, dry_run=False)
-    except MatchTimeoutError as exc:
-        # Its text quotes the user's pattern: the log names the kind only.
-        logger.warning("A run of rule set %s stopped: %s.", rule_set.id, type(exc).__name__)
-        error = f"match_timeout: {MATCH_TIMEOUT_MESSAGE}"
-        report["error"] = error
-    except Exception as exc:
-        failure = mail_failure(exc, account)
-        if failure is None:
+    if refused is not None:
+        raise RunRefused(*refused)
+    with mailboxes.lease(rule_set.user_id, load_accounts(store).revision) as connections:
+        folder = rule_set_folder(connections, rule_set)
+        try:
+            loaded = engine_filters(rule_set, folder, filters)
+        except InvalidSpecError as exc:
+            raise RunRefused("invalid_spec", str(exc)) from None
+        report = folder.new_report(dry_run=False)
+        error = None
+        try:
+            folder.run_into(report, loaded, dry_run=False)
+        except MatchTimeoutError as exc:
+            # Its text quotes the user's pattern: the log names the kind only.
+            logger.warning("A run of rule set %s stopped: %s.", rule_set.id, type(exc).__name__)
+            error = f"match_timeout: {MATCH_TIMEOUT_MESSAGE}"
+        except CopiedNotRemovedError:
+            # Its originals may still match: every search skips \Deleted ones, but a server
+            # may not have marked them, so the rule set is turned off rather than run again.
+            error = f"{COPIED_NOT_REMOVED}: {COPIED_NOT_REMOVED_TEXT}"
+        except MailError as exc:
+            error = f"{exc.code}: {exc.message}"
+        except PasswordMissing:
+            error = f"{PASSWORD_MISSING}: {PASSWORD_MISSING_TEXT}"
+        except Exception as exc:
             # Not about reaching the mailbox: its text may quote anything, mail included, so
             # neither the record nor the log carries it.
             logger.error("A run of rule set %s failed: %s.", rule_set.id, type(exc).__name__)
             error = f"run_failed: {type(exc).__name__}"
-        else:
-            error = f"{failure.code}: {failure.message}"
         report["error"] = error
     return _bounded(labelled_report(report, filters, loaded)), error
 

@@ -18,7 +18,6 @@ def refused(status: int, code: str, message: str) -> HTTPException:
 
 _MAIL_STATUS: Final[dict[str, int]] = {
     "password_missing": 409,
-    "starttls_unsupported": 409,
     "auth_failed": 409,
     "stale_reference": 409,
     "send_disabled": 409,

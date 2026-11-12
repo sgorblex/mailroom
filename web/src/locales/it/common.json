@@ -230,7 +230,6 @@
     "accountsChanged": "I tuoi account sono cambiati nel frattempo. Ricarica la pagina e riprova.",
     "accountsBusy": "I tuoi account sono in salvataggio altrove. Riprova.",
     "secretsKeyMissing": "Il server non ha una chiave dei segreti (MAILROOM_SECRETS_KEY), quindi gli account non si possono salvare né usare.",
-    "starttlsUnsupported": "Per la posta in arrivo è supportato solo SSL/TLS (IMAPS, di solito porta 993).",
     "passwordMissing": "Nessuna password salvata funziona per questo account: modificalo e reinserisci la password."
   },
   "mailErrors": {

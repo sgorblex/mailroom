@@ -1,6 +1,7 @@
 """Tests for criteria classes."""
 
 from datetime import UTC, date, datetime
+from itertools import pairwise
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import MagicMock, patch
@@ -38,18 +39,21 @@ from mailroom_core.filters.criteria.subject import SubjectContains, SubjectIs, S
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from mailroom_core.filters.query import IMAPQuery
 
-def _query_atoms(q: object) -> Iterator[object]:
-    if hasattr(q, "build"):
-        yield from _query_atoms(q.build())
-    elif isinstance(q, list):
-        for x in q:
-            yield from _query_atoms(x)
-    elif isinstance(q, tuple) and len(q) >= 1 and q[0] in ("OR", "NOT"):
-        for x in q[1:]:
-            yield from _query_atoms(x)
-    else:
-        yield q
+
+def _flat(items: list[object]) -> Iterator[object]:
+    for item in items:
+        if isinstance(item, list):
+            yield from _flat(item)
+        else:
+            yield item
+
+
+def _query_atoms(q: IMAPQuery) -> list[tuple[object, object]]:
+    """Each (key, value) pair the query's criteria hold, groups flattened."""
+    flat = list(_flat(q.criteria()))
+    return list(pairwise(flat))
 
 
 class TestCriteriaCombination:
@@ -96,19 +100,19 @@ class TestAddressCriteria:
         """Test FromIs criterion creation."""
         criterion = FromIs("test@example.com")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == ("FROM", "test@example.com")
+        assert criterion.imap_query.criteria() == ["FROM", "test@example.com"]
 
     def test_to_is_creation(self) -> None:
         """Test ToIs criterion creation."""
         criterion = ToIs("test@example.com")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == ("TO", "test@example.com")
+        assert criterion.imap_query.criteria() == ["TO", "test@example.com"]
 
     def test_to_is_without_cc_bcc(self) -> None:
         """Test ToIs criterion without CC and BCC."""
         criterion = ToIs("test@example.com", incl_cc=False, incl_bcc=False)
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == ("TO", "test@example.com")
+        assert criterion.imap_query.criteria() == ["TO", "test@example.com"]
 
     def test_to_is_with_cc_bcc(self) -> None:
         """Test ToIs criterion with CC and BCC enabled."""
@@ -124,37 +128,37 @@ class TestAddressCriteria:
         """Test CcIs criterion creation."""
         criterion = CcIs("test@example.com")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == ("CC", "test@example.com")
+        assert criterion.imap_query.criteria() == ["CC", "test@example.com"]
 
     def test_bcc_is_creation(self) -> None:
         """Test BccIs criterion creation."""
         criterion = BccIs("test@example.com")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == ("BCC", "test@example.com")
+        assert criterion.imap_query.criteria() == ["BCC", "test@example.com"]
 
     def test_from_matches_creation(self) -> None:
         """Test FromMatches criterion creation."""
         criterion = FromMatches(r".*@example\.com")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == "ALL"
+        assert criterion.imap_query.criteria() == ["ALL"]
 
     def test_from_contains_creation(self) -> None:
         """Test FromContains criterion creation."""
         criterion = FromContains("example.com")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == ("FROM", "example.com")
+        assert criterion.imap_query.criteria() == ["FROM", "example.com"]
 
     def test_to_contains_creation(self) -> None:
         """Test ToContains criterion creation."""
         criterion = ToContains("example.com")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == ("TO", "example.com")
+        assert criterion.imap_query.criteria() == ["TO", "example.com"]
 
     def test_to_contains_without_cc_bcc(self) -> None:
         """Test ToContains criterion without CC and BCC."""
         criterion = ToContains("example.com", incl_cc=False, incl_bcc=False)
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == ("TO", "example.com")
+        assert criterion.imap_query.criteria() == ["TO", "example.com"]
 
     def test_to_contains_with_cc_bcc(self) -> None:
         """Test ToContains criterion with CC and BCC enabled."""
@@ -170,7 +174,7 @@ class TestAddressCriteria:
         """Test ToMatches criterion creation."""
         criterion = ToMatches(r".*@example\.com")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == "ALL"
+        assert criterion.imap_query.criteria() == ["ALL"]
 
     def test_to_matches_default_does_not_include_cc_bcc(self) -> None:
         """Test ToMatches default excludes CC and BCC."""
@@ -188,31 +192,31 @@ class TestAddressCriteria:
         """Test CcContains criterion creation."""
         criterion = CcContains("example.com")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == ("CC", "example.com")
+        assert criterion.imap_query.criteria() == ["CC", "example.com"]
 
     def test_cc_matches_creation(self) -> None:
         """Test CcMatches criterion creation."""
         criterion = CcMatches(r".*@example\.com")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == "ALL"
+        assert criterion.imap_query.criteria() == ["ALL"]
 
     def test_bcc_contains_creation(self) -> None:
         """Test BccContains criterion creation."""
         criterion = BccContains("example.com")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == ("BCC", "example.com")
+        assert criterion.imap_query.criteria() == ["BCC", "example.com"]
 
     def test_bcc_matches_creation(self) -> None:
         """Test BccMatches criterion creation."""
         criterion = BccMatches(r".*@example\.com")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == "ALL"
+        assert criterion.imap_query.criteria() == ["ALL"]
 
     def test_from_matches_name_creation(self) -> None:
         """Test FromMatchesName criterion creation."""
         criterion = FromMatchesName(r"John.*")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == "ALL"
+        assert criterion.imap_query.criteria() == ["ALL"]
 
     def test_to_matches_with_options(self) -> None:
         """Test ToMatches criterion with incl_cc and incl_bcc options."""
@@ -232,13 +236,13 @@ class TestSubjectCriteria:
         """Test SubjectContains criterion creation."""
         criterion = SubjectContains("Important")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == ("SUBJECT", "Important")
+        assert criterion.imap_query.criteria() == ["SUBJECT", "Important"]
 
     def test_subject_is_creation(self) -> None:
         """Test SubjectIs uses SUBJECT IMAP prefilter and is not efficient."""
         criterion = SubjectIs("Exact Subject")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == ("SUBJECT", "Exact Subject")
+        assert criterion.imap_query.criteria() == ["SUBJECT", "Exact Subject"]
         assert criterion.is_efficient is False
 
     def test_subject_is_select_exact_match(self) -> None:
@@ -271,7 +275,7 @@ class TestSubjectCriteria:
         """Test SubjectMatches criterion creation."""
         criterion = SubjectMatches(r"^\[.*\]")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == "ALL"
+        assert criterion.imap_query.criteria() == ["ALL"]
 
 
 class TestBodyCriteria:
@@ -281,14 +285,14 @@ class TestBodyCriteria:
         """Test BodyContains criterion creation and IMAP query."""
         criterion = BodyContains("needle")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == ("BODY", "needle")
+        assert criterion.imap_query.criteria() == ["BODY", "needle"]
         assert criterion.is_efficient is True
 
     def test_body_matches_creation(self) -> None:
         """Test BodyMatches uses ALL IMAP query and is not efficient."""
         criterion = BodyMatches(r"foo.*bar")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == "ALL"
+        assert criterion.imap_query.criteria() == ["ALL"]
         assert criterion.is_efficient is False
 
 
@@ -300,20 +304,20 @@ class TestDateCriteria:
         cutoff = date(2025, 1, 1)
         criterion = OlderThan(cutoff)
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == ("SENTBEFORE", "01-Jan-2025")
+        assert criterion.imap_query.criteria() == ["SENTBEFORE", date(2025, 1, 1)]
 
     def test_older_than_with_datetime(self) -> None:
         """Test OlderThan with datetime object."""
         cutoff = datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC)
         criterion = OlderThan(cutoff)
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == ("SENTBEFORE", "01-Jan-2025")
+        assert criterion.imap_query.criteria() == ["SENTBEFORE", date(2025, 1, 1)]
 
     def test_older_than_with_string(self) -> None:
         """Test OlderThan with string date."""
         criterion = OlderThan("01-Jan-2025")
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == ("SENTBEFORE", "01-Jan-2025")
+        assert criterion.imap_query.criteria() == ["SENTBEFORE", date(2025, 1, 1)]
 
     def test_older_than_days_is_evaluated_when_run(self) -> None:
         """OlderThanDays computes its cutoff each time it is used, not when built."""
@@ -321,13 +325,14 @@ class TestDateCriteria:
         assert criterion.is_efficient is True
         today_path = "mailroom_core.filters.criteria.date._today"
         with patch(today_path, return_value=date(2026, 3, 31)) as today:
-            assert criterion.imap_query.build() == ("SENTBEFORE", "01-Mar-2026")
-            assert (criterion & IsRead()).imap_query.build() == [
-                ("SENTBEFORE", "01-Mar-2026"),
+            assert criterion.imap_query.criteria() == ["SENTBEFORE", date(2026, 3, 1)]
+            assert (criterion & IsRead()).imap_query.criteria() == [
+                "SENTBEFORE",
+                date(2026, 3, 1),
                 "SEEN",
             ]
             today.return_value = date(2026, 4, 30)
-            assert criterion.imap_query.build() == ("SENTBEFORE", "31-Mar-2026")
+            assert criterion.imap_query.criteria() == ["SENTBEFORE", date(2026, 3, 31)]
             msg = cast("Any", SimpleNamespace(parsed=SimpleNamespace(date=datetime(2026, 3, 30))))  # noqa: DTZ001
             assert criterion.func(msg) is True
             today.return_value = date(2026, 4, 29)
@@ -336,7 +341,7 @@ class TestDateCriteria:
     def test_older_than_days_zero_is_before_today(self) -> None:
         """OlderThanDays(0) selects mail sent before today."""
         with patch("mailroom_core.filters.criteria.date._today", return_value=date(2026, 3, 31)):
-            assert OlderThanDays(0).imap_query.build() == ("SENTBEFORE", "31-Mar-2026")
+            assert OlderThanDays(0).imap_query.criteria() == ["SENTBEFORE", date(2026, 3, 31)]
 
     @pytest.mark.parametrize(
         ("days", "error"),
@@ -355,37 +360,37 @@ class TestFlagCriteria:
         """Test IsRead criterion creation."""
         criterion = IsRead()
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == "SEEN"
+        assert criterion.imap_query.criteria() == ["SEEN"]
 
     def test_is_unread_creation(self) -> None:
         """Test IsUnread criterion creation."""
         criterion = IsUnread()
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == "UNSEEN"
+        assert criterion.imap_query.criteria() == ["UNSEEN"]
 
     def test_is_starred_creation(self) -> None:
         """Test IsStarred criterion creation."""
         criterion = IsStarred()
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == "FLAGGED"
+        assert criterion.imap_query.criteria() == ["FLAGGED"]
 
     def test_is_unstarred_creation(self) -> None:
         """Test IsUnstarred criterion creation."""
         criterion = IsUnstarred()
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == "UNFLAGGED"
+        assert criterion.imap_query.criteria() == ["UNFLAGGED"]
 
     def test_is_answered_creation(self) -> None:
         """Test IsAnswered criterion creation."""
         criterion = IsAnswered()
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == "ANSWERED"
+        assert criterion.imap_query.criteria() == ["ANSWERED"]
 
     def test_is_unanswered_creation(self) -> None:
         """Test IsUnanswered criterion creation."""
         criterion = IsUnanswered()
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == "UNANSWERED"
+        assert criterion.imap_query.criteria() == ["UNANSWERED"]
 
 
 class TestSpecialCriteria:
@@ -395,7 +400,7 @@ class TestSpecialCriteria:
         """Test Anything criterion creation."""
         criterion = Anything()
         assert isinstance(criterion, Criterion)
-        assert criterion.imap_query.build() == "ALL"
+        assert criterion.imap_query.criteria() == ["ALL"]
 
 
 class TestCriteriaFiltering:
@@ -415,7 +420,7 @@ class TestCriteriaFiltering:
         assert len(result) == 2
         assert result[1].parsed is p1
         assert result[2].parsed is p2
-        assert criterion.imap_query.build() == "ALL"
+        assert criterion.imap_query.criteria() == ["ALL"]
 
     def test_criteria_and_combination_imap_query(self) -> None:
         """Test that AND combination merges IMAP queries."""
@@ -477,15 +482,17 @@ class TestCriteriaFiltering:
         criterion2 = FromIs("sender2@example.com")
         combined = criterion1 | criterion2
         assert combined.imap_query is not None
-        b = combined.imap_query.build()
-        first_key = b[0] if isinstance(b, list) else b
-        assert first_key[0] == "OR"
+        assert combined.imap_query.criteria() == [
+            "OR",
+            "FROM",
+            "sender1@example.com",
+            "FROM",
+            "sender2@example.com",
+        ]
 
     def test_criteria_negation_imap_query(self) -> None:
         """Test that negation creates NOT query."""
         criterion = FromIs("sender@example.com")
         negated = ~criterion
         assert negated.imap_query is not None
-        b = negated.imap_query.build()
-        first_key = b[0] if isinstance(b, list) else b
-        assert first_key[0] == "NOT"
+        assert negated.imap_query.criteria() == ["NOT", "FROM", "sender@example.com"]

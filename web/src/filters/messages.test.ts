@@ -31,6 +31,13 @@ describe('runErrorMessage', () => {
     )
   })
 
+  it('says a run that copied without removing turned its rule set off', () => {
+    const error = 'copied_not_removed: Some messages were copied to the destination but may not have been removed.'
+    expect(runErrorMessage(i18n.getFixedT('en', FILTERS_NS), error)).toBe(
+      'A move copied some messages but may not have removed them from this folder, so the rule set was turned off: check both folders before you enable it again.',
+    )
+  })
+
   it('words a pattern out of time, in English and Italian', () => {
     const error = "match_timeout: A filter's regular expression took too long on a message: simplify the pattern."
     expect(runErrorMessage(i18n.getFixedT('en', FILTERS_NS), error)).toBe(

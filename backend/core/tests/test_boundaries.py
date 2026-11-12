@@ -53,3 +53,10 @@ def test_mail_never_imports_filters() -> None:
 def test_core_never_imports_the_app() -> None:
     """Core knows nothing of the app it sits under."""
     assert _imports(_PACKAGE, "mailroom") == []
+
+
+def test_filters_and_mail_never_import_the_store() -> None:
+    """Core filters on its own, from plain config: neither needs the database
+    (``tests/filters/test_engine_mail.py`` runs them without one)."""
+    for subpackage in ("filters", "mail"):
+        assert _imports(_PACKAGE / subpackage, "mailroom_core.store") == []

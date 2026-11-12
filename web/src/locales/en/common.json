@@ -230,7 +230,6 @@
     "accountsChanged": "Your accounts changed meanwhile. Reload the page and try again.",
     "accountsBusy": "Your accounts are being saved elsewhere. Try again.",
     "secretsKeyMissing": "The server has no secrets key (MAILROOM_SECRETS_KEY), so accounts cannot be saved or used.",
-    "starttlsUnsupported": "Only SSL/TLS (IMAPS, usually port 993) is supported for incoming mail.",
     "passwordMissing": "No stored password works for this account: edit it and enter the password again."
   },
   "mailErrors": {

@@ -80,7 +80,8 @@ def _today() -> date:
 
 
 def _sent_before_query(cutoff: date) -> IMAPQuery:
-    return Q(("SENTBEFORE", cutoff.strftime("%d-%b-%Y")))
+    # A date, which core writes as IMAP does (`01-Mar-2026`) in any locale.
+    return Q(("SENTBEFORE", cutoff))
 
 
 def _sent_before(msg: Message, cutoff: date) -> bool:

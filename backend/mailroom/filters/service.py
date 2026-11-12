@@ -492,9 +492,7 @@ def _dry_run(
         started_at=started,
     )
     try:
-        run.result = dry_run_result(
-            ctx.store(user_id), ctx.subkey, ctx.ssl_context, rule_set, filters
-        )
+        run.result = dry_run_result(ctx, user_id, rule_set, filters)
     except RunRefused as refusal:
         run.error = refusal.error
         run.finished_at = datetime.now(UTC)

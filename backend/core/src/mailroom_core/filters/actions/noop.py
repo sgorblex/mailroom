@@ -12,4 +12,4 @@ class NoOp(Action):
 
     def __init__(self) -> None:
         """Create a no-op action."""
-        super().__init__(lambda conn, msgids, *, delimiter="/": None, name="do nothing")
+        super().__init__(lambda _selected, _uids: None, name="do nothing")

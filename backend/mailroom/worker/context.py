@@ -3,8 +3,9 @@ mailboxes reached through their account stores.
 
 The worker's mail connections are a ``MailPool`` of its own, one connection per account: the IDLE
 supervisor leases a user's connections only to look a folder's name up and build its watch, which
-then idles on a connection of its own, so the pool logs the looked-up one out once unused. Only
-``lease`` is used, without the API's gates or deadline. ``close`` it at shutdown.
+then idles on a connection of its own, so the pool logs the looked-up one out once unused; a run
+leases them for as long as it runs. Only ``lease`` is used, without the API's gates or deadline.
+``close`` it at shutdown.
 """
 
 from __future__ import annotations
@@ -14,9 +15,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final
 
-from mailroom.accounts.mail import mailbox_account
 from mailroom.accounts.secrets_key import secrets_subkey_from_env
-from mailroom.accounts.store import user_store
 from mailroom.database import create_database_engine, create_session_factory, get_sync_database_url
 from mailroom.mail.connections import mail_ssl_context
 from mailroom.mail.pool import MailPool
@@ -30,7 +29,6 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session, sessionmaker
 
     from mailroom_core.crypto import SecretsSubkey
-    from mailroom_core.filters import Account
     from mailroom_core.mail import MailConnections
 
 WORKER_TIMEOUTS: Final = Timeouts(connect=15.0, read=120.0, lock=60.0)
@@ -56,13 +54,6 @@ class Mailboxes:
     subkey: SecretsSubkey | None
     ssl_context: ssl.SSLContext
     pool: MailPool = field(default_factory=_worker_pool)
-
-    def account(self, user_id: int, account_id: str) -> Account:
-        """``mailroom.filters.imap.mailbox_account`` of the user's ``account_id``: raises
-        ``AccountNotFound`` or ``MailFailure``."""
-        return mailbox_account(
-            user_store(self.engine, user_id), self.subkey, self.ssl_context, account_id
-        )
 
     @contextmanager
     def lease(self, user_id: int, revision: int) -> Iterator[MailConnections]:

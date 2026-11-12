@@ -11,11 +11,10 @@ failing.
 
 Each watch is mailroom-core's ``IdleWatch`` on the user's connections from the worker's pool
 (``Mailboxes.lease``, held only to look the folder's name up and build the watch), on a
-connection of its own outside the pool's. Accounts on STARTTLS are not watched yet: their runs
-still go through the filter engine, which refuses them. New mail does not run the filters on the
-IDLE connection: it queues ``run_rule_set`` jobs, which run one at a time per mailbox and record
-their reports like any other run. So does every (re)connection of a watch, for the mail that
-arrived while the folder was not watched.
+connection of its own outside the pool's, implicit TLS or STARTTLS. New mail does not run the
+filters on the IDLE connection: it queues ``run_rule_set`` jobs, which run one at a time per
+mailbox and record their reports like any other run. So does every (re)connection of a watch,
+for the mail that arrived while the folder was not watched.
 """
 
 from __future__ import annotations
@@ -407,8 +406,8 @@ class IdleSupervisor:
 
     def _target(self, user_id: int, account_id: str) -> _Target | str:
         """The account's target, or why it cannot be watched before any connection: the app's
-        code (``secrets_key_missing``, ``password_missing``), ``starttls_unsupported`` or
-        ``account_not_found``. One read of the store, one opening of the password."""
+        code (``secrets_key_missing``, ``password_missing``) or ``account_not_found``. One read
+        of the store, one opening of the password."""
         store = user_store(self._mailboxes.engine, user_id)
         subkey = self._mailboxes.subkey
         try:
@@ -421,9 +420,6 @@ class IdleSupervisor:
         password = account_password(store, subkey, account_id)
         if password is None:
             return PASSWORD_MISSING
-        if account.imap.tls != "implicit":
-            # The runs a watch queues still go through the filter engine, which refuses STARTTLS.
-            return "starttls_unsupported"
         return _Target(account_fingerprint(account, password), loaded.revision)
 
     def _queue_runs_of(self, folder: WatchedFolder) -> Callable[[], None]:

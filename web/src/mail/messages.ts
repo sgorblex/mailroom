@@ -9,9 +9,9 @@ export const ACCOUNT_NOT_FOUND = 'mailErrors.accountNotFound'
 
 /**
  * A code of a mail route in the reader's language, as Accounts words mailbox failures
- * (`mailboxMessage`: mailroom-core's codes and the app's `password_missing`,
- * `starttls_unsupported`), plus `secrets_key_missing`; one it does not know reads as a server
- * error. `notFound` words `not_found` where it names an account rather than a message; `message`, the API's wording, as
+ * (`mailboxMessage`: mailroom-core's codes and the app's `password_missing`), plus
+ * `secrets_key_missing`; one it does not know reads as a server error. `notFound` words
+ * `not_found` where it names an account rather than a message; `message`, the API's wording, as
  * `mailboxMessage` reads it.
  */
 export function mailCodeMessage(t: TFunction, code: string, notFound?: string, message?: string): string {
