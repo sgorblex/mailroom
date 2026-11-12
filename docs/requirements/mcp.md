@@ -5,7 +5,8 @@ authorization server, or an external issuer such as Authentik or Keycloak) and w
 what a model needs to work on a user's filters: accounts, folders, rule sets, dry runs and runs,
 and, group by group, the mail tools: each mail group turns on (status `stable`) once the client does
 what it does; `mail_read` is the first, with slice A of the [mail client](mail-client.md), then
-`mail_organize`, with slice B, then `mail_draft` and `mail_send`, with slice C. Standalone
+`mail_organize`, with slice B, then `mail_draft` and `mail_send`, with slice C, then
+`mail_folders`, with [folder management](mail-client.md#folder-management). Standalone
 mailroom-mcp was retired on 2026-11-10, this server covering its use
 ([`../CONTEXT.md`](../CONTEXT.md)). Product scope: [`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *MCP
 server*.
@@ -40,6 +41,19 @@ only "up to 50, any folders": the server instructions name the tools that give r
 Trash (the only expunge is of a draft Mailroom wrote, by the draft tools: the
 [own-draft exception](mail-client.md#the-own-draft-exception)). There is no archive tool: `messages_move` to the account's
 archive folder does it.
+
+The `mail_folders` tools create, rename and delete an account's folders, the REST folder routes
+([`mail-client.md`](mail-client.md) — *Folder management*) over the same service functions, with
+the same checks and audit records. They name folders by path (as `folders_list` gives it in
+`path`) and a parent by path or `null` for the top level, so they need no refs and no `mail_read`.
+Their answers are the routes' JSON. `folder_rename` points every rule set and filter action naming
+the folder at its new path (below, *Safety rules*) and lists their ids; when that fails the folder
+is renamed all the same, `rule_sets_updated` is `false` and a `note` says to fix them.
+`folder_delete` deletes the folder's mail **for good**: its `messages` is the `total` from
+`folders_list(counts=true)` the user confirmed, and a changed count is refused, deleting nothing,
+with the new count and the instruction to confirm it with the user before calling again. A
+`folder_in_use` refusal names the rule sets and gives their ids. `mail_organize` keeps its promise
+of never deleting permanently: deleting a folder is never a step of organizing.
 
 The `mail_draft` and `mail_send` tools write mail, over the same service functions and the same
 send gate as the web client ([`mail-client.md`](mail-client.md), *Slice C*). `draft_create`,
@@ -98,6 +112,8 @@ left out, with a warning when named. Which tools a client gets is instance confi
 | `mail_draft` (stable, on) | `draft_create` | openWorld |
 | | `draft_update`, `draft_delete` | destructive, openWorld |
 | `mail_send` (stable, on) | `message_send`, `message_reply`, `message_forward`, `draft_send` | destructive, openWorld |
+| `mail_folders` (stable, on) | `folder_create(account_id, parent, name)`, `folder_rename(account_id, folder, parent, name)` | openWorld |
+| | `folder_delete(account_id, folder, messages)` | destructive, openWorld |
 | `audit_read` (stable, on) | `audit_list(cursor?, limit?, account_id?, action?, actor?, result?)`: the user's audit trail, newest first, the addresses and `Message-ID` in the envelope | readOnly, idempotent |
 
 A destructive hint makes clients such as claude.ai ask the user before each call. Of the
@@ -106,14 +122,18 @@ but Drafts and Sent) and has no destructive hint, by choice: the hint marks the 
 purpose is trashing, not every move that may end there. Every send tool is destructive, so the
 client asks before each one. `draft_update` and `draft_delete` are too: an edited draft is a new
 message and the old version is removed (the [own-draft exception](mail-client.md#the-own-draft-exception)),
-while `draft_create` only adds one.
+while `draft_create` only adds one. `folder_delete` is destructive and its description says the
+loss is permanent and that it is called only on the user's explicit request; `folder_rename`
+loses nothing, so it is not.
 
 ### Safety rules
 
 - **A rule set created over MCP starts disabled**, whatever the input says.
 - **Write tools refuse an enabled rule set** ("disable it first"): `rule_set_update`,
   `rule_set_delete`, the filter tools (`filter_delete` too) and `filters_reorder` act only on a
-  disabled one. The path is disable → edit → dry run → enable.
+  disabled one. The path is disable → edit → dry run → enable. **The exception is
+  `folder_rename`**, which points enabled rule sets at the folder's new path too: they keep acting
+  on the same folder, and nothing else about them changes.
 - **Turning things on is a separate, destructive call**: `rule_set_enable` (which says so when the
   account's *Run filters* is off), `run_now` (with the same guards as *Run now* in the web app) and
   `account_run_filters`, the account's [Run filters](../GLOSSARY.md) switch.
@@ -148,9 +168,9 @@ while `draft_create` only adds one.
   never stalls the API.
 - **Two calls per user at a time:** a user's third concurrent tool call (in one API process) is
   refused at once as busy ("wait for one, then retry"), so one user cannot take every tool thread.
-  `dry_run` and the tools that ask the mailbox (`folders_list`, the `mail_read`, `mail_organize`
-  and `mail_draft` ones) stop after 30 s of mailbox work and answer a timeout refusal; the send
-  tools wait 45 s for the delivery (above).
+  `dry_run` and the tools that ask the mailbox (`folders_list`, the `mail_read`, `mail_organize`,
+  `mail_folders` and `mail_draft` ones) stop after 30 s of mailbox work and answer a timeout
+  refusal; the send tools wait 45 s for the delivery (above).
 - **Audit:** each call logs `mcp_tool_called` with the user, client, grant, tool, outcome and
   duration, and the argument *keys* only, never their values. Changes made through the service
   layer log as they do from the web app, with `via="mcp"`, and go to the user's audit trail with
@@ -195,12 +215,13 @@ interface, not on the app's routes), so it can move to a shared package later.
 - **Consent** is a web app screen. `/oauth/authorize` stores the request (10 minutes) and
   redirects to `/connect?request=<id>`; the screen signs the user in if needed (password or SSO)
   and shows the client and what it gets (accounts, folders, filters and, where offered, reading
-  messages and their attachments, organizing them: moving, trashing, flagging, and writing
-  drafts and sending mail within each account's send mode), in English and Italian, to approve or
-  deny. A grant is not tied to the tool groups served
-  when it was approved: one approved before `mail_read`, `mail_organize`, `mail_draft` or
-  `mail_send` was on reads, moves, drafts and sends mail without asking again, `mail_send` too, by
-  decision: the send mode is the guard
+  messages and their attachments, organizing them: moving, trashing, flagging, creating,
+  renaming and deleting folders (a deleted folder's mail gone for good), and writing drafts and
+  sending mail within each account's send mode), in English and Italian, to approve or
+  deny. A grant is not tied to the tool groups served when it was approved: one approved before
+  `mail_read`, `mail_organize`, `mail_folders`, `mail_draft` or `mail_send` was on reads, moves,
+  drafts and sends mail and manages folders without asking again, `mail_send` too, by decision:
+  the send mode is the guard
   ([`../TODO.md`](../TODO.md)). (The session cookie is `SameSite=Strict`, so it does not arrive
   on the cross-site navigation from the client; the screen's same-origin requests do carry it.)
   The screen names the client as it calls itself (and, for a metadata document, the host serving
@@ -306,7 +327,7 @@ workers; expired rows are swept on writes.
 | `MAILROOM_FEATURES` | The instance's features ([`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Editions*). Without `mcp`, the MCP server and its authorization server are not served, whatever the `MAILROOM_MCP_*` and `MAILROOM_OAUTH_*` variables say; web SSO still follows its own. |
 | `MAILROOM_PUBLIC_URL` | The instance's public origin. Required for SSO and the MCP server; unset, both are off. |
 | `MAILROOM_MCP_AUTH` | `builtin` (default), `external` or `off`. |
-| `MAILROOM_MCP_TOOL_GROUPS` | Registered tool groups; default `filters_read,filters_write,filters_run,mail_read,mail_organize,mail_draft,mail_send,audit_read`. The `filters_*` groups need `filters` in `MAILROOM_FEATURES`; the mail groups do not need `mail`. |
+| `MAILROOM_MCP_TOOL_GROUPS` | Registered tool groups; default `filters_read,filters_write,filters_run,mail_read,mail_organize,mail_folders,mail_draft,mail_send,audit_read`. The `filters_*` groups need `filters` in `MAILROOM_FEATURES`; the mail groups do not need `mail`. |
 | `MAILROOM_OAUTH_EXTRA_REDIRECT_URIS` | Redirect URIs allowed beyond the built-in list. |
 | `MAILROOM_OAUTH_CIMD_HOSTS` | Hosts whose client ID metadata documents are fetched; default `claude.ai,claude.com`. |
 | `MAILROOM_OIDC_ISSUER`, `MAILROOM_OIDC_CLIENT_ID`, `MAILROOM_OIDC_CLIENT_SECRET` | Web SSO's provider and confidential client; SSO is off without them. |

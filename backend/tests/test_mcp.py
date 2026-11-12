@@ -36,7 +36,7 @@ from mailroom.mcp.settings import McpSettings
 from mailroom.mcp.tool import BUSY_MESSAGE, CALLS_PER_USER, call_tool
 from mailroom.mcp.tools import mail_send
 from mailroom.mcp.tools.filters import RUN_FILTERS_OFF_NOTE
-from mailroom.models import AuditRecord
+from mailroom.models import AuditRecord, Filter
 from mailroom_core.mail import MESSAGES, Folder, MessageRef, format_ref
 from mailroom_core.store import SEND_CEILING
 from mailroom_core.testing import (
@@ -53,6 +53,7 @@ from mailroom_core.testing import (
 from tests.conftest import PASSWORD
 from tests.test_api_accounts import MAILBOX_PASSWORD, new_account
 from tests.test_api_filters import SHOP_SPEC
+from tests.test_api_mail import add_rule_set, moving_to
 from tests.test_filters_dry_run import SHOP, Mailbox
 
 if TYPE_CHECKING:
@@ -291,6 +292,9 @@ ANNOTATIONS = {
     "messages_move": (False, False, False, True),
     "messages_trash": (False, True, False, True),
     "messages_flag": (False, False, True, True),
+    "folder_create": (False, False, False, True),
+    "folder_rename": (False, False, False, True),
+    "folder_delete": (False, True, False, True),
     "draft_create": (False, False, False, True),
     "draft_update": (False, True, False, True),
     "draft_delete": (False, True, False, True),
@@ -1470,6 +1474,123 @@ def test_organize_calls_log_keys_only(
     ours = str([r.__dict__ for r in caplog.records if r.name.startswith("mailroom")])
     for secret in ("Secret subject", "Secret folder", ref):
         assert secret not in ours
+
+
+# --- mail_folders ---
+
+
+def listed_paths(mcp: Mcp, token: str) -> set[str]:
+    return {f["path"] for f in mcp.call(token, "folders_list", account_id="work")["folders"]}
+
+
+def test_the_folder_tools_are_bounded(mcp: Mcp, token: str) -> None:
+    tools = {tool["name"]: tool for tool in mcp.tools(token)}
+    deleting = tools["folder_delete"]["inputSchema"]
+    assert deleting["required"] == ["account_id", "folder", "messages"]
+    assert (
+        deleting["properties"]["messages"]["minimum"],
+        deleting["properties"]["messages"]["maximum"],
+    ) == (0, 2**32 - 1)
+    assert "for good" in tools["folder_delete"]["description"]
+    name = tools["folder_create"]["inputSchema"]["properties"]["name"]
+    assert (name["minLength"], name["maxLength"]) == (1, 255)
+    for arguments in (
+        {"account_id": "work", "folder": "Lists"},
+        {"account_id": "work", "folder": "Lists", "messages": -1},
+        {"account_id": "work", "folder": "Lists", "messages": "1"},
+    ):
+        assert "Invalid arguments" in mcp.error(token, "folder_delete", **arguments)
+    assert "Invalid arguments" in mcp.error(token, "folder_create", account_id="work", name="x")
+    # Where it goes is said every time: null for the top level, never left out.
+    assert "Invalid arguments" in mcp.error(
+        token, "folder_rename", account_id="work", folder="Lists", name="x"
+    )
+
+
+def test_folders_are_created_renamed_with_their_rule_sets_and_deleted(
+    mcp: Mcp, token: str, mail: MailAccounts, db_session: Session, user: User
+) -> None:
+    login = mail.add()
+    created = mcp.call(token, "folder_create", account_id="work", parent=None, name="Projects")
+    assert created == {"account_id": "work", "path": "Projects"}
+    delimiter = mcp.call(token, "folders_list", account_id="work")["folders"][0]["delimiter"]
+    inner = mcp.call(token, "folder_create", account_id="work", parent="Projects", name="2025")
+    assert inner["path"] == f"Projects{delimiter}2025"
+    enabled = add_rule_set(db_session, user.id, ["Projects", "2025"], enabled=True)
+    mover = add_rule_set(db_session, user.id, ["INBOX"], moving_to("Projects"))
+    moves = db_session.query(Filter).filter_by(rule_set_id=mover.id).one()
+
+    renamed = mcp.call(
+        token, "folder_rename", account_id="work", folder="Projects", parent=None, name="Work"
+    )
+    assert renamed == {
+        "account_id": "work",
+        "folder": "Projects",
+        "path": "Work",
+        "rule_sets": [enabled.id, mover.id],
+        "filters": [moves.id],
+        "rule_sets_updated": True,
+    }
+    assert {"Work", f"Work{delimiter}2025"} <= listed_paths(mcp, token)
+    db_session.expire_all()
+    assert (enabled.folder, enabled.enabled) == (["Work", "2025"], True)
+    assert moves.spec == moving_to("Work")
+
+    mcp.call(token, "folder_create", account_id="work", parent=None, name="Old plans")
+    mail.seed(login, mime("old plans"), folder="Old plans")
+    deleted = mcp.call(token, "folder_delete", account_id="work", folder="Old plans", messages=1)
+    assert deleted == {"account_id": "work", "folder": "Old plans", "messages": 1}
+    assert "Old plans" not in listed_paths(mcp, token)
+
+    records = db_session.scalars(
+        select(AuditRecord).where(AuditRecord.user_id == user.id).order_by(AuditRecord.id)
+    ).all()
+    assert [(r.actor, r.action, r.result, r.client_id) for r in records] == [
+        ("agent", "folder_create", "ok", "client"),
+        ("agent", "folder_create", "ok", "client"),
+        ("agent", "folder_rename", "ok", "client"),
+        ("agent", "folder_create", "ok", "client"),
+        ("agent", "folder_delete", "ok", "client"),
+    ]
+
+
+def test_a_rename_whose_rule_sets_cannot_follow_says_so(
+    mcp: Mcp, token: str, mail: MailAccounts, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken(*_args: object) -> None:
+        raise RuntimeError
+
+    login = mail.add()
+    create_folders(mail.server, login, "Old")
+    monkeypatch.setattr(mail_service, "rewrite_folder", broken)
+    renamed = mcp.call(
+        token, "folder_rename", account_id="work", folder="Old", parent=None, name="New"
+    )
+    assert renamed["rule_sets_updated"] is False
+    assert "still name the old path" in renamed["note"]
+    assert "New" in listed_paths(mcp, token)
+
+
+def test_a_delete_is_refused_with_what_to_do_next_and_deletes_nothing(
+    mcp: Mcp, token: str, mail: MailAccounts, db_session: Session, user: User
+) -> None:
+    login = mail.add()
+    create_folders(mail.server, login, "Lists", "Named", "Trash")
+    mail.seed(login, mime("news"), folder="Lists")
+    changed = mcp.error(token, "folder_delete", account_id="work", folder="Lists", messages=0)
+    assert "It holds 1 message now; nothing was deleted." in changed
+    assert "call again with messages=1 only once they confirm" in changed
+
+    rule_set = add_rule_set(db_session, user.id, ["Named"], name="Newsletters")
+    in_use = mcp.error(token, "folder_delete", account_id="work", folder="Named", messages=0)
+    assert '"Newsletters"' in in_use
+    assert in_use.endswith(f"Rule set ids: {rule_set.id}.")
+
+    for folder in ("INBOX", "Trash"):
+        refused = mcp.error(token, "folder_delete", account_id="work", folder=folder, messages=0)
+        assert "nothing was deleted" not in refused  # the role refusal, not a count
+    assert {"Lists", "Named", "Trash"} <= listed_paths(mcp, token)
+    assert stored(mail, login, "Lists") == [("news", ())]
 
 
 # --- mail_draft and mail_send: ported from mailroom-mcp's draft-tools.it and send-tools.it ---

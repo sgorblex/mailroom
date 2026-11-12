@@ -80,10 +80,10 @@ describe('ConnectScreen', () => {
     expect(
       await screen.findByText(/your mail accounts, their folders and your filters/),
     ).toHaveTextContent(
-      'reading your messages and their attachments, organizing them (moving, trashing, flagging), writing drafts and sending mail',
+      "reading your messages and their attachments, organizing them (moving, trashing, flagging), creating, renaming and deleting folders (a deleted folder's mail is gone for good), writing drafts and sending mail",
     )
     // Italian says as much.
-    expect(itCommon.connect.access).toMatch(/messaggi.*allegati.*organizzazione \(spostamento, cestino, contrassegni\).*bozze.*invio di posta/)
+    expect(itCommon.connect.access).toMatch(/messaggi.*allegati.*organizzazione \(spostamento, cestino, contrassegni\).*eliminazione di cartelle.*persa per sempre.*bozze.*invio di posta/)
   })
 
   it('denies, going back with the refusal', async () => {

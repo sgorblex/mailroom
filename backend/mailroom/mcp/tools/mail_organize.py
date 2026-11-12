@@ -129,7 +129,7 @@ MAIL_ORGANIZE_TOOLS: Final[tuple[Tool[Any], ...]] = (
         title="Move messages to Trash",
         description=(
             "Move messages to the account's Trash folder; they can be moved back with "
-            "messages_move. Mailroom never deletes permanently (the server may still empty "
+            "messages_move. It never deletes permanently (the server may still empty "
             "Trash on its own schedule, as Gmail does after 30 days)."
         ),
         group="mail_organize",

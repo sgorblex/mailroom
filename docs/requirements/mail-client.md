@@ -246,6 +246,10 @@ CSRF as for every state-changing route. Errors: 400 `invalid_argument`, 404 `not
 while the server may finish it: the next listing shows the outcome, and a rename that finished
 late still points its rule sets at the new path.
 
+The MCP tools `folder_create`, `folder_rename` and `folder_delete` (group `mail_folders`,
+[`mcp.md`](mcp.md)) are these routes for an agent; `folder_delete` is destructive and only for the
+user's explicit request.
+
 ## Slice C: drafts and send
 
 Slice C lets the user write mail in the web client and lets agents do the same through the MCP
