@@ -59,6 +59,26 @@ in the browser, tried with a dry run, and run by the worker. Product scope:
   first 200 matches per filter, with the total. A run cut short by the worker stopping is closed
   as `interrupted` when the worker starts again.
 
+### Folders renamed or deleted
+
+A rule set names a folder by its own `folder`, a filter by the `folder` of a `move_to` or
+`trash` action anywhere in its spec (in a `seq` at any depth); either names the folder and every
+folder under it. Segments compare exactly, but for a leading `INBOX`, in any case
+(`mailroom.filters.folders`). When the user renames or moves a folder in the mail client
+([`mail-client.md`](mail-client.md) — *Folder management*):
+
+- **A rename** points every such rule set and filter action of the account at the new path, in
+  one transaction, **enabled rule sets included**: they keep acting on the same folder, so this
+  is no edit of what runs, and it is made even where an edit needs the rule set disabled first
+  (the MCP write tools). A `new_mail` rule set's IDLE watch moves to the new path at the worker's next reconcile
+  (30 s). A run going on meanwhile may fail `mailbox_missing`. When the database step fails, the
+  folder is renamed and the rule sets still name the old path: the answer says so
+  (`rule_sets_updated: false`) and the user points them again.
+- **A delete** is refused while any rule set or filter action of the account names the folder
+  or one under it (`folder_in_use`, naming them), so that no rule set is left on a folder that
+  is gone. A rule set created between that check and the delete, or a folder deleted by another
+  mail client, leaves a rule set naming a missing folder: its runs fail `mailbox_missing`.
+
 ## Data model
 
 Schema `app`; every row belongs to the user who owns the account.

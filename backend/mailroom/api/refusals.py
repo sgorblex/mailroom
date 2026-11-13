@@ -22,6 +22,8 @@ _MAIL_STATUS: Final[dict[str, int]] = {
     "stale_reference": 409,
     "send_disabled": 409,
     "delivery_unknown": 409,
+    "folder_exists": 409,
+    "folder_changed": 409,
     "timeout": 504,
     "mailbox_missing": 404,
     "not_found": 404,

@@ -3,7 +3,9 @@
 The web mail client, built in slices. **Slice A (read)** is specified here and never changes the
 mailbox: not even `\Seen` is set by opening a message through the API or MCP. **Slice B
 (organize)** changes flags and folders, and never deletes. **Slice C (drafts and send)** writes
-mail: compose, reply, forward, drafts and sending. Product scope:
+mail: compose, reply, forward, drafts and sending. [**Folder management**](#folder-management)
+creates, renames and deletes folders: Mailroom deletes mail only deliberately, and a folder's
+delete is the one in the mail client. Product scope:
 [`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Mail client*. Rendering and IMAP come from
 **mailroom-core** (`render` and `mail`, connections in `mail.imap`; 0.1.2 for slices A and B, the
 0.1.3 for slice C's compose, drafts and send), over IMAP directly: no index and no
@@ -40,7 +42,7 @@ Behaviour is mailroom-core's `mail.organize` (`move_messages`, `archive_messages
 - **Archive:** move to the account's folder with role `archive`. The web toolbar hides the action
   for an account without one.
 - **Trash:** move to the account's folder with role `trash`. This is never a permanent delete:
-  mailroom does not delete mail.
+  organizing deletes no mail (deleting a whole folder is [its own action](#folder-management)).
 - **Flag:** set or clear `\Seen` (read/unread) and `\Flagged` (star/unstar); `seen`, `flagged` or
   both. Only these two flags can be changed. The answer reads them back per message.
 
@@ -92,8 +94,9 @@ INBOX is matched case-insensitively, as everywhere.
 
 ### Never expunge
 
-Mailroom never deletes mail and expunges nothing it did not move, apart from
-[the own-draft exception](#the-own-draft-exception). With the `MOVE` extension a move
+Organizing deletes no mail, and Mailroom expunges nothing it did not move, apart from
+[the own-draft exception](#the-own-draft-exception); mail is lost for good only deliberately: a
+filter's `delete` and a [folder's delete](#folder-management). With the `MOVE` extension a move
 is one command. Without it but with `UIDPLUS`, it is `UID COPY`, `UID STORE +FLAGS \Deleted` and
 `UID EXPUNGE` of **exactly those UIDs**. A server with neither is refused (`unsupported`) rather
 than risk a plain `EXPUNGE` that would remove other messages already marked `\Deleted`.
@@ -188,6 +191,60 @@ several. mailroom-core returns an audit item per message
 result), which the app keeps in the user's audit trail, from the web as from MCP
 ([`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *Audit trail*); its logs
 keep counts and codes only, never these fields.
+
+## Folder management
+
+The user creates, renames and deletes an account's folders; mailroom-core's `create_folder`,
+`rename_folder` and `delete_folder` ([`../core.md`](../core.md) — *Folders*), each on one
+connection with no mailbox selected, every check there.
+
+- **Create** a folder under a parent (`null`: the top level), subscribed. Refused when it exists
+  (`folder_exists`) or the parent is not listed (`mailbox_missing`).
+- **Rename**, which also moves a folder in the hierarchy: its subfolders, their mail and their
+  subscriptions go with it. Every rule set and filter action (`move_to`, `trash`) of the account
+  that names the folder or one under it is pointed at the new path, enabled ones included: they
+  keep acting on the same folder ([`filters.md`](filters.md) — *Folders renamed or deleted*). The
+  answer lists them. When that database step fails, the rename stands and the answer says
+  `rule_sets_updated: false`; nothing renames the folder back (that would be another write that
+  can fail).
+- **Delete** a folder **and its mail, for good**: not to Trash, and nothing recovers it. The
+  caller sends `messages`, the count it showed the user and the user confirmed; the server reads
+  the count again (STATUS) and refuses with `folder_changed`, carrying the new `messages`, when
+  it differs. Refused, before the folder is touched, while any rule set or filter action of the
+  account names the folder or one under it (`folder_in_use`, listing up to 10 of them as
+  `rule_sets: [{id, name}]`), and while the folder has subfolders (`\Noselect` ones too). On
+  Gmail a folder is a label: its mail stays in All Mail. Mail that arrives between the count and
+  the delete goes with the folder; IMAP cannot close that window, the count keeps it to seconds.
+
+Names: 1 to 255 characters, no control characters, no delimiter, `*` or `%`, no leading or
+trailing space, not `INBOX` at the top level; at most 32 levels and 1,000 characters, for every
+subfolder a rename moves too (`invalid_argument`). INBOX and the folders with a role (Sent,
+Drafts, Trash, Junk, Archive, All, Flagged, by special-use or by name) are never renamed or
+deleted, nor a folder holding one renamed (`invalid_argument`).
+
+Every call is recorded in the audit trail, refused ones included: `folder_create` (`folder`),
+`folder_rename` (`folder`, `destination`, and the `rule_sets` and `filters` ids it changed, or
+`rule_sets_error: true`), `folder_delete` (`folder`, `messages`). Its log lines,
+`mail_folder_created`, `mail_folder_renamed` and `mail_folder_deleted`, carry `via`,
+`account_id`, `outcome`, `duration_ms` and counts (`rule_sets`, `filters`, `rule_sets_updated`,
+`messages`), never a folder's name. The standing safeguards of a permanent delete:
+[`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *Security*, *The app*.
+
+| Route | Body | Answer |
+| --- | --- | --- |
+| `GET /accounts/{account_id}/folders?all=true` | | The [listing](#get-accountsaccount_idfolders) with the `\Noselect` folders too |
+| `POST /accounts/{account_id}/folders` | `{"parent": "Projects", "name": "2026"}` | `201` `{"account_id", "path"}` |
+| `POST /accounts/{account_id}/folders/rename` | `{"folder": "Projects/2026", "parent": null, "name": "2026"}` | `200` `{"account_id", "folder", "path", "rule_sets", "filters", "rule_sets_updated"}`: `folder` the old path, `path` the new one |
+| `POST /accounts/{account_id}/folders/delete` | `{"folder": "Projects/2026", "messages": 12}` | `200` `{"account_id", "folder", "messages"}` |
+
+Paths travel in the body, since they hold the delimiter. Unknown fields are 422; `parent` is
+required (`null` for the top level), so that a rename names where the folder goes; `folder` and
+`parent` are at most 1,000 characters and `name` 255; `messages` is a JSON integer, 0 or more.
+CSRF as for every state-changing route. Errors: 400 `invalid_argument`, 404 `not_found`
+(account) and `mailbox_missing`, 409 `folder_exists`, `folder_changed` and `folder_in_use`, 422,
+429, 502, 504. A create, rename or delete that outlives the 30 s deadline answers `timeout`
+while the server may finish it: the next listing shows the outcome, and a rename that finished
+late still points its rule sets at the new path.
 
 ## Slice C: drafts and send
 
@@ -563,8 +620,9 @@ Attachments are named by `ref` and `part` only: an agent never passes file conte
 Every route is under `/api/v1/mail`, needs a [user session](../GLOSSARY.md), and sees only the
 signed-in user's accounts. Reads are `GET` but search, a `POST` with a JSON body so that search
 terms (addresses, subjects, words of a body) are never in an API URL; the four organize routes
-(slice B) are `POST` too. Every response, the `401` of a missing or expired session included,
-carries `Cache-Control: private, no-store`. The SPA does keep a search
+(slice B) and the three folder writes ([folder management](#folder-management)) are `POST` too.
+Every response, the `401` of a missing or expired session included, carries `Cache-Control:
+private, no-store`. The SPA does keep a search
 in its own URL (`?q=`), so the access logs in front of it, the web image's nginx and the host's
 proxy, must log paths without their query string ([`../deploy.md`](../deploy.md)). Mail-derived strings (subject, names,
 previews, body) are raw text, never HTML: the client escapes them. Control and invisible
@@ -589,7 +647,8 @@ other route). The message is a fixed, secret-free text; server wording never rea
 malformed request (bad query value, wrong type) is FastAPI's 422 with its `detail` list, as
 elsewhere.
 
-Mailbox failures carry the 14 codes of mailroom-mcp, plus `delivery_unknown` (`src/imap/errors.ts`):
+Mailbox failures carry the 14 codes of mailroom-mcp, plus `delivery_unknown` (`src/imap/errors.ts`),
+and mailroom-core's `folder_exists` and `folder_changed`:
 
 | Code | Status | Message |
 | --- | --- | --- |
@@ -607,11 +666,15 @@ Mailbox failures carry the 14 codes of mailroom-mcp, plus `delivery_unknown` (`s
 | `rate_limited` | 429 | The limit is *N* per hour; the next send is possible at *time (UTC)*. |
 | `recipient_refused` | 422 | A recipient is not a deliverable address, or the mail server refused the message; nothing was sent. |
 | `delivery_unknown` | 409 | Delivery could not be confirmed: the message may already have gone out, so it was not sent again. |
+| `folder_exists` | 409 | A folder with that name already exists. |
+| `folder_changed` | 409 | The folder changed since it was read. It holds *N* messages now; nothing was deleted. (`detail.messages`: *N*.) |
 | `server_error` | 502 | The mail server reported an error. |
 
 The send group (`send_disabled`, `rate_limited`, `recipient_refused`, `delivery_unknown`) belongs
-to slice C; slices A and B never answer them. The app's own codes keep their statuses: `password_missing`
-and `draft_not_editable` 409, `secrets_key_missing` 503, an unknown account `not_found` 404
+to slice C; slices A and B never answer them, nor the folder group (`folder_exists`,
+`folder_changed`, [folder management](#folder-management)). The app's own codes keep their
+statuses: `password_missing`, `draft_not_editable` and `folder_in_use` (a rule set names the
+folder: `detail.rule_sets`, up to 10 `{id, name}`) 409, `secrets_key_missing` 503, an unknown account `not_found` 404
 (coded). A mailbox failure carrying a code not in this table keeps its code, with status 502. The
 account's login test, its folder listing and the filters' runs report mailbox failures with the
 same codes and messages. An `unreachable` whose cause is a TLS certificate that did not verify ends
@@ -639,15 +702,17 @@ as `Z`: `"2026-10-30T09:12:00Z"`), or `null` when the message has neither.
 {
   "account_id": "work",
   "folders": [
-    { "path": "INBOX", "role": "inbox", "unread": 3, "total": 120 },
-    { "path": "Archive/2025", "role": null, "unread": 0, "total": 842 }
+    { "path": "INBOX", "role": "inbox", "unread": 3, "total": 120, "delimiter": "/", "selectable": true },
+    { "path": "Archive/2025", "role": null, "unread": 0, "total": 842, "delimiter": "/", "selectable": true }
   ]
 }
 ```
 
 `role` is `inbox`, `sent`, `drafts`, `trash`, `junk`, `archive`, `all` or `flagged` (from the
-server's special-use flags and INBOX, else from a well-known name), else `null`. Unselectable
-folders (`\Noselect`) are left out. Order: the folders with a role first, in the order inbox,
+server's special-use flags and INBOX, else from a well-known name), else `null`. `delimiter` is
+the account's hierarchy delimiter (`null` on a server without one). Unselectable folders
+(`\Noselect`) are left out, unless `?all=true`: then they are listed too, `selectable: false`,
+counts 0 (a tree's parents). Order: the folders with a role first, in the order inbox,
 flagged, sent, drafts, all, archive, junk, trash, then the rest by path. Counts are always present
 here (STATUS; 0 for a folder whose STATUS failed). Errors: 404 `not_found` (account), 409, 502,
 504.

@@ -24,7 +24,7 @@ from sqlalchemy import delete, func, insert
 from mailroom.models import AuditRecord
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable, Iterable, Mapping
 
     from sqlalchemy.orm import Session, sessionmaker
 
@@ -198,17 +198,21 @@ class AuditTrail:
     origin: Origin
     action: str
 
-    def note(self, item: AuditItem) -> None:
-        self.notes((item,))
+    def note(self, item: AuditItem, extra: Mapping[str, object] | None = None) -> None:
+        """``item``'s record, with ``extra`` added to its detail: what the app did beside it (the
+        rule sets a folder's rename changed)."""
+        write_records(self.sessions, self.user_id, [self._entry(item, extra)])
 
     def notes(self, items: Iterable[AuditItem]) -> None:
         entries = [self._entry(item) for item in items]
         write_records(self.sessions, self.user_id, entries)
 
-    def _entry(self, item: AuditItem) -> Entry:
+    def _entry(self, item: AuditItem, extra: Mapping[str, object] | None = None) -> Entry:
         detail = {
             key: value for key, value in item.record.items() if key not in {"account", "result"}
         }
+        if extra:
+            detail.update(extra)
         return Entry(
             actor=self.origin.actor,
             action=self.action,

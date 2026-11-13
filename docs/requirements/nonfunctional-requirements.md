@@ -71,11 +71,22 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   CORS (any origin, no credentials), for browser-based MCP clients.
 - **Secrets** (account passwords, tokens) are sealed at rest as mailroom-core seals them and never
   appear in logs, errors or API responses. See *Mail accounts* below.
-- **Destructive actions** never expunge: trash moves to `\Trash`, as in mailroom-mcp. The one
-  exception is the removal of **a draft Mailroom wrote**, by `UID EXPUNGE` of exactly that UID
-  ([`mail-client.md`](mail-client.md), *The own-draft exception*); a draft written elsewhere goes
-  to Trash. Filters are outside this rule: a filter's `delete` action removes mail for good
-  ([`filters.md`](filters.md)).
+- **Deletes only deliberately.** Trash moves to `\Trash`, as in mailroom-mcp, and nothing is
+  expunged but what a move copied elsewhere and **a draft Mailroom wrote**, by `UID EXPUNGE` of
+  exactly that UID ([`mail-client.md`](mail-client.md), *The own-draft exception*); a draft
+  written elsewhere goes to Trash. Mail is lost for good only by a filter's `delete` action, the
+  user's own rule ([`filters.md`](filters.md)), and a **folder's delete**
+  ([`mail-client.md`](mail-client.md), *Folder management*). Every permanent delete, that one
+  and any later, keeps these safeguards:
+  - **a confirmation on the web** that says what goes for good (a folder's: its message count),
+    and a guard on the server that the thing confirmed is still what goes (the count read again:
+    `folder_changed`);
+  - **a destructive MCP tool** (`destructiveHint`), whose description says the loss is
+    permanent and that it is called only on the user's explicit request;
+  - **never a side effect**: it is its own call, never a step of another action (organizing,
+    `mail_organize`, never deletes permanently);
+  - **refusal tests**: each refusal is tested to leave the mailbox untouched;
+  - **an audit record** for each call, refused ones included.
 - **Sending** passes the send gate only: an `Admitted` token from `admit` is the one thing
   `deliver` takes, and the user's *Send* overrides a send mode except `off`. A send is counted and
   recorded before SMTP; a draft's send is keyed so it is delivered once (an agent's direct send has
@@ -395,7 +406,11 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   `mail_archived`, `mail_trashed` and `mail_flagged` carry `user_id`, `via`, `account_ids`,
   `ref_count`, `changed` (messages), `groups`, `failed_groups`, `codes` (the failed groups'),
   `outcome` (`ok`, `partial`, `refused`, `failed`, or the code of a refused call) and
-  `duration_ms`: counts and codes only, never a folder, a ref, a `Message-ID` or a sender. Search criteria travel
+  `duration_ms`: counts and codes only, never a folder, a ref, a `Message-ID` or a sender.
+  `mail_folder_created`, `mail_folder_renamed` and `mail_folder_deleted` carry `user_id`, `via`,
+  `account_id`, `outcome`, `duration_ms` and counts only (`rule_sets`, `filters`,
+  `rule_sets_updated`, `messages`); `folder_rule_sets_failed`, a rename whose rule sets could not
+  follow, the error's type. Search criteria travel
   in a `POST` body, so access logs (nginx's, the host proxy's) never see them, and the web
   image's nginx logs paths without their query string (a list's `folder`, a search the SPA keeps
   in its URL; [`../deploy.md`](../deploy.md)). A ref is in the path of the message routes, and it
@@ -429,12 +444,15 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
     mailroom-core produces an audit item for each draft and send (recipients, and a `removed` tag
     on a draft's removal), which goes to the audit trail (below), never to these logs.
 - **Audit trail** (`app.audit_record`, `mailroom.audit`): one record per message a write acted
-  on or tried to, refused attempts included: the item's fields (account, folder, UID,
-  `Message-ID`, sender and recipients in clear, the subject's SHA-256, destination, flags, junk,
-  removal, send mode and delivery stage) with who acted (`user` on the web, `agent` with the
-  MCP `client_id` and `grant_id`, or `filter`, a real run, with its `rule_set_id` and `run_id`),
-  the action (`move`, `archive`, `trash`, `flag`, `draft_save`, `draft_remove`, `send`, or the
-  filter's action as its report names it) and the result. A run records each message its report
+  on or tried to, and per folder created, renamed or deleted, refused attempts included: the
+  item's fields (account, folder, UID, `Message-ID`, sender and recipients in clear, the
+  subject's SHA-256, destination, flags, junk, removal, send mode and delivery stage, a deleted
+  folder's confirmed message count, the rule sets and filters a rename changed) with who acted
+  (`user` on the web, `agent` with the MCP `client_id` and `grant_id`, or `filter`, a real run,
+  with its `rule_set_id` and `run_id`),
+  the action (`move`, `archive`, `trash`, `flag`, `draft_save`, `draft_remove`, `send`,
+  `folder_create`, `folder_rename`, `folder_delete`, or the filter's action as its report names
+  it) and the result. A run records each message its report
   lists (the folder as its segments joined by `/`, UID, the sender's address, the date, the
   subject's hash, the filter's id and name), one more record counting those past the report's
   200, and, when the run failed partway, one `run_failed` record naming the filter it failed on,
