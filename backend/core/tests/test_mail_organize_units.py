@@ -221,7 +221,7 @@ class TestMove:
     def test_refusals(self) -> None:
         connections, client = stubbed({"MOVE"})
         cases = [
-            ("Nowhere", "mailbox_missing", '"Nowhere" is not a folder of acc; see folders.'),
+            ("Nowhere", "mailbox_missing", '"Nowhere" is not a folder of acc; list its folders.'),
             ("Parent", "mailbox_missing", "is not a folder of acc"),
             ("inbox", "invalid_argument", "They are already in that folder."),
             ("Drafts", "invalid_argument", "cannot be moved into Drafts or Sent"),

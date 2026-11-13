@@ -180,7 +180,7 @@ def move_target(source: str, target: str, folders: Sequence[Folder], *, account:
     if found is None or not found.selectable:
         raise MailError(
             "mailbox_missing",
-            f'"{clean_header(target, 200)}" is not a folder of {account}; see folders.',
+            f'"{clean_header(target, 200)}" is not a folder of {account}; list its folders.',
         )
     if found.path == source:
         raise MailError("invalid_argument", "They are already in that folder.")

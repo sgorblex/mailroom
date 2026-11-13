@@ -385,7 +385,8 @@ def _find(folders: Iterable[Folder], path: str) -> Folder | None:
 
 def _missing(path: str, account: str) -> MailError:
     return MailError(
-        "mailbox_missing", f'"{clean_header(path, 200)}" is not a folder of {account}; see folders.'
+        "mailbox_missing",
+        f'"{clean_header(path, 200)}" is not a folder of {account}; list its folders.',
     )
 
 
