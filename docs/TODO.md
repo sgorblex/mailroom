@@ -116,6 +116,7 @@ In this order, after *One IMAP stack* (*Family roadmap*): each builds on the one
 
 - [x] **First deploy** — production since 0.2.0: database and role `mailroom` on the shared
       Postgres, backup line, Quadlet units, Traefik route.
-- [x] **Release pipeline** — a release tag builds, pushes and deploys both images.
+- [x] **Release pipeline** — a release tag builds and pushes both images; the host's config
+      repository deploys them.
 - [ ] **Staging pipeline** — a staging instance, deployed from CI.
 - [ ] **Theme and design pass** — palette, typography, light/dark switch, app shell.

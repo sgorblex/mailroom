@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Builds mailroom-api then mailroom-web. With MAILROOM_REGISTRY set, nothing is pushed until both
-# have built, so a failed build never leaves :latest or :production in the registry split across
-# two releases. Each image's own tags (:<version>, :staging-<branch>-<sha>) are pushed first, the
-# moving ones (:latest, :production, :staging) last.
+# have built, so a failed build never leaves :latest in the registry split across two releases.
+# Each image's own tags (:<version>, :staging-<branch>-<sha>) are pushed first, the moving ones
+# (:latest, :staging) last.
 set -euo pipefail
 
 _repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

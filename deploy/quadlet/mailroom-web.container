@@ -3,8 +3,7 @@ Description=Mailroom web (nginx + static SPA, proxies /api to the API)
 Documentation=https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html
 
 [Container]
-Image=localhost/mailroom-web:production
-Label=io.containers.autoupdate=registry
+Image=localhost/mailroom-web:latest
 Pod=mailroom.pod
 
 [Service]

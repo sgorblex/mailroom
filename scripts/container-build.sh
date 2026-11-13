@@ -79,11 +79,11 @@ _build_date() {
   date -u +%Y-%m-%dT%H:%M:%SZ
 }
 
-# A tag that the next release moves (`:latest`, `:production`, `:staging`) rather than one that
+# A tag that the next release moves (`:latest`, `:staging`) rather than one that
 # names a single build.
 _is_moving_tag() {
   case "${1##*:}" in
-    latest | production | staging) return 0 ;;
+    latest | staging) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -151,10 +151,10 @@ if [[ -n "${CI_COMMIT_TAG:-}" && "${CI_COMMIT_TAG}" != "v${semver}" ]]; then
   exit 1
 fi
 if [[ "$release" == "production" && "$semver" == *-* ]]; then
-  # A pre-release never becomes :production or :latest, so nothing deploys it.
+  # A pre-release never becomes :latest.
   tags=(-t "${image}:${semver}")
 elif [[ "$release" == "production" ]]; then
-  tags=(-t "${image}:${semver}" -t "${image}:latest" -t "${image}:production")
+  tags=(-t "${image}:${semver}" -t "${image}:latest")
 else
   tags=(-t "${image}:staging")
   if [[ -n "$GIT_BRANCH" && -n "$GIT_SHA" ]]; then

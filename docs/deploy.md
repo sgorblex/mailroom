@@ -1,8 +1,9 @@
 # Deploy
 
 **Runs in production since 0.2.0** (28 October 2026), on the operator's host, from the Quadlet units
-below adapted to it. There is no staging yet. A release tag builds, pushes and deploys both images
-([`requirements/ci-cd.md`](requirements/ci-cd.md) — *Release and deploy*).
+below adapted to it. There is no staging yet. A release tag builds and pushes both images, and the
+host's config repository deploys them ([`requirements/ci-cd.md`](requirements/ci-cd.md) — *Release
+and deploy*).
 
 ## Images
 
@@ -15,7 +16,7 @@ below adapted to it. There is no staging yet. A release tag builds, pushes and d
 standalone MCP server's image.
 
 ```bash
-mise run build-containers            # localhost/mailroom-{api,web}:{<version>,latest,production}
+mise run build-containers            # localhost/mailroom-{api,web}:{<version>,latest}
 mise run build-containers -- staging # :staging and :staging-<branch>-<sha>
 ```
 
