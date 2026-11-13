@@ -23,6 +23,10 @@ const mailFolderSchema = z.object({
   role: z.enum(FOLDER_ROLES).nullable(),
   unread: z.number(),
   total: z.number(),
+  /** The account's hierarchy delimiter; `null` on a server without one. */
+  delimiter: z.string().nullable(),
+  /** `false` for a level that holds only folders (`\Noselect`): no messages, counts 0. */
+  selectable: z.boolean(),
 })
 export type MailFolder = z.infer<typeof mailFolderSchema>
 
@@ -125,8 +129,9 @@ function withQuery(path: string, query: Record<string, string | number | boolean
   return text === '' ? path : `${path}?${text}`
 }
 
+/** Every folder of the account, the levels that hold only folders too (`selectable: false`). */
 export async function listMailFolders(accountId: string, signal?: AbortSignal): Promise<MailFolder[]> {
-  const list = await apiGetJson(`${accountPath(accountId)}/folders`, {
+  const list = await apiGetJson(`${accountPath(accountId)}/folders?all=true`, {
     init: { signal },
     schema: folderListSchema,
   })
@@ -239,7 +244,7 @@ export function archiveMessages(refs: string[], signal?: AbortSignal): Promise<O
   return organize('archive', { refs }, signal)
 }
 
-/** Moves them to Trash: mailroom never deletes mail. */
+/** Moves them to Trash, never deleting them. */
 export function trashMessages(refs: string[], signal?: AbortSignal): Promise<OrganizeGroup[]> {
   return organize('trash', { refs }, signal)
 }

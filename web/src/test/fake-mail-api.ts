@@ -13,10 +13,17 @@ import type {
   SendResult,
 } from '@/api/mail.ts'
 
+export type FakeFolder = Omit<MailFolder, 'delimiter' | 'selectable'> & Partial<Pick<MailFolder, 'delimiter' | 'selectable'>>
+
+/** A fake folder as the API lists it. */
+export function listedFolder(folder: FakeFolder): MailFolder {
+  return { delimiter: '/', selectable: true, ...folder }
+}
+
 export interface FakeMailState {
   accounts: string[]
-  /** Each account's folders. */
-  folders: Record<string, MailFolder[]>
+  /** Each account's folders; `delimiter` is `/` and `selectable` true unless they say otherwise. */
+  folders: Record<string, FakeFolder[]>
   /** `"<account>/<folder path>"` → its messages, newest (highest uid) first. */
   messages: Record<string, MessageItem[]>
   /** Message views by ref; `include_quoted=true` answers `quoted` instead when it has one. */
@@ -532,7 +539,7 @@ export function stubMailApi(state: FakeMailState): Mock {
         return notFound()
       }
       if (match[2] === 'folders') {
-        return json(200, { account_id: account, folders: state.folders[account] ?? [] })
+        return json(200, { account_id: account, folders: (state.folders[account] ?? []).map(listedFolder) })
       }
       const folder = query.get('folder') ?? 'INBOX'
       const all = state.messages[`${account}/${folder}`]

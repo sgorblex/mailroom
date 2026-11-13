@@ -22,6 +22,8 @@ function state(overrides: Partial<FakeMailState> = {}): FakeMailState {
         { path: 'Archive', role: 'archive', unread: 0, total: 2 },
         { path: 'Trash', role: 'trash', unread: 0, total: 0 },
         { path: 'Projects', role: null, unread: 0, total: 0 },
+        // Holds only folders: never a destination.
+        { path: 'Lists', role: null, unread: 0, total: 0, selectable: false },
       ],
       home: [
         { path: 'INBOX', role: 'inbox', unread: 0, total: 1 },
@@ -106,9 +108,9 @@ describe('triage', () => {
     expect(within(list).queryByRole('link', { name: /Message 9Preview/ })).not.toBeInTheDocument()
     expect(within(list).getAllByRole('listitem')).toHaveLength(3)
     expect(bodiesTo(fetchMock, '/api/v1/mail/messages/archive')).toEqual([{ refs: [unread?.ref, second?.ref] }])
-    const folders = screen.getByRole('list', { name: 'Folders of work' })
-    expect(within(folders).getByRole('link', { name: 'Inbox, 2 unread' })).toBeInTheDocument()
-    expect(within(folders).getByRole('link', { name: 'Archive, 1 unread' })).toBeInTheDocument()
+    const folders = screen.getByRole('tree', { name: 'Folders of work' })
+    expect(within(folders).getByRole('treeitem', { name: 'Inbox, 2 unread' })).toBeInTheDocument()
+    expect(within(folders).getByRole('treeitem', { name: 'Archive, 1 unread' })).toBeInTheDocument()
     // Only the first load of the list and of the folders: nothing was read again.
     expect(fetchMock.mock.calls.filter(([path]) => String(path).includes('/folders'))).toHaveLength(1)
   })
@@ -128,7 +130,23 @@ describe('triage', () => {
     expect(within(await messagesList()).queryByRole('link', { name: /Message 9Preview/ })).not.toBeInTheDocument()
   })
 
-  it('moves to a folder from the picker, without Drafts, Sent or the folder they are in', async () => {
+  it('offers no Archive when the archive folder only holds folders', async () => {
+    const folders = {
+      ...state().folders,
+      work: (state().folders['work'] ?? []).map((folder) =>
+        folder.role === 'archive' ? { ...folder, selectable: false } : folder,
+      ),
+    }
+    stubMailApi(state({ folders }))
+    renderMailApp('/mail')
+
+    const list = await messagesList()
+    await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 8' }))
+    expect(within(await actions()).getByRole('button', { name: 'Move to Trash' })).toBeInTheDocument()
+    expect(within(await actions()).queryByRole('button', { name: 'Archive' })).not.toBeInTheDocument()
+  })
+
+  it('moves to a folder from the picker, without Drafts, Sent, the folder they are in or a level holding only folders', async () => {
     const fetchMock = stubMailApi(state())
     renderMailApp('/mail')
 
@@ -224,10 +242,10 @@ describe('triage', () => {
 
     await userEvent.click(within(group).getByRole('button', { name: 'Mark as unread' }))
     expect(await within(list).findByRole('link', { name: /Unread:\s*Message 9Preview/ })).toBeInTheDocument()
-    const folders = screen.getByRole('list', { name: 'Folders of work' })
-    expect(within(folders).getByRole('link', { name: 'Inbox, 4 unread' })).toBeInTheDocument()
+    const folders = screen.getByRole('tree', { name: 'Folders of work' })
+    expect(within(folders).getByRole('treeitem', { name: 'Inbox, 4 unread' })).toBeInTheDocument()
     await userEvent.click(within(group).getByRole('button', { name: 'Mark as read' }))
-    expect(await within(folders).findByRole('link', { name: 'Inbox, 3 unread' })).toBeInTheDocument()
+    expect(await within(folders).findByRole('treeitem', { name: 'Inbox, 3 unread' })).toBeInTheDocument()
     expect(bodiesTo(fetchMock, '/api/v1/mail/messages/flag')).toEqual([
       { refs: [second?.ref], flagged: true },
       { refs: [second?.ref], flagged: false },
@@ -336,11 +354,11 @@ describe('triage', () => {
       item.ref === second?.ref ? { ...item, flags: { ...item.flags, seen: true } } : item,
     )
 
-    const folders = screen.getByRole('list', { name: 'Folders of work' })
-    await userEvent.click(within(folders).getByRole('link', { name: 'Projects' }))
+    const folders = screen.getByRole('tree', { name: 'Folders of work' })
+    await userEvent.click(within(folders).getByRole('treeitem', { name: 'Projects' }))
     expect(await screen.findByText('No messages in this folder.')).toBeInTheDocument()
     expect(screen.queryByRole('group', { name: 'Message actions' })).not.toBeInTheDocument()
-    await userEvent.click(within(folders).getByRole('link', { name: /^Inbox/ }))
+    await userEvent.click(within(folders).getByRole('treeitem', { name: /^Inbox/ }))
 
     const again = await messagesList()
     expect(within(again).getByRole('checkbox', { name: 'Select Message 9' })).not.toBeChecked()
@@ -399,10 +417,10 @@ describe('marking read on open', () => {
     renderMailApp('/mail')
 
     const list = await messagesList()
-    const folders = await screen.findByRole('list', { name: 'Folders of work' })
-    expect(within(folders).getByRole('link', { name: 'Inbox, 3 unread' })).toBeInTheDocument()
+    const folders = await screen.findByRole('tree', { name: 'Folders of work' })
+    expect(within(folders).getByRole('treeitem', { name: 'Inbox, 3 unread' })).toBeInTheDocument()
     await userEvent.click(within(list).getByRole('link', { name: /Unread:\s*Message 10Preview/ }))
-    expect(await within(folders).findByRole('link', { name: 'Inbox, 2 unread' })).toBeInTheDocument()
+    expect(await within(folders).findByRole('treeitem', { name: 'Inbox, 2 unread' })).toBeInTheDocument()
     expect(within(list).queryByRole('link', { name: /Unread:/ })).not.toBeInTheDocument()
     expect(bodiesTo(fetchMock, '/api/v1/mail/messages/flag')).toEqual([{ refs: [unread?.ref], seen: true }])
     // Nothing reported: it is not an action of the user's.
@@ -451,7 +469,7 @@ describe('marking read on open', () => {
     )
     renderMailApp(`/mail?message=${String(unread?.ref)}`)
     await screen.findByRole('region', { name: 'Message body' })
-    const folders = await screen.findByRole('list', { name: 'Folders of work' })
+    const folders = await screen.findByRole('tree', { name: 'Folders of work' })
     await waitFor(() => {
       expect(bodiesTo(fetchMock, FLAG)).toHaveLength(1)
     })
@@ -469,7 +487,7 @@ describe('marking read on open', () => {
     // Applied in that order too: unread, as chosen, and the count as it started.
     expect(await within(await messagesList()).findByRole('link', { name: /Unread:\s*Message 10Preview/ })).toBeInTheDocument()
     await waitFor(() => {
-      expect(within(folders).getByRole('link', { name: 'Inbox, 3 unread' })).toBeInTheDocument()
+      expect(within(folders).getByRole('treeitem', { name: 'Inbox, 3 unread' })).toBeInTheDocument()
     })
   })
 })

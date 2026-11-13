@@ -136,7 +136,7 @@ describe('composing', () => {
     const form = await compose(user)
     await user.type(field(form, 'Message'), 'Still here')
 
-    await user.click(await screen.findByRole('link', { name: 'Sent' }))
+    await user.click(await screen.findByRole('treeitem', { name: 'Sent' }))
     await screen.findByText('No messages in this folder.')
     expect(field(await composer(), 'Message')).toHaveValue('Still here')
     await user.click(screen.getByRole('link', { name: 'home' }))
@@ -1413,7 +1413,7 @@ describe('sending', () => {
     })
     const ref = fake.drafts?.[0]?.ref ?? ''
     fake.refuse = { [`POST /api/v1/mail/drafts/${ref}/send`]: refusal(status, code) }
-    await user.click(await screen.findByRole('link', { name: 'Drafts' }))
+    await user.click(await screen.findByRole('treeitem', { name: 'Drafts' }))
     await user.click(await screen.findByRole('link', { name: /sender|\(no subject\)/ }))
     const reopened = await composer('Draft')
     await user.click(within(reopened).getByRole('button', { name: 'Send' }))

@@ -10,7 +10,9 @@
     "loading": "Loading folders…",
     "loadFailed": "Could not list the folders.",
     "unread_one": "{{count}} unread",
-    "unread_other": "{{count}} unread"
+    "unread_other": "{{count}} unread",
+    "expand": "Expand",
+    "collapse": "Collapse"
   },
   "roles": {
     "inbox": "Inbox",

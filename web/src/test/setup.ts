@@ -20,4 +20,6 @@ Object.assign(HTMLDialogElement.prototype, {
 
 afterEach(() => {
   cleanup()
+  // What a screen keeps in the browser (the folder tree's open levels) does not leak into the next test.
+  window.localStorage.clear()
 })
