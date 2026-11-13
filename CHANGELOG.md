@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/sgorblex/mailroom/compare/v0.9.0...v0.9.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* **core:** a missing folder's refusal no longer names a retired tool ([#27](https://github.com/sgorblex/mailroom/issues/27)) ([e2b78a0](https://github.com/sgorblex/mailroom/commit/e2b78a0e5f3efcf942c4f019a442fbbcb017f44c))
+
 ## [0.9.0](https://github.com/sgorblex/mailroom/compare/v0.8.2...v0.9.0) (2026-11-13)
 
 
