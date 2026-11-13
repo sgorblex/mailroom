@@ -43,6 +43,8 @@ REFUSALS: Final[frozenset[AuditResult]] = frozenset(
         "too_large",
         "send_disabled",
         "rate_limited",
+        "folder_exists",
+        "folder_changed",
         # The mailbox lock was never acquired, so nothing was written.
         "busy",
     }
@@ -61,7 +63,7 @@ class AuditRecipients:
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class AuditItem:
-    """One message in a write call's audit record, with what happened to it."""
+    """One message, or one folder, in a write call's audit record, with what happened to it."""
 
     account: str
     folder: str | None = None
@@ -94,6 +96,8 @@ class AuditItem:
     """On a sent message: whether the copy reached Sent."""
     rejected: tuple[str, ...] | None = None
     """Recipients the server refused while taking the others."""
+    messages: int | None = None
+    """How many messages a deleted folder held, as the caller confirmed."""
     result: AuditResult
 
     @property

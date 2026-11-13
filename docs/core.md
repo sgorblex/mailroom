@@ -37,7 +37,7 @@ the tools answer with, and the app's MCP writes thin tools over it. The filter e
 | `crypto` | Sealed secrets |
 | `store` | `AccountStore` and core's migrations, in schema `core` |
 | `render` | Bodies to text, quotes, the untrusted-content envelope, `safe_html` |
-| `mail` | Connections (`mail.imap`), operations on a selected folder (`mail.selected`), IDLE (`mail.idle`), refs, read, organize, compose, drafts, the tools' text, audit items |
+| `mail` | Connections (`mail.imap`), operations on a selected folder (`mail.selected`), IDLE (`mail.idle`), refs, read, organize, folders (`mail.folders`), compose, drafts, the tools' text, audit items |
 | `send` | SMTP and the send gate |
 | `filters` | The filter engine: criteria, actions, rules as data (specs), runs, the runner and IDLE monitor, reports |
 | `testing` | A pytest plugin (no-network guard, store and mail fixtures) the app's tests load too |
@@ -194,6 +194,39 @@ EXPUNGE of exactly those UIDs itself, which only UIDPLUS allows; a server with n
 When that COPY succeeds and the removal fails, the group fails but keeps the copies' new refs, its
 error says they were copied but may not have been removed, so the move must not be repeated, and
 names the new refs, so a host raising it alone still shows them; its audit items carry `copied`.
+
+## Folders
+
+`mailroom_core.mail.folders`: `create_folder`, `rename_folder` (a move in the hierarchy too, its
+subfolders and their mail going with it) and `delete_folder` take the parent's path (None for the
+top level) and a name, and return a `FolderChange`. Each runs in one
+`MailConnections.with_connection` session, which leaves a mailbox a `with_mailbox` left selected
+with UNSELECT, or, on a server without it, opens a new connection, since CLOSE would expunge;
+readying the connection may be retried once, the session's work never. Every check runs on the
+session's own connection, LIST first. Each call notes exactly one `AuditItem` (`folder`, and
+`destination` on a rename or `messages` on a delete), refused ones included. Deliberate choices:
+
+- **Names:** 1 to `MAX_FOLDER_NAME` (255) characters, no control character, delimiter, `*` or
+  `%`, no leading or trailing space, not `INBOX` at the top level (`check_folder_name`). A path
+  nests at most `MAX_FOLDER_DEPTH` (32) levels and 1000 characters, checked for every subfolder
+  a rename moves too. A parent must be listed, `\Noselect` ones included (`mailbox_missing`),
+  and on a server without a delimiter there is none.
+- **Protected folders:** INBOX and the folders with a role are never renamed or deleted, and a
+  rename of a folder holding one is refused, as it would move it.
+- **A delete needs the count:** the caller passes the `messages` it saw and the user confirmed;
+  STATUS reads it again, and a different count is `FolderChangedError` (`folder_changed`, with
+  the new count), nothing deleted. A folder with subfolders (`subfolders_of`), `\Noselect`
+  ones too, is refused. Mail arriving between the STATUS and the DELETE goes with the folder,
+  which IMAP cannot prevent.
+- **Subscriptions** follow, best effort: a create subscribes, a rename moves the folder's and
+  its subfolders' subscriptions, a delete unsubscribes. A refusal there is logged, and the write
+  stands.
+- **Answers:** `[ALREADYEXISTS]` is `folder_exists`, as is a folder already listed; `[CANNOT]`
+  is `invalid_argument`; `[INUSE]` is `busy`. Mapped in this module only, so other commands
+  keep theirs.
+- **A lost answer:** when the CREATE, RENAME or DELETE itself fails as `unreachable` or
+  `timeout`, the folders are listed once more, outside the session, and a change that shows is a
+  success.
 
 ## Compose
 
@@ -385,12 +418,14 @@ share of the defence:
   (`\p{Cf}`) is removed from bodies and headers, and C0/C1 controls other than tab and newline; the
   count is reported, since hidden characters are themselves a phishing signal. Headers are
   flattened to one line (CR, LF, U+2028/9 become spaces) and capped at 998 characters.
-- **No destructive deletes:** trash moves to `\Trash`. Nothing is expunged but what a move has
-  copied elsewhere on a server without MOVE (*Organize*), and a draft Mailroom wrote itself
-  (`X-Mailroom-Draft`) when it is replaced or deleted, always by `UID EXPUNGE` of exactly those UIDs
-  (UIDPLUS required); a draft written anywhere else is moved to Trash. A filter's `delete`, the
-  user's own rule, is the one exception, and expunges exactly its UIDs too: without UIDPLUS it is
-  `unsupported`.
+- **Deletes only deliberately:** trash moves to `\Trash`. Nothing is expunged but what a move
+  has copied elsewhere on a server without MOVE (*Organize*), and a draft Mailroom wrote itself
+  (`X-Mailroom-Draft`) when it is replaced or deleted, always by `UID EXPUNGE` of exactly those
+  UIDs (UIDPLUS required); a draft written anywhere else is moved to Trash. Mail is lost for good
+  only on a deliberate act: a filter's `delete`, the user's own rule, which expunges exactly its
+  UIDs too (without UIDPLUS it is `unsupported`), and a folder's delete (*Folders*), which takes
+  the message count the caller confirmed and is refused when the folder holds another. Neither is
+  ever a side effect of another write.
 - **Audit items:** each write and send, refused ones included, yields items (which the app does
   not keep yet: [`TODO.md`](TODO.md)) naming the account,
   folder, UID, Message-ID, sender and recipients in clear, and the subject only as a SHA-256.
