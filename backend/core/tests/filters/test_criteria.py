@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime
 from itertools import pairwise
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -35,6 +35,8 @@ from mailroom_core.filters.criteria.flags import (
     IsUnstarred,
 )
 from mailroom_core.filters.criteria.subject import SubjectContains, SubjectIs, SubjectMatches
+from mailroom_core.mail import ParsedMessage, parsed_message
+from mailroom_core.render import Address
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -54,6 +56,14 @@ def _query_atoms(q: IMAPQuery) -> list[tuple[object, object]]:
     """Each (key, value) pair the query's criteria hold, groups flattened."""
     flat = list(_flat(q.criteria()))
     return list(pairwise(flat))
+
+
+def _parsed(**fields: Any) -> ParsedMessage:
+    """A parsed message with `fields` and nothing else."""
+    return ParsedMessage(
+        **{"sender": (), "to": (), "cc": (), "bcc": (), "subject": "", "date": None, "text": ""}
+        | fields
+    )
 
 
 class TestCriteriaCombination:
@@ -180,10 +190,9 @@ class TestAddressCriteria:
         """Test ToMatches default excludes CC and BCC."""
         from mailroom_core.filters.message import Message
 
-        parsed = MagicMock()
-        parsed.to = []
-        parsed.cc = [("Name", "cc@example.com")]
-        parsed.bcc = [("Name", "bcc@example.com")]
+        parsed = _parsed(
+            cc=(Address("Name", "cc@example.com"),), bcc=(Address("Name", "bcc@example.com"),)
+        )
         msg = Message(0, parsed, [])
         criterion = ToMatches(r".*@example\.com")
         assert criterion.func(msg) is False
@@ -247,15 +256,11 @@ class TestSubjectCriteria:
 
     def test_subject_is_select_exact_match(self) -> None:
         """SubjectIs.select matches only when parsed subject equals exactly."""
-        from mailparser.core import MailParser
-
         from mailroom_core.filters.message import Message
 
         exact = "Exact Subject"
-        p_match = MagicMock(spec=MailParser)
-        p_match.subject = exact
-        p_substring = MagicMock(spec=MailParser)
-        p_substring.subject = f"Re: {exact}"
+        p_match = _parsed(subject=exact)
+        p_substring = _parsed(subject=f"Re: {exact}")
         messages = {
             1: Message(1, p_match, []),
             2: Message(2, p_substring, []),
@@ -408,13 +413,11 @@ class TestCriteriaFiltering:
 
     def test_anything_select_returns_all_messages(self) -> None:
         """Test that Anything().select(messages) returns all messages."""
-        from mailparser.core import MailParser
-
         from mailroom_core.filters.message import Message
 
         criterion = Anything()
-        p1 = MagicMock(spec=MailParser)
-        p2 = MagicMock(spec=MailParser)
+        p1 = _parsed(subject="one")
+        p2 = _parsed(subject="two")
         messages = {1: Message(1, p1, []), 2: Message(2, p2, [])}
         result = criterion.select(messages)
         assert len(result) == 2
@@ -433,39 +436,28 @@ class TestCriteriaFiltering:
         assert ("SUBJECT", "Important") in atoms
 
     def test_body_contains_select_plain(self) -> None:
-        """BodyContains.select matches substring on normalized plain body."""
-        from mailparser.core import MailParser
-
+        """BodyContains.select matches substring on the decoded body."""
         from mailroom_core.filters.message import Message
 
-        p = MagicMock(spec=MailParser)
-        p.text_plain = ["hello invoice"]
-        p.text_html = []
+        p = _parsed(text="hello invoice")
         messages = {1: Message(1, p, [])}
         assert BodyContains("invoice").select(messages) == messages
         assert BodyContains("missing").select(messages) == {}
 
     def test_body_contains_select_html_fallback(self) -> None:
-        """When plain is empty, body text falls back to HTML parts."""
-        from mailparser.core import MailParser
-
+        """Without a plain part, the HTML's visible text is matched: across tags, never in them."""
         from mailroom_core.filters.message import Message
 
-        p = MagicMock(spec=MailParser)
-        p.text_plain = []
-        p.text_html = ["<b>secret</b>"]
-        messages = {1: Message(1, p, [])}
-        assert BodyContains("secret").select(messages) == messages
+        source = b"Content-Type: text/html; charset=utf-8\r\n\r\n<p class=x>total <b>due</b></p>"
+        messages = {1: Message(1, parsed_message(source), [])}
+        assert BodyContains("total due").select(messages) == messages
+        assert BodyContains("class").select(messages) == {}
 
     def test_body_matches_select_multiline_dotall(self) -> None:
         """BodyMatches uses re.search with DOTALL across newlines."""
-        from mailparser.core import MailParser
-
         from mailroom_core.filters.message import Message
 
-        p = MagicMock(spec=MailParser)
-        p.text_plain = ["line1\nline2"]
-        p.text_html = []
+        p = _parsed(text="line1\nline2")
         messages = {1: Message(1, p, [])}
         assert BodyMatches(r"line1.line2").select(messages) == messages
 

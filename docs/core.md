@@ -27,7 +27,7 @@ the tools answer with, and the app's MCP writes thin tools over it. The filter e
 | Crypto | `cryptography`: AES-256-GCM, HKDF. |
 | Validation | pydantic v2, for the config and the settings; TOML through `tomllib`. |
 | Store | Postgres through SQLAlchemy 2 (Core, synchronous) on psycopg 3, and Alembic. |
-| Filters | `mail-parser` parses the sources the engine fetches through `mail` for its predicates, until they read messages through core ([`TODO.md`](TODO.md) — *Engine parsing on core's MIME*); `regex` for user patterns, which can time out. |
+| Filters | `regex` for user patterns, which can time out. The sources the engine fetches are parsed by `mail` (`parsed_message`, on the standard library's `email` and core's own header decoding). |
 
 ## Modules
 
@@ -37,7 +37,7 @@ the tools answer with, and the app's MCP writes thin tools over it. The filter e
 | `crypto` | Sealed secrets |
 | `store` | `AccountStore` and core's migrations, in schema `core` |
 | `render` | Bodies to text, quotes, the untrusted-content envelope, `safe_html` |
-| `mail` | Connections (`mail.imap`), operations on a selected folder (`mail.selected`), IDLE (`mail.idle`), refs, read, organize, folders (`mail.folders`), compose, drafts, the tools' text, audit items |
+| `mail` | Connections (`mail.imap`), operations on a selected folder (`mail.selected`), IDLE (`mail.idle`), refs, read, organize, folders (`mail.folders`), messages parsed for the filters (`mail.parsed`), compose, drafts, the tools' text, audit items |
 | `send` | SMTP and the send gate |
 | `filters` | The filter engine: criteria, actions, rules as data (specs), runs, the runner and IDLE monitor, reports |
 | `testing` | A pytest plugin (no-network guard, store and mail fixtures) the app's tests load too |
@@ -355,9 +355,12 @@ or loaded from their data form. Its tests are in `tests/filters`.
 - **A criterion** has two halves that must agree: an IMAP SEARCH query (`IMAPQuery`, run by the
   server) and a predicate on the fetched `Message`. `is_efficient` says the query alone is exact,
   so nothing is fetched; a looser query (`SUBJECT` matches substrings, pattern criteria search
-  wider) is only a prefilter, and the predicate decides. `&`, `|` and `~` combine both halves,
-  efficient only if every operand is. `IMAPQuery.Deferred` builds its query at search time, for
-  criteria relative to the run (`OlderThanDays`).
+  wider) is only a prefilter, and the predicate decides. The predicate reads a `ParsedMessage`:
+  the first of each address field, decoded, the subject as the view shows it, the UTC date, and
+  as the body every inline plain-text part outside attached messages, else the HTML parts'
+  visible text (so a body pattern matches across tags and never inside them). `&`, `|` and `~`
+  combine both halves, efficient only if every operand is. `IMAPQuery.Deferred` builds its query
+  at search time, for criteria relative to the run (`OlderThanDays`).
 - **User patterns** compile when the criterion is built (a bad one is a `SpecError` on load) and
   match with `regex`, never `re`, under the process-wide match timeout (1 s for each match by
   default; past it, `MatchTimeoutError`).
@@ -379,8 +382,8 @@ or loaded from their data form. Its tests are in `tests/filters`.
   the same pull request.
 - **A run** (`Folder.run`, `run_into`) is one `with_mailbox` session for all the filters given,
   in order, each seeing what the earlier ones did: search, fetch only what the query cannot decide
-  (`fetch_sources`, which never sets `\Seen`, parsed by mail-parser; cached for the run, dropped
-  once acted on), act, or in a dry run only report, with the folder selected read-only (a dry run
+  (`fetch_sources`, which never sets `\Seen`, parsed by `parsed_message`; cached for the run,
+  dropped once acted on), act, or in a dry run only report, with the folder selected read-only (a dry run
   that lost its connection is retried once, its report started afresh). The folder's name is
   joined with the server's delimiter, asked before the session. Every search ANDs `UNDELETED`, so
   an original a move copied but could not expunge never matches again. `newest=n` (at least 1)

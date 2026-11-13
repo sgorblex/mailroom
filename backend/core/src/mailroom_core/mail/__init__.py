@@ -1,8 +1,8 @@
 """Mail over IMAP: connections and error mapping (`src/imap/`), the operations on a selected
 folder and the read and organize operations built on them, creating, renaming and deleting an
-account's folders, watching a folder through IDLE, and messages composed to be written
-(`src/mail/`, `src/mcp/tools/` minus the tool plumbing). Synchronous: an async host calls it
-from a worker thread."""
+account's folders, watching a folder through IDLE, messages parsed from their source for the
+filter engine, and messages composed to be written (`src/mail/`, `src/mcp/tools/` minus the tool
+plumbing). Synchronous: an async host calls it from a worker thread."""
 
 from mailroom_core.mail.attachments import AttachmentSource, attachments_from
 from mailroom_core.mail.audit import (
@@ -118,6 +118,7 @@ from mailroom_core.mail.pages import (
     preview_of,
     read_page,
 )
+from mailroom_core.mail.parsed import ParsedMessage, parsed_message
 from mailroom_core.mail.read import (
     MAX_BODY_BYTES,
     Attachment,
@@ -257,6 +258,7 @@ __all__ = [
     "OutgoingAttachment",
     "Page",
     "PageFailure",
+    "ParsedMessage",
     "Position",
     "Reachability",
     "Removal",
@@ -329,6 +331,7 @@ __all__ = [
     "outgoing_item",
     "page_text",
     "parse_ref",
+    "parsed_message",
     "part_content",
     "preview_of",
     "quoted_original",

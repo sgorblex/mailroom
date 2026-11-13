@@ -776,15 +776,6 @@ wheels = [
 ]
 
 [[package]]
-name = "mail-parser"
-version = "4.8.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/43/30/8e3a2559bb78ecbe4e3a9f0a9c50d332e0631ff0f0478f1205979c3f40fa/mail_parser-4.8.0.tar.gz", hash = "sha256:602e659b159652d378b0f9cce2d682bee692bedae72687786e2b2e52eaeb9afc", size = 2976254, upload-time = "2026-10-01T22:19:30.031Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/74/a1/3bb021d2f35ad523cb6fed8d9b6133d3116ded938b85acd9d452c012d854/mail_parser-4.8.0-py3-none-any.whl", hash = "sha256:119aed23c2056dd73b7d70b77e5caf1bc0cb3675ca50c1ff49b4b72296ffa9ca", size = 62568, upload-time = "2026-10-01T22:19:28.696Z" },
-]
-
-[[package]]
 name = "mailroom"
 version = "0.9.1"
 source = { editable = "." }
@@ -868,7 +859,6 @@ dependencies = [
     { name = "cryptography" },
     { name = "imapclient" },
     { name = "lxml" },
-    { name = "mail-parser" },
     { name = "nh3" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
@@ -888,7 +878,6 @@ requires-dist = [
     { name = "cryptography", specifier = ">=50.0.2" },
     { name = "imapclient", specifier = ">=4.1.0,<4.2" },
     { name = "lxml", specifier = ">=6.1.3" },
-    { name = "mail-parser", specifier = ">=4.8.0" },
     { name = "nh3", specifier = ">=0.3.7" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.6" },
     { name = "pydantic", specifier = ">=2.14.1" },

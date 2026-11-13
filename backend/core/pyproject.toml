@@ -13,8 +13,6 @@ dependencies = [
   "cryptography>=50.0.2",
   "imapclient>=4.1.0,<4.2",
   "lxml>=6.1.3",
-  # The filter engine parses fetched messages with it (mailroom_core.filters).
-  "mail-parser>=4.8.0",
   "nh3>=0.3.7",
   "psycopg[binary]>=3.3.6",
   "pydantic>=2.14.1",
