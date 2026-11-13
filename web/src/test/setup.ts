@@ -8,10 +8,12 @@ await i18nReady
 // Tests assert on the English copy whatever the machine's locale.
 await i18n.changeLanguage('en')
 
-// jsdom has `<dialog>` but not its methods.
+// jsdom has `<dialog>` but not its methods. As a browser does, opening it focuses the first thing in
+// it that takes focus.
 Object.assign(HTMLDialogElement.prototype, {
   showModal(this: HTMLDialogElement) {
     this.open = true
+    this.querySelector<HTMLElement>('input, select, textarea, button, a[href], [tabindex]:not([tabindex="-1"])')?.focus()
   },
   close(this: HTMLDialogElement) {
     this.open = false

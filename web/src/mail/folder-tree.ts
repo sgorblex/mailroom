@@ -111,3 +111,71 @@ export function initiallyExpanded(folders: readonly MailFolder[]): string[] {
   }
   return [...open]
 }
+
+/** Why an action is not offered on a folder; `null` where it is. */
+export type FolderRefusal = 'protected' | 'holdsRole' | 'hasSubfolders' | null
+
+/** A folder with a role, or the inbox, by name in any case. */
+function isProtected(folder: MailFolder): boolean {
+  return folder.role !== null || folder.path.toUpperCase() === 'INBOX'
+}
+
+function holdsProtected(node: FolderNode): boolean {
+  return node.children.some((child) => (child.folder !== null && isProtected(child.folder)) || holdsProtected(child))
+}
+
+/**
+ * What the server would refuse, said before asking it: INBOX and the folders with a role are
+ * never renamed or deleted, nor a folder holding one renamed, nor a folder with subfolders deleted.
+ */
+export function folderRefusals(node: FolderNode & { folder: MailFolder }): { rename: FolderRefusal; delete: FolderRefusal } {
+  if (isProtected(node.folder)) {
+    return { rename: 'protected', delete: 'protected' }
+  }
+  return {
+    rename: holdsProtected(node) ? 'holdsRole' : null,
+    delete: node.children.length > 0 ? 'hasSubfolders' : null,
+  }
+}
+
+export const MAX_FOLDER_NAME = 255
+
+export type NameProblem = 'empty' | 'tooLong' | 'characters' | 'spaces' | 'inbox'
+
+// eslint-disable-next-line no-control-regex -- control characters are what it finds
+const CONTROL = /[\u0000-\u001f\u007f]/
+
+/** What mailroom-core would refuse in a folder's name (`docs/core.md`, *Folders*); `null` when nothing. */
+export function nameProblem(name: string, delimiter: string | null, parent: string | null): NameProblem | null {
+  if (name === '') {
+    return 'empty'
+  }
+  if (name.length > MAX_FOLDER_NAME) {
+    return 'tooLong'
+  }
+  if (CONTROL.test(name) || name.includes('*') || name.includes('%') || (delimiter !== null && delimiter !== '' && name.includes(delimiter))) {
+    return 'characters'
+  }
+  if (name.trim() !== name) {
+    return 'spaces'
+  }
+  if (parent === null && name.toUpperCase() === 'INBOX') {
+    return 'inbox'
+  }
+  return null
+}
+
+/** The path of `name` under `parent` (`null`: the top level). */
+export function childPath(parent: string | null, name: string, delimiter: string | null): string {
+  return parent === null ? name : `${parent}${delimiter ?? ''}${name}`
+}
+
+/** `path` once `from` is renamed to `to`: itself or a folder under it moves along; any other stays. */
+export function renamedPath(path: string, from: string, to: string, delimiter: string | null): string {
+  return isWithin(path, from, delimiter) ? to + path.slice(from.length) : path
+}
+
+/** `path` and every folder under it. */
+export function isWithin(path: string, folder: string, delimiter: string | null): boolean {
+  return path === folder || (delimiter !== null && delimiter !== '' && path.startsWith(folder + delimiter))
+}

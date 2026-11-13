@@ -1,5 +1,6 @@
-import { useId, useMemo, useRef, useState, type KeyboardEvent, type ReactElement, type ReactNode } from 'react'
+import { useCallback, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactElement, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { Link } from '@tanstack/react-router'
 import {
   Archive,
@@ -9,6 +10,7 @@ import {
   FolderClosed,
   Inbox,
   Mails,
+  MoreHorizontal,
   Send,
   ShieldAlert,
   Star,
@@ -17,9 +19,21 @@ import {
 } from 'lucide-react'
 
 import type { FolderRole, MailFolder } from '@/api/mail.ts'
+import { Menu, type MenuItem } from '@/components/ui/menu.tsx'
 import { cn } from '@/lib/utils.ts'
 
-import { accountDelimiter, ancestorPaths, folderTree, initiallyExpanded, subtreeUnread, visibleNodes, type FolderNode } from './folder-tree.ts'
+import type { FolderDialog } from './folder-dialogs.tsx'
+import {
+  accountDelimiter,
+  ancestorPaths,
+  folderRefusals,
+  folderTree,
+  initiallyExpanded,
+  subtreeUnread,
+  visibleNodes,
+  type FolderNode,
+  type FolderRefusal,
+} from './folder-tree.ts'
 import { MAIL_NS } from './i18n.ts'
 import { isSameFolder } from './triage-context.ts'
 
@@ -57,22 +71,24 @@ function storeExpanded(account: string, paths: ReadonlySet<string>): void {
 
 /**
  * The open levels of `account`'s tree: as this browser kept them, else those above the role
- * folders and the folder shown; the levels above the folder shown open whenever it changes.
+ * folders and the folder shown; the levels above the folder shown, and above `reveal` (a folder
+ * just created or renamed), open whenever they change.
  */
 function useExpanded(
   account: string,
   folders: readonly MailFolder[],
   current: string | null,
+  reveal: string | null,
 ): [ReadonlySet<string>, (path: string, open: boolean) => void] {
   const delimiter = accountDelimiter(folders)
   const above = (path: string | null): string[] => (path === null ? [] : ancestorPaths(path, delimiter))
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(
-    () => new Set([...(storedExpanded(account) ?? initiallyExpanded(folders)), ...above(current)]),
+    () => new Set([...(storedExpanded(account) ?? initiallyExpanded(folders)), ...above(current), ...above(reveal)]),
   )
-  const [shownFor, setShownFor] = useState(current)
-  if (shownFor !== current) {
-    setShownFor(current)
-    setExpanded((value) => new Set([...value, ...above(current)]))
+  const [shownFor, setShownFor] = useState([current, reveal])
+  if (shownFor[0] !== current || shownFor[1] !== reveal) {
+    setShownFor([current, reveal])
+    setExpanded((value) => new Set([...value, ...above(current), ...above(reveal)]))
   }
   const setOpen = (path: string, open: boolean): void => {
     const next = new Set(expanded)
@@ -94,27 +110,40 @@ interface TreeState {
   setOpen: (path: string, open: boolean) => void
   tabStop: string | undefined
   setFocused: (path: string) => void
+  /** Opens the actions menu of the folder at `path`; absent where there are none. */
+  openMenu: ((path: string) => void) | null
 }
 
 /**
  * An account's folders as a tree (the ARIA tree pattern): each level opens and closes, ↑ and ↓
  * move, → and ← open and close, Enter opens the folder. A level that holds only folders is not a
- * link, and a closed one shows the unread count of everything under it.
+ * link, and a closed one shows the unread count of everything under it. With `onAction`, each
+ * listed folder has a menu (its ⋯ button, or Shift+F10 / the context-menu key): a new subfolder,
+ * rename or move, delete, each disabled with the reason where the server would refuse it.
  */
 export function FolderTree({
   accountId,
   folders,
   current,
+  reveal = null,
   label,
+  onAction,
 }: {
   accountId: string
   folders: readonly MailFolder[]
   current: string | null
+  reveal?: string | null
   label: string
+  onAction?: (dialog: FolderDialog) => void
 }): ReactElement {
+  const { t } = useTranslation(MAIL_NS)
   const roots = useMemo(() => folderTree(folders), [folders])
-  const [expanded, setOpen] = useExpanded(accountId, folders, current)
+  const [expanded, setOpen] = useExpanded(accountId, folders, current, reveal)
   const [focused, setFocused] = useState<string | null>(null)
+  const [menuFor, setMenuFor] = useState<{ node: FolderNode & { folder: MailFolder }; anchor: HTMLElement } | null>(null)
+  const closeMenu = useCallback(() => {
+    setMenuFor(null)
+  }, [])
   const treeRef = useRef<HTMLUListElement>(null)
   const shown = visibleNodes(roots, expanded)
   const tabStop =
@@ -122,12 +151,33 @@ export function FolderTree({
     shown.find(({ node }) => current !== null && isSameFolder(node.path, current))?.node.path ??
     shown[0]?.node.path
 
+  function itemAt(path: string): HTMLElement | undefined {
+    return [...(treeRef.current?.querySelectorAll<HTMLElement>('[role="treeitem"]') ?? [])].find(
+      (element) => element.dataset['path'] === path,
+    )
+  }
+
+  const openMenu =
+    onAction === undefined
+      ? null
+      : (path: string): void => {
+          if (menuFor?.node.path === path) {
+            setMenuFor(null)
+            return
+          }
+          const node = shown.find((entry) => entry.node.path === path)?.node
+          const anchor = itemAt(path)
+          if (node?.folder != null && anchor !== undefined) {
+            setMenuFor({ node: { ...node, folder: node.folder }, anchor })
+          }
+        }
+
   function focusAt(index: number): void {
     treeRef.current?.querySelectorAll<HTMLElement>('[role="treeitem"]')[index]?.focus()
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLUListElement>): void {
-    if (event.ctrlKey || event.metaKey || event.altKey || !(event.target instanceof Element)) {
+    if (event.ctrlKey || event.metaKey || event.altKey || !(event.target instanceof Element) || event.target.closest('[role="treeitem"]') === null) {
       return
     }
     const path = event.target.closest('[role="treeitem"]')?.getAttribute('data-path')
@@ -138,6 +188,11 @@ export function FolderTree({
     }
     const branch = entry.node.children.length > 0
     const open = branch && expanded.has(entry.node.path)
+    if (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
+      openMenu?.(entry.node.path)
+      event.preventDefault()
+      return
+    }
     switch (event.key) {
       case 'ArrowDown':
         focusAt(index + 1)
@@ -178,15 +233,66 @@ export function FolderTree({
     event.preventDefault()
   }
 
-  const tree: TreeState = { accountId, current, expanded, setOpen, tabStop, setFocused }
+  const tree: TreeState = { accountId, current, expanded, setOpen, tabStop, setFocused, openMenu }
   return (
-    // The keys belong to the treeitems inside; the tree handles them in one place.
-    <ul ref={treeRef} role="tree" aria-label={label} className="flex flex-col gap-px" onKeyDown={onKeyDown}>
-      {roots.map((node) => (
-        <TreeItem key={node.path} node={node} level={1} tree={tree} />
-      ))}
-    </ul>
+    <>
+      {/* The keys belong to the treeitems inside; the tree handles them in one place. */}
+      <ul ref={treeRef} role="tree" aria-label={label} className="flex flex-col gap-px" onKeyDown={onKeyDown}>
+        {roots.map((node) => (
+          <TreeItem key={node.path} node={node} level={1} tree={tree} />
+        ))}
+      </ul>
+      {menuFor !== null && onAction !== undefined && (
+        <Menu
+          label={t('folderActions.menu', { name: menuFor.node.folder.role === null ? menuFor.node.name : t(`roles.${menuFor.node.folder.role}`) })}
+          anchor={menuFor.anchor}
+          items={actionItems(t, menuFor.node, accountDelimiter(folders) !== null, onAction)}
+          onClose={closeMenu}
+        />
+      )}
+    </>
   )
+}
+
+const REFUSALS = {
+  protected: 'folderActions.protected',
+  holdsRole: 'folderActions.holdsRole',
+  hasSubfolders: 'folderActions.hasSubfolders',
+} as const
+
+function actionItems(
+  t: TFunction,
+  node: FolderNode & { folder: MailFolder },
+  hierarchy: boolean,
+  onAction: (dialog: FolderDialog) => void,
+): MenuItem[] {
+  const refused = folderRefusals(node)
+  const reason = (refusal: FolderRefusal): string | null => (refusal === null ? null : t(REFUSALS[refusal]))
+  const subfolder: MenuItem = {
+    label: t('folderActions.newSubfolder'),
+    onSelect: () => {
+      onAction({ kind: 'create', parent: node.folder.path })
+    },
+  }
+  return [
+    // A server without a hierarchy has no subfolders.
+    ...(hierarchy ? [subfolder] : []),
+    {
+      label: t('folderActions.rename'),
+      disabledReason: reason(refused.rename),
+      onSelect: () => {
+        onAction({ kind: 'rename', folder: node.folder })
+      },
+    },
+    {
+      label: t('folderActions.delete'),
+      disabledReason: reason(refused.delete),
+      destructive: true,
+      onSelect: () => {
+        onAction({ kind: 'delete', folder: node.folder })
+      },
+    },
+  ]
 }
 
 function TreeItem({ node, level, tree }: { node: FolderNode; level: number; tree: TreeState }): ReactElement {
@@ -200,6 +306,7 @@ function TreeItem({ node, level, tree }: { node: FolderNode; level: number; tree
   const Icon = !folder?.selectable ? FolderClosed : folder.role === null ? Folder : ROLE_ICONS[folder.role]
   const role = folder?.role ?? null
   const name = role === null ? node.name : t(`roles.${role}`)
+  const menu = folder !== null && tree.openMenu !== null
 
   const content: ReactNode = (
     <>
@@ -219,6 +326,8 @@ function TreeItem({ node, level, tree }: { node: FolderNode; level: number; tree
     'aria-level': level,
     'aria-expanded': branch ? open : undefined,
     'aria-owns': open ? groupId : undefined,
+    'aria-haspopup': menu ? 'menu' : undefined,
+    'aria-keyshortcuts': menu ? 'Shift+F10' : undefined,
     'data-path': node.path,
     title: node.path,
     onFocus: () => {
@@ -231,7 +340,7 @@ function TreeItem({ node, level, tree }: { node: FolderNode; level: number; tree
     <li role="none" className="flex flex-col">
       <div
         className={cn(
-          'flex items-center rounded-md',
+          'group/row flex items-center rounded-md',
           current ? 'bg-accent font-medium text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
         )}
       >
@@ -290,6 +399,29 @@ function TreeItem({ node, level, tree }: { node: FolderNode; level: number; tree
           >
             {content}
           </span>
+        )}
+        {menu && (
+          // Pointer only: from the keyboard, Shift+F10 on the folder opens the same menu.
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-hidden="true"
+            title={t('folderActions.more')}
+            // Focus stays in the tree, and the menu's click-outside does not see this press: a
+            // second click closes the menu instead of reopening it.
+            onMouseDown={(event) => {
+              event.preventDefault()
+            }}
+            onPointerDown={(event) => {
+              event.stopPropagation()
+            }}
+            onClick={() => {
+              tree.openMenu?.(node.path)
+            }}
+            className="mr-0.5 flex size-6 shrink-0 items-center justify-center rounded-sm opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 hover:bg-accent hover:text-foreground"
+          >
+            <MoreHorizontal aria-hidden="true" className="size-4" />
+          </button>
         )}
       </div>
       {open && (

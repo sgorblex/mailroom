@@ -28,6 +28,12 @@ export class ApiRequestError extends Error {
     }
     return undefined
   }
+
+  /** A field the refusal carries beside its code and message (`{"detail": {"messages": 3}}`). */
+  field(name: string): unknown {
+    const detail = errorDetail(this.body)
+    return typeof detail === 'object' && detail !== null ? (detail as Record<string, unknown>)[name] : undefined
+  }
 }
 
 function errorDetail(body: unknown): unknown {

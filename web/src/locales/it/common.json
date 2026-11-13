@@ -250,6 +250,9 @@
     "rateLimited": "Il limite orario di invii è raggiunto. Non è stato inviato nulla.",
     "recipientRefused": "Un destinatario non è un indirizzo raggiungibile, oppure il server di posta ha rifiutato il messaggio. Non è stato inviato nulla.",
     "deliveryUnknown": "Impossibile confermare la consegna: il messaggio potrebbe essere stato inviato.",
-    "draftNotEditable": "Questa bozza potrebbe essere già stata inviata, quindi non si può modificare."
+    "draftNotEditable": "Questa bozza potrebbe essere già stata inviata, quindi non si può modificare.",
+    "folderExists": "Esiste già una cartella con quel nome in quella posizione.",
+    "folderChanged": "La cartella è cambiata da quando sono stati contati i messaggi. Non è stato eliminato nulla.",
+    "folderInUse": "Alcune regole usano questa cartella. Non è stato eliminato nulla."
   }
 }

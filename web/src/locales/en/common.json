@@ -250,6 +250,9 @@
     "rateLimited": "The hourly send limit is reached. Nothing was sent.",
     "recipientRefused": "A recipient is not a deliverable address, or the mail server refused the message. Nothing was sent.",
     "deliveryUnknown": "Delivery could not be confirmed: the message may have been sent.",
-    "draftNotEditable": "This draft was sent, or may have been, so it can't be changed."
+    "draftNotEditable": "This draft was sent, or may have been, so it can't be changed.",
+    "folderExists": "A folder with that name already exists there.",
+    "folderChanged": "The folder changed since its messages were counted. Nothing was deleted.",
+    "folderInUse": "Rule sets use this folder. Nothing was deleted."
   }
 }

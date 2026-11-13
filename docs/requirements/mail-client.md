@@ -30,8 +30,11 @@ which are open per account (at first, those above the role folders; always those
 folder shown). A level that holds only folders (`\Noselect`, or not listed at all) is not a
 link, and a closed level shows the unread count of everything under it (All Mail and Starred
 left out, as they count it again). The move picker and the role actions (Archive, Trash, Drafts,
-Sent) use selectable folders only. The text body is the default; a message whose text body is
-empty opens on the HTML view. The HTML view is an
+Sent) use selectable folders only. Each listed folder has a menu (its ⋯ button, or Shift+F10 on
+it) to make a subfolder, rename or move it and delete it, and each account a button for a new
+top-level folder: see [*Folder management*](#folder-management) for what the web asks before
+each. The text body is the default; a message whose text body is empty opens on the HTML view.
+The HTML view is an
 `<iframe src="/api/v1/mail/messages/{ref}/html">` with `sandbox="allow-popups
 allow-popups-to-escape-sandbox"`, never `allow-scripts` or `allow-same-origin`. Links open
 top-level with `noopener noreferrer`. Security:
@@ -222,6 +225,16 @@ connection with no mailbox selected, every check there.
   `rule_sets: [{id, name}]`), and while the folder has subfolders (`\Noselect` ones too). On
   Gmail a folder is a label: its mail stays in All Mail. Mail that arrives between the count and
   the delete goes with the folder; IMAP cannot close that window, the count keeps it to seconds.
+
+**On the web** the actions live in the sidebar's folder menus. What the server would refuse is
+disabled with the reason (INBOX and role folders, a folder holding one for a rename, a folder with
+subfolders for a delete), and names are checked before they are sent. The rename dialog says
+that the rule sets follow the folder, and after a rename the screen follows the folder shown to
+its new path. **The delete is a confirmation:** the dialog counts the folder's messages afresh
+and asks "Delete “X” and its N messages for good? They do not go to Trash and cannot be
+recovered." (Cancel focused; the Gmail note on an account with All Mail). On `folder_changed` it
+shows the new count and asks again; on `folder_in_use` it lists the rule sets, each a link to
+its page. A deleted folder on screen gives way to the Inbox.
 
 Names: 1 to 255 characters, no control characters, no delimiter, `*` or `%`, no leading or
 trailing space, not `INBOX` at the top level; at most 32 levels and 1,000 characters, for every

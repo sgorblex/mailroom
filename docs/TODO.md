@@ -75,7 +75,7 @@ In order. The reasons are in [`CONTEXT.md`](CONTEXT.md) — *Where the family is
 
 In this order, after *One IMAP stack* (*Family roadmap*): each builds on the one before.
 
-- [ ] **Folder management** — create, rename (moving it in the hierarchy) and delete an account's
+- [x] **Folder management** — create, rename (moving it in the hierarchy) and delete an account's
       folders, from the web and MCP. A rename updates the rule sets that name the folder. The
       first change that deletes permanently also brings the safeguards every later one keeps:
       the docs' "never deletes permanently" becomes "deletes only deliberately" (the rule was

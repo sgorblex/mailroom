@@ -498,6 +498,52 @@ function composeRoutes(state: FakeMailState, url: URL, init?: RequestInit): Resp
   return json(200, draft)
 }
 
+/** The folder writes over `state.folders` (`/` the delimiter), or `null` for another route. */
+function folderRoutes(state: FakeMailState, url: URL, init?: RequestInit): Response | null {
+  const match = /^\/api\/v1\/mail\/accounts\/([^/]+)\/folders(?:\/(rename|delete))?$/.exec(url.pathname)
+  if (match === null || init?.method !== 'POST') {
+    return null
+  }
+  const account = decodeURIComponent(match[1] ?? '')
+  const folders = state.folders[account] ?? []
+  const body = JSON.parse(typeof init.body === 'string' ? init.body : '{}') as {
+    parent?: string | null
+    name?: string
+    folder?: string
+    messages?: number
+  }
+  const target = (): string => (body.parent == null ? String(body.name) : `${body.parent}/${String(body.name)}`)
+  if (match[2] === undefined) {
+    const path = target()
+    if (folders.some((each) => each.path === path)) {
+      return refuse(409, 'folder_exists')
+    }
+    state.folders[account] = [...folders, { path, role: null, unread: 0, total: 0 }]
+    return json(201, { account_id: account, path })
+  }
+  const from = String(body.folder)
+  const folder = folders.find((each) => each.path === from)
+  if (folder === undefined) {
+    return refuse(404, 'mailbox_missing')
+  }
+  if (match[2] === 'rename') {
+    const to = target()
+    const moved = (path: string): string => (path === from || path.startsWith(`${from}/`) ? to + path.slice(from.length) : path)
+    state.folders[account] = folders.map((each) => ({ ...each, path: moved(each.path) }))
+    state.messages = Object.fromEntries(
+      Object.entries(state.messages).map(([key, items]) => [key.startsWith(`${account}/`) ? `${account}/${moved(key.slice(account.length + 1))}` : key, items]),
+    )
+    return json(200, { account_id: account, folder: from, path: to, rule_sets: [], filters: [], rule_sets_updated: true })
+  }
+  if (body.messages !== folder.total) {
+    return json(409, {
+      detail: { code: 'folder_changed', message: 'The folder changed since it was read.', messages: folder.total },
+    })
+  }
+  state.folders[account] = folders.filter((each) => each !== folder)
+  return json(200, { account_id: account, folder: from, messages: folder.total })
+}
+
 /**
  * A fake mail API over `state`: `/api/v1/accounts` and the `/api/v1/mail` routes. A cursor is
  * `"before:<uid>"`, the uid of the last item shown, as opaque to the client as the real ones and,
@@ -531,6 +577,10 @@ export function stubMailApi(state: FakeMailState): Mock {
     const composed = composeRoutes(state, url, init)
     if (composed !== null) {
       return composed
+    }
+    const folderWrite = folderRoutes(state, url, init)
+    if (folderWrite !== null) {
+      return folderWrite
     }
     let match = /^\/api\/v1\/mail\/accounts\/([^/]+)\/(folders|messages)$/.exec(path)
     if (match !== null) {

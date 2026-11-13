@@ -89,7 +89,8 @@ How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-r
 **Maturity: Partial** — slice A (tier 1, read: REST, web and the `mail_read` MCP tools),
 slice B (tier 2 triage: move, archive, trash, flag, multi-select, shortcuts; REST, web and the
 `mail_organize` MCP tools) and slice C (compose, drafts and send: REST, web and the `mail_draft`
-and `mail_send` MCP tools), as specified in
+and `mail_send` MCP tools) and folder management (create, rename and delete, the folders as a
+tree in the sidebar; REST, web and the `mail_folders` MCP tools), as specified in
 [`requirements/mail-client.md`](requirements/mail-client.md), are in; slice C was also tried by hand in production (a send to oneself, Gmail drafts, a 25 MB
 attachment through the host's proxy). Gaps: the index and live updates.
 Target is

@@ -34,6 +34,9 @@
     "draft_save": "Bozza salvata",
     "draft_remove": "Bozza rimossa",
     "send": "Inviato",
+    "folder_create": "Cartella creata",
+    "folder_rename": "Cartella rinominata",
+    "folder_delete": "Cartella eliminata",
     "run_failed": "Esecuzione dei filtri non riuscita"
   },
   "results": {
@@ -69,7 +72,11 @@
     "error": "Errore",
     "date": "Data",
     "run": "Esecuzione",
-    "result": "Codice di esito"
+    "result": "Codice di esito",
+    "messages": "Messaggi",
+    "rule_sets": "Regole",
+    "filters": "Filtri",
+    "rule_sets_error": "Regole non aggiornate"
   },
   "values": {
     "yes": "Sì",
