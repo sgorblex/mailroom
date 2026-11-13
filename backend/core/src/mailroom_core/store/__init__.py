@@ -30,7 +30,7 @@ from mailroom_core.store.database import (
     run_migrations,
     upgrade,
 )
-from mailroom_core.store.schema import CORE_SCHEMA, NAMING_CONVENTION, STANDALONE_USER
+from mailroom_core.store.schema import CORE_SCHEMA, NAMING_CONVENTION
 
 __all__ = [
     "CORE_MIGRATIONS",
@@ -39,7 +39,6 @@ __all__ = [
     "NAMING_CONVENTION",
     "SEND_CEILING",
     "SETTINGS_HISTORY",
-    "STANDALONE_USER",
     "AccountStore",
     "FinishedSendState",
     "Json",

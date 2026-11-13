@@ -1,26 +1,10 @@
-"""Port of `src/crypto/sealed-secrets.test.ts`.
-
-Of its `stored secrets in the config` block, the case that reads the bootstrap is mailroom-mcp's
-(`mcp/tests/test_sealed_secrets.py`).
-"""
+"""Port of `src/crypto/sealed-secrets.test.ts`: sealing and opening, and the store keeping the
+sealed blobs with the settings."""
 
 import os
-import re
-import tomllib
-from typing import TYPE_CHECKING, NamedTuple
 
 import pytest
 
-from mailroom_core.config import (
-    ConfigError,
-    CoreSettings,
-    TimeZoneName,
-    core_settings_or_issues,
-    issues_text,
-    loaded_core,
-    sealed_env_secrets,
-    without_secret_envs,
-)
 from mailroom_core.crypto import (
     SealedSecretError,
     open_secret,
@@ -29,10 +13,6 @@ from mailroom_core.crypto import (
     secrets_subkey,
 )
 from mailroom_core.store import AccountStore, SecretChanges
-from mailroom_core.testing import config_env, local_config_text
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 key = secrets_subkey(os.urandom(32))
 
@@ -76,87 +56,6 @@ def test_seal_the_same_bytes_as_the_typescript_code(monkeypatch: pytest.MonkeyPa
     nonce = TS_BLOB[1:13]
     monkeypatch.setattr(sealed_secrets, "token_bytes", lambda _: nonce)
     assert seal_secret(secrets_subkey(TS_KEY), "acc", "password", "hunter2 ünïcode") == TS_BLOB
-
-
-# home's password already stored rather than named by variable.
-STORED_TEXT = local_config_text().replace(
-    'auth       = { type = "password", secret_env = "HOME_TOKEN" }',
-    'auth       = { type = "password" }',
-    1,
-)
-SUBKEY = secrets_subkey(bytes.fromhex("ab" * 32))
-ENV = config_env()
-UTC = TimeZoneName("UTC")
-
-
-class Seeded(NamedTuple):
-    settings: CoreSettings
-    secret_envs: Mapping[str, str]
-
-
-def seeded(text: str = STORED_TEXT) -> Seeded:
-    raw = tomllib.loads(text)
-    seed, secret_envs = without_secret_envs(
-        {key: raw[key] for key in ("limits", "account") if key in raw}
-    )
-    settings = core_settings_or_issues(seed)
-    if not isinstance(settings, CoreSettings):
-        raise ConfigError(f"invalid settings (test):\n{issues_text(settings)}")
-    return Seeded(settings, secret_envs)
-
-
-def test_take_secret_env_out_of_the_settings_and_seal_what_it_names() -> None:
-    assert 'auth       = { type = "password" }' in STORED_TEXT
-    parts = seeded()
-    assert dict(parts.secret_envs) == {"work": "WORK_APP_PASSWORD"}
-    assert [acc.auth.model_dump() for acc in parts.settings.account] == [
-        {"type": "password"},
-        {"type": "password"},
-    ]
-    sealed = sealed_env_secrets(SUBKEY, parts.secret_envs, ENV)
-    assert open_secret(SUBKEY, "work", "password", sealed["work"]) == "google-secret"
-    sealed["home"] = seal_secret(SUBKEY, "home", "password", "stored-token")
-    config = loaded_core(UTC, parts.settings, SUBKEY, sealed).config
-    assert config.secrets["home"] == "stored-token"
-    assert config.secrets["work"] == "google-secret"
-
-
-def test_refuse_to_seal_without_the_variable_or_a_secrets_key_naming_neither_value() -> None:
-    parts = seeded()
-    with pytest.raises(
-        ConfigError, match=r"^missing secrets in the environment: WORK_APP_PASSWORD$"
-    ):
-        sealed_env_secrets(SUBKEY, parts.secret_envs, {**ENV, "WORK_APP_PASSWORD": ""})
-    with pytest.raises(
-        ConfigError, match=re.escape("storing the passwords of work needs [auth] secrets_key_env")
-    ):
-        sealed_env_secrets(None, parts.secret_envs, ENV)
-    assert sealed_env_secrets(None, {}, ENV) == {}
-
-
-def test_leave_a_malformed_secret_env_for_the_schema_to_refuse() -> None:
-    malformed = STORED_TEXT.replace('secret_env = "WORK_APP_PASSWORD"', 'secret_env = "x y"', 1)
-    with pytest.raises(ConfigError, match="secret_env"):
-        seeded(malformed)
-
-
-def test_leave_out_an_account_whose_stored_secret_is_missing_or_does_not_open_saying_why() -> None:
-    settings = seeded().settings
-    missing = loaded_core(UTC, settings, SUBKEY)
-    assert missing.inactive == ("home", "work")
-    assert missing.config.accounts == ()
-    assert any(
-        'account "home" is not running: it has no stored password' in warning
-        for warning in missing.warnings
-    )
-
-    wrong = {"home": seal_secret(secrets_subkey(os.urandom(32)), "home", "password", "x")}
-    assert any(
-        "does not open with this secrets key" in warning
-        for warning in loaded_core(UTC, settings, SUBKEY, wrong).warnings
-    )
-    unkeyed = loaded_core(UTC, settings, None, wrong)
-    assert any("needs [auth] secrets_key_env" in warning for warning in unkeyed.warnings)
 
 
 def test_are_written_and_cleared_with_the_settings_in_one_save(core_engine) -> None:

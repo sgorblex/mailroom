@@ -1,8 +1,6 @@
-"""The example config and the mailbox secrets it names, as mailroom-mcp's `src/testing/fixtures.ts`
-has them.
-"""
+"""The example config, as the TypeScript server's `src/testing/fixtures.ts` had it: its accounts
+and limits are what core's config tests check."""
 
-import os
 import re
 from functools import cache
 from importlib.resources import files
@@ -24,12 +22,3 @@ def local_config_text() -> str:
     return re.sub(
         r'host = "[^"]+", port = \d+', 'host = "127.0.0.1", port = 9', example_config_text()
     )
-
-
-def config_env() -> dict[str, str]:
-    """The mailbox secrets the example config names, with a fresh secrets key."""
-    return {
-        "MAILROOM_SECRETS_KEY": os.urandom(32).hex(),
-        "HOME_TOKEN": "home-secret",
-        "WORK_APP_PASSWORD": "google-secret",
-    }

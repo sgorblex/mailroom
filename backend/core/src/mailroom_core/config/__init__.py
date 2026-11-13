@@ -1,4 +1,4 @@
-"""Accounts and limits: core's half of the config (`src/config/`), the rest being mailroom-mcp's."""
+"""Accounts and limits: core's config (ported from `src/config/`), checked as it is stored."""
 
 from mailroom_core.config.errors import (
     ConfigError,
@@ -7,13 +7,6 @@ from mailroom_core.config.errors import (
     issues_text,
     validation_issues,
 )
-from mailroom_core.config.load import (
-    CoreConfig,
-    LoadedCore,
-    loaded_core,
-    sealed_env_secrets,
-    without_secret_envs,
-)
 from mailroom_core.config.schema import (
     MAX_SAFE_INTEGER,
     SEND_MODES,
@@ -21,7 +14,6 @@ from mailroom_core.config.schema import (
     AccountConfig,
     CoreSettings,
     Endpoint,
-    EnvName,
     Identity,
     Limits,
     NonEmpty,
@@ -42,13 +34,10 @@ __all__ = [
     "AccountConfig",
     "ConfigError",
     "ConfigIssue",
-    "CoreConfig",
     "CoreSettings",
     "Endpoint",
-    "EnvName",
     "Identity",
     "Limits",
-    "LoadedCore",
     "NonEmpty",
     "PasswordAuth",
     "SendMode",
@@ -59,9 +48,6 @@ __all__ = [
     "config_problem",
     "core_settings_or_issues",
     "issues_text",
-    "loaded_core",
-    "sealed_env_secrets",
     "time_zone_name",
     "validation_issues",
-    "without_secret_envs",
 ]

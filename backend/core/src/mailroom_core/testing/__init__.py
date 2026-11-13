@@ -1,4 +1,4 @@
-"""Test support shared by mailroom-core, mailroom-mcp and the Mailroom app.
+"""Test support shared by mailroom-core and the Mailroom app.
 
 Loaded by pytest as a plugin (the `pytest11` entry point), it refuses sockets beyond this machine
 and the mail test servers, and provides the `imap_server`, `smtp_server` and `smtp_starttls_server`
@@ -7,7 +7,7 @@ seeds and inspects the IMAP test server, and `SmtpStub` is an SMTP server script
 Mailpit will not.
 """
 
-from mailroom_core.testing.config import config_env, local_config_text
+from mailroom_core.testing.config import local_config_text
 from mailroom_core.testing.database import Migrate, ThrowawayDatabases, schema_differences
 from mailroom_core.testing.imap import (
     MimeAttachment,
@@ -37,7 +37,6 @@ __all__ = [
     "SmtpStub",
     "SmtpTestServer",
     "ThrowawayDatabases",
-    "config_env",
     "connections_for",
     "create_folders",
     "folder_contents",

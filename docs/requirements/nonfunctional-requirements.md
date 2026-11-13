@@ -585,8 +585,7 @@ What they do and the route list: [`filters.md`](filters.md). How:
   table (`core.alembic_version`). Everything that migrates (API startup, `mise run migrate`,
   `reset-db`, the test databases, `check-migrations`) runs mailroom-core's `migrate` first, then
   the app's history, so app revisions may rely on `core`.
-- In production the database and role are **`mailroom`**; standalone mailroom-mcp uses
-  **`mailroom_mcp`**.
+- In production the database and role are **`mailroom`**.
 - Revisions are **timestamped** (`YYYYMMDDHHMM`, file `<rev>_<slug>.py`) and form one linear chain.
 - Every revision **downgrades**: `mise run check-migrations` runs upgrade → downgrade base →
   upgrade on a scratch database, locally and in CI.

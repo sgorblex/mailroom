@@ -14,6 +14,7 @@ from mailroom_core.mail import (
     MailConnections,
     MailError,
     SearchQuery,
+    ToolNames,
     folders_block,
     html_view,
     list_messages,
@@ -48,6 +49,9 @@ PDF = b"%PDF-1.4\n1 0 obj << >> endobj\ntrailer << >>\n%%EOF\n"
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
 )
+
+
+TOOL_NAMES = ToolNames(read="message_read", thread="thread_read", attachment="attachment_read")
 
 
 @pytest.fixture
@@ -105,7 +109,7 @@ def test_previews_html_as_read_renders_it(imap_server, harness) -> None:
     assert re.search(
         r" · Re: Dinner · unread · See you & the kids at 8 <3$", message.list_line("UTC")
     )
-    text = page_text(page, "No messages in INBOX.", "UTC")
+    text = page_text(page, "No messages in INBOX.", "UTC", tools=TOOL_NAMES)
     assert "&lt;" not in text
     assert "wrote" not in text
 
@@ -128,7 +132,7 @@ def test_pages_newest_first_and_new_mail_does_not_shift_the_pages(imap_server, h
     third = list_messages(mail, "acc", limit=2, cursor=second.next_cursor)
     assert [m.subject for m in third.messages] == ["message 1"]
     assert third.next_cursor is None
-    assert "no more" in page_text(third, "", "UTC")
+    assert "no more" in page_text(third, "", "UTC", tools=TOOL_NAMES)
 
 
 def test_reads_without_marking_read_with_attachments_and_quotes_collapsed(
@@ -156,21 +160,15 @@ def test_reads_without_marking_read_with_attachments_and_quotes_collapsed(
     assert "\\Seen" not in view.flags
     assert view.body is not None
     assert view.body.text.startswith("Here it is.\n\n[quoted text: 2 lines omitted")
-    text = read_text(view, offset=0, time_zone="UTC")
+    text = read_text(view, offset=0, time_zone="UTC", tools=TOOL_NAMES)
     assert "Subject: Report\n" in text
     assert "From: Maria Rossi <maria@example.org>" in text
     assert re.search(r"Attachment 2: report\.pdf \(application/pdf, \d+ B\)", text)
     assert re.search(r'<untrusted_email nonce="[\w-]+">', text)
     assert text.endswith(
-        "Open an attachment with the `attachment` tool: this ref and its part number."
+        "Open an attachment with the `attachment_read` tool: this ref and its part number."
     )
-    from mailroom_core.mail import ToolNames
-
-    tools = ToolNames(read="message_read", thread="thread_read", attachment="attachment_read")
-    hosted = read_text(view, offset=0, time_zone="UTC", tools=tools)
-    assert "`attachment_read` tool" in hosted
-    assert "`attachment`" not in hosted
-    listing = page_text(list_messages(mail, "acc"), "none", "UTC", tools=tools)
+    listing = page_text(list_messages(mail, "acc"), "none", "UTC", tools=TOOL_NAMES)
     assert listing.endswith("Pass a ref to message_read, thread_read or attachment_read.")
     own = read_message(mail, ref, marker=lambda what, lines: f"[{lines} lines of {what} hidden]")
     assert own.body is not None
@@ -194,7 +192,7 @@ def test_pages_a_long_body_with_offset(imap_server, harness) -> None:
     offset = first.body.next_offset
     assert offset is not None
     assert offset > 500
-    assert f"offset={offset}" in read_text(first, offset=0, time_zone="UTC")
+    assert f"offset={offset}" in read_text(first, offset=0, time_zone="UTC", tools=TOOL_NAMES)
     second = read_message(mail, ref, offset=offset, body_chars=1000)
     assert second.body is not None
     assert re.search(r"paragraph \d+", second.body.text)
@@ -537,7 +535,7 @@ def test_reports_a_failing_account_without_hiding_the_others(imap_server, harnes
     assert [m.subject for m in found.messages] == ["still here"]
     assert [(f.account, f.folder, f.code) for f in found.failures] == [("bad", None, "auth_failed")]
     assert "Could not read: bad: The mail server rejected the login" in page_text(
-        found, "No matching messages.", "UTC"
+        found, "No matching messages.", "UTC", tools=TOOL_NAMES
     )
     # One folder of a failing account: reported in the page, keeping its place.
     listed = list_messages(mail, "bad")

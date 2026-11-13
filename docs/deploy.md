@@ -12,8 +12,8 @@ and deploy*).
 | `mailroom-api` | `backend/Containerfile` (context: repository root) | uvicorn on 8000, non-root, migrates at startup; `/healthz` for the healthcheck. Also the worker (`python -m mailroom.worker`, one instance: it runs the filters and watches folders over IMAP IDLE), which never migrates |
 | `mailroom-web` | `web/Containerfile` (context: `web/`) | nginx on 8080, non-root, serves the SPA (`/connect` included), proxies `/api/`, `/mcp`, `/oauth/`, `/.well-known/oauth-` and `/.well-known/openid-configuration` to `127.0.0.1:8000`, sets the SPA's CSP |
 
-**Never name an image `mailroom`**: in the production registry, `mailroom:production` is the
-standalone MCP server's image.
+**Never name an image `mailroom`**: in the production registry, `mailroom` holds the retired
+standalone MCP server's images.
 
 ```bash
 mise run build-containers            # localhost/mailroom-{api,web}:{<version>,latest}
@@ -60,7 +60,7 @@ Specification: [`requirements/mcp.md`](requirements/mcp.md). Variables:
    authorization server, and `curl -X POST https://mail.example.com/mcp` answers 401 with a
    `WWW-Authenticate` naming that metadata.
 4. In claude.ai, add a custom connector named **Mailroom app** with the URL
-   `https://mail.example.com/mcp` (the standalone mailroom-mcp keeps its own connector).
+   `https://mail.example.com/mcp`.
 
 **Built-in mode** (`MAILROOM_MCP_AUTH=builtin`, the default) needs nothing else: claude.ai
 registers itself (DCR, or its client ID metadata document), and the user signs in and approves the

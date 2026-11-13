@@ -13,7 +13,6 @@ from sqlalchemy import text
 from mailroom_core.store import (
     CORE_MIGRATIONS,
     SETTINGS_HISTORY,
-    STANDALONE_USER,
     AccountStore,
     RevisionConflict,
     SecretChanges,
@@ -206,7 +205,8 @@ def test_key_the_rows_stored_before_users_to_the_standalone_user(throwaway_datab
             connection.execute(text("insert into core.sends (at) values (:at)"), {"at": T0})
         migrate(engine)
         assert schema_differences(engine, metadata) == []
-        owner = AccountStore(engine, STANDALONE_USER)
+        # v0002 gave the rows stored before users to "owner".
+        owner = AccountStore(engine, "owner")
         assert owner.settings().doc == {"n": 1}
         assert owner.secrets() == {"acc": b"x"}
         assert owner.sends_since(T0 - timedelta(seconds=1)).count == 1

@@ -2,8 +2,7 @@
 
 `src/store/db.ts` migrated its SQLite file on open with a list of SQL scripts; here each package
 keeps an Alembic history in its own schema, with the version table in that schema too, so
-mailroom-core's, mailroom-mcp's and a host app's histories share a database without seeing each
-other.
+mailroom-core's and a host app's histories share a database without seeing each other.
 """
 
 from pathlib import Path

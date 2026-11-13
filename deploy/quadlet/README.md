@@ -13,7 +13,7 @@ the unit. Broader context: [`docs/deploy.md`](../../docs/deploy.md).
 
 Images are `localhost/mailroom-api` and `localhost/mailroom-web` (`mise run build-containers`), or
 `<registry>/mailroom-api` / `mailroom-web` once pushed. **Never** `mailroom`: in the production
-registry that name is the standalone MCP server's image (`<registry>/mailroom:production`).
+registry that name holds the retired standalone MCP server's images.
 In production the host's config pins both as `<version>@sha256:…`, and Renovate proposes each new
 release there ([`docs/requirements/ci-cd.md`](../../docs/requirements/ci-cd.md) — *Release and
 deploy*); the units here take `:latest`.
@@ -30,4 +30,3 @@ The MCP server and SSO need `MAILROOM_PUBLIC_URL`, and the reverse proxy must pa
 *MCP server and OAuth*.
 
 Postgres is provided outside the pod (the host's shared `postgres`): database and role `mailroom`.
-Standalone mailroom-mcp uses `mailroom_mcp`.

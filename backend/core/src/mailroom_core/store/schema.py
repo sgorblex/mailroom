@@ -1,10 +1,9 @@
 """mailroom-core's tables, in schema `core`: core's part of `src/store/db.ts`.
 
-mailroom-mcp keeps its own tables in schema `mcp`, and a host such as the Mailroom app its own in
-another schema, each with its own Alembic history in the same database.
+A host such as the Mailroom app keeps its own tables in another schema, each with its own Alembic
+history in the same database.
 
-Every row belongs to one user (`user_id`), and nothing is shared between users: standalone there
-is only `STANDALONE_USER`, inside the Mailroom app each of its users.
+Every row belongs to one user (`user_id`), and nothing is shared between users.
 """
 
 from typing import Final
@@ -25,9 +24,6 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 
 CORE_SCHEMA: Final = "core"
-
-STANDALONE_USER: Final = "owner"
-"""The user of a standalone server, and of every row stored before users were keyed."""
 
 NAMING_CONVENTION: Final = {
     "ix": "ix_%(table_name)s_%(column_0_name)s",

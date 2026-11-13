@@ -23,18 +23,12 @@ if TYPE_CHECKING:
 class ToolNames:
     """The tools the hints in these texts point to, as the host names them."""
 
-    read: str = "read"
-    thread: str = "thread"
-    attachment: str = "attachment"
+    read: str
+    thread: str
+    attachment: str
 
 
-TYPESCRIPT_TOOLS: Final = ToolNames()
-"""The TypeScript server's names, which mailroom-mcp keeps."""
-
-
-def page_text(
-    page: Page, empty: str, time_zone: str, *, tools: ToolNames = TYPESCRIPT_TOOLS
-) -> str:
+def page_text(page: Page, empty: str, time_zone: str, *, tools: ToolNames) -> str:
     """A list or search result. `empty` is shown when nothing matched (`No messages in INBOX.`,
     `No matching messages.`)."""
     lines = page.lines(time_zone)
@@ -57,9 +51,7 @@ def empty_folder_text(folder: str) -> str:
     return f"No messages in {clean_header(folder, 200)}."
 
 
-def read_text(
-    view: MessageView, *, offset: int, time_zone: str, tools: ToolNames = TYPESCRIPT_TOOLS
-) -> str:
+def read_text(view: MessageView, *, offset: int, time_zone: str, tools: ToolNames) -> str:
     """A read result; `offset` is the one the view was read from."""
     sections = [header_block(view.header_view(), time_zone)]
     if view.raw_headers is not None:
