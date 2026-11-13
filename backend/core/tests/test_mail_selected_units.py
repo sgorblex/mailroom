@@ -188,7 +188,7 @@ def test_move_target() -> None:
     assert move_target("Projects", "inbox", FOLDERS, account="acc") == FOLDERS[0]
     assert move_target("INBOX", "Trash", FOLDERS, account="acc") == FOLDERS[3]
     for target, code, text in [
-        ("Nowhere", "mailbox_missing", '"Nowhere" is not a folder of acc; see folders.'),
+        ("Nowhere", "mailbox_missing", '"Nowhere" is not a folder of acc; list its folders.'),
         ("Parent", "mailbox_missing", '"Parent" is not a folder of acc'),
         ("Projects", "invalid_argument", "They are already in that folder."),
         ("Drafts", "invalid_argument", "cannot be moved into Drafts or Sent"),
