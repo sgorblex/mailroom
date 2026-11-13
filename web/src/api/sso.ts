@@ -19,6 +19,16 @@ export function ssoStartUrl(intent: 'login' | 'link', returnTo: string): string 
   return `${getApiBaseUrl()}/api/v1/auth/oidc/start?${query.toString()}`
 }
 
+/**
+ * Where the browser goes to sign in through the provider for an app's authorization request,
+ * when Mailroom only lets a sign-in through SSO answer one. The API comes back to its consent
+ * screen.
+ */
+export function mcpSignInUrl(requestId: string): string {
+  const query = new URLSearchParams({ intent: 'mcp', request: requestId })
+  return `${getApiBaseUrl()}/api/v1/auth/oidc/start?${query.toString()}`
+}
+
 export const identitySchema = z.object({
   id: z.number(),
   issuer: z.string(),

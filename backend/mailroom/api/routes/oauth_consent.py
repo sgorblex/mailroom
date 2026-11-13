@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, Depends, Path, Request, Response
 from pydantic import BaseModel, ConfigDict
 
-from mailroom.api.deps import CurrentUser, DbSession
+from mailroom.api.deps import CurrentUser, DbSession, SessionCookie
 from mailroom.errors import Refusal
 from mailroom.oauth import consent
 from mailroom.oauth.grants import user_grants
@@ -30,6 +30,9 @@ GrantId = Annotated[int, Path(ge=1, le=2**63 - 1)]
 RequestId = Annotated[str, Path(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")]
 
 _NO_SUCH_REQUEST = Refusal("not_found", "request_not_found", "No such authorization request")
+_SSO_REQUIRED = Refusal(
+    "conflict", "sso_required", "Sign in through single sign-on to answer this request"
+)
 
 
 class ConsentRequestOut(BaseModel):
@@ -70,13 +73,24 @@ def _host(url: str) -> str:
     return urlsplit(url).netloc
 
 
-@consent_router.get("/{request_id}", dependencies=[Depends(_oauth_server)])
+@consent_router.get("/{request_id}")
 def consent_request(
-    request_id: RequestId, response: Response, db: DbSession, user: CurrentUser
+    request_id: RequestId,
+    response: Response,
+    server: BuiltinOAuthServer,
+    db: DbSession,
+    user: CurrentUser,
+    session: SessionCookie = None,
 ) -> ConsentRequestOut:
     """The request, claimed for this user on first sight; 404 when it is unknown, expired, or
-    another user's."""
-    pending = consent.claim_pending_authorization(db, request_id, user.id)
+    another user's. In ``oidc`` mode only the SSO callback claims it, for the session it starts:
+    any other session gets 409 ``sso_required``."""
+    try:
+        pending = consent.claim_pending_authorization(
+            db, request_id, user.id, require_sso=server.settings.sso_sign_in, session=session
+        )
+    except consent.SsoRequiredError:
+        raise _SSO_REQUIRED from None
     if pending is None:
         raise _NO_SUCH_REQUEST
     response.headers["Cache-Control"] = "no-store"
@@ -96,10 +110,15 @@ def decide(
     server: BuiltinOAuthServer,
     db: DbSession,
     user: CurrentUser,
+    session: SessionCookie = None,
 ) -> Decided:
-    """Approve (a new connected app) or deny; either way the request is used up."""
+    """Approve (a new connected app) or deny; either way the request is used up. 409
+    ``sso_required`` as for the GET."""
     decide_with = consent.approve if body.decision == "approve" else consent.deny
-    redirect_to = decide_with(db, server.settings, request_id, user.id)
+    try:
+        redirect_to = decide_with(db, server.settings, request_id, user.id, session=session)
+    except consent.SsoRequiredError:
+        raise _SSO_REQUIRED from None
     if redirect_to is None:
         raise _NO_SUCH_REQUEST
     return Decided(redirect_to=redirect_to)
@@ -115,9 +134,10 @@ class ConnectedAppOut(BaseModel):
 
 
 class ConnectedAppsOut(BaseModel):
-    auth: Literal["builtin", "external", "off"]
-    """How MCP clients get tokens: ``external`` means the identity provider manages access, and
-    the grants listed are left from the built-in server."""
+    auth: Literal["builtin", "oidc", "external", "off"]
+    """How MCP clients get tokens: ``oidc`` is the built-in server signing users in through SSO;
+    ``external`` means the identity provider manages access, and the grants listed are left from
+    the built-in server."""
     grants: list[ConnectedAppOut]
 
 

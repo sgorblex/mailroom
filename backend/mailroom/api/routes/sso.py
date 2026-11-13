@@ -5,7 +5,8 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
+from urllib.parse import parse_qs, urlsplit
 
 from fastapi import APIRouter, Cookie, Query, Request
 from fastapi.responses import RedirectResponse
@@ -17,6 +18,7 @@ from mailroom.auth.oidc import OidcError
 from mailroom.auth.sessions import (
     SESSION_COOKIE_NAME,
     create_session,
+    end_session,
     session_cookie_attributes,
     session_ttl,
     session_user,
@@ -28,6 +30,7 @@ from mailroom.auth.sso import (
     MAX_RETURN_TO_LENGTH,
     MAX_STATE_LENGTH,
     STATE_TTL,
+    Completed,
     Sso,
     SsoError,
     begin,
@@ -40,6 +43,13 @@ from mailroom.auth.sso import (
 from mailroom.auth.throttle import RateLimit, client_key
 from mailroom.errors import Refusal
 from mailroom.models import ExternalIdentity, Intent
+from mailroom.oauth import consent
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+    from mailroom.oauth.config import OAuthSettings
+    from mailroom.oauth.server import OAuthServer
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +85,31 @@ def _failed(failure: SsoError) -> RedirectResponse:
     return response
 
 
+def _oauth_settings(request: Request) -> OAuthSettings | None:
+    """The built-in authorization server's settings when it signs its users in through SSO
+    (``MAILROOM_MCP_AUTH=oidc``); else ``None``, and an ``mcp`` flow has nothing to sign in for."""
+    server: OAuthServer | None = getattr(request.app.state, "oauth_server", None)
+    if server is None or not server.settings.sso_sign_in:
+        return None
+    return server.settings
+
+
+def _claim(request: Request, db: Session, done: Completed, session: str) -> bool:
+    """Claim the authorization request an ``mcp`` flow signed in for, for its user and
+    ``session``, the one the callback signs the browser in with; ``False`` when it is gone (or
+    another user's)."""
+    authorization = parse_qs(urlsplit(done.return_to).query).get("request", [None])[0]
+    if _oauth_settings(request) is None or authorization is None:
+        return False
+    if not consent.claim_via_sso(db, authorization, done.user.id, session):
+        return False
+    logger.info(
+        "oauth_sso_signed_in",
+        extra={"event": "oauth_sso_signed_in", "user_id": done.user.id},
+    )
+    return True
+
+
 @sso_router.get("/config")
 def sso_config(request: Request) -> SsoConfig:
     sso = _sso(request)
@@ -88,11 +123,24 @@ def sso_start(
     session_cookie: SessionCookie = None,
     intent: Intent = "login",
     return_to: Annotated[str | None, Query(max_length=MAX_RETURN_TO_LENGTH)] = None,
+    authorization: Annotated[
+        str | None, Query(alias="request", max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
+    ] = None,
 ) -> RedirectResponse:
     """Send the browser to the provider. ``link`` links a sign-in to the signed-in user, so it
-    needs their session, from this site (the cookie is ``SameSite=Strict`` anyway). Anyone may
-    call it, so each client starts at most ``STARTS_PER_MINUTE`` flows a minute (``busy``)."""
-    target = safe_return_to(return_to, "/profile" if intent == "link" else "/")
+    needs their session, from this site (the cookie is ``SameSite=Strict`` anyway). ``mcp`` signs
+    in for the authorization request ``request`` names, which the built-in authorization server
+    sent the browser here with in ``oidc`` mode; it comes back to that request's consent screen,
+    whatever ``return_to`` says. Anyone may call it, so each client starts at most
+    ``STARTS_PER_MINUTE`` flows a minute (``busy``)."""
+    oauth = _oauth_settings(request)
+    if intent == "mcp":
+        consent_path = oauth.consent_path if oauth is not None else "/"
+        if oauth is None or authorization is None:
+            return _failed(SsoError("state_invalid", consent_path))
+        target = with_query(consent_path, request=authorization)
+    else:
+        target = safe_return_to(return_to, "/profile" if intent == "link" else "/")
     sso = _sso(request)
     if sso is None:
         return _failed(SsoError("not_configured", target))
@@ -107,6 +155,8 @@ def sso_start(
         if user is None or is_cross_site(request):
             return _failed(SsoError("signed_out", target))
         link_user_id = user.id
+    if intent == "mcp" and not consent.is_live(db, authorization or ""):
+        return _failed(SsoError("request_gone", target))
     try:
         started = begin(
             db, sso, intent=intent, return_to=target, client=client, link_user_id=link_user_id
@@ -150,10 +200,14 @@ def sso_callback(
         return _failed(failure)
     response = _redirect(done.return_to)
     response.delete_cookie(BINDING_COOKIE_NAME, **_binding_cookie_attributes())
-    if done.intent == "login":
+    if done.intent in ("login", "mcp"):
+        session = create_session(db, done.user)
+        if done.intent == "mcp" and not _claim(request, db, done, session):
+            end_session(db, session)
+            return _failed(SsoError("request_gone", done.return_to))
         response.set_cookie(
             key=SESSION_COOKIE_NAME,
-            value=create_session(db, done.user),
+            value=session,
             max_age=int(session_ttl().total_seconds()),
             **session_cookie_attributes(),
         )

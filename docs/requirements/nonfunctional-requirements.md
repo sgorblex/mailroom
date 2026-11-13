@@ -162,7 +162,7 @@ Specification: [`mcp.md`](mcp.md). Code: `mailroom.mcp`.
 
 Code: `mailroom.oauth`, self-contained (SQLAlchemy, the `mcp` SDK's authorize, token and register
 handlers, httpx, and the `app.user` table; never the app's routes). Mounted when
-`MAILROOM_MCP_AUTH` is `builtin` (the default) and `MAILROOM_PUBLIC_URL` is set. The `mcp` SDK is
+`MAILROOM_MCP_AUTH` is `builtin` (the default) or `oidc` and `MAILROOM_PUBLIC_URL` is set. The `mcp` SDK is
 bounded to one minor because the server relies on its handlers.
 
 - **Issuer** `{MAILROOM_PUBLIC_URL}/oauth`, its RFC 8414 metadata at
@@ -192,6 +192,8 @@ bounded to one minor because the server relies on its handlers.
   The host allowlist is what keeps this fetch from being an SSRF.
 - **Consent:** `/oauth/authorize` stores the request (10 minutes) and redirects to
   `/connect?request=<id>`. The first user to open it claims it; nobody else can see or decide it.
+  In `oidc` mode it redirects to the SSO start instead, and the SSO callback claims the request
+  for the session it signs the browser in with: no other session can see or decide it.
   Approving creates a grant (a connected app) and a code; the redirect carries `code`, `state` and
   `iss` (RFC 9207), and so does every error redirect back to the client, the SDK's included. The
   screen's API (`/api/v1/oauth/requests/{id}`) needs the session cookie, its `POST` is refused
@@ -210,7 +212,8 @@ bounded to one minor because the server relies on its handlers.
   `oauth_client_registration_throttled`, `oauth_client_evicted`, `oauth_authorization_throttled`,
   `oauth_client_document_refused`, `oauth_authorization_approved`, `oauth_authorization_denied`,
   `oauth_token_issued` (`trigger`: `authorization_code` or `refresh_token`),
-  `oauth_authorization_code_reused`, `oauth_refresh_token_reused`, `oauth_grant_revoked`, with
+  `oauth_authorization_code_reused`, `oauth_refresh_token_reused`, `oauth_grant_revoked`,
+  `oauth_sso_signed_in` (`oidc` mode: the SSO callback claimed a request), with
   `user_id`, `client_id` and `grant_id` where known; never a token.
 - **`/mcp`'s verifier** in builtin mode: an access token is looked up by its hash, so a revoked or
   expired one stops working at once; the `AccessToken` names the user and carries `grant_id`.

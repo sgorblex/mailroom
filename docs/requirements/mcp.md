@@ -186,6 +186,7 @@ metadata (RFC 9728). The token's subject is a Mailroom [user](../GLOSSARY.md).
 | Mode | Who issues tokens | |
 | --- | --- | --- |
 | `builtin` (default) | Mailroom's own authorization server | Users sign in with their Mailroom password or SSO, then approve the client. |
+| `oidc` | Mailroom's own authorization server | Users sign in through [web SSO](#web-sso) for each connection, then approve the client. |
 | `external` | An OIDC provider (Authentik, Keycloak, …) | Mailroom verifies its JWTs against the issuer's JWKS. |
 | `off` | — | `/mcp` is not served. |
 
@@ -236,6 +237,28 @@ interface, not on the app's routes), so it can move to a shared package later.
   *Profile* page (name, when connected, when last used: a token exchange or a call on `/mcp`,
   recorded at most once a minute); revoking ends the grant's tokens at once,
   so the app's next call is a 401. Removing a user removes their grants.
+
+### Sign-in through SSO
+
+`MAILROOM_MCP_AUTH=oidc`: the built-in authorization server, with every connection signing in
+through [web SSO](#web-sso), so the identity provider decides who may connect an app (Authentik:
+the application's bindings); apps already connected keep their grants until revoked. Without web
+SSO configured, the MCP server is off, with a warning.
+
+- `/oauth/authorize` checks the request as in built-in mode, stores it, and sends the browser to
+  `/api/v1/auth/oidc/start?intent=mcp&request=<id>` instead of the consent screen, even with a
+  session already: an `mcp` flow is web SSO's (PKCE, nonce, `state`, binding cookie), for that
+  request, and comes back to `/connect?request=<id>` whatever `return_to` says.
+- The callback finds the user as an SSO sign-in does (a linked sign-in, or
+  `MAILROOM_OIDC_LINK_CLAIM`); an identity linked to nobody is refused (`sso_error=not_linked`
+  on the consent screen) and nobody is created. It then signs the browser in with a new session,
+  as an SSO sign-in does, and claims the request for that user and that session; a request gone
+  meanwhile (expired, or claimed by another user) is `sso_error=request_gone`, without a session.
+- Only that session can show or decide the request: any other, the same user's password session
+  included, answers 409 `sso_required`, and the screen offers the SSO sign-in instead. Signing in
+  through SSO for the request again moves it to the newer session.
+- Grants, tokens and connected apps are the built-in server's: switching between `builtin` and
+  `oidc` keeps them.
 
 ### External issuer
 
@@ -297,7 +320,7 @@ for users an admin has already created. **Nobody signs up through SSO.**
 | `/connect?request=<id>` | Consent screen (web app). |
 | `/api/v1/oauth/requests/{id}` | `GET` the pending request; `POST {"decision": "approve" \| "deny"}` answers `{"redirect_to"}`, the client's redirect URL (session, same origin; 404 for an unknown, expired or another user's request). |
 | `/api/v1/oauth/grants` | `GET` `{"auth", "grants"}`: the MCP auth mode and the user's connected apps (client name, created, last used); `DELETE /{id}` revokes one, its tokens with it (404 for another user's). |
-| `/api/v1/auth/oidc/config`, `/start`, `/callback` | Web SSO: whether it is on and its label, start, callback. |
+| `/api/v1/auth/oidc/config`, `/start`, `/callback` | Web SSO: whether it is on and its label, start (`intent` `login`, `link`, or `mcp` with `request`), callback. |
 | `/api/v1/me/identities` | `GET` the user's linked sign-ins; `DELETE /{id}` unlinks one. |
 
 Allowed hosts for the MCP transport come from `MAILROOM_PUBLIC_URL`, never from the request's
@@ -313,7 +336,7 @@ workers; expired rows are swept on writes.
 | Table | Columns |
 | --- | --- |
 | `external_identity` | `id`, `user_id` (cascade), `issuer`, `subject`, `created_at`, `last_used_at`; unique `(issuer, subject)` |
-| `sso_login_state` | `state_hash`, `nonce`, `code_verifier`, `intent` (`login` \| `link`), `link_user_id`, `return_to`, `browser_binding_hash`, `client_key`, `expires_at` |
+| `sso_login_state` | `state_hash`, `nonce`, `code_verifier`, `intent` (`login` \| `link` \| `mcp`), `link_user_id`, `return_to`, `browser_binding_hash`, `client_key`, `expires_at` |
 | `oauth_client` | `client_id`, `kind` (`dcr` \| `cimd`), `client_name`, `redirect_uris`, `metadata`, `fetched_at`, `created_at`, `last_used_at` |
 | `oauth_authorization_request` | `id_hash`, `client_id`, `params`, `expires_at` |
 | `oauth_authorization_code` | `code_hash`, `client_id`, `user_id`, `grant_id`, `redirect_uri`, `redirect_uri_explicit`, `code_challenge`, `resource`, `scopes`, `expires_at`, `used_at` |
@@ -326,7 +349,7 @@ workers; expired rows are swept on writes.
 | --- | --- |
 | `MAILROOM_FEATURES` | The instance's features ([`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Editions*). Without `mcp`, the MCP server and its authorization server are not served, whatever the `MAILROOM_MCP_*` and `MAILROOM_OAUTH_*` variables say; web SSO still follows its own. |
 | `MAILROOM_PUBLIC_URL` | The instance's public origin. Required for SSO and the MCP server; unset, both are off. |
-| `MAILROOM_MCP_AUTH` | `builtin` (default), `external` or `off`. |
+| `MAILROOM_MCP_AUTH` | `builtin` (default), `oidc`, `external` or `off`. |
 | `MAILROOM_MCP_TOOL_GROUPS` | Registered tool groups; default `filters_read,filters_write,filters_run,mail_read,mail_organize,mail_folders,mail_draft,mail_send,audit_read`. The `filters_*` groups need `filters` in `MAILROOM_FEATURES`; the mail groups do not need `mail`. |
 | `MAILROOM_OAUTH_EXTRA_REDIRECT_URIS` | Redirect URIs allowed beyond the built-in list. |
 | `MAILROOM_OAUTH_CIMD_HOSTS` | Hosts whose client ID metadata documents are fetched; default `claude.ai,claude.com`. |

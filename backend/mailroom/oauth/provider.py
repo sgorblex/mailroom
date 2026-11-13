@@ -184,7 +184,7 @@ class Provider:
         )
         client_id = client.client_id or ""
         request_id = await self._in_db(lambda db: consent.store_request(db, client_id, stored))
-        return f"{self.settings.public_origin}{self.settings.consent_path}?request={request_id}"
+        return self.settings.sign_in_url(request_id)
 
     async def load_authorization_code(
         self, client: OAuthClientInformationFull, authorization_code: str

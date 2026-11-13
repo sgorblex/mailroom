@@ -4,10 +4,16 @@
 ``/connect?request=<id>``. The screen, signed in, calls :func:`claim_pending_authorization` to
 show it, then :func:`approve` or :func:`deny`, and sends the browser to the URL they return. The
 first user to open a request claims it: nobody else can see or decide it afterwards.
+
+When the server signs users in through SSO first (``MAILROOM_MCP_AUTH=oidc``), the SSO callback
+claims the request with :func:`claim_via_sso` for the session it signs the browser in with, and
+the screen's calls pass ``require_sso`` and their session: any other session, the same user's
+included, raises :class:`SsoRequiredError` and claims nothing.
 """
 
 from __future__ import annotations
 
+import hmac
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -29,6 +35,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _CLAIMED_BY = "claimed_by"
+_SSO_SESSION = "sso_session"
+"""The SHA-256 of the session the SSO callback claimed the request for: only that browser, signed
+in through the provider for this request, may answer it."""
+
+
+class SsoRequiredError(Exception):
+    """The request may only be shown or decided after signing in through SSO for it."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,8 +76,16 @@ def store_request(db: Session, client_id: str, params: AuthorizationParams) -> s
 
 
 def _live_request(
-    db: Session, request_id: str, user_id: int
+    db: Session,
+    request_id: str,
+    user_id: int,
+    *,
+    require_sso: bool = False,
+    session: str | None = None,
 ) -> tuple[OAuthAuthorizationRequest, OAuthClient] | None:
+    """The request and its client, locked; ``None`` when it is unknown, expired, or another
+    user's. Raises ``SsoRequiredError`` (rolled back) when ``require_sso`` and the SSO callback
+    did not claim it for ``session``, the caller's raw session token."""
     found = db.execute(
         select(OAuthAuthorizationRequest, OAuthClient)
         .join(OAuthClient, OAuthClient.client_id == OAuthAuthorizationRequest.client_id)
@@ -80,15 +101,55 @@ def _live_request(
     claimed_by = request.params.get(_CLAIMED_BY)
     if claimed_by is not None and claimed_by != user_id:
         return None
+    if require_sso:
+        claimed_for = request.params.get(_SSO_SESSION)
+        if not (
+            isinstance(claimed_for, str)
+            and session is not None
+            and hmac.compare_digest(claimed_for, secret_hash(session))
+        ):
+            db.rollback()
+            raise SsoRequiredError
     return request, client
 
 
+def is_live(db: Session, request_id: str) -> bool:
+    """Whether ``request_id`` names a request not yet decided nor expired."""
+    found = db.scalar(
+        select(OAuthAuthorizationRequest.id_hash).where(
+            OAuthAuthorizationRequest.id_hash == secret_hash(request_id),
+            OAuthAuthorizationRequest.expires_at > datetime.now(UTC),
+        )
+    )
+    return found is not None
+
+
+def claim_via_sso(db: Session, request_id: str, user_id: int, session: str) -> bool:
+    """Claim the request for ``user_id``, who just signed in through SSO for it, and for
+    ``session``, the raw token of the session that sign-in starts; ``False`` when the request is
+    unknown, expired, or another user's. Claiming it again (a second sign-in for it) moves it to
+    the newer session."""
+    found = _live_request(db, request_id, user_id)
+    if found is None:
+        db.rollback()
+        return False
+    request, _ = found
+    request.params = {**request.params, _CLAIMED_BY: user_id, _SSO_SESSION: secret_hash(session)}
+    db.commit()
+    return True
+
+
 def claim_pending_authorization(
-    db: Session, request_id: str, user_id: int
+    db: Session,
+    request_id: str,
+    user_id: int,
+    *,
+    require_sso: bool = False,
+    session: str | None = None,
 ) -> PendingAuthorization | None:
     """The request for the consent screen, claimed for ``user_id``; ``None`` when it is unknown,
-    expired, or another user's."""
-    found = _live_request(db, request_id, user_id)
+    expired, or another user's. Raises ``SsoRequiredError`` as :func:`_live_request` does."""
+    found = _live_request(db, request_id, user_id, require_sso=require_sso, session=session)
     if found is None:
         db.rollback()
         return None
@@ -108,23 +169,34 @@ def claim_pending_authorization(
     )
 
 
-def _decided(db: Session, request_id: str, user_id: int) -> tuple[str, AuthorizationParams] | None:
-    found = _live_request(db, request_id, user_id)
+def _decided(
+    db: Session, request_id: str, user_id: int, *, require_sso: bool, session: str | None
+) -> tuple[str, AuthorizationParams] | None:
+    found = _live_request(db, request_id, user_id, require_sso=require_sso, session=session)
     if found is None:
         db.rollback()
         return None
     request, client = found
     params: dict[str, Any] = dict(request.params)
     params.pop(_CLAIMED_BY, None)
+    params.pop(_SSO_SESSION, None)
     db.delete(request)
     return client.client_id, AuthorizationParams.model_validate(params)
 
 
-def approve(db: Session, settings: OAuthSettings, request_id: str, user_id: int) -> str | None:
+def approve(
+    db: Session,
+    settings: OAuthSettings,
+    request_id: str,
+    user_id: int,
+    *,
+    session: str | None = None,
+) -> str | None:
     """Approve the request for ``user_id``: a new grant (a connected app) and its code. Returns
     the client's redirect URL carrying the code, or ``None`` when the request is unknown, expired
-    or another user's."""
-    decided = _decided(db, request_id, user_id)
+    or another user's. Raises ``SsoRequiredError`` when the settings sign users in through SSO and
+    the request was not claimed that way for ``session``, the caller's raw session token."""
+    decided = _decided(db, request_id, user_id, require_sso=settings.sso_sign_in, session=session)
     if decided is None:
         return None
     client_id, params = decided
@@ -148,10 +220,17 @@ def approve(db: Session, settings: OAuthSettings, request_id: str, user_id: int)
     )
 
 
-def deny(db: Session, settings: OAuthSettings, request_id: str, user_id: int) -> str | None:
+def deny(
+    db: Session,
+    settings: OAuthSettings,
+    request_id: str,
+    user_id: int,
+    *,
+    session: str | None = None,
+) -> str | None:
     """Deny the request. Returns the client's redirect URL carrying ``access_denied``, or ``None``
-    as :func:`approve` does."""
-    decided = _decided(db, request_id, user_id)
+    as :func:`approve` does, which raises the same."""
+    decided = _decided(db, request_id, user_id, require_sso=settings.sso_sign_in, session=session)
     if decided is None:
         return None
     client_id, params = decided

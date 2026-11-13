@@ -40,8 +40,11 @@ export const connectedAppSchema = z.object({
 export type ConnectedApp = z.infer<typeof connectedAppSchema>
 
 export const connectedAppsSchema = z.object({
-  /** How MCP clients get their tokens: `external` means the identity provider manages access. */
-  auth: z.enum(['builtin', 'external', 'off']),
+  /**
+   * How MCP clients get their tokens: `oidc` is the built-in server with sign-in through SSO;
+   * `external` means the identity provider manages access.
+   */
+  auth: z.enum(['builtin', 'oidc', 'external', 'off']),
   grants: z.array(connectedAppSchema),
 })
 export type ConnectedApps = z.infer<typeof connectedAppsSchema>

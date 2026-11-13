@@ -53,6 +53,8 @@ export function ssoErrorMessage(t: TFunction, code: string): string {
       return t('sso.errors.signedOut')
     case 'busy':
       return t('sso.errors.busy')
+    case 'request_gone':
+      return t('connect.gone')
     default:
       return t('sso.errors.failed')
   }

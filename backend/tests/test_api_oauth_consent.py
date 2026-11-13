@@ -19,8 +19,10 @@ from starlette.testclient import TestClient
 from mailroom.api.main import create_application
 from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
 from mailroom.config.features import ALL_FEATURES
+from mailroom.dev.fake_idp import FakeIdp
 from mailroom.mcp.groups import selected_groups
 from mailroom.mcp.settings import McpSettings
+from mailroom.models import SsoLoginState
 from mailroom.oauth.models import OAuthAuthorizationRequest, OAuthGrant
 from mailroom.oauth.throttle import Throttle
 
@@ -262,6 +264,19 @@ def test_a_decision_must_be_approve_or_deny(flow: Flow, user: User, body: dict[s
     reply = flow.client.post(f"/api/v1/oauth/requests/{request_id}", json=body)
     assert reply.status_code == 422
     assert flow.show(request_id).status_code == 200
+
+
+def test_builtin_mode_has_no_sso_sign_in_for_a_request(
+    flow: Flow, monkeypatch: pytest.MonkeyPatch, db_session: Session
+) -> None:
+    from tests.test_api_sso import CLIENT, ISSUER, START, configure, sso_error
+
+    application: FastAPI = flow.client.app  # type: ignore[assignment]  # the app under test
+    configure(application, monkeypatch, FakeIdp(issuer=ISSUER, client_id=CLIENT))
+    request_id = flow.authorize()
+    answer = flow.client.get(START, params={"intent": "mcp", "request": request_id})
+    assert sso_error(answer) == "state_invalid"
+    assert db_session.scalars(select(SsoLoginState)).all() == []
 
 
 def test_without_the_builtin_server_there_are_no_requests(user_client: TestClient) -> None:

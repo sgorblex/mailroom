@@ -66,7 +66,10 @@ Specification: [`requirements/mcp.md`](requirements/mcp.md). Variables:
 registers itself (DCR, or its client ID metadata document), and the user signs in and approves the
 client on Mailroom's `/connect` screen, with SSO there too when it is set up. Its `/oauth/register`
 and `/oauth/authorize` throttles key on the client address from `X-Forwarded-For` too: a proxy that
-does not append it puts every client behind one limit.
+does not append it puts every client behind one limit. **`oidc` mode** (`MAILROOM_MCP_AUTH=oidc`)
+is the same server with sign-in through SSO only: it needs web SSO (below), and every connection
+goes through the provider before the `/connect` screen, so the provider decides who may connect an
+app.
 
 ### Authentik
 
@@ -79,7 +82,7 @@ linked sign-in counts for both.
    - **Signing key: an RS256 certificate. Mandatory**: without one Authentik signs with HS256,
      which Mailroom always refuses.
    - Redirect URIs (strict):
-     - `https://mail.example.com/api/v1/auth/oidc/callback` (web SSO)
+     - `https://mail.example.com/api/v1/auth/oidc/callback` (web SSO, `oidc` mode too)
      - `https://claude.ai/api/mcp/auth_callback` (external mode)
      - `https://claude.com/api/mcp/auth_callback` (external mode)
    - Scopes `openid`, `profile` and `email`.
@@ -98,7 +101,13 @@ linked sign-in counts for both.
    `MAILROOM_OIDC_LINK_CLAIM=preferred_username`, [`requirements/mcp.md`](requirements/mcp.md) —
    *Web SSO*: only when Authentik's users cannot choose or change their usernames, since a first
    sign-in whose username equals a Mailroom username, exactly, becomes that user's).
-3. **External mode** (optional: Authentik issues the MCP tokens instead of Mailroom):
+3. **`oidc` mode** (optional: MCP clients connect only through an Authentik sign-in):
+   `MAILROOM_MCP_AUTH=oidc`, nothing else. Link each user's sign-in on their *Profile* page
+   first (or let `MAILROOM_OIDC_LINK_CLAIM` link it, as for web SSO): an Authentik user linked to
+   nobody is refused. The provider decides who may *connect*: grants approved before, in either
+   mode, keep working, and so do apps connected by a user Authentik no longer lets in. Revoke them
+   on *Profile* to make those apps connect again through Authentik.
+4. **External mode** (optional: Authentik issues the MCP tokens instead of Mailroom):
 
    ```bash
    MAILROOM_MCP_AUTH=external

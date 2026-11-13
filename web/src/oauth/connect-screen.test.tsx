@@ -54,6 +54,34 @@ afterEach(() => {
 })
 
 describe('ConnectScreen', () => {
+  it('sends the user through SSO when only a sign-in that way may answer', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((path: string) =>
+        Promise.resolve(
+          path === '/api/v1/auth/oidc/config'
+            ? json(200, { enabled: true, name: 'Authentik' })
+            : json(409, { detail: { code: 'sso_required', message: 'Sign in through SSO' } }),
+        ),
+      ),
+    )
+    renderSignedIn(<ConnectScreen requestId="req-1" leave={vi.fn()} />, ALICE)
+    const link = await screen.findByRole('link', { name: 'Sign in with Authentik' })
+    expect(link).toHaveAttribute('href', '/api/v1/auth/oidc/start?intent=mcp&request=req-1')
+    expect(screen.getByText(/sign in through its identity provider/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
+  })
+
+  it('says why an SSO sign-in for the request came back without one', async () => {
+    stubApi()
+    window.history.replaceState(null, '', '/connect?request=req-1&sso_error=not_linked')
+    renderSignedIn(<ConnectScreen requestId="req-1" leave={vi.fn()} />, ALICE)
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'That sign-in is not linked to a Mailroom user.',
+    )
+    expect(window.location.search).toBe('?request=req-1')
+  })
+
   it('shows who asks and where approving goes back to, then approves', async () => {
     const fetchMock = stubApi()
     const leave = vi.fn()

@@ -19,8 +19,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 from mailroom.models.base import Base
 from mailroom.models.user import User
 
-Intent = Literal["login", "link"]
-"""What an SSO flow is for: signing in, or linking a sign-in to the signed-in user."""
+Intent = Literal["login", "link", "mcp"]
+"""What an SSO flow is for: signing in, linking a sign-in to the signed-in user, or signing in
+for an MCP client's authorization request (``MAILROOM_MCP_AUTH=oidc``)."""
 
 
 class ExternalIdentity(Base):

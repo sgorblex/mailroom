@@ -146,7 +146,8 @@ authorization server with its `/connect` consent screen, connected apps on the p
   [`requirements/mcp.md`](requirements/mcp.md)), and enabling, *Run now* and the *Run filters* switch are separate
   tools marked destructive, so the client asks first.
 - **OAuth:** a built-in authorization server by default (sign in with a Mailroom password or SSO,
-  then approve the client), or tokens from an external issuer such as Authentik; each approval is
+  then approve the client; or, on the instance's say-so, through SSO only, for every connection),
+  or tokens from an external issuer such as Authentik; each approval is
   a [connected app](GLOSSARY.md) the user can revoke.
 - **Web SSO** over OIDC for users an admin created, through a [linked sign-in](GLOSSARY.md);
   nobody signs up through it.
