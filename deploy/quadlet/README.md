@@ -14,6 +14,9 @@ the unit. Broader context: [`docs/deploy.md`](../../docs/deploy.md).
 Images are `localhost/mailroom-api` and `localhost/mailroom-web` (`mise run build-containers`), or
 `<registry>/mailroom-api` / `mailroom-web` once pushed. **Never** `mailroom`: in the production
 registry that name is the standalone MCP server's image (`<registry>/mailroom:production`).
+In production the host's config pins both as `<version>@sha256:…`, and Renovate proposes each new
+release there ([`docs/requirements/ci-cd.md`](../../docs/requirements/ci-cd.md) — *Release and
+deploy*); the units here take `:latest`.
 
 The first user, once the API has migrated the database: `podman exec -it systemd-mailroom-api
 .venv/bin/python -m mailroom.dev.create_user <name> --admin` (the password is prompted for). Until the

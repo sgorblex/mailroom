@@ -1,8 +1,9 @@
 labels:
   platform: linux/arm64
 
-# Builds and pushes both images, then deploys them on the production host
-# (docs/requirements/ci-cd.md).
+# A `v*` tag builds both images and pushes :<version> and :latest. Nothing deploys from here:
+# Renovate proposes the new version in the host's config repo (oci-server-conf), and merging that
+# PR deploys it (docs/requirements/ci-cd.md).
 when:
   - event: tag
     ref: refs/tags/v*
@@ -25,24 +26,5 @@ steps:
       # docker:*-cli ships busybox ash only; the scripts are bash.
       - apk add --no-cache bash
       - echo "$MAILROOM_REGISTRY_PASSWORD" | docker login "$MAILROOM_REGISTRY" -u "$MAILROOM_REGISTRY_USER" --password-stdin
-      # Builds both images before pushing any tag, so a failed build moves neither :production.
+      # Builds both images before pushing any tag, so a failed build moves neither :latest.
       - scripts/containers-both.sh production
-
-  - name: deploy
-    image: docker.io/library/alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
-    environment:
-      MAILROOM_DEPLOY_HOST:
-        from_secret: mailroom_app_deploy_host
-      MAILROOM_DEPLOY_SSH_KEY:
-        from_secret: mailroom_app_deploy_ssh_key
-      MAILROOM_DEPLOY_KNOWN_HOSTS:
-        from_secret: mailroom_app_deploy_known_hosts
-      MAILROOM_REGISTRY:
-        from_secret: mailroom_app_registry
-      MAILROOM_REGISTRY_USER:
-        from_secret: mailroom_app_registry_user
-      MAILROOM_REGISTRY_PASSWORD:
-        from_secret: mailroom_app_registry_password
-    commands:
-      - apk add --no-cache bash openssh-client
-      - scripts/ssh-deploy.sh

@@ -3,8 +3,7 @@ Description=Mailroom HTTP API (FastAPI)
 Documentation=https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html
 
 [Container]
-Image=localhost/mailroom-api:production
-Label=io.containers.autoupdate=registry
+Image=localhost/mailroom-api:latest
 Pod=mailroom.pod
 EnvironmentFile=-/etc/mailroom/mailroom-api.env
 HealthCmd=.venv/bin/python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=4)"

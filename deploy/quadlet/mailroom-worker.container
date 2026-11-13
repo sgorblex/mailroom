@@ -3,8 +3,7 @@ Description=Mailroom background worker (procrastinate)
 Documentation=https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html
 
 [Container]
-Image=localhost/mailroom-api:production
-Label=io.containers.autoupdate=registry
+Image=localhost/mailroom-api:latest
 Pod=mailroom.pod
 EnvironmentFile=-/etc/mailroom/mailroom-api.env
 Exec=.venv/bin/python -m mailroom.worker
