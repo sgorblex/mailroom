@@ -17,7 +17,7 @@ from urllib.parse import quote
 import pytest
 
 from mailroom.accounts.store import load_accounts, user_store
-from mailroom.api.routes.mail import download_name, served_type
+from mailroom.api.routes.mail.read import download_name, served_type
 from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
 from mailroom.auth.users import create_user
 from mailroom.mail.pool import DeadlineExceeded, MailPool
