@@ -33,7 +33,7 @@ the tools answer with, and the app's MCP writes thin tools over it. The filter e
 
 | Module | Holds |
 |---|---|
-| `config` | The settings document: accounts, identities, send modes, limits (`CoreConfig`) |
+| `config` | The settings document: accounts, identities, send modes, limits (`CoreSettings`) |
 | `crypto` | Sealed secrets |
 | `store` | `AccountStore` and core's migrations, in schema `core` |
 | `render` | Bodies to text, quotes, the untrusted-content envelope, `safe_html` |
@@ -60,9 +60,8 @@ Rules, the first three kept by checks and the fourth by a test:
 
 **Integration points.** Core takes its host's database and its users: the host runs core's
 `migrate` (the app's `migrate` task runs it before the app's own), and binds an `AccountStore` to
-one user. Every row in schema `core` carries its `user_id`; `STANDALONE_USER` (`owner`) is the
-user rows written by mailroom-mcp belong to. The tools' text takes the host's tool names
-(`ToolNames`), so the app's MCP points the model at its own tools.
+one user. Every row in schema `core` carries its `user_id`. The tools' text takes the host's tool
+names (`ToolNames`), so the app's MCP points the model at its own tools.
 
 **Plain config.** Without the app, `mail.connections_from` builds the connections from the
 settings the app stores, `[[account]]` tables and an optional `[limits]`, checked by

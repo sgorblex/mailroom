@@ -3,12 +3,13 @@ from __future__ import annotations
 from sqlalchemy import MetaData
 from sqlalchemy.orm import DeclarativeBase
 
-#: Every table of the app lives here. mailroom-mcp keeps its own schema (``mcp``) and its own
-#: Alembic history in the same database, so neither may touch the other's objects.
+#: Every table of the app lives here. Core's schema (``core``) and any other history sharing the
+#: database (the retired mailroom-mcp's ``mcp``) keep their own objects, which the app never
+#: touches.
 APP_SCHEMA = "app"
 
-#: Alembic's bookkeeping table, inside ``APP_SCHEMA`` so a second Alembic history in the same
-#: database (mailroom-mcp's) never sees this one.
+#: Alembic's bookkeeping table, inside ``APP_SCHEMA`` so another Alembic history in the same
+#: database (core's) never sees this one.
 ALEMBIC_VERSION_TABLE = "alembic_version"
 
 NAMING_CONVENTION = {

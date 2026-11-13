@@ -50,7 +50,7 @@
     },
     {
       "customType": "regex",
-      "description": "Dev and test mail images (scripts/images.sh); keep on the same pins as mailroom-mcp.",
+      "description": "Dev and test mail images (scripts/images.sh).",
       "managerFilePatterns": [
         "/^scripts/images\\.sh$/"
       ],

@@ -1,12 +1,12 @@
 """The account and limit settings: core's half of `src/config/schema.ts` (`settingsSchema`).
 
-Profiles, the other half of the settings, and the bootstrap file are mailroom-mcp's. The same
-rules hold for the one-time import from config.toml and for every edit on the settings page.
+The same rules hold for every edit on the settings page and for plain config
+(`mail.connections_from`).
 """
 
 import re
 from functools import cache
-from typing import TYPE_CHECKING, Annotated, Final, Literal, NewType, TypeIs, get_args
+from typing import TYPE_CHECKING, Annotated, Final, Literal, NewType, get_args
 from zoneinfo import available_timezones
 
 from pydantic import (
@@ -32,7 +32,7 @@ SEND_MODES: Final[tuple[SendMode, ...]] = get_args(SendMode.__value__)
 
 MAX_SAFE_INTEGER: Final = 2**53 - 1
 """The largest integer a JavaScript number holds exactly: the TypeScript server's bound on
-integers and durations, kept so that both accept the same settings."""
+integers and durations, kept so that settings it accepted still load."""
 
 TimeZoneName = NewType("TimeZoneName", str)
 """An IANA time zone known here: made by `time_zone_name` or by a `TimeZone` field only."""
@@ -68,7 +68,6 @@ def _check_time_zone(zone: TimeZoneName) -> TimeZoneName:
 TimeZone = Annotated[TimeZoneName, Strict(), AfterValidator(_check_time_zone)]
 """A config field holding an IANA time zone, e.g. `Europe/Rome`."""
 
-_ENV_NAME = re.compile(r"[A-Z_][A-Z0-9_]*")
 _SLUG = re.compile(r"[a-z0-9][a-z0-9-]*")
 # zod's email check, so that both servers accept the same addresses.
 _EMAIL = re.compile(
@@ -86,20 +85,11 @@ def _matching(pattern: re.Pattern[str], message: str) -> Callable[[str], str]:
     return check
 
 
-def is_env_name(value: object) -> TypeIs[str]:
-    """Whether `value` can name an environment variable: `A-Z`, `0-9` and `_`."""
-    return isinstance(value, str) and _ENV_NAME.fullmatch(value) is not None
-
-
-EnvName = Annotated[
-    StrictStr,
-    AfterValidator(_matching(_ENV_NAME, "must be an environment variable name (A-Z, 0-9, _)")),
-]
 Slug = Annotated[
     StrictStr,
     AfterValidator(_matching(_SLUG, "must be lowercase letters, digits and dashes")),
 ]
-"""Ids that appear in URLs and tool arguments: `/mcp/<profile>`, `account = "<id>"`."""
+"""Ids that appear in URLs and tool arguments: `account = "<id>"`."""
 NonEmpty = Annotated[StrictStr, Field(min_length=1)]
 _Email = Annotated[StrictStr, AfterValidator(_matching(_EMAIL, "Invalid email address"))]
 _RecipientRule = Annotated[
@@ -138,11 +128,7 @@ class Identity(StrictModel):
 
 
 class PasswordAuth(StrictModel):
-    """A password or token, stored sealed in the database.
-
-    config.toml may name it by environment variable instead (`auth.secret_env`):
-    `without_secret_envs` takes that out, and the import seals the variable's value.
-    """
+    """A password or token, stored sealed in the database."""
 
     type: Literal["password"]
 

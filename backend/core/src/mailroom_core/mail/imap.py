@@ -171,8 +171,8 @@ class MailConnections:
 
     `account` looks an account up by id (None if there is none), `password` its password; both
     are called each time a connection opens, so a host whose accounts change calls `close` for
-    the account and the next call logs in afresh. The Mailroom app keeps one instance per user,
-    mailroom-mcp one per server. Errors come out as `MailError`s, whose messages are fixed.
+    the account and the next call logs in afresh. The Mailroom app keeps one instance per user.
+    Errors come out as `MailError`s, whose messages are fixed.
     """
 
     def __init__(

@@ -1,8 +1,8 @@
 """The settings, sealed mailbox secrets and send log: core's part of `src/store/db.ts`.
 
 Every row belongs to one user, and each call reads or writes one user's only. The functions taking
-a `Connection` run inside the caller's transaction, so mailroom-mcp can save its own half of the
-settings in the same one.
+a `Connection` run inside the caller's transaction, so a host can write its own rows in the same
+one.
 """
 
 from contextlib import contextmanager
@@ -311,9 +311,7 @@ def _send_record(row: Row[*tuple[Any, ...]], now: datetime) -> SendRecord:
 class AccountStore:
     """One user's settings, sealed mailbox secrets and send log, in schema `core`.
 
-    mailroom-mcp's `Store` saves the settings through `write_settings`, with its profiles, for
-    `STANDALONE_USER`; the Mailroom app keeps schema `core` in its own database, with one store
-    per signed-in user.
+    The Mailroom app keeps schema `core` in its own database, with one store per signed-in user.
     """
 
     def __init__(

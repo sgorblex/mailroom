@@ -2,7 +2,7 @@
 ``core`` (``AccountStore``), each account's password sealed beside it.
 
 Every change replaces the whole document at the next revision, checked by mailroom-core's own
-config models first, so whatever the app stores mailroom-mcp reads as it would its own.
+config models first.
 """
 
 from __future__ import annotations

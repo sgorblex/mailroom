@@ -180,7 +180,6 @@ from mailroom_core.mail.selected import (
 from mailroom_core.mail.structure import MimePart, Structure, analyse_structure
 from mailroom_core.mail.text import (
     ATTACHMENT_FILE_NOTE,
-    TYPESCRIPT_TOOLS,
     ToolNames,
     attachment_label,
     attachment_text,
@@ -215,7 +214,6 @@ __all__ = [
     "PREVIEW_LENGTH",
     "REFUSALS",
     "SETTABLE_FLAGS",
-    "TYPESCRIPT_TOOLS",
     "Addressed",
     "Attachment",
     "AttachmentSource",
