@@ -292,7 +292,10 @@ bounded to one minor because the server relies on its handlers.
   cross-site redirect), `Path=/api/v1/auth/oidc`. The callback deletes the row before anything
   else (single use) and refuses it without the matching cookie, so a callback another browser
   started is never signed in (login CSRF). `return_to` is a path on this site (`/…`, never
-  `//host`, `/\host`, a scheme or a control character), else `/`.
+  `//host`, `/\host`, a scheme or a control character), else `/`. A sign-in answers with a page
+  that goes on to `return_to` by a meta refresh (`no-store`, `Referrer-Policy: no-referrer`,
+  `default-src 'none'`, no script) rather than a redirect, so the `SameSite=Strict` session cookie
+  goes along from this site; a link and the failures redirect.
 - **Who signs in:** the user an `app.external_identity` `(issuer, sub)` links to, deleted with
   their user. Linking from the *Profile* page (`intent=link`) needs the session, which the
   `SameSite=Strict` cookie only brings from this site, and refuses a sign-in already linked to

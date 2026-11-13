@@ -224,7 +224,9 @@ interface, not on the app's routes), so it can move to a shared package later.
   drafts and sends mail and manages folders without asking again, `mail_send` too, by decision:
   the send mode is the guard
   ([`../TODO.md`](../TODO.md)). (The session cookie is `SameSite=Strict`, so it does not arrive
-  on the cross-site navigation from the client; the screen's same-origin requests do carry it.)
+  on the cross-site navigation from the client; the screen's same-origin requests do carry it.
+  After an SSO sign-in the browser reaches the screen from Mailroom's own page, not at the end
+  of the provider's redirect: see [Web SSO](#web-sso).)
   The screen names the client as it calls itself (and, for a metadata document, the host serving
   it) and the host the browser goes back to. The first user to open a request claims it; nobody
   else can see or decide it.
@@ -257,6 +259,10 @@ SSO configured, the MCP server is off, with a warning.
 - Only that session can show or decide the request: any other, the same user's password session
   included, answers 409 `sso_required`, and the screen offers the SSO sign-in instead. Signing in
   through SSO for the request again moves it to the newer session.
+- A browser signed out by the time it shows the screen gets the sign-in screen, whose SSO sign-in
+  (`intent=login`, back to `/connect?request=<id>`) also claims the request, as an `mcp` flow
+  does, so one pass through the provider is enough; a request gone or another user's by then
+  leaves it a plain sign-in.
 - Grants, tokens and connected apps are the built-in server's: switching between `builtin` and
   `oidc` keeps them.
 
@@ -299,8 +305,11 @@ for users an admin has already created. **Nobody signs up through SSO.**
 
 - Authorization code flow with PKCE and a nonce. The callback is a cross-site GET, so its `state`
   is checked against a database row and against a separate `SameSite=Lax` binding cookie set when
-  the flow started (no login CSRF). It then sets `mailroom_session` and redirects to `return_to`,
-  which must be a relative path.
+  the flow started (no login CSRF). It then sets `mailroom_session` and goes to `return_to`, which
+  must be a relative path, through a small page of Mailroom's own that moves on by itself (a meta
+  refresh, `no-store`, no referrer): Firefox and Safari withhold a `SameSite=Strict` cookie from
+  the first page at the end of a redirect chain through another site, so a plain redirect could
+  land signed out.
 - **Linking policy.** By default an identity is linked only from the *Profile* page, while signed
   in; an unlinked identity cannot sign in. With `MAILROOM_OIDC_LINK_CLAIM=preferred_username`,
   the first SSO sign-in links on its own when its `preferred_username` equals an existing user's
@@ -369,4 +378,5 @@ workers; expired rows are swept on writes.
   assumes (`typ` `JWT` or absent, no `nonce`). Check with a real token before calling external
   mode done.
 - The consent screen's reliance on same-origin requests carrying a `SameSite=Strict` cookie after
-  a cross-site navigation needs checking by hand in Firefox and Safari.
+  a cross-site navigation, and the SSO callback's page that moves on by itself: checked in
+  Chromium (2026-11-14); still to check by hand in Firefox and Safari.

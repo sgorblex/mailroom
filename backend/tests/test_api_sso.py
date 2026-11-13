@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import html
+import re
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, parse_qsl, urlsplit
@@ -95,9 +97,26 @@ def sign_in(client: TestClient, idp: FakeIdp, **params: str) -> httpx.Response:
     return client.get(at_provider(idp, start(client, **params)), follow_redirects=False)
 
 
+_REFRESH = re.compile(r'<meta http-equiv="refresh" content="0;url=([^"]*)">')
+
+
+def went_to(response: httpx.Response) -> str:
+    """Where the browser goes next: a redirect's location, or the page a sign-in answers with,
+    which goes on by itself from this site."""
+    if response.status_code == 303:
+        return response.headers["location"]
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"].startswith("text/html")
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    assert response.headers["content-security-policy"] == "default-src 'none'"
+    found = _REFRESH.search(response.text)
+    assert found is not None, response.text
+    return html.unescape(found.group(1))
+
+
 def sso_error(response: httpx.Response) -> str | None:
-    assert response.status_code == 303
-    values = parse_qs(urlsplit(response.headers["location"]).query).get("sso_error")
+    values = parse_qs(urlsplit(went_to(response)).query).get("sso_error")
     return values[0] if values else None
 
 
@@ -194,8 +213,8 @@ def test_a_linked_identity_signs_in(
 ) -> None:
     identity = link(db_session, user)
     response = sign_in(api_client, sso, return_to="/filters?tab=runs")
-    assert response.status_code == 303
-    assert response.headers["location"] == "/filters?tab=runs"
+    assert response.status_code == 200
+    assert went_to(response) == "/filters?tab=runs"
     cookies = response.headers.get_list("set-cookie")
     session_cookie = next(c for c in cookies if c.startswith(f"{SESSION_COOKIE_NAME}="))
     assert "SameSite=strict" in session_cookie
@@ -204,6 +223,17 @@ def test_a_linked_identity_signs_in(
     db_session.refresh(identity)
     assert identity.last_used_at is not None
     assert db_session.scalar(select(func.count()).select_from(SsoLoginState)) == 0
+
+
+@pytest.mark.parametrize("return_to", ['/p?a=1&b="><script>x</script>', "/p;x?y='1'&z=2"])
+def test_the_page_after_a_sign_in_escapes_return_to(
+    api_client: TestClient, sso: FakeIdp, db_session: Session, user: User, return_to: str
+) -> None:
+    link(db_session, user)
+    response = sign_in(api_client, sso, return_to=return_to)
+    assert "<script>" not in response.text
+    assert html.escape(return_to, quote=True) in response.text
+    assert went_to(response) == return_to
 
 
 @pytest.mark.usefixtures("user")
@@ -408,7 +438,7 @@ def test_return_to_never_leaves_the_site(
     if response.status_code == 422:  # over the length bound
         return
     callback = at_provider(sso, response)
-    assert api_client.get(callback, follow_redirects=False).headers["location"] == "/"
+    assert went_to(api_client.get(callback, follow_redirects=False)) == "/"
 
 
 @pytest.mark.parametrize(
