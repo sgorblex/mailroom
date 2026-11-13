@@ -179,12 +179,14 @@ training, flags read back, or the `MailError`), and per message an `AuditItem`
 (`mailroom_core.mail.audit`, the sender's address and a hash of the subject) with the call's
 `outcome`. `organize_text` writes the tools' text; a host raises a lone folder's error itself.
 
-They are built on `mailroom_core.mail.selected`, as `reply.mark_answered` and
-`drafts.remove_draft` are: operations by UID on the folder a `with_mailbox` session holds
-(`search_uids`, `fetch_sources` with `BODY.PEEK[]`, `fetch_envelopes`, `move_uids`,
-`store_flags`, `delete_uids`, `listed_folders`), with the refusals of a move
-(`move_target`). Whatever acts inside a session of its own uses them, folders included,
-since a second connection of the account would wait for the one it holds. `store_flags` sets only
+They are built on `mailroom_core.mail.selected`, as `reply.mark_answered` and the drafts are:
+operations by UID on the folder a `with_mailbox` session holds (`search_uids` and
+`message_id_uids`, `fetch_sources` with `BODY.PEEK[]`, `fetch_source` capped at a size with
+flags and INTERNALDATE, `fetch_envelopes`, `append_raw` with flags and an arrival date,
+`move_uids`, `store_flags`, `delete_uids`, `listed_folders`), with the refusals of a move
+(`move_target`) and `abandon_read_back` for a read-back failing after a write. Whatever acts
+inside a session of its own uses them, folders included, since a second connection of the
+account would wait for the one it holds. `store_flags` sets only
 `\Seen`, `\Flagged` and `\Answered`; `delete_uids` needs UIDPLUS and serves only a draft
 Mailroom wrote (*Safety*) and a filter's `delete`. The filter engine runs on them too (*Filters*).
 
@@ -428,8 +430,8 @@ share of the defence:
   UIDs too (without UIDPLUS it is `unsupported`), and a folder's delete (*Folders*), which takes
   the message count the caller confirmed and is refused when the folder holds another. Neither is
   ever a side effect of another write.
-- **Audit items:** each write and send, refused ones included, yields items (which the app does
-  not keep yet: [`TODO.md`](TODO.md)) naming the account,
+- **Audit items:** each write and send, refused ones included, yields items (which the app keeps
+  in its audit trail) naming the account,
   folder, UID, Message-ID, sender and recipients in clear, and the subject only as a SHA-256.
 - **Errors** are `MailError` codes with fixed messages, never the server's or a library's wording.
   An `unreachable` caused by a certificate that did not verify (itself, or wrapped in a login

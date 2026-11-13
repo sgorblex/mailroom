@@ -1,7 +1,7 @@
 """Operations on the folder a `with_mailbox` session has selected, by UID: searching, fetching,
-moving, flagging and the one permanent delete. Organize, drafts and replies are built on them,
-and so is anything else that acts inside a session of its own (the filter engine), which never
-needs a second connection: the folders come from the one it holds.
+appending, moving, flagging and the one permanent delete. Organize, drafts and replies are built
+on them, and so is anything else that acts inside a session of its own (the filter engine),
+which never needs a second connection: the folders come from the one it holds.
 
 Each takes the session's `MailboxContext`. Refusals are `MailError`s raised before anything is
 written; server and connection errors come out as raised, for `with_mailbox` to map. None of
@@ -9,6 +9,7 @@ them retries a write.
 """
 
 import re
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Final
@@ -19,7 +20,7 @@ from imapclient.response_parser import parse_message_list
 
 from mailroom_core.mail._mime import text_value
 from mailroom_core.mail.audit import REFUSALS
-from mailroom_core.mail.errors import MailError, mail_error
+from mailroom_core.mail.errors import MailError, is_connection_error, mail_error
 from mailroom_core.mail.imap import folders_from
 from mailroom_core.render import clean_header
 
@@ -38,6 +39,8 @@ type Criteria = Sequence[object]
 SETTABLE_FLAGS: Final = ("\\Seen", "\\Flagged", "\\Answered")
 """The flags `store_flags` sets and clears; `\\Deleted` is only ever set by a removal."""
 _DELETED: Final = b"\\Deleted"
+_MAX_UID: Final = 0xFFFFFFFF
+_APPENDUID: Final = re.compile(rb"\[APPENDUID ([0-9]{1,10}) ([0-9]{1,10})\]", re.IGNORECASE)
 _NOT_REMOVED: Final = (
     "They were copied to the destination but may not have been removed from this folder: do not "
     "repeat the move."
@@ -114,6 +117,93 @@ def search_uids(context: MailboxContext, criteria: Criteria) -> list[int]:
     return [int(uid) for uid in parse_message_list(data)]
 
 
+def message_id_uids(context: MailboxContext, message_id: str, *, since_uid: int = 0) -> list[int]:
+    """The UIDs from `since_uid` on whose Message-ID header holds `message_id`, by a search, so
+    the text is quoted as any search's is. A server may search by words, or not have indexed a
+    message just added yet (Mailu): check what it finds."""
+    found = search_uids(context, ["HEADER", "Message-ID", message_id])
+    return [uid for uid in found if uid >= since_uid]
+
+
+def appended_uid(response: bytes | None, uid_validity: int) -> int | None:
+    """The UID an APPEND's tagged response reports (APPENDUID, RFC 4315), which imapclient hands
+    over as raw bytes; None without one, or for a UIDVALIDITY other than the folder's."""
+    found = _APPENDUID.match(response or b"")
+    if found is None or int(found.group(1)) != uid_validity:
+        return None
+    uid = int(found.group(2))
+    return uid if 0 < uid <= _MAX_UID else None
+
+
+def append_raw(
+    context: MailboxContext,
+    raw: bytes,
+    flags: Sequence[str],
+    *,
+    internal_date: datetime | None = None,
+) -> int | None:
+    """APPENDs `raw` to the selected folder with `flags`, and `internal_date` as its arrival
+    date when given (else the server's clock). Returns the UID APPENDUID reports, None without
+    one. Never retried: an error means the message may or may not be there. The new message
+    need not be in view until a NOOP (RFC 3501, 6.3.11)."""
+    response = context.client.append(context.path, raw, tuple(flags), msg_time=internal_date)
+    return appended_uid(response, context.uid_validity)
+
+
+def abandon_read_back(context: MailboxContext, error: Exception) -> None:
+    """After a write that went through, a read-back of it that failed: logs `error` and, for a
+    connection error, shuts the connection down, its state unknown, so the next caller's SELECT
+    fails and reconnects. The write stands."""
+    mail_error(error, context.account)
+    if is_connection_error(error):
+        with suppress(OSError):
+            context.client.shutdown()
+
+
+def _flags(data: Mapping[bytes, object]) -> frozenset[str]:
+    """The FLAGS of a FETCH response, as text."""
+    flags = data.get(b"FLAGS")
+    return frozenset(
+        text_value(flag) for flag in (flags if isinstance(flags, tuple | list) else ())
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class MessageSource:
+    """A whole message as stored, with its flags and arrival date. The source is the sender's
+    bytes."""
+
+    source: bytes
+    flags: frozenset[str]
+    internal_date: datetime | None
+    """INTERNALDATE, None when the server gave none."""
+
+
+def fetch_source(context: MailboxContext, uid: int, max_bytes: int) -> MessageSource:
+    """The whole source of `uid`, its flags and arrival date, with `BODY.PEEK[]` (never sets
+    `\\Seen`): `too_large` over `max_bytes` rather than cut, `not_found` when it is gone."""
+    client = context.client
+    sized = client.fetch([uid], ["RFC822.SIZE", "FLAGS", "INTERNALDATE"]).get(uid)
+    if sized is None:
+        raise MailError("not_found")
+    size = sized.get(b"RFC822.SIZE")
+    if isinstance(size, int) and size > max_bytes:
+        raise MailError("too_large")
+    # One byte over the cap is enough to know it is too large.
+    fetched = client.fetch([uid], [f"BODY.PEEK[]<0.{max_bytes + 1}>"]).get(uid)
+    raw = None if fetched is None else fetched.get(b"BODY[]<0>")
+    if not isinstance(raw, bytes):
+        raise MailError("not_found")
+    if len(raw) > max_bytes:
+        raise MailError("too_large")
+    arrived = sized.get(b"INTERNALDATE")
+    return MessageSource(
+        source=raw,
+        flags=_flags(sized),
+        internal_date=arrived if isinstance(arrived, datetime) else None,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class FetchedMessage:
     """A whole message as stored, and its flags. The source is the sender's bytes."""
@@ -136,14 +226,7 @@ def fetch_sources(context: MailboxContext, uids: Iterable[int]) -> dict[int, Fet
         source = data.get(b"BODY[]")
         if not isinstance(source, bytes):
             continue
-        flags = data.get(b"FLAGS")
-        out[int(uid)] = FetchedMessage(
-            uid=int(uid),
-            source=source,
-            flags=frozenset(
-                text_value(flag) for flag in (flags if isinstance(flags, tuple | list) else ())
-            ),
-        )
+        out[int(uid)] = FetchedMessage(uid=int(uid), source=source, flags=_flags(data))
     return out
 
 
