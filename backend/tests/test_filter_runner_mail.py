@@ -1,5 +1,5 @@
-"""The worker's runs on real mail, in the Dovecot ``IMAP_TEST_HOST`` names (the dev one:
-``IMAP_TEST_PORT=33993``, ``MAILROOM_MAIL_CA_FILE`` its CA); skipped without it."""
+"""The worker's runs on real mail, in the Dovecot ``IMAP_TEST_HOST`` names (``mise run
+test-backend-mail`` starts one); skipped without it."""
 
 from __future__ import annotations
 

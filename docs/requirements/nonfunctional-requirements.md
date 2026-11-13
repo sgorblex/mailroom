@@ -615,7 +615,11 @@ clear (hash them, as mailroom-mcp's audit does).
   `MAILROOM_INTEGRATION_TESTS_ALLOW_ANY_DATABASE=1`). The coordinator migrates `mailroom_test`; each
   xdist worker clones it. A test that writes goes through the `db_session` fixture: one outer
   transaction rolled back afterwards, the code under test committing to savepoints; `api_client`
-  binds the routes to it.
+  binds the routes to it. The mail tests (REST, MCP, dry runs, the worker's runs) need a Dovecot
+  and a Mailpit and skip without them: `mise run test-backend-mail` starts throwaway ones
+  (`scripts/test-mail.sh`), whose certificates they trust; against the dev mail backends
+  (`MAILROOM_MAIL_CA_FILE` set) they verify TLS as production does. CI runs them on the same
+  detached steps as mailroom-core's.
 - **mailroom-core** runs its own pytest from `backend/core`. Its mail tests need a Dovecot and two
   Mailpits (implicit TLS, STARTTLS) and skip without them: `mise run test-core-mail` starts
   throwaway ones (`scripts/test-mail.sh`), apart from the dev mail backends; CI runs them as

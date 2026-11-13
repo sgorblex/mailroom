@@ -162,6 +162,11 @@ description = "Run mailroom-core's pytest with throwaway Dovecot and Mailpits (s
 depends = ["setup-python"]
 run = "scripts/test-mail.sh uv run --directory backend/core --no-sync pytest -q -rs"
 
+[tasks.test-backend-mail]
+description = "Run the app's pytest with throwaway Dovecot and Mailpits (scripts/test-mail.sh); needs `mise run dev-db`"
+depends = ["setup-python"]
+run = "scripts/test-mail.sh uv run --directory backend --no-sync sh -c 'python -m mailroom.dev.wait_for_database --url-env TEST_DATABASE_URL && pytest -q -rs -n auto'"
+
 [tasks.test-web]
 description = "Vitest for web (both projects)"
 depends = ["setup-node-web"]

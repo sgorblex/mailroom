@@ -3,7 +3,9 @@
 # and two Mailpits (SMTP sinks, implicit TLS and STARTTLS) in podman. Each run starts its own
 # containers on free ports and removes them afterwards, so runs from several worktrees never share
 # or stop each other's servers. Adapted from mailroom-mcp's test-integration.sh.
-# `mise run test-core-mail` passes mailroom-core's pytest.
+# `mise run test-core-mail` passes mailroom-core's pytest, `mise run test-backend-mail` the app's.
+# Nothing signs these servers' certificates, so MAILROOM_MAIL_CA_FILE (the dev CA, from mise) is
+# cleared: the app's tests then trust them as core's do (backend/tests/support/mail.py).
 set -euo pipefail
 
 if [[ $# -eq 0 ]]; then
@@ -57,7 +59,7 @@ await_greeting Dovecot "$port" '^\* OK'
 await_greeting Mailpit "$smtp_port" '^220'
 await_plain_greeting 'Mailpit (STARTTLS)' "$starttls_port" '^220'
 
-IMAP_TEST_HOST=127.0.0.1 IMAP_TEST_PORT="$port" \
+MAILROOM_MAIL_CA_FILE= IMAP_TEST_HOST=127.0.0.1 IMAP_TEST_PORT="$port" \
   SMTP_TEST_HOST=127.0.0.1 SMTP_TEST_PORT="$smtp_port" MAILPIT_TEST_API="http://127.0.0.1:$api_port" \
   SMTP_TEST_STARTTLS_HOST=127.0.0.1 SMTP_TEST_STARTTLS_PORT="$starttls_port" \
   MAILPIT_TEST_STARTTLS_API="http://127.0.0.1:$starttls_api_port" \

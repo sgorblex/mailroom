@@ -71,6 +71,7 @@ Defaults live in `mise.toml`'s `[env]`. To change one, set it in a gitignored `m
 | `check-all` | Every check (needs the dev database for `check-migrations`) |
 | `test-backend` / `test-web` / `test-all` | pytest, the app's then mailroom-core's (needs `dev-db`) / Vitest / both |
 | `test-core` / `test-core-mail` | mailroom-core's pytest alone, from `backend/core` / the same with throwaway Dovecot and Mailpits |
+| `test-backend-mail` | The app's pytest with throwaway Dovecot and Mailpits (needs `dev-db`) |
 | `fix` | Ruff and ESLint auto-fix, then mypy |
 | `build-containers` | Build `mailroom-api` and `mailroom-web` (`-- staging` for staging tags) |
 | `browser-check` | Report the browser chrome-devtools-mcp would drive |

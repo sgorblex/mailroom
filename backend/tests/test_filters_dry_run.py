@@ -1,5 +1,5 @@
-"""Dry runs against the Dovecot ``IMAP_TEST_HOST`` names (the dev one: ``IMAP_TEST_PORT=33993``,
-``MAILROOM_MAIL_CA_FILE`` its CA); skipped without it."""
+"""Dry runs against the Dovecot ``IMAP_TEST_HOST`` names (``mise run test-backend-mail`` starts
+one); skipped without it."""
 
 from __future__ import annotations
 
@@ -10,9 +10,9 @@ import pytest
 from imapclient import IMAPClient
 
 from mailroom.filters import runs
-from mailroom.mail.connections import mail_ssl_context
 from mailroom_core.filters import get_match_timeout, load_filter, set_match_timeout
 from mailroom_core.mail import MESSAGES
+from tests.support.mail import mail_servers_ssl_context
 from tests.test_api_accounts import new_account
 from tests.test_api_filters import SHOP_SPEC, add_filter, rule_set
 
@@ -42,7 +42,7 @@ class Mailbox:
 
     def client(self) -> IMAPClient:
         conn = IMAPClient(
-            self.server.host, self.server.port, ssl=True, ssl_context=mail_ssl_context()
+            self.server.host, self.server.port, ssl=True, ssl_context=mail_servers_ssl_context()
         )
         conn.login(self.login, self.server.password)
         return conn
@@ -89,7 +89,7 @@ class Mailbox:
 def mailbox(
     imap_server: ImapTestServer, application: FastAPI, monkeypatch: pytest.MonkeyPatch
 ) -> Mailbox:
-    monkeypatch.setattr(application.state, "mail_ssl_context", mail_ssl_context())
+    monkeypatch.setattr(application.state, "mail_ssl_context", mail_servers_ssl_context())
     return Mailbox(imap_server, imap_server.unique_user("filters"))
 
 

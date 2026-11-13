@@ -15,13 +15,13 @@ from mailroom.filters import runs as filter_runs
 from mailroom.filters import service as filters_service
 from mailroom.filters.runs import RunRefused, dry_run_slot, labelled_report, prune_runs
 from mailroom.filters.service import MAX_FILTERS
-from mailroom.mail.connections import mail_ssl_context
 from mailroom.models import Filter, FilterRun, RuleSet
 from mailroom.worker.app import PROCRASTINATE_SCHEMA
 from mailroom_core.filters import MatchTimeoutError, json_schema, load_filter
 from mailroom_core.mail import CERTIFICATE_DETAIL, MESSAGES
 from mailroom_core.testing import SmtpStub
 from tests.conftest import PASSWORD
+from tests.support.mail import mail_servers_ssl_context
 from tests.test_api_accounts import dev_mailbox_account, new_account
 
 if TYPE_CHECKING:
@@ -136,7 +136,9 @@ def test_the_dev_mailbox_lists_folders(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     account = dev_mailbox_account(user_client, imap_server, application, monkeypatch, "folders")
-    conn = IMAPClient(imap_server.host, imap_server.port, ssl=True, ssl_context=mail_ssl_context())
+    conn = IMAPClient(
+        imap_server.host, imap_server.port, ssl=True, ssl_context=mail_servers_ssl_context()
+    )
     try:
         conn.login(account["login"], imap_server.password)
         if not conn.folder_exists("Archive"):

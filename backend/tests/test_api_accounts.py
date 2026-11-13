@@ -22,6 +22,7 @@ from mailroom_core.mail import CERTIFICATE_DETAIL, MESSAGES, MailConnections, Ma
 from mailroom_core.store import RevisionConflict, SettingsBusy, forget_user
 from mailroom_core.testing import SmtpStub
 from tests.conftest import PASSWORD
+from tests.support.mail import mail_servers_ssl_context
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -408,10 +409,10 @@ def dev_mailbox_account(
     monkeypatch: pytest.MonkeyPatch,
     prefix: str,
 ) -> dict[str, Any]:
-    """An account ``work`` on a fresh login of the Dovecot ``IMAP_TEST_HOST`` names (the dev one:
-    ``IMAP_TEST_PORT=33993``, ``MAILROOM_MAIL_CA_FILE`` its CA); the tests using it are skipped
-    without it."""
-    monkeypatch.setattr(application.state, "mail_ssl_context", mail_ssl_context())
+    """An account ``work`` on a fresh login of the Dovecot ``IMAP_TEST_HOST`` names (``mise run
+    test-backend-mail`` starts one; ``tests/support/mail.py`` says which TLS it trusts); the tests
+    using it are skipped without it."""
+    monkeypatch.setattr(application.state, "mail_ssl_context", mail_servers_ssl_context())
     login = imap_server.unique_user(prefix)
     endpoint = {"host": imap_server.host, "port": imap_server.port, "tls": "implicit"}
     account = new_account(login=login, password=imap_server.password, imap=endpoint)
