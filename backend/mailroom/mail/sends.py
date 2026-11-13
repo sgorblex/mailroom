@@ -3,10 +3,11 @@ machine*): the threads that run them, and how many may run.
 
 There is no queue. A request takes a slot before anything is claimed, and with none free for its
 user it is ``busy`` with nothing written down, so a claimed send always has a thread and starts
-within the time it reads as ``sending``. What a thread does with a send (``mailroom.mail.service``)
-ends in the send's row, whatever happens, or leaves it ``sending``, which reads as ``unknown``
-past mailroom-core's ceiling: that is also what a restart leaves behind. At shutdown, sends get a
-moment to finish and are then cut, which ends them as a timeout would.
+within the time it reads as ``sending``. What a thread does with a send
+(``mailroom.mail.service.send``) ends in the send's row, whatever happens, or leaves it
+``sending``, which reads as ``unknown`` past mailroom-core's ceiling: that is also what a restart
+leaves behind. At shutdown, sends get a moment to finish and are then cut, which ends them as a
+timeout would.
 """
 
 from __future__ import annotations

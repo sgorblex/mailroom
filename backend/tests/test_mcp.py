@@ -1563,12 +1563,14 @@ def test_folders_are_created_renamed_with_their_rule_sets_and_deleted(
 def test_a_rename_whose_rule_sets_cannot_follow_says_so(
     mcp: Mcp, token: str, mail: MailAccounts, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from mailroom.mail.service import folder_writes as service_folder_writes
+
     def broken(*_args: object) -> None:
         raise RuntimeError
 
     login = mail.add()
     create_folders(mail.server, login, "Old")
-    monkeypatch.setattr(mail_service, "rewrite_folder", broken)
+    monkeypatch.setattr(service_folder_writes, "rewrite_folder", broken)
     renamed = mcp.call(
         token, "folder_rename", account_id="work", folder="Old", parent=None, name="New"
     )
