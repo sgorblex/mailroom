@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.9.0](https://github.com/sgorblex/mailroom/compare/v0.8.2...v0.9.0) (2026-11-13)
+
+
+### Features
+
+* **core:** create, rename and delete an account's folders ([#19](https://github.com/sgorblex/mailroom/issues/19)) ([850c6c6](https://github.com/sgorblex/mailroom/commit/850c6c61e52cbe781a81d4c9cba267cf53247ca3))
+* create, rename and delete folders over REST, rule sets following a rename ([#20](https://github.com/sgorblex/mailroom/issues/20)) ([7f92116](https://github.com/sgorblex/mailroom/commit/7f9211694f229d2c60265b66a6bc140885a43690))
+* the mail_folders MCP group ([#21](https://github.com/sgorblex/mailroom/issues/21)) ([3ba5ac9](https://github.com/sgorblex/mailroom/commit/3ba5ac9bb41b4f2452e151b2f92901836e208fe3))
+* **web:** create, rename and delete folders from the mail sidebar ([#23](https://github.com/sgorblex/mailroom/issues/23)) ([6e0409e](https://github.com/sgorblex/mailroom/commit/6e0409e6afbb7bfc586ae1ba9408b750108eb52d))
+* **web:** the mail sidebar's folders as a tree ([#22](https://github.com/sgorblex/mailroom/issues/22)) ([ff9645b](https://github.com/sgorblex/mailroom/commit/ff9645b784fe5c8b63c7b3a43746d595bf298ed4))
+
 ## [0.8.2](https://github.com/sgorblex/mailroom/compare/v0.8.1...v0.8.2) (2026-11-12)
 
 
