@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { createMemoryHistory, createRouter, RouterProvider } from '@tanstack/react-router'
 import type { ReactElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -115,5 +115,61 @@ describe('featureRoute preload', () => {
     stubFetch()
     await preloadMail(['mail'])
     expect(loaded.mail).toHaveBeenCalled()
+  })
+})
+
+describe('featureRoute on a cold load', () => {
+  /**
+   * The app as main.tsx mounts it, on `/mail`, fresh: the router's first load runs before /me
+   * has answered, and the screen's code takes a moment to arrive.
+   */
+  async function coldLoad(me: () => Promise<Response>): Promise<void> {
+    vi.resetModules()
+    vi.doMock('@/mail/mail-screen.tsx', async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30))
+      return mailScreenModule()
+    })
+    const { routeTree: tree } = await import('@/router.tsx')
+    const { AuthProvider } = await import('@/auth/auth-provider.tsx')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((path: string) =>
+        path === '/api/v1/auth/me' ? me() : Promise.resolve(new Response('{}', { status: 404 })),
+      ),
+    )
+    vi.stubGlobal('scrollTo', vi.fn())
+    const router = createRouter({ routeTree: tree, history: createMemoryHistory({ initialEntries: ['/mail'] }) })
+    render(
+      <AuthProvider>
+        <RouterProvider router={router} />
+      </AuthProvider>,
+    )
+  }
+
+  const answer = (features: Feature[]) => (): Promise<Response> =>
+    new Promise((resolve) => {
+      setTimeout(() => {
+        resolve(new Response(JSON.stringify({ user: ALICE, features }), { status: 200 }))
+      }, 10)
+    })
+
+  it('shows the screen once its code is in, without a use() error', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      await coldLoad(answer(['mail']))
+      expect(await screen.findByText('Mail screen')).toBeInTheDocument()
+      const messages = errors.mock.calls.map((call) => String(call[0]))
+      expect(messages.filter((message) => message.includes('use()'))).toEqual([])
+    } finally {
+      errors.mockRestore()
+    }
+  })
+
+  it('never fetches the screen of a feature that is off', async () => {
+    await coldLoad(answer([]))
+    expect(
+      await screen.findByRole('heading', { name: 'Not available on this instance' }),
+    ).toBeInTheDocument()
+    expect(loaded.mail).not.toHaveBeenCalled()
   })
 })
