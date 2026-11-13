@@ -34,7 +34,7 @@ from mailroom.api.routes.oauth_consent import consent_router, grants_router
 from mailroom.api.routes.sso import identities_router, sso_router
 from mailroom.api.routes.users import own_password_router, users_router
 from mailroom.auth.oidc import OidcProvider
-from mailroom.auth.sso import Sso, sso_from_env, sso_start_limit
+from mailroom.auth.sso import MCP_START_PATH, Sso, sso_from_env, sso_start_limit
 from mailroom.auth.throttle import LoginThrottle, client_key
 from mailroom.auth.users import user_count
 from mailroom.config.features import FEATURES_ENV, features_from_env
@@ -240,11 +240,13 @@ def _builtin_oauth_server(
     application: FastAPI, mcp_settings: McpSettings | None
 ) -> OAuthServer | None:
     """The built-in authorization server, when the MCP server is on (``MAILROOM_PUBLIC_URL`` set)
-    with ``MAILROOM_MCP_AUTH`` ``builtin``, the default."""
-    if mcp_settings is None or mcp_settings.auth != "builtin":
+    with ``MAILROOM_MCP_AUTH`` ``builtin``, the default, or ``oidc``, where its users sign in
+    through web SSO before the consent screen."""
+    if mcp_settings is None or mcp_settings.auth not in ("builtin", "oidc"):
         return None
+    sso_start = MCP_START_PATH if mcp_settings.auth == "oidc" else None
     return OAuthServer(
-        oauth_settings_from_env(mcp_settings.public_url),
+        oauth_settings_from_env(mcp_settings.public_url, sso_start_path=sso_start),
         lambda: application.state.session_maker,
         client_key=client_key,
     )

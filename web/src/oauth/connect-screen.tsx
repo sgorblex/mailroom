@@ -4,8 +4,11 @@ import { useSearch } from '@tanstack/react-router'
 
 import { ApiRequestError, apiErrorMessage } from '@/api/http.ts'
 import { decideConsentRequest, fetchConsentRequest, type ConsentRequest } from '@/api/oauth.ts'
+import { mcpSignInUrl } from '@/api/sso.ts'
 import { useAuth } from '@/auth/auth-context.ts'
+import { ssoErrorMessage, useSsoConfig, useSsoError } from '@/auth/sso.ts'
 import { Button } from '@/components/ui/button.tsx'
+import { buttonVariants } from '@/components/ui/button-variants.ts'
 import { useLoad } from '@/lib/use-load.ts'
 
 /** `/connect?request=<id>`, where the built-in authorization server sends an app's user. */
@@ -16,6 +19,8 @@ export function ConnectRoute(): ReactElement {
 
 /** The request is unknown, expired, another user's or already decided. */
 const GONE = 'gone'
+/** Only signing in through SSO for this request lets anyone answer it. */
+const SSO_REQUIRED = 'sso_required'
 
 function leaveForTheApp(url: string): void {
   window.location.assign(url)
@@ -39,12 +44,20 @@ export function ConnectScreen({
       requestId === null ? Promise.reject(new Error(GONE)) : fetchConsentRequest(requestId, signal),
     [requestId],
   )
-  const { state, retry } = useLoad(load, (error) =>
-    (error instanceof ApiRequestError && error.status === 404) ||
-    (error instanceof Error && error.message === GONE)
-      ? GONE
-      : apiErrorMessage(error, t('connect.loadFailed')),
-  )
+  const { state, retry } = useLoad(load, (error) => {
+    if (
+      (error instanceof ApiRequestError && error.status === 404) ||
+      (error instanceof Error && error.message === GONE)
+    ) {
+      return GONE
+    }
+    if (error instanceof ApiRequestError && error.code === SSO_REQUIRED) {
+      return SSO_REQUIRED
+    }
+    return apiErrorMessage(error, t('connect.loadFailed'))
+  })
+  const ssoError = useSsoError()
+  const failed = state.kind === 'failed' ? state.message : null
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-6 p-6">
@@ -54,10 +67,16 @@ export function ConnectScreen({
           {t('connect.loading')}
         </p>
       )}
-      {state.kind === 'failed' && state.message === GONE && <p role="alert">{t('connect.gone')}</p>}
-      {state.kind === 'failed' && state.message !== GONE && (
+      {ssoError !== null && (
+        <p role="alert" className="text-sm text-destructive">
+          {ssoErrorMessage(t, ssoError)}
+        </p>
+      )}
+      {failed === GONE && <p role="alert">{t('connect.gone')}</p>}
+      {failed === SSO_REQUIRED && requestId !== null && <SignInFirst requestId={requestId} />}
+      {failed !== null && failed !== GONE && failed !== SSO_REQUIRED && (
         <div className="flex flex-col gap-3">
-          <p role="alert">{state.message}</p>
+          <p role="alert">{failed}</p>
           <Button className="self-start" variant="outline" size="sm" onClick={retry}>
             {t('connect.retry')}
           </Button>
@@ -67,6 +86,22 @@ export function ConnectScreen({
         <ConsentCard requestId={requestId} request={state.value} leave={leave} />
       )}
     </main>
+  )
+}
+
+/** This Mailroom only lets a sign-in through its identity provider answer an app's request. */
+function SignInFirst({ requestId }: { requestId: string }): ReactElement {
+  const { t } = useTranslation()
+  const sso = useSsoConfig()
+  return (
+    <div className="flex flex-col gap-3">
+      <p>{t('connect.ssoRequired')}</p>
+      {sso?.enabled === true && sso.name !== null && (
+        <a className={buttonVariants({ className: 'self-start' })} href={mcpSignInUrl(requestId)}>
+          {t('sso.signInWith', { name: sso.name })}
+        </a>
+      )}
+    </div>
   )
 }
 

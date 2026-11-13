@@ -105,11 +105,13 @@ def _wait(*checks: tuple[Throttle, str | None]) -> int:
 
 def _with_iss(response: Response, settings: OAuthSettings) -> Response:
     """A redirect back to the client carries ``iss`` (RFC 9207), as the metadata promises: the
-    SDK's authorize handler sends its errors back without one. The consent screen redirect is not
-    the client's and is left alone."""
+    SDK's authorize handler sends its errors back without one. The redirect to the consent screen,
+    or to the SSO sign-in before it, is not the client's and is left alone."""
     location = response.headers.get("location")
-    consent = f"{settings.public_origin}{settings.consent_path}?"
-    if location is None or location.startswith(consent):
+    ours = {f"{settings.public_origin}{settings.consent_path}"}
+    if settings.sso_start_path is not None:
+        ours.add(f"{settings.public_origin}{urlsplit(settings.sso_start_path).path}")
+    if location is None or location.split("?", 1)[0] in ours:
         return response
     if "iss" not in parse_qs(urlsplit(location).query):
         response.headers["location"] = construct_redirect_uri(location, iss=settings.issuer)

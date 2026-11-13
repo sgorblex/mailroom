@@ -212,7 +212,8 @@
     "approve": "Approva",
     "deny": "Rifiuta",
     "decideFailed": "Impossibile registrare la risposta. Riprova.",
-    "leaving": "Ritorno a {{host}}…"
+    "leaving": "Ritorno a {{host}}…",
+    "ssoRequired": "Per collegare un'app a questo Mailroom devi accedere tramite il suo provider di identità, anche se hai già effettuato l'accesso."
   },
   "errors": {
     "usernameTaken": "Questo nome utente è già in uso.",

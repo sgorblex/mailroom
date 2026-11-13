@@ -64,6 +64,25 @@ def test_the_settings_come_from_the_environment(monkeypatch: pytest.MonkeyPatch)
     assert mcp_settings_from_env(None, ALL_FEATURES) is None
 
 
+def test_oidc_mode_needs_web_sso_to_sign_in_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    public_url = parse_public_url("https://mail.example.org/")
+    monkeypatch.setenv("MAILROOM_MCP_AUTH", "OIDC")
+    for name in ("MAILROOM_OIDC_ISSUER", "MAILROOM_OIDC_CLIENT_ID", "MAILROOM_OIDC_CLIENT_SECRET"):
+        monkeypatch.delenv(name, raising=False)
+    assert mcp_settings_from_env(public_url, ALL_FEATURES) is None
+    monkeypatch.setenv("MAILROOM_OIDC_ISSUER", "https://auth.example.org/application/o/mailroom/")
+    monkeypatch.setenv("MAILROOM_OIDC_CLIENT_ID", "mailroom")
+    assert mcp_settings_from_env(public_url, ALL_FEATURES) is None  # half set up
+    monkeypatch.setenv("MAILROOM_OIDC_CLIENT_SECRET", "secret")
+    settings = mcp_settings_from_env(public_url, ALL_FEATURES)
+    assert settings is not None
+    assert (settings.auth, settings.authorization_server, settings.scopes_supported) == (
+        "oidc",
+        "https://mail.example.org/oauth",
+        ["mailroom"],
+    )
+
+
 @pytest.fixture
 def planned_group(monkeypatch: pytest.MonkeyPatch) -> str:
     """A group that is ``planned``: every real one is stable now, so this one is made up."""

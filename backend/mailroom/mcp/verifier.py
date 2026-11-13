@@ -7,8 +7,9 @@ Mailroom user's id (``str(user.id)``), whose ``client_id`` is the OAuth client's
 ``grant_id`` for the audit line. Scope is not checked past the verifier: which tools a client gets
 is instance config.
 
-``MAILROOM_MCP_AUTH`` picks the verifier: ``builtin`` (Mailroom's own authorization server),
-``external`` (an OIDC provider's JWTs, ``ExternalJwtVerifier``) or ``off``.
+``MAILROOM_MCP_AUTH`` picks the verifier: ``builtin`` and ``oidc`` (Mailroom's own authorization
+server; in ``oidc`` its users sign in through web SSO), ``external`` (an OIDC provider's JWTs,
+``ExternalJwtVerifier``) or ``off``.
 """
 
 from __future__ import annotations
@@ -38,8 +39,9 @@ EXTERNAL_CLIENT_ID = "external"
 """The client a valid external token names when it carries neither ``azp`` nor ``client_id``."""
 
 AUTH_ENV: Final = "MAILROOM_MCP_AUTH"
-AuthMode = Literal["builtin", "external", "off"]
-AUTH_MODES: tuple[AuthMode, ...] = ("builtin", "external", "off")
+AuthMode = Literal["builtin", "oidc", "external", "off"]
+"""``oidc`` is the built-in authorization server with its users signing in through web SSO."""
+AUTH_MODES: tuple[AuthMode, ...] = ("builtin", "oidc", "external", "off")
 
 
 class RefusingVerifier:
@@ -186,7 +188,7 @@ def token_verifier(
     server, which checks its own access tokens; ``external`` an ``ExternalJwtVerifier``."""
     if mode == "off":
         return None
-    if mode == "builtin" and builtin is not None:
+    if mode in ("builtin", "oidc") and builtin is not None:
         return builtin
     if mode == "external" and external is not None:
         return external

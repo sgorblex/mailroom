@@ -63,7 +63,7 @@ export function ConnectedApps(): ReactElement | null {
           {grants.length > 0 && ` ${t('connectedApps.externalLeftovers')}`}
         </p>
       )}
-      {auth === 'builtin' && grants.length === 0 && (
+      {(auth === 'builtin' || auth === 'oidc') && grants.length === 0 && (
         <p className="text-sm text-muted-foreground">{t('connectedApps.none')}</p>
       )}
       {grants.length > 0 && (

@@ -6,7 +6,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from datetime import timedelta
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from pydantic import AnyUrl
 
@@ -91,11 +91,28 @@ class OAuthSettings:
     cimd_hosts: tuple[str, ...] = DEFAULT_CIMD_HOSTS
     consent_path: str = "/connect"
     """The web app's consent screen; ``?request=<id>`` names the pending request."""
+    sso_start_path: str | None = None
+    """Where ``/oauth/authorize`` sends the browser instead of the consent screen, ``request=<id>``
+    added to its query, when users sign in through SSO first (``MAILROOM_MCP_AUTH=oidc``); the
+    SSO callback goes on to the consent screen. ``None``: straight to the consent screen."""
     redirect_uris: frozenset[str] = field(init=False)
 
     def __post_init__(self) -> None:
         listed = (*BUILTIN_REDIRECT_URIS, *self.extra_redirect_uris)
         object.__setattr__(self, "redirect_uris", frozenset(normalized_uri(uri) for uri in listed))
+
+    @property
+    def sso_sign_in(self) -> bool:
+        """Only a request whose user signed in through SSO for it may be decided."""
+        return self.sso_start_path is not None
+
+    def sign_in_url(self, request_id: str) -> str:
+        """Where ``/oauth/authorize`` sends the browser with a stored request."""
+        if self.sso_start_path is None:
+            return f"{self.public_origin}{self.consent_path}?{urlencode({'request': request_id})}"
+        parts = urlsplit(self.sso_start_path)
+        query = [*parse_qsl(parts.query), ("request", request_id)]
+        return f"{self.public_origin}{parts.path}?{urlencode(query)}"
 
     @property
     def issuer(self) -> str:
@@ -117,14 +134,22 @@ def _listed(raw: str | None) -> tuple[str, ...]:
     return tuple(item for item in (raw or "").replace(",", " ").split() if item)
 
 
-def oauth_settings_from_env(public_origin: str) -> OAuthSettings:
+def oauth_settings_from_env(
+    public_origin: str, *, sso_start_path: str | None = None
+) -> OAuthSettings:
     """``public_origin`` is ``MAILROOM_PUBLIC_URL``'s origin as ``mailroom.config.public_url``
     parses it; ``MAILROOM_OAUTH_EXTRA_REDIRECT_URIS`` and ``MAILROOM_OAUTH_CIMD_HOSTS`` (comma or
-    space separated; an empty ``CIMD_HOSTS`` turns client metadata documents off). Raises
+    space separated; an empty ``CIMD_HOSTS`` turns client metadata documents off);
+    ``sso_start_path`` as on ``OAuthSettings``. Raises
     ``ValueError`` for an extra redirect URI that is not https."""
     extra = tuple(
         _checked_extra_redirect_uri(uri) for uri in _listed(os.environ.get(EXTRA_REDIRECT_URIS_ENV))
     )
     raw_hosts = os.environ.get(CIMD_HOSTS_ENV)
     hosts = DEFAULT_CIMD_HOSTS if raw_hosts is None else _listed(raw_hosts.lower())
-    return OAuthSettings(public_origin=public_origin, extra_redirect_uris=extra, cimd_hosts=hosts)
+    return OAuthSettings(
+        public_origin=public_origin,
+        extra_redirect_uris=extra,
+        cimd_hosts=hosts,
+        sso_start_path=sso_start_path,
+    )

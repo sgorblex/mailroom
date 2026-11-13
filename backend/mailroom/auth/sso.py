@@ -1,4 +1,6 @@
-"""Web SSO: signing in, or linking a sign-in, through an OpenID Connect provider.
+"""Web SSO: signing in, or linking a sign-in, through an OpenID Connect provider; with
+``MAILROOM_MCP_AUTH=oidc``, also the sign-in an MCP client's authorization request goes through
+before the consent screen (``mcp``).
 
 Authorization code flow with PKCE and a nonce. ``begin`` stores the flow under the SHA-256 of its
 ``state`` and hands back a browser binding token for a ``SameSite=Lax`` cookie; ``complete`` takes
@@ -44,7 +46,10 @@ CLIENT_SECRET_ENV = "MAILROOM_OIDC_CLIENT_SECRET"
 NAME_ENV = "MAILROOM_OIDC_NAME"
 LINK_CLAIM_ENV = "MAILROOM_OIDC_LINK_CLAIM"
 
+START_PATH: Final = "/api/v1/auth/oidc/start"
 CALLBACK_PATH: Final = "/api/v1/auth/oidc/callback"
+MCP_START_PATH: Final = f"{START_PATH}?intent=mcp"
+"""Where the built-in authorization server sends the browser in ``oidc`` mode."""
 BINDING_COOKIE_NAME: Final = "mailroom_sso_binding"
 BINDING_COOKIE_PATH: Final = "/api/v1/auth/oidc"
 """The binding cookie only goes back to the SSO routes."""
@@ -305,6 +310,11 @@ def claimed_user(
     return None if already is not None else user
 
 
+def _intent(stored: str) -> Intent:
+    """A stored flow's intent (the table's check constraint allows no other)."""
+    return "link" if stored == "link" else "mcp" if stored == "mcp" else "login"
+
+
 def complete(
     db: Session,
     sso: Sso,
@@ -348,7 +358,7 @@ def complete(
         .where(ExternalIdentity.issuer == issuer, ExternalIdentity.subject == subject)
         .with_for_update()
     )
-    intent: Intent = "link" if row.intent == "link" else "login"
+    intent = _intent(row.intent)
     linked = False
     if intent == "link":
         user = db.get(User, row.link_user_id) if row.link_user_id is not None else None

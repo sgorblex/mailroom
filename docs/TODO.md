@@ -103,6 +103,8 @@ In this order, after *One IMAP stack* (*Family roadmap*): each builds on the one
   - [x] **MCP endpoint and tools** — `/mcp`, the `filters_*` groups, the envelope, the audit line.
   - [x] **Built-in OAuth server** — DCR, CIMD, tokens, the `/connect` consent screen.
   - [x] **External issuer** — JWTs from Authentik or Keycloak, mapped through linked sign-ins.
+  - [x] **Sign-in through SSO** (2026-11-13) — `MAILROOM_MCP_AUTH=oidc`: the built-in server,
+        each connection signing in through web SSO before the consent screen.
   - [x] **Connected apps** — list and revoke grants on the profile.
   - [x] **Mail tool groups** — each with its client slice: `mail_read`, `mail_organize`,
         `mail_draft`, `mail_send` and `mail_folders` are on.

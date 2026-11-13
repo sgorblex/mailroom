@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
 from mailroom.auth.oidc import OidcError, checked_provider_url
-from mailroom.auth.sso import ISSUER_ENV
+from mailroom.auth.sso import CLIENT_ID_ENV, CLIENT_SECRET_ENV, ISSUER_ENV, sso_settings_from_env
 from mailroom.config.public_url import PUBLIC_URL_ENV
 from mailroom.mcp.groups import TOOL_GROUPS_ENV, selected_groups
 from mailroom.mcp.verifier import AUTH_ENV, AUTH_MODES, AuthMode
@@ -115,15 +115,25 @@ def external_issuer_from_env() -> ExternalIssuer | None:
 
 def mcp_settings_from_env(public_url: PublicUrl | None, features: Features) -> McpSettings | None:
     """The settings, or None (logged) when the MCP server is off: ``MAILROOM_MCP_AUTH=off``, no
-    ``public_url`` (``MAILROOM_PUBLIC_URL`` as the API parsed it at startup), or external mode
-    without its provider. Its tool groups are those ``features`` allow. Raises ``ValueError`` for
-    a ``MAILROOM_MCP_AUTH`` that is no mode."""
+    ``public_url`` (``MAILROOM_PUBLIC_URL`` as the API parsed it at startup), external mode
+    without its provider, or ``oidc`` mode without web SSO to sign in through. Its tool groups
+    are those ``features`` allow. Raises ``ValueError`` for a ``MAILROOM_MCP_AUTH`` that is no
+    mode."""
     auth = auth_mode_from_env()
     if auth == "off":
         logger.info("%s=off: the MCP server is off", AUTH_ENV)
         return None
     if public_url is None:
         logger.warning("%s is not set (or invalid): the MCP server is off", PUBLIC_URL_ENV)
+        return None
+    if auth == "oidc" and sso_settings_from_env(public_url) is None:
+        logger.warning(
+            "%s=oidc signs in through web SSO, which needs %s, %s and %s: the MCP server is off",
+            AUTH_ENV,
+            ISSUER_ENV,
+            CLIENT_ID_ENV,
+            CLIENT_SECRET_ENV,
+        )
         return None
     external = None
     if auth == "external":

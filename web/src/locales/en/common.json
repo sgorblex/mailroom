@@ -212,7 +212,8 @@
     "approve": "Approve",
     "deny": "Deny",
     "decideFailed": "Could not record your answer. Try again.",
-    "leaving": "Taking you back to {{host}}…"
+    "leaving": "Taking you back to {{host}}…",
+    "ssoRequired": "To connect an app to this Mailroom, sign in through its identity provider, even if you are already signed in."
   },
   "errors": {
     "usernameTaken": "That username is taken.",
