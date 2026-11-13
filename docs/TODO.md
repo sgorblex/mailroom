@@ -43,10 +43,10 @@ In order. The reasons are in [`CONTEXT.md`](CONTEXT.md) — *Where the family is
   - [x] **Engine parsing on core's MIME** (2026-11-13): the engine's criteria read the messages
         they fetch through `mailroom_core.mail.parsed_message` instead of mail-parser, which left
         the dependencies; an HTML-only body is matched as its visible text.
-  - [ ] **Tidy-ups**, whenever convenient: `mailroom/mail/service.py` and
-        `mailroom/api/routes/mail.py` split by concern, as core's `mail` is. mailroom-mcp's
-        leftovers left core on 2026-11-13 (`STANDALONE_USER`, its config.toml load path, the
-        docs that named it as running).
+  - [ ] **Tidy-ups**, whenever convenient: `mailroom/api/routes/mail.py` split by concern, as
+        core's `mail` is. Done on 2026-11-13: mailroom-mcp's leftovers out of core
+        (`STANDALONE_USER`, its config.toml load path, the docs that named it as running), and
+        `mailroom.mail.service` split into a package.
 - [ ] **Command-line tools:**
   - [ ] a client for a running instance, after personal API tokens;
   - [ ] `run`, for filters with no server, over mailroom-core; it settles whether core keeps the

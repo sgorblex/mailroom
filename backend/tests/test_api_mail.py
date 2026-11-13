@@ -266,12 +266,12 @@ def test_a_failing_account_is_a_failure_of_an_all_accounts_search(
 def test_an_all_accounts_search_with_one_usable_account_still_answers_a_page(
     mailbox: Mailbox, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from mailroom.mail import service
+    from mailroom.mail.service import read as service_read
 
     closed = new_account("closed", login="closed@example.org")
     assert mailbox.client.post("/api/v1/accounts", json=closed).status_code == 201
     monkeypatch.setattr(
-        service, "_missing_password", lambda _ctx, _user, account_id: account_id == "work"
+        service_read, "_missing_password", lambda _ctx, _user, account_id: account_id == "work"
     )
     for folder in ("INBOX", "*"):
         page = mailbox.search(folder=folder)
@@ -289,11 +289,11 @@ def test_an_all_accounts_search_with_one_usable_account_still_answers_a_page(
 def test_a_slow_account_is_a_timeout_failure_of_an_all_accounts_search(
     mailbox: Mailbox, silent_server: int, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from mailroom.mail import service
+    from mailroom.mail.service import read as service_read
 
     # Long enough for the healthy account under a loaded test run, far below the silent one's
     # 10 s connect timeout.
-    monkeypatch.setattr(service, "SOURCES_SECONDS", 4.0)
+    monkeypatch.setattr(service_read, "SOURCES_SECONDS", 4.0)
     mailbox.seed(mime("Kept"))
     imap = {"host": "127.0.0.1", "port": silent_server, "tls": "implicit"}
     silent = new_account("silent", login="silent@example.org", imap=imap)
@@ -875,11 +875,11 @@ class _SearchConnections:
 def test_an_all_accounts_search_cuts_only_the_accounts_still_reading(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from mailroom.mail import service
+    from mailroom.mail.service import read as service_read
 
-    monkeypatch.setattr(service, "ACCOUNT_SECONDS", 0.3)
+    monkeypatch.setattr(service_read, "ACCOUNT_SECONDS", 0.3)
     connections: Any = _SearchConnections()
-    page = service._search_accounts(  # noqa: SLF001 - the per-account deadline, without IMAP
+    page = service_read._search_accounts(  # noqa: SLF001 - the per-account deadline, without IMAP
         connections, ["fast", "slow"], "INBOX", SearchQuery(), limit=10, cursor=None
     )
     # "fast" was done long before: another call of the user on it is not cut.
@@ -904,7 +904,7 @@ class _GmailConnections:
 def test_an_all_accounts_search_asks_gmail_for_attachments_its_own_way(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from mailroom.mail import service
+    from mailroom.mail.service import read as service_read
 
     read: dict[str, Any] = {}
 
@@ -912,9 +912,9 @@ def test_an_all_accounts_search_asks_gmail_for_attachments_its_own_way(
         read.update(sources=list(sources), criteria=criteria)
         return Page((), None, ())
 
-    monkeypatch.setattr(service.core, "read_page", read_page)
+    monkeypatch.setattr(service_read.core, "read_page", read_page)
     connections: Any = _GmailConnections()
-    service._search_accounts(  # noqa: SLF001 - the criteria per account, without IMAP
+    service_read._search_accounts(  # noqa: SLF001 - the criteria per account, without IMAP
         connections,
         ["gmail", "plain"],
         "INBOX",
@@ -935,7 +935,7 @@ def test_an_all_accounts_search_asks_gmail_for_attachments_its_own_way(
 
     # A query that needs nothing of Gmail's does not ask.
     connections.asked.clear()
-    service._search_accounts(  # noqa: SLF001
+    service_read._search_accounts(  # noqa: SLF001
         connections, ["gmail", "plain"], "INBOX", SearchQuery(unread=True), limit=10, cursor=None
     )
     assert connections.asked == []
@@ -962,11 +962,11 @@ class _Sessions:
 
 
 def test_a_folder_call_past_its_deadline_opens_no_session_but_may_confirm_a_write() -> None:
-    from mailroom.mail import service
+    from mailroom.mail.service import _shared as service_shared
 
     sessions = _Sessions()
     stop = threading.Event()
-    stoppable = service._Stoppable(  # noqa: SLF001 - the deadline's stop, without IMAP
+    stoppable = service_shared._Stoppable(  # noqa: SLF001 - the deadline's stop, without IMAP
         cast("MailConnections", sessions), stop, confirming=True
     )
     ran: list[str] = []
@@ -979,7 +979,7 @@ def test_a_folder_call_past_its_deadline_opens_no_session_but_may_confirm_a_writ
         stoppable.with_connection("work", lambda _client: ran.append("fn"))
     assert (ran, sessions.sessions) == ([], 2)
     assert stoppable.folders("work") == []
-    plain = service._Stoppable(cast("MailConnections", sessions), stop)  # noqa: SLF001
+    plain = service_shared._Stoppable(cast("MailConnections", sessions), stop)  # noqa: SLF001
     with pytest.raises(MailError):
         plain.folders("work")
     assert sessions.lists == 1
@@ -988,13 +988,13 @@ def test_a_folder_call_past_its_deadline_opens_no_session_but_may_confirm_a_writ
 def test_an_unexpected_failure_is_a_failed_refusal(
     mailbox: Mailbox, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    from mailroom.mail import service
+    from mailroom.mail.service import read as service_read
 
     def broken(*_args: Any, **_kwargs: Any) -> Any:
         msg = "a bug"
         raise RuntimeError(msg)
 
-    monkeypatch.setattr(service.core, "list_messages", broken)
+    monkeypatch.setattr(service_read.core, "list_messages", broken)
     with caplog.at_level(logging.INFO, logger="mailroom.mail.service"):
         response = mailbox.client.get(f"{MAIL}/accounts/work/messages")
     assert detail(response) == (500, "failed")
@@ -1230,7 +1230,7 @@ def test_a_call_cut_at_its_deadline_writes_no_group_after_the_cut(
     mailbox: Mailbox, application: FastAPI, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     create_archive(mailbox)
-    from mailroom.mail import service
+    from mailroom.mail.service import organize as service_organize
 
     mailbox.seed(mime("slow inbox"))
     mailbox.seed(mime("quick junk"), folder="Junk")
@@ -1240,7 +1240,7 @@ def test_a_call_cut_at_its_deadline_writes_no_group_after_the_cut(
     answered = threading.Event()
     ended = threading.Event()
     real_with_mailbox = MailConnections.with_mailbox
-    real_move = service.core.move_messages
+    real_move = service_organize.core.move_messages
 
     def slow_inbox(
         self: MailConnections, account_id: str, path: str, read_only: bool, fn: Any
@@ -1258,7 +1258,7 @@ def test_a_call_cut_at_its_deadline_writes_no_group_after_the_cut(
             ended.set()
 
     monkeypatch.setattr(MailConnections, "with_mailbox", slow_inbox)
-    monkeypatch.setattr(service.core, "move_messages", move_then_end)
+    monkeypatch.setattr(service_organize.core, "move_messages", move_then_end)
     response = mailbox.client.post(
         f"{MAIL}/messages/move", json={"refs": refs, "folder": "Archive"}
     )
@@ -1717,14 +1717,14 @@ def test_a_rename_stands_when_its_rule_sets_cannot_follow(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    from mailroom.mail import service
+    from mailroom.mail.service import folder_writes as service_folder_writes
 
     def broken(*_args: object) -> None:
         raise RuntimeError("SELECT … 'Old' …")
 
     create_folders(mailbox.server, mailbox.login, "Old")
     rule_set = add_rule_set(db_session, user.id, ["Old"])
-    monkeypatch.setattr(service, "rewrite_folder", broken)
+    monkeypatch.setattr(service_folder_writes, "rewrite_folder", broken)
     with caplog.at_level(logging.INFO, logger="mailroom.mail.service"):
         answer = folder_call(mailbox, "rename", folder="Old", parent=None, name="New")
     assert answer.status_code == 200, answer.text

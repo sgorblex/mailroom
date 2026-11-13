@@ -1,6 +1,7 @@
 """The rule sets and filters that name a folder of an account, by its path segments: which ones
 (a folder's delete is refused while any does) and rewriting them once the folder is renamed.
-Database only: ``mailroom.mail.service`` calls it, and ``filters.service`` imports that.
+Database only: ``mailroom.mail.service.folder_writes`` calls it, and ``filters.service`` imports
+the mail service.
 
 A rule set names a folder by its own ``folder``; a filter by the ``folder`` of a ``move_to`` or a
 ``trash`` action anywhere in its spec (in a ``seq`` at any depth: the spec has no other path).
