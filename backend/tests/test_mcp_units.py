@@ -49,6 +49,7 @@ def test_the_settings_come_from_the_environment(monkeypatch: pytest.MonkeyPatch)
         "filters_run",
         "mail_read",
         "mail_organize",
+        "mail_folders",
         "mail_draft",
         "mail_send",
         "audit_read",
@@ -104,6 +105,7 @@ def test_without_filters_their_groups_are_left_out(caplog: pytest.LogCaptureFixt
     assert names(defaults) == [
         "mail_read",
         "mail_organize",
+        "mail_folders",
         "mail_draft",
         "mail_send",
         "audit_read",
@@ -162,6 +164,33 @@ def test_the_instructions_follow_the_groups() -> None:
     assert "messages_move" not in mail_only
     assert "audit_list" not in mail_only
     assert "audit_list" in instructions(selected_groups("mail_read,audit_read"))
+
+
+def test_the_folder_tools_say_a_delete_is_for_good_and_only_on_request(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    every = instructions(selected_groups(None))
+    assert "folder_delete deletes a folder and its mail for good" in every
+    assert "only when the user explicitly asks, with the message count they confirmed" in every
+    assert "a rename keeps the mail and points the rule sets naming the folder" in every
+    # The organize tools' promise stands beside it.
+    assert "these tools never delete mail permanently" in every
+    assert "folder_delete" not in instructions(selected_groups("mail_read,mail_organize"))
+
+    caplog.set_level(logging.WARNING)
+    selected = selected_groups("mail_folders")
+    alone = instructions(selected)
+    assert not caplog.records  # it takes paths, not refs: no mail_read needed
+    assert alone.startswith("mailroom-app organizes the user's mail")
+    assert "Call accounts_list first for the account ids; folders_list gives folder paths." in alone
+    assert "never delete mail permanently" not in alone
+    assert [tool.name for tool in tools_for(selected)] == [
+        "accounts_list",
+        "folders_list",
+        "folder_create",
+        "folder_rename",
+        "folder_delete",
+    ]
 
 
 def test_organizing_without_reading_names_no_missing_ref_source(

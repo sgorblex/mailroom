@@ -130,17 +130,19 @@ the index and live updates; tier 3 items arrive one at a time.
 ## MCP server
 
 **Maturity: Partial** — as specified in [`requirements/mcp.md`](requirements/mcp.md): `/mcp`,
-the `filters_*`, `mail_read`, `mail_organize`, `mail_draft` and `mail_send` tools, the built-in
+the `filters_*`, `mail_read`, `mail_organize`, `mail_draft`, `mail_send`, `mail_folders` and
+`audit_read` tools, the built-in
 authorization server with its `/connect` consent screen, connected apps on the profile and external issuer mode are in.
 
 - The app's own MCP server at `/mcp`, for each user's own data: accounts, folders, rule sets,
   dry runs and runs, in [tool groups](GLOSSARY.md) chosen by instance config. Mail tools come
   group by group ([`requirements/mcp.md`](requirements/mcp.md)), `mail_read` with the first
-  slice of the [mail client](requirements/mail-client.md), `mail_organize` with the second and
-  `mail_draft` and `mail_send` with the third. An agent sends only as far as the account's
-  [send mode](GLOSSARY.md) allows, and a send that is not confirmed is never repeated.
+  slice of the [mail client](requirements/mail-client.md), `mail_organize` with the second,
+  `mail_draft` and `mail_send` with the third, and `mail_folders` with folder management. An
+  agent sends only as far as the account's [send mode](GLOSSARY.md) allows, and a send that is not confirmed is never repeated.
 - **Nothing turns on without the user's say:** a rule set created over MCP starts disabled, an
-  enabled one cannot be edited, and enabling, *Run now* and the *Run filters* switch are separate
+  enabled one cannot be edited (but for a folder rename pointing it at the folder's new path:
+  [`requirements/mcp.md`](requirements/mcp.md)), and enabling, *Run now* and the *Run filters* switch are separate
   tools marked destructive, so the client asks first.
 - **OAuth:** a built-in authorization server by default (sign in with a Mailroom password or SSO,
   then approve the client), or tokens from an external issuer such as Authentik; each approval is

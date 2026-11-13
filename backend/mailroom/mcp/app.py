@@ -50,7 +50,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 SERVER_NAME: Final = "mailroom-app"
-MAIL_GROUPS: Final = frozenset({"mail_read", "mail_organize", "mail_draft", "mail_send"})
+MAIL_GROUPS: Final = frozenset(
+    {"mail_read", "mail_organize", "mail_folders", "mail_draft", "mail_send"}
+)
 METADATA_PATH: Final = "/.well-known/oauth-protected-resource/mcp"
 MAX_REQUEST_BYTES: Final = 1024 * 1024
 TOOL_THREADS: Final = 10
@@ -71,13 +73,14 @@ def instructions(groups: Sequence[ToolGroup]) -> str:
     filters = bool(names & {"filters_read", "filters_write", "filters_run"})
     reads = "mail_read" in names
     organizes = "mail_organize" in names
+    manages_folders = "mail_folders" in names
     drafts = "mail_draft" in names
     sends = "mail_send" in names
     verbs = [
         verb
         for verb, served in (
             ("reads", reads),
-            ("organizes", organizes),
+            ("organizes", organizes or manages_folders),
             ("drafts", drafts),
             ("sends", sends),
         )
@@ -129,6 +132,13 @@ def instructions(groups: Sequence[ToolGroup]) -> str:
         parts.append(
             f"messages_move, messages_trash and messages_flag take refs {source}; these tools "
             "never delete mail permanently."
+        )
+    if manages_folders:
+        parts.append(
+            "folder_create, folder_rename and folder_delete change an account's folders; a "
+            "rename keeps the mail and points the rule sets naming the folder at its new path. "
+            "folder_delete deletes a folder and its mail for good, not to Trash: call it only "
+            "when the user explicitly asks, with the message count they confirmed."
         )
     if drafts:
         parts.append(
