@@ -53,6 +53,7 @@ Then, per finding:
 ```bash
 mise run fix                                     # always
 mise run check-backend && mise run test-backend  # if backend/** changed
+mise run test-backend-mail                       # backend/**: the mail tests CI runs
 mise run check-web     && mise run test-web      # if web/** changed
 ```
 

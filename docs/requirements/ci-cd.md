@@ -48,7 +48,7 @@ reports), Release Please branches skipped by `evaluate`. How to work on them:
 | Pipeline | Runs | Local equivalent |
 | --- | --- | --- |
 | [`backend.yaml`](../../.woodpecker/backend.yaml) | `ruff check`, `ruff format --check`, `mypy` | `mise run check-backend` |
-| [`backend-tests.yaml`](../../.woodpecker/backend-tests.yaml) | pytest against a detached Postgres step, mailroom-core's also against detached Dovecot and Mailpit steps, then the migration round trip | `mise run test-backend`, `mise run check-migrations` |
+| [`backend-tests.yaml`](../../.woodpecker/backend-tests.yaml) | pytest against a detached Postgres step, the app's and mailroom-core's mail tests also against detached Dovecot and Mailpit steps, then the migration round trip | `mise run test-backend-mail`, `mise run test-core-mail`, `mise run check-migrations` |
 | [`web.yaml`](../../.woodpecker/web.yaml) | ESLint, i18n parity, production build | `mise run check-web` |
 | [`web-tests.yaml`](../../.woodpecker/web-tests.yaml) | Vitest | `mise run test-web` |
 | [`scripts.yaml`](../../.woodpecker/scripts.yaml) | `node --test` over `scripts/lib`; version sync (also on Release Please PRs) | `mise run check-scripts`, `mise run check-version-sync` |

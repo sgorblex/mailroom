@@ -104,7 +104,7 @@ Then, bottom-up, run only what each branch's paths touch:
 | Changed | Run |
 | --- | --- |
 | anything | `mise run fix` |
-| `backend/**` | `mise run check-backend`, `mise run test-backend` |
+| `backend/**` | `mise run check-backend`, `mise run test-backend`, then `mise run test-backend-mail` (the mail tests CI runs) |
 | a migration | `mise run check-migrations` |
 | `web/**` | `mise run check-web-types` (seconds, the inner loop), then `mise run check-web`, `mise run test-web` |
 | `scripts/lib/**` | `mise run check-scripts` |

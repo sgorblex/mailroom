@@ -317,9 +317,9 @@ def silent_server() -> Iterator[int]:
 @pytest.fixture
 def mailboxes(migrated_engine: Engine, secrets_subkey: SecretsSubkey) -> Iterator[Mailboxes]:
     """The worker's way to the test users' mailboxes, its pool closed after the test."""
-    from mailroom.mail.connections import mail_ssl_context
     from mailroom.worker.context import Mailboxes
+    from tests.support.mail import mail_servers_ssl_context
 
-    found = Mailboxes(migrated_engine, secrets_subkey, mail_ssl_context())
+    found = Mailboxes(migrated_engine, secrets_subkey, mail_servers_ssl_context())
     yield found
     found.close()

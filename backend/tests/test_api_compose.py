@@ -23,7 +23,6 @@ from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
 from mailroom.auth.users import create_user
 from mailroom.context import app_context
 from mailroom.mail import service
-from mailroom.mail.connections import mail_ssl_context
 from mailroom.mail.pool import USER_UPLOADS
 from mailroom.mail.sends import SendRunner
 from mailroom_core import send as gate
@@ -41,6 +40,7 @@ from mailroom_core.testing import (
     seed,
 )
 from tests.conftest import PASSWORD
+from tests.support.mail import mail_servers_ssl_context, settle_sends
 from tests.test_api_accounts import new_account
 
 if TYPE_CHECKING:
@@ -123,11 +123,7 @@ class Composer:
 
     def settled(self) -> None:
         """Waits for the runner's sends, filing and draft removal included."""
-        runner: SendRunner = self.application.state.send_runner
-        deadline = time.monotonic() + 30
-        while runner.held.total() > 0:
-            assert time.monotonic() < deadline, "a send is still running"
-            time.sleep(0.02)
+        settle_sends(self.application.state.send_runner)
 
     def sent(self, ref: str, **body: Any) -> Any:
         """Sends ``ref``, waits for all of it; the send's result."""
@@ -191,7 +187,7 @@ def composer(
     application: FastAPI,
     monkeypatch: pytest.MonkeyPatch,
 ) -> Composer:
-    monkeypatch.setattr(application.state, "mail_ssl_context", mail_ssl_context())
+    monkeypatch.setattr(application.state, "mail_ssl_context", mail_servers_ssl_context())
     login = imap_server.unique_user("compose")
     create_folders(imap_server, login, "Drafts", "Sent", "Trash")
     mine = Composer(user_client, imap_server, login, application)
@@ -202,7 +198,7 @@ def composer(
 @pytest.fixture
 def stubbed(composer: Composer, application: FastAPI, monkeypatch: pytest.MonkeyPatch) -> Composer:
     """``composer`` with a TLS context that trusts the SMTP stub too; IMAP keeps working."""
-    context = mail_ssl_context()
+    context = mail_servers_ssl_context()
     for certificate in SmtpStub.trusted_context().get_ca_certs(binary_form=True):
         context.load_verify_locations(cadata=certificate)
     monkeypatch.setattr(application.state, "mail_ssl_context", context)

@@ -1,7 +1,7 @@
 """The mail client's REST routes (``docs/requirements/mail-client.md``) against the Dovecot
-``IMAP_TEST_HOST`` names (the dev one: ``IMAP_TEST_PORT=33993``, ``MAILROOM_MAIL_CA_FILE`` its
-CA); skipped without it. Each test logs in as a fresh mailbox user, seeded with mailroom-core's
-testing helpers."""
+``IMAP_TEST_HOST`` names (``mise run test-backend-mail`` starts one; ``tests/support/mail.py``
+says which TLS it trusts); skipped without it. Each test logs in as a fresh mailbox user, seeded
+with mailroom-core's testing helpers."""
 
 from __future__ import annotations
 
@@ -20,7 +20,6 @@ from mailroom.accounts.store import load_accounts, user_store
 from mailroom.api.routes.mail import download_name, served_type
 from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
 from mailroom.auth.users import create_user
-from mailroom.mail.connections import mail_ssl_context
 from mailroom.mail.pool import DeadlineExceeded, MailPool
 from mailroom.models import Filter, RuleSet
 from mailroom_core.crypto import secrets_subkey
@@ -45,6 +44,7 @@ from mailroom_core.testing import (
     seed,
 )
 from tests.conftest import PASSWORD
+from tests.support.mail import mail_servers_ssl_context
 from tests.test_api_accounts import new_account
 
 if TYPE_CHECKING:
@@ -114,7 +114,7 @@ def mailbox(
     application: FastAPI,
     monkeypatch: pytest.MonkeyPatch,
 ) -> Mailbox:
-    monkeypatch.setattr(application.state, "mail_ssl_context", mail_ssl_context())
+    monkeypatch.setattr(application.state, "mail_ssl_context", mail_servers_ssl_context())
     login = imap_server.unique_user("mailapi")
     account = new_account(login=login, password=imap_server.password, imap=endpoint(imap_server))
     assert user_client.post("/api/v1/accounts", json=account).status_code == 201
@@ -1103,9 +1103,18 @@ def subjects(mailbox: Mailbox, folder: str) -> list[str]:
     return sorted(m.subject for m in folder_contents(mailbox.server, mailbox.login, folder))
 
 
+def create_archive(mailbox: Mailbox) -> None:
+    """Creates the mailbox's Archive folder unless the server did: the dev Dovecot does, the
+    throwaway servers of ``scripts/test-mail.sh`` and CI do not (the role is then found by name)."""
+    with raw_client(mailbox.server, mailbox.login) as client:
+        if not client.folder_exists("Archive"):
+            client.create_folder("Archive")
+
+
 def test_a_move_answers_the_new_refs_and_the_old_ones_are_gone(
     mailbox: Mailbox, caplog: pytest.LogCaptureFixture
 ) -> None:
+    create_archive(mailbox)
     mailbox.seed(mime("file me", sender="Ada <ada@example.org>"))
     mailbox.seed(mime("and me"))
     refs = mailbox.refs()
@@ -1220,6 +1229,7 @@ def test_a_batch_over_two_folders_answers_each_group(mailbox: Mailbox) -> None:
 def test_a_call_cut_at_its_deadline_writes_no_group_after_the_cut(
     mailbox: Mailbox, application: FastAPI, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    create_archive(mailbox)
     from mailroom.mail import service
 
     mailbox.seed(mime("slow inbox"))
@@ -1263,13 +1273,14 @@ def test_a_call_cut_at_its_deadline_writes_no_group_after_the_cut(
 def test_archive_moves_to_the_archive_folder_or_is_unsupported(
     mailbox: Mailbox, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    create_archive(mailbox)
     mailbox.seed(mime("keep"))
     [ref] = mailbox.refs()
     [group] = mailbox.organize("archive", refs=[ref])
     assert (group["ok"], group["count"], len(group["new_refs"])) == (True, 1, 1)
     assert subjects(mailbox, "Archive") == ["keep"]
 
-    # A server that names no \Archive folder (the dev Dovecot always creates one).
+    # A server with no folder in the archive role.
     real = MailConnections.folders
 
     def without_archive(self: MailConnections, account_id: str, **kwargs: Any) -> list[Folder]:
@@ -1373,6 +1384,7 @@ def test_flags_change_read_back_and_repeat(mailbox: Mailbox) -> None:
 
 
 def test_a_batch_is_refused_whole_before_any_write(mailbox: Mailbox) -> None:
+    create_archive(mailbox)
     mailbox.seed(mime("mine"))
     [ref] = mailbox.refs()
     message = parse_ref(ref)
@@ -1418,6 +1430,7 @@ def test_a_batch_naming_an_account_that_cannot_log_in_is_refused_before_any_writ
 ) -> None:
     """Every account a batch names is checked before anything connects; the usable account's
     message stays where it was."""
+    create_archive(mailbox)
     home = new_account("home", imap=endpoint(mailbox.server))
     added = mailbox.client.post("/api/v1/accounts", json=home)
     assert added.status_code == 201, added.text
