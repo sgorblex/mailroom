@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.10.0](https://github.com/sgorblex/mailroom/compare/v0.9.1...v0.10.0) (2026-11-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* **core:** drop the retired mailroom-mcp's leftovers ([#31](https://github.com/sgorblex/mailroom/issues/31))
+* **core:** filters read mail through core's MIME handling; an HTML body matches as text ([#30](https://github.com/sgorblex/mailroom/issues/30))
+
+### Features
+
+* MCP clients connect through an SSO sign-in (MAILROOM_MCP_AUTH=oidc) ([#35](https://github.com/sgorblex/mailroom/issues/35)) ([86a9691](https://github.com/sgorblex/mailroom/commit/86a9691957927f632d3b5d6caa14deb792afb521))
+
+
+### Bug Fixes
+
+* **core:** filters read mail through core's MIME handling; an HTML body matches as text ([#30](https://github.com/sgorblex/mailroom/issues/30)) ([15d18ce](https://github.com/sgorblex/mailroom/commit/15d18cef53b7e97eb195d2c3e03e6408f3f2a6a8))
+
+
+### Code Refactoring
+
+* **core:** drop the retired mailroom-mcp's leftovers ([#31](https://github.com/sgorblex/mailroom/issues/31)) ([5a19302](https://github.com/sgorblex/mailroom/commit/5a193024ddff0cefd1cc08b7e1bcb3cd168a1d5c))
+
 ## [0.9.1](https://github.com/sgorblex/mailroom/compare/v0.9.0...v0.9.1) (2026-11-13)
 
 
