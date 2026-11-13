@@ -137,7 +137,7 @@ error_summary = false
 
 # Untyped.
 [[tool.mypy.overrides]]
-module = ["imapclient", "imapclient.*", "mailparser", "mailparser.*"]
+module = ["imapclient", "imapclient.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

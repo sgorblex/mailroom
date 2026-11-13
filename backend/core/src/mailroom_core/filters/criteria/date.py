@@ -85,18 +85,5 @@ def _sent_before_query(cutoff: date) -> IMAPQuery:
 
 
 def _sent_before(msg: Message, cutoff: date) -> bool:
-    msg_date = getattr(msg.parsed, "date", None)
-    if msg_date is None:
-        return False
-    if isinstance(msg_date, datetime):
-        msg_date = msg_date.date()
-    elif isinstance(msg_date, date):
-        pass
-    elif isinstance(msg_date, str):
-        try:
-            msg_date = datetime.strptime(msg_date, "%d-%b-%Y").date()  # noqa: DTZ007 -- date only
-        except ValueError, TypeError:
-            return False
-    else:
-        return False
-    return msg_date < cutoff
+    sent = msg.parsed.date
+    return sent is not None and sent.date() < cutoff

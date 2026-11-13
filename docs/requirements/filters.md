@@ -23,6 +23,11 @@ in the browser, tried with a dry run, and run by the worker. Product scope:
   allowed, `delete` (*Delete for good*) too: a filter is the one place Mailroom removes mail
   permanently, because the user wrote it, saw its dry run and enabled it (on a server with
   UIDPLUS, which expunges exactly those messages; elsewhere the action fails `unsupported`).
+  **What a criterion reads**: the first of each address field, the subject as the reader sees it
+  (whitespace collapsed), and as the body every inline plain-text part, else the HTML's visible
+  text (no tags, styles or images; links as `[text](url)`; the first 2 million characters).
+  Attached messages and named files are not the body. `body_contains` alone is the server's
+  search of the whole body; a pattern, or a criterion combined with one, reads it as above.
   **Moves are the mail client's moves**: `move_to` and `trash` need a folder of the account
   (`mailbox_missing` otherwise), never move into Drafts or Sent (`invalid_argument`), and without
   MOVE copy then expunge exactly the copied messages; a move into the folder the rule set runs on

@@ -11,33 +11,7 @@ from mailroom_core.filters.pattern import Pattern
 from mailroom_core.filters.query import Q
 
 if TYPE_CHECKING:
-    from mailparser.core import MailParser
-
     from mailroom_core.filters.message import Message
-
-
-def _parts_to_str(value: object) -> str:
-    """Join mail-parser text parts (list of str) into one string; accept str or empty."""
-    if value is None:
-        return ""
-    if isinstance(value, str):
-        return value
-    if isinstance(value, list):
-        return "\n".join(str(x) for x in value if x)
-    return str(value)
-
-
-def _body_text(parsed: MailParser) -> str:
-    """Return decoded body text for matching: plain parts first, else HTML parts.
-
-    mail-parser exposes ``text_plain`` and ``text_html`` as lists of decoded
-    parts; this matches the common case of preferring plain text and falling
-    back to HTML when there is no plain body.
-    """
-    plain = _parts_to_str(parsed.text_plain)
-    if plain.strip():
-        return plain
-    return _parts_to_str(parsed.text_html)
 
 
 class BodyContains(Criterion):
@@ -46,9 +20,8 @@ class BodyContains(Criterion):
     Uses IMAP ``BODY`` for server-side prefiltering (``is_efficient=True``), so
     :meth:`mailroom_core.filters.Folder.run` does not fetch messages solely for
     this criterion; the UID set from the server search is authoritative. The
-    client predicate matches the same substring on normalized decoded body text
-    (plain parts, else HTML) for :meth:`Criterion.select` and consistency with
-    parsed mail.
+    client predicate matches the same substring on the decoded body text (the
+    plain parts, else the HTML ones' visible text) for :meth:`Criterion.select`.
     """
 
     spec_type = "body_contains"
@@ -62,7 +35,7 @@ class BodyContains(Criterion):
         """
 
         def func(msg: Message) -> bool:
-            return substring in _body_text(msg.parsed)
+            return substring in msg.parsed.text
 
         super().__init__(func, Q(("BODY", substring)), is_efficient=True)
 
@@ -84,13 +57,13 @@ class BodyMatches(Criterion):
         """Initialize a BodyMatches criterion.
 
         Args:
-            pattern: Regular expression searched anywhere in the normalized body
-                (plain parts, else HTML), with DOTALL enabled.
+            pattern: Regular expression searched anywhere in the decoded body
+                (the plain parts, else the HTML ones' visible text), with DOTALL enabled.
 
         """
         compiled = Pattern(pattern, regex.DOTALL)
 
         def func(msg: Message) -> bool:
-            return compiled.search(_body_text(msg.parsed))
+            return compiled.search(msg.parsed.text)
 
         super().__init__(func)

@@ -7,26 +7,22 @@ from mailroom_core.filters.pattern import Pattern
 from mailroom_core.filters.query import Q
 
 if TYPE_CHECKING:
-    from mailparser.core import MailParser
-
     from mailroom_core.filters.message import Message
+    from mailroom_core.mail import ParsedMessage
 
 
-def _extract_emails(msg: MailParser, field: str) -> list[tuple[str, str]]:
-    """Extract email addresses from a message field.
+def _extract_emails(msg: ParsedMessage, field: str) -> list[tuple[str, str]]:
+    """The (name, address) pairs of a message field, empty strings for what a mailbox lacks.
 
     Args:
         msg: Parsed email message.
-        field: Field name ('from_', 'to', 'cc', 'bcc').
+        field: Field name ('sender', 'to', 'cc', 'bcc').
 
     Returns:
         List of (name, email) tuples.
 
     """
-    field_value = getattr(msg, field, None)
-    if not field_value:
-        return []
-    return field_value if isinstance(field_value, list) else [field_value]
+    return [(a.name or "", a.address or "") for a in getattr(msg, field)]
 
 
 class FromContains(Criterion):
@@ -43,7 +39,7 @@ class FromContains(Criterion):
         """
 
         def func(msg: Message) -> bool:
-            return any(addr in email for name, email in _extract_emails(msg.parsed, "from_"))
+            return any(addr in email for name, email in _extract_emails(msg.parsed, "sender"))
 
         super().__init__(func, Q(("FROM", addr)), is_efficient=True)
 
@@ -62,7 +58,7 @@ class FromIs(Criterion):
         """
 
         def func(msg: Message) -> bool:
-            return any(addr == email for name, email in _extract_emails(msg.parsed, "from_"))
+            return any(addr == email for name, email in _extract_emails(msg.parsed, "sender"))
 
         super().__init__(func, imap_query=Q(("FROM", addr)), is_efficient=True)
 
@@ -83,7 +79,7 @@ class FromMatches(Criterion):
 
         def func(msg: Message) -> bool:
             return any(
-                compiled.fullmatch(email) for name, email in _extract_emails(msg.parsed, "from_")
+                compiled.fullmatch(email) for name, email in _extract_emails(msg.parsed, "sender")
             )
 
         super().__init__(func)
@@ -105,7 +101,7 @@ class FromMatchesName(Criterion):
 
         def func(msg: Message) -> bool:
             return any(
-                compiled.fullmatch(name) for name, email in _extract_emails(msg.parsed, "from_")
+                compiled.fullmatch(name) for name, email in _extract_emails(msg.parsed, "sender")
             )
 
         super().__init__(func)

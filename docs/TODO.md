@@ -40,8 +40,9 @@ In order. The reasons are in [`CONTEXT.md`](CONTEXT.md) — *Where the family is
         `mailroom.accounts.mail` gone, so STARTTLS accounts filter too. Connections from plain
         config (`connections_from`), and `core/tests/filters/test_engine_mail.py` running
         filters with no app or database.
-  - [ ] **Engine parsing on core's MIME**: the engine's criteria read the messages they fetch
-        through core's MIME handling instead of mail-parser, which then leaves the dependencies.
+  - [x] **Engine parsing on core's MIME** (2026-11-13): the engine's criteria read the messages
+        they fetch through `mailroom_core.mail.parsed_message` instead of mail-parser, which left
+        the dependencies; an HTML-only body is matched as its visible text.
   - [ ] **Tidy-ups**, whenever convenient: mailroom-mcp's leftovers out of core
         (`STANDALONE_USER`, docs that name it); `mailroom/mail/service.py` and
         `mailroom/api/routes/mail.py` split by concern, as core's `mail` is.

@@ -2,8 +2,8 @@
 
 import time
 from contextlib import contextmanager
-from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, cast
+from datetime import UTC
+from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
 import pytest
@@ -30,7 +30,8 @@ from mailroom_core.filters.pattern import (
 )
 from mailroom_core.filters.runner import RunRulesError, run_rules
 from mailroom_core.filters.spec import SpecError, load_filter
-from mailroom_core.mail import FetchedMessage
+from mailroom_core.mail import FetchedMessage, ParsedMessage
+from mailroom_core.render import Address
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -50,17 +51,25 @@ def _restore_timeout() -> Iterator[None]:
 
 
 def _msg(**fields: Any) -> Message:
-    parsed = {
-        "from_": [],
-        "to": [],
-        "cc": [],
-        "bcc": [],
-        "subject": "",
-        "text_plain": [],
-        "text_html": [],
-        **fields,
-    }
-    return Message(1, cast("Any", SimpleNamespace(**parsed)), [])
+    """A message whose parsed fields are `fields`: addresses as (name, address) pairs, a naive
+    date taken as UTC."""
+
+    def people(key: str) -> tuple[Address, ...]:
+        return tuple(
+            Address(name or None, address or None) for name, address in fields.get(key, [])
+        )
+
+    sent = fields.get("date")
+    parsed = ParsedMessage(
+        sender=people("from_"),
+        to=people("to"),
+        cc=people("cc"),
+        bcc=people("bcc"),
+        subject=fields.get("subject", ""),
+        date=sent.replace(tzinfo=UTC) if sent is not None else None,
+        text=fields.get("text", ""),
+    )
+    return Message(1, parsed, [])
 
 
 class TestMatchTimeout:
@@ -71,7 +80,7 @@ class TestMatchTimeout:
         ("criterion", "msg"),
         [
             (SubjectMatches(CATASTROPHIC), _msg(subject=VICTIM)),
-            (BodyMatches(CATASTROPHIC), _msg(text_plain=[VICTIM])),
+            (BodyMatches(CATASTROPHIC), _msg(text=VICTIM)),
             (FromMatches(CATASTROPHIC), _msg(from_=[("", VICTIM)])),
             (FromMatchesName(CATASTROPHIC), _msg(from_=[(VICTIM, "x@example.com")])),
             (ToMatches(CATASTROPHIC), _msg(to=[("", VICTIM)])),
@@ -141,8 +150,8 @@ class TestPatterns:
         [
             (SubjectMatches(r"\[Preview\] .*"), _msg(subject="[Preview] hi"), True),
             (SubjectMatches(r"Preview"), _msg(subject="[Preview] hi"), False),
-            (BodyMatches(r"line1.line2"), _msg(text_plain=["x line1\nline2 y"]), True),
-            (BodyMatches(r"^line2"), _msg(text_plain=["line1\nline2"]), False),
+            (BodyMatches(r"line1.line2"), _msg(text="x line1\nline2 y"), True),
+            (BodyMatches(r"^line2"), _msg(text="line1\nline2"), False),
             (FromMatches(r".*@example\.com"), _msg(from_=[("Ann", "ann@example.com")]), True),
             (FromMatches(r"example"), _msg(from_=[("Ann", "ann@example.com")]), False),
             (FromMatchesName(r"A.n"), _msg(from_=[("Ann", "ann@example.com")]), True),

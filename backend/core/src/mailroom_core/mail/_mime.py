@@ -127,6 +127,21 @@ def header_values(headers: bytes | str, name: str) -> list[str]:
     return [_FOLD.sub(" ", m.group(1)).strip() for m in field.finditer(text_value(headers))]
 
 
+_FIELD: Final = re.compile(rb"^([!-9;-~]+):[ \t]*([^\r\n]*(?:\r?\n[ \t][^\r\n]*)*)", re.MULTILINE)
+_FOLD_BYTES: Final = re.compile(rb"\r?\n[ \t]+")
+
+
+def header_fields(headers: bytes) -> dict[str, list[str]]:
+    """Every field of a raw header block by lowercase name, in order, each value unfolded and
+    read as text on its own (`text_value`), so one sender's 8-bit field garbles no other."""
+    fields: dict[str, list[str]] = {}
+    for match in _FIELD.finditer(headers):
+        name = match.group(1).decode("ascii").lower()
+        value = _FOLD_BYTES.sub(b" ", match.group(2)).strip()
+        fields.setdefault(name, []).append(text_value(value))
+    return fields
+
+
 _PARAMETER: Final = re.compile(r"([^*]+)(?:\*(\d+))?(\*)?")
 
 

@@ -12,8 +12,6 @@ import imaplib
 import logging
 from typing import TYPE_CHECKING
 
-from mailparser import parse_from_bytes
-
 from mailroom_core.filters.filter import Filter
 from mailroom_core.filters.message import Message
 from mailroom_core.filters.path import Path
@@ -21,7 +19,13 @@ from mailroom_core.filters.pattern import MatchTimeoutError
 from mailroom_core.filters.report import summaries
 from mailroom_core.filters.selected import Selected
 from mailroom_core.filters.spec.nodes import NotSerializableError
-from mailroom_core.mail import MailError, fetch_envelopes, fetch_sources, search_uids
+from mailroom_core.mail import (
+    MailError,
+    fetch_envelopes,
+    fetch_sources,
+    parsed_message,
+    search_uids,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -91,8 +95,9 @@ class Folder:
 
         Criteria with is_efficient=True (e.g. FromIs, ToIs, SubjectContains) are answered by
         the server's SEARCH alone. The others fetch the candidates' source (`BODY.PEEK[]`,
-        which never sets ``\\Seen``), parse it with mail-parser and match it here; a message is
-        fetched once per run, and fetched again only after an action of the run acted on it.
+        which never sets ``\\Seen``), parse it with ``mailroom_core.mail.parsed_message`` and
+        match it here; a message is fetched once per run, and fetched again only after an action
+        of the run acted on it.
 
         Every search skips messages marked ``\\Deleted``. ``newest`` (at least 1, else a
         ValueError) bounds every search to the folder's newest ``newest`` messages as it was when
@@ -241,7 +246,7 @@ class Folder:
         if missing:
             for uid, message in fetch_sources(context, missing).items():
                 try:
-                    parsed = parse_from_bytes(message.source)
+                    parsed = parsed_message(message.source)
                 except Exception as error:
                     self.log.debug("uid %s: parse error: %s", uid, type(error).__name__)
                     continue

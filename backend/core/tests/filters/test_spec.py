@@ -1,8 +1,7 @@
 """Tests for rule specs: to_spec(), spec loaders, schema, derived eq/repr."""
 
 import json
-from datetime import date, datetime
-from types import SimpleNamespace
+from datetime import UTC, date, datetime
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
@@ -64,7 +63,8 @@ from mailroom_core.filters.spec import (
     load_criterion,
     load_filter,
 )
-from mailroom_core.mail import MailboxContext
+from mailroom_core.mail import MailboxContext, ParsedMessage
+from mailroom_core.render import Address
 
 CRITERIA: list[Criterion] = [
     Anything(),
@@ -133,19 +133,26 @@ COMBINED_ACTIONS: list[Action] = [
 
 
 def _msg(**fields: Any) -> Message:
+    """A message whose parsed fields are `fields`: addresses as (name, address) pairs, a naive
+    date taken as UTC."""
     flags = fields.pop("flags", [])
-    parsed = {
-        "from_": [],
-        "to": [],
-        "cc": [],
-        "bcc": [],
-        "subject": "",
-        "text_plain": [],
-        "text_html": [],
-        "date": None,
-        **fields,
-    }
-    return Message(0, cast("Any", SimpleNamespace(**parsed)), flags)
+
+    def people(key: str) -> tuple[Address, ...]:
+        return tuple(
+            Address(name or None, address or None) for name, address in fields.get(key, [])
+        )
+
+    sent = fields.get("date")
+    parsed = ParsedMessage(
+        sender=people("from_"),
+        to=people("to"),
+        cc=people("cc"),
+        bcc=people("bcc"),
+        subject=fields.get("subject", ""),
+        date=sent.replace(tzinfo=UTC) if sent is not None else None,
+        text=fields.get("text", ""),
+    )
+    return Message(0, parsed, flags)
 
 
 MESSAGES = [
@@ -154,7 +161,7 @@ MESSAGES = [
         from_=[("Example News", "news@example.com")],
         to=[("", "me@example.com")],
         subject="Weekly digest",
-        text_plain=["order #12 unsubscribe"],
+        text="order #12 unsubscribe",
         date=datetime(2024, 5, 1),  # noqa: DTZ001
         flags=[b"\\Seen", b"\\Answered"],
     ),
