@@ -52,7 +52,8 @@ through the Vite proxy. Engineering baseline:
   — *Mail accounts*.
 - Where the instance reads and sends mail (mail or MCP), each user sets their own **mail limits**
   on their *Profile* page: messages per hour, recipients per message, attachments per message (at
-  most 25 MB) and the window a message's text is read in. They hold for the web and MCP alike,
+  most 25 MB), the window a message's text is read in and the size of a message moved to another
+  account (at most 50 MB). They hold for the web and MCP alike,
   and no MCP tool changes them. Until changed, mailroom-core's defaults apply.
   How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md)
   — *Mail accounts*.

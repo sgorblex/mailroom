@@ -7,6 +7,7 @@ export type Actor = (typeof ACTORS)[number]
 /** The actions the web and MCP record; a filter's record names its own action instead. */
 export const MAIL_ACTIONS = [
   'move',
+  'move_to_account',
   'archive',
   'trash',
   'flag',

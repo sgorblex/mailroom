@@ -19,7 +19,7 @@ const LIMITS_PATH = '/api/v1/me/limits'
  */
 function otherSections(path: string): Promise<Response> {
   if (path === LIMITS_PATH) {
-    const limits = { send_per_hour: 20, max_recipients: 10, body_chars: 6000, attachment_max_mb: 10 }
+    const limits = { send_per_hour: 20, max_recipients: 10, body_chars: 6000, attachment_max_mb: 10, move_max_mb: 25 }
     return Promise.resolve(new Response(JSON.stringify(limits), { status: 200 }))
   }
   if (path === '/api/v1/oauth/grants') {

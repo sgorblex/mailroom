@@ -28,6 +28,7 @@
   },
   "actions": {
     "move": "Moved",
+    "move_to_account": "Moved to another account",
     "archive": "Archived",
     "trash": "Moved to Trash",
     "flag": "Flags changed",

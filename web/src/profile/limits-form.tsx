@@ -2,7 +2,7 @@ import { useCallback, useState, type ReactElement, type SubmitEvent } from 'reac
 import { useTranslation } from 'react-i18next'
 
 import { ApiRequestError, apiErrorMessage, refusalIssues } from '@/api/http.ts'
-import { ATTACHMENT_MAX_MB, changeLimits, getLimits, type Limits } from '@/api/limits.ts'
+import { ATTACHMENT_MAX_MB, changeLimits, getLimits, MOVE_MAX_MB, type Limits } from '@/api/limits.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Input } from '@/components/ui/input.tsx'
 import { useLoad } from '@/lib/use-load.ts'
@@ -15,6 +15,7 @@ const FIELDS: readonly { key: Key; min?: number; max?: number; step: number | 'a
   { key: 'max_recipients', min: 1, step: 1 },
   { key: 'attachment_max_mb', max: ATTACHMENT_MAX_MB, step: 'any' },
   { key: 'body_chars', min: 500, step: 1 },
+  { key: 'move_max_mb', max: MOVE_MAX_MB, step: 'any' },
 ]
 
 type Draft = Record<Key, string>
@@ -27,6 +28,7 @@ function draftOf(limits: Limits): Draft {
     max_recipients: String(limits.max_recipients),
     body_chars: String(limits.body_chars),
     attachment_max_mb: String(limits.attachment_max_mb),
+    move_max_mb: String(limits.move_max_mb),
   }
 }
 
@@ -73,6 +75,7 @@ function LimitsFields({ initial }: { initial: Limits }): ReactElement {
         max_recipients: Number(draft.max_recipients),
         body_chars: Number(draft.body_chars),
         attachment_max_mb: Number(draft.attachment_max_mb),
+        move_max_mb: Number(draft.move_max_mb),
       })
       setDraft(draftOf(saved))
       setOutcome({ kind: 'saved' })
@@ -109,7 +112,7 @@ function LimitsFields({ initial }: { initial: Limits }): ReactElement {
             }}
           />
           <p id={`limits-${key}-hint`} className="text-sm text-muted-foreground">
-            {t(`limits.${key}Hint`, { max: ATTACHMENT_MAX_MB })}
+            {t(`limits.${key}Hint`, { max })}
           </p>
         </div>
       ))}

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect } from 'react'
 
-import type { FlagChange, FolderRole, MailFolder, MessageItem } from '@/api/mail.ts'
+import type { FlagChange, FolderRole, MailFolder, MessageItem, MoveRemoval } from '@/api/mail.ts'
 
 export interface Flags {
   seen: boolean
@@ -14,17 +14,20 @@ export type Action =
   | { kind: 'archive' }
   | { kind: 'trash' }
   | { kind: 'move'; folder: MailFolder }
+  | { kind: 'moveToAccount'; account: string; folder: MailFolder; removal: MoveRemoval }
   | { kind: 'flag'; change: FlagChange }
 
 export interface Failure {
   account: string
   folder: string
   code: string
+  /** How many a move to another account copied but could not remove here: they are in both. */
+  inBoth?: number
 }
 
 /** One failure line per folder and code. */
 export function failureKey(failure: Failure): string {
-  return JSON.stringify([failure.account, failure.folder, failure.code])
+  return JSON.stringify([failure.account, failure.folder, failure.code, failure.inBoth ?? 0])
 }
 
 /** What the last action did, for the toolbar to word. */
@@ -39,6 +42,8 @@ export type FolderState =
 
 
 export interface Triage {
+  /** The user's accounts, for a move to another of them. */
+  accounts: readonly string[]
   folders: Readonly<Record<string, FolderState>>
   /** Loads an account's folders; `fresh` asks again even when they are there (or failed). */
   loadFolders: (account: string, fresh: boolean) => void
@@ -64,6 +69,9 @@ export interface Triage {
   run: (action: Action, targets: Target[], options?: { silent?: boolean }) => Promise<void>
   picker: boolean
   setPicker: (open: boolean) => void
+  /** The picker of a move to another account; opening one picker closes the other. */
+  accountPicker: boolean
+  setAccountPicker: (open: boolean) => void
 }
 
 export const TriageContext = createContext<Triage | null>(null)

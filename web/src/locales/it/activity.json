@@ -28,6 +28,7 @@
   },
   "actions": {
     "move": "Spostato",
+    "move_to_account": "Spostato in un altro account",
     "archive": "Archiviato",
     "trash": "Spostato nel Cestino",
     "flag": "Contrassegni cambiati",

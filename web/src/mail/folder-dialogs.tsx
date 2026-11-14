@@ -86,7 +86,7 @@ function nameError(t: TFunction, name: string, delimiter: string | null, parent:
 }
 
 /** Cancel, then the action: opening the dialog focuses Cancel where no field comes first. */
-function Buttons({
+export function Buttons({
   cancel,
   confirm,
   disabled,

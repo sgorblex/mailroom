@@ -1,12 +1,13 @@
-import { useEffect, useRef, type ReactElement, type ReactNode, type Ref } from 'react'
+import { useEffect, useRef, useState, type ReactElement, type ReactNode, type Ref } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { Archive, FolderInput, Mail, MailOpen, Star, StarOff, Trash2, X } from 'lucide-react'
+import { Archive, ArrowRightLeft, FolderInput, Mail, MailOpen, Star, StarOff, Trash2, X } from 'lucide-react'
 
-import type { MailFolder } from '@/api/mail.ts'
+import type { MailFolder, MoveRemoval } from '@/api/mail.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { cn } from '@/lib/utils.ts'
 
+import { AccountMovePicker, MoveForGoodDialog } from './account-move-picker.tsx'
 import { MAIL_NS } from './i18n.ts'
 import { folderName, mailCodeMessage, mailErrorMessage } from './messages.ts'
 import { useTriageActions } from './triage-actions.ts'
@@ -30,14 +31,30 @@ export function Toolbar({ className }: { className?: string }): ReactElement | n
   const trigger = useRef<HTMLButtonElement>(null)
   const pickerWasOpen = useRef(false)
   const picker = triage.picker && actions.moveChoices !== null
+  const accountTrigger = useRef<HTMLButtonElement>(null)
+  const accountPickerWasOpen = useRef(false)
+  const showAccountPicker = triage.accountPicker && actions.otherAccounts !== null
+  // A move to another account that deletes the originals for good, waiting for the user's yes.
+  const [forGood, setForGood] = useState<{ account: string; folder: MailFolder } | null>(null)
 
-  // Closing the picker puts focus back on its button, unless focus went somewhere else.
+  // Closing a picker puts focus back on its button, unless focus went somewhere else.
   useEffect(() => {
     if (pickerWasOpen.current && !picker && (document.activeElement === null || document.activeElement === document.body)) {
       trigger.current?.focus()
     }
     pickerWasOpen.current = picker
   }, [picker])
+  useEffect(() => {
+    if (
+      accountPickerWasOpen.current &&
+      !showAccountPicker &&
+      forGood === null &&
+      (document.activeElement === null || document.activeElement === document.body)
+    ) {
+      accountTrigger.current?.focus()
+    }
+    accountPickerWasOpen.current = showAccountPicker
+  }, [showAccountPicker, forGood])
 
   if (actions.targets.length === 0 && triage.outcome === null) {
     return null
@@ -79,6 +96,20 @@ export function Toolbar({ className }: { className?: string }): ReactElement | n
               <FolderInput aria-hidden="true" />
             </ToolButton>
           )}
+          {actions.otherAccounts !== null && (
+            <ToolButton
+              ref={accountTrigger}
+              label={t('triage.moveToAccount')}
+              shortcut={undefined}
+              disabled={disabled}
+              expanded={showAccountPicker}
+              onClick={() => {
+                triage.setAccountPicker(!showAccountPicker)
+              }}
+            >
+              <ArrowRightLeft aria-hidden="true" />
+            </ToolButton>
+          )}
           {actions.star !== null && (
             <ToolButton
               label={actions.star.flagged ? t('triage.star') : t('triage.unstar')}
@@ -107,6 +138,34 @@ export function Toolbar({ className }: { className?: string }): ReactElement | n
           onChoose={(folder) => {
             triage.setPicker(false)
             actions.move(folder)
+          }}
+        />
+      )}
+      {showAccountPicker && actions.otherAccounts !== null && (
+        <AccountMovePicker
+          accounts={actions.otherAccounts}
+          onChoose={(account: string, folder: MailFolder, removal: MoveRemoval) => {
+            triage.setAccountPicker(false)
+            if (removal === 'delete') {
+              setForGood({ account, folder })
+            } else {
+              actions.moveToAccount(account, folder, removal)
+            }
+          }}
+        />
+      )}
+      {forGood !== null && (
+        <MoveForGoodDialog
+          count={actions.targets.length}
+          from={[...new Set(actions.targets.map((target) => target.account_id))]}
+          account={forGood.account}
+          folder={forGood.folder}
+          onCancel={() => {
+            setForGood(null)
+          }}
+          onConfirm={() => {
+            setForGood(null)
+            actions.moveToAccount(forGood.account, forGood.folder, 'delete')
           }}
         />
       )}
@@ -203,6 +262,12 @@ function doneMessage(t: TFunction, action: Action, count: number): string {
       return t('triage.trashed', { count })
     case 'move':
       return t('triage.moved', { count, folder: folderName(t, action.folder) })
+    case 'moveToAccount':
+      return t(action.removal === 'delete' ? 'triage.movedToAccountForGood' : 'triage.movedToAccount', {
+        count,
+        account: action.account,
+        folder: folderName(t, action.folder),
+      })
     case 'flag':
       if (action.change.flagged !== undefined) {
         return action.change.flagged ? t('triage.starred', { count }) : t('triage.unstarred', { count })
@@ -239,7 +304,10 @@ function OutcomeText({ outcome }: { outcome: Outcome }): ReactElement {
                 {t('list.failedFolder', {
                   account: failure.account,
                   folder: nameOf(failure.account, failure.folder),
-                  reason: mailCodeMessage(t, failure.code, GONE),
+                  reason:
+                    failure.inBoth !== undefined && outcome.action.kind === 'moveToAccount'
+                      ? t('triage.inBoth', { count: failure.inBoth, account: outcome.action.account })
+                      : mailCodeMessage(t, failure.code, GONE),
                 })}
               </li>
             ))}

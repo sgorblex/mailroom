@@ -7,7 +7,7 @@ import { renderSignedIn } from '@/test/signed-in.tsx'
 import { LimitsForm } from './limits-form.tsx'
 
 const ALICE = { username: 'alice', is_admin: false }
-const DEFAULTS = { send_per_hour: 20, max_recipients: 10, body_chars: 6000, attachment_max_mb: 10 }
+const DEFAULTS = { send_per_hour: 20, max_recipients: 10, body_chars: 6000, attachment_max_mb: 10, move_max_mb: 25 }
 
 function stubApi(put: (body: Record<string, number>) => Response): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn((path: string, init?: RequestInit) => {
@@ -44,6 +44,21 @@ describe('LimitsForm', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Limits saved.')
     const put = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === 'PUT')
     expect(JSON.parse((put?.[1] as RequestInit).body as string)).toEqual({ ...DEFAULTS, attachment_max_mb: 25 })
+  })
+
+  it('changes the size of a message moved to another account, up to 50 MB', async () => {
+    const fetchMock = stubApi((body) => new Response(JSON.stringify(body), { status: 200 }))
+    renderSignedIn(<LimitsForm />, ALICE)
+
+    const field = await screen.findByLabelText('A message moved to another account (MB)')
+    expect(field).toHaveValue(25)
+    expect(field).toHaveAttribute('max', '50')
+    await setField('A message moved to another account (MB)', '40')
+    await userEvent.click(screen.getByRole('button', { name: 'Save limits' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Limits saved.')
+    const put = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === 'PUT')
+    expect(JSON.parse((put?.[1] as RequestInit).body as string)).toEqual({ ...DEFAULTS, move_max_mb: 40 })
   })
 
   it('marks the field a refusal is about', async () => {

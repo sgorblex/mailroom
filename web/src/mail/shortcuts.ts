@@ -123,6 +123,10 @@ export function useMailShortcuts(accountId: string): void {
             state.setPicker(false)
             return true
           }
+          if (state.accountPicker) {
+            state.setAccountPicker(false)
+            return true
+          }
           if (state.selection.size > 0) {
             state.clearSelection()
             return true
