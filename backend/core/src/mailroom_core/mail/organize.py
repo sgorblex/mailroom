@@ -73,6 +73,8 @@ class GroupResult:
     """None when the group succeeded."""
     destination: str | None = None
     """Where a move took them, or copied them before it failed; None for a flag change."""
+    destination_account: str | None = None
+    """On a move to another account, that account: `destination` and `new_refs` are its."""
 
     @property
     def ok(self) -> bool:

@@ -30,6 +30,7 @@ send_per_hour     = 20     # global, across accounts
 max_recipients    = 10     # To + Cc + Bcc of one message
 body_chars        = 6000   # per read, before a continuation cursor
 attachment_max_mb = 10
+move_max_mb       = 25     # a message moved to another account
 
 [[account]]
 id         = "home"

@@ -188,13 +188,48 @@ flags and INTERNALDATE, `fetch_envelopes`, `append_raw` with flags and an arriva
 inside a session of its own uses them, folders included, since a second connection of the
 account would wait for the one it holds. `store_flags` sets only
 `\Seen`, `\Flagged` and `\Answered`; `delete_uids` needs UIDPLUS and serves only a draft
-Mailroom wrote (*Safety*) and a filter's `delete`. The filter engine runs on them too (*Filters*).
+Mailroom wrote (*Safety*), a filter's `delete` and a move to another account for good. The filter
+engine runs on them too (*Filters*).
 
 imapclient's `move()` needs MOVE, so without it core issues UID COPY, STORE `\Deleted` and UID
 EXPUNGE of exactly those UIDs itself, which only UIDPLUS allows; a server with neither is refused.
 When that COPY succeeds and the removal fails, the group fails but keeps the copies' new refs, its
 error says they were copied but may not have been removed, so the move must not be repeated, and
 names the new refs, so a host raising it alone still shows them; its audit items carry `copied`.
+
+### Moving to another account
+
+`mailroom_core.mail.transfer.move_to_account(connections, refs, account, folder, removal=,
+max_bytes=)` moves messages to a folder of another account the connections serve, into an
+`OrganizeResult` whose groups name `destination_account` and give the new refs there:
+
+- **Refused before anything is written:** a target account that is a source's own (that is a
+  move), unknown, or whose folder `move_target` refuses (never Drafts or Sent; Inbox and Gmail's
+  All Mail are allowed); `removal="delete"` without UIDPLUS on a source, `"trash"` without its
+  Trash or a way to move; and, per folder, a message with no Message-ID (`unsupported`: its copy
+  could not be confirmed) or over `max_bytes` (`too_large`; the host passes `move_cap`, from
+  `Limits.move_max_mb`, 25 MB by default).
+- **Per folder, in chunks of at most `max_bytes`,** in three sessions that never overlap (one
+  account's held while opening another's could deadlock against a move the other way): read the
+  chunk (`fetch_source`: bytes, flags, INTERNALDATE), write it to the target, remove what
+  arrived.
+- **A copy** is appended with the flags but `\Recent` and `\Deleted` and the original
+  INTERNALDATE, and confirmed by APPENDUID and its ENVELOPE's Message-ID, else by a search for
+  it (`message_id_uids`; on Gmail, which ignores SEARCH HEADER, `X-GM-RAW rfc822msgid:`). A
+  message already in the target folder with that Message-ID and the same size, not taken as
+  the copy of another message of the call, is taken as the copy: a move cut off after copying
+  is repeated without copying twice, while a different message sharing the Message-ID (a
+  list's copy, or one written to look like it) is not mistaken for it. Two moves of the same
+  messages at once can each copy them: the guarantee is for a move repeated after another.
+- **The original** goes only once its copy is confirmed: to its account's Trash (one already in
+  Trash stays), or for good with `delete_uids` of exactly those UIDs; on Gmail, where that would
+  only drop a label, by a move to Trash and the expunge there.
+- **Stops at the first error** in a folder. Copies whose originals could not be removed are in
+  both: the error says so, not to move them again, and names their new refs; what was not
+  reached is noted with the error.
+- **Audit items:** per message moved, one for the original (`destination`,
+  `destination_account`, `removed`, `copied` when it stayed) and one for the copy, in the target
+  account, with `source_account` and `source_folder`.
 
 ## Folders
 
@@ -427,12 +462,14 @@ share of the defence:
   (`X-Mailroom-Draft`) when it is replaced or deleted, always by `UID EXPUNGE` of exactly those
   UIDs (UIDPLUS required); a draft written anywhere else is moved to Trash. Mail is lost for good
   only on a deliberate act: a filter's `delete`, the user's own rule, which expunges exactly its
-  UIDs too (without UIDPLUS it is `unsupported`), and a folder's delete (*Folders*), which takes
-  the message count the caller confirmed and is refused when the folder holds another. Neither is
-  ever a side effect of another write.
+  UIDs too (without UIDPLUS it is `unsupported`); a move to another account asked to remove the
+  originals for good, which expunges exactly them once their copies are confirmed (*Moving to
+  another account*); and a folder's delete (*Folders*), which takes the message count the caller
+  confirmed and is refused when the folder holds another. None is ever a side effect of another
+  write.
 - **Audit items:** each write and send, refused ones included, yields items (which the app keeps
-  in its audit trail) naming the account,
-  folder, UID, Message-ID, sender and recipients in clear, and the subject only as a SHA-256.
+  in its audit trail) naming the account, folder, UID, Message-ID, sender and recipients in
+  clear, and the subject only as a SHA-256; a move to another account yields one in each.
 - **Errors** are `MailError` codes with fixed messages, never the server's or a library's wording.
   An `unreachable` caused by a certificate that did not verify (itself, or wrapped in a login
   error) ends with the fixed `CERTIFICATE_DETAIL`, which a host may recognise. A server's

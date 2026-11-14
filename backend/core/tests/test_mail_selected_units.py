@@ -14,6 +14,7 @@ from mailroom_core.mail import (
     MailError,
     Moved,
     delete_uids,
+    message_id_uids,
     move_target,
     move_uids,
     search_arguments,
@@ -226,3 +227,30 @@ def test_a_group_ending_in_non_ascii_text_ends_with_all() -> None:
     # An ASCII value closes its group as before.
     tokens, utf8 = search_arguments(["NOT", ["SUBJECT", "plain"]])
     assert (tokens, utf8) == ([b"NOT", b"(SUBJECT", b"plain)"], False)
+
+
+class SearchClient:
+    """Answers every SEARCH with UIDs 3 and 7, recording its arguments."""
+
+    def __init__(self) -> None:
+        self.searched: list[list[bytes]] = []
+
+    def _raw_command_untagged(self, command: bytes, arguments: list[bytes]) -> list[bytes]:
+        assert command == b"SEARCH"
+        self.searched.append(arguments)
+        return [b"3 7"]
+
+
+@pytest.mark.parametrize(
+    ("gmail", "sent"),
+    [
+        (False, [b"HEADER", b"Message-ID", b"<a.b@example.org>"]),
+        # Gmail ignores SEARCH HEADER; its own search takes the id without angle brackets.
+        (True, [b"X-GM-RAW", b"rfc822msgid:a.b@example.org"]),
+    ],
+)
+def test_looks_a_message_id_up_as_the_server_can(gmail: bool, sent: list[bytes]) -> None:
+    client = SearchClient()
+    context = cast("MailboxContext", SimpleNamespace(client=client))
+    assert message_id_uids(context, "<a.b@example.org>", since_uid=5, gmail=gmail) == [7]
+    assert client.searched == [sent]
