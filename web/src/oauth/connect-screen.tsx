@@ -10,6 +10,8 @@ import { ssoErrorMessage, useSsoConfig, useSsoError } from '@/auth/sso.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { buttonVariants } from '@/components/ui/button-variants.ts'
 import { useLoad } from '@/lib/use-load.ts'
+import { defaultChoice } from '@/oauth/group-choice.ts'
+import { GroupChoices } from '@/oauth/group-choices.tsx'
 
 /** `/connect?request=<id>`, where the built-in authorization server sends an app's user. */
 export function ConnectRoute(): ReactElement {
@@ -27,8 +29,9 @@ function leaveForTheApp(url: string): void {
 }
 
 /**
- * The consent screen: who asks, where the browser goes back to, approve or deny. Signed out, the
- * root layout shows the sign-in screen in its place, which comes back here.
+ * The consent screen: who asks, which tool groups it gets, where the browser goes back to,
+ * approve or deny. Signed out, the root layout shows the sign-in screen in its place, which comes
+ * back here.
  */
 export function ConnectScreen({
   requestId,
@@ -122,13 +125,17 @@ function ConsentCard({
   const [failure, setFailure] = useState<string | null>(null)
   // Expired or answered meanwhile: nothing left to decide, so no buttons to press again.
   const [gone, setGone] = useState(false)
+  const [chosen, setChosen] = useState(() => defaultChoice(request.groups))
   const name = request.client_name ?? t('connect.unnamed')
 
   async function decide(decision: 'approve' | 'deny'): Promise<void> {
     setPending(decision)
     setFailure(null)
     try {
-      const target = await decideConsentRequest(requestId, decision)
+      const target = await decideConsentRequest(
+        requestId,
+        decision === 'approve' ? { decision, groups: chosen } : { decision },
+      )
       setLeaving(true)
       leave(target)
     } catch (error) {
@@ -150,6 +157,12 @@ function ConsentCard({
           : t('connect.describedBy', { host: request.client_host })}
       </p>
       <p className="text-sm">{t('connect.access')}</p>
+      <GroupChoices
+        groups={request.groups}
+        chosen={chosen}
+        onChange={setChosen}
+        disabled={pending !== null || leaving}
+      />
       <p className="text-sm">
         {t('connect.returnsTo')} <strong className="break-all">{request.redirect_host}</strong>
       </p>
@@ -166,7 +179,10 @@ function ConsentCard({
       )}
       {!leaving && !gone && (
         <div className="flex gap-3">
-          <Button disabled={pending !== null} onClick={() => void decide('approve')}>
+          <Button
+            disabled={pending !== null || chosen.length === 0}
+            onClick={() => void decide('approve')}
+          >
             {t('connect.approve')}
           </Button>
           <Button variant="outline" disabled={pending !== null} onClick={() => void decide('deny')}>

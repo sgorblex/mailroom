@@ -1,11 +1,23 @@
 import { z } from 'zod'
-import { apiDelete, apiGetJson, apiPostJson } from './http.ts'
+import { apiDelete, apiGetJson, apiPostJson, apiPutJson } from './http.ts'
+
+/** An MCP tool group the instance serves, as the user approves it for an app. */
+export const toolGroupSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  /** Groups it can be approved only with. */
+  requires: z.array(z.string()),
+  /** Offered checked: not for groups that send mail or delete it for good. */
+  default: z.boolean(),
+})
+export type ToolGroup = z.infer<typeof toolGroupSchema>
 
 export const consentRequestSchema = z.object({
   client_name: z.string().nullable(),
   client_host: z.string().nullable(),
   redirect_host: z.string(),
   scopes: z.array(z.string()),
+  groups: z.array(toolGroupSchema),
   expires_at: z.string(),
 })
 export type ConsentRequest = z.infer<typeof consentRequestSchema>
@@ -21,12 +33,15 @@ export function fetchConsentRequest(requestId: string, signal?: AbortSignal): Pr
   return apiGetJson(requestPath(requestId), { init: { signal }, schema: consentRequestSchema })
 }
 
-/** Approve or deny it; resolves to where the browser goes next, back to the app. */
+/**
+ * Approve it for the tool groups chosen, or deny it; resolves to where the browser goes next,
+ * back to the app.
+ */
 export async function decideConsentRequest(
   requestId: string,
-  decision: 'approve' | 'deny',
+  decision: { decision: 'approve'; groups: string[] } | { decision: 'deny' },
 ): Promise<string> {
-  const decided = await apiPostJson(requestPath(requestId), { decision }, { schema: decidedSchema })
+  const decided = await apiPostJson(requestPath(requestId), decision, { schema: decidedSchema })
   return decided.redirect_to
 }
 
@@ -36,6 +51,8 @@ export const connectedAppSchema = z.object({
   client_host: z.string().nullable(),
   created_at: z.string(),
   last_used_at: z.string().nullable(),
+  /** The served tool groups it is approved for. */
+  groups: z.array(z.string()),
 })
 export type ConnectedApp = z.infer<typeof connectedAppSchema>
 
@@ -46,6 +63,8 @@ export const connectedAppsSchema = z.object({
    */
   auth: z.enum(['builtin', 'oidc', 'external', 'off']),
   grants: z.array(connectedAppSchema),
+  /** The tool groups served, which an app's are chosen from; none without the built-in server. */
+  groups: z.array(toolGroupSchema),
 })
 export type ConnectedApps = z.infer<typeof connectedAppsSchema>
 
@@ -57,4 +76,9 @@ export function listConnectedApps(signal?: AbortSignal): Promise<ConnectedApps> 
 /** Disconnect one: its tokens stop working at once. */
 export function revokeConnectedApp(id: number): Promise<null> {
   return apiDelete(`/api/v1/oauth/grants/${String(id)}`)
+}
+
+/** Make `groups` the tool groups the app is approved for: its next call sees them. */
+export function setConnectedAppGroups(id: number, groups: string[]): Promise<null> {
+  return apiPutJson<null>(`/api/v1/oauth/grants/${String(id)}/groups`, { groups })
 }

@@ -23,7 +23,7 @@ function otherSections(path: string): Promise<Response> {
     return Promise.resolve(new Response(JSON.stringify(limits), { status: 200 }))
   }
   if (path === '/api/v1/oauth/grants') {
-    return Promise.resolve(new Response('{"auth":"off","grants":[]}', { status: 200 }))
+    return Promise.resolve(new Response('{"auth":"off","grants":[],"groups":[]}', { status: 200 }))
   }
   return Promise.resolve(new Response('{"detail":"Not Found"}', { status: 404 }))
 }

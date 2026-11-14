@@ -14,11 +14,23 @@ const ALICE = { username: 'alice', is_admin: false }
 const REQUEST_PATH = '/api/v1/oauth/requests/req-1'
 const CALLBACK = 'https://claude.ai/api/mcp/auth_callback'
 
+const GROUPS: ConsentRequest['groups'] = [
+  { name: 'mail_read', description: 'list, search and read mail', requires: [], default: true },
+  {
+    name: 'mail_organize',
+    description: 'move, trash and flag mail',
+    requires: ['mail_read'],
+    default: true,
+  },
+  { name: 'mail_send', description: 'send mail', requires: ['mail_read'], default: false },
+]
+
 const CLAUDE: ConsentRequest = {
   client_name: 'Claude',
   client_host: 'claude.ai',
   redirect_host: 'claude.ai',
   scopes: ['mailroom'],
+  groups: GROUPS,
   expires_at: '2026-10-25T12:10:00Z',
 }
 
@@ -95,23 +107,69 @@ describe('ConnectScreen', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Approve' }))
     expect(fetchMock).toHaveBeenCalledWith(
       REQUEST_PATH,
-      expect.objectContaining({ method: 'POST', body: JSON.stringify({ decision: 'approve' }) }),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ decision: 'approve', groups: ['mail_read', 'mail_organize'] }),
+      }),
     )
     expect(leave).toHaveBeenCalledWith(`${CALLBACK}?code=c0de&state=s`)
     expect(await screen.findByRole('status')).toHaveTextContent('Taking you back to claude.ai')
     expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
   })
 
-  it('says what approving gives, reading, organizing and sending mail included', async () => {
+  it('offers the tool groups, those that send or delete for good unchecked', async () => {
     stubApi()
     renderSignedIn(<ConnectScreen requestId="req-1" leave={vi.fn()} />, ALICE)
-    expect(
-      await screen.findByText(/your mail accounts, their folders and your filters/),
-    ).toHaveTextContent(
-      "reading your messages and their attachments, organizing them (moving, trashing, flagging, moving them to your other accounts, which can delete the originals for good), creating, renaming and deleting folders (a deleted folder's mail is gone for good), writing drafts and sending mail",
+    const read = await screen.findByRole('checkbox', { name: 'Read mail' })
+    const organize = screen.getByRole('checkbox', { name: 'Organize mail' })
+    const send = screen.getByRole('checkbox', { name: 'Send mail' })
+    expect(read).toBeChecked()
+    expect(organize).toBeChecked()
+    expect(send).not.toBeChecked()
+    expect(organize).toHaveAccessibleDescription('Move, trash and flag messages.')
+    expect(screen.getByText(/delete it for good start unchecked/)).toBeInTheDocument()
+  })
+
+  it('unchecks and disables what needs a group unchecked, and approves the choice', async () => {
+    const fetchMock = stubApi()
+    renderSignedIn(<ConnectScreen requestId="req-1" leave={vi.fn()} />, ALICE)
+    const read = await screen.findByRole('checkbox', { name: 'Read mail' })
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Send mail' }))
+    await userEvent.click(read)
+    const organize = screen.getByRole('checkbox', { name: 'Organize mail' })
+    expect(organize).not.toBeChecked()
+    expect(organize).toBeDisabled()
+    expect(organize).toHaveAccessibleDescription('Move, trash and flag messages. Needs Read mail.')
+    expect(screen.getByRole('checkbox', { name: 'Send mail' })).not.toBeChecked()
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeDisabled()
+
+    await userEvent.click(read)
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Send mail' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Approve' }))
+    expect(fetchMock).toHaveBeenCalledWith(
+      REQUEST_PATH,
+      expect.objectContaining({
+        body: JSON.stringify({ decision: 'approve', groups: ['mail_read', 'mail_send'] }),
+      }),
     )
-    // Italian says as much.
-    expect(itCommon.connect.access).toMatch(/messaggi.*allegati.*organizzazione \(spostamento, cestino, contrassegni, spostamento negli altri tuoi account, che può eliminare definitivamente gli originali\).*eliminazione di cartelle.*persa per sempre.*bozze.*invio di posta/)
+  })
+
+  it('names every tool group in Italian too', () => {
+    const groups = Object.keys(itCommon.toolGroups).filter((key) => key.includes('_'))
+    expect(groups.sort()).toEqual(
+      [
+        'audit_read',
+        'filters_read',
+        'filters_run',
+        'filters_write',
+        'mail_draft',
+        'mail_folders',
+        'mail_organize',
+        'mail_read',
+        'mail_send',
+        'mail_transfer',
+      ].sort(),
+    )
   })
 
   it('denies, going back with the refusal', async () => {

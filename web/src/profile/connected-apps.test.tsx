@@ -9,13 +9,35 @@ import { ConnectedApps } from './connected-apps.tsx'
 
 const ALICE = { username: 'alice', is_admin: false }
 
-function app(id: number, name: string | null, lastUsed: string | null = null): ConnectedApp {
+const SERVED: Listing['groups'] = [
+  { name: 'mail_read', description: 'list, search and read mail', requires: [], default: true },
+  {
+    name: 'mail_organize',
+    description: 'move, trash and flag mail',
+    requires: ['mail_read'],
+    default: true,
+  },
+  {
+    name: 'mail_transfer',
+    description: "move mail to another of the user's accounts",
+    requires: ['mail_read'],
+    default: false,
+  },
+]
+
+function app(
+  id: number,
+  name: string | null,
+  lastUsed: string | null = null,
+  groups: string[] = ['mail_read', 'mail_organize', 'mail_transfer'],
+): ConnectedApp {
   return {
     id,
     client_name: name,
     client_host: name === 'Claude' ? 'claude.ai' : null,
     created_at: '2026-10-25T12:00:00Z',
     last_used_at: lastUsed,
+    groups,
   }
 }
 
@@ -28,7 +50,14 @@ function stubApi(auth: Listing['auth'], grants: ConnectedApp[], { failRevoke = f
   let held = [...grants]
   const fetchMock = vi.fn((path: string, init?: RequestInit) => {
     if (path === '/api/v1/oauth/grants') {
-      return Promise.resolve(json(200, { auth, grants: held }))
+      const groups = auth === 'builtin' || auth === 'oidc' ? SERVED : []
+      return Promise.resolve(json(200, { auth, grants: held, groups }))
+    }
+    const changed = /^\/api\/v1\/oauth\/grants\/(\d+)\/groups$/.exec(path)
+    if (changed !== null && init?.method === 'PUT') {
+      const { groups } = JSON.parse(init.body as string) as { groups: string[] }
+      held = held.map((item) => (String(item.id) === changed[1] ? { ...item, groups } : item))
+      return Promise.resolve(new Response(null, { status: 204 }))
     }
     const revoked = /^\/api\/v1\/oauth\/grants\/(\d+)$/.exec(path)
     if (revoked !== null && init?.method === 'DELETE') {
@@ -153,5 +182,48 @@ describe('ConnectedApps', () => {
     })
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(screen.queryByRole('heading')).not.toBeInTheDocument()
+  })
+  it('shows the tools an app may use and approves those it was not approved for', async () => {
+    const fetchMock = stubApi('builtin', [app(1, 'Claude', null, ['mail_read'])])
+    renderSignedIn(<ConnectedApps />, ALICE)
+    expect(await screen.findByText('Tools: Read mail')).toBeInTheDocument()
+    expect(
+      screen.getByText('Not approved: Organize mail, Move mail between accounts'),
+    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Approve them' }))
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/oauth/grants/1/groups',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({ groups: ['mail_read', 'mail_organize', 'mail_transfer'] }),
+      }),
+    )
+    expect(
+      await screen.findByText('Tools: Read mail, Organize mail, Move mail between accounts'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/Not approved/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Approve them' })).not.toBeInTheDocument()
+  })
+
+  it('changes the tools an app may use', async () => {
+    const fetchMock = stubApi('builtin', [app(1, 'Claude')])
+    renderSignedIn(<ConnectedApps />, ALICE)
+    await userEvent.click(await screen.findByRole('button', { name: 'Change tools' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Move mail between accounts' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/oauth/grants/1/groups',
+      expect.objectContaining({ body: JSON.stringify({ groups: ['mail_read', 'mail_organize'] }) }),
+    )
+    expect(await screen.findByText('Tools: Read mail, Organize mail')).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+  })
+
+  it('offers no tool choice with an external issuer', async () => {
+    stubApi('external', [app(3, 'Claude')])
+    renderSignedIn(<ConnectedApps />, ALICE)
+    expect(await screen.findByText('Claude')).toBeInTheDocument()
+    expect(screen.queryByText(/Tools:/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Change tools' })).not.toBeInTheDocument()
   })
 })

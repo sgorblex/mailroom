@@ -2,16 +2,24 @@ import { useCallback, useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { apiErrorMessage } from '@/api/http.ts'
-import { listConnectedApps, revokeConnectedApp, type ConnectedApp } from '@/api/oauth.ts'
+import {
+  listConnectedApps,
+  revokeConnectedApp,
+  setConnectedAppGroups,
+  type ConnectedApp,
+  type ToolGroup,
+} from '@/api/oauth.ts'
 import { ConfirmRemoval } from '@/components/confirm-removal.tsx'
 import { Button } from '@/components/ui/button.tsx'
 import { formatDateTime } from '@/lib/format.ts'
 import { useLoad } from '@/lib/use-load.ts'
+import { everyApprovable, groupLabel } from '@/oauth/group-choice.ts'
+import { GroupChoices } from '@/oauth/group-choices.tsx'
 
 /**
- * The apps (MCP clients) the user approved, each revocable after a confirm. With an external
- * issuer the identity provider manages access instead; with the MCP server off the section shows
- * only leftovers.
+ * The apps (MCP clients) the user approved, with the tool groups each may use, which the user
+ * changes here, and each revocable after a confirm. With an external issuer the identity provider
+ * manages access instead; with the MCP server off the section shows only leftovers.
  */
 export function ConnectedApps(): ReactElement | null {
   const { t, i18n } = useTranslation()
@@ -19,6 +27,8 @@ export function ConnectedApps(): ReactElement | null {
   const [failure, setFailure] = useState<string | null>(null)
   const [pending, setPending] = useState<number | null>(null)
   const [confirming, setConfirming] = useState<number | null>(null)
+  // The app whose tool groups are being changed, and the choice so far.
+  const [editing, setEditing] = useState<{ id: number; chosen: string[] } | null>(null)
   // Each row's Disconnect button, to give focus back to when its confirm is cancelled.
   const revokeTriggers = useRef(new Map<number, HTMLButtonElement>())
   const load = useCallback((signal: AbortSignal) => listConnectedApps(signal), [])
@@ -43,11 +53,26 @@ export function ConnectedApps(): ReactElement | null {
     }
   }
 
+  async function saveGroups(app: ConnectedApp, groups: string[]): Promise<void> {
+    setPending(app.id)
+    setFailure(null)
+    try {
+      await setConnectedAppGroups(app.id, groups)
+      setEditing(null)
+    } catch (error) {
+      setFailure(apiErrorMessage(error, t('connectedApps.groupsFailed')))
+    } finally {
+      setPending(null)
+      setReloadKey((value) => value + 1)
+    }
+  }
+
   if (state.kind === 'loading') {
     return null
   }
   const auth = state.kind === 'loaded' ? state.value.auth : null
   const grants = state.kind === 'loaded' ? state.value.grants : []
+  const served = state.kind === 'loaded' ? state.value.groups : []
   if (auth === 'off' && grants.length === 0) {
     return null
   }
@@ -112,6 +137,49 @@ export function ConnectedApps(): ReactElement | null {
                     </Button>
                   )}
                 </div>
+                {served.length > 0 && editing?.id !== app.id && (
+                  <AppGroups
+                    app={app}
+                    served={served}
+                    pending={pending !== null}
+                    onApprove={(groups) => void saveGroups(app, groups)}
+                    onChange={() => {
+                      setEditing({ id: app.id, chosen: app.groups })
+                      setFailure(null)
+                    }}
+                  />
+                )}
+                {editing?.id === app.id && (
+                  <div className="flex flex-col gap-3 rounded-md border p-3">
+                    <GroupChoices
+                      groups={served}
+                      chosen={editing.chosen}
+                      onChange={(chosen) => {
+                        setEditing({ id: app.id, chosen })
+                      }}
+                      disabled={pending !== null}
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        disabled={pending !== null || editing.chosen.length === 0}
+                        onClick={() => void saveGroups(app, editing.chosen)}
+                      >
+                        {t('connectedApps.saveGroups')}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={pending !== null}
+                        onClick={() => {
+                          setEditing(null)
+                        }}
+                      >
+                        {t('connectedApps.cancel')}
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 {confirming === app.id && (
                   <ConfirmRemoval
                     question={t('connectedApps.confirmRevoke', { name })}
@@ -136,5 +204,57 @@ export function ConnectedApps(): ReactElement | null {
         </p>
       )}
     </section>
+  )
+}
+
+/** An app's tool groups, those it is not approved for, and the buttons to change them. */
+function AppGroups({
+  app,
+  served,
+  pending,
+  onApprove,
+  onChange,
+}: {
+  app: ConnectedApp
+  served: readonly ToolGroup[]
+  pending: boolean
+  onApprove: (groups: string[]) => void
+  onChange: () => void
+}): ReactElement {
+  const { t } = useTranslation()
+  const labels = (names: readonly string[]): string =>
+    names.map((name) => groupLabel(t, name)).join(', ')
+  const missing = served.map((group) => group.name).filter((name) => !app.groups.includes(name))
+  const approvable = everyApprovable(served)
+  return (
+    <div className="flex flex-col gap-2 text-xs">
+      <p>
+        {app.groups.length === 0
+          ? t('connectedApps.noGroups')
+          : t('connectedApps.groups', { groups: labels(app.groups) })}
+      </p>
+      {missing.length > 0 && (
+        <p className="text-muted-foreground">
+          {t('connectedApps.notApproved', { groups: labels(missing) })}
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        {missing.some((name) => approvable.includes(name)) && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={pending}
+            onClick={() => {
+              onApprove(approvable)
+            }}
+          >
+            {t('connectedApps.approveAll')}
+          </Button>
+        )}
+        <Button size="sm" variant="outline" disabled={pending} onClick={onChange}>
+          {t('connectedApps.changeGroups')}
+        </Button>
+      </div>
+    </div>
   )
 }

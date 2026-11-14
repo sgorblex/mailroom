@@ -65,7 +65,14 @@
     "confirm": "Disconnect",
     "cancel": "Cancel",
     "loadFailed": "Could not load your connected apps.",
-    "revokeFailed": "Could not disconnect it. Try again."
+    "revokeFailed": "Could not disconnect it. Try again.",
+    "groups": "Tools: {{groups}}",
+    "noGroups": "No tools approved.",
+    "notApproved": "Not approved: {{groups}}",
+    "approveAll": "Approve them",
+    "changeGroups": "Change tools",
+    "saveGroups": "Save",
+    "groupsFailed": "Could not change its tools. Try again."
   },
   "notAvailable": {
     "title": "Not available on this instance",
@@ -208,7 +215,7 @@
     "asks": "{{name}} wants to use Mailroom as {{username}}",
     "selfRegistered": "The app registered itself: its name is what it says it is, unchecked.",
     "describedBy": "The app is described by {{host}}.",
-    "access": "It can use the tools this Mailroom offers on your behalf: your mail accounts, their folders and your filters and, where this Mailroom offers it, reading your messages and their attachments, organizing them (moving, trashing, flagging, moving them to your other accounts, which can delete the originals for good), creating, renaming and deleting folders (a deleted folder's mail is gone for good), writing drafts and sending mail, as far as each account's Sending setting lets it.",
+    "access": "Choose the tools it may use on your behalf. Those that send mail or delete it for good start unchecked; you can change your choice later on your profile.",
     "returnsTo": "Approving or denying takes you back to",
     "revoke": "You can disconnect it at any time from your profile.",
     "approve": "Approve",
@@ -257,5 +264,49 @@
     "folderExists": "A folder with that name already exists there.",
     "folderChanged": "The folder changed since its messages were counted. Nothing was deleted.",
     "folderInUse": "Rule sets use this folder. Nothing was deleted."
+  },
+  "toolGroups": {
+    "legend": "Tools it may use",
+    "needs": "Needs {{groups}}.",
+    "filters_read": {
+      "label": "Read filters",
+      "description": "Your accounts, their folders, rule sets, filters and runs."
+    },
+    "filters_write": {
+      "label": "Edit filters",
+      "description": "Create and edit disabled rule sets and their filters."
+    },
+    "filters_run": {
+      "label": "Run filters",
+      "description": "Dry runs, turning rule sets on, Run now and Run filters: acts on your mail."
+    },
+    "mail_read": {
+      "label": "Read mail",
+      "description": "List, search and read your messages and their attachments."
+    },
+    "mail_organize": {
+      "label": "Organize mail",
+      "description": "Move, trash and flag messages."
+    },
+    "mail_transfer": {
+      "label": "Move mail between accounts",
+      "description": "Move messages to another of your accounts; can delete the originals for good."
+    },
+    "mail_folders": {
+      "label": "Manage folders",
+      "description": "Create, rename and delete folders; a deleted folder's mail is gone for good."
+    },
+    "mail_draft": {
+      "label": "Write drafts",
+      "description": "Write and update drafts, without sending them."
+    },
+    "mail_send": {
+      "label": "Send mail",
+      "description": "Send mail, as far as each account's Sending setting lets it."
+    },
+    "audit_read": {
+      "label": "Read the activity",
+      "description": "The record of what was done to your mail."
+    }
   }
 }

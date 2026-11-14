@@ -65,7 +65,14 @@
     "confirm": "Scollega",
     "cancel": "Annulla",
     "loadFailed": "Impossibile caricare le app collegate.",
-    "revokeFailed": "Impossibile scollegarla. Riprova."
+    "revokeFailed": "Impossibile scollegarla. Riprova.",
+    "groups": "Strumenti: {{groups}}",
+    "noGroups": "Nessuno strumento approvato.",
+    "notApproved": "Non approvati: {{groups}}",
+    "approveAll": "Approvali",
+    "changeGroups": "Cambia strumenti",
+    "saveGroups": "Salva",
+    "groupsFailed": "Impossibile cambiare i suoi strumenti. Riprova."
   },
   "notAvailable": {
     "title": "Non disponibile su questa istanza",
@@ -208,7 +215,7 @@
     "asks": "{{name}} vuole usare Mailroom come {{username}}",
     "selfRegistered": "L'app si è registrata da sola: il nome è quello che dichiara, non verificato.",
     "describedBy": "L'app è descritta da {{host}}.",
-    "access": "Potrà usare a tuo nome gli strumenti che questo Mailroom offre: i tuoi account di posta, le loro cartelle e i tuoi filtri e, dove questo Mailroom lo offre, la lettura dei tuoi messaggi e dei loro allegati e la loro organizzazione (spostamento, cestino, contrassegni, spostamento negli altri tuoi account, che può eliminare definitivamente gli originali), la creazione, la rinomina e l'eliminazione di cartelle (la posta di una cartella eliminata è persa per sempre), la scrittura di bozze e l'invio di posta, nei limiti dell'impostazione Invio di ciascun account.",
+    "access": "Scegli gli strumenti che potrà usare a tuo nome. Quelli che inviano posta o la eliminano definitivamente partono non selezionati; puoi cambiare la scelta più avanti dal tuo profilo.",
     "returnsTo": "Approvando o rifiutando torni a",
     "revoke": "Puoi scollegarla quando vuoi dal tuo profilo.",
     "approve": "Approva",
@@ -257,5 +264,49 @@
     "folderExists": "Esiste già una cartella con quel nome in quella posizione.",
     "folderChanged": "La cartella è cambiata da quando sono stati contati i messaggi. Non è stato eliminato nulla.",
     "folderInUse": "Alcune regole usano questa cartella. Non è stato eliminato nulla."
+  },
+  "toolGroups": {
+    "legend": "Strumenti che potrà usare",
+    "needs": "Richiede {{groups}}.",
+    "filters_read": {
+      "label": "Leggere i filtri",
+      "description": "I tuoi account, le loro cartelle, regole, filtri ed esecuzioni."
+    },
+    "filters_write": {
+      "label": "Modificare i filtri",
+      "description": "Creare e modificare regole disattivate e i loro filtri."
+    },
+    "filters_run": {
+      "label": "Eseguire i filtri",
+      "description": "Prove, attivazione delle regole, Esegui ora ed Esegui i filtri: agisce sulla tua posta."
+    },
+    "mail_read": {
+      "label": "Leggere la posta",
+      "description": "Elencare, cercare e leggere i tuoi messaggi e i loro allegati."
+    },
+    "mail_organize": {
+      "label": "Organizzare la posta",
+      "description": "Spostare, cestinare e contrassegnare i messaggi."
+    },
+    "mail_transfer": {
+      "label": "Spostare posta tra account",
+      "description": "Spostare messaggi in un altro tuo account; può eliminare definitivamente gli originali."
+    },
+    "mail_folders": {
+      "label": "Gestire le cartelle",
+      "description": "Creare, rinominare ed eliminare cartelle; la posta di una cartella eliminata è persa per sempre."
+    },
+    "mail_draft": {
+      "label": "Scrivere bozze",
+      "description": "Scrivere e aggiornare bozze, senza inviarle."
+    },
+    "mail_send": {
+      "label": "Inviare posta",
+      "description": "Inviare posta, nei limiti dell'impostazione Invio di ciascun account."
+    },
+    "audit_read": {
+      "label": "Leggere l'attività",
+      "description": "Il registro di ciò che è stato fatto alla tua posta."
+    }
   }
 }
