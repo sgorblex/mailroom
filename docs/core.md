@@ -214,8 +214,11 @@ max_bytes=)` moves messages to a folder of another account the connections serve
   chunk (`fetch_source`: bytes, flags, INTERNALDATE), write it to the target, remove what
   arrived.
 - **A copy** is appended with the flags but `\Recent` and `\Deleted` and the original
-  INTERNALDATE, and confirmed by APPENDUID and its ENVELOPE's Message-ID, else by a search for
-  it (`message_id_uids`; on Gmail, which ignores SEARCH HEADER, `X-GM-RAW rfc822msgid:`). A
+  INTERNALDATE, and confirmed by APPENDUID and its ENVELOPE's Message-ID, else by reading the
+  Message-ID of the messages from the UIDNEXT taken before the APPEND (`message_id_uids`). The
+  lookup never relies on SEARCH HEADER Message-ID, which a server enforcing a full-text index
+  that leaves Message-ID out (Mailu) never matches: it reads the Message-ID of the messages a
+  search by UID or by size finds, or on Gmail searches `X-GM-RAW rfc822msgid:`. A
   message already in the target folder with that Message-ID and the same size, not taken as
   the copy of another message of the call, is taken as the copy: a move cut off after copying
   is repeated without copying twice, while a different message sharing the Message-ID (a
