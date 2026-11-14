@@ -1,5 +1,5 @@
-"""The organize routes, which change folders and flags of batches of refs: move, archive, trash
-and flag."""
+"""The organize routes, which change folders and flags of batches of refs: move (to another of
+the user's accounts too), archive, trash and flag."""
 
 from __future__ import annotations
 
@@ -24,6 +24,14 @@ class RefsRequest(BaseModel):
 
 class MoveRequest(RefsRequest):
     folder: Annotated[str, Field(min_length=1, max_length=service.MAX_FOLDER)]
+
+
+class MoveToAccountRequest(MoveRequest):
+    account: Annotated[str, Field(min_length=1, max_length=64)]
+    """Another of the user's accounts than any ref's."""
+    removal: Literal["trash", "delete"]
+    """What becomes of the originals once copied: to their account's Trash, or deleted for
+    good."""
 
 
 class FlagRequest(RefsRequest):
@@ -52,6 +60,8 @@ class GroupOutcome(BaseModel):
     ok: bool
     count: int
     new_refs: list[str] | None
+    destination_account: str | None
+    """On a move to another account, that account: ``new_refs`` are its."""
     junk: Literal["spam", "ham"] | None
     flags: list[MessageFlags]
     error: GroupError | None
@@ -65,6 +75,7 @@ class GroupOutcome(BaseModel):
             ok=group.ok,
             count=group.count,
             new_refs=None if group.new_refs is None else list(group.new_refs),
+            destination_account=group.destination_account,
             junk=group.junk,
             flags=[MessageFlags.of(state) for state in group.flags],
             error=None if error is None else GroupError(code=error.code, message=error.message),
@@ -75,9 +86,12 @@ class OrganizeAnswer(BaseModel):
     results: list[GroupOutcome]
 
 
-def organize_answer(result: OrganizeResult) -> OrganizeAnswer:
-    """The groups' results, when one succeeded at least; else the first failure's refusal."""
-    if result.succeeded == 0:
+def organize_answer(result: OrganizeResult, *, copies_answer: bool = False) -> OrganizeAnswer:
+    """The groups' results, when one succeeded at least; else the first failure's refusal.
+    ``copies_answer``: a failed group that made copies (``new_refs``) is answered too, so the
+    client learns its messages are now in both places."""
+    copied = copies_answer and any(group.new_refs for group in result.groups)
+    if result.succeeded == 0 and not copied:
         error = next(group.error for group in result.groups if group.error is not None)
         raise mail_refusal(error.code, error.message)
     return OrganizeAnswer(results=[GroupOutcome.of(group) for group in result.groups])
@@ -86,6 +100,18 @@ def organize_answer(result: OrganizeResult) -> OrganizeAnswer:
 @mail_router.post("/messages/move")
 def move(request: MoveRequest, ctx: Context, user: CurrentUser) -> OrganizeAnswer:
     return organize_answer(service.move(ctx, user.id, request.refs, request.folder))
+
+
+@mail_router.post("/messages/move-to-account")
+def move_to_account(
+    request: MoveToAccountRequest, ctx: Context, user: CurrentUser
+) -> OrganizeAnswer:
+    return organize_answer(
+        service.move_to_account(
+            ctx, user.id, request.refs, request.account, request.folder, request.removal
+        ),
+        copies_answer=True,
+    )
 
 
 @mail_router.post("/messages/archive")

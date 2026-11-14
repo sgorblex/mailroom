@@ -21,6 +21,7 @@ DEFAULTS = {
     "max_recipients": 10,
     "body_chars": 6000,
     "attachment_max_mb": 10.0,
+    "move_max_mb": 25.0,
 }
 
 
@@ -51,7 +52,8 @@ def test_a_user_changes_their_limits_and_keeps_their_accounts(
     response = user_client.put("/api/v1/me/limits", json=changed)
 
     assert response.status_code == 200
-    assert response.json() == {**changed, "attachment_max_mb": 25.0}
+    # Without move_max_mb, as a client from before it sends: it stays.
+    assert response.json() == {**changed, "attachment_max_mb": 25.0, "move_max_mb": 25.0}
     assert user_client.get("/api/v1/me/limits").json() == response.json()
     settings = load_accounts(user_store(migrated_engine, user.id)).settings
     assert [account.id for account in settings.account] == ["work"]
@@ -67,6 +69,7 @@ def test_a_user_changes_their_limits_and_keeps_their_accounts(
     [
         ({"attachment_max_mb": 25.5}, ["attachment_max_mb"]),
         ({"attachment_max_mb": 0}, ["attachment_max_mb"]),
+        ({"move_max_mb": 50.5}, ["move_max_mb"]),
         ({"body_chars": 499}, ["body_chars"]),
         ({"send_per_hour": 0}, ["send_per_hour"]),
     ],
@@ -90,6 +93,13 @@ def test_every_limit_out_of_bounds_is_named_at_once(user_client: TestClient) -> 
     assert response.status_code == 400
     paths = sorted(issue["path"] for issue in response.json()["detail"]["issues"])
     assert paths == [["attachment_max_mb"], ["body_chars"]]
+
+
+def test_a_user_changes_their_move_limit(user_client: TestClient) -> None:
+    response = user_client.put("/api/v1/me/limits", json=DEFAULTS | {"move_max_mb": 40})
+
+    assert response.status_code == 200
+    assert user_client.get("/api/v1/me/limits").json()["move_max_mb"] == 40.0
 
 
 def test_a_stored_attachment_limit_above_the_cap_reads_as_the_cap(

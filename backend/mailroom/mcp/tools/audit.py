@@ -31,8 +31,8 @@ class AuditListArguments(Arguments):
         min_length=1,
         max_length=200,
         description=(
-            "move, archive, trash, flag, draft_save, draft_remove, send, folder_create, "
-            "folder_rename, folder_delete, or a filter's."
+            "move, move_to_account, archive, trash, flag, draft_save, draft_remove, send, "
+            "folder_create, folder_rename, folder_delete, or a filter's."
         ),
     )
     actor: Literal["user", "agent", "filter"] | None = Field(

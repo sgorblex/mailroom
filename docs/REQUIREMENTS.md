@@ -100,7 +100,7 @@ the index and live updates; tier 3 items arrive one at a time.
 | Tier | Scope |
 | --- | --- |
 | **1 — Read** | Accounts and folders with unread counts; message list (threaded or flat) with paging; read a message: headers, text and **sandboxed HTML** body, attachments (download), remote content blocked with a per-message reveal. Search. |
-| **2 — Triage and compose** | *Triage (slice B, in):* flag/unflag, read/unread, move, archive, trash (never expunge), multi-select, keyboard shortcuts for triage. *Compose (slice C, in):* compose new, reply, reply-all, forward in plain text, with identity (`From`) choice, attachments and drafts always kept in the server's `\Drafts`. The **send mode** (mailroom-core's send gate) limits what agents may send; the user's own *Send* works unless the mode is `off`; the hourly limit and recipient cap bind both. No automatic retry delivers a send twice (only the user's *Send anyway*, after an unconfirmed delivery, can), and one whose delivery cannot be confirmed says so instead of retrying. |
+| **2 — Triage and compose** | *Triage (slice B, in):* flag/unflag, read/unread, move (to another of the user's accounts too, its originals to Trash or, on request, deleted for good once copied), archive, trash (never expunge), multi-select, keyboard shortcuts for triage. *Compose (slice C, in):* compose new, reply, reply-all, forward in plain text, with identity (`From`) choice, attachments and drafts always kept in the server's `\Drafts`. The **send mode** (mailroom-core's send gate) limits what agents may send; the user's own *Send* works unless the mode is `off`; the hourly limit and recipient cap bind both. No automatic retry delivers a send twice (only the user's *Send anyway*, after an unconfirmed delivery, can), and one whose delivery cannot be confirmed says so instead of retrying. |
 | **2+ — Index and live updates** | A **local index** of every account and folder (metadata plus rendered text) for fast cross-account search and lists; kept fresh by the worker over **IMAP IDLE** (and periodic resync), pushed to the browser (SSE or WebSocket). |
 | **3 — Later** | Rich-text compose, signatures, snooze and send-later, contacts and autocomplete from history, calendar invites, offline reading, PGP/S/MIME, unified inbox views, saved searches. |
 
@@ -158,7 +158,7 @@ authorization server with its `/connect` consent screen, connected apps on the p
 
 - Every write to a user's mail leaves an [audit record](GLOSSARY.md) per message: a move,
   archive, trash, flag, draft or send from the web or an agent, and what a filter run did,
-  refused attempts included. It says who acted (the user, an agent and its connected app, or a
+  refused attempts included; a move to another account leaves one in each account. It says who acted (the user, an agent and its connected app, or a
   rule set), what, and how it ended; never a subject or a body. The web's draft saves are left
   out, being the user typing.
 - Records outlive a removed account, go with their user, and are kept a year by default.
