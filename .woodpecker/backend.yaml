@@ -8,8 +8,10 @@ when:
 steps:
   - name: check
     image: ghcr.io/astral-sh/uv:0.13.1-python3.14-trixie-slim@sha256:112f89760bd54b63c84d140151ea5f3d849278e54f6f939f2c40a57f3e33d895
-    volumes:
-      - /var/lib/woodpecker-cache/uv:/root/.cache/uv
+    # /cache is mounted into every step by the agents (WOODPECKER_BACKEND_DOCKER_VOLUMES), so the
+    # repo needs no trust for it.
+    environment:
+      UV_CACHE_DIR: /cache/uv
     # Filters on the step, not top-level, so a required check always reports; the
     # Release Please skip must be an `evaluate` (see SKILL.md gotchas).
     when:

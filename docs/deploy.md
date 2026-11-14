@@ -23,7 +23,7 @@ mise run build-containers -- staging # :staging and :staging-<branch>-<sha>
 `scripts/container-build.sh` picks Podman (or Docker; `MAILROOM_CONTAINER_ENGINE`), stamps OCI
 labels (version from `version.txt`, git SHA and branch), and with `MAILROOM_REGISTRY` set also tags
 and **pushes** `$MAILROOM_REGISTRY/mailroom-{api,web}` — a remote action, run only when asked;
-releases do it from CI. `build-containers` (`scripts/containers-both.sh`) pushes only once both
+releases do it from CI, with the buildx plugin rather than this script (`ci-cd.md`, *Release and deploy*). `build-containers` (`scripts/containers-both.sh`) pushes only once both
 images have built, the moving tags last.
 
 ## Runtime
