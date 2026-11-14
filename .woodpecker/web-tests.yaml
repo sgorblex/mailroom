@@ -8,8 +8,8 @@ when:
 steps:
   - name: test
     image: node:26-slim@sha256:193fe51b64e77981119c98c2002c9e32a70e2f006fb4d25068ce0558998917f0
-    volumes:
-      - /var/lib/woodpecker-cache/pnpm-store:/root/.local/share/pnpm/store
+    environment:
+      npm_config_store_dir: /cache/pnpm-store  # mounted by the agents
     when:
       - event: push
         branch: main

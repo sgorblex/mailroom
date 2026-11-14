@@ -8,10 +8,10 @@ when:
 steps:
   - name: check
     image: node:26-slim@sha256:193fe51b64e77981119c98c2002c9e32a70e2f006fb4d25068ce0558998917f0
-    volumes:
-      - /var/lib/woodpecker-cache/pnpm-store:/root/.local/share/pnpm/store
-      # Volume targets can't be interpolated; a wrong path only costs a cold `tsc -b`.
-      - /var/lib/woodpecker-cache/web-tscache:/woodpecker/src/github.com/sgorblex/mailroom/web/.tscache
+    # /cache is mounted into every step by the agents (WOODPECKER_BACKEND_DOCKER_VOLUMES), so the
+    # repo needs no trust for it. A tscache miss costs a cold `tsc -b`, never a wrong result.
+    environment:
+      npm_config_store_dir: /cache/pnpm-store
     when:
       - event: push
         branch: main
@@ -23,6 +23,7 @@ steps:
           include: *web-paths
     commands:
       - npm install -g pnpm@12.10.1
+      - mkdir -p /cache/mailroom-web-tscache && ln -sfn /cache/mailroom-web-tscache web/.tscache
       - cd web
       - pnpm install --frozen-lockfile
       - pnpm run lint

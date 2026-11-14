@@ -56,13 +56,16 @@ reports), Release Please branches skipped by `evaluate`. How to work on them:
 ## Release and deploy
 
 [`release.yaml`](../../.woodpecker/release.yaml) runs on a `v*` tag, on the production host's
-agent (`linux/arm64`), and only there. Its one step, **build-push**
-(`scripts/containers-both.sh production`), builds both images through the docker CLI on the agent's
-Podman socket (so the repository is trusted for volumes), and only once both have built pushes
-`mailroom-{api,web}:<version>`, then `:latest`, so a failed build never leaves the registry's
-`:latest` split across two releases. Each image carries `org.opencontainers.image.version` and
-`org.opencontainers.image.revision` (the full commit SHA). A tag that does not match `version.txt`
-fails the build; a pre-release (`v1.2.3-rc.1`) pushes only `:<version>`.
+agent (`linux/arm64`), and only there. **prepare** (`scripts/release-prepare.sh`) checks the tag
+against `version.txt` (a mismatch fails the release) and writes the image tag and build arguments
+for the next steps. **build-api** and **build-web** build both images without pushing, and only then
+do **push-api** and **push-web** push `mailroom-{api,web}:<version>`, so a failed build pushes
+nothing. No `:latest`: the host pins versions. The builds run in `plugin-docker-buildx`, which the
+Woodpecker server lets run privileged (`WOODPECKER_PLUGINS_PRIVILEGED`, exact tag and digest: bump
+it there before the pipeline), so the repository needs no trust; BuildKit's cache is kept in the
+registry as `mailroom-{api,web}:buildcache`, which the push steps hit. Each image carries the
+`org.opencontainers.image.version`, `.revision` (the full commit SHA), `.created` and `.source`
+labels. A manual run of the pipeline builds both images without pushing, to test it.
 
 **Nothing deploys from CI.** The host's config repository (oci-server-conf) pins both images as
 `<version>@sha256:…`. After a release, Renovate opens a "Mailroom" PR there, and merging it
@@ -72,9 +75,9 @@ API's health, that `/api/v1/version` reports the new version, and that both imag
 then merge the Renovate PR. The host side is documented in oci-server-conf
 (`docs/services/Mailroom.md`).
 
-**One-time setup:** the repository trusted for volumes in Woodpecker, and these secrets, all
-limited to tag events: `mailroom_app_registry` (the bare registry host), `mailroom_app_registry_user`
-and `mailroom_app_registry_password`.
+**One-time setup:** these secrets, limited to tag and manual events: `mailroom_app_registry_user`
+and `mailroom_app_registry_password`. The registry host, `reg.aclerici.me`, is written in the
+pipeline: plugin settings can't combine a secret with other text.
 
 **Rolling back** is reverting that Renovate PR, which deploys the previous images. If the bad
 release migrated the database (the API migrates at startup), restore the dump taken just before it
