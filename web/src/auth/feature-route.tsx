@@ -1,5 +1,5 @@
 import type { AsyncRouteComponent } from '@tanstack/react-router'
-import type { ComponentType, ReactElement } from 'react'
+import { use, type ComponentType, type ReactElement } from 'react'
 
 import type { Feature } from '@/api/auth.ts'
 import { useAuth } from '@/auth/auth-context.ts'
@@ -26,8 +26,17 @@ export function featureRoute(
 ): AsyncRouteComponent<object> {
   const needed: readonly Feature[] = typeof features === 'string' ? [features] : features
   const served = (running: ReadonlySet<Feature>): boolean => needed.some((feature) => running.has(feature))
+  // A lazy screen's chunk, fetched once. It is waited for on every render, so the screen only
+  // renders once its code is in: a lazy screen that suspends itself calls use() only until then,
+  // which React flags.
+  let chunk: Promise<void> | undefined
+  function LoadedScreen(): ReactElement {
+    use((chunk ??= Promise.resolve(Component.preload?.())))
+    return <Component />
+  }
+  const Screen = Component.preload ? LoadedScreen : Component
   function FeatureGate(): ReactElement {
-    return served(useAuth().features) ? <Component /> : <NotAvailable />
+    return served(useAuth().features) ? <Screen /> : <NotAvailable />
   }
   // Read at call time: a lazy screen drops its preload once its chunk has loaded. Until /me has
   // answered, nothing is preloaded.
