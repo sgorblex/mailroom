@@ -24,7 +24,8 @@ EXTERNAL_ISSUER_ENV: Final = "MAILROOM_MCP_OIDC_ISSUER"
 EXTERNAL_AUDIENCES_ENV: Final = "MAILROOM_MCP_OIDC_AUDIENCES"
 EXTERNAL_SCOPE_ENV: Final = "MAILROOM_MCP_OIDC_REQUIRED_SCOPE"
 SCOPE = "mailroom"
-"""The one scope the built-in authorization server grants; tools are instance config, not scope."""
+"""The one scope the built-in authorization server grants; tools are instance config and the
+grant's approved tool groups, not scope."""
 EXTERNAL_SCOPES = ("openid", "offline_access")
 """What a client asks an external issuer for: a sign-in and a refresh token."""
 

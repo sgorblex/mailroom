@@ -197,13 +197,20 @@ bounded to one minor because the server relies on its handlers.
   `/connect?request=<id>`. The first user to open it claims it; nobody else can see or decide it.
   In `oidc` mode it redirects to the SSO start instead, and the SSO callback claims the request
   for the session it signs the browser in with: no other session can see or decide it.
-  Approving creates a grant (a connected app) and a code; the redirect carries `code`, `state` and
+  Approving creates a grant (a connected app) for the tool groups the user checked, and a code;
+  a choice that cannot be approved (none, a group not served, one without a group it requires)
+  is a 400 that leaves the request open. The redirect carries `code`, `state` and
   `iss` (RFC 9207), and so does every error redirect back to the client, the SDK's included. The
   screen's API (`/api/v1/oauth/requests/{id}`) needs the session cookie, its `POST` is refused
   cross-site like any other, and an unknown, expired or another user's request is a 404; the SPA,
   not the API, navigates to the returned redirect URL.
-- **Connected apps** (`/api/v1/oauth/grants`): a user lists and revokes only their own grants;
-  revoking deletes the grant and its tokens, and grants left from an earlier mode stay revocable.
+- **Connected apps** (`/api/v1/oauth/grants`): a user lists, changes the tool groups of and
+  revokes only their own grants; revoking deletes the grant and its tokens, and grants left from
+  an earlier mode stay revocable.
+- **Tool groups per grant:** a grant records the groups its user approved, and its access token
+  carries them, so `/mcp` lists and runs only those tools: a call to another served tool is
+  refused (`not_approved`) and logged like any refusal. A token from an external issuer names
+  no groups and gets every served one.
 - **Opaque secrets, hashed:** request ids, codes and tokens are 256-bit random strings and only
   their SHA-256 is stored. A code is single use and marked used as it is read, so a failed PKCE
   check burns it; 10 minutes. A used code stays until it expires, and presented again it ends its
@@ -216,10 +223,12 @@ bounded to one minor because the server relies on its handlers.
   `oauth_client_document_refused`, `oauth_authorization_approved`, `oauth_authorization_denied`,
   `oauth_token_issued` (`trigger`: `authorization_code` or `refresh_token`),
   `oauth_authorization_code_reused`, `oauth_refresh_token_reused`, `oauth_grant_revoked`,
+  `oauth_grant_groups_changed` (with the groups `added` and `removed`),
   `oauth_sso_signed_in` (`oidc` mode: the SSO callback claimed a request), with
   `user_id`, `client_id` and `grant_id` where known; never a token.
 - **`/mcp`'s verifier** in builtin mode: an access token is looked up by its hash, so a revoked or
-  expired one stops working at once; the `AccessToken` names the user and carries `grant_id`.
+  expired one stops working at once; the `AccessToken` names the user and carries `grant_id` and
+  the grant's `tool_groups`.
 
 ### Sign-in
 

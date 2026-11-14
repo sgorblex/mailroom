@@ -137,7 +137,8 @@ the `filters_*`, `mail_read`, `mail_organize`, `mail_draft`, `mail_send`, `mail_
 authorization server with its `/connect` consent screen, connected apps on the profile and external issuer mode are in.
 
 - The app's own MCP server at `/mcp`, for each user's own data: accounts, folders, rule sets,
-  dry runs and runs, in [tool groups](GLOSSARY.md) chosen by instance config. Mail tools come
+  dry runs and runs, in [tool groups](GLOSSARY.md) chosen by instance config, each client
+  using only the groups its user approved for it. Mail tools come
   group by group ([`requirements/mcp.md`](requirements/mcp.md)), `mail_read` with the first
   slice of the [mail client](requirements/mail-client.md), `mail_organize` with the second,
   `mail_draft` and `mail_send` with the third, and `mail_folders` with folder management. An

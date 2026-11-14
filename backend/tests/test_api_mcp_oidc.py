@@ -120,7 +120,10 @@ class Browser:
         return self.client.get(f"/api/v1/oauth/requests/{request_id}")
 
     def decide(self, request_id: str, decision: str) -> httpx.Response:
-        return self.client.post(f"/api/v1/oauth/requests/{request_id}", json={"decision": decision})
+        body: dict[str, Any] = {"decision": decision}
+        if decision == "approve":
+            body["groups"] = ["mail_read"]
+        return self.client.post(f"/api/v1/oauth/requests/{request_id}", json=body)
 
     def sign_in_with_password(self, user: User) -> None:
         self.client.cookies.set(SESSION_COOKIE_NAME, create_session(self.db, user))

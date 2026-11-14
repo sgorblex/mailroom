@@ -102,10 +102,13 @@ are listed inside the envelope, since they are mail-derived text.
 Tools are registered in [tool groups](../GLOSSARY.md). `MAILROOM_MCP_TOOL_GROUPS` chooses which
 groups are registered: by default the `stable` ones; a `preview` group only when named; a
 `planned` group never (an unknown or `planned` name is skipped with a warning in the log).
-`mail_organize`, `mail_transfer`, `mail_draft` or `mail_send` without `mail_read` is served with a warning too: no
-served tool then gives the refs they take. The `filters_*` groups need `filters` in
+A group that requires another (`mail_organize`, `mail_transfer`, `mail_draft` and `mail_send` require
+`mail_read`) is served without it with a warning too: no served tool then gives the refs they
+take. The `filters_*` groups need `filters` in
 `MAILROOM_FEATURES` ([`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Editions*): without it they are
-left out, with a warning when named. Which tools a client gets is instance config, not OAuth scope.
+left out, with a warning when named. Which tools a client gets is the instance's config and, with
+the built-in authorization server, the groups its grant approves ([Consent](#built-in-authorization-server)),
+not OAuth scope.
 
 | Group (status, default) | Tool | Annotations |
 | --- | --- | --- |
@@ -228,17 +231,17 @@ interface, not on the app's routes), so it can move to a shared package later.
   that names another is refused with `invalid_target`.
 - **Consent** is a web app screen. `/oauth/authorize` stores the request (10 minutes) and
   redirects to `/connect?request=<id>`; the screen signs the user in if needed (password or SSO)
-  and shows the client and what it gets (accounts, folders, filters and, where offered, reading
-  messages and their attachments, organizing them: moving, trashing, flagging, moving them to
-  the user's other accounts (which can delete the originals for good), creating, renaming and
-  deleting folders (a deleted folder's mail gone for good), and writing drafts and
-  sending mail within each account's send mode), in English and Italian, to approve or
-  deny. A grant is not tied to the tool groups served when it was approved: one approved before
-  `mail_read`, `mail_organize`, `mail_transfer`, `mail_folders`, `mail_draft` or `mail_send` was
-  on reads, moves (to another account too), drafts and sends mail and manages folders without
-  asking again, `mail_send` too, by decision:
-  the send mode is the guard
-  ([`../TODO.md`](../TODO.md)). (The session cookie is `SameSite=Strict`, so it does not arrive
+  and shows the client and the tool groups the instance serves, each with a checkbox, in English
+  and Italian, to approve the ones checked or deny. The groups that send mail or delete it for
+  good (`mail_send`, `mail_folders`, `mail_transfer`) start unchecked; a group that requires
+  another is approved only with it. **The grant records the groups approved, and the client sees
+  and calls only those** (of the ones served): `tools/list` leaves the others out, and a call to
+  one is refused with `not_approved`, naming where to approve it. A group served after the
+  approval is not the client's until the user approves it on the connected app, or approves the
+  client again. Grants approved before groups were recorded count as approving the groups that
+  were `stable` then: `mail_transfer`, `preview`, waits for approval. With an external issuer
+  there are no grants: every served group is the client's, and the identity provider decides who
+  connects. (The session cookie is `SameSite=Strict`, so it does not arrive
   on the cross-site navigation from the client; the screen's same-origin requests do carry it.
   After an SSO sign-in the browser reaches the screen from Mailroom's own page, not at the end
   of the provider's redirect: see [Web SSO](#web-sso).)
@@ -252,8 +255,12 @@ interface, not on the app's routes), so it can move to a shared package later.
   once and there is no signing key to manage.
 - Each approval is a [connected app](../GLOSSARY.md): the user sees and revokes them on their
   *Profile* page (name, when connected, when last used: a token exchange or a call on `/mcp`,
-  recorded at most once a minute); revoking ends the grant's tokens at once,
-  so the app's next call is a 401. Removing a user removes their grants.
+  recorded at most once a minute, and the tool groups it is approved for); revoking ends the
+  grant's tokens at once, so the app's next call is a 401. There the user also approves the
+  served groups it is not approved for, or changes its groups: the app's next call sees the
+  change, though a client may keep the tool list it fetched until it reconnects or starts a new
+  conversation. Approved groups the instance stops serving stay recorded, for when it serves
+  them again. Removing a user removes their grants.
 
 ### Sign-in through SSO
 
@@ -342,8 +349,8 @@ for users an admin has already created. **Nobody signs up through SSO.**
 | `/.well-known/oauth-authorization-server/oauth` | Built-in AS metadata (RFC 8414); issuer `{MAILROOM_PUBLIC_URL}/oauth`. |
 | `/oauth/authorize`, `/oauth/token`, `/oauth/register`, `/oauth/revoke` | Built-in AS. |
 | `/connect?request=<id>` | Consent screen (web app). |
-| `/api/v1/oauth/requests/{id}` | `GET` the pending request; `POST {"decision": "approve" \| "deny"}` answers `{"redirect_to"}`, the client's redirect URL (session, same origin; 404 for an unknown, expired or another user's request). |
-| `/api/v1/oauth/grants` | `GET` `{"auth", "grants"}`: the MCP auth mode and the user's connected apps (client name, created, last used); `DELETE /{id}` revokes one, its tokens with it (404 for another user's). |
+| `/api/v1/oauth/requests/{id}` | `GET` the pending request, with the served tool groups (`name`, `description`, `requires`, `default`); `POST {"decision": "approve" \| "deny", "groups"}` answers `{"redirect_to"}`, the client's redirect URL (session, same origin; 404 for an unknown, expired or another user's request; 400 `groups_not_approvable` for an empty choice, a group not served, or one without a group it requires). |
+| `/api/v1/oauth/grants` | `GET` `{"auth", "grants", "groups"}`: the MCP auth mode, the user's connected apps (client name, created, last used, the served `groups` it is approved for) and, with the built-in server, the served tool groups; `PUT /{id}/groups {"groups"}` makes those the served groups approved (400 as for a decision); `DELETE /{id}` revokes one, its tokens with it (404 for another user's, for both). |
 | `/api/v1/auth/oidc/config`, `/start`, `/callback` | Web SSO: whether it is on and its label, start (`intent` `login`, `link`, or `mcp` with `request`), callback. |
 | `/api/v1/me/identities` | `GET` the user's linked sign-ins; `DELETE /{id}` unlinks one. |
 
@@ -364,7 +371,7 @@ workers; expired rows are swept on writes.
 | `oauth_client` | `client_id`, `kind` (`dcr` \| `cimd`), `client_name`, `redirect_uris`, `metadata`, `fetched_at`, `created_at`, `last_used_at` |
 | `oauth_authorization_request` | `id_hash`, `client_id`, `params`, `expires_at` |
 | `oauth_authorization_code` | `code_hash`, `client_id`, `user_id`, `grant_id`, `redirect_uri`, `redirect_uri_explicit`, `code_challenge`, `resource`, `scopes`, `expires_at`, `used_at` |
-| `oauth_grant` | `id`, `user_id` (cascade), `client_id` (cascade), `resource`, `scopes`, `created_at`, `last_used_at` |
+| `oauth_grant` | `id`, `user_id` (cascade), `client_id` (cascade), `resource`, `scopes`, `tool_groups`, `created_at`, `last_used_at` |
 | `oauth_token` | `token_hash`, `grant_id` (cascade), `kind` (`access` \| `refresh`), `expires_at`, `used_at`, `created_at` |
 
 ## Configuration

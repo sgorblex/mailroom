@@ -22,7 +22,7 @@ from mcp.shared.auth import OAuthToken
 from pydantic import AnyUrl
 
 from mailroom.oauth import clients, consent, tokens
-from mailroom.oauth.config import SCOPE
+from mailroom.oauth.config import SCOPE, TOOL_GROUPS_CLAIM
 from mailroom.oauth.throttle import Throttles
 
 if TYPE_CHECKING:
@@ -262,7 +262,7 @@ class Provider:
             expires_at=found.expires_at,
             resource=found.resource,
             subject=str(found.user_id),
-            claims={"grant_id": str(found.grant_id)},
+            claims={"grant_id": str(found.grant_id), TOOL_GROUPS_CLAIM: found.tool_groups},
             grant_id=found.grant_id,
         )
 

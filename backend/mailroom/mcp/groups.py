@@ -41,7 +41,13 @@ class ToolGroup:
     description: str
     needs: Feature | None = None
     """The feature without which the group is not served."""
+    asks_first: bool = False
+    """Its tools send mail or delete it for good: the consent screen offers it unchecked."""
+    requires: tuple[GroupName, ...] = ()
+    """The groups whose tools give the refs this one's take: approved only with them."""
 
+
+_READ: Final[tuple[GroupName, ...]] = ("mail_read",)
 
 GROUPS: Final[tuple[ToolGroup, ...]] = (
     ToolGroup(
@@ -63,11 +69,17 @@ GROUPS: Final[tuple[ToolGroup, ...]] = (
         needs="filters",
     ),
     ToolGroup("mail_read", "stable", "list, search and read mail"),
-    ToolGroup("mail_organize", "stable", "move, trash and flag mail"),
-    ToolGroup("mail_transfer", "preview", "move mail to another of the user's accounts"),
-    ToolGroup("mail_folders", "stable", "create, rename and delete folders"),
-    ToolGroup("mail_draft", "stable", "write drafts"),
-    ToolGroup("mail_send", "stable", "send mail"),
+    ToolGroup("mail_organize", "stable", "move, trash and flag mail", requires=_READ),
+    ToolGroup(
+        "mail_transfer",
+        "preview",
+        "move mail to another of the user's accounts",
+        asks_first=True,
+        requires=_READ,
+    ),
+    ToolGroup("mail_folders", "stable", "create, rename and delete folders", asks_first=True),
+    ToolGroup("mail_draft", "stable", "write drafts", requires=_READ),
+    ToolGroup("mail_send", "stable", "send mail", asks_first=True, requires=_READ),
     ToolGroup("audit_read", "stable", "the audit trail of what was done to mail"),
 )
 _BY_NAME: Final[dict[str, ToolGroup]] = {group.name: group for group in GROUPS}
@@ -117,12 +129,14 @@ def selected_groups(raw: str | None, features: Features = ALL_FEATURES) -> tuple
             wanted.add(name)
     if not wanted:
         logger.warning("%s selects no tool group: the MCP server has no tools", TOOL_GROUPS_ENV)
-    for name in ("mail_organize", "mail_transfer", "mail_draft", "mail_send"):
-        if name in wanted and "mail_read" not in wanted:
+    for group in GROUPS:
+        missing = [name for name in group.requires if name not in wanted]
+        if group.name in wanted and missing:
             logger.warning(
-                "%s selects %s without mail_read: no served tool gives the refs it takes",
+                "%s selects %s without %s: no served tool gives the refs it takes",
                 TOOL_GROUPS_ENV,
-                name,
+                group.name,
+                ", ".join(missing),
             )
     return tuple(group for group in GROUPS if group.name in wanted)
 
@@ -130,3 +144,25 @@ def selected_groups(raw: str | None, features: Features = ALL_FEATURES) -> tuple
 def group_names(groups: Sequence[ToolGroup]) -> list[str]:
     """The names of ``groups``, in their order (for logs)."""
     return [group.name for group in groups]
+
+
+class UnapprovableGroupsError(ValueError):
+    """A choice of tool groups that cannot be approved; the message says why."""
+
+
+def approvable(chosen: Sequence[str], served: Sequence[ToolGroup]) -> list[GroupName]:
+    """``chosen`` as the names to approve, in registry order: each one ``served``, with the groups
+    it ``requires``. Raises :class:`UnapprovableGroupsError` for an empty choice, a group that is
+    not served, or one chosen without a group it requires."""
+    if not chosen:
+        raise UnapprovableGroupsError("Choose at least one tool group")
+    offered: dict[str, ToolGroup] = {group.name: group for group in served}
+    unknown = sorted({name for name in chosen if name not in offered})
+    if unknown:
+        raise UnapprovableGroupsError(f"Not offered here: {', '.join(unknown)}")
+    wanted = set(chosen)
+    for name in wanted:
+        missing = [needed for needed in offered[name].requires if needed not in wanted]
+        if missing:
+            raise UnapprovableGroupsError(f"{name} needs {', '.join(missing)}")
+    return [group.name for group in served if group.name in wanted]

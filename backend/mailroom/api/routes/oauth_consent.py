@@ -10,16 +10,18 @@ from typing import TYPE_CHECKING, Annotated, Literal
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, Path, Request, Response
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from mailroom.api.deps import CurrentUser, DbSession, SessionCookie
 from mailroom.errors import Refusal
+from mailroom.mcp.groups import UnapprovableGroupsError, approvable
 from mailroom.oauth import consent
 from mailroom.oauth.grants import user_grants
 from mailroom.oauth.server import OAuthServer
-from mailroom.oauth.tokens import revoke_grant
+from mailroom.oauth.tokens import revoke_grant, set_grant_groups
 
 if TYPE_CHECKING:
+    from mailroom.mcp.groups import ToolGroup
     from mailroom.mcp.settings import McpSettings
     from mailroom.mcp.verifier import AuthMode
 
@@ -30,9 +32,23 @@ GrantId = Annotated[int, Path(ge=1, le=2**63 - 1)]
 RequestId = Annotated[str, Path(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")]
 
 _NO_SUCH_REQUEST = Refusal("not_found", "request_not_found", "No such authorization request")
+MAX_GROUPS = 32
+GroupNameIn = Annotated[str, StringConstraints(min_length=1, max_length=64)]
+
+_NO_SUCH_GRANT = Refusal("not_found", "grant_not_found", "No such connected app")
 _SSO_REQUIRED = Refusal(
     "conflict", "sso_required", "Sign in through single sign-on to answer this request"
 )
+
+
+class ToolGroupOut(BaseModel):
+    name: str
+    description: str
+    requires: list[str]
+    """Groups it can be approved only with."""
+    default: bool
+    """Whether the consent screen offers it checked: not for groups that send or delete mail for
+    good."""
 
 
 class ConsentRequestOut(BaseModel):
@@ -43,6 +59,8 @@ class ConsentRequestOut(BaseModel):
     redirect_host: str
     """Where the browser goes back to, approved or not."""
     scopes: list[str]
+    groups: list[ToolGroupOut]
+    """The tool groups the instance serves, for the user to choose from."""
     expires_at: datetime
 
 
@@ -50,6 +68,15 @@ class Decision(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     decision: Literal["approve", "deny"]
+    groups: list[GroupNameIn] = Field(default_factory=list, max_length=MAX_GROUPS)
+    """With ``approve``, the tool groups approved: at least one, each served, with what it
+    requires."""
+
+
+class GroupsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    groups: list[GroupNameIn] = Field(max_length=MAX_GROUPS)
 
 
 class Decided(BaseModel):
@@ -73,8 +100,31 @@ def _host(url: str) -> str:
     return urlsplit(url).netloc
 
 
+def _served(request: Request) -> tuple[ToolGroup, ...]:
+    """The tool groups the instance serves: none with the MCP server off."""
+    settings: McpSettings | None = getattr(request.app.state, "mcp_settings", None)
+    return () if settings is None else settings.groups
+
+
+def _group_out(group: ToolGroup) -> ToolGroupOut:
+    return ToolGroupOut(
+        name=group.name,
+        description=group.description,
+        requires=list(group.requires),
+        default=not group.asks_first,
+    )
+
+
+def _approvable(chosen: list[str], served: tuple[ToolGroup, ...]) -> list[str]:
+    try:
+        return list(approvable(chosen, served))
+    except UnapprovableGroupsError as exc:
+        raise Refusal("invalid", "groups_not_approvable", str(exc)) from None
+
+
 @consent_router.get("/{request_id}")
 def consent_request(
+    request: Request,
     request_id: RequestId,
     response: Response,
     server: BuiltinOAuthServer,
@@ -99,12 +149,14 @@ def consent_request(
         client_host=_host(pending.client_id) if pending.client_kind == "cimd" else None,
         redirect_host=_host(pending.redirect_origin),
         scopes=pending.scopes,
+        groups=[_group_out(group) for group in _served(request)],
         expires_at=pending.expires_at,
     )
 
 
 @consent_router.post("/{request_id}")
 def decide(
+    request: Request,
     request_id: RequestId,
     body: Decision,
     server: BuiltinOAuthServer,
@@ -112,11 +164,17 @@ def decide(
     user: CurrentUser,
     session: SessionCookie = None,
 ) -> Decided:
-    """Approve (a new connected app) or deny; either way the request is used up. 409
-    ``sso_required`` as for the GET."""
-    decide_with = consent.approve if body.decision == "approve" else consent.deny
+    """Approve (a new connected app, for the tool groups chosen) or deny; either way the request
+    is used up. 400 ``groups_not_approvable`` for a choice that cannot be approved, before the
+    request is touched; 409 ``sso_required`` as for the GET."""
     try:
-        redirect_to = decide_with(db, server.settings, request_id, user.id, session=session)
+        if body.decision == "approve":
+            groups = _approvable(body.groups, _served(request))
+            redirect_to = consent.approve(
+                db, server.settings, request_id, user.id, tool_groups=groups, session=session
+            )
+        else:
+            redirect_to = consent.deny(db, server.settings, request_id, user.id, session=session)
     except consent.SsoRequiredError:
         raise _SSO_REQUIRED from None
     if redirect_to is None:
@@ -131,6 +189,9 @@ class ConnectedAppOut(BaseModel):
     """As on the consent screen: the host serving a metadata document, else ``None``."""
     created_at: datetime
     last_used_at: datetime | None
+    groups: list[str]
+    """The served tool groups it is approved for; the others are added since, or left out at
+    approval."""
 
 
 class ConnectedAppsOut(BaseModel):
@@ -139,6 +200,9 @@ class ConnectedAppsOut(BaseModel):
     ``external`` means the identity provider manages access, and the grants listed are left from
     the built-in server."""
     grants: list[ConnectedAppOut]
+    groups: list[ToolGroupOut]
+    """The tool groups the instance serves, which an app's can be chosen from; none unless the
+    built-in server grants access (``builtin`` or ``oidc``)."""
 
 
 def _auth_mode(request: Request) -> AuthMode:
@@ -149,8 +213,10 @@ def _auth_mode(request: Request) -> AuthMode:
 @grants_router.get("")
 def connected_apps(request: Request, db: DbSession, user: CurrentUser) -> ConnectedAppsOut:
     """The user's grants, whatever the mode: ones left from an earlier mode can still be revoked."""
+    served = _served(request)
+    auth = _auth_mode(request)
     return ConnectedAppsOut(
-        auth=_auth_mode(request),
+        auth=auth,
         grants=[
             ConnectedAppOut(
                 id=app.grant_id,
@@ -158,14 +224,29 @@ def connected_apps(request: Request, db: DbSession, user: CurrentUser) -> Connec
                 client_host=_host(app.client_id) if app.client_kind == "cimd" else None,
                 created_at=app.created_at,
                 last_used_at=app.last_used_at,
+                groups=[group.name for group in served if group.name in app.tool_groups],
             )
             for app in user_grants(db, user.id)
         ],
+        groups=[_group_out(group) for group in served] if auth in ("builtin", "oidc") else [],
     )
+
+
+@grants_router.put("/{grant_id}/groups", status_code=204)
+def set_connected_app_groups(
+    request: Request, grant_id: GrantId, body: GroupsIn, db: DbSession, user: CurrentUser
+) -> None:
+    """Make ``groups`` the served tool groups the app is approved for, adding or removing: its
+    next call sees them. 400 ``groups_not_approvable`` as for a decision."""
+    served = _served(request)
+    groups = _approvable(body.groups, served)
+    names = {group.name for group in served}
+    if set_grant_groups(db, grant_id, user.id, groups, names) is None:
+        raise _NO_SUCH_GRANT
 
 
 @grants_router.delete("/{grant_id}", status_code=204)
 def revoke_connected_app(grant_id: GrantId, db: DbSession, user: CurrentUser) -> None:
     """End the grant and its tokens: the app's next ``/mcp`` call is a 401."""
     if not revoke_grant(db, grant_id, user_id=user.id):
-        raise Refusal("not_found", "grant_not_found", "No such connected app")
+        raise _NO_SUCH_GRANT

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import anyio
@@ -380,3 +382,104 @@ def test_a_busy_user_is_refused_at_once() -> None:
     assert busy.isError
     assert busy.content[0].text == BUSY_MESSAGE
     assert not done.isError
+
+
+def _group(name: GroupName) -> ToolGroup:
+    return next(group for group in groups.GROUPS if group.name == name)
+
+
+@pytest.mark.parametrize(
+    ("chosen", "expected"),
+    [
+        (["mail_organize", "mail_read"], ["mail_read", "mail_organize"]),
+        (["filters_read"], ["filters_read"]),
+        (["mail_folders"], ["mail_folders"]),
+    ],
+)
+def test_a_choice_of_served_groups_with_what_they_need_is_approvable(
+    chosen: list[str], expected: list[str]
+) -> None:
+    served = selected_groups(None)
+    assert groups.approvable(chosen, served) == expected
+
+
+@pytest.mark.parametrize(
+    ("chosen", "served", "message"),
+    [
+        ([], ("mail_read",), "at least one"),
+        (["mail_transfer", "mail_read"], ("mail_read",), "mail_transfer"),
+        (["filters_read"], ("mail_read",), "filters_read"),
+        (["mail_send"], ("mail_read", "mail_send"), "mail_send needs mail_read"),
+    ],
+)
+def test_a_choice_that_cannot_be_approved_says_why(
+    chosen: list[str], served: tuple[GroupName, ...], message: str
+) -> None:
+    with pytest.raises(groups.UnapprovableGroupsError, match=message):
+        groups.approvable(chosen, tuple(_group(name) for name in served))
+
+
+def test_groups_that_send_or_delete_for_good_ask_first() -> None:
+    asking = {group.name for group in groups.GROUPS if group.asks_first}
+    assert asking == {"mail_send", "mail_folders", "mail_transfer"}
+
+
+def test_existing_grants_were_recorded_as_approving_the_stable_groups() -> None:
+    path = Path(__file__).parents[1] / "alembic/versions/202611141200_oauth_grant_tool_groups.py"
+    spec = importlib.util.spec_from_file_location("grant_tool_groups", path)
+    assert spec is not None
+    assert spec.loader is not None
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    recorded = set(migration.STABLE_GROUPS)
+    assert recorded == {group.name for group in groups.GROUPS} - {"mail_transfer"}
+
+
+def _token(tool_groups: list[str] | None) -> AccessToken:
+    claims = {"grant_id": "7"} if tool_groups is None else {"tool_groups": tool_groups}
+    return AccessToken(token="t", client_id="c", scopes=[], subject="1", claims=claims)
+
+
+def test_a_token_reaches_the_tools_of_the_served_groups_its_grant_approved() -> None:
+    accounts = next(tool for tool in TOOLS if tool.name == "accounts_list")
+    move = next(tool for tool in TOOLS if tool.name == "messages_move")
+    served = {"filters_read", "mail_read", "mail_organize"}
+    reading = _token(["mail_read"])
+    assert accounts.approved(reading, served)
+    assert not move.approved(reading, served)
+    assert move.approved(_token(["mail_read", "mail_organize"]), served)
+    assert not move.approved(_token(["mail_organize"]), {"mail_read"})
+    assert accounts.approved(_token(None), served)
+    assert accounts.approved(None, served)
+
+
+def test_a_call_to_a_tool_the_grant_did_not_approve_is_refused(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    ran: list[bool] = []
+
+    async def run(_args: Arguments, _call: ToolCall) -> dict[str, Any]:
+        ran.append(True)
+        return {}
+
+    tool = Tool("moving", "Moving", "Moves.", "mail_organize", Arguments, READ, run)
+    ctx = cast("AppContext", object())
+    caplog.set_level(logging.INFO, logger="mailroom.mcp.audit")
+
+    async def call() -> Any:
+        return await call_tool(
+            {"moving": tool},
+            "moving",
+            {},
+            token=_token(["mail_read"]),
+            context=lambda: ctx,
+            served={"mail_read", "mail_organize"},
+        )
+
+    result = anyio.run(call)
+    assert result.isError
+    assert "not approved for the mail_organize tools" in result.content[0].text
+    assert "Connected apps" in result.content[0].text
+    assert not ran
+    logged = next(r for r in caplog.records if r.getMessage() == "mcp_tool_called")
+    assert (logged.__dict__["outcome"], logged.__dict__["code"]) == ("refused", "not_approved")

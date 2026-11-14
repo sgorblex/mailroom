@@ -16,7 +16,12 @@ EXTRA_REDIRECT_URIS_ENV = "MAILROOM_OAUTH_EXTRA_REDIRECT_URIS"
 CIMD_HOSTS_ENV = "MAILROOM_OAUTH_CIMD_HOSTS"
 
 SCOPE = "mailroom"
-"""The one scope. Which tools a client gets is instance config, not scope."""
+"""The one scope. Which tool groups a client gets is the instance's config and its grant's
+approval (``TOOL_GROUPS_CLAIM``), not scope."""
+
+TOOL_GROUPS_CLAIM = "tool_groups"
+"""The access-token claim carrying the MCP tool groups the grant approves; the MCP server reads
+it under the same name (``mailroom.mcp.verifier``)."""
 
 #: Where claude.ai and claude.com send the user back after sign-in. Loopback is allowed on top of
 #: these, on any port and path (RFC 8252): Claude Code and the MCP Inspector listen there.

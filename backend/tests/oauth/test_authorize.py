@@ -21,6 +21,7 @@ from mailroom.oauth.server import OAuthServer
 from mailroom.oauth.throttle import Throttle, Throttles
 from tests.oauth.helpers import (
     CLAUDE_CALLBACK,
+    GROUPS,
     ORIGIN,
     RESOURCE,
     authorize,
@@ -148,7 +149,7 @@ def test_deny_sends_access_denied_back(
         "state": "the-state",
         "iss": f"{ORIGIN}/oauth",
     }
-    assert consent.approve(db_session, settings, request_id, user.id) is None
+    assert consent.approve(db_session, settings, request_id, user.id, tool_groups=GROUPS) is None
     assert db_session.scalars(select(OAuthGrant)).all() == []
 
 
@@ -168,16 +169,18 @@ def test_a_request_belongs_to_the_first_user_who_opens_it(
     assert pending.redirect_origin == "https://claude.ai"
     assert pending.scopes == ["mailroom"]
     assert consent.claim_pending_authorization(db_session, request_id, admin.id) is None
-    assert consent.approve(db_session, settings, request_id, admin.id) is None
+    assert consent.approve(db_session, settings, request_id, admin.id, tool_groups=GROUPS) is None
     assert consent.deny(db_session, settings, request_id, admin.id) is None
-    assert consent.approve(db_session, settings, request_id, user.id) is not None
+    assert (
+        consent.approve(db_session, settings, request_id, user.id, tool_groups=GROUPS) is not None
+    )
 
 
 def test_an_unknown_or_expired_request_cannot_be_decided(
     client: TestClient, db_session: Session, settings: OAuthSettings, client_id: str, user: User
 ) -> None:
     assert consent.claim_pending_authorization(db_session, "nope", user.id) is None
-    assert consent.approve(db_session, settings, "nope", user.id) is None
+    assert consent.approve(db_session, settings, "nope", user.id, tool_groups=GROUPS) is None
     request_id = consent_request_id(authorize(client, client_id, "v" * 50))
     db_session.execute(
         update(OAuthAuthorizationRequest).values(
@@ -186,7 +189,7 @@ def test_an_unknown_or_expired_request_cannot_be_decided(
     )
     db_session.commit()
     assert consent.claim_pending_authorization(db_session, request_id, user.id) is None
-    assert consent.approve(db_session, settings, request_id, user.id) is None
+    assert consent.approve(db_session, settings, request_id, user.id, tool_groups=GROUPS) is None
     # Swept by the next request stored.
     consent_request_id(authorize(client, client_id, "v" * 50))
     assert len(db_session.scalars(select(OAuthAuthorizationRequest)).all()) == 1
