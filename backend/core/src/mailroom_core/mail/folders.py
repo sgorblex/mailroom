@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
     from imapclient import IMAPClient
 
-    from mailroom_core.mail.drafts import Note
+    from mailroom_core.mail.audit import Note
     from mailroom_core.mail.imap import Folder, MailConnections
 
 MAX_FOLDER_DEPTH: Final = 32

@@ -69,7 +69,9 @@ class StubClient:
     appended: list[tuple[str, bytes, tuple[str, ...]]]
     fails: bool = False
 
-    def append(self, folder: str, raw: bytes, flags: tuple[str, ...]) -> bytes:
+    def append(
+        self, folder: str, raw: bytes, flags: tuple[str, ...], msg_time: object = None
+    ) -> bytes:
         if self.fails:
             raise MailError("server_error")
         self.appended.append((folder, raw, flags))

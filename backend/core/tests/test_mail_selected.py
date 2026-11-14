@@ -2,6 +2,7 @@
 groups, fetches that leave `\\Seen` alone, the flags they may set, and the one permanent delete
 sparing whatever else is marked `\\Deleted`."""
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import pytest
@@ -11,10 +12,13 @@ from mailroom_core.mail import (
     MailConnections,
     MailError,
     Moved,
+    append_raw,
     delete_uids,
     fetch_envelopes,
+    fetch_source,
     fetch_sources,
     listed_folders,
+    message_id_uids,
     move_uids,
     search_uids,
     store_flags,
@@ -34,7 +38,7 @@ if TYPE_CHECKING:
 
     from imapclient.response_types import Envelope
 
-    from mailroom_core.mail import FetchedMessage
+    from mailroom_core.mail import FetchedMessage, MessageSource
 
 pytestmark = pytest.mark.integration
 
@@ -96,6 +100,79 @@ def test_fetches_leave_seen_alone(imap_server, mail) -> None:
     assert envelope is not None
     assert envelope.subject == b"read me"
     assert flags_of(imap_server, user) == {"read me": {"\\Flagged"}}
+
+
+def test_appends_a_message_as_it_was_with_its_flags_and_arrival_date(imap_server, mail) -> None:
+    user = imap_server.unique_user("append")
+    raw = mime("moved here", text="hello").encode()
+    arrived = datetime(2024, 3, 1, 9, 30, tzinfo=UTC)
+    connections = mail(user)
+
+    def run(context: MailboxContext) -> tuple[int | None, int | None]:
+        return context.uid_next, append_raw(
+            context, raw, ["\\Seen", "\\Flagged"], internal_date=arrived
+        )
+
+    before, uid = connections.with_mailbox("acc", "INBOX", False, run)
+    assert uid is not None
+    assert before is not None
+    assert uid >= before
+    stored = connections.with_mailbox(
+        "acc", "INBOX", True, lambda context: fetch_source(context, uid, len(raw))
+    )
+    assert stored.source == raw
+    assert stored.flags - {"\\Recent"} == {"\\Seen", "\\Flagged"}
+    assert stored.internal_date is not None
+    assert stored.internal_date.astimezone(UTC) == arrived
+
+
+def test_finds_a_message_id_that_needs_quoting(imap_server, mail) -> None:
+    user = imap_server.unique_user("message-id")
+    odd = '<a(b)"c"{5}@example.org>'
+    first = seed(imap_server, user, "INBOX", mime("one", message_id=odd))
+    second = seed(imap_server, user, "INBOX", mime("two", message_id=odd))
+    seed(imap_server, user, "INBOX", mime("other"))
+    connections = mail(user)
+
+    def find(since_uid: int) -> list[int]:
+        return connections.with_mailbox(
+            "acc",
+            "INBOX",
+            True,
+            lambda context: sorted(message_id_uids(context, odd, since_uid=since_uid)),
+        )
+
+    assert find(0) == [first, second]
+    assert find(second) == [second]
+
+
+def test_fetches_a_whole_source_up_to_a_cap(imap_server, mail) -> None:
+    user = imap_server.unique_user("source")
+    raw = mime("capped", text="x" * 200)
+    arrived = datetime(2023, 12, 24, 18, 0, tzinfo=UTC)
+    uid = seed(imap_server, user, "INBOX", raw, ["\\Answered"], arrived)
+    connections = mail(user)
+
+    def fetch(cap: int) -> MessageSource:
+        return connections.with_mailbox(
+            "acc", "INBOX", False, lambda context: fetch_source(context, uid, cap)
+        )
+
+    size = len(raw.encode())
+    whole = fetch(size)
+    assert whole.source == raw.encode()
+    assert whole.flags - {"\\Recent"} == {"\\Answered"}
+    assert whole.internal_date is not None
+    assert whole.internal_date.astimezone(UTC) == arrived
+    with pytest.raises(MailError) as refused:
+        fetch(size - 1)
+    assert refused.value.code == "too_large"
+    with pytest.raises(MailError) as gone:
+        connections.with_mailbox(
+            "acc", "INBOX", True, lambda context: fetch_source(context, 999, size)
+        )
+    assert gone.value.code == "not_found"
+    assert flags_of(imap_server, user) == {"capped": {"\\Answered"}}
 
 
 def test_sets_and_clears_answered_and_refuses_deleted(imap_server, mail) -> None:

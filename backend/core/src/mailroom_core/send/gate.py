@@ -55,8 +55,8 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from mailroom_core.config import AccountConfig, Limits
-    from mailroom_core.mail.audit import Authoriser
-    from mailroom_core.mail.drafts import Draft, Note
+    from mailroom_core.mail.audit import Authoriser, Note
+    from mailroom_core.mail.drafts import Draft
     from mailroom_core.mail.imap import MailConnections
     from mailroom_core.mail.recipients import Mailbox
     from mailroom_core.mail.ref import MessageRef

@@ -7,14 +7,13 @@ is expunged by its UID alone (docs/core.md, *Safety*); any other goes to Trash.
 """
 
 import re
-from contextlib import suppress
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Final
 
 from mailroom_core.mail._mime import header_text, text_value
 from mailroom_core.mail.attachments import attachments_from
 from mailroom_core.mail.audit import (
-    AuditItem,
+    Note,
     Removal,
     audit_result,
     message_item,
@@ -28,18 +27,25 @@ from mailroom_core.mail.compose import (
     new_message_id,
 )
 from mailroom_core.mail.download import body_text, part_content
-from mailroom_core.mail.errors import MailError, is_connection_error, mail_error
+from mailroom_core.mail.errors import MailError, mail_error
 from mailroom_core.mail.organize import trash_messages
 from mailroom_core.mail.outgoing import check_sendable, check_uploads
 from mailroom_core.mail.read import fetch_structure, fetched_headers
 from mailroom_core.mail.recipients import envelope_mailboxes
 from mailroom_core.mail.ref import MessageRef, check_fresh, format_ref, parse_ref
 from mailroom_core.mail.reply import references_in
-from mailroom_core.mail.selected import delete_uids
+from mailroom_core.mail.selected import (
+    abandon_read_back,
+    append_raw,
+    delete_uids,
+    fetch_source,
+    message_id_uids,
+    search_uids,
+)
 from mailroom_core.render import html_to_text
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Sequence
+    from collections.abc import Iterable, Sequence
 
     from imapclient import IMAPClient
 
@@ -55,14 +61,9 @@ MAX_DRAFT_BYTES: Final = 2 * 1024 * 1024
 """Of a draft's text when read back; a longer one reads as `lossy`."""
 DRAFT_FLAGS: Final = ("\\Draft", "\\Seen")
 _MARK: Final = f"BODY.PEEK[HEADER.FIELDS ({DRAFT_HEADER.upper()})]"
-_MAX_UID: Final = 0xFFFFFFFF
-_APPENDUID: Final = re.compile(rb"\[APPENDUID ([0-9]{1,10}) ([0-9]{1,10})\]", re.IGNORECASE)
 _COMPOSE_ID: Final = re.compile(r"[A-Za-z0-9_-]{1,64}")
 """A client's UUID, or what `new_message_id` makes up: nothing a search needs to quote."""
 _OWN_ID: Final = re.compile(r"<([A-Za-z0-9_-]{1,64})@[^<>]+>")
-
-type Note = Callable[[AuditItem], None]
-"""Takes each audit item as it happens, so what was done is on record even if the call fails."""
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -110,16 +111,6 @@ class SavedDraft:
     """False without UIDPLUS, where every replaced version lands in Trash: save only on request."""
 
 
-def appended_uid(response: bytes | None, uid_validity: int) -> int | None:
-    """The UID an APPEND's tagged response reports (APPENDUID, RFC 4315), which imapclient hands
-    over as raw bytes; None without one, or for a UIDVALIDITY other than the folder's."""
-    found = _APPENDUID.match(response or b"")
-    if found is None or int(found.group(1)) != uid_validity:
-        return None
-    uid = int(found.group(2))
-    return uid if 0 < uid <= _MAX_UID else None
-
-
 def _structure_if(client: IMAPClient, uid: int, message_id: str) -> Structure | None:
     """The message's structure, if `uid` is there and carries `message_id`."""
     try:
@@ -131,24 +122,21 @@ def _structure_if(client: IMAPClient, uid: int, message_id: str) -> Structure | 
 
 
 def _read_back(
-    context: MailboxContext, response: bytes | None, message_id: str
+    context: MailboxContext, appended: int | None, first: int, message_id: str
 ) -> tuple[int, Structure] | None:
-    """Where the APPEND put the message: APPENDUID when it checks out, else the newest match of
-    a search by Message-ID, which a full-text index that has not caught up yet can miss (Mailu).
-    UIDNEXT from before the APPEND rules out the older versions sharing its Message-ID: taking
-    one of them for the new message would remove it as "the old version", with the ref of what
-    is gone."""
+    """Where the APPEND put the message: the UID APPENDUID gave when it checks out, else the
+    newest match of a search by Message-ID, which a full-text index that has not caught up yet
+    can miss (Mailu). UIDNEXT from before the APPEND, `first`, rules out the older versions
+    sharing its Message-ID: taking one of them for the new message would remove it as "the old
+    version", with the ref of what is gone."""
     client = context.client
     # RFC 3501, 6.3.11: the new message need not be in view until a NOOP.
     client.noop()
-    uid = appended_uid(response, context.uid_validity)
-    if uid is not None:
-        structure = _structure_if(client, uid, message_id)
+    if appended is not None:
+        structure = _structure_if(client, appended, message_id)
         if structure is not None:
-            return uid, structure
-    first = context.uid_next or 0
-    matches = client.search(["HEADER", "Message-ID", message_id])
-    newest = max((found for found in matches if found >= first), default=None)
+            return appended, structure
+    newest = max(message_id_uids(context, message_id, since_uid=first), default=None)
     if newest is None:
         return None
     structure = _structure_if(client, newest, message_id)
@@ -164,16 +152,12 @@ def _append(
     message_id: str,
 ) -> tuple[MessageRef, Structure] | None:
     def run(context: MailboxContext) -> tuple[MessageRef, Structure] | None:
-        client = context.client
-        response = client.append(folder, raw, tuple(flags))
+        first = context.uid_next or 0
+        appended = append_raw(context, raw, flags)
         try:
-            located = _read_back(context, response, message_id)
+            located = _read_back(context, appended, first, message_id)
         except Exception as error:
-            mail_error(error, account)  # logged; the message is saved
-            if is_connection_error(error):
-                # Its state is unknown: the next caller's SELECT fails and reconnects.
-                with suppress(OSError):
-                    client.shutdown()
+            abandon_read_back(context, error)  # logged; the message is saved
             return None
         if located is None:
             return None
@@ -211,25 +195,17 @@ def draft_source(connections: MailConnections, ref: MessageRef, max_bytes: int) 
     """A draft exactly as stored, for sending it: `too_large` over `max_bytes` rather than cut,
     since a truncated message must never go out."""
     check_in_drafts(connections, ref)
-    too_large = MailError("too_large", "The draft is over the attachment size limit.")
 
     def run(context: MailboxContext) -> bytes:
         check_fresh(ref, context.uid_validity)
-        client = context.client
-        sized = client.fetch([ref.uid], ["RFC822.SIZE"]).get(ref.uid)
-        if sized is None:
-            raise MailError("not_found")
-        size = sized.get(b"RFC822.SIZE")
-        if isinstance(size, int) and size > max_bytes:
-            raise too_large
-        # One byte over the cap is enough to know it is too large.
-        fetched = client.fetch([ref.uid], [f"BODY.PEEK[]<0.{max_bytes + 1}>"]).get(ref.uid)
-        raw = None if fetched is None else fetched.get(b"BODY[]<0>")
-        if not isinstance(raw, bytes):
-            raise MailError("not_found")
-        if len(raw) > max_bytes:
-            raise too_large
-        return raw
+        try:
+            return fetch_source(context, ref.uid, max_bytes).source
+        except MailError as error:
+            if error.code == "too_large":
+                raise MailError(
+                    "too_large", "The draft is over the attachment size limit."
+                ) from None
+            raise
 
     return connections.with_mailbox(ref.account, ref.folder, True, run)
 
@@ -303,7 +279,7 @@ def find_drafts(
     def run(context: MailboxContext) -> tuple[MessageRef, ...]:
         client = context.client
         start = f"<{compose_id}@"
-        uids = client.search(["HEADER", "Message-ID", start])
+        uids = search_uids(context, ["HEADER", "Message-ID", start])
         if not uids:
             return ()
         # A server's search may go by words, and match `<id-2@` for `<id@`: the ENVELOPE decides.

@@ -15,7 +15,7 @@ from mailroom_core.mail.errors import MailError
 from mailroom_core.render import clean_header
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable
 
     from mailroom_core.mail.compose import MessageInput
     from mailroom_core.mail.errors import MailErrorCode
@@ -26,7 +26,8 @@ type AuditOutcome = Literal["ok", "partial", "refused", "failed"]
 type Junk = Literal["spam", "ham"]
 """What a move teaches the account's spam filter: into Junk, or out of it."""
 type Removal = Literal["expunged", "trashed", "failed"]
-"""How a draft left Drafts: expunged (mailroom's own), moved to Trash, or still there."""
+"""How a message left its folder once written elsewhere (so far, a draft's old version):
+expunged for good, moved to Trash, or still there."""
 type Authoriser = Literal["user", "agent"]
 """Who asked for a send: a person's click, or an agent. `send_mode` limits agents only."""
 type DeliveryStage = Literal["sent", "drafted", "attempted", "refused", "repeated"]
@@ -111,6 +112,10 @@ class AuditItem:
         if isinstance(recipients, dict):
             fields.update(recipients)
         return fields
+
+
+type Note = Callable[[AuditItem], None]
+"""Takes each audit item as it happens, so what was done is on record even if the call fails."""
 
 
 def subject_sha256(subject: str) -> str:

@@ -7,7 +7,6 @@ group that fails does not stop the others. Nothing is ever expunged but the mess
 copied away, and a write is never retried.
 """
 
-from contextlib import suppress
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
@@ -19,10 +18,11 @@ from mailroom_core.mail.audit import (
     audit_outcome,
     message_item,
 )
-from mailroom_core.mail.errors import MailError, is_connection_error, mail_error
+from mailroom_core.mail.errors import MailError, mail_error
 from mailroom_core.mail.ref import MessageRef, check_fresh, format_ref, parse_ref
 from mailroom_core.mail.selected import (
     CopiedNotRemovedError,
+    abandon_read_back,
     check_movable,
     fetch_envelopes,
     move_target,
@@ -35,7 +35,7 @@ from mailroom_core.render import clean_header
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
-    from mailroom_core.mail.audit import AuditResult
+    from mailroom_core.mail.audit import AuditResult, Note
     from mailroom_core.mail.imap import Folder, MailboxContext, MailConnections
     from mailroom_core.mail.selected import Moved
 
@@ -113,9 +113,6 @@ class _Group:
     refs: tuple[MessageRef, ...]
 
 
-type _Note = Callable[[AuditItem], None]
-
-
 def move_messages(connections: MailConnections, refs: Sequence[str], folder: str) -> OrganizeResult:
     """Moves to `folder`, an existing selectable folder of each ref's account (INBOX in any
     case), never Drafts or Sent. Into Junk teaches the spam filter `spam`, out of Junk (except
@@ -123,7 +120,7 @@ def move_messages(connections: MailConnections, refs: Sequence[str], folder: str
     groups = _groups(connections, refs)
     folders_of = _folder_lookup(connections)
 
-    def act(group: _Group, note: _Note) -> GroupResult:
+    def act(group: _Group, note: Note) -> GroupResult:
         folders = folders_of(group.account)
         target = move_target(group.folder, folder, folders, account=group.account)
         return _move_to(connections, group, folders, target, note)
@@ -136,7 +133,7 @@ def archive_messages(connections: MailConnections, refs: Sequence[str]) -> Organ
     groups = _groups(connections, refs)
     folders_of = _folder_lookup(connections)
 
-    def act(group: _Group, note: _Note) -> GroupResult:
+    def act(group: _Group, note: Note) -> GroupResult:
         folders = folders_of(group.account)
         archive = special_folder_in(folders, "archive")
         if archive is None or not archive.selectable:
@@ -155,7 +152,7 @@ def trash_messages(
     groups = _groups(connections, refs)
     folders_of = _folder_lookup(connections)
 
-    def act(group: _Group, note: _Note) -> GroupResult:
+    def act(group: _Group, note: Note) -> GroupResult:
         trash = special_folder_in(folders_of(group.account), "trash")
         if trash is None:
             raise MailError("unsupported", f"{group.account} has no Trash folder.")
@@ -184,7 +181,7 @@ def set_flags(
     add = [flag for flag, wanted in ((_SEEN, seen), (_FLAGGED, flagged)) if wanted is True]
     remove = [flag for flag, wanted in ((_SEEN, seen), (_FLAGGED, flagged)) if wanted is False]
 
-    def act(group: _Group, note: _Note) -> GroupResult:
+    def act(group: _Group, note: Note) -> GroupResult:
         def run(context: MailboxContext) -> GroupResult:
             for ref in group.refs:
                 check_fresh(ref, context.uid_validity)
@@ -229,11 +226,7 @@ def set_flags(
                     for uid, flags in read_back.items()
                 )
             except Exception as error:
-                mail_error(error, group.account)  # logged; the change stands
-                if is_connection_error(error):
-                    # Its state is unknown: the next caller's SELECT fails and reconnects.
-                    with suppress(OSError):
-                        client.shutdown()
+                abandon_read_back(context, error)  # logged; the change stands
                 states = tuple(FlagState(ref_of(uid), None, None) for uid in uids)
             return GroupResult(
                 group.account, group.folder, count=len(uids), new_refs=(), flags=states
@@ -262,7 +255,7 @@ def _groups(connections: MailConnections, texts: Sequence[str]) -> list[_Group]:
 
 def _each_group(
     groups: Sequence[_Group],
-    act: Callable[[_Group, _Note], GroupResult],
+    act: Callable[[_Group, Note], GroupResult],
     *,
     removed: Removal | None = None,
 ) -> OrganizeResult:
@@ -318,7 +311,7 @@ def _move_to(
     group: _Group,
     folders: Sequence[Folder],
     target: Folder,
-    note: _Note,
+    note: Note,
 ) -> GroupResult:
     """A move's Junk training, then the move; `move_target` refused what it had to."""
     source = next((f for f in folders if f.path == group.folder), None)
@@ -337,7 +330,7 @@ def _move(
     group: _Group,
     destination: str,
     junk: Junk | None,
-    note: _Note,
+    note: Note,
     *,
     removed: Removal | None = None,
 ) -> GroupResult:

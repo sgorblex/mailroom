@@ -9,7 +9,7 @@ import threading
 import uuid
 from contextlib import suppress
 from dataclasses import replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from imapclient import IMAPClient
@@ -38,6 +38,7 @@ from mailroom_core.mail import (
     recipient_list,
     remove_draft,
     save_draft,
+    selected,
     try_remove_draft,
 )
 from mailroom_core.mail import (
@@ -130,8 +131,8 @@ def drop_response_code(monkeypatch: pytest.MonkeyPatch, code: bytes = b"Append c
     """As a server without UIDPLUS answers."""
     append = IMAPClient.append
 
-    def plain(self: IMAPClient, *args: object) -> bytes:
-        append(self, *args)
+    def plain(self: IMAPClient, *args: Any, **kwargs: Any) -> bytes:
+        append(self, *args, **kwargs)
         return code
 
     monkeypatch.setattr(IMAPClient, "append", plain)
@@ -185,10 +186,10 @@ def test_a_failed_read_back_gives_no_ref_and_keeps_the_old_version(
     old, _ = save(mail, account, message(account, "v1"), compose_id="same-id")
     drop_response_code(monkeypatch)
 
-    def fails(self: IMAPClient, *args: object) -> None:
+    def fails(*args: object) -> None:
         raise imaplib.IMAP4.error("search failed")
 
-    monkeypatch.setattr(IMAPClient, "search", fails)
+    monkeypatch.setattr(selected, "search_uids", fails)
     new, items = save(mail, account, message(account, "v2"), compose_id="same-id", replaces=old.ref)
     monkeypatch.undo()
 
@@ -209,7 +210,7 @@ def test_a_search_that_only_finds_the_old_version_does_not_replace_it(
     old, _ = save(mail, account, message(account, "v1"), compose_id="same-id")
     assert old.ref is not None
     drop_response_code(monkeypatch)
-    monkeypatch.setattr(IMAPClient, "search", lambda self, criteria: [old.ref.uid])
+    monkeypatch.setattr(selected, "search_uids", lambda context, criteria: [old.ref.uid])
     new, _ = save(mail, account, message(account, "v2"), compose_id="same-id", replaces=old.ref)
     monkeypatch.undo()
 
@@ -643,8 +644,8 @@ def test_a_save_whose_answer_was_lost_is_found_again(
     old, _ = save(mail, account, message(account, "v1"), compose_id="same-id")
     append = IMAPClient.append
 
-    def lost(self: IMAPClient, *args: object) -> None:
-        append(self, *args)
+    def lost(self: IMAPClient, *args: Any, **kwargs: Any) -> None:
+        append(self, *args, **kwargs)
         raise imaplib.IMAP4.abort("connection lost")
 
     monkeypatch.setattr(IMAPClient, "append", lost)
