@@ -25,6 +25,7 @@ steps:
             - 'backend/alembic.ini'
             - 'backend/.python-version'
             - 'compose.yml'
+            - 'dev/dovecot-test.conf'
             - 'mise.toml'
             - '.woodpecker/backend-tests.yaml'
       - event: pull_request
@@ -44,6 +45,14 @@ steps:
     when: *backend-tests-when
     environment:
       USER_PASSWORD: pass
+    # dev/dovecot-test.conf's overrides, as scripts/test-mail.sh mounts them: the image has no
+    # shell tools and a read-only conf.d, so a config of our own includes the image's first,
+    # under the config version the image's own starts with. An entrypoint, not `commands`:
+    # Woodpecker runs those through base64, which the image lacks.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - printf 'dovecot_config_version = 2.4.3\n!include /etc/dovecot/dovecot.conf\n!include %s/dev/dovecot-test.conf\n' "$${CI_WORKSPACE}" > /tmp/test.conf && exec /dovecot/sbin/dovecot -F -c /tmp/test.conf
 
   - name: mailpit
     image: docker.io/axllent/mailpit:v1.31.3@sha256:ed9b00c609e77e99c79b93f1178255ebc271868920f2c69a8d166bd5634ed10d
