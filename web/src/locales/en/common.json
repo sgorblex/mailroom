@@ -208,7 +208,7 @@
     "asks": "{{name}} wants to use Mailroom as {{username}}",
     "selfRegistered": "The app registered itself: its name is what it says it is, unchecked.",
     "describedBy": "The app is described by {{host}}.",
-    "access": "It can use the tools this Mailroom offers on your behalf: your mail accounts, their folders and your filters and, where this Mailroom offers it, reading your messages and their attachments, organizing them (moving, trashing, flagging), creating, renaming and deleting folders (a deleted folder's mail is gone for good), writing drafts and sending mail, as far as each account's Sending setting lets it.",
+    "access": "It can use the tools this Mailroom offers on your behalf: your mail accounts, their folders and your filters and, where this Mailroom offers it, reading your messages and their attachments, organizing them (moving, trashing, flagging, moving them to your other accounts, which can delete the originals for good), creating, renaming and deleting folders (a deleted folder's mail is gone for good), writing drafts and sending mail, as far as each account's Sending setting lets it.",
     "returnsTo": "Approving or denying takes you back to",
     "revoke": "You can disconnect it at any time from your profile.",
     "approve": "Approve",

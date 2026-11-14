@@ -66,9 +66,11 @@ class MessagesFlagArguments(Arguments):
     )
 
 
-def _answer(result: OrganizeResult) -> types.CallToolResult:
-    """The text of ``result``, or the refusal when no folder succeeded."""
-    if result.succeeded:
+def organize_answer(result: OrganizeResult, *, copies_answer: bool = False) -> types.CallToolResult:
+    """The text of ``result``, or the refusal when no folder succeeded. ``copies_answer``: a
+    failed folder that made copies (``new_refs``) is answered too, its messages being in both
+    places."""
+    if result.succeeded or (copies_answer and any(group.new_refs for group in result.groups)):
         return content_result(types.TextContent(type="text", text=untrusted(organize_text(result))))
     [first, *_] = result.groups
     error = first.error
@@ -79,7 +81,7 @@ def _answer(result: OrganizeResult) -> types.CallToolResult:
 
 
 async def _organize(call: ToolCall, work: Callable[[], OrganizeResult]) -> types.CallToolResult:
-    return _answer(await call.thread(work))
+    return organize_answer(await call.thread(work))
 
 
 async def _messages_move(args: MessagesMoveArguments, call: ToolCall) -> types.CallToolResult:

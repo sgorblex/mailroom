@@ -12,6 +12,7 @@ from mailroom.mcp.tools.mail_folders import MAIL_FOLDERS_TOOLS
 from mailroom.mcp.tools.mail_organize import MAIL_ORGANIZE_TOOLS
 from mailroom.mcp.tools.mail_read import MAIL_READ_TOOLS
 from mailroom.mcp.tools.mail_send import MAIL_SEND_TOOLS
+from mailroom.mcp.tools.mail_transfer import MAIL_TRANSFER_TOOLS
 
 if TYPE_CHECKING:
     from mailroom.mcp.tool import Tool
@@ -21,6 +22,7 @@ TOOLS: Final[tuple[Tool[Any], ...]] = (
     *FILTER_TOOLS,
     *MAIL_READ_TOOLS,
     *MAIL_ORGANIZE_TOOLS,
+    *MAIL_TRANSFER_TOOLS,
     *MAIL_FOLDERS_TOOLS,
     *MAIL_DRAFT_TOOLS,
     *MAIL_SEND_TOOLS,
