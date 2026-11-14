@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.11.0](https://github.com/sgorblex/mailroom/compare/v0.10.0...v0.11.0) (2026-11-14)
+
+
+### Features
+
+* **core:** move messages to another account ([#42](https://github.com/sgorblex/mailroom/issues/42)) ([bcbad1e](https://github.com/sgorblex/mailroom/commit/bcbad1e86094ac9cb1ebd4ffc68722a2d1c915cc))
+* move messages to another of the user's accounts over REST ([#43](https://github.com/sgorblex/mailroom/issues/43)) ([ab72b87](https://github.com/sgorblex/mailroom/commit/ab72b87e600c5c16182e276ba231f34011851f98))
+* the mail_transfer MCP group moves mail to another account ([#45](https://github.com/sgorblex/mailroom/issues/45)) ([8647d21](https://github.com/sgorblex/mailroom/commit/8647d21e03e853a95d90ae94919672812cd646e5))
+* **web:** move messages to another account from the mail toolbar ([#44](https://github.com/sgorblex/mailroom/issues/44)) ([71866d2](https://github.com/sgorblex/mailroom/commit/71866d2acd501739c9f25e1dcda3731493099240))
+
+
+### Bug Fixes
+
+* an SSO sign-in lands signed in, and one on /connect claims its request ([#36](https://github.com/sgorblex/mailroom/issues/36)) ([aed322d](https://github.com/sgorblex/mailroom/commit/aed322dda25ec9cba66909c264e4162314cd309d))
+* **web:** a lazy screen opened directly no longer logs a use() error ([#37](https://github.com/sgorblex/mailroom/issues/37)) ([f97571d](https://github.com/sgorblex/mailroom/commit/f97571d96dcf872d302e8d8ecf804e3e435147c3))
+
 ## [0.10.0](https://github.com/sgorblex/mailroom/compare/v0.9.1...v0.10.0) (2026-11-13)
 
 
