@@ -3,13 +3,19 @@ import { apiGetJson, apiPutJson } from './http.ts'
 
 /** The most a written message's attachments may total, whatever the user's limit. */
 export const ATTACHMENT_MAX_MB = 25
+/** The most a message moved to another account may have, whatever the user's limit. */
+export const MOVE_MAX_MB = 50
 
-/** The user's mail limits, for the web and MCP alike: sending, and the window a body is read in. */
+/**
+ * The user's mail limits, for the web and MCP alike: sending, the window a body is read in, and
+ * a message moved to another account.
+ */
 export const limitsSchema = z.object({
   send_per_hour: z.number(),
   max_recipients: z.number(),
   body_chars: z.number(),
   attachment_max_mb: z.number(),
+  move_max_mb: z.number(),
 })
 export type Limits = z.infer<typeof limitsSchema>
 

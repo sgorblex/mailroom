@@ -34,6 +34,8 @@ export interface FakeMailState {
   refuse?: Record<string, { status: number; body: unknown }>
   /** `"<account>/<folder path>"` → the code its group fails with in an organize batch. */
   groupFailures?: Record<string, string>
+  /** `"<account>/<folder path>"` → the code its group fails with after copying, the messages in both. */
+  copiedNotRemoved?: Record<string, string>
   /** Called with each request (`"POST /api/v1/mail/messages/flag"`, its body); the answer waits for the promise it returns. */
   hold?: (request: string, body: unknown) => Promise<void> | undefined
   /** Each account's send mode; `drafts` unless it says otherwise. */
@@ -151,7 +153,11 @@ export function messageView(item: MessageItem, fields: Partial<MessageView> = {}
  * The organize routes over `state`: a move takes the messages out of their folder's list into the
  * destination's (a new ref, as after COPYUID), a flag change writes the list item and the view.
  */
-function organize(state: FakeMailState, route: string, body: { refs: string[]; folder?: string; seen?: boolean; flagged?: boolean }): Response {
+function organize(
+  state: FakeMailState,
+  route: string,
+  body: { refs: string[]; folder?: string; account?: string; removal?: string; seen?: boolean; flagged?: boolean },
+): Response {
   if (body.refs.length === 0 || body.refs.length > 50) {
     return json(422, { detail: [{ type: 'too_long', loc: ['body', 'refs'], msg: 'List should have at most 50 items' }] })
   }
@@ -175,7 +181,17 @@ function organize(state: FakeMailState, route: string, body: { refs: string[]; f
   }
   const results: OrganizeGroup[] = [...groups].map(([key, items]) => {
     const { account_id: account, folder } = items[0] ?? messageItem('', '', 0)
-    const group = { account, folder, ok: true, count: items.length, new_refs: null, junk: null, flags: [], error: null }
+    const group: OrganizeGroup = {
+      account,
+      folder,
+      ok: true,
+      count: items.length,
+      new_refs: null,
+      destination_account: null,
+      junk: null,
+      flags: [],
+      error: null,
+    }
     const failed = (code: string): OrganizeGroup => ({
       ...group,
       ok: false,
@@ -211,20 +227,31 @@ function organize(state: FakeMailState, route: string, body: { refs: string[]; f
     if (destination === undefined) {
       return failed('unsupported')
     }
+    // A move to another account lands there; any other move stays in the account.
+    const to = route === 'move-to-account' ? (body.account ?? account) : account
     // New uids above the destination's, as a server gives them, so its list stays in uid order.
-    const there = state.messages[`${account}/${destination}`] ?? []
+    const there = state.messages[`${to}/${destination}`] ?? []
     const top = Math.max(0, ...there.map(uidOf))
     const moved = items.map((item, index) => ({
       ...item,
-      ref: fakeRef(account, destination, top + items.length - index),
+      ref: fakeRef(to, destination, top + items.length - index),
+      account_id: to,
       folder: destination,
     }))
+    const newRefs = moved.map((item) => item.ref)
+    const copiedOnly = state.copiedNotRemoved?.[key]
+    state.messages[`${to}/${destination}`] = [...moved, ...there]
+    if (copiedOnly !== undefined) {
+      // Copied there, but still here: the group fails with the copies' refs.
+      return { ...failed(copiedOnly), destination_account: to, new_refs: newRefs }
+    }
     state.messages[key] = (state.messages[key] ?? []).filter((item) => !items.includes(item))
-    state.messages[`${account}/${destination}`] = [...moved, ...there]
-    return { ...group, new_refs: moved.map((item) => item.ref) }
+    return { ...group, new_refs: newRefs, destination_account: route === 'move-to-account' ? to : null }
   })
   const first = results.find((result) => result.error !== null)
-  if (first?.error != null && results.every((result) => !result.ok)) {
+  // A move to another account that made copies answers them, failed or not: they are in both.
+  const copied = route === 'move-to-account' && results.some((result) => (result.new_refs?.length ?? 0) > 0)
+  if (first?.error != null && results.every((result) => !result.ok) && !copied) {
     return json(STATUS[first.error.code] ?? 502, { detail: first.error })
   }
   return json(200, { results })
@@ -608,7 +635,7 @@ export function stubMailApi(state: FakeMailState): Mock {
         failures: [],
       })
     }
-    match = /^\/api\/v1\/mail\/messages\/(move|archive|trash|flag)$/.exec(path)
+    match = /^\/api\/v1\/mail\/messages\/(move|move-to-account|archive|trash|flag)$/.exec(path)
     if (match !== null && init?.method === 'POST' && typeof init.body === 'string') {
       return organize(state, match[1] ?? '', JSON.parse(init.body) as Parameters<typeof organize>[2])
     }

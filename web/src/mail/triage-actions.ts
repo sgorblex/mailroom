@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 
-import type { MailFolder } from '@/api/mail.ts'
+import type { MailFolder, MoveRemoval } from '@/api/mail.ts'
 
 import { isSameFolder, loadedFolders, roleFolder, useTriage, type Target } from './triage-context.ts'
 
@@ -17,6 +17,14 @@ export interface TriageActions {
   /** The folders to move to: the account's selectable ones, without Drafts, Sent and the folder they are in. */
   moveChoices: MailFolder[] | null
   move: (folder: MailFolder) => void
+  /** The user's other accounts, none of which holds a target, to move to; `null` when there is none. */
+  otherAccounts: string[] | null
+  moveToAccount: (account: string, folder: MailFolder, removal: MoveRemoval) => void
+}
+
+/** Where a message may be moved to in an account: a selectable folder other than Drafts and Sent. */
+export function movableInto(folder: MailFolder): boolean {
+  return folder.selectable && folder.role !== 'drafts' && folder.role !== 'sent'
 }
 
 export function useTriageActions(): TriageActions {
@@ -48,6 +56,8 @@ export function useTriageActions(): TriageActions {
       markUnread: null,
       moveChoices: null,
       move: () => undefined,
+      otherAccounts: null,
+      moveToAccount: () => undefined,
     }
   }
 
@@ -58,6 +68,7 @@ export function useTriageActions(): TriageActions {
   const [account] = accounts
   const folders = accounts.length === 1 && account !== undefined ? foldersOf(account) : undefined
   const sources = [...new Set(targets.map((target) => target.folder))]
+  const others = triage.accounts.filter((each) => !accounts.includes(each))
   const [source] = sources
   return {
     targets,
@@ -69,11 +80,10 @@ export function useTriageActions(): TriageActions {
     moveChoices:
       folders?.filter(
         (folder) =>
-          folder.selectable &&
-          folder.role !== 'drafts' &&
-          folder.role !== 'sent' &&
-          !(sources.length === 1 && source !== undefined && isSameFolder(folder.path, source)),
+          movableInto(folder) && !(sources.length === 1 && source !== undefined && isSameFolder(folder.path, source)),
       ) ?? null,
     move: (folder) => void run({ kind: 'move', folder }, targets),
+    otherAccounts: others.length > 0 ? others : null,
+    moveToAccount: (to, folder, removal) => void run({ kind: 'moveToAccount', account: to, folder, removal }, targets),
   }
 }

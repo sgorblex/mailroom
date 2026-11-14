@@ -248,6 +248,8 @@ const organizeGroupSchema = z.object({
   ok: z.boolean(),
   count: z.number(),
   new_refs: z.array(z.string()).nullable(),
+  /** On a move to another account, that account: `new_refs` are its. */
+  destination_account: z.string().nullable().default(null),
   junk: z.enum(['spam', 'ham']).nullable(),
   flags: z.array(z.object({ ref: z.string(), seen: z.boolean().nullable(), flagged: z.boolean().nullable() })),
   error: z.object({ code: z.string(), message: z.string() }).nullable(),
@@ -274,6 +276,24 @@ async function organize(route: string, body: object, signal?: AbortSignal): Prom
  */
 export function moveMessages(refs: string[], folder: string, signal?: AbortSignal): Promise<OrganizeGroup[]> {
   return organize('move', { refs, folder }, signal)
+}
+
+/** What becomes of the originals of a move to another account: their account's Trash, or deleted for good. */
+export type MoveRemoval = 'trash' | 'delete'
+
+/**
+ * Moves them to `folder` of `account`, another of the user's accounts: copied there, then the
+ * originals removed as `removal` says. A group whose copies were made but whose originals could
+ * not be removed fails with its `new_refs`: those messages are in both accounts.
+ */
+export function moveToAccount(
+  refs: string[],
+  account: string,
+  folder: string,
+  removal: MoveRemoval,
+  signal?: AbortSignal,
+): Promise<OrganizeGroup[]> {
+  return organize('move-to-account', { refs, account, folder, removal }, signal)
 }
 
 export function archiveMessages(refs: string[], signal?: AbortSignal): Promise<OrganizeGroup[]> {

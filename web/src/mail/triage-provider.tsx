@@ -6,6 +6,7 @@ import {
   flagMessages,
   listMailFolders,
   moveMessages,
+  moveToAccount,
   trashMessages,
   type FlagChange,
   type MailFolder,
@@ -43,13 +44,15 @@ interface Scope {
   overrides: ReadonlyMap<string, Flags>
   outcome: Outcome | null
   picker: boolean
+  accountPicker: boolean
 }
 
 const NO_SELECTION: ReadonlyMap<string, Target> = new Map()
 const NO_OVERRIDES: ReadonlyMap<string, Flags> = new Map()
+const NO_ACCOUNTS: readonly string[] = []
 
 function freshScope(key: string): Scope {
-  return { key, selection: NO_SELECTION, overrides: NO_OVERRIDES, outcome: null, picker: false }
+  return { key, selection: NO_SELECTION, overrides: NO_OVERRIDES, outcome: null, picker: false, accountPicker: false }
 }
 
 /** Where a move-like action puts an account's messages; `undefined` while that is not known. */
@@ -57,6 +60,9 @@ function destination(action: Action, folders: MailFolder[] | undefined): string 
   switch (action.kind) {
     case 'move':
       return action.folder.path
+    case 'moveToAccount':
+      // In another account: never where a message already is.
+      return undefined
     case 'archive':
       return roleFolder(folders, 'archive')?.path
     case 'trash':
@@ -70,6 +76,8 @@ function request(action: Action, refs: string[], signal: AbortSignal): Promise<O
   switch (action.kind) {
     case 'move':
       return moveMessages(refs, action.folder.path, signal)
+    case 'moveToAccount':
+      return moveToAccount(refs, action.account, action.folder.path, action.removal, signal)
     case 'archive':
       return archiveMessages(refs, signal)
     case 'trash':
@@ -122,7 +130,15 @@ function useMirrored<T>(initial: T): [T, RefObject<T>, (update: (value: T) => T)
  * open message, and what actions changed (rows moved away, flags), so the list, the sidebar and
  * the toolbar update in place. `sourceKey` names the list shown; a new one clears the selection.
  */
-export function TriageProvider({ sourceKey, children }: { sourceKey: string; children: ReactNode }): ReactElement {
+export function TriageProvider({
+  sourceKey,
+  accounts = NO_ACCOUNTS,
+  children,
+}: {
+  sourceKey: string
+  accounts?: readonly string[]
+  children: ReactNode
+}): ReactElement {
   const navigate = useNavigate()
   const unmountSignal = useUnmountSignal()
   const [folders, foldersRef, setFolders] = useMirrored<Record<string, FolderState>>({})
@@ -258,7 +274,7 @@ export function TriageProvider({ sourceKey, children }: { sourceKey: string; chi
         busyRef.current = true
         setBusy(true)
         // The last outcome goes, so the live region empties and an identical one is read out again.
-        updateScope(key, () => ({ picker: false, outcome: null }))
+        updateScope(key, () => ({ picker: false, accountPicker: false, outcome: null }))
       }
       const signal = unmountSignal()
       let count = 0
@@ -292,7 +308,16 @@ export function TriageProvider({ sourceKey, children }: { sourceKey: string; chi
           }
           for (const group of groups) {
             if (group.error !== null || !group.ok) {
-              failures.push({ account: group.account, folder: group.folder, code: group.error?.code ?? 'server_error' })
+              const inBoth = action.kind === 'moveToAccount' ? (group.new_refs?.length ?? 0) - group.count : 0
+              failures.push({
+                account: group.account,
+                folder: group.folder,
+                code: group.error?.code ?? 'server_error',
+                ...(inBoth > 0 ? { inBoth } : {}),
+              })
+              // A move to another account may have moved some before it failed: they count, but
+              // which rows they were is not known, so the list shows them until it is read again.
+              count += group.count
               continue
             }
             count += group.count
@@ -354,9 +379,17 @@ export function TriageProvider({ sourceKey, children }: { sourceKey: string; chi
           selection: new Map([...current.selection].filter(([ref]) => !refs.has(ref))),
         }))
         adjustFolder(group.account, group.folder, -unread, -members.length)
-        const where = destination(move, loadedFolders(foldersRef.current[group.account]))
-        if (where !== undefined) {
-          adjustFolder(group.account, where, unread, members.length)
+        if (move.kind === 'moveToAccount') {
+          adjustFolder(move.account, move.folder.path, unread, members.length)
+          const trash = roleFolder(loadedFolders(foldersRef.current[group.account]), 'trash')?.path
+          if (move.removal === 'trash' && trash !== undefined && !isSameFolder(trash, group.folder)) {
+            adjustFolder(group.account, trash, unread, members.length)
+          }
+        } else {
+          const where = destination(move, loadedFolders(foldersRef.current[group.account]))
+          if (where !== undefined) {
+            adjustFolder(group.account, where, unread, members.length)
+          }
         }
         const current = openRef.current
         if (current !== null && refs.has(current.ref)) {
@@ -408,14 +441,22 @@ export function TriageProvider({ sourceKey, children }: { sourceKey: string; chi
   const dismissOutcome = useCallback(() => {
     updateScope(sourceKey, () => ({ outcome: null }))
   }, [sourceKey, updateScope])
+  // One picker open at a time.
   const setPicker = useCallback(
     (picker: boolean) => {
-      updateScope(sourceKey, () => ({ picker }))
+      updateScope(sourceKey, (current) => ({ picker, accountPicker: picker ? false : current.accountPicker }))
+    },
+    [sourceKey, updateScope],
+  )
+  const setAccountPicker = useCallback(
+    (accountPicker: boolean) => {
+      updateScope(sourceKey, (current) => ({ accountPicker, picker: accountPicker ? false : current.picker }))
     },
     [sourceKey, updateScope],
   )
 
   const value: Triage = {
+    accounts,
     folders,
     loadFolders,
     flagsOf,
@@ -434,6 +475,8 @@ export function TriageProvider({ sourceKey, children }: { sourceKey: string; chi
     run,
     picker: scope.picker,
     setPicker,
+    accountPicker: scope.accountPicker,
+    setAccountPicker,
   }
   return <TriageContext value={value}>{children}</TriageContext>
 }

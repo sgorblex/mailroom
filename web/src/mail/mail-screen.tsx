@@ -73,11 +73,12 @@ export function MailScreen(): ReactElement {
 
   const accountId = search.account ?? first.id
   const folder = search.folder ?? DEFAULT_FOLDER
+  const accountIds = accounts.value.map((account) => account.id)
   return (
-    <TriageProvider sourceKey={sourceKey(accountId, folder, search.q)}>
+    <TriageProvider sourceKey={sourceKey(accountId, folder, search.q)} accounts={accountIds}>
       <ComposeProvider accounts={accounts.value} accountId={accountId}>
         <MailShortcuts accountId={accountId} />
-        <MailPanes accounts={accounts.value.map((account) => account.id)} accountId={accountId} folder={folder} />
+        <MailPanes accounts={accountIds} accountId={accountId} folder={folder} />
       </ComposeProvider>
     </TriageProvider>
   )

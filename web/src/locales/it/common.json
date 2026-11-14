@@ -192,6 +192,8 @@
     "attachment_max_mbHint": "Tutti gli allegati insieme, al massimo {{max}} MB.",
     "body_chars": "Caratteri del testo di un messaggio letti per volta",
     "body_charsHint": "Qui e dalle app collegate; il resto segue nella parte successiva. Almeno 500.",
+    "move_max_mb": "Messaggio spostato in un altro account (MB)",
+    "move_max_mbHint": "Ogni messaggio, tenuto intero mentre viene copiato; al massimo {{max}} MB.",
     "save": "Salva i limiti",
     "saved": "Limiti salvati.",
     "saveFailed": "Impossibile salvare i tuoi limiti."

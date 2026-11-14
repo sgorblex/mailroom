@@ -166,10 +166,14 @@ MCP `message_read` still never set `\Seen`.
 - **Multi-select:** a checkbox per row, and a select-all for the loaded page.
 - **Toolbar** acting on the selection, or on the open message when nothing is selected: Archive
   (hidden when the account has no selectable archive-role folder), Trash, Move to… (a picker over
-  the account's selectable folders, Drafts, Sent and the folder the messages are in left out), Star/Unstar, Mark
-  read/unread.
+  the account's selectable folders, Drafts, Sent and the folder the messages are in left out),
+  Move to another account… (when the user has an account none of them is in: the account, then
+  whether the originals go to Trash, the default, or are deleted for good, then the folder;
+  deleting for good asks first, naming how many and from which account to which),
+  Star/Unstar, Mark read/unread.
 - Results update the list in place: moved or trashed rows disappear, flags change on the row, and
-  failed groups are shown with the mail error wording.
+  failed groups are shown with the mail error wording; a group of a move to another account
+  whose copies were made but whose originals stayed says they are in both.
 - A selection over 50 refs is sent 50 at a time; a refused batch is shown as failed groups and the
   rest are still sent; only when every batch is refused is the outcome worded as that refusal.
 - **Keyboard shortcuts** on `/mail`:
@@ -569,8 +573,9 @@ disabled for an account whose send mode is `off`.
 
 ### Limits
 
-The user's own limits (`max_recipients`, `send_per_hour`, `attachment_max_mb`, and `body_chars`
-for reading) are set on their *Profile* page ([`../REQUIREMENTS.md`](../REQUIREMENTS.md)).
+The user's own limits (`max_recipients`, `send_per_hour`, `attachment_max_mb`, `body_chars`
+for reading, and `move_max_mb` for [a move to another account](#moving-to-another-account)) are
+set on their *Profile* page ([`../REQUIREMENTS.md`](../REQUIREMENTS.md)).
 
 | Limit | Value |
 | --- | --- |
