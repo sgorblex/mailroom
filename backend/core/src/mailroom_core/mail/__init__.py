@@ -104,6 +104,7 @@ from mailroom_core.mail.outgoing import (
     check_fields,
     check_sendable,
     check_uploads,
+    move_cap,
 )
 from mailroom_core.mail.pages import (
     PREVIEW_LENGTH,
@@ -195,6 +196,7 @@ from mailroom_core.mail.text import (
     read_text,
     thread_text,
 )
+from mailroom_core.mail.transfer import TransferRemoval, move_to_account
 
 __all__ = [
     "ALL_FOLDERS",
@@ -274,6 +276,7 @@ __all__ = [
     "Threading",
     "Timeouts",
     "ToolNames",
+    "TransferRemoval",
     "abandon_read_back",
     "analyse_structure",
     "append_message",
@@ -330,8 +333,10 @@ __all__ = [
     "matches_rule",
     "message_id_uids",
     "message_item",
+    "move_cap",
     "move_messages",
     "move_target",
+    "move_to_account",
     "move_uids",
     "new_message_id",
     "organize_text",

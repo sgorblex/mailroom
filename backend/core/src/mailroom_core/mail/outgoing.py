@@ -24,6 +24,11 @@ def attachment_cap(limits: Limits) -> int:
     return int(limits.attachment_max_mb * 1024 * 1024)
 
 
+def move_cap(limits: Limits) -> int:
+    """The bytes a message moved to another account may have."""
+    return int(limits.move_max_mb * 1024 * 1024)
+
+
 def check_sendable(account: AccountConfig) -> None:
     """`send_disabled` on an account whose `send_mode` is `off`: no drafts or sends."""
     if account.send_mode == "off":

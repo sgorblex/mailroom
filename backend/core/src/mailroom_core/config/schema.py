@@ -152,12 +152,15 @@ class AccountConfig(StrictModel):
 
 
 class Limits(StrictModel):
-    """Sends per hour and recipients per send, body characters a read shows, attachment size."""
+    """Sends per hour and recipients per send, body characters a read shows, attachment size,
+    and the size of a message moved to another account."""
 
     send_per_hour: _Count = 20
     max_recipients: _Count = 10
     body_chars: Annotated[StrictInt, Field(ge=500, le=MAX_SAFE_INTEGER)] = 6000
     attachment_max_mb: Annotated[StrictFloat, Field(gt=0, allow_inf_nan=False)] = 10.0
+    move_max_mb: Annotated[StrictFloat, Field(gt=0, allow_inf_nan=False)] = 25.0
+    """A message moved to another account is held whole while it is copied."""
 
 
 class CoreSettings(StrictModel):

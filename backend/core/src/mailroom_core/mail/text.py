@@ -166,7 +166,10 @@ def _group_text(group: GroupResult) -> str:
         return group.error.message
     if group.destination is None:
         return f"updated {len(group.flags)}: {'; '.join(_flag_text(f) for f in group.flags)}"
-    moved = f"moved {group.count} to {clean_header(group.destination, 200)}."
+    where = clean_header(group.destination, 200)
+    if group.destination_account is not None:
+        where = f"{group.destination_account}/{where}"
+    moved = f"moved {group.count} to {where}."
     refs = (
         " Search there for their new refs."
         if not group.new_refs

@@ -26,8 +26,8 @@ type AuditOutcome = Literal["ok", "partial", "refused", "failed"]
 type Junk = Literal["spam", "ham"]
 """What a move teaches the account's spam filter: into Junk, or out of it."""
 type Removal = Literal["expunged", "trashed", "failed"]
-"""How a message left its folder once written elsewhere (so far, a draft's old version):
-expunged for good, moved to Trash, or still there."""
+"""How a message left its folder once written elsewhere (a draft's old version, or a message
+moved to another account): expunged for good, moved to Trash, or still there."""
 type Authoriser = Literal["user", "agent"]
 """Who asked for a send: a person's click, or an agent. `send_mode` limits agents only."""
 type DeliveryStage = Literal["sent", "drafted", "attempted", "refused", "repeated"]
@@ -79,6 +79,12 @@ class AuditItem:
     """How many an outgoing message carries."""
     destination: str | None = None
     """Where a move took it."""
+    destination_account: str | None = None
+    """On a move to another account, that account: `destination` is its folder."""
+    source_account: str | None = None
+    """On the copy a move from another account made, that account."""
+    source_folder: str | None = None
+    """On the copy a move from another account made, the folder it came from."""
     copied: bool | None = None
     """True on a move that failed after copying it: it is in `destination`, and may still be in
     `folder`."""
@@ -132,6 +138,8 @@ def message_item(
     result: AuditResult,
     *,
     destination: str | None = None,
+    destination_account: str | None = None,
+    source: tuple[str, str] | None = None,
     copied: bool | None = None,
     junk: Junk | None = None,
     seen: bool | None = None,
@@ -139,7 +147,8 @@ def message_item(
     removed: Removal | None = None,
 ) -> AuditItem:
     """The record of one message whose ENVELOPE (imapclient's) was fetched: enough to find it
-    again and see who sent it; what the envelope lacks is left out."""
+    again and see who sent it; what the envelope lacks is left out. `source` is the account and
+    folder a copy made by a move from another account came from."""
     message_id = getattr(envelope, "message_id", None)
     sender = next(iter(addresses(getattr(envelope, "from_", None))), None)
     subject = getattr(envelope, "subject", None)
@@ -154,6 +163,9 @@ def message_item(
             None if subject is None else subject_sha256(decode_words(text_value(subject)))
         ),
         destination=destination,
+        destination_account=destination_account,
+        source_account=None if source is None else source[0],
+        source_folder=None if source is None else source[1],
         copied=copied,
         junk=junk,
         seen=seen,

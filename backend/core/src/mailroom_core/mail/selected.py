@@ -11,10 +11,11 @@ them retries a write.
 import re
 from contextlib import suppress
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Final
 
 from imapclient.datetime_util import format_criteria_date
+from imapclient.fixed_offset import FixedOffset
 from imapclient.imapclient import _literal
 from imapclient.response_parser import parse_message_list
 
@@ -117,12 +118,18 @@ def search_uids(context: MailboxContext, criteria: Criteria) -> list[int]:
     return [int(uid) for uid in parse_message_list(data)]
 
 
-def message_id_uids(context: MailboxContext, message_id: str, *, since_uid: int = 0) -> list[int]:
+def message_id_uids(
+    context: MailboxContext, message_id: str, *, since_uid: int = 0, gmail: bool = False
+) -> list[int]:
     """The UIDs from `since_uid` on whose Message-ID header holds `message_id`, by a search, so
-    the text is quoted as any search's is. A server may search by words, or not have indexed a
+    the text is quoted as any search's is: `HEADER Message-ID`, or on Gmail, which ignores
+    SEARCH HEADER, `X-GM-RAW rfc822msgid:`. A server may search by words, or not have indexed a
     message just added yet (Mailu): check what it finds."""
-    found = search_uids(context, ["HEADER", "Message-ID", message_id])
-    return [uid for uid in found if uid >= since_uid]
+    if gmail:
+        criteria: Criteria = ["X-GM-RAW", f"rfc822msgid:{message_id.strip().strip('<>')}"]
+    else:
+        criteria = ["HEADER", "Message-ID", message_id]
+    return [uid for uid in search_uids(context, criteria) if uid >= since_uid]
 
 
 def appended_uid(response: bytes | None, uid_validity: int) -> int | None:
@@ -150,14 +157,16 @@ def append_raw(
     return appended_uid(response, context.uid_validity)
 
 
-def abandon_read_back(context: MailboxContext, error: Exception) -> None:
-    """After a write that went through, a read-back of it that failed: logs `error` and, for a
-    connection error, shuts the connection down, its state unknown, so the next caller's SELECT
-    fails and reconnects. The write stands."""
-    mail_error(error, context.account)
+def abandon_read_back(context: MailboxContext, error: Exception) -> MailError:
+    """After a write that went through, all or in part, an error reading it back or going on:
+    logs `error` and, for a connection error, shuts the connection down, its state unknown, so
+    the next caller's SELECT fails and reconnects. What was written stands. Returns `error` as a
+    MailError."""
+    mapped = mail_error(error, context.account)
     if is_connection_error(error):
         with suppress(OSError):
             context.client.shutdown()
+    return mapped
 
 
 def _flags(data: Mapping[bytes, object]) -> frozenset[str]:
@@ -176,7 +185,7 @@ class MessageSource:
     source: bytes
     flags: frozenset[str]
     internal_date: datetime | None
-    """INTERNALDATE, None when the server gave none."""
+    """INTERNALDATE in UTC, None when the server gave none."""
 
 
 def fetch_source(context: MailboxContext, uid: int, max_bytes: int) -> MessageSource:
@@ -200,8 +209,16 @@ def fetch_source(context: MailboxContext, uid: int, max_bytes: int) -> MessageSo
     return MessageSource(
         source=raw,
         flags=_flags(sized),
-        internal_date=arrived if isinstance(arrived, datetime) else None,
+        internal_date=_aware(arrived) if isinstance(arrived, datetime) else None,
     )
+
+
+def _aware(moment: datetime) -> datetime:
+    """An INTERNALDATE in UTC. imapclient hands it over naive, in local time at the system's
+    current offset (not the one of its own date), so that offset puts it back."""
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=FixedOffset.for_system())
+    return moment.astimezone(UTC)
 
 
 @dataclass(frozen=True, slots=True)
@@ -252,10 +269,13 @@ def special_folder_in(folders: Iterable[Folder], role: FolderRole) -> Folder | N
     return next((folder for folder in folders if folder.role == role), None)
 
 
-def move_target(source: str, target: str, folders: Sequence[Folder], *, account: str) -> Folder:
+def move_target(
+    source: str | None, target: str, folders: Sequence[Folder], *, account: str
+) -> Folder:
     """The folder of `folders` that a move from `source` to `target` lands in (INBOX in any
     case), or a refusal: `mailbox_missing` when it is not a selectable folder of `account`,
-    `invalid_argument` when it is `source`, Drafts or Sent."""
+    `invalid_argument` when it is `source`, Drafts or Sent. `source` is None on a move from
+    another account."""
     found = next(
         (f for f in folders if f.path == target or (_is_inbox(f.path) and _is_inbox(target))),
         None,
@@ -375,9 +395,10 @@ def delete_uids(context: MailboxContext, uids: Sequence[int]) -> None:
     any other message marked `\\Deleted` where it is. Needs UIDPLUS: without it, `unsupported`
     before anything is marked.
 
-    Mailroom deletes mail only deliberately (docs/core.md, *Safety*). This is for two of those
-    cases: a draft it wrote itself, when replaced or deleted, and a filter's `delete` action, the
-    user's own rule (a folder's delete, the third, is `delete_folder`). Nothing else calls this.
+    Mailroom deletes mail only deliberately (docs/core.md, *Safety*). This is for three of those
+    cases: a draft it wrote itself, when replaced or deleted; a filter's `delete` action, the
+    user's own rule; and a message moved to another account "for good", once its copy there is
+    confirmed (a folder's delete, the fourth, is `delete_folder`). Nothing else calls this.
     """
     if not context.client.has_capability("UIDPLUS"):
         raise MailError(
