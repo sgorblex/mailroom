@@ -1,15 +1,17 @@
 """Web SSO's routes: whether it is on, its start and callback (browser navigations, so they answer
-with redirects), and each user's linked sign-ins."""
+with redirects, or a page that moves on by itself), and each user's linked sign-ins."""
 
 from __future__ import annotations
 
+import html
 import logging
+import re
 from datetime import datetime
 from typing import TYPE_CHECKING, Annotated, Any
 from urllib.parse import parse_qs, urlsplit
 
-from fastapi import APIRouter, Cookie, Query, Request
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, Cookie, Query, Request, Response
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 
 from mailroom.api.csrf import is_cross_site
@@ -79,6 +81,28 @@ def _redirect(location: str) -> RedirectResponse:
     return response
 
 
+def _continue_to(location: str) -> HTMLResponse:
+    """A page that goes on to ``location``, a safe path, by itself. The callback answers a
+    sign-in with it rather than a redirect: the browser then reaches ``location`` from this site,
+    not at the end of a chain through the provider, so the ``SameSite=Strict`` session cookie it
+    sets goes along (Firefox and Safari withhold it from such a chain's first page)."""
+    target = html.escape(location, quote=True)
+    page = (
+        '<!doctype html><html><head><meta charset="utf-8">'
+        f'<meta http-equiv="refresh" content="0;url={target}"><title>Mailroom</title></head>'
+        f'<body><a href="{target}">Continue</a></body></html>'
+    )
+    return HTMLResponse(
+        page,
+        headers={
+            "Cache-Control": "no-store",
+            # The callback's address carries the provider's code and state.
+            "Referrer-Policy": "no-referrer",
+            "Content-Security-Policy": "default-src 'none'",
+        },
+    )
+
+
 def _failed(failure: SsoError) -> RedirectResponse:
     response = _redirect(with_query(failure.return_to, sso_error=failure.code))
     response.delete_cookie(BINDING_COOKIE_NAME, **_binding_cookie_attributes())
@@ -94,12 +118,30 @@ def _oauth_settings(request: Request) -> OAuthSettings | None:
     return server.settings
 
 
+_REQUEST_ID_MAX = 128
+_REQUEST_ID_PATTERN = r"^[A-Za-z0-9_-]+$"
+
+
+def _consent_request(request: Request, return_to: str) -> str | None:
+    """The authorization request ``return_to`` names when it is the consent screen's address and
+    the built-in server signs its users in through SSO; else ``None``."""
+    oauth = _oauth_settings(request)
+    parts = urlsplit(return_to)
+    found = parse_qs(parts.query).get("request", [])
+    if oauth is None or parts.path != oauth.consent_path or len(found) != 1:
+        return None
+    authorization = found[0]
+    if len(authorization) > _REQUEST_ID_MAX or not re.match(_REQUEST_ID_PATTERN, authorization):
+        return None
+    return authorization
+
+
 def _claim(request: Request, db: Session, done: Completed, session: str) -> bool:
-    """Claim the authorization request an ``mcp`` flow signed in for, for its user and
-    ``session``, the one the callback signs the browser in with; ``False`` when it is gone (or
-    another user's)."""
-    authorization = parse_qs(urlsplit(done.return_to).query).get("request", [None])[0]
-    if _oauth_settings(request) is None or authorization is None:
+    """Claim the authorization request the flow came back to the consent screen of, for its user
+    and ``session``, the one the callback signs the browser in with; ``False`` when there is none,
+    or it is gone (or another user's)."""
+    authorization = _consent_request(request, done.return_to)
+    if authorization is None:
         return False
     if not consent.claim_via_sso(db, authorization, done.user.id, session):
         return False
@@ -124,7 +166,8 @@ def sso_start(
     intent: Intent = "login",
     return_to: Annotated[str | None, Query(max_length=MAX_RETURN_TO_LENGTH)] = None,
     authorization: Annotated[
-        str | None, Query(alias="request", max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
+        str | None,
+        Query(alias="request", max_length=_REQUEST_ID_MAX, pattern=_REQUEST_ID_PATTERN),
     ] = None,
 ) -> RedirectResponse:
     """Send the browser to the provider. ``link`` links a sign-in to the signed-in user, so it
@@ -187,9 +230,9 @@ def sso_callback(
     code: Annotated[str | None, Query(max_length=MAX_CODE_LENGTH)] = None,
     error: Annotated[str | None, Query(max_length=256)] = None,
     binding: Annotated[str | None, Cookie(alias=BINDING_COOKIE_NAME)] = None,
-) -> RedirectResponse:
+) -> Response:
     """Where the provider sends the browser back: signs in (or links) and goes to ``return_to``,
-    or goes there with ``sso_error``."""
+    or goes there with ``sso_error``. A sign-in goes on through :func:`_continue_to`."""
     sso = _sso(request)
     if sso is None:
         return _failed(SsoError("not_configured"))
@@ -198,13 +241,21 @@ def sso_callback(
     except SsoError as failure:
         logger.info("sso_refused", extra={"event": "sso_refused", "outcome": failure.code})
         return _failed(failure)
-    response = _redirect(done.return_to)
+    response: Response
+    if done.intent in ("login", "mcp"):
+        response = _continue_to(done.return_to)
+    else:
+        response = _redirect(done.return_to)
     response.delete_cookie(BINDING_COOKIE_NAME, **_binding_cookie_attributes())
     if done.intent in ("login", "mcp"):
         session = create_session(db, done.user)
         if done.intent == "mcp" and not _claim(request, db, done, session):
             end_session(db, session)
             return _failed(SsoError("request_gone", done.return_to))
+        if done.intent == "login":
+            # Signed in from the sign-in screen a signed-out browser sees on a request's consent
+            # screen: claim it too, if it is still to be had, so one pass is enough.
+            _claim(request, db, done, session)
         response.set_cookie(
             key=SESSION_COOKIE_NAME,
             value=session,

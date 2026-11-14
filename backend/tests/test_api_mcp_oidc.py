@@ -25,7 +25,16 @@ from mailroom.oauth.models import OAuthAuthorizationRequest, OAuthGrant
 from mailroom.oauth.throttle import Throttle
 from mailroom.oauth.tokens import secret_hash
 from tests.test_api_oauth_consent import CALLBACK, LISTING, MCP_HEADERS, RESOURCE, _challenge
-from tests.test_api_sso import CLIENT, ISSUER, START, at_provider, configure, link, sso_error
+from tests.test_api_sso import (
+    CLIENT,
+    ISSUER,
+    START,
+    at_provider,
+    configure,
+    link,
+    sso_error,
+    went_to,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -157,8 +166,7 @@ def test_signing_in_through_sso_then_approving_connects_the_client(
     link(db_session, user)
     request_id = browser.request_id()
     back = browser.through_sso(request_id)
-    assert back.status_code == 303
-    assert back.headers["location"] == f"/connect?request={request_id}"
+    assert went_to(back) == f"/connect?request={request_id}"
     assert any(c.startswith(f"{SESSION_COOKIE_NAME}=") for c in back.headers.get_list("set-cookie"))
     assert browser.stored(request_id)["claimed_by"] == user.id
 
@@ -204,6 +212,57 @@ def test_the_sso_flow_comes_back_to_the_request_whatever_return_to_says(
     ]
 
 
+def test_signing_in_on_the_consent_screen_claims_its_request(
+    browser: Browser, db_session: Session, user: User
+) -> None:
+    """The sign-in screen a signed-out browser sees on ``/connect`` signs in with ``login`` and
+    comes back there: in this mode that claims the request too, so one pass through the provider
+    is enough."""
+    link(db_session, user)
+    request_id = browser.request_id()
+    started = browser.client.get(START, params={"return_to": f"/connect?request={request_id}"})
+    assert started.status_code == 303, started.text
+    back = browser.client.get(at_provider(browser.idp, started))
+    assert went_to(back) == f"/connect?request={request_id}"
+    assert browser.show(request_id).status_code == 200
+    assert browser.decide(request_id, "approve").status_code == 200
+
+
+def test_signing_in_on_a_gone_requests_consent_screen_only_signs_in(
+    browser: Browser, db_session: Session, user: User
+) -> None:
+    link(db_session, user)
+    gone = secrets.token_urlsafe(32)
+    started = browser.client.get(START, params={"return_to": f"/connect?request={gone}"})
+    back = browser.client.get(at_provider(browser.idp, started))
+    assert went_to(back) == f"/connect?request={gone}"
+    assert browser.client.get("/api/v1/auth/me").json()["user"]["username"] == user.username
+    assert browser.show(gone).status_code == 404
+
+
+def test_signing_in_on_a_consent_screen_another_user_claimed_meanwhile_only_signs_in(
+    browser: Browser, db_session: Session, user: User, admin: User
+) -> None:
+    link(db_session, user)
+    link(db_session, admin, subject="sub-admin")
+    request_id = browser.request_id()
+    started = browser.client.get(START, params={"return_to": f"/connect?request={request_id}"})
+    callback = at_provider(browser.idp, started)
+    binding = browser.client.cookies.get(BINDING_COOKIE_NAME)
+    assert binding is not None
+    # While this browser is at the provider, the admin signs in for the request elsewhere.
+    browser.client.cookies.clear()
+    browser.idp.subject = "sub-admin"
+    browser.through_sso(request_id)
+    browser.client.cookies.clear()
+    browser.client.cookies.set(BINDING_COOKIE_NAME, binding, path="/api/v1/auth/oidc")
+    back = browser.client.get(callback)
+    assert went_to(back) == f"/connect?request={request_id}"
+    assert browser.client.get("/api/v1/auth/me").json()["user"]["username"] == user.username
+    assert browser.stored(request_id)["claimed_by"] == admin.id
+    assert browser.show(request_id).status_code == 404
+
+
 @pytest.mark.usefixtures("user")
 def test_an_identity_linked_to_nobody_is_refused(browser: Browser) -> None:
     request_id = browser.request_id()
@@ -228,7 +287,7 @@ def test_a_password_session_cannot_show_or_decide_a_request(
     assert "claimed_by" not in browser.stored(request_id)
     # Signing in through SSO for it still works afterwards.
     link(db_session, user)
-    assert browser.through_sso(request_id).headers["location"] == f"/connect?request={request_id}"
+    assert went_to(browser.through_sso(request_id)) == f"/connect?request={request_id}"
     assert browser.show(request_id).status_code == 200
 
 
