@@ -60,9 +60,10 @@ agent (`linux/arm64`), and only there. **prepare** (`scripts/release-prepare.sh`
 against `version.txt` (a mismatch fails the release) and writes the image tag and build arguments
 for the next steps. **build-api** and **build-web** build both images without pushing, and only then
 do **push-api** and **push-web** push `mailroom-{api,web}:<version>`, so a failed build pushes
-nothing. No `:latest`: the host pins versions. The builds run in `plugin-docker-buildx`, which the
-Woodpecker server lets run privileged (`WOODPECKER_PLUGINS_PRIVILEGED`, exact tag and digest: bump
-it there before the pipeline), so the repository needs no trust; BuildKit's cache is kept in the
+nothing. No `:latest`: the host pins versions. The builds run in Woodpecker's buildx plugin, from
+the host's copy at `reg.aclerici.me/ci/buildx`, whose every tag the Woodpecker server lets run
+privileged (`WOODPECKER_PLUGINS_PRIVILEGED`); Renovate proposes its new tags. So the repository
+needs no trust; BuildKit's cache is kept in the
 registry as `mailroom-{api,web}:buildcache`, which the push steps hit. Each image carries the
 `org.opencontainers.image.version`, `.revision` (the full commit SHA), `.created` and `.source`
 labels. A manual run of the pipeline builds both images without pushing, to test it.

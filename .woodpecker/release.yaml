@@ -5,9 +5,10 @@ labels:
 # the new version in the host's config repo (oci-server-conf), and merging that PR deploys it
 # (docs/requirements/ci-cd.md). A manual run builds both without pushing, to test the pipeline.
 #
-# No repo trust needed: the builds run in plugin-docker-buildx, which the Woodpecker server allows to
-# run privileged at exactly this tag@digest (WOODPECKER_PLUGINS_PRIVILEGED); bump the image there
-# first. BuildKit's cache lives in Zot as :buildcache. Both images are built (not pushed) before
+# No repo trust needed: the build runs in Woodpecker's buildx plugin, from oci's copy at
+# reg.aclerici.me/ci/buildx (same digests as upstream), whose every tag the server allows to run
+# privileged. Renovate proposes new tags once oci has copied them.
+# BuildKit's cache lives in Zot as :buildcache. Both images are built (not pushed) before
 # either is pushed, so a failed build pushes nothing; the push steps then hit that cache.
 when:
   - event: tag
@@ -21,7 +22,7 @@ steps:
       - scripts/release-prepare.sh
 
   - name: build-api
-    image: docker.io/woodpeckerci/plugin-docker-buildx:6.1.2@sha256:d26b69cbe748b8a219c707e7889d5ffb3f9214bc3c480c30fe857ff85954267c
+    image: reg.aclerici.me/ci/buildx:6.1.2@sha256:d26b69cbe748b8a219c707e7889d5ffb3f9214bc3c480c30fe857ff85954267c
     settings: &api
       registry: reg.aclerici.me
       username:
@@ -41,7 +42,7 @@ steps:
       dry_run: true
 
   - name: build-web
-    image: docker.io/woodpeckerci/plugin-docker-buildx:6.1.2@sha256:d26b69cbe748b8a219c707e7889d5ffb3f9214bc3c480c30fe857ff85954267c
+    image: reg.aclerici.me/ci/buildx:6.1.2@sha256:d26b69cbe748b8a219c707e7889d5ffb3f9214bc3c480c30fe857ff85954267c
     settings: &web
       registry: reg.aclerici.me
       username:
@@ -60,7 +61,7 @@ steps:
       dry_run: true
 
   - name: push-api
-    image: docker.io/woodpeckerci/plugin-docker-buildx:6.1.2@sha256:d26b69cbe748b8a219c707e7889d5ffb3f9214bc3c480c30fe857ff85954267c
+    image: reg.aclerici.me/ci/buildx:6.1.2@sha256:d26b69cbe748b8a219c707e7889d5ffb3f9214bc3c480c30fe857ff85954267c
     when:
       - event: tag
     settings:
@@ -68,7 +69,7 @@ steps:
       dry_run: false
 
   - name: push-web
-    image: docker.io/woodpeckerci/plugin-docker-buildx:6.1.2@sha256:d26b69cbe748b8a219c707e7889d5ffb3f9214bc3c480c30fe857ff85954267c
+    image: reg.aclerici.me/ci/buildx:6.1.2@sha256:d26b69cbe748b8a219c707e7889d5ffb3f9214bc3c480c30fe857ff85954267c
     when:
       - event: tag
     settings:
