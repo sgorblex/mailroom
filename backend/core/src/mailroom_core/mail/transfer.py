@@ -419,25 +419,12 @@ def _existing_copy(
     gmail: bool,
     size: int | None,
 ) -> int | None:
-    """The newest message of the selected folder from `since_uid` on carrying `message_id`, as
-    its ENVELOPE says, of `size` bytes when given, and not taken by another message of this
-    call. The size keeps a different message that shares the Message-ID (a list's copy of a
-    message, or one written to look like it) from passing for the copy."""
-    found = [
-        uid
-        for uid in message_id_uids(context, message_id, since_uid=since_uid, gmail=gmail)
-        if uid not in taken
-    ]
-    if not found:
-        return None
-    fetched = context.client.fetch(found, ["ENVELOPE", "RFC822.SIZE"])
-    matching = [
-        uid
-        for uid, data in fetched.items()
-        if _message_id(data.get(b"ENVELOPE")) == message_id
-        and (size is None or data.get(b"RFC822.SIZE") == size)
-    ]
-    return max(matching, default=None)
+    """The newest message of the selected folder from `since_uid` on carrying `message_id`, of
+    `size` bytes when given, and not taken by another message of this call. The size keeps a
+    different message that shares the Message-ID (a list's copy of a message, or one written to
+    look like it) from passing for the copy."""
+    found = message_id_uids(context, message_id, since_uid=since_uid, size=size, gmail=gmail)
+    return max((uid for uid in found if uid not in taken), default=None)
 
 
 def _message_id(envelope: object) -> str:

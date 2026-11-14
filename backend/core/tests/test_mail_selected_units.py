@@ -230,7 +230,8 @@ def test_a_group_ending_in_non_ascii_text_ends_with_all() -> None:
 
 
 class SearchClient:
-    """Answers every SEARCH with UIDs 3 and 7, recording its arguments."""
+    """Answers every SEARCH with UIDs 3, 7 and 9, recording its arguments; 3 and 7 carry
+    `<a.b@example.org>` and are 730 bytes, 9 carries another id."""
 
     def __init__(self) -> None:
         self.searched: list[list[bytes]] = []
@@ -238,19 +239,36 @@ class SearchClient:
     def _raw_command_untagged(self, command: bytes, arguments: list[bytes]) -> list[bytes]:
         assert command == b"SEARCH"
         self.searched.append(arguments)
-        return [b"3 7"]
+        return [b"3 7 9"]
+
+    def fetch(self, uids: list[int], items: list[str]) -> dict[int, dict[bytes, object]]:
+        assert items == ["ENVELOPE", "RFC822.SIZE"]
+        ids = {3: b"<a.b@example.org>", 7: b"<a.b@example.org>", 9: b"<other@example.org>"}
+        return {
+            uid: {b"ENVELOPE": SimpleNamespace(message_id=ids[uid]), b"RFC822.SIZE": 730}
+            for uid in uids
+        }
 
 
 @pytest.mark.parametrize(
-    ("gmail", "sent"),
+    ("gmail", "since_uid", "size", "sent", "found"),
     [
-        (False, [b"HEADER", b"Message-ID", b"<a.b@example.org>"]),
+        (False, 0, None, [b"HEADER", b"Message-ID", b"<a.b@example.org>"], [3, 7]),
+        # With a bound the search needs no index, which may never match a Message-ID (Mailu).
+        (False, 5, None, [b"UID", b"5:4294967295"], [7]),
+        (False, 0, 730, [b"LARGER", b"729", b"SMALLER", b"731"], [3, 7]),
+        (False, 5, 731, [b"UID", b"5:4294967295", b"LARGER", b"730", b"SMALLER", b"732"], []),
         # Gmail ignores SEARCH HEADER; its own search takes the id without angle brackets.
-        (True, [b"X-GM-RAW", b"rfc822msgid:a.b@example.org"]),
+        (True, 5, None, [b"X-GM-RAW", b"rfc822msgid:a.b@example.org"], [7]),
     ],
 )
-def test_looks_a_message_id_up_as_the_server_can(gmail: bool, sent: list[bytes]) -> None:
+def test_looks_a_message_id_up_as_the_server_can(
+    gmail: bool, since_uid: int, size: int | None, sent: list[bytes], found: list[int]
+) -> None:
     client = SearchClient()
     context = cast("MailboxContext", SimpleNamespace(client=client))
-    assert message_id_uids(context, "<a.b@example.org>", since_uid=5, gmail=gmail) == [7]
+    assert (
+        message_id_uids(context, "<a.b@example.org>", since_uid=since_uid, size=size, gmail=gmail)
+        == found
+    )
     assert client.searched == [sent]

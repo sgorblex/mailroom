@@ -635,7 +635,8 @@ clear (hash them, as mailroom-mcp's audit does).
 - **mailroom-core** runs its own pytest from `backend/core`. Its mail tests need a Dovecot and two
   Mailpits (implicit TLS, STARTTLS) and skip without them: `mise run test-core-mail` starts
   throwaway ones (`scripts/test-mail.sh`), apart from the dev mail backends; CI runs them as
-  detached steps.
+  detached steps. Both test Dovecots take `dev/dovecot-test.conf`'s overrides (the special-use
+  folders, a login limit above what the parallel workers open).
 - **Web:** Vitest; `*.node.test.ts(x)` in bare Node, everything else in jsdom with
   `src/test/setup.ts`. Test by accessible role and label.
 - **Editions:** the shared test apps pass `features=ALL_FEATURES`, so a developer's

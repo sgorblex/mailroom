@@ -507,3 +507,20 @@ def test_body_text_decodes_the_charset_and_unwraps_flowed_text() -> None:
     # A character cut at the byte cap is dropped, not replaced.
     assert body_text("già".encode()[:-1], utf8, complete=False) == "gi"
     assert body_text(b"\xff", utf8, complete=True) == "�"
+
+
+@pytest.mark.parametrize(
+    ("subject", "base"),
+    [
+        ("Dinner?", "Dinner?"),
+        ("Re: Dinner?", "Dinner?"),
+        ("RE: R: Fwd: Dinner?", "Dinner?"),
+        ("Re[2]: AW: I: Dinner?", "Dinner?"),
+        ("Rif: Dinner? Re: no", "Dinner? Re: no"),
+        ("Return: Dinner?", "Return: Dinner?"),
+    ],
+)
+def test_a_conversation_subject_drops_reply_and_forward_prefixes(subject: str, base: str) -> None:
+    from mailroom_core.mail.search import _base_subject
+
+    assert _base_subject(subject) == base

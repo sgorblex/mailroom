@@ -326,7 +326,7 @@ def _by_account[T](
 def read_page(
     connections: MailConnections,
     sources: Sequence[Source],
-    criteria: Criteria | Mapping[str, Criteria],
+    criteria: Criteria | Mapping[str, Criteria] | Mapping[Source, Criteria],
     *,
     limit: int,
     cursor: str | None = None,
@@ -334,7 +334,7 @@ def read_page(
 ) -> Page:
     """Up to `limit` messages matching `criteria` across `sources`, newest first by arrival.
     `criteria` may differ per account (a mapping with every source's account), as a provider's
-    own search keys do.
+    own search keys do, or per source (a mapping with every source), as UIDs do.
 
     Each source is taken from its highest UID down, whichever head arrived last first: what a
     source shows is then always its highest fetched UIDs, so the next page skips nothing, even
@@ -343,15 +343,20 @@ def read_page(
     """
     if limit < 1:
         raise MailError("invalid_argument", "limit must be at least 1.")
-    by_account = (
-        criteria
-        if isinstance(criteria, Mapping)
-        else {source.account: criteria for source in sources}
+    given: dict[str | Source, Criteria]
+    if isinstance(criteria, Mapping):
+        given = dict(criteria.items())
+    else:
+        given = dict.fromkeys(sources, criteria)
+    missing = sorted(
+        f"{source.account}/{source.folder}"
+        for source in sources
+        if source not in given and source.account not in given
     )
-    missing = sorted({source.account for source in sources} - by_account.keys())
     if missing:
-        raise ValueError(f"criteria has no entry for the accounts {missing}")
-    for each in by_account.values():
+        raise ValueError(f"criteria has no entry for the sources {missing}")
+    by_source = {source: given.get(source, given.get(source.account, ())) for source in sources}
+    for each in by_source.values():
         search_arguments(each)  # refused here, not as a failure of each source
     positions = None if cursor is None else decode_cursor(cursor)
 
@@ -390,7 +395,7 @@ def read_page(
             if before is not None and before <= 1:
                 exhausted.add(index)
                 return []
-            own = by_account[source.account]
+            own = by_source[source]
             scoped = list(own) if before is None else ["UID", f"1:{before - 1}", *own]
             uids = sorted(search_uids(context, scoped or ["ALL"]), reverse=True)[:limit]
             if len(uids) < limit:

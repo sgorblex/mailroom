@@ -143,7 +143,11 @@ uidValidity, uid]`, and one whose folder's UIDVALIDITY has changed fails with `s
 never naming another message. Refs are not signed: the host checks the account is the caller's. Header text comes decoded and flattened. RFC 2047 words, RFC 2231 parameters,
 transfer encodings (fetched in windows with `BODY.PEEK[part]<offset.n>` up to the cap), charsets
 and `format=flowed` are decoded. Pages read the sources of different accounts in threads of their
-own, and fetch previews in one FETCH per body part number rather than one per message. A page item
+own, and fetch previews in one FETCH per body part number rather than one per message. Outside
+Gmail, `thread_page` finds a conversation's candidates by a search on Message-ID, References and
+In-Reply-To and one on the subject without its `Re:`/`Fwd:` prefixes, then reads their headers:
+a server's full-text index may leave those headers out (Mailu), and a reply whose subject
+changed is then missed. A page item
 carries the arrival time as well as the Date header, and the size; a view carries `has_html` and,
 when the read asks for `remote_check` (off by default, as it costs the HTML's download and a
 sanitising pass), `has_remote_content`. A ref's error names no tool. Deliberate choices:
@@ -214,8 +218,11 @@ max_bytes=)` moves messages to a folder of another account the connections serve
   chunk (`fetch_source`: bytes, flags, INTERNALDATE), write it to the target, remove what
   arrived.
 - **A copy** is appended with the flags but `\Recent` and `\Deleted` and the original
-  INTERNALDATE, and confirmed by APPENDUID and its ENVELOPE's Message-ID, else by a search for
-  it (`message_id_uids`; on Gmail, which ignores SEARCH HEADER, `X-GM-RAW rfc822msgid:`). A
+  INTERNALDATE, and confirmed by APPENDUID and its ENVELOPE's Message-ID, else by reading the
+  Message-ID of the messages from the UIDNEXT taken before the APPEND (`message_id_uids`). The
+  lookup never relies on SEARCH HEADER Message-ID, which a server enforcing a full-text index
+  that leaves Message-ID out (Mailu) never matches: it reads the Message-ID of the messages a
+  search by UID or by size finds, or on Gmail searches `X-GM-RAW rfc822msgid:`. A
   message already in the target folder with that Message-ID and the same size, not taken as
   the copy of another message of the call, is taken as the copy: a move cut off after copying
   is repeated without copying twice, while a different message sharing the Message-ID (a

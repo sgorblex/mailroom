@@ -219,6 +219,36 @@ def test_a_search_that_only_finds_the_old_version_does_not_replace_it(
     assert len(drafts_of(imap_server, user)) == 2
 
 
+def blind_to_message_ids(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A server whose full-text index leaves Message-ID out and is enforced (Mailu's Dovecot):
+    SEARCH HEADER Message-ID never matches."""
+    search = selected.search_uids
+
+    def blind(context: object, criteria: list[object]) -> list[int]:
+        if list(criteria[:2]) == ["HEADER", "Message-ID"]:
+            return []
+        return search(context, criteria)
+
+    monkeypatch.setattr(selected, "search_uids", blind)
+    monkeypatch.setattr(drafts_module, "search_uids", blind)
+
+
+def test_a_save_is_read_back_and_found_without_a_header_search(
+    imap_server, harness, user, account, monkeypatch
+) -> None:
+    mail = harness(account)
+    old, _ = save(mail, account, message(account, "v1"), compose_id="same-id")
+    blind_to_message_ids(monkeypatch)
+    drop_response_code(monkeypatch)
+
+    new, _ = save(mail, account, message(account, "v2"), compose_id="same-id", replaces=old.ref)
+
+    assert new.ref is not None
+    assert new.replaced is not None
+    assert len(drafts_of(imap_server, user)) == 1
+    assert find_drafts(mail, "acc", "same-id") == (new.ref,)
+
+
 def test_keeps_the_flags_of_drafts_saved_after_drafts_was_listed(
     imap_server, harness, user, account
 ) -> None:
