@@ -24,6 +24,7 @@ GroupName = Literal[
     "filters_run",
     "mail_read",
     "mail_organize",
+    "mail_transfer",
     "mail_folders",
     "mail_draft",
     "mail_send",
@@ -63,6 +64,7 @@ GROUPS: Final[tuple[ToolGroup, ...]] = (
     ),
     ToolGroup("mail_read", "stable", "list, search and read mail"),
     ToolGroup("mail_organize", "stable", "move, trash and flag mail"),
+    ToolGroup("mail_transfer", "preview", "move mail to another of the user's accounts"),
     ToolGroup("mail_folders", "stable", "create, rename and delete folders"),
     ToolGroup("mail_draft", "stable", "write drafts"),
     ToolGroup("mail_send", "stable", "send mail"),
@@ -115,7 +117,7 @@ def selected_groups(raw: str | None, features: Features = ALL_FEATURES) -> tuple
             wanted.add(name)
     if not wanted:
         logger.warning("%s selects no tool group: the MCP server has no tools", TOOL_GROUPS_ENV)
-    for name in ("mail_organize", "mail_draft", "mail_send"):
+    for name in ("mail_organize", "mail_transfer", "mail_draft", "mail_send"):
         if name in wanted and "mail_read" not in wanted:
             logger.warning(
                 "%s selects %s without mail_read: no served tool gives the refs it takes",

@@ -96,7 +96,14 @@ ACCOUNT_TOOLS: Final[tuple[Tool[Any], ...]] = (
             "an account where it is). Call this first."
         ),
         group="filters_read",
-        also_in=("mail_read", "mail_organize", "mail_folders", "mail_draft", "mail_send"),
+        also_in=(
+            "mail_read",
+            "mail_organize",
+            "mail_transfer",
+            "mail_folders",
+            "mail_draft",
+            "mail_send",
+        ),
         arguments=NoArguments,
         hints=READ,
         run=_accounts_list,
@@ -113,7 +120,14 @@ ACCOUNT_TOOLS: Final[tuple[Tool[Any], ...]] = (
             "mail server."
         ),
         group="filters_read",
-        also_in=("mail_read", "mail_organize", "mail_folders", "mail_draft", "mail_send"),
+        also_in=(
+            "mail_read",
+            "mail_organize",
+            "mail_transfer",
+            "mail_folders",
+            "mail_draft",
+            "mail_send",
+        ),
         arguments=FoldersArguments,
         hints=MAILBOX_READ,
         run=_folders_list,

@@ -6,7 +6,8 @@ what a model needs to work on a user's filters: accounts, folders, rule sets, dr
 and, group by group, the mail tools: each mail group turns on (status `stable`) once the client does
 what it does; `mail_read` is the first, with slice A of the [mail client](mail-client.md), then
 `mail_organize`, with slice B, then `mail_draft` and `mail_send`, with slice C, then
-`mail_folders`, with [folder management](mail-client.md#folder-management). Standalone
+`mail_folders`, with [folder management](mail-client.md#folder-management), and
+`mail_transfer` (preview), with [moves to another account](mail-client.md#moving-to-another-account). Standalone
 mailroom-mcp was retired on 2026-11-10, this server covering its use
 ([`../CONTEXT.md`](../CONTEXT.md)). Product scope: [`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *MCP
 server*.
@@ -55,6 +56,16 @@ with the new count and the instruction to confirm it with the user before callin
 `folder_in_use` refusal names the rule sets and gives their ids. `mail_organize` keeps its promise
 of never deleting permanently: deleting a folder is never a step of organizing.
 
+The `mail_transfer` tools (a `preview` group, served only when named) move messages to a folder
+of another of the user's accounts, the REST `move-to-account` route ([`mail-client.md`](mail-client.md)
+— *Moving to another account*) over the same service function, recorded in both accounts:
+`messages_move_to_account` moves the originals to their account's Trash once copied, and
+`messages_move_to_account_for_good` deletes them for good, a tool of its own so that no other
+call deletes as a side effect, whose description says the loss is permanent and that it is called
+only on the user's explicit request. They answer as the organize tools, but a folder whose copies
+were made and whose originals stayed is answered, not refused, since its messages are then in
+both accounts. Repeating a move cut short copies nothing twice.
+
 The `mail_draft` and `mail_send` tools write mail, over the same service functions and the same
 send gate as the web client ([`mail-client.md`](mail-client.md), *Slice C*). `draft_create`,
 `draft_update` and `draft_delete` keep drafts in the account's Drafts folder. `message_send`,
@@ -91,7 +102,7 @@ are listed inside the envelope, since they are mail-derived text.
 Tools are registered in [tool groups](../GLOSSARY.md). `MAILROOM_MCP_TOOL_GROUPS` chooses which
 groups are registered: by default the `stable` ones; a `preview` group only when named; a
 `planned` group never (an unknown or `planned` name is skipped with a warning in the log).
-`mail_organize`, `mail_draft` or `mail_send` without `mail_read` is served with a warning too: no
+`mail_organize`, `mail_transfer`, `mail_draft` or `mail_send` without `mail_read` is served with a warning too: no
 served tool then gives the refs they take. The `filters_*` groups need `filters` in
 `MAILROOM_FEATURES` ([`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Editions*): without it they are
 left out, with a warning when named. Which tools a client gets is instance config, not OAuth scope.
@@ -109,6 +120,7 @@ left out, with a warning when named. Which tools a client gets is instance confi
 | `mail_read` (stable, on) | `messages_list`, `messages_search`, `message_read`, `thread_read`, `attachment_read` | readOnly, idempotent, openWorld |
 | `mail_organize` (stable, on) | `messages_move(refs, folder)`, `messages_flag(refs, seen?, flagged?)` | openWorld (flag also idempotent) |
 | | `messages_trash(refs)` | destructive, openWorld |
+| `mail_transfer` (preview, off) | `messages_move_to_account(refs, account_id, folder)`, `messages_move_to_account_for_good(refs, account_id, folder)` | destructive, openWorld |
 | `mail_draft` (stable, on) | `draft_create` | openWorld |
 | | `draft_update`, `draft_delete` | destructive, openWorld |
 | `mail_send` (stable, on) | `message_send`, `message_reply`, `message_forward`, `draft_send` | destructive, openWorld |
@@ -124,7 +136,8 @@ client asks before each one. `draft_update` and `draft_delete` are too: an edite
 message and the old version is removed (the [own-draft exception](mail-client.md#the-own-draft-exception)),
 while `draft_create` only adds one. `folder_delete` is destructive and its description says the
 loss is permanent and that it is called only on the user's explicit request; `folder_rename`
-loses nothing, so it is not.
+loses nothing, so it is not. Both `mail_transfer` tools are destructive: one trashes the
+originals, the other deletes them for good, and says so as `folder_delete` does.
 
 ### Safety rules
 
@@ -216,12 +229,14 @@ interface, not on the app's routes), so it can move to a shared package later.
 - **Consent** is a web app screen. `/oauth/authorize` stores the request (10 minutes) and
   redirects to `/connect?request=<id>`; the screen signs the user in if needed (password or SSO)
   and shows the client and what it gets (accounts, folders, filters and, where offered, reading
-  messages and their attachments, organizing them: moving, trashing, flagging, creating,
-  renaming and deleting folders (a deleted folder's mail gone for good), and writing drafts and
+  messages and their attachments, organizing them: moving, trashing, flagging, moving them to
+  the user's other accounts (which can delete the originals for good), creating, renaming and
+  deleting folders (a deleted folder's mail gone for good), and writing drafts and
   sending mail within each account's send mode), in English and Italian, to approve or
   deny. A grant is not tied to the tool groups served when it was approved: one approved before
-  `mail_read`, `mail_organize`, `mail_folders`, `mail_draft` or `mail_send` was on reads, moves,
-  drafts and sends mail and manages folders without asking again, `mail_send` too, by decision:
+  `mail_read`, `mail_organize`, `mail_transfer`, `mail_folders`, `mail_draft` or `mail_send` was
+  on reads, moves (to another account too), drafts and sends mail and manages folders without
+  asking again, `mail_send` too, by decision:
   the send mode is the guard
   ([`../TODO.md`](../TODO.md)). (The session cookie is `SameSite=Strict`, so it does not arrive
   on the cross-site navigation from the client; the screen's same-origin requests do carry it.
@@ -359,7 +374,7 @@ workers; expired rows are swept on writes.
 | `MAILROOM_FEATURES` | The instance's features ([`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Editions*). Without `mcp`, the MCP server and its authorization server are not served, whatever the `MAILROOM_MCP_*` and `MAILROOM_OAUTH_*` variables say; web SSO still follows its own. |
 | `MAILROOM_PUBLIC_URL` | The instance's public origin. Required for SSO and the MCP server; unset, both are off. |
 | `MAILROOM_MCP_AUTH` | `builtin` (default), `oidc`, `external` or `off`. |
-| `MAILROOM_MCP_TOOL_GROUPS` | Registered tool groups; default `filters_read,filters_write,filters_run,mail_read,mail_organize,mail_folders,mail_draft,mail_send,audit_read`. The `filters_*` groups need `filters` in `MAILROOM_FEATURES`; the mail groups do not need `mail`. |
+| `MAILROOM_MCP_TOOL_GROUPS` | Registered tool groups; default `filters_read,filters_write,filters_run,mail_read,mail_organize,mail_folders,mail_draft,mail_send,audit_read`; `mail_transfer` (preview) only when named. The `filters_*` groups need `filters` in `MAILROOM_FEATURES`; the mail groups do not need `mail`. |
 | `MAILROOM_OAUTH_EXTRA_REDIRECT_URIS` | Redirect URIs allowed beyond the built-in list. |
 | `MAILROOM_OAUTH_CIMD_HOSTS` | Hosts whose client ID metadata documents are fetched; default `claude.ai,claude.com`. |
 | `MAILROOM_OIDC_ISSUER`, `MAILROOM_OIDC_CLIENT_ID`, `MAILROOM_OIDC_CLIENT_SECRET` | Web SSO's provider and confidential client; SSO is off without them. |

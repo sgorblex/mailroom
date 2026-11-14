@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 SERVER_NAME: Final = "mailroom-app"
 MAIL_GROUPS: Final = frozenset(
-    {"mail_read", "mail_organize", "mail_folders", "mail_draft", "mail_send"}
+    {"mail_read", "mail_organize", "mail_transfer", "mail_folders", "mail_draft", "mail_send"}
 )
 METADATA_PATH: Final = "/.well-known/oauth-protected-resource/mcp"
 MAX_REQUEST_BYTES: Final = 1024 * 1024
@@ -73,6 +73,7 @@ def instructions(groups: Sequence[ToolGroup]) -> str:
     filters = bool(names & {"filters_read", "filters_write", "filters_run"})
     reads = "mail_read" in names
     organizes = "mail_organize" in names
+    transfers = "mail_transfer" in names
     manages_folders = "mail_folders" in names
     drafts = "mail_draft" in names
     sends = "mail_send" in names
@@ -80,7 +81,7 @@ def instructions(groups: Sequence[ToolGroup]) -> str:
         verb
         for verb, served in (
             ("reads", reads),
-            ("organizes", organizes or manages_folders),
+            ("organizes", organizes or transfers or manages_folders),
             ("drafts", drafts),
             ("sends", sends),
         )
@@ -132,6 +133,16 @@ def instructions(groups: Sequence[ToolGroup]) -> str:
         parts.append(
             f"messages_move, messages_trash and messages_flag take refs {source}; these tools "
             "never delete mail permanently."
+        )
+    if transfers:
+        source = "from messages_list, messages_search or thread_read" if reads else "of messages"
+        parts.append(
+            f"messages_move_to_account moves messages (refs {source}) to a folder of another of "
+            "the user's accounts, copying each and then moving the original to its account's "
+            "Trash; messages_move_to_account_for_good deletes the originals for good instead, "
+            "once copied: call it only when the user explicitly asks. A move cut short can be "
+            "repeated: nothing is copied twice; but messages the answer says are in both "
+            "accounts must not be moved again."
         )
     if manages_folders:
         parts.append(

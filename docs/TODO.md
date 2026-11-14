@@ -82,12 +82,12 @@ In this order, after *One IMAP stack* (*Family roadmap*): each builds on the one
       the docs' "never deletes permanently" becomes "deletes only deliberately" (the rule was
       lifted on 2026-11-10), a confirmation on the web, a destructive-marked MCP tool, never a
       side effect, refusal tests and audit records.
-- [ ] **Move messages across accounts** — written once in `mailroom_core.mail`, so filters can
-      use it too: copy the raw message with its flags and date, confirm it arrived by
-      `Message-ID`, then remove it from the source (to Trash, or for good). A retry first checks
-      the target, so it never copies twice; an append whose removal failed is reported, the
-      message then in both. Gmail's All Mail and size limits apply. Mailroom offers it as
-      *Move to account…* on the web and an MCP tool, both recorded on each side.
+- [x] **Move messages across accounts** (2026-11-14) — `mailroom_core.mail.move_to_account`:
+      copied with flags and date, confirmed by `Message-ID` (Gmail's own search there), then
+      the original to Trash or, when asked, deleted for good; never copied twice; a removal
+      that fails leaves the message in both and says so; at most the user's `move_max_mb`.
+      *Move to another account…* on the web, the `mail_transfer` MCP group (preview), recorded
+      in both accounts.
 - [ ] **Filters that move to another account** — a `mailroom_core.filters` action naming the
       target account, resolved by the host at load time (the user's own only, checked on save
       and at run), with an account and folder picker in the filter editor. Needs a guard against loops (A to B and

@@ -133,7 +133,7 @@ the index and live updates; tier 3 items arrive one at a time.
 
 **Maturity: Partial** — as specified in [`requirements/mcp.md`](requirements/mcp.md): `/mcp`,
 the `filters_*`, `mail_read`, `mail_organize`, `mail_draft`, `mail_send`, `mail_folders` and
-`audit_read` tools, the built-in
+`audit_read` tools, `mail_transfer` in preview, the built-in
 authorization server with its `/connect` consent screen, connected apps on the profile and external issuer mode are in.
 
 - The app's own MCP server at `/mcp`, for each user's own data: accounts, folders, rule sets,
