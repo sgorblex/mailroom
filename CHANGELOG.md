@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.1](https://github.com/sgorblex/mailroom/compare/v0.11.0...v0.11.1) (2026-11-14)
+
+
+### Bug Fixes
+
+* **core:** find a message by Message-ID without the server's header search ([#47](https://github.com/sgorblex/mailroom/issues/47)) ([dd9abee](https://github.com/sgorblex/mailroom/commit/dd9abee2999aa1c127018d738ddae03b3655e1fe))
+* **core:** follow a conversation where the server cannot search its headers ([#48](https://github.com/sgorblex/mailroom/issues/48)) ([da73f24](https://github.com/sgorblex/mailroom/commit/da73f249da49629246a4a9039b60717276d58848))
+
 ## [0.11.0](https://github.com/sgorblex/mailroom/compare/v0.10.0...v0.11.0) (2026-11-14)
 
 
