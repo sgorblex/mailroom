@@ -61,6 +61,8 @@ MAX_DRAFT_BYTES: Final = 2 * 1024 * 1024
 """Of a draft's text when read back; a longer one reads as `lossy`."""
 DRAFT_FLAGS: Final = ("\\Draft", "\\Seen")
 _MARK: Final = f"BODY.PEEK[HEADER.FIELDS ({DRAFT_HEADER.upper()})]"
+_DRAFTS_READ: Final = 200
+"""How many of the newest drafts `find_drafts` reads whatever the search finds."""
 _COMPOSE_ID: Final = re.compile(r"[A-Za-z0-9_-]{1,64}")
 """A client's UUID, or what `new_message_id` makes up: nothing a search needs to quote."""
 _OWN_ID: Final = re.compile(r"<([A-Za-z0-9_-]{1,64})@[^<>]+>")
@@ -125,10 +127,10 @@ def _read_back(
     context: MailboxContext, appended: int | None, first: int, message_id: str
 ) -> tuple[int, Structure] | None:
     """Where the APPEND put the message: the UID APPENDUID gave when it checks out, else the
-    newest match of a search by Message-ID, which a full-text index that has not caught up yet
-    can miss (Mailu). UIDNEXT from before the APPEND, `first`, rules out the older versions
-    sharing its Message-ID: taking one of them for the new message would remove it as "the old
-    version", with the ref of what is gone."""
+    newest message from `first` on carrying its Message-ID (`message_id_uids`). `first`, the
+    UIDNEXT from before the APPEND, rules out the older versions sharing its Message-ID: taking
+    one of them for the new message would remove it as "the old version", with the ref of what
+    is gone."""
     client = context.client
     # RFC 3501, 6.3.11: the new message need not be in view until a NOOP.
     client.noop()
@@ -272,14 +274,18 @@ def find_drafts(
 ) -> tuple[MessageRef, ...]:
     """The versions of a draft in Drafts, newest first: those whose Message-ID was built on
     `compose_id`, whichever identity's domain it took. Finds a save whose answer was lost; it
-    can miss one a full-text index has not caught up with."""
+    can miss one older than the newest 200 that a full-text index has not caught up
+    with or leaves out (Mailu's Dovecot does not index Message-ID)."""
     _check_compose_id(compose_id)
     drafts = connections.special_folder(account, "drafts")
 
     def run(context: MailboxContext) -> tuple[MessageRef, ...]:
         client = context.client
         start = f"<{compose_id}@"
-        uids = search_uids(context, ["HEADER", "Message-ID", start])
+        # The header search finds older drafts where it works; the newest are read whatever
+        # the search finds, as a server's index may never match a Message-ID.
+        newest = sorted(search_uids(context, ["ALL"]))[-_DRAFTS_READ:]
+        uids = sorted({*search_uids(context, ["HEADER", "Message-ID", start]), *newest})
         if not uids:
             return ()
         # A server's search may go by words, and match `<id-2@` for `<id@`: the ENVELOPE decides.

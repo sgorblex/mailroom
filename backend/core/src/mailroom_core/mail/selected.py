@@ -119,17 +119,41 @@ def search_uids(context: MailboxContext, criteria: Criteria) -> list[int]:
 
 
 def message_id_uids(
-    context: MailboxContext, message_id: str, *, since_uid: int = 0, gmail: bool = False
+    context: MailboxContext,
+    message_id: str,
+    *,
+    since_uid: int = 0,
+    size: int | None = None,
+    gmail: bool = False,
 ) -> list[int]:
-    """The UIDs from `since_uid` on whose Message-ID header holds `message_id`, by a search, so
-    the text is quoted as any search's is: `HEADER Message-ID`, or on Gmail, which ignores
-    SEARCH HEADER, `X-GM-RAW rfc822msgid:`. A server may search by words, or not have indexed a
-    message just added yet (Mailu): check what it finds."""
+    """The UIDs, in order, from `since_uid` on and of `size` bytes (RFC822.SIZE) when given,
+    whose ENVELOPE carries `message_id`. Gmail ignores SEARCH HEADER, so there it searches
+    `X-GM-RAW rfc822msgid:`. Elsewhere a header search can miss: a server may search by words,
+    not have indexed a message just added yet, or enforce a full-text index that leaves
+    Message-ID out (Mailu's Dovecot), so it never matches. With a bound, by UID or by size, the
+    candidates are found by that bound alone, which needs no index, and each one's Message-ID
+    is read; with neither, the header search is all there is."""
+    criteria: list[object]
     if gmail:
-        criteria: Criteria = ["X-GM-RAW", f"rfc822msgid:{message_id.strip().strip('<>')}"]
+        criteria = ["X-GM-RAW", f"rfc822msgid:{message_id.strip().strip('<>')}"]
+    elif since_uid > 0 or size is not None:
+        criteria = []
+        if since_uid > 0:
+            criteria += ["UID", f"{since_uid}:{_MAX_UID}"]
+        if size is not None:
+            criteria += ["LARGER", max(size - 1, 0), "SMALLER", size + 1]
     else:
         criteria = ["HEADER", "Message-ID", message_id]
-    return [uid for uid in search_uids(context, criteria) if uid >= since_uid]
+    found = [uid for uid in search_uids(context, criteria) if uid >= since_uid]
+    if not found:
+        return []
+    fetched = context.client.fetch(found, ["ENVELOPE", "RFC822.SIZE"])
+    return sorted(
+        uid
+        for uid, data in fetched.items()
+        if text_value(getattr(data.get(b"ENVELOPE"), "message_id", None)).strip() == message_id
+        and (size is None or data.get(b"RFC822.SIZE") == size)
+    )
 
 
 def appended_uid(response: bytes | None, uid_validity: int) -> int | None:

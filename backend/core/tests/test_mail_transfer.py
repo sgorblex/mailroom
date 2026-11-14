@@ -5,7 +5,7 @@ a removal that failed copies nothing twice."""
 
 from dataclasses import replace
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -16,6 +16,7 @@ from mailroom_core.mail import (
     move_to_account,
     organize_text,
 )
+from mailroom_core.mail import selected as selected_module
 from mailroom_core.mail import transfer as transfer_module
 from mailroom_core.testing import (
     ImapTestServer,
@@ -205,6 +206,61 @@ def test_a_message_already_in_the_target_is_not_copied_again(imap_server, users,
     assert result.outcome == "ok"
     assert subjects(imap_server, target, "INBOX") == ["delivered to both"]
     assert subjects(imap_server, source, "Trash") == ["delivered to both"]
+
+
+@pytest.fixture
+def index_without_message_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A server whose full-text index leaves Message-ID out and is enforced (Mailu's Dovecot):
+    SEARCH HEADER Message-ID never matches."""
+    search = selected_module.search_uids
+
+    def blind(context: object, criteria: list[object]) -> list[int]:
+        if list(criteria[:2]) == ["HEADER", "Message-ID"]:
+            return []
+        return search(context, criteria)
+
+    monkeypatch.setattr(selected_module, "search_uids", blind)
+
+
+@pytest.mark.usefixtures("index_without_message_id")
+def test_a_copy_already_there_is_found_without_a_header_search(
+    imap_server, users, mail, monkeypatch
+) -> None:
+    source, target = users
+    seed(imap_server, source, "INBOX", mime("stuck"))
+    [ref] = refs_in(mail)
+
+    def fails(*_args: object) -> None:
+        raise MailError("server_error")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(transfer_module, "move_uids", fails)
+        move_to_account(mail, [ref], "b", "INBOX", removal="trash", max_bytes=CAP)
+    again = move_to_account(mail, [ref], "b", "INBOX", removal="trash", max_bytes=CAP)
+
+    assert again.outcome == "ok"
+    assert subjects(imap_server, target, "INBOX") == ["stuck"]
+    assert subjects(imap_server, source, "Trash") == ["stuck"]
+
+
+@pytest.mark.usefixtures("index_without_message_id")
+def test_a_copy_without_appenduid_is_confirmed_without_a_header_search(
+    imap_server, users, mail, monkeypatch
+) -> None:
+    source, target = users
+    seed(imap_server, source, "INBOX", mime("no appenduid"))
+    [ref] = refs_in(mail)
+    append = transfer_module.append_raw
+
+    def without_uid(*args: Any, **kwargs: Any) -> None:
+        append(*args, **kwargs)
+
+    monkeypatch.setattr(transfer_module, "append_raw", without_uid)
+    result = move_to_account(mail, [ref], "b", "INBOX", removal="trash", max_bytes=CAP)
+
+    assert result.outcome == "ok"
+    assert subjects(imap_server, target, "INBOX") == ["no appenduid"]
+    assert subjects(imap_server, source, "Trash") == ["no appenduid"]
 
 
 def test_refuses_what_it_cannot_do_safely_before_writing_anything(
