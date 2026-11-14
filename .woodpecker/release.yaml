@@ -6,9 +6,10 @@ labels:
 # (docs/requirements/ci-cd.md). A manual run builds both without pushing, to test the pipeline.
 #
 # No repo trust needed: the builds run in plugin-docker-buildx, which the Woodpecker server allows to
-# run privileged at exactly this tag@digest (WOODPECKER_PLUGINS_PRIVILEGED); bump the image there
-# first. BuildKit's cache lives in Zot as :buildcache. Both images are built (not pushed) before
-# either is pushed, so a failed build pushes nothing; the push steps then hit that cache.
+# run privileged by name, at any version (WOODPECKER_PLUGINS_PRIVILEGED), so the pin can be bumped
+# here without touching the server. BuildKit's cache lives in Zot as :buildcache. Both images are
+# built (not pushed) before either is pushed, so a failed build pushes nothing; the push steps then
+# hit that cache.
 when:
   - event: tag
     ref: refs/tags/v*
