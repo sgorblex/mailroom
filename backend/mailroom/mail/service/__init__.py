@@ -1,10 +1,12 @@
 """A user's mail as every front end reads and writes it (the REST routes, the MCP tools): folders,
-pages of messages, one message, its HTML and its attachments, over mailroom-core; moves, archiving,
-trashing and flag changes of batches of refs; drafts and sends; creating, renaming and deleting
-folders. Reading changes nothing, not even ``\\Seen``. Mail is deleted only deliberately: nothing
-is expunged beyond what a move takes away and a draft mailroom wrote (*The own-draft exception*),
-and a folder's delete takes its mail for good only with the count the user confirmed (*Folder
-management*; both in ``docs/requirements/mail-client.md``).
+pages of messages, one message, its HTML and its attachments, over mailroom-core; moves (to
+another of the user's accounts too), archiving, trashing and flag changes of batches of refs;
+drafts and sends; creating, renaming and deleting folders. Reading changes nothing, not even
+``\\Seen``. Mail is deleted only deliberately: nothing is expunged beyond what a move takes away
+and a draft mailroom wrote (*The own-draft exception*), a move to another account removes for
+good only when asked, once the copies are confirmed, and a folder's delete takes its mail for
+good only with the count the user confirmed (*Folder management*; all in
+``docs/requirements/mail-client.md``).
 
 Only the user's own accounts: an account id, or the account a ref names, that is not theirs is
 ``not_found`` exactly as one that does not exist. A mailbox failure is a ``Refusal`` of kind
@@ -45,7 +47,7 @@ from mailroom.mail.service.folder_writes import (
     delete_folder,
     rename_folder,
 )
-from mailroom.mail.service.organize import MAX_REFS, archive, flag, move, trash
+from mailroom.mail.service.organize import MAX_REFS, archive, flag, move, move_to_account, trash
 from mailroom.mail.service.read import (
     ALL_ACCOUNTS,
     account_ids,
@@ -99,6 +101,7 @@ __all__ = [
     "list_messages",
     "message_html",
     "move",
+    "move_to_account",
     "prefill",
     "read_draft",
     "read_message",

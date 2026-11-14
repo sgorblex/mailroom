@@ -12,7 +12,12 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
-from mailroom.accounts.service import account_not_found, attachment_limit_mb, require_subkey
+from mailroom.accounts.service import (
+    account_not_found,
+    attachment_limit_mb,
+    move_limit_mb,
+    require_subkey,
+)
 from mailroom.accounts.store import account_password, load_accounts
 from mailroom.errors import Refusal, mail_refusal
 from mailroom.mail.connections import PASSWORD_MISSING, PASSWORD_MISSING_TEXT, PasswordMissing
@@ -76,6 +81,12 @@ class _Accounts:
         return self.loaded.settings.limits
 
     @property
+    def move_cap(self) -> int:
+        """The bytes a message moved to another account may have, at most ``MOVE_MAX_MB``."""
+        capped = self.limits.model_copy(update={"move_max_mb": move_limit_mb(self.limits)})
+        return core.move_cap(capped)
+
+    @property
     def write_limits(self) -> Limits:
         """``limits`` with the cap on a written message's attachments the app keeps to."""
         cap = attachment_limit_mb(self.limits)
@@ -129,14 +140,21 @@ def _run[T](
     work: Callable[[MailConnections], T],
     *,
     on_deadline: Callable[[], None] | None = None,
+    deadline: float | None = None,
 ) -> T:
     """``work`` on the user's connections, on the accounts ``used``, under the pool's gates and
-    deadline (``on_deadline`` called when it passes); every failure a ``Refusal``."""
+    deadline (``deadline`` seconds, else the pool's; ``on_deadline`` called when it passes);
+    every failure a ``Refusal``."""
     pool = ctx.mail_pool
     try:
         with pool.lease(ctx, user_id, accounts.revision) as connections:
             return pool.call(
-                connections, user_id, used, lambda: work(connections), on_deadline=on_deadline
+                connections,
+                user_id,
+                used,
+                lambda: work(connections),
+                on_deadline=on_deadline,
+                deadline=deadline,
             )
     except MailError as error:
         raise mail_refusal(error.code, error.message) from None

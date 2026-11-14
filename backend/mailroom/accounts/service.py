@@ -47,6 +47,9 @@ ATTACHMENT_MAX_MB: Final = 25.0
 """The most a written message's attachments may total, whatever the user's limit: the upload
 route's body limit (``client_max_body_size`` in ``web/nginx-default.conf``, and the host's proxy)
 is fixed and must hold them."""
+MOVE_MAX_MB: Final = 50.0
+"""The most a message moved to another account may have, whatever the user's limit: it is held
+whole in memory while it is copied."""
 
 
 class StoredEndpoint(BaseModel):
@@ -88,6 +91,10 @@ class ListedAccount(StoredAccount):
 
 def attachment_limit_mb(limits: Limits) -> float:
     return min(limits.attachment_max_mb, ATTACHMENT_MAX_MB)
+
+
+def move_limit_mb(limits: Limits) -> float:
+    return min(limits.move_max_mb, MOVE_MAX_MB)
 
 
 def account_not_found(*, coded: bool = False) -> Refusal:

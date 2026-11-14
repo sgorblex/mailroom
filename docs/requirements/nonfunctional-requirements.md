@@ -75,12 +75,15 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   expunged but what a move copied elsewhere and **a draft Mailroom wrote**, by `UID EXPUNGE` of
   exactly that UID ([`mail-client.md`](mail-client.md), *The own-draft exception*); a draft
   written elsewhere goes to Trash. Mail is lost for good only by a filter's `delete` action, the
-  user's own rule ([`filters.md`](filters.md)), and a **folder's delete**
-  ([`mail-client.md`](mail-client.md), *Folder management*). Every permanent delete, that one
-  and any later, keeps these safeguards:
-  - **a confirmation on the web** that says what goes for good (a folder's: its message count),
-    and a guard on the server that the thing confirmed is still what goes (the count read again:
-    `folder_changed`);
+  user's own rule ([`filters.md`](filters.md)), a **folder's delete**
+  ([`mail-client.md`](mail-client.md), *Folder management*) and a **move to another account**
+  asked to delete the originals for good, only once their copies there are confirmed
+  ([`mail-client.md`](mail-client.md), *Moving to another account*). Every permanent delete
+  keeps these safeguards:
+  - **a confirmation on the web** that says what goes for good (a folder's: its message count;
+    a move's: how many originals, and from which account to which), and a guard on the server
+    that the thing confirmed is still what goes (a folder's count read again: `folder_changed`;
+    a move's originals removed only once each copy is confirmed);
   - **a destructive MCP tool** (`destructiveHint`), whose description says the loss is
     permanent and that it is called only on the user's explicit request;
   - **never a side effect**: it is its own call, never a step of another action (organizing,
@@ -330,11 +333,13 @@ bounded to one minor because the server relies on its handlers.
   "message", "issues": [{"path", "message"}]}}`, `path` inside the account. A save racing another
   is 409 `accounts_changed` or 503 `accounts_busy`.
 - **Limits** (`GET` / `PUT /api/v1/me/limits`, mounted with the mail layer): the signed-in user's
-  `send_per_hour`, `max_recipients`, `body_chars` and `attachment_max_mb`, in the same settings
-  document as the accounts. A `PUT` replaces all four, checked by mailroom-core's models plus the
-  25 MB attachment cap, every field at fault named at once; a refusal is 400 `invalid_limits`
-  with `issues`, a save at the same moment 409 `settings_changed` or 503 `settings_busy`. A stored attachment limit above the cap reads as
-  the cap. Logged as `limits_changed`.
+  `send_per_hour`, `max_recipients`, `body_chars`, `attachment_max_mb` and `move_max_mb` (a
+  message moved to another account, 25 MB by default), in the same settings document as the
+  accounts. A `PUT` replaces them all (a body without `move_max_mb`, from a client older than
+  it, keeps the stored one), checked by mailroom-core's models plus the 25 MB attachment cap and
+  the 50 MB move cap, every field at fault named at once; a refusal is 400 `invalid_limits`
+  with `issues`, a save at the same moment 409 `settings_changed` or 503 `settings_busy`. A stored attachment or move limit above its
+  cap reads as the cap. Logged as `limits_changed`.
 - **IMAP:** everything goes through mailroom-core's connections, implicit TLS or STARTTLS as the
   account says. An account's login test (mailroom-core's `test_login`: a login and logout on a
   connection of its own, each reply bounded by its 10 s probe timeout), the folder picker's
@@ -456,9 +461,11 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   folder's confirmed message count, the rule sets and filters a rename changed) with who acted
   (`user` on the web, `agent` with the MCP `client_id` and `grant_id`, or `filter`, a real run,
   with its `rule_set_id` and `run_id`),
-  the action (`move`, `archive`, `trash`, `flag`, `draft_save`, `draft_remove`, `send`,
-  `folder_create`, `folder_rename`, `folder_delete`, or the filter's action as its report names
-  it) and the result. A run records each message its report
+  the action (`move`, `move_to_account`, `archive`, `trash`, `flag`, `draft_save`,
+  `draft_remove`, `send`, `folder_create`, `folder_rename`, `folder_delete`, or the filter's
+  action as its report names it) and the result. A move to another account is recorded in
+  both: the original's record names the `destination_account`, the copy's (in the target
+  account) its `source_account` and `source_folder`. A run records each message its report
   lists (the folder as its segments joined by `/`, UID, the sender's address, the date, the
   subject's hash, the filter's id and name), one more record counting those past the report's
   200, and, when the run failed partway, one `run_failed` record naming the filter it failed on,

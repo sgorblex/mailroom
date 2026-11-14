@@ -161,10 +161,12 @@ def save_account(
     return checked.account[index]
 
 
-def save_limits(store: AccountStore, raw: Mapping[str, Json], attachment_cap: float) -> Limits:
+def save_limits(
+    store: AccountStore, raw: Mapping[str, Json], attachment_cap: float, move_cap: float
+) -> Limits:
     """Replace the user's limits with ``raw``, the accounts kept, with ``attachment_max_mb`` at
-    most ``attachment_cap``. Raises ``AccountError`` (``invalid_limits``), or mailroom-core's
-    ``RevisionConflict`` / ``SettingsBusy``."""
+    most ``attachment_cap`` and ``move_max_mb`` at most ``move_cap``. Raises ``AccountError``
+    (``invalid_limits``), or mailroom-core's ``RevisionConflict`` / ``SettingsBusy``."""
     current = load_accounts(store)
     doc: dict[str, Json] = {**current.doc, _LIMITS: dict(raw)}
     checked = core_settings_or_issues(doc)
@@ -176,9 +178,10 @@ def save_limits(store: AccountStore, raw: Mapping[str, Json], attachment_cap: fl
             for issue in checked
         ]
     )
-    attachments = raw.get("attachment_max_mb")
-    if isinstance(attachments, (int, float)) and attachments > attachment_cap:
-        issues.append(Issue(("attachment_max_mb",), f"At most {attachment_cap:g}"))
+    for name, cap in (("attachment_max_mb", attachment_cap), ("move_max_mb", move_cap)):
+        value = raw.get(name)
+        if isinstance(value, (int, float)) and value > cap:
+            issues.append(Issue((name,), f"At most {cap:g}"))
     if issues or not isinstance(checked, CoreSettings):
         raise AccountError(_issues_text(issues), "invalid_limits", issues)
     store.save_settings(doc, current.revision)

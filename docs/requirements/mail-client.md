@@ -2,7 +2,8 @@
 
 The web mail client, built in slices. **Slice A (read)** is specified here and never changes the
 mailbox: not even `\Seen` is set by opening a message through the API or MCP. **Slice B
-(organize)** changes flags and folders, and never deletes. **Slice C (drafts and send)** writes
+(organize)** changes flags and folders, and never deletes, but for
+[a move to another account](#moving-to-another-account) asked to delete the originals for good. **Slice C (drafts and send)** writes
 mail: compose, reply, forward, drafts and sending. [**Folder management**](#folder-management)
 creates, renames and deletes folders: Mailroom deletes mail only deliberately, and a folder's
 delete is the one in the mail client. Product scope:
@@ -48,7 +49,8 @@ Behaviour is mailroom-core's `mail.organize` (`move_messages`, `archive_messages
 
 ### Actions
 
-- **Move** to a folder of the message's account, by path.
+- **Move** to a folder of the message's account, by path, or of
+  [another of the user's accounts](#moving-to-another-account).
 - **Archive:** move to the account's folder with role `archive`. The web toolbar hides the action
   for an account without one.
 - **Trash:** move to the account's folder with role `trash`. This is never a permanent delete:
@@ -74,6 +76,8 @@ The answer has one **result per group**: `account`, `folder` (the source folder)
 
 - `new_refs`: the refs in the destination, when the server reports where the messages landed
   (COPYUID); `null` when it did not (the client then searches the destination), empty for flags.
+- `destination_account`: on a move to another account, that account (`new_refs` are its), else
+  `null`.
 - `junk`: `"spam"` or `"ham"` when the move trained the account's Junk (below), else `null`.
 - `flags`: for the flag route, each message's `seen` and `flagged` read back (`null` when the read
   failed; the change stands).
@@ -106,10 +110,42 @@ INBOX is matched case-insensitively, as everywhere.
 
 Organizing deletes no mail, and Mailroom expunges nothing it did not move, apart from
 [the own-draft exception](#the-own-draft-exception); mail is lost for good only deliberately: a
-filter's `delete` and a [folder's delete](#folder-management). With the `MOVE` extension a move
+filter's `delete`, [a move to another account](#moving-to-another-account) asked to delete the
+originals once copied, and a [folder's delete](#folder-management). With the `MOVE` extension a move
 is one command. Without it but with `UIDPLUS`, it is `UID COPY`, `UID STORE +FLAGS \Deleted` and
 `UID EXPUNGE` of **exactly those UIDs**. A server with neither is refused (`unsupported`) rather
 than risk a plain `EXPUNGE` that would remove other messages already marked `\Deleted`.
+
+### Moving to another account
+
+`POST /messages/move-to-account` moves messages to a folder of another of the user's accounts
+(mailroom-core's `move_to_account`, [`../core.md`](../core.md) — *Moving to another account*).
+`removal` says what becomes of the originals: `trash`, to their account's Trash (one already in
+Trash stays there), or `delete`, for good.
+
+- **Each message** is copied whole with its flags and arrival date, the copy confirmed by its
+  `Message-ID` (APPENDUID, else a search; on Gmail its own search), and only then removed from
+  where it was. One already in the target folder (the same `Message-ID`) is not copied again, so
+  a move cut short (a deadline of 55 s, the connection lost) can simply be repeated.
+- **Delete for good** expunges exactly the moved UIDs once their copies are confirmed (UIDPLUS
+  required); on Gmail, where that would only remove a label, the originals go to Trash and are
+  expunged there. It is never a default: the request names it, the web asks for confirmation and
+  MCP has a destructive tool of its own.
+- **Refused before anything is written**, with the [batch](#actions) checks: a target account
+  that is not the user's (404 `not_found`) or is a ref's own (`invalid_argument`: that is a
+  move), a target folder that is missing (`mailbox_missing`), Drafts or Sent
+  (`invalid_argument`), `delete` without UIDPLUS or `trash` without a Trash folder on a source
+  (`unsupported`); and per folder a message with no `Message-ID` (`unsupported`: its copy could
+  not be confirmed) or over the user's `move_max_mb` (`too_large`, 413; 25 MB by default, at
+  most 50: the message is held whole while it is copied).
+- **A folder stops at its first error.** Originals whose copies are confirmed but which could not
+  be removed are in both accounts: the group's error says so, not to move them again, and gives
+  their `new_refs`; the call then answers `200` with its groups even when none succeeded, so the
+  client learns it. One whose copy could not be confirmed stays where it was.
+- **Audit:** each message moved is recorded twice, as `move_to_account` in each account: the
+  original's record names the `destination_account` and how it was `removed`, the copy's its
+  `source_account` and `source_folder`. A delete for good refused whole is recorded too, once
+  per message, with the refusal's code.
 
 ### Junk training
 
@@ -163,6 +199,7 @@ JSON bodies (unknown fields are 422), CSRF as for every state-changing route.
 | Route | Body |
 | --- | --- |
 | `POST /messages/move` | `{"refs": ["…"], "folder": "Archive/2025"}` |
+| `POST /messages/move-to-account` | `{"refs": ["…"], "account": "home", "folder": "INBOX", "removal": "trash"}` (`removal`: `trash` or `delete`) |
 | `POST /messages/archive` | `{"refs": ["…"]}` |
 | `POST /messages/trash` | `{"refs": ["…"]}` |
 | `POST /messages/flag` | `{"refs": ["…"], "seen": true, "flagged": false}` (`seen`, `flagged` optional, at least one) |
@@ -178,6 +215,7 @@ JSON bodies (unknown fields are 422), CSRF as for every state-changing route.
       "ok": true,
       "count": 2,
       "new_refs": ["WzEsIndvcmsiLC…"],      // null when the server gave no COPYUID; [] for flags
+      "destination_account": null,          // a move to another account: that account
       "junk": null,                         // "spam" | "ham" | null
       "flags": [],                          // flag route: [{ "ref", "seen", "flagged" }]
       "error": null                         // or { "code": "not_found", "message": "…" }
