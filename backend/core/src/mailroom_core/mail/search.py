@@ -3,15 +3,17 @@
 
 import re
 from dataclasses import dataclass
+from functools import partial
 from typing import TYPE_CHECKING, Final
 
-from mailroom_core.mail._mime import text_value
+from mailroom_core.mail._mime import header_text, text_value
 from mailroom_core.mail.errors import MailError
 from mailroom_core.mail.pages import Page, PageFailure, Source, read_page
 from mailroom_core.mail.ref import MessageRef, check_fresh, parse_ref
+from mailroom_core.mail.selected import search_uids
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
     from datetime import date
 
     from mailroom_core.mail.imap import MailboxContext, MailConnections
@@ -23,7 +25,16 @@ _MAX_THREAD_IDS: Final = 20
 """References beyond this many (the most recent ones) are ignored: the OR query grows with each."""
 _MESSAGE_ID: Final = re.compile(r"<[!-;=?-~]+>")
 """A Message-ID as it can be searched for: printable ASCII, no space or angle bracket inside."""
-_THREAD_HEADERS: Final = ("Message-ID", "References", "In-Reply-To")
+_HEADERS: Final = ("Message-ID", "References", "In-Reply-To")
+"""The headers that tie a conversation together."""
+_THREAD_FIELDS: Final = f"BODY.PEEK[HEADER.FIELDS ({' '.join(h.upper() for h in _HEADERS)})]"
+_THREAD_CANDIDATES: Final = 500
+"""Per folder, of the messages a conversation's search finds, how many of the newest are read to
+check they belong to it."""
+_REPLY_PREFIX: Final = re.compile(
+    r"^(?:\s*(?:re|r|fwd?|fw|i|aw|wg|sv|vs|tr|rif)(?:\[\d+\])?\s*:)+", re.IGNORECASE
+)
+"""Reply and forward prefixes, in the languages mail clients write them in."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,44 +179,104 @@ def _thread_ids(headers: str, own: str | None) -> list[str]:
     return list(dict.fromkeys(found))[-_MAX_THREAD_IDS:]
 
 
+def _base_subject(subject: str) -> str:
+    """`subject` without its reply and forward prefixes (`Re:`, `Fwd:`, `R:`, `I:`, `AW:` and the
+    like, repeated): what every message of a conversation's subject holds."""
+    return _REPLY_PREFIX.sub("", subject).strip()
+
+
+def _header_block(data: Mapping[bytes, object]) -> str:
+    """The `BODY[HEADER.FIELDS (...)]` a FETCH answered, as text."""
+    block = next(
+        (v for k, v in data.items() if isinstance(k, bytes) and k.startswith(b"BODY[HEADER")),
+        b"",
+    )
+    return text_value(block if isinstance(block, bytes) else b"")
+
+
+def _members(context: MailboxContext, ids: Sequence[str], subject: str, own: int | None) -> str:
+    """The UIDs of the selected folder's messages in the conversation `ids` name, as a UID set
+    (empty for none): those whose Message-ID, References or In-Reply-To holds one of them, read
+    from the newest `_THREAD_CANDIDATES` that a search by those headers or by `subject` finds,
+    and `own`, the message the conversation was asked for. The headers are read, not trusted to
+    the search: a server's full-text index may leave them out (Mailu's Dovecot), so a header
+    search never matches, and may match by words."""
+    found = set(search_uids(context, [_any_of([["HEADER", n, i] for i in ids for n in _HEADERS])]))
+    if subject:
+        found |= set(search_uids(context, ["SUBJECT", subject]))
+    candidates = sorted(found - {own})[-_THREAD_CANDIDATES:]
+    wanted = set(ids)
+    members = set() if own is None else {own}
+    if candidates:
+        fetched = context.client.fetch(candidates, [_THREAD_FIELDS])
+        members |= {
+            uid
+            for uid, data in fetched.items()
+            if wanted.intersection(_MESSAGE_ID.findall(_header_block(data)))
+        }
+    return ",".join(str(uid) for uid in sorted(members))
+
+
 def thread_page(connections: MailConnections, ref: str | MessageRef, *, limit: int = 30) -> Page:
     """The conversation `ref` belongs to, newest first: its folder plus Sent, matched by
-    Message-ID, References and In-Reply-To (on Gmail: the Gmail thread, from All Mail)."""
+    Message-ID, References and In-Reply-To (on Gmail: the Gmail thread, from All Mail). Elsewhere
+    the candidates are those a search by those headers or by the subject finds, and each one's
+    headers are read (`_members`); a reply whose subject changed is found only where the header
+    search works."""
     message = parse_ref(ref) if isinstance(ref, str) else ref
     gmail = connections.capabilities(message.account).gmail
-    fields = f"BODY.PEEK[HEADER.FIELDS ({' '.join(h.upper() for h in _THREAD_HEADERS)})]"
 
-    def find(context: MailboxContext) -> tuple[str, str | None, int | None]:
+    def find(context: MailboxContext) -> tuple[str, str | None, str, int | None]:
         check_fresh(message, context.uid_validity)
-        items = ["ENVELOPE", fields, *(["X-GM-THRID"] if gmail else [])]
+        items = ["ENVELOPE", _THREAD_FIELDS, *(["X-GM-THRID"] if gmail else [])]
         data = context.client.fetch([message.uid], items).get(message.uid)
         if data is None:
             raise MailError("not_found")
-        headers = next(
-            (v for k, v in data.items() if isinstance(k, bytes) and k.startswith(b"BODY[HEADER")),
-            b"",
-        )
-        own = getattr(data.get(b"ENVELOPE"), "message_id", None)
+        envelope = data.get(b"ENVELOPE")
+        own = getattr(envelope, "message_id", None)
         thread_id = data.get(b"X-GM-THRID")
         return (
-            text_value(headers if isinstance(headers, bytes) else b""),
+            _header_block(data),
             None if own is None else text_value(own),
+            header_text(getattr(envelope, "subject", None)),
             thread_id if isinstance(thread_id, int) else None,
         )
 
-    headers, own, thread_id = connections.with_mailbox(message.account, message.folder, True, find)
+    headers, own, subject, thread_id = connections.with_mailbox(
+        message.account, message.folder, True, find
+    )
     folders = connections.folders(message.account)
-    criteria: Criteria
     if gmail and thread_id is not None:
         every = next((f.path for f in folders if f.role == "all"), message.folder)
-        sources = [Source(message.account, every)]
-        criteria = ["X-GM-THRID", thread_id]
-    else:
-        ids = _thread_ids(headers, own)
-        if not ids:
-            raise MailError("not_found", "This message has no Message-ID to follow.")
-        criteria = [_any_of([["HEADER", name, i] for i in ids for name in _THREAD_HEADERS])]
-        sent = next((f.path for f in folders if f.role == "sent"), None)
-        paths = dict.fromkeys([message.folder, *([] if sent is None else [sent])])
-        sources = [Source(message.account, path) for path in paths]
-    return read_page(connections, sources, criteria, limit=limit, previews=True)
+        return read_page(
+            connections,
+            [Source(message.account, every)],
+            ["X-GM-THRID", thread_id],
+            limit=limit,
+            previews=True,
+        )
+    ids = _thread_ids(headers, own)
+    if not ids:
+        raise MailError("not_found", "This message has no Message-ID to follow.")
+    sent = next((f.path for f in folders if f.role == "sent"), None)
+    base = _base_subject(subject)
+    criteria: dict[Source, Criteria] = {}
+    failures: list[PageFailure] = []
+    for path in dict.fromkeys([message.folder, *([] if sent is None else [sent])]):
+        mine = message.uid if path == message.folder else None
+        try:
+            uids = connections.with_mailbox(
+                message.account,
+                path,
+                True,
+                partial(_members, ids=ids, subject=base, own=mine),
+            )
+        except MailError as error:
+            if path == message.folder:
+                raise
+            failures.append(PageFailure.of(message.account, path, error))
+            continue
+        if uids:
+            criteria[Source(message.account, path)] = ["UID", uids]
+    page = read_page(connections, list(criteria), criteria, limit=limit, previews=True)
+    return Page(page.messages, page.next_cursor, (*failures, *page.failures))

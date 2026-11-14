@@ -27,6 +27,8 @@ from mailroom_core.mail import (
     thread_page,
     thread_text,
 )
+from mailroom_core.mail import search as search_module
+from mailroom_core.mail import selected as selected_module
 from mailroom_core.testing import (
     ImapTestServer,
     MimeAttachment,
@@ -375,6 +377,53 @@ def test_follows_a_conversation_into_sent(imap_server, harness) -> None:
 
     for folder in ("INBOX", "Sent"):
         assert not any("\\Seen" in m.flags for m in folder_contents(imap_server, user, folder))
+
+
+CENA = "=?UTF-8?Q?Cena_perch=C3=A9?="
+"""`Cena perché`, as an encoded word."""
+
+
+def test_follows_a_conversation_where_header_searches_never_match(
+    imap_server, harness, monkeypatch
+) -> None:
+    """A server whose full-text index leaves Message-ID, References and In-Reply-To out and is
+    enforced (Mailu's Dovecot): the subject, decoded, finds the candidates, their headers
+    decide."""
+    user = imap_server.unique_user("thread-blind")
+    seed(imap_server, user, "INBOX", mime(CENA, message_id="<b1@example.org>"))
+    seed(
+        imap_server,
+        user,
+        "Sent",
+        mime(f"Re: {CENA}", message_id="<b2@example.test>", references="<b1@example.org>"),
+    )
+    seed(
+        imap_server,
+        user,
+        "INBOX",
+        mime(
+            f"RE: R: {CENA}",
+            message_id="<b3@example.org>",
+            in_reply_to="<b2@example.test>",
+            references="<b1@example.org> <b2@example.test>",
+        ),
+    )
+    seed(imap_server, user, "INBOX", mime(CENA, message_id="<other@example.org>"))
+    mail = harness(("acc", user))
+    ref = next(m.ref for m in list_messages(mail, "acc").messages if m.subject.startswith("RE: R:"))
+    search = selected_module.search_uids
+
+    def blind(context: object, criteria: list[object]) -> list[int]:
+        if "HEADER" in str(criteria):
+            return []
+        return search(context, criteria)
+
+    monkeypatch.setattr(search_module, "search_uids", blind)
+    page = thread_page(mail, ref)
+
+    ids = {read_message(mail, m.ref).message_id for m in page.messages}
+    assert ids == {"<b1@example.org>", "<b2@example.test>", "<b3@example.org>"}
+    assert page.failures == ()
 
 
 def test_returns_attachments_by_type_size_capped(imap_server, harness) -> None:
