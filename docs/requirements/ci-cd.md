@@ -61,9 +61,9 @@ against `version.txt` (a mismatch fails the release) and writes the image tag an
 for the next steps. **build-api** and **build-web** build both images without pushing, and only then
 do **push-api** and **push-web** push `mailroom-{api,web}:<version>`, so a failed build pushes
 nothing. No `:latest`: the host pins versions. The builds run in `plugin-docker-buildx`, which the
-Woodpecker server lets run privileged (`WOODPECKER_PLUGINS_PRIVILEGED`, exact tag and digest: bump
-it there before the pipeline), so the repository needs no trust; BuildKit's cache is kept in the
-registry as `mailroom-{api,web}:buildcache`, which the push steps hit. Each image carries the
+Woodpecker server lets run privileged (`WOODPECKER_PLUGINS_PRIVILEGED`, by name, so any
+version: the pin is bumped here alone), so the repository needs no trust; BuildKit's cache is kept
+in the registry as `mailroom-{api,web}:buildcache`, which the push steps hit. Each image carries the
 `org.opencontainers.image.version`, `.revision` (the full commit SHA), `.created` and `.source`
 labels. A manual run of the pipeline builds both images without pushing, to test it.
 
