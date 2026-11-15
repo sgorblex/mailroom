@@ -25,6 +25,8 @@ if TYPE_CHECKING:
 ORIGIN = "https://mail.example.test"
 RESOURCE = f"{ORIGIN}/mcp"
 CLAUDE_CALLBACK = "https://claude.ai/api/mcp/auth_callback"
+GROUPS = ["mail_read", "mail_organize"]
+"""What the tests approve: tool groups as the consent screen sends them."""
 CIMD_URL = "https://claude.ai/oauth/mcp-client-metadata"
 
 
@@ -93,7 +95,7 @@ def approved_code(
     verifier: str,
 ) -> str:
     request_id = consent_request_id(authorize(client, client_id, verifier))
-    back = consent.approve(db_session, settings, request_id, user.id)
+    back = consent.approve(db_session, settings, request_id, user.id, tool_groups=GROUPS)
     assert back is not None
     assert back.startswith(f"{CLAUDE_CALLBACK}?")
     query = query_of(back)

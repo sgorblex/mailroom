@@ -18,6 +18,8 @@ from mailroom.oauth.config import ACCESS_TOKEN_TTL, CODE_TTL, REFRESH_TOKEN_TTL
 from mailroom.oauth.models import OAuthAuthorizationCode, OAuthGrant, OAuthToken
 
 if TYPE_CHECKING:
+    from collections.abc import Collection
+
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -52,6 +54,7 @@ class VerifiedAccess:
     grant_id: int
     resource: str
     scopes: list[str]
+    tool_groups: list[str]
     expires_at: int
 
 
@@ -93,11 +96,19 @@ def create_grant_with_code(
     code_challenge: str,
     resource: str,
     scopes: list[str],
+    tool_groups: list[str],
 ) -> str:
-    """A new grant and its authorization code (raw, returned). Leaves the commit to the caller."""
+    """A new grant for ``tool_groups`` and its authorization code (raw, returned). Leaves the
+    commit to the caller."""
     now = datetime.now(UTC)
     sweep_expired(db, now)
-    grant = OAuthGrant(user_id=user_id, client_id=client_id, resource=resource, scopes=scopes)
+    grant = OAuthGrant(
+        user_id=user_id,
+        client_id=client_id,
+        resource=resource,
+        scopes=scopes,
+        tool_groups=tool_groups,
+    )
     db.add(grant)
     db.flush()
     code = new_secret()
@@ -316,6 +327,7 @@ def verify_access_token(db: Session, raw_token: str) -> VerifiedAccess | None:
         grant_id=grant.id,
         resource=grant.resource,
         scopes=list(grant.scopes),
+        tool_groups=list(grant.tool_groups),
         expires_at=int(expires_at.timestamp()),
     )
 
@@ -340,3 +352,32 @@ def revoke_grant(db: Session, grant_id: int, *, user_id: int | None = None) -> b
         },
     )
     return True
+
+
+def set_grant_groups(
+    db: Session, grant_id: int, user_id: int, tool_groups: list[str], served: Collection[str]
+) -> tuple[list[str], list[str]] | None:
+    """Make ``tool_groups`` the ``served`` groups ``user_id``'s grant approves; approved groups the
+    instance does not serve stay, for when it serves them again. The groups added and removed,
+    or ``None`` when the grant is not theirs or gone. The client's next call sees the change."""
+    grant = db.get(OAuthGrant, grant_id, with_for_update=True)
+    if grant is None or grant.user_id != user_id:
+        db.rollback()
+        return None
+    before = list(grant.tool_groups)
+    grant.tool_groups = [*tool_groups, *(name for name in before if name not in served)]
+    db.commit()
+    added = [name for name in grant.tool_groups if name not in before]
+    removed = [name for name in before if name not in grant.tool_groups]
+    logger.info(
+        "oauth_grant_groups_changed",
+        extra={
+            "event": "oauth_grant_groups_changed",
+            "user_id": user_id,
+            "client_id": grant.client_id,
+            "grant_id": grant_id,
+            "added": added,
+            "removed": removed,
+        },
+    )
+    return added, removed

@@ -17,6 +17,7 @@ from mailroom.oauth.models import (
     OAuthToken,
 )
 from tests.oauth.helpers import (
+    GROUPS,
     ORIGIN,
     RESOURCE,
     approved_code,
@@ -47,7 +48,7 @@ def test_the_code_flow_issues_tokens_for_the_user(
     assert access.client_id == client_id
     assert access.resource == RESOURCE
     grant = db_session.scalars(select(OAuthGrant)).one()
-    assert access.claims == {"grant_id": str(grant.id)}
+    assert access.claims == {"grant_id": str(grant.id), "tool_groups": GROUPS}
     stored = {row.token_hash for row in db_session.scalars(select(OAuthToken))}
     assert tokens["access_token"] not in stored
     assert hashlib.sha256(tokens["access_token"].encode()).hexdigest() in stored

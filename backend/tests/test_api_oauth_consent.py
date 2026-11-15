@@ -41,6 +41,8 @@ RESOURCE = f"{PUBLIC_URL}/mcp"
 CALLBACK = "https://claude.ai/api/mcp/auth_callback"
 LISTING = {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
 MCP_HEADERS = {"accept": "application/json, text/event-stream", "content-type": "application/json"}
+APPROVED = ["mail_read", "mail_organize", "filters_read"]
+"""What the flows approve unless a test chooses."""
 
 
 def _challenge(verifier: str) -> str:
@@ -109,14 +111,21 @@ class Flow:
     def show(self, request_id: str) -> httpx.Response:
         return self.client.get(f"/api/v1/oauth/requests/{request_id}")
 
-    def decide(self, request_id: str, decision: str, **headers: str) -> httpx.Response:
-        return self.client.post(
-            f"/api/v1/oauth/requests/{request_id}", json={"decision": decision}, headers=headers
-        )
+    def decide(
+        self,
+        request_id: str,
+        decision: str,
+        groups: list[str] | None = None,
+        **headers: str,
+    ) -> httpx.Response:
+        body: dict[str, Any] = {"decision": decision}
+        if decision == "approve":
+            body["groups"] = APPROVED if groups is None else groups
+        return self.client.post(f"/api/v1/oauth/requests/{request_id}", json=body, headers=headers)
 
-    def approved_tokens(self, user: User) -> dict[str, Any]:
+    def approved_tokens(self, user: User, groups: list[str] | None = None) -> dict[str, Any]:
         self.sign_in(user)
-        decided = self.decide(self.authorize(), "approve")
+        decided = self.decide(self.authorize(), "approve", groups)
         assert decided.status_code == 200, decided.text
         code = _query(decided.json()["redirect_to"])["code"]
         self.sign_out()
@@ -138,6 +147,11 @@ class Flow:
         return self.client.post(
             "/mcp", json=LISTING, headers={**MCP_HEADERS, "authorization": f"Bearer {token}"}
         )
+
+    def listed_tools(self, token: str) -> set[str]:
+        answer = self.mcp(token)
+        assert answer.status_code == 200, answer.text
+        return {tool["name"] for tool in answer.json()["result"]["tools"]}
 
 
 @pytest.fixture
@@ -199,6 +213,57 @@ def test_approving_answers_the_redirect_with_code_and_state(
     # Used up.
     assert flow.decide(request_id, "approve").status_code == 404
     assert flow.show(request_id).status_code == 404
+
+
+def test_the_screen_offers_the_served_groups_with_their_defaults(flow: Flow, user: User) -> None:
+    flow.sign_in(user)
+    offered = {group["name"]: group for group in flow.show(flow.authorize()).json()["groups"]}
+    assert set(offered) == {group.name for group in selected_groups(None)}
+    assert offered["mail_read"]["default"] is True
+    assert offered["mail_read"]["requires"] == []
+    assert offered["mail_send"]["default"] is False
+    assert offered["mail_send"]["requires"] == ["mail_read"]
+    assert offered["mail_folders"]["default"] is False
+    assert offered["mail_organize"]["description"] == "move, trash and flag mail"
+
+
+def test_a_client_sees_and_calls_only_the_groups_approved(flow: Flow, user: User) -> None:
+    tokens = flow.approved_tokens(user, ["mail_read"])
+    listed = flow.listed_tools(tokens["access_token"])
+    assert {"accounts_list", "messages_list", "message_read"} <= listed
+    assert "messages_move" not in listed
+    assert "rule_sets_list" not in listed
+    called = flow.client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {"name": "messages_trash", "arguments": {"refs": ["x"]}},
+        },
+        headers={**MCP_HEADERS, "authorization": f"Bearer {tokens['access_token']}"},
+    )
+    assert called.status_code == 200, called.text
+    result = called.json()["result"]
+    assert result["isError"] is True
+    assert "not approved for the mail_organize tools" in result["content"][0]["text"]
+
+
+@pytest.mark.parametrize(
+    ("groups", "reason"),
+    [([], "at least one"), (["mail_send"], "mail_send needs mail_read"), (["nope"], "nope")],
+)
+def test_a_choice_that_cannot_be_approved_leaves_the_request_open(
+    flow: Flow, user: User, db_session: Session, groups: list[str], reason: str
+) -> None:
+    flow.sign_in(user)
+    request_id = flow.authorize()
+    reply = flow.decide(request_id, "approve", groups)
+    assert reply.status_code == 400, reply.text
+    assert reply.json()["detail"]["code"] == "groups_not_approvable"
+    assert reason in reply.json()["detail"]["message"]
+    assert db_session.scalars(select(OAuthGrant)).all() == []
+    assert flow.show(request_id).status_code == 200
 
 
 def test_denying_sends_access_denied_back(flow: Flow, user: User, db_session: Session) -> None:
@@ -376,4 +441,73 @@ def test_connected_apps_say_how_access_is_managed(
         )
     listed = user_client.get("/api/v1/oauth/grants")
     assert listed.status_code == 200, listed.text
-    assert listed.json() == {"auth": auth, "grants": []}
+    assert listed.json() == {"auth": auth, "grants": [], "groups": []}
+
+
+def _set_groups(flow: Flow, grant_id: int, groups: list[str]) -> httpx.Response:
+    return flow.client.put(f"/api/v1/oauth/grants/{grant_id}/groups", json={"groups": groups})
+
+
+def test_connected_apps_list_their_groups_and_the_served_ones(flow: Flow, user: User) -> None:
+    flow.approved_tokens(user, ["mail_read", "mail_organize"])
+    flow.sign_in(user)
+    body = _grants(flow).json()
+    [app] = body["grants"]
+    assert app["groups"] == ["mail_read", "mail_organize"]
+    served = [group["name"] for group in body["groups"]]
+    assert served == [group.name for group in selected_groups(None)]
+    assert {"name", "description", "requires", "default"} <= set(body["groups"][0])
+
+
+def test_groups_approved_on_a_connected_app_reach_its_next_call(
+    flow: Flow, user: User, db_session: Session
+) -> None:
+    tokens = flow.approved_tokens(user, ["mail_read"])
+    assert "messages_move" not in flow.listed_tools(tokens["access_token"])
+    flow.sign_in(user)
+    [app] = _grants(flow).json()["grants"]
+    assert _set_groups(flow, app["id"], ["mail_read", "mail_organize"]).status_code == 204
+    assert "messages_move" in flow.listed_tools(tokens["access_token"])
+    assert _set_groups(flow, app["id"], ["filters_read"]).status_code == 204
+    listed = flow.listed_tools(tokens["access_token"])
+    assert "messages_move" not in listed
+    assert "messages_list" not in listed
+    assert "rule_sets_list" in listed
+    grant = db_session.get(OAuthGrant, app["id"])
+    assert grant is not None
+    assert grant.tool_groups == ["filters_read"]
+
+
+def test_approved_groups_the_instance_does_not_serve_are_kept(
+    flow: Flow, user: User, db_session: Session
+) -> None:
+    flow.approved_tokens(user, ["mail_read"])
+    grant = db_session.scalars(select(OAuthGrant)).one()
+    grant.tool_groups = ["mail_read", "mail_transfer"]  # approved while it was served
+    db_session.flush()
+    flow.sign_in(user)
+    [app] = _grants(flow).json()["grants"]
+    assert app["groups"] == ["mail_read"]
+    assert _set_groups(flow, app["id"], ["mail_read", "mail_organize"]).status_code == 204
+    db_session.refresh(grant)
+    assert grant.tool_groups == ["mail_read", "mail_organize", "mail_transfer"]
+
+
+def test_another_users_connected_app_keeps_its_groups(
+    flow: Flow, user: User, admin: User, db_session: Session
+) -> None:
+    flow.approved_tokens(admin, ["mail_read"])
+    grant = db_session.scalars(select(OAuthGrant)).one()
+    flow.sign_in(user)
+    assert _set_groups(flow, grant.id, ["mail_read", "mail_send"]).status_code == 404
+    db_session.refresh(grant)
+    assert grant.tool_groups == ["mail_read"]
+
+
+def test_a_connected_apps_groups_must_be_approvable(flow: Flow, user: User) -> None:
+    flow.approved_tokens(user, ["mail_read"])
+    flow.sign_in(user)
+    [app] = _grants(flow).json()["grants"]
+    reply = _set_groups(flow, app["id"], ["mail_organize"])
+    assert reply.status_code == 400
+    assert reply.json()["detail"]["code"] == "groups_not_approvable"

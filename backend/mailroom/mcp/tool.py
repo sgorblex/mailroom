@@ -28,10 +28,10 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from mailroom.audit import MCP, Origin
 from mailroom.errors import Refusal
 from mailroom.mcp import audit
-from mailroom.mcp.verifier import grant_id_of, user_id_of
+from mailroom.mcp.verifier import approved_groups_of, grant_id_of, user_id_of
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Iterator, Mapping
+    from collections.abc import Awaitable, Callable, Collection, Iterator, Mapping
 
     from anyio import CapacityLimiter
     from mcp.server.auth.provider import AccessToken
@@ -143,6 +143,12 @@ class Tool[A: Arguments]:
     def groups(self) -> tuple[GroupName, ...]:
         return (self.group, *self.also_in)
 
+    def approved(self, token: AccessToken | None, served: Collection[str]) -> bool:
+        """Whether ``token``'s grant approved one of the ``served`` groups that offer the tool. A
+        token that names no groups (an external issuer's) gets every served tool."""
+        granted = None if token is None else approved_groups_of(token)
+        return granted is None or any(group in granted and group in served for group in self.groups)
+
     def definition(self) -> types.Tool:
         return types.Tool(
             name=self.name,
@@ -178,6 +184,14 @@ def text_result(text: str) -> types.CallToolResult:
     return content_result(types.TextContent(type="text", text=text))
 
 
+def _not_approved(tool: Tool[Any], served: Collection[str]) -> str:
+    groups = " or ".join(group for group in tool.groups if group in served)
+    return (
+        f"This app is not approved for the {groups} tools. The user can approve them under "
+        "Profile, Connected apps, in Mailroom."
+    )
+
+
 def _error(message: str) -> types.CallToolResult:
     return types.CallToolResult(
         content=[types.TextContent(type="text", text=message)], isError=True
@@ -204,11 +218,13 @@ async def call_tool(
     *,
     token: AccessToken | None,
     context: Callable[[], AppContext | None],
+    served: Collection[str] | None = None,
     limiter: CapacityLimiter | None = None,
     slots: UserSlots | None = None,
 ) -> types.CallToolResult:
     """Run tool ``name`` for the user ``token`` speaks for, with ``arguments`` as the client sent
-    them, in one of the user's ``slots`` (no cap without)."""
+    them, in one of the user's ``slots`` (no cap without). With ``served``, the instance's tool
+    groups, a tool the token's grant has not approved is refused as ``not_approved``."""
     started = time.perf_counter()
     user_id = None if token is None else user_id_of(token)
     outcome: audit.Outcome = "failed"
@@ -221,6 +237,9 @@ async def call_tool(
         if user_id is None:
             outcome, code = "refused", "not_authenticated"
             return _error("The token names no Mailroom user.")
+        if served is not None and not tool.approved(token, served):
+            outcome, code = "refused", "not_approved"
+            return _error(_not_approved(tool, served))
         try:
             parsed = tool.arguments.model_validate(dict(arguments))
         except ValidationError as exc:

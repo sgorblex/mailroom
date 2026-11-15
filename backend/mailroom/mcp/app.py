@@ -37,7 +37,7 @@ from mailroom.mcp.tools import TOOLS
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable, Sequence
 
-    from mcp.server.auth.provider import TokenVerifier
+    from mcp.server.auth.provider import AccessToken, TokenVerifier
     from starlette.requests import Request
     from starlette.responses import Response
     from starlette.types import ASGIApp, Receive, Scope, Send
@@ -189,26 +189,33 @@ def mcp_server(
     slots: UserSlots,
 ) -> Server[Any, Request]:
     """The MCP server holding ``tools``: their worker threads from ``limiter``, each user's calls
-    capped by ``slots``."""
+    capped by ``slots``. A caller sees and calls only the tools of the ``groups`` its grant
+    approved."""
     server: Server[Any, Request] = Server(
         SERVER_NAME, version=api_distribution_version(), instructions=instructions(groups)
     )
     by_name = {tool.name: tool for tool in tools}
-    definitions = [tool.definition() for tool in tools]
+    definitions = {tool.name: tool.definition() for tool in tools}
+    served = frozenset(group.name for group in groups)
 
-    async def list_tools(_request: types.ListToolsRequest) -> types.ServerResult:
-        return types.ServerResult(types.ListToolsResult(tools=definitions))
-
-    async def call(request: types.CallToolRequest) -> types.ServerResult:
+    def caller() -> AccessToken | None:
         http = server.request_context.request
         user = None if http is None else http.scope.get("user")
-        token = user.access_token if isinstance(user, AuthenticatedUser) else None
+        return user.access_token if isinstance(user, AuthenticatedUser) else None
+
+    async def list_tools(_request: types.ListToolsRequest) -> types.ServerResult:
+        token = caller()
+        listed = [definitions[tool.name] for tool in tools if tool.approved(token, served)]
+        return types.ServerResult(types.ListToolsResult(tools=listed))
+
+    async def call(request: types.CallToolRequest) -> types.ServerResult:
         result = await call_tool(
             by_name,
             request.params.name,
             request.params.arguments or {},
-            token=token,
+            token=caller(),
             context=context,
+            served=served,
             limiter=limiter,
             slots=slots,
         )

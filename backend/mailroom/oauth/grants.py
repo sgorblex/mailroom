@@ -23,6 +23,7 @@ class ConnectedApp:
     client_kind: str
     created_at: datetime
     last_used_at: datetime | None
+    tool_groups: list[str]
 
 
 def user_grants(db: Session, user_id: int) -> list[ConnectedApp]:
@@ -41,6 +42,7 @@ def user_grants(db: Session, user_id: int) -> list[ConnectedApp]:
             client_kind=client.kind,
             created_at=grant.created_at,
             last_used_at=grant.last_used_at,
+            tool_groups=list(grant.tool_groups),
         )
         for grant, client in rows
     ]

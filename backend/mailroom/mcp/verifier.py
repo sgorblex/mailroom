@@ -211,3 +211,17 @@ def user_id_of(token: AccessToken) -> int | None:
 def grant_id_of(token: AccessToken) -> str | None:
     grant = (token.claims or {}).get("grant_id")
     return None if grant is None else str(grant)
+
+
+TOOL_GROUPS_CLAIM: Final = "tool_groups"
+"""The claim a built-in server's token carries: the tool groups its grant approves (the name
+``mailroom.oauth.config`` gives it too)."""
+
+
+def approved_groups_of(token: AccessToken) -> frozenset[str] | None:
+    """The tool groups ``token``'s grant approves, or None when it names none: a token from an
+    external issuer, whose groups the identity provider and the instance's config decide."""
+    groups = (token.claims or {}).get(TOOL_GROUPS_CLAIM)
+    if not isinstance(groups, list):
+        return None
+    return frozenset(str(name) for name in groups)

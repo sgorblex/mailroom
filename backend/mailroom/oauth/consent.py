@@ -190,9 +190,11 @@ def approve(
     request_id: str,
     user_id: int,
     *,
+    tool_groups: list[str],
     session: str | None = None,
 ) -> str | None:
-    """Approve the request for ``user_id``: a new grant (a connected app) and its code. Returns
+    """Approve the request for ``user_id``: a new grant (a connected app) for ``tool_groups``,
+    which the caller has checked, and its code. Returns
     the client's redirect URL carrying the code, or ``None`` when the request is unknown, expired
     or another user's. Raises ``SsoRequiredError`` when the settings sign users in through SSO and
     the request was not claimed that way for ``session``, the caller's raw session token."""
@@ -209,11 +211,17 @@ def approve(
         code_challenge=params.code_challenge,
         resource=params.resource or settings.resource,
         scopes=list(params.scopes or ()),
+        tool_groups=tool_groups,
     )
     db.commit()
     logger.info(
         "oauth_authorization_approved",
-        extra={"event": "oauth_authorization_approved", "user_id": user_id, "client_id": client_id},
+        extra={
+            "event": "oauth_authorization_approved",
+            "user_id": user_id,
+            "client_id": client_id,
+            "tool_groups": tool_groups,
+        },
     )
     return construct_redirect_uri(
         str(params.redirect_uri), code=code, state=params.state, iss=settings.issuer

@@ -74,6 +74,8 @@ class OAuthGrant(Base):
     )
     resource: Mapped[str] = mapped_column(Text)
     scopes: Mapped[list[str]] = mapped_column(ARRAY(Text))
+    tool_groups: Mapped[list[str]] = mapped_column(ARRAY(Text))
+    """The MCP tool groups the user approved: the client sees and calls only these."""
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
