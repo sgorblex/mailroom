@@ -108,11 +108,11 @@ In this order, after *One IMAP stack* (*Family roadmap*): each builds on the one
   - [x] **Connected apps** — list and revoke grants on the profile.
   - [x] **Mail tool groups** — each with its client slice: `mail_read`, `mail_organize`,
         `mail_draft`, `mail_send` and `mail_folders` are on.
-  - [ ] **Consent per tool group** — record the tool groups each grant was approved for, and ask
-        for fresh consent when a grant's client calls a group added after it (a grant approved
-        before `mail_read`, `mail_organize`, `mail_draft`, `mail_send` or `mail_folders` reads,
-        moves, manages folders and, within the send mode, sends mail without asking again); before
-        other users join.
+  - [x] **Consent per tool group** (2026-11-14) — the consent screen offers the served tool
+        groups as checkboxes (those that send or delete for good unchecked), the grant records
+        the choice, and a client sees and calls only those groups; a group served later waits
+        for the user's approval under Connected apps, where an app's groups can be changed.
+        Grants approved before count as approving the groups that were `stable`.
 - [ ] **Suggestions** — learn from manual moves, propose filters with evidence and dry run.
 
 ## Engineering and operations
