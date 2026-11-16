@@ -5,7 +5,7 @@
 | **User** | A person who signs in to Mailroom. Their accounts, filters and suggestions are theirs alone. |
 | **Admin** | A user who may also add and remove users and reset their passwords. The first user is one, made with `mise run create-user <name> --admin`. |
 | **User session** | One browser signed in as a user: a random token in the `mailroom_session` cookie, valid until it expires or the user signs out there. |
-| **Account** | One mailbox a user reaches over IMAP (read) and SMTP (send), with its identities and send mode. Modelled by mailroom-core. |
+| **Account** | One mailbox a user reaches over IMAP (read) and SMTP (send), with its identities and send mode. Modelled by mailroom-core. The web names it by its display name (its optional name, unique among the user's accounts, else its id); one a rule set or an audit record still names after it is gone is a *Removed account*, never its id. |
 | **Audit record** | What one write did, or tried to do, to one message: who acted (the user, an agent and its app, or a filter), the action, the result and the message's identifying fields, never its subject or body. [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md) — *Audit trail*. |
 | **Identity** | A `From` address an account may send as. |
 | **Send mode** | Per account: `off`, `drafts`, `approval`, `direct` — what an **agent** may do when it sends (mailroom-core's send gate): `off` refuses it and the draft tools, `drafts` saves a draft instead, `approval` sends only if every recipient is auto-approved and otherwise saves the whole message as a draft, `direct` sends. The user's own *Send* in the web client overrides it, except `off`. [`requirements/mail-client.md`](requirements/mail-client.md). |

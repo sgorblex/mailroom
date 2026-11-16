@@ -231,17 +231,29 @@ describe('RuleSetScreen', () => {
   })
 
   it('runs now, and refuses while Run filters is off', async () => {
-    const fake = state({ accounts: [{ id: 'work', run_filters: false }] })
+    const fake = state({ accounts: [{ id: 'work', run_filters: false, name: 'Work mail', colour: 'teal' }] })
     const fetchMock = stubFiltersApi(fake)
     renderFiltersApp('/filters/1')
 
     const run = await screen.findByRole('button', { name: 'Run now' })
     expect(run).toBeDisabled()
     expect(run).toHaveAccessibleDescription(
-      'Run filters is off for work: turn it on in Accounts to run this rule set.',
+      'Run filters is off for Work mail: turn it on in Accounts to run this rule set.',
     )
     expect(await screen.findByText('No runs yet.')).toBeInTheDocument()
+    expect(screen.getByText('Work mail · INBOX · on new mail · enabled')).toBeInTheDocument()
     expect(fetchMock.mock.calls.some(([path]) => path === '/api/v1/rule-sets/1/run')).toBe(false)
+  })
+
+  it('names a removed account so, never by its id, and cannot run its rule set', async () => {
+    stubFiltersApi(state({ accounts: [] }))
+    renderFiltersApp('/filters/1')
+
+    const run = await screen.findByRole('button', { name: 'Run now' })
+    expect(run).toBeDisabled()
+    expect(run).toHaveAccessibleDescription("This rule set's account was removed: it cannot run.")
+    expect(screen.getByText('Removed account · INBOX · on new mail · enabled')).toBeInTheDocument()
+    expect(screen.queryByText(/\bwork\b/)).not.toBeInTheDocument()
   })
 
   it('words the refusal when Run filters was turned off meanwhile', async () => {

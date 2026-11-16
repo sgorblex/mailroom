@@ -39,9 +39,9 @@ export function RunPanel({
 
   const runBlocked =
     account === undefined
-      ? t('filters.run.blockedNoAccount', { id: ruleSet.account_id })
+      ? t('filters.run.blockedNoAccount')
       : account.run_filters !== true
-        ? t('filters.run.blockedRunFilters', { id: ruleSet.account_id })
+        ? t('filters.run.blockedRunFilters', { account: account.display_name })
         : !ruleSet.enabled
           ? t('filters.run.blockedDisabled')
           : null

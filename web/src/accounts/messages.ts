@@ -10,6 +10,7 @@ export function accountErrorMessage(t: TFunction, failure: unknown, fallback: st
       case 'account_exists':
         return t('accountErrors.accountExists')
       case 'invalid_account':
+      case 'account_name_taken':
         return t('accountErrors.invalidAccount')
       case 'accounts_changed':
         return t('accountErrors.accountsChanged')

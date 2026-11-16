@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { Link, useSearch } from '@tanstack/react-router'
 import { Paperclip, Star } from 'lucide-react'
 
+import { AccountName } from '@/accounts/account-name.tsx'
+import { useAccountLabel, useAccountName } from '@/accounts/accounts-context.ts'
 import type { MessageItem, MessagePage, SourceFailure } from '@/api/mail.ts'
 import { useTimeZone } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
@@ -168,6 +170,7 @@ function uniqueFailures(failures: SourceFailure[]): SourceFailure[] {
 
 function Failures({ failures }: { failures: SourceFailure[] }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
+  const accountName = useAccountName()
   return (
     <div role="alert" className="flex flex-col gap-1 rounded-lg border border-destructive/40 p-3 text-sm">
       <p className="font-medium">{t('list.partial')}</p>
@@ -175,9 +178,9 @@ function Failures({ failures }: { failures: SourceFailure[] }): ReactElement {
         {failures.map((failure) => (
           <li key={JSON.stringify([failure.account_id, failure.folder, failure.code])}>
             {failure.folder === null
-              ? t('list.failedAccount', { account: failure.account_id, reason: mailCodeMessage(t, failure.code, ACCOUNT_NOT_FOUND) })
+              ? t('list.failedAccount', { account: accountName(failure.account_id), reason: mailCodeMessage(t, failure.code, ACCOUNT_NOT_FOUND) })
               : t('list.failedFolder', {
-                  account: failure.account_id,
+                  account: accountName(failure.account_id),
                   folder: failure.folder,
                   reason: mailCodeMessage(t, failure.code, ACCOUNT_NOT_FOUND),
                 })}
@@ -220,6 +223,7 @@ function SelectAll({ messages }: { messages: Target[] }): ReactElement {
 function MessageRow({ message, source }: { message: MessageItem; source: 'account' | 'folder' | null }): ReactElement {
   const { t, i18n } = useTranslation(MAIL_NS)
   const timeZone = useTimeZone()
+  const accountLabel = useAccountLabel()
   const { message: open } = useSearch({ from: '/mail' })
   const flags = useTriage().flagsOf(message)
   const unread = !flags.seen
@@ -257,8 +261,14 @@ function MessageRow({ message, source }: { message: MessageItem; source: 'accoun
         <span className="line-clamp-1 text-muted-foreground">{message.preview}</span>
       )}
       {source !== null && (
-        <span className="truncate text-xs text-muted-foreground">
-          {source === 'account' ? `${message.account_id} · ${message.folder}` : message.folder}
+        <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+          {source === 'account' && (
+            <>
+              <AccountName account={accountLabel(message.account_id)} className="max-w-1/2" />
+              <span aria-hidden="true">·</span>
+            </>
+          )}
+          <span className="truncate">{message.folder}</span>
         </span>
       )}
     </Link>

@@ -1,10 +1,13 @@
 import { useEffect, useId, useRef, useState, type ReactElement, type ReactNode, type SubmitEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Ban } from 'lucide-react'
 
 import {
+  ACCOUNT_COLOURS,
   SEND_MODES,
   TLS_MODES,
   type Account,
+  type AccountColour,
   type AccountFields,
   type Endpoint,
 } from '@/api/accounts.ts'
@@ -12,6 +15,7 @@ import { ApiRequestError, refusalIssues, type RefusalIssue } from '@/api/http.ts
 import { useMailLayer } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Input } from '@/components/ui/input.tsx'
+import { AccountDot } from '@/accounts/account-name.tsx'
 import { accountErrorMessage } from '@/accounts/messages.ts'
 
 /** The most identities an account may have, as the API takes them. */
@@ -19,6 +23,8 @@ const MAX_IDENTITIES = 50
 
 type Field =
   | 'id'
+  | 'name'
+  | 'colour'
   | 'login'
   | 'password'
   | `identities.${number}.address`
@@ -44,6 +50,8 @@ function fieldOf(issue: RefusalIssue, identities: number): Field | null {
   const [first, second, third] = issue.path
   switch (first) {
     case 'id':
+    case 'name':
+    case 'colour':
     case 'login':
     case 'password':
     case 'send_mode':
@@ -71,6 +79,8 @@ interface IdentityDraft {
 
 interface FormState {
   id: string
+  name: string
+  colour: AccountColour | null
   login: string
   password: string
   identities: IdentityDraft[]
@@ -94,6 +104,9 @@ function initialState(account: Account | undefined): FormState {
   }))
   return {
     id: account?.id ?? '',
+    // The name as stored: an unnamed account's field stays empty, whatever it is called meanwhile.
+    name: account?.name ?? '',
+    colour: account?.colour ?? null,
     login: account?.login ?? '',
     password: '',
     identities: identities.length === 0 ? [{ key: 0, address: '', name: '' }] : identities,
@@ -114,14 +127,17 @@ function initialState(account: Account | undefined): FormState {
 function fieldsOf(state: FormState, account: Account | undefined): AccountFields {
   const many = state.identities.length > 1
   const identities = state.identities.map((identity, index) => {
-    const name = identity.name.trim()
+    const identityName = identity.name.trim()
     return {
       address: identity.address.trim(),
-      name: name === '' ? null : name,
+      name: identityName === '' ? null : identityName,
       ...(many ? { default: index === state.defaultIdentity } : {}),
     }
   })
+  const name = state.name.trim()
   return {
+    name: name === '' ? null : name,
+    colour: state.colour,
     login: state.login.trim(),
     send_mode: state.sendMode,
     imap: { host: state.imapHost.trim(), port: Number(state.imapPort), tls: state.imapTls },
@@ -133,8 +149,9 @@ function fieldsOf(state: FormState, account: Account | undefined): AccountFields
 }
 
 /**
- * Adds an account (no `account`) or edits one: its id stays, and an empty password keeps the
- * stored one. Every identity is edited here: the first, more added or removed, and which one is
+ * Adds an account (no `account`) or edits one: its id stays, shown here and nowhere else, and an
+ * empty password keeps the stored one. The account's name and colour are how the web shows it.
+ * Every identity is edited here: the first, more added or removed, and which one is
  * the default once there are several. `save` sends it; a refusal shows next to the fields
  * mailroom-core found wrong. The send mode shows only with the mail client or MCP; otherwise the
  * account keeps its own, and a new one gets `drafts`.
@@ -216,12 +233,15 @@ export function AccountForm({
       const byField: Partial<Record<Field, string>> = {}
       const general: string[] = []
       if (failure instanceof ApiRequestError) {
+        // Another account has the name: said beside the name field, in the reader's language.
+        const nameTaken = failure.code === 'account_name_taken'
         for (const issue of refusalIssues(failure.body)) {
           const field = fieldOf(issue, state.identities.length)
           if (field === null) {
             general.push(issue.message)
           } else {
-            byField[field] = byField[field] === undefined ? issue.message : `${byField[field]} ${issue.message}`
+            const message = nameTaken && field === 'name' ? t('accountErrors.accountNameTaken') : issue.message
+            byField[field] = byField[field] === undefined ? message : `${byField[field]} ${message}`
           }
         }
       }
@@ -334,8 +354,64 @@ export function AccountForm({
       onSubmit={(event) => void submit(event)}
     >
       <h2 id={titleId} className="font-medium">
-        {editing ? t('accounts.editTitle', { id: account.id }) : t('accounts.add')}
+        {editing ? t('accounts.editTitle', { account: account.display_name }) : t('accounts.add')}
       </h2>
+      {row(
+        'name',
+        t('accounts.displayName'),
+        <Input
+          {...control('name', true)}
+          maxLength={64}
+          placeholder={account?.id}
+          value={state.name}
+          onChange={(event) => {
+            set('name', event.target.value)
+          }}
+        />,
+        t('accounts.displayNameHint'),
+      )}
+      <fieldset aria-describedby={issues.colour === undefined ? undefined : `${prefix}-colour-issue`} className="flex flex-col gap-1">
+        <legend className="mb-1 text-sm font-medium">{t('accounts.colour')}</legend>
+        <div className="flex flex-wrap gap-2">
+          {[null, ...ACCOUNT_COLOURS].map((colour) => {
+            const label = t(`accounts.colours.${colour ?? 'none'}`)
+            return (
+              <label
+                key={colour ?? 'none'}
+                title={label}
+                className="flex size-8 cursor-pointer items-center justify-center rounded-full border has-checked:border-foreground has-checked:ring-2 has-checked:ring-ring has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ring"
+              >
+                <input
+                  type="radio"
+                  name={`${prefix}-colour`}
+                  className="sr-only"
+                  checked={state.colour === colour}
+                  onChange={() => {
+                    set('colour', colour)
+                  }}
+                />
+                <span className="sr-only">{label}</span>
+                {colour === null ? (
+                  <Ban aria-hidden="true" className="size-4 text-muted-foreground" />
+                ) : (
+                  <AccountDot colour={colour} className="size-4" />
+                )}
+              </label>
+            )
+          })}
+        </div>
+        {issues.colour !== undefined && (
+          <p id={`${prefix}-colour-issue`} className="text-sm text-destructive">
+            {issues.colour}
+          </p>
+        )}
+      </fieldset>
+      {editing && (
+        <p className="text-sm">
+          <span className="text-muted-foreground">{t('accounts.id')}: </span>
+          <span className="font-mono">{account.id}</span>
+        </p>
+      )}
       {!editing &&
         row(
           'id',

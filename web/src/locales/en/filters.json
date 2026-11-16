@@ -9,7 +9,7 @@
     "loading": "Loading the rule sets…",
     "loadFailed": "Could not load the rule sets.",
     "noRuleSets": "No rule sets yet.",
-    "ruleSetsOf": "Rule sets of {{id}}",
+    "ruleSetsOf": "Rule sets of {{account}}",
     "actionFailed": "That did not work. Try again.",
     "schemaFailed": "Could not read the filter vocabulary from the server.",
     "backToList": "All rule sets",
@@ -42,7 +42,7 @@
     },
     "ruleSet": {
       "add": "Add a rule set",
-      "addTo": "Add a rule set to {{id}}",
+      "addTo": "Add a rule set to {{account}}",
       "addButton": "Add rule set",
       "editTitle": "Edit {{name}}",
       "editSettings": "Edit settings",
@@ -139,11 +139,11 @@
       "title": "Try and run",
       "button": "Run now",
       "hint": "Runs the enabled filters on the folder now, moving and flagging mail for real.",
-      "blockedRunFilters": "Run filters is off for {{id}}: turn it on in Accounts to run this rule set.",
+      "blockedRunFilters": "Run filters is off for {{account}}: turn it on in Accounts to run this rule set.",
       "blockedDisabled": "This rule set is disabled: enable it to run it.",
       "queued": "Run queued: follow it in the run history.",
       "failed": "Could not start the run.",
-      "blockedNoAccount": "The account {{id}} is gone: this rule set cannot run."
+      "blockedNoAccount": "This rule set's account was removed: it cannot run."
     },
     "dryRun": {
       "button": "Dry run",

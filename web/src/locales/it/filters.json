@@ -9,7 +9,7 @@
     "loading": "Caricamento delle regole…",
     "loadFailed": "Impossibile caricare le regole.",
     "noRuleSets": "Ancora nessuna regola.",
-    "ruleSetsOf": "Regole di {{id}}",
+    "ruleSetsOf": "Regole di {{account}}",
     "actionFailed": "Non ha funzionato. Riprova.",
     "schemaFailed": "Impossibile leggere dal server i criteri e le azioni dei filtri.",
     "backToList": "Tutte le regole",
@@ -42,7 +42,7 @@
     },
     "ruleSet": {
       "add": "Aggiungi una regola",
-      "addTo": "Aggiungi una regola a {{id}}",
+      "addTo": "Aggiungi una regola a {{account}}",
       "addButton": "Aggiungi regola",
       "editTitle": "Modifica {{name}}",
       "editSettings": "Modifica impostazioni",
@@ -139,11 +139,11 @@
       "title": "Prova ed esegui",
       "button": "Esegui ora",
       "hint": "Esegue ora i filtri abilitati sulla cartella, spostando e segnando la posta davvero.",
-      "blockedRunFilters": "Esegui filtri è spento per {{id}}: attivalo negli account per eseguire questa regola.",
+      "blockedRunFilters": "Esegui filtri è spento per {{account}}: attivalo negli account per eseguire questa regola.",
       "blockedDisabled": "Questa regola è disabilitata: abilitala per eseguirla.",
       "queued": "Esecuzione in coda: seguila nello storico.",
       "failed": "Impossibile avviare l'esecuzione.",
-      "blockedNoAccount": "L'account {{id}} non c'è più: questa regola non può essere eseguita."
+      "blockedNoAccount": "L'account di questa regola è stato rimosso: non può essere eseguita."
     },
     "dryRun": {
       "button": "Simulazione",

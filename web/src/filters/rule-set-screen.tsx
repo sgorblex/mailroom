@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
 
+import { AccountDot } from '@/accounts/account-name.tsx'
 import { listAccounts, type Account } from '@/api/accounts.ts'
 import {
   changeRuleSet,
@@ -115,7 +116,7 @@ function RuleSetEditor({ ruleSet: initial, account, vocabulary }: Loaded): React
 
   return (
     <>
-      <RuleSetHeader ruleSet={ruleSet} folders={folders} onChanged={setRuleSet} />
+      <RuleSetHeader ruleSet={ruleSet} account={account} folders={folders} onChanged={setRuleSet} />
       <FilterList
         ruleSet={ruleSet}
         filters={filters}
@@ -137,10 +138,13 @@ function RuleSetEditor({ ruleSet: initial, account, vocabulary }: Loaded): React
 
 function RuleSetHeader({
   ruleSet,
+  account,
   folders,
   onChanged,
 }: {
   ruleSet: RuleSet
+  /** `undefined` when the account is gone: then a removed account, never its id. */
+  account: Account | undefined
   folders: FoldersState
   onChanged: (ruleSet: RuleSet) => void
 }): ReactElement {
@@ -186,9 +190,10 @@ function RuleSetHeader({
       <div className="flex flex-wrap items-start gap-3">
         <div className="flex min-w-0 flex-col gap-1">
           <h1 className="text-2xl font-semibold tracking-tight">{ruleSet.name}</h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
+            <AccountDot colour={account?.colour ?? null} />
             {[
-              ruleSet.account_id,
+              account?.display_name ?? t('accounts.unknown', { ns: 'common' }),
               folderLabel(ruleSet.folder),
               triggerSummary(t, ruleSet),
               ...(ruleSet.starred_only ? [t('filters.ruleSet.starredOnlyShort')] : []),

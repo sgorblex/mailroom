@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { Search } from 'lucide-react'
 
+import type { Account } from '@/api/accounts.ts'
 import { SEARCH_FLAG_FIELDS, type SearchQuery } from '@/api/mail.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Input } from '@/components/ui/input.tsx'
@@ -75,7 +76,7 @@ export function SearchForm({
   subfolders,
   query,
 }: {
-  accounts: string[]
+  accounts: Account[]
   accountId: string
   folder: string
   /** The folder shown is listed with its subfolders: a search in it reads them too. */
@@ -172,8 +173,8 @@ export function SearchForm({
           >
             <option value={ALL}>{t('search.accountAll')}</option>
             {accounts.map((account) => (
-              <option key={account} value={account}>
-                {account}
+              <option key={account.id} value={account.id}>
+                {account.display_name}
               </option>
             ))}
           </select>

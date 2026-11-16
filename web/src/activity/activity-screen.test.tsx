@@ -31,10 +31,25 @@ function json(body: unknown, status = 200): Promise<Response> {
 }
 
 /** The accounts list and the audit trail, whose pages `audit` answers by the query string. */
-function stubApi(audit: (query: URLSearchParams) => Promise<Response>): ReturnType<typeof vi.fn> {
+function stubApi(
+  audit: (query: URLSearchParams) => Promise<Response>,
+  accounts: { id: string; name: string | null; colour: string | null }[] = [],
+): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn((path: string) => {
     if (path === '/api/v1/accounts') {
-      return json([])
+      return json(
+        accounts.map((account) => ({
+          ...account,
+          display_name: account.name ?? account.id,
+          login: `me@${account.id}.example`,
+          send_mode: 'drafts',
+          imap: { host: 'imap.example', port: 993, tls: 'implicit' },
+          smtp: { host: 'smtp.example', port: 465, tls: 'implicit' },
+          identities: [],
+          auto_approve: [],
+          has_password: true,
+        })),
+      )
     }
     const url = new URL(path, 'https://app.example')
     expect(url.pathname).toBe('/api/v1/me/audit')
@@ -79,6 +94,72 @@ describe('ActivityScreen', () => {
     await userEvent.click(within(trashed).getByText('Moved to Trash'))
     expect(within(trashed).getByText('To folder')).toBeVisible()
     expect(within(trashed).getByText('UID')).toBeVisible()
+  })
+
+  it('names each account by its name, and filters by its id', async () => {
+    const fetchMock = stubApi(
+      () =>
+        json({
+          records: [
+            record(1, {
+              action: 'move_to_account',
+              detail: { folder: 'INBOX', destination: 'Archive', destination_account: 'home', uid: 1 },
+            }),
+            record(2, {
+              action: 'move_to_account',
+              account_id: 'home',
+              detail: { folder: 'Archive', source_account: 'work', source_folder: 'INBOX', uid: 7 },
+            }),
+          ],
+          next_cursor: null,
+        }),
+      [
+        { id: 'work', name: 'Work mail', colour: 'teal' },
+        { id: 'home', name: 'Home', colour: null },
+      ],
+    )
+    renderSignedIn(<ActivityScreen />, ALICE)
+
+    const list = await screen.findByRole('list', { name: 'Recorded activity' })
+    const [moved, copy] = within(list).getAllByRole('listitem') as [HTMLElement, HTMLElement]
+    expect(await within(moved).findByText('Work mail')).toBeInTheDocument()
+    await userEvent.click(within(moved).getByText('Work mail'))
+    expect(within(moved).getByText('To account').nextElementSibling).toHaveTextContent('Home')
+    await userEvent.click(within(copy).getByText('Home'))
+    expect(within(copy).getByText('From account').nextElementSibling).toHaveTextContent('Work mail')
+    expect(within(copy).getByText('From folder').nextElementSibling).toHaveTextContent('INBOX')
+
+    await userEvent.selectOptions(screen.getByLabelText('Account'), 'Home')
+    await screen.findByRole('list', { name: 'Recorded activity' })
+    const queries = fetchMock.mock.calls.map(([path]) => String(path)).filter((path) => path.startsWith('/api/v1/me/audit'))
+    expect(queries.at(-1)).toContain('account_id=home')
+  })
+
+  it('names an account that is gone a removed account, never by its id', async () => {
+    stubApi(
+      () =>
+        json({
+          records: [
+            record(1, {
+              action: 'move_to_account',
+              account_id: 'old-job',
+              detail: { folder: 'INBOX', destination: 'Archive', destination_account: 'old-home', uid: 1 },
+            }),
+          ],
+          next_cursor: null,
+        }),
+      [{ id: 'work', name: null, colour: null }],
+    )
+    renderSignedIn(<ActivityScreen />, ALICE)
+
+    const list = await screen.findByRole('list', { name: 'Recorded activity' })
+    const [moved] = within(list).getAllByRole('listitem') as [HTMLElement]
+    const named = (await within(moved).findAllByText('Removed account')) as [HTMLElement, ...HTMLElement[]]
+    await userEvent.click(named[0])
+    expect(within(moved).getByText('To account').nextElementSibling).toHaveTextContent('Removed account')
+    expect(moved).not.toHaveTextContent('old-job')
+    expect(moved).not.toHaveTextContent('old-home')
+    expect(screen.getByRole('option', { name: 'work' })).toBeInTheDocument()
   })
 
   it('drops a page asked for under the filters it had once they change', async () => {

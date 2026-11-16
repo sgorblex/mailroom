@@ -7,6 +7,9 @@ type Body = Record<string, unknown>
 export interface FakeAccount {
   id: string
   run_filters: boolean
+  /** Its own name; unnamed, so shown by its id, unless it says otherwise. */
+  name?: string
+  colour?: string
 }
 
 export interface FakeRuleSet {
@@ -57,10 +60,13 @@ export interface FakeState {
   gates?: Record<string, Promise<unknown>>
 }
 
-function account(id: string, runFilters: boolean): Body {
+function account({ id, run_filters: runFilters, name, colour }: FakeAccount): Body {
   const endpoint = { host: `imap.${id}.example`, port: 993, tls: 'implicit' }
   return {
     id,
+    name: name ?? null,
+    display_name: name ?? id,
+    colour: colour ?? null,
     login: `me@${id}.example`,
     send_mode: 'drafts',
     imap: endpoint,
@@ -101,7 +107,7 @@ export function stubFiltersApi(state: FakeState): Mock {
       JSON.stringify(spec).includes('"bogus"')
 
     if (path === '/api/v1/accounts' && method === 'GET') {
-      return Promise.resolve(json(200, state.accounts.map((item) => account(item.id, item.run_filters))))
+      return Promise.resolve(json(200, state.accounts.map(account)))
     }
     if (path === '/api/v1/filters/schema') {
       return Promise.resolve(json(200, filterSchema))

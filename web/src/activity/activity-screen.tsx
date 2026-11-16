@@ -3,6 +3,8 @@ import { useCallback, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronRight } from 'lucide-react'
 
+import { AccountName } from '@/accounts/account-name.tsx'
+import { AccountsContext, useAccountLabel } from '@/accounts/accounts-context.ts'
 import { listAccounts } from '@/api/accounts.ts'
 import { ACTORS, MAIL_ACTIONS, listAudit, type Actor, type AuditFilters, type AuditPage, type AuditRecord } from '@/api/audit.ts'
 import { apiErrorMessage } from '@/api/http.ts'
@@ -74,7 +76,8 @@ export function ActivityScreen(): ReactElement {
     useCallback((signal: AbortSignal) => listAccounts(signal), []),
     () => '',
   )
-  const accountIds = accounts.state.kind === 'loaded' ? accounts.state.value.map((account) => account.id) : []
+  // Until the accounts are loaded, a record's account has no name yet, rather than a removed one.
+  const loaded = accounts.state.kind === 'loaded' ? accounts.state.value : null
 
   function choose(key: keyof AuditFilters, value: string): void {
     setFilters((current) => ({ ...current, [key]: value === '' ? undefined : value }))
@@ -87,9 +90,9 @@ export function ActivityScreen(): ReactElement {
       <fieldset className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <legend className="sr-only">{t('filters.label')}</legend>
         <Choice label={t('filters.account')} value={filters.account_id} onChange={(v) => { choose('account_id', v) }}>
-          {accountIds.map((id) => (
-            <option key={id} value={id}>
-              {id}
+          {(loaded ?? []).map((account) => (
+            <option key={account.id} value={account.id}>
+              {account.display_name}
             </option>
           ))}
         </Choice>
@@ -113,7 +116,9 @@ export function ActivityScreen(): ReactElement {
         </Choice>
       </fieldset>
       {/* A new list for new filters: nothing of the old one (a page, a Load more on its way) is kept. */}
-      <Records key={JSON.stringify(filters)} filters={filters} />
+      <AccountsContext value={loaded}>
+        <Records key={JSON.stringify(filters)} filters={filters} />
+      </AccountsContext>
     </main>
   )
 }
@@ -232,6 +237,7 @@ function Records({ filters }: { filters: AuditFilters }): ReactElement {
 function Row({ record }: { record: AuditRecord }): ReactElement {
   const { t, i18n } = useTranslation(ACTIVITY_NS)
   const timeZone = useTimeZone()
+  const accountLabel = useAccountLabel()
   const ok = record.result === 'ok'
   const unlisted = record.detail['not_listed']
   const fields = Object.entries(record.detail).filter(
@@ -247,7 +253,7 @@ function Row({ record }: { record: AuditRecord }): ReactElement {
         <span className="font-medium tabular-nums">{formatDateTime(i18n.language, record.at, timeZone)}</span>
         <span>{who(t, record)}</span>
         <span>{t(`actions.${record.action}`, { defaultValue: record.action })}</span>
-        <span className="text-muted-foreground">{record.account_id}</span>
+        <AccountName account={accountLabel(record.account_id)} className="text-muted-foreground" />
         <span className={`ml-auto ${ok ? '' : 'text-destructive'}`}>
           {ok ? t('results.ok') : `${t('results.failed')}: ${record.result}`}
         </span>
@@ -265,7 +271,11 @@ function Row({ record }: { record: AuditRecord }): ReactElement {
         {fields.map(([name, value]) => (
           <div key={name} className="contents">
             <dt className="text-muted-foreground">{t(`fields.${name}`, { defaultValue: name })}</dt>
-            <dd className="break-all">{text(t, name, value)}</dd>
+            <dd className="break-all">
+              {(name === 'destination_account' || name === 'source_account') && typeof value === 'string'
+                ? accountLabel(value).display_name
+                : text(t, name, value)}
+            </dd>
           </div>
         ))}
       </dl>

@@ -6,7 +6,7 @@
   },
   "folders": {
     "label": "Accounts and folders",
-    "of": "Folders of {{id}}",
+    "of": "Folders of {{account}}",
     "loading": "Loading folders…",
     "loadFailed": "Could not list the folders.",
     "unread_one": "{{count}} unread",
@@ -20,7 +20,7 @@
   "folderActions": {
     "menu": "Actions for {{name}}",
     "more": "Folder actions",
-    "newTop": "New folder in {{id}}",
+    "newTop": "New folder in {{account}}",
     "newSubfolder": "New subfolder…",
     "rename": "Rename or move…",
     "delete": "Delete…",
@@ -28,7 +28,7 @@
     "holdsRole": "It holds a folder with a role.",
     "hasSubfolders": "Delete or move its subfolders first.",
     "createTitle": "New folder",
-    "atTop": "At the top of {{id}}.",
+    "atTop": "At the top of {{account}}.",
     "inside": "Inside {{parent}}.",
     "name": "Name",
     "parent": "Inside",
