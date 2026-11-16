@@ -20,8 +20,9 @@ class BodyContains(Criterion):
     Uses IMAP ``BODY`` for server-side prefiltering (``is_efficient=True``), so
     :meth:`mailroom_core.filters.Folder.run` does not fetch messages solely for
     this criterion; the UID set from the server search is authoritative. The
-    client predicate matches the same substring on the decoded body text (the
-    plain parts, else the HTML ones' visible text) for :meth:`Criterion.select`.
+    client predicate matches the same substring, in any case as the server does, on the
+    decoded body text (the plain parts, else the HTML ones' visible text) for
+    :meth:`Criterion.select`.
     """
 
     spec_type = "body_contains"
@@ -34,8 +35,10 @@ class BodyContains(Criterion):
 
         """
 
+        wanted = substring.casefold()
+
         def func(msg: Message) -> bool:
-            return substring in msg.parsed.text
+            return wanted in msg.parsed.text.casefold()
 
         super().__init__(func, Q(("BODY", substring)), is_efficient=True)
 

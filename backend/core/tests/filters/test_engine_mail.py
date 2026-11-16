@@ -150,6 +150,25 @@ def test_starred_only_moves_starred_mail_and_unstars_it(imap_server: ImapTestSer
     assert "\\Flagged" not in flags(imap_server, user, "Shop")["Picks"]
 
 
+def test_an_exact_address_is_not_a_substring_of_another(imap_server: ImapTestServer, mail) -> None:
+    """The server's FROM search matches `ana@x.example` inside `banana@x.example`: FromIs checks
+    the fetched sender, its negation too."""
+    user = imap_server.unique_user("exact")
+    seed(imap_server, user, "INBOX", mime("Ana", sender="Ana <Ana@X.example>"))
+    seed(imap_server, user, "INBOX", mime("Banana", sender="Banana <banana@x.example>"))
+    account = mail(user)
+
+    report = account.inbox.run(
+        [Filter(FromIs("ana@x.example"), Star()), Filter(~FromIs("ana@x.example"), Star())],
+        dry_run=True,
+    )
+
+    assert [[m["subject"] for m in f["matched"]] for f in report["filters"]] == [
+        ["Ana"],
+        ["Banana"],
+    ]
+
+
 def test_a_dry_run_is_read_only_and_bounded_to_the_newest(
     imap_server: ImapTestServer, mail
 ) -> None:

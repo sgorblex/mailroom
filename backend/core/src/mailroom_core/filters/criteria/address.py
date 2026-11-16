@@ -25,6 +25,22 @@ def _extract_emails(msg: ParsedMessage, field: str) -> list[tuple[str, str]]:
     return [(a.name or "", a.address or "") for a in getattr(msg, field)]
 
 
+def _contains_address(msg: ParsedMessage, field: str, part: str) -> bool:
+    """Whether one of the field's addresses contains `part`, in any case as the server's search."""
+    wanted = part.casefold()
+    return any(wanted in email.casefold() for _, email in _extract_emails(msg, field))
+
+
+def _has_address(msg: ParsedMessage, field: str, addr: str) -> bool:
+    """Whether one of the field's addresses is `addr`, in any case.
+
+    The server's search on the field is a case-insensitive substring match, so it only narrows
+    the candidates (`ana@x.org` is in `banana@x.org`); this is the exact check.
+    """
+    wanted = addr.casefold()
+    return any(wanted == email.casefold() for _, email in _extract_emails(msg, field))
+
+
 class FromContains(Criterion):
     """Matches messages from addresses containing the given string."""
 
@@ -39,7 +55,7 @@ class FromContains(Criterion):
         """
 
         def func(msg: Message) -> bool:
-            return any(addr in email for name, email in _extract_emails(msg.parsed, "sender"))
+            return _contains_address(msg.parsed, "sender", addr)
 
         super().__init__(func, Q(("FROM", addr)), is_efficient=True)
 
@@ -58,9 +74,9 @@ class FromIs(Criterion):
         """
 
         def func(msg: Message) -> bool:
-            return any(addr == email for name, email in _extract_emails(msg.parsed, "sender"))
+            return _has_address(msg.parsed, "sender", addr)
 
-        super().__init__(func, imap_query=Q(("FROM", addr)), is_efficient=True)
+        super().__init__(func, imap_query=Q(("FROM", addr)))
 
 
 class FromMatches(Criterion):
@@ -126,7 +142,7 @@ class ToContains(Criterion):
         """
 
         def func(msg: Message) -> bool:
-            return any(addr in email for name, email in _extract_emails(msg.parsed, "to"))
+            return _contains_address(msg.parsed, "to", addr)
 
         criterion = Criterion(func, Q(("TO", addr)), is_efficient=True)
         if incl_cc:
@@ -155,9 +171,9 @@ class ToIs(Criterion):
         """
 
         def func(msg: Message) -> bool:
-            return any(addr == email for name, email in _extract_emails(msg.parsed, "to"))
+            return _has_address(msg.parsed, "to", addr)
 
-        criterion = Criterion(func, imap_query=Q(("TO", addr)), is_efficient=True)
+        criterion = Criterion(func, imap_query=Q(("TO", addr)))
         if incl_cc:
             criterion |= CcIs(addr)
         if incl_bcc:
@@ -179,7 +195,7 @@ class CcContains(Criterion):
         """
 
         def func(msg: Message) -> bool:
-            return any(addr in email for name, email in _extract_emails(msg.parsed, "cc"))
+            return _contains_address(msg.parsed, "cc", addr)
 
         super().__init__(func, Q(("CC", addr)), is_efficient=True)
 
@@ -198,9 +214,9 @@ class CcIs(Criterion):
         """
 
         def func(msg: Message) -> bool:
-            return any(addr == email for name, email in _extract_emails(msg.parsed, "cc"))
+            return _has_address(msg.parsed, "cc", addr)
 
-        super().__init__(func, imap_query=Q(("CC", addr)), is_efficient=True)
+        super().__init__(func, imap_query=Q(("CC", addr)))
 
 
 class CcMatches(Criterion):
@@ -239,7 +255,7 @@ class BccContains(Criterion):
         """
 
         def func(msg: Message) -> bool:
-            return any(addr in email for name, email in _extract_emails(msg.parsed, "bcc"))
+            return _contains_address(msg.parsed, "bcc", addr)
 
         super().__init__(func, Q(("BCC", addr)), is_efficient=True)
 
@@ -258,9 +274,9 @@ class BccIs(Criterion):
         """
 
         def func(msg: Message) -> bool:
-            return any(addr == email for name, email in _extract_emails(msg.parsed, "bcc"))
+            return _has_address(msg.parsed, "bcc", addr)
 
-        super().__init__(func, imap_query=Q(("BCC", addr)), is_efficient=True)
+        super().__init__(func, imap_query=Q(("BCC", addr)))
 
 
 class BccMatches(Criterion):
