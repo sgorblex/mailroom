@@ -402,6 +402,8 @@ def test_run_now_and_the_run_filters_switch(
     assert mcp.call(token, "accounts_list")["accounts"] == [
         {
             "id": "work",
+            "name": None,
+            "display_name": "work",
             "login": "work@example.org",
             "has_password": True,
             "run_filters": True,

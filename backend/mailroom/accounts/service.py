@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from mailroom.accounts import app_data
 from mailroom.accounts.store import (
+    ACCOUNT_NAME_TAKEN,
     AccountError,
     AccountNotFound,
     accounts_with_password,
@@ -18,7 +19,7 @@ from mailroom.accounts.store import (
     password_account,
     save_account,
 )
-from mailroom.errors import SECRETS_KEY_MISSING, Refusal
+from mailroom.errors import SECRETS_KEY_MISSING, Refusal, RefusalKind
 from mailroom.mail.connections import (
     PASSWORD_MISSING,
     PASSWORD_MISSING_TEXT,
@@ -26,6 +27,7 @@ from mailroom.mail.connections import (
     unusable,
 )
 from mailroom.mail.pool import DeadlineExceeded
+from mailroom_core.config import AccountColour
 from mailroom_core.mail import MESSAGES, MailError
 from mailroom_core.store import RevisionConflict, SettingsBusy
 
@@ -68,6 +70,8 @@ class StoredAccount(BaseModel):
     """What mailroom-core keeps of an account but its id and password, as listed: no limits, so
     an account written by mailroom-mcp or imported lists whatever its sizes."""
 
+    name: str | None = None
+    colour: AccountColour | None = None
     login: str
     send_mode: Literal["off", "drafts", "approval", "direct"]
     imap: StoredEndpoint
@@ -80,6 +84,8 @@ class ListedAccount(StoredAccount):
     """Never the password: only whether one is stored."""
 
     id: str
+    display_name: str
+    """What to call the account: its ``name``, else its id. Read-only: an edit sends ``name``."""
     has_password: bool
     run_filters: bool | None = Field(default=None, exclude_if=lambda value: value is None)
     """None, and left out, where the instance does not run filters."""
@@ -123,7 +129,9 @@ def account_refusal(error: AccountError) -> Refusal:
     if error.code == SECRETS_KEY_MISSING:
         return Refusal("unavailable", error.code, str(error))
     issues = [{"path": list(issue.path), "message": issue.message} for issue in error.issues]
-    return Refusal("invalid", error.code, str(error), issues=issues)
+    # Another account's name is in the way, not a malformed account.
+    kind: RefusalKind = "conflict" if error.code == ACCOUNT_NAME_TAKEN else "invalid"
+    return Refusal(kind, error.code, str(error), issues=issues)
 
 
 def _store_refusal(error: RevisionConflict | SettingsBusy) -> Refusal:
@@ -140,6 +148,7 @@ def _listed(
     return ListedAccount.model_validate(
         {
             **account.model_dump(mode="json", exclude={"auth"}),
+            "display_name": account.name or account.id,
             "has_password": has_password,
             "run_filters": run_filters,
             "attachment_max_mb": attachment_limit_mb(limits),

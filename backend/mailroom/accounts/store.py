@@ -24,6 +24,8 @@ if TYPE_CHECKING:
     from mailroom_core.store import Json
 
 _ACCOUNTS: Final = "account"
+ACCOUNT_NAME_TAKEN: Final = "account_name_taken"
+"""Another of the user's accounts has the name (compared by ``name_key``)."""
 _LIMITS: Final = "limits"
 
 
@@ -115,7 +117,8 @@ def save_account(
     new: bool,
 ) -> AccountConfig:
     """Add the account ``raw`` describes (``new``) or replace the one with its id, storing
-    ``password`` sealed when given (a new account needs one). Raises ``AccountError``,
+    ``password`` sealed when given (a new account needs one), refusing a name another of the
+    user's accounts has (``account_name_taken``) in the same revision. Raises ``AccountError``,
     ``AccountNotFound``, or mailroom-core's ``RevisionConflict`` / ``SettingsBusy``."""
     account_id = raw.get("id")
     if not isinstance(account_id, str):
@@ -149,6 +152,7 @@ def save_account(
     if not isinstance(checked, CoreSettings):
         issues = [_issue_of(issue, index) for issue in checked]
         raise AccountError(_issues_text(issues), "invalid_account", issues)
+    _refuse_a_taken_name(checked.account, index)
     secrets = SecretChanges()
     if password:
         if subkey is None:
@@ -159,6 +163,24 @@ def save_account(
         )
     store.save_settings(doc, current.revision, secrets)
     return checked.account[index]
+
+
+def name_key(name: str) -> str:
+    """What two account names are compared by: the same once trimmed, whatever their case."""
+    return name.strip().casefold()
+
+
+def _refuse_a_taken_name(accounts: Sequence[AccountConfig], index: int) -> None:
+    """Refuse ``accounts[index]``'s name when another of the user's accounts has it
+    (``account_name_taken``); an unnamed account takes none."""
+    name = accounts[index].name
+    if name is None:
+        return
+    key = name_key(name)
+    for i, other in enumerate(accounts):
+        if i != index and other.name is not None and name_key(other.name) == key:
+            msg = f"Another account is already named {other.name!r}."
+            raise AccountError(msg, ACCOUNT_NAME_TAKEN, [Issue(("name",), msg)])
 
 
 def save_limits(

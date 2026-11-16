@@ -46,7 +46,7 @@ through the Vite proxy. Engineering baseline:
   *Profile* page (and unlinks it there), or, when the instance says so, their first SSO sign-in
   links by username. How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md)
   — *Single sign-on*.
-- **Accounts** (IMAP + SMTP, identities, send mode) come from **mailroom-core**'s model; the app
+- **Accounts** (IMAP + SMTP, identities, send mode, an optional name, unique among the user's accounts, and colour) come from **mailroom-core**'s model; the app
   keeps them in mailroom-core's own schema (`core`, its `AccountStore`) in the app's database, with secrets sealed as
   mailroom-core seals them (byte-compatible with mailroom-mcp, so its data imports unchanged).
 - Each user manages their own accounts on the *Accounts* page: add, edit (the id stays; an empty

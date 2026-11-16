@@ -115,7 +115,7 @@ not OAuth scope.
 
 | Group (status, default) | Tool | Annotations |
 | --- | --- | --- |
-| `filters_read` or any `mail_*` group (whichever is on) | `accounts_list` (id, login, `has_password`, `run_filters` where the instance runs filters, `send_mode`, `identities`) | readOnly, idempotent |
+| `filters_read` or any `mail_*` group (whichever is on) | `accounts_list` (id, `name` (the account's own, null when unnamed), `display_name` (its name, else its id), login, `has_password`, `run_filters` where the instance runs filters, `send_mode`, `identities`) | readOnly, idempotent |
 | | `folders_list` (`path` as the mail tools take it, `delimiter`, `segments`, `role`; `counts=true` adds unread and total) | readOnly, idempotent, openWorld |
 | `filters_read` (stable, on) | `filter_schema`, `rule_sets_list`, `rule_set_get` (with its filters), `runs_list` | readOnly, idempotent |
 | `filters_write` (stable, on) | `rule_set_create`, `rule_set_update`, `filter_add`, `filter_update`, `filters_reorder` | none |

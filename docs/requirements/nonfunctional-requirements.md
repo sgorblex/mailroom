@@ -343,12 +343,21 @@ bounded to one minor because the server relies on its handlers.
 - **API** (`/api/v1/accounts`, the signed-in user's own; another user's id is a 404): list, add
   (`POST`, with the password), edit (`PUT /{id}`, without the id; no password keeps it), remove
   (`DELETE /{id}`, its switch too), `POST /{id}/test` (an IMAP login and logout:
-  `{"ok", "code", "message"}`). Responses carry `has_password`, never the password. An account's
+  `{"ok", "code", "message"}`). Responses carry `has_password`, never the password. An account
+  may have a `name` (1 to 64 characters, not blank) and a `colour` (`slate`, `red`, `orange`,
+  `amber`, `green`, `teal`, `sky`, `blue`, `violet` or `pink`), each null when unset and given
+  back as stored, so a client tells an unnamed account from one named after its id. Responses
+  also carry a read-only `display_name`, what to call the account: its `name`, else its id (a
+  body that sends it back has it ignored). An edit replaces `name` and `colour` like the other
+  fields. No two of a user's accounts share a name, compared trimmed and whatever their case;
+  unnamed accounts share none. An account's
   folders and its Run filters switch are the filters' routes ([Filters](#filters)).
 - **Checks:** mailroom-core's config models (`core_settings_or_issues`) validate the whole document
   before each save; a refusal is 400 `{"detail": {"code": "invalid_account" | "account_exists",
-  "message", "issues": [{"path", "message"}]}}`, `path` inside the account. A save racing another
-  is 409 `accounts_changed` or 503 `accounts_busy`.
+  "message", "issues": [{"path", "message"}]}}`, `path` inside the account. A name another of the
+  user's accounts has, on an add or an edit, is 409 `account_name_taken` in the same shape (its
+  issue at `["name"]`), checked in the same revision as the save. A save racing another is 409
+  `accounts_changed` or 503 `accounts_busy`.
 - **Limits** (`GET` / `PUT /api/v1/me/limits`, mounted with the mail layer): the signed-in user's
   `send_per_hour`, `max_recipients`, `body_chars`, `attachment_max_mb` and `move_max_mb` (a
   message moved to another account, 25 MB by default), in the same settings document as the

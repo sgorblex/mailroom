@@ -118,6 +118,31 @@ def test_refuses_duplicate_account_ids_and_logins_that_differ_only_in_case() -> 
     )
 
 
+def test_an_account_may_have_a_name_and_a_colour() -> None:
+    unnamed = parse_core(EXAMPLE).account[0]
+    assert (unnamed.name, unnamed.colour) == (None, None)
+    text = EXAMPLE.replace('id         = "home"', 'id         = "home"\nname = "Casa"', 1)
+    named = parse_core(
+        text.replace('id         = "home"', 'id         = "home"\ncolour = "teal"', 1)
+    )
+    assert (named.account[0].name, named.account[0].colour) == ("Casa", "teal")
+
+
+@pytest.mark.parametrize(
+    ("line", "path"),
+    [
+        ('name = ""', "name"),
+        ('name = "   "', "name"),
+        (f'name = "{"x" * 65}"', "name"),
+        ('colour = "beige"', "colour"),
+        ("colour = 3", "colour"),
+    ],
+)
+def test_refuses_a_malformed_name_or_colour(line: str, path: str) -> None:
+    error = config_error(EXAMPLE.replace('id         = "home"', f'id         = "home"\n{line}', 1))
+    assert f"at account[0].{path}" in error
+
+
 def test_refuses_malformed_auto_approve_rules() -> None:
     assert "auto_approve" in config_error(
         EXAMPLE.replace('auto_approve = ["@team.example"]', 'auto_approve = ["team.example"]', 1)

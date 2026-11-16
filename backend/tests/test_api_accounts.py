@@ -75,6 +75,10 @@ def test_a_user_adds_edits_and_removes_an_account(
     added = response.json()
     assert added == {
         "id": "work",
+        # An unnamed account has no name, and its id to be called by.
+        "name": None,
+        "display_name": "work",
+        "colour": None,
         "login": "work@example.org",
         "send_mode": "drafts",
         "imap": {"host": "127.0.0.1", "port": 9, "tls": "implicit"},
@@ -139,8 +143,9 @@ def test_a_user_adds_edits_and_removes_an_account(
             ["identities", 0, "address"],
         ),
         (new_account(login=""), "invalid_account", ["login"]),
+        (new_account(name=" "), "invalid_account", ["name"]),
     ],
-    ids=["id", "port", "no identity", "address", "login"],
+    ids=["id", "port", "no identity", "address", "login", "blank name"],
 )
 def test_accounts_are_checked_by_mailroom_core(
     user_client: TestClient, account: dict[str, Any], code: str, path: list[str | int]
@@ -151,6 +156,81 @@ def test_accounts_are_checked_by_mailroom_core(
     assert detail["code"] == code
     assert path in [issue["path"] for issue in detail["issues"]]
     assert user_client.get("/api/v1/accounts").json() == []
+
+
+def test_an_account_has_a_name_and_a_colour(user_client: TestClient) -> None:
+    response = user_client.post("/api/v1/accounts", json=new_account(name="Lavoro", colour="sky"))
+    assert response.status_code == 201
+    added = response.json()
+    assert (added["name"], added["display_name"], added["colour"]) == ("Lavoro", "Lavoro", "sky")
+
+    renamed = edited(new_account(name="Ufficio", colour="pink"))
+    response = user_client.put("/api/v1/accounts/work", json=renamed)
+    assert (response.json()["name"], response.json()["colour"]) == ("Ufficio", "pink")
+    [listed] = user_client.get("/api/v1/accounts").json()
+    assert (listed["id"], listed["name"], listed["display_name"], listed["colour"]) == (
+        "work",
+        "Ufficio",
+        "Ufficio",
+        "pink",
+    )
+
+    # A listed account goes back as it came: display_name is read-only, and ignored.
+    sent = {key: listed[key] for key in renamed} | {"display_name": "Altro"}
+    response = user_client.put("/api/v1/accounts/work", json=sent)
+    assert (response.json()["name"], response.json()["display_name"]) == ("Ufficio", "Ufficio")
+
+    # An account named after its id is not an unnamed one.
+    response = user_client.put("/api/v1/accounts/work", json=edited(new_account(name="work")))
+    assert (response.json()["name"], response.json()["display_name"]) == ("work", "work")
+
+    # An edit replaces them like any field: without them, the account is unnamed again.
+    user_client.put("/api/v1/accounts/work", json=edited(new_account()))
+    [listed] = user_client.get("/api/v1/accounts").json()
+    assert (listed["name"], listed["display_name"], listed["colour"]) == (None, "work", None)
+
+    assert (
+        user_client.put(
+            "/api/v1/accounts/work", json=edited(new_account(colour="beige"))
+        ).status_code
+        == 422
+    )
+    assert (
+        user_client.put(
+            "/api/v1/accounts/work", json=edited(new_account(name="x" * 65))
+        ).status_code
+        == 422
+    )
+
+
+def test_a_user_names_each_account_differently(
+    user_client: TestClient, db_session: Session
+) -> None:
+    assert user_client.post("/api/v1/accounts", json=new_account(name="Lavoro")).status_code == 201
+    home = new_account("home", name=" lavoro ")
+    taken = user_client.post("/api/v1/accounts", json=home)
+    assert taken.status_code == 409
+    message = "Another account is already named 'Lavoro'."
+    assert taken.json()["detail"] == {
+        "code": "account_name_taken",
+        "message": message,
+        "issues": [{"path": ["name"], "message": message}],
+    }
+    assert [a["id"] for a in user_client.get("/api/v1/accounts").json()] == ["work"]
+
+    # Unnamed accounts share no name; an edit is checked too, but not against itself.
+    assert user_client.post("/api/v1/accounts", json=new_account("home")).status_code == 201
+    renamed = user_client.put("/api/v1/accounts/home", json=edited(home))
+    assert (renamed.status_code, renamed.json()["detail"]["code"]) == (409, "account_name_taken")
+    again = user_client.put("/api/v1/accounts/work", json=edited(new_account(name="LAVORO")))
+    assert (again.status_code, again.json()["name"]) == (200, "LAVORO")
+    other = user_client.put("/api/v1/accounts/home", json=edited(new_account("home", name="Casa")))
+    assert other.status_code == 200
+
+    # Another user's accounts take none of this user's names.
+    bob = create_user(db_session, "bob", PASSWORD)
+    user_client.cookies.set(SESSION_COOKIE_NAME, create_session(db_session, bob))
+    assert user_client.post("/api/v1/accounts", json=new_account(name="Lavoro")).status_code == 201
 
 
 def test_ids_and_logins_are_unique(user_client: TestClient) -> None:
