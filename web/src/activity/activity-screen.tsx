@@ -6,6 +6,7 @@ import { ChevronRight } from 'lucide-react'
 import { listAccounts } from '@/api/accounts.ts'
 import { ACTORS, MAIL_ACTIONS, listAudit, type Actor, type AuditFilters, type AuditPage, type AuditRecord } from '@/api/audit.ts'
 import { apiErrorMessage } from '@/api/http.ts'
+import { useTimeZone } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { formatDateTime } from '@/lib/format.ts'
 import { useLoad } from '@/lib/use-load.ts'
@@ -230,6 +231,7 @@ function Records({ filters }: { filters: AuditFilters }): ReactElement {
 
 function Row({ record }: { record: AuditRecord }): ReactElement {
   const { t, i18n } = useTranslation(ACTIVITY_NS)
+  const timeZone = useTimeZone()
   const ok = record.result === 'ok'
   const unlisted = record.detail['not_listed']
   const fields = Object.entries(record.detail).filter(
@@ -242,7 +244,7 @@ function Row({ record }: { record: AuditRecord }): ReactElement {
           aria-hidden="true"
           className="size-4 text-muted-foreground transition-transform group-open:rotate-90"
         />
-        <span className="font-medium tabular-nums">{formatDateTime(i18n.language, record.at)}</span>
+        <span className="font-medium tabular-nums">{formatDateTime(i18n.language, record.at, timeZone)}</span>
         <span>{who(t, record)}</span>
         <span>{t(`actions.${record.action}`, { defaultValue: record.action })}</span>
         <span className="text-muted-foreground">{record.account_id}</span>

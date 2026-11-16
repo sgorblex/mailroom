@@ -268,7 +268,10 @@ bounded to one minor because the server relies on its handlers.
 - **Own time zone** (`PUT /api/v1/auth/me/time-zone`, `{"time_zone": "Europe/Rome"}`): any
   letter case, kept as the IANA name; an unknown zone is a 422, `null` unsets it. `auth/me`'s
   `user` carries it (`time_zone`, null until set). The MCP read tools, reply and forward quotes,
-  the send limit's refusal and the filters' `older_than_days` use it; unset, UTC.
+  the send limit's refusal and the filters' `older_than_days` use it; unset, UTC. The web sets it
+  on *Profile*, and saves the browser's zone once when it finds a signed-in user without one
+  (`web/src/auth/auth-provider.tsx`); its dates use the saved zone, or the browser's when this
+  browser does not know it.
 - **A session ending under the user:** any 401 from the API but a refused sign-in signs the web
   app out (`onSessionEnded` in `web/src/api/http.ts`), and the sign-in screen says the session
   has ended.

@@ -185,6 +185,14 @@
     "passwordsDiffer": "The new passwords differ.",
     "unknownError": "Could not change the password."
   },
+  "timeZone": {
+    "title": "Time zone",
+    "intro": "Mailroom writes your dates in this time zone.",
+    "label": "Time zone",
+    "save": "Save time zone",
+    "saved": "Time zone saved.",
+    "saveFailed": "Could not save the time zone."
+  },
   "limits": {
     "title": "Mail limits",
     "intro": "They hold for your mail here and through connected apps, across all your accounts. Only you change them, here: a connected app cannot.",

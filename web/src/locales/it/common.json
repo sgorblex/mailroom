@@ -185,6 +185,14 @@
     "passwordsDiffer": "Le nuove password non coincidono.",
     "unknownError": "Impossibile cambiare la password."
   },
+  "timeZone": {
+    "title": "Fuso orario",
+    "intro": "Mailroom scrive le tue date in questo fuso orario.",
+    "label": "Fuso orario",
+    "save": "Salva il fuso orario",
+    "saved": "Fuso orario salvato.",
+    "saveFailed": "Impossibile salvare il fuso orario."
+  },
   "limits": {
     "title": "Limiti della posta",
     "intro": "Valgono per la tua posta qui e dalle app collegate, su tutti i tuoi account. Solo tu li cambi, qui: un'app collegata non può.",

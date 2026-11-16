@@ -30,6 +30,7 @@ function renderSignedOut(): void {
         features: new Set(),
         signIn: reject,
         signOut: reject,
+        changeTimeZone: reject,
         recheck: vi.fn(),
       }}
     >

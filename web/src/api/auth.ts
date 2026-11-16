@@ -1,7 +1,12 @@
 import { z } from 'zod'
-import { apiGetJson, apiPostJson } from './http.ts'
+import { apiGetJson, apiPostJson, apiPutJson } from './http.ts'
 
-export const userSchema = z.object({ username: z.string(), is_admin: z.boolean() })
+/** `time_zone`: an IANA name, `null` until the user (or their first sign-in) sets one. */
+export const userSchema = z.object({
+  username: z.string(),
+  is_admin: z.boolean(),
+  time_zone: z.string().nullable(),
+})
 export type User = z.infer<typeof userSchema>
 
 /** The optional parts of an instance, on top of the base that is always there. */
@@ -46,4 +51,9 @@ export function changePassword(currentPassword: string, newPassword: string): Pr
     current_password: currentPassword,
     new_password: newPassword,
   })
+}
+
+/** The zone the user's dates are written in, here and over MCP; `null` unsets it. */
+export function changeTimeZone(timeZone: string | null): Promise<User> {
+  return apiPutJson('/api/v1/auth/me/time-zone', { time_zone: timeZone }, { schema: userSchema })
 }

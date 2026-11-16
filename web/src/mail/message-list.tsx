@@ -4,6 +4,7 @@ import { Link, useSearch } from '@tanstack/react-router'
 import { Paperclip, Star } from 'lucide-react'
 
 import type { MessageItem, MessagePage, SourceFailure } from '@/api/mail.ts'
+import { useTimeZone } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { useLoad } from '@/lib/use-load.ts'
 import { useUnmountSignal } from '@/lib/use-unmount-signal.ts'
@@ -218,6 +219,7 @@ function SelectAll({ messages }: { messages: Target[] }): ReactElement {
 
 function MessageRow({ message, source }: { message: MessageItem; source: 'account' | 'folder' | null }): ReactElement {
   const { t, i18n } = useTranslation(MAIL_NS)
+  const timeZone = useTimeZone()
   const { message: open } = useSearch({ from: '/mail' })
   const flags = useTriage().flagsOf(message)
   const unread = !flags.seen
@@ -244,7 +246,7 @@ function MessageRow({ message, source }: { message: MessageItem; source: 'accoun
           <Paperclip role="img" aria-label={t('list.hasAttachments')} className="size-3.5 shrink-0 self-center" />
         )}
         <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-          {formatListDate(i18n.language, message.date)}
+          {formatListDate(i18n.language, message.date, timeZone)}
         </span>
       </span>
       <span className={cn('truncate', unread ? 'font-semibold' : 'text-foreground')}>

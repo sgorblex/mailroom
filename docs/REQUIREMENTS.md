@@ -35,10 +35,10 @@ through the Vite proxy. Engineering baseline:
   is shared. An [admin](GLOSSARY.md) adds and removes users and resets their passwords on the
   *Users* page (the first admin comes from `mise run create-user <name> --admin`); there is no
   public sign-up. Every user changes their own password on their *Profile* page.
-- **Time zone.** Each user keeps a time zone (an IANA name; UTC until set): the MCP read tools'
-  dates (each answer names the zone), reply and forward quotes, the send limit's refusal and the
-  filters' `older_than_days` use it. The API sets it; the web's *Profile* setting and filling it
-  from the browser's zone at first sign-in are still to come. How:
+- **Time zone.** Each user keeps a time zone (an IANA name), picked on their *Profile* page and
+  filled from the browser's zone when they first sign in to the web; over MCP, UTC until set. The
+  web's dates (a list's "today" included), the MCP read tools' dates (each answer names the zone),
+  reply and forward quotes, the send limit's refusal and the filters' `older_than_days` use it. How:
   [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md) —
   *Sign-in*.
 - **Single sign-on** (optional): "Sign in with …" an OpenID Connect provider, for users an admin

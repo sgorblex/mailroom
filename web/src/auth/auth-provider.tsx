@@ -1,15 +1,17 @@
-import { useCallback, useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react'
 
-import { fetchSession, login, logout, type Feature } from '@/api/auth.ts'
+import { changeTimeZone as saveTimeZone, fetchSession, login, logout, type Feature, type User } from '@/api/auth.ts'
 import { onSessionEnded } from '@/api/http.ts'
 import { AuthContext, type AuthContextValue, type AuthState } from '@/auth/auth-context.ts'
 import { setRouteFeatures } from '@/auth/feature-route.tsx'
+import { browserTimeZone } from '@/lib/time-zone.ts'
 
 const NO_FEATURES: ReadonlySet<Feature> = new Set()
 
 /**
  * Asks the API once who this browser is signed in as and what the instance runs, then tracks
- * sign-in and sign-out. The features stay as they were across both.
+ * sign-in and sign-out. The features stay as they were across both. A user with no time zone gets
+ * the browser's, saved once per sign-in.
  */
 export function AuthProvider({ children }: { children: ReactNode }): ReactElement {
   const [state, setState] = useState<AuthState>({ status: 'checking' })
@@ -46,6 +48,38 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
     }
   }, [])
 
+  const updateUser = useCallback((user: User) => {
+    setState((current) =>
+      current.status === 'signed-in' && current.user.username === user.username
+        ? { status: 'signed-in', user }
+        : current,
+    )
+  }, [])
+
+  const filledFor = useRef<string | null>(null)
+  useEffect(() => {
+    if (state.status !== 'signed-in') {
+      filledFor.current = null
+      return
+    }
+    if (state.user.time_zone !== null) {
+      return
+    }
+    const { username } = state.user
+    if (filledFor.current === username) {
+      return
+    }
+    filledFor.current = username
+    saveTimeZone(browserTimeZone()).then(updateUser, () => undefined)
+  }, [state, updateUser])
+
+  const changeTimeZone = useCallback(
+    async (timeZone: string | null) => {
+      updateUser(await saveTimeZone(timeZone))
+    },
+    [updateUser],
+  )
+
   const signIn = useCallback(async (username: string, password: string) => {
     const user = await login(username, password)
     setState({ status: 'signed-in', user })
@@ -62,8 +96,8 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
   }, [])
 
   const value = useMemo<AuthContextValue>(
-    () => ({ ...state, features, signIn, signOut, recheck }),
-    [state, features, signIn, signOut, recheck],
+    () => ({ ...state, features, signIn, signOut, changeTimeZone, recheck }),
+    [state, features, signIn, signOut, changeTimeZone, recheck],
   )
   return <AuthContext value={value}>{children}</AuthContext>
 }

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { ChevronRight } from 'lucide-react'
 
 import { listRuns, type Filter, type Run } from '@/api/filters.ts'
+import { useTimeZone } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { formatDateTime } from '@/lib/format.ts'
 import { useLoad } from '@/lib/use-load.ts'
@@ -51,6 +52,7 @@ export function RunHistory({
   onRefresh: () => void
 }): ReactElement {
   const { t, i18n } = useTranslation(FILTERS_NS)
+  const timeZone = useTimeZone()
   const [poll, setPoll] = useState(0)
   const load = useCallback((signal: AbortSignal) => listRuns(ruleSetId, signal), [ruleSetId])
   const { state } = useLoad(
@@ -106,7 +108,7 @@ export function RunHistory({
                     className="size-4 text-muted-foreground transition-transform group-open:rotate-90"
                   />
                   <span className="font-medium tabular-nums">
-                    {formatDateTime(i18n.language, run.started_at ?? run.created_at)}
+                    {formatDateTime(i18n.language, run.started_at ?? run.created_at, timeZone)}
                   </span>
                   <span className="text-muted-foreground">
                     {run.dry_run

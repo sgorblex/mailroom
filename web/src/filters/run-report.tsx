@@ -2,6 +2,7 @@ import type { ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { Filter, FilterReport, RunReport } from '@/api/filters.ts'
+import { useTimeZone } from '@/auth/auth-context.ts'
 import { formatDateTime } from '@/lib/format.ts'
 
 import { describeActions } from './describe.ts'
@@ -78,6 +79,7 @@ function FilterReportView({
   level: 3 | 4
 }): ReactElement {
   const { t, i18n } = useTranslation(FILTERS_NS)
+  const timeZone = useTimeZone()
   const Heading = level === 3 ? 'h3' : 'h4'
   let action = entry.action
   if (entry.spec !== null) {
@@ -131,7 +133,7 @@ function FilterReportView({
                     {message.subject ?? t('filters.report.noSubject')}
                   </td>
                   <td className="px-3 py-1.5 whitespace-nowrap text-muted-foreground tabular-nums">
-                    {formatDateTime(i18n.language, message.date)}
+                    {formatDateTime(i18n.language, message.date, timeZone)}
                   </td>
                 </tr>
               ))}

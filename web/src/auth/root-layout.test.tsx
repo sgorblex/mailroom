@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {
   createMemoryHistory,
@@ -45,19 +45,31 @@ function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status })
 }
 
-const ALICE = { username: 'alice', is_admin: false }
+const ALICE = { username: 'alice', is_admin: false, time_zone: null }
 
 /**
  * A fake API: `/me` answers from `signedIn`, naming `features` unless left out; login accepts
- * alice / `hunter2hunter2`.
+ * alice / `hunter2hunter2`, whose time zone is `timeZone` until one is saved; `refuseZone` refuses
+ * every zone saved.
  */
-function stubApi(initiallySignedIn: boolean, features?: string[]): void {
+function stubApi(
+  initiallySignedIn: boolean,
+  features?: string[],
+  timeZone: string | null = null,
+  refuseZone = false,
+): ReturnType<typeof vi.fn> {
   let signedIn = initiallySignedIn
-  vi.stubGlobal(
-    'fetch',
-    vi.fn((path: string, init?: RequestInit) => {
+  let user: { username: string; is_admin: boolean; time_zone: string | null } = { ...ALICE, time_zone: timeZone }
+  const fetchMock = vi.fn((path: string, init?: RequestInit) => {
       if (path === '/api/v1/auth/me') {
-        return Promise.resolve(json(200, { user: signedIn ? ALICE : null, features }))
+        return Promise.resolve(json(200, { user: signedIn ? user : null, features }))
+      }
+      if (path === '/api/v1/auth/me/time-zone') {
+        if (refuseZone) {
+          return Promise.resolve(json(422, { detail: [{ loc: ['body', 'time_zone'], msg: 'Unknown time zone' }] }))
+        }
+        user = { ...user, time_zone: (JSON.parse(init?.body as string) as { time_zone: string }).time_zone }
+        return Promise.resolve(json(200, user))
       }
       if (path === '/api/v1/auth/login') {
         const { username, password } = JSON.parse(init?.body as string) as {
@@ -68,7 +80,7 @@ function stubApi(initiallySignedIn: boolean, features?: string[]): void {
           return Promise.resolve(json(401, { detail: 'Wrong username or password' }))
         }
         signedIn = true
-        return Promise.resolve(json(200, ALICE))
+        return Promise.resolve(json(200, user))
       }
       if (path === '/api/v1/auth/logout') {
         signedIn = false
@@ -78,9 +90,15 @@ function stubApi(initiallySignedIn: boolean, features?: string[]): void {
         return Promise.resolve(json(401, { detail: 'Not authenticated' }))
       }
       return Promise.resolve(json(404, { detail: 'Not Found' }))
-    }),
-  )
+    })
+  vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
 }
+
+const zoneSaves = (fetchMock: ReturnType<typeof vi.fn>): unknown[] =>
+  fetchMock.mock.calls
+    .filter(([path]) => path === '/api/v1/auth/me/time-zone')
+    .map(([, init]): unknown => JSON.parse((init as RequestInit).body as string))
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -154,6 +172,41 @@ describe('RootLayout', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Your session has ended.')
     expect(screen.getByLabelText('Password')).toBeInTheDocument()
     expect(screen.queryByText('Home page')).not.toBeInTheDocument()
+  })
+
+  it('saves the browser\'s time zone once for a user who has none', async () => {
+    const fetchMock = stubApi(false)
+    renderApp()
+
+    await userEvent.type(await screen.findByLabelText('Username'), 'alice')
+    await userEvent.type(screen.getByLabelText('Password'), 'hunter2hunter2')
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    expect(await screen.findByText('Home page')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(zoneSaves(fetchMock)).toEqual([{ time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone }])
+    })
+  })
+
+  it('shows the app and tries no more when the browser\'s time zone is refused', async () => {
+    const fetchMock = stubApi(true, undefined, null, true)
+    renderApp()
+
+    expect(await screen.findByText('Home page')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(zoneSaves(fetchMock)).toHaveLength(1)
+    })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(screen.getByText('Home page')).toBeInTheDocument()
+    expect(zoneSaves(fetchMock)).toHaveLength(1)
+  })
+
+  it('leaves a saved time zone alone', async () => {
+    const fetchMock = stubApi(true, undefined, 'Asia/Tokyo')
+    renderApp()
+
+    expect(await screen.findByText('Home page')).toBeInTheDocument()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(zoneSaves(fetchMock)).toEqual([])
   })
 
   it('offers to try again when the API cannot be reached', async () => {
