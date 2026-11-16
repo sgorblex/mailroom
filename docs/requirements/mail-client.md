@@ -703,7 +703,8 @@ characters are already stripped from headers.
   parse it. It is URL-safe, so it goes in the path as is. A ref whose folder changed (UIDVALIDITY)
   answers `stale_reference`; one of an account that is not the user's answers `not_found`, as a
   missing one.
-- A **cursor** is equally opaque (mailroom-mcp's `encodeCursor`: base64url of `[1, positions]`):
+- A **cursor** is equally opaque (mailroom-mcp's `encodeCursor`: base64url of `[1, positions]`,
+  then, when a folder failed, `[account, folder, code, certificate]` for each such folder):
   pass `next_cursor` back as `cursor`, with the same query. A malformed one is `invalid_argument`.
 
 ### Errors
@@ -748,7 +749,11 @@ same codes and messages. An `unreachable` whose cause is a TLS certificate that 
 with "Its TLS certificate did not verify."; the web adds that reason, translated, to its wording.
 
 In a list or search page a failing source does not fail the page: it is reported in `failures` by
-code, below.
+code, below. It is not read again: `next_cursor` carries it as failed, every later page of the
+same query reports it again in `failures`, with the code (and message) it failed with, and paging
+ends once the other sources are done. A page whose `failures` is empty is then complete for the
+sources it read, whichever page it is. An account that failed before a folder was chosen is not
+carried: each page tries it again.
 
 ### Types
 
