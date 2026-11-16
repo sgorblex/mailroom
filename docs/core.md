@@ -418,7 +418,8 @@ or loaded from their data form. Its tests are in `tests/filters`.
   inline plain-text part outside attached messages, else the HTML parts' visible text (so a
   body pattern matches across tags and never inside them). `&`, `|` and `~` combine both halves,
   efficient only if every operand is. `IMAPQuery.Deferred` builds its query at search time, for
-  criteria relative to the run (`OlderThanDays`).
+  criteria relative to the run (`OlderThanDays`), whose today is in the zone the host passes
+  `Folder.run` as `time_zone` (a checked `TimeZoneName`; the machine's without one).
 - **User patterns** compile when the criterion is built (a bad one is a `SpecError` on load) and
   match with `regex`, never `re`, under the process-wide match timeout (1 s for each match by
   default; past it, `MatchTimeoutError`).

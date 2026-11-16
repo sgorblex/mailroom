@@ -85,7 +85,9 @@ released and checked in production before the next one starts. Batch 15 is the r
       folder in the web, an option on `messages_list` and `messages_search` over MCP. Until the
       index, a bounded merge of the folders' own listings.
 - [ ] **Time zone per user** (urgent) — dates in the user's time zone, set on the profile, in the
-      web and over MCP; today the app keeps none and gives UTC.
+      web and over MCP. The backend keeps it (`PUT /auth/me/time-zone`) and MCP, quotes, the send
+      limit and `older_than_days` use it; the web (Profile, browser zone at first sign-in, dates)
+      is next.
 
 #### 2. Accounts
 

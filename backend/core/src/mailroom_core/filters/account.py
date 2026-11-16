@@ -12,6 +12,7 @@ import imaplib
 import logging
 from typing import TYPE_CHECKING
 
+from mailroom_core.filters.clock import today_in
 from mailroom_core.filters.filter import Filter
 from mailroom_core.filters.message import Message
 from mailroom_core.filters.path import Path
@@ -30,6 +31,7 @@ from mailroom_core.mail import (
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    from mailroom_core.config import TimeZoneName
     from mailroom_core.filters.report import FilterReport, FolderReport, MessageSummary
     from mailroom_core.filters.spec.nodes import SpecNode
     from mailroom_core.mail import MailboxContext, MailConnections
@@ -85,6 +87,7 @@ class Folder:
         *,
         dry_run: bool = False,
         newest: int | None = None,
+        time_zone: TimeZoneName | None = None,
     ) -> FolderReport:
         """Run one or more filters on this folder, in one session of the account's connections.
 
@@ -103,7 +106,8 @@ class Folder:
         ValueError) bounds every search to the folder's newest ``newest`` messages as it was when
         selected, resolved to their UIDs first, so an earlier filter's move leaves the window in
         place and later mail stays out; the report's ``limited_to_newest`` says so when the
-        folder held more.
+        folder held more. ``time_zone`` (an IANA name) is the zone whose today criteria relative
+        to the run count from (`OlderThanDays`); None, the machine's.
 
         Returns a report (see :mod:`mailroom_core.filters.report`): per filter its spec,
         the matched messages (UID, From, Subject, Date, fetched as ENVELOPE)
@@ -113,7 +117,9 @@ class Folder:
         before it is then lost (``run_into`` keeps it).
         """
         report = self.new_report(dry_run)
-        self.run_into(report, filter_or_filters, dry_run=dry_run, newest=newest)
+        self.run_into(
+            report, filter_or_filters, dry_run=dry_run, newest=newest, time_zone=time_zone
+        )
         return report
 
     def new_report(self, dry_run: bool) -> FolderReport:
@@ -133,6 +139,7 @@ class Folder:
         *,
         dry_run: bool,
         newest: int | None = None,
+        time_zone: TimeZoneName | None = None,
     ) -> None:
         """Like run(), appending each filter's report to report as soon as it finishes.
 
@@ -166,7 +173,10 @@ class Folder:
 
         self.log.info("running %s filter(s)", len(filters))
         try:
-            self.account.connections.with_mailbox(self.account.account_id, path, dry_run, session)
+            with today_in(time_zone):
+                self.account.connections.with_mailbox(
+                    self.account.account_id, path, dry_run, session
+                )
         except _Escaped as escaped:
             raise escaped.error from None
 

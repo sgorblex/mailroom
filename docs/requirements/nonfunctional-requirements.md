@@ -233,7 +233,8 @@ bounded to one minor because the server relies on its handlers.
 ### Sign-in
 
 - **Users** (`app.user`): a username, stored lowercase (1-64 of `a-z 0-9 . _ -`, starting with a
-  letter or digit), an Argon2id password hash (passwords of 12-1024 characters), and an admin flag. `mise run create-user`
+  letter or digit), an Argon2id password hash (passwords of 12-1024 characters), an admin flag, and
+  an optional time zone (`time_zone`, an IANA name; null means UTC). `mise run create-user`
   makes one; startup warns while there are none. An unknown username still checks a dummy hash, and
   both failures answer the same 401, so neither timing nor wording tells whether a user exists.
 - **Sessions** (`app.user_session`): one per signed-in browser, deleted with their user. The
@@ -264,6 +265,10 @@ bounded to one minor because the server relies on its handlers.
 - **Own password** (`POST /api/v1/auth/password`): needs the current one, checked through the
   login throttle (the same per-client counter as sign-in) so a borrowed session cannot guess it;
   keeps this session and ends the others.
+- **Own time zone** (`PUT /api/v1/auth/me/time-zone`, `{"time_zone": "Europe/Rome"}`): any
+  letter case, kept as the IANA name; an unknown zone is a 422, `null` unsets it. `auth/me`'s
+  `user` carries it (`time_zone`, null until set). The MCP read tools, reply and forward quotes,
+  the send limit's refusal and the filters' `older_than_days` use it; unset, UTC.
 - **A session ending under the user:** any 401 from the API but a refused sign-in signs the web
   app out (`onSessionEnded` in `web/src/api/http.ts`), and the sign-in screen says the session
   has ended.

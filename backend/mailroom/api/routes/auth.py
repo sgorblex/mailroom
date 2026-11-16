@@ -7,7 +7,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
-from mailroom.api.deps import DbSession, SessionCookie
+from mailroom.api.deps import CurrentUser, DbSession, SessionCookie
 from mailroom.auth.password import MAX_PASSWORD_LENGTH, password_matches
 from mailroom.auth.sessions import (
     SESSION_COOKIE_NAME,
@@ -18,9 +18,10 @@ from mailroom.auth.sessions import (
     session_user,
 )
 from mailroom.auth.throttle import LoginThrottle, client_key
-from mailroom.auth.users import user_by_username
+from mailroom.auth.users import set_time_zone, user_by_username
 from mailroom.config.features import Feature, Features
 from mailroom.models import User
+from mailroom_core.config import TimeZone
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +36,16 @@ class LoginRequest(BaseModel):
 class UserOut(BaseModel):
     username: str
     is_admin: bool
+    time_zone: str | None
+    """An IANA name; null until the user sets one, and dates are then in UTC."""
 
     @classmethod
     def of(cls, user: User) -> UserOut:
-        return cls(username=user.username, is_admin=user.is_admin)
+        return cls(username=user.username, is_admin=user.is_admin, time_zone=user.time_zone)
+
+
+class TimeZoneChange(BaseModel):
+    time_zone: TimeZone | None
 
 
 class MeResponse(BaseModel):
@@ -80,6 +87,15 @@ def me(request: Request, db: DbSession, session_cookie: SessionCookie = None) ->
     user = session_user(db, session_cookie)
     features: Features = request.app.state.features
     return MeResponse(user=UserOut.of(user) if user else None, features=features.names)
+
+
+@auth_router.put("/me/time-zone")
+def change_time_zone(body: TimeZoneChange, db: DbSession, user: CurrentUser) -> UserOut:
+    """The zone the user's dates are written in; any letter case, kept canonical (``europe/rome``
+    is ``Europe/Rome``). An unknown zone is a 422; null unsets it."""
+    set_time_zone(db, user, body.time_zone)
+    logger.info("time_zone_changed", extra={"event": "time_zone_changed", "user_id": user.id})
+    return UserOut.of(user)
 
 
 @auth_router.post("/logout", status_code=204)

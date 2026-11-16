@@ -1,9 +1,9 @@
-"""Users: who signs in, and with which password."""
+"""Users: who signs in, with which password, and the time zone their dates are shown in."""
 
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from mailroom.auth.password import MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, hash_password
 from mailroom.auth.sessions import end_user_sessions
 from mailroom.models import User
+from mailroom_core.config import ConfigError, TimeZoneName, time_zone_name
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -18,6 +19,8 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 _USERNAME = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")
+DEFAULT_TIME_ZONE: Final = time_zone_name("UTC")
+"""The zone of a user who has set none."""
 
 
 class UserError(ValueError):
@@ -91,6 +94,23 @@ def set_password(
     reset signs them out everywhere, their own change everywhere else."""
     user.password_hash = hash_password(_checked_password(password))
     end_user_sessions(db, user, keep=keep_session)
+    db.commit()
+
+
+def time_zone_of(db: Session, user_id: int) -> TimeZoneName:
+    """The user's time zone, ``DEFAULT_TIME_ZONE`` while unset (or no longer known here)."""
+    zone = db.scalar(select(User.time_zone).where(User.id == user_id))
+    if zone is None:
+        return DEFAULT_TIME_ZONE
+    try:
+        return time_zone_name(zone)
+    except ConfigError:
+        return DEFAULT_TIME_ZONE
+
+
+def set_time_zone(db: Session, user: User, zone: TimeZoneName | None) -> None:
+    """Keep ``zone`` as ``user``'s time zone; None unsets it."""
+    user.time_zone = zone
     db.commit()
 
 

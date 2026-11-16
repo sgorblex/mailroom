@@ -504,6 +504,13 @@ def _summary(folder: str, uid: int) -> MessageSummary:
     )
 
 
+class _ZonedContext:
+    """An ``AppContext`` that knows only the user's time zone."""
+
+    def time_zone(self, _user_id: int) -> str:
+        return "Europe/Rome"
+
+
 def test_messages_list_with_subfolders_names_each_lines_folder(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -515,7 +522,7 @@ def test_messages_list_with_subfolders_names_each_lines_folder(
 
     monkeypatch.setattr(mail_read.service, "list_messages", list_messages)
     tool = next(tool for tool in TOOLS if tool.name == "messages_list")
-    call = ToolCall(cast("AppContext", object()), 1)
+    call = ToolCall(cast("AppContext", _ZonedContext()), 1)
 
     def text(**arguments: Any) -> str:
         args = mail_read.MessagesListArguments.model_validate({"account_id": "work", **arguments})
@@ -524,13 +531,14 @@ def test_messages_list_with_subfolders_names_each_lines_folder(
 
     listed = text(subfolders=True)
     assert asked == {"account": "work", "folder": "INBOX", "subfolders": True}
-    assert "ref2 · INBOX/Lists · 2026-10-02 09:00 · " in listed
-    assert "ref1 · INBOX · 2026-10-01 09:00 · " in listed
+    assert "ref2 · INBOX/Lists · 2026-10-02 11:00 · " in listed
+    assert "ref1 · INBOX · 2026-10-01 11:00 · " in listed
     assert "Each line: ref · folder · date · from" in listed
     plain = text()
     assert asked["subfolders"] is False
-    assert "ref2 · 2026-10-02 09:00 · " in plain
+    assert "ref2 · 2026-10-02 11:00 · " in plain
     assert "Each line: ref · date · from" in plain
+    assert plain.endswith("\nDates are in Europe/Rome.")
 
 
 def test_messages_search_refuses_subfolders_with_every_folder() -> None:

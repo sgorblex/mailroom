@@ -3,6 +3,7 @@
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from mailroom_core.filters import clock
 from mailroom_core.filters.criteria.criterion import Criterion
 from mailroom_core.filters.query import IMAPQuery, Q
 from mailroom_core.filters.spec.nodes import DATE, as_date, codecs
@@ -43,7 +44,8 @@ class OlderThanDays(Criterion):
 
     Relative to when it runs, not when it is built: ``OlderThanDays(30)`` in a rule that runs
     every day always means "sent more than 30 whole days before the day it runs" (calendar days,
-    like IMAP ``SENTBEFORE``). ``days=0`` means sent before today.
+    like IMAP ``SENTBEFORE``). ``days=0`` means sent before today. Today is the run's time zone's
+    (`Folder.run`'s ``time_zone``), else the machine's.
     """
 
     spec_type = "older_than_days"
@@ -76,7 +78,7 @@ class OlderThanDays(Criterion):
 
 
 def _today() -> date:
-    return datetime.now().astimezone().date()
+    return clock.today()
 
 
 def _sent_before_query(cutoff: date) -> IMAPQuery:

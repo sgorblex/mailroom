@@ -21,6 +21,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from mailroom.accounts.store import AccountNotFound, load_accounts, user_store
 from mailroom.audit import Entry, write_records_in
+from mailroom.auth.users import time_zone_of
 from mailroom.filters.runs import (
     MATCH_TIMEOUT_MESSAGE,
     RunRefused,
@@ -49,6 +50,7 @@ if TYPE_CHECKING:
 
     from mailroom.models import Filter
     from mailroom.worker.context import Mailboxes
+    from mailroom_core.config import TimeZoneName
 
 logger = logging.getLogger(__name__)
 
@@ -91,10 +93,11 @@ def execute_run(db: Session, run_id: int, mailboxes: Mailboxes) -> None:
             raise RunRefused("rule_set_disabled", "The rule set is disabled.")
         filters = enabled_filters(db, rule_set_id)
         names = {row.id: row.name for row in filters}
+        zone = time_zone_of(db, user_id)
         db.execute(update(FilterRun).where(FilterRun.id == run_id).values(started_at=started_at))
         # Not idle in a transaction while the mailbox works.
         db.commit()
-        result, error = _run(rule_set, filters, mailboxes)
+        result, error = _run(rule_set, filters, mailboxes, zone)
     except RunRefused as refused:
         error = refused.error
     except Exception as exc:
@@ -281,10 +284,11 @@ def close_interrupted_runs(db: Session) -> list[int]:
 
 
 def _run(
-    rule_set: RuleSet, filters: Sequence[Filter], mailboxes: Mailboxes
+    rule_set: RuleSet, filters: Sequence[Filter], mailboxes: Mailboxes, time_zone: TimeZoneName
 ) -> tuple[dict[str, Any] | None, str | None]:
     """The run's ``result`` and ``error``: the rule set's filters on its folder, on the user's
-    connections from the worker's pool. Raises ``RunRefused`` when it cannot start."""
+    connections from the worker's pool, today being ``time_zone``'s. Raises ``RunRefused`` when
+    it cannot start."""
     store = user_store(mailboxes.engine, rule_set.user_id)
     try:
         refused = unusable(store, mailboxes.subkey, rule_set.account_id)
@@ -301,7 +305,7 @@ def _run(
         report = folder.new_report(dry_run=False)
         error = None
         try:
-            folder.run_into(report, loaded, dry_run=False)
+            folder.run_into(report, loaded, dry_run=False, time_zone=time_zone)
         except MatchTimeoutError as exc:
             # Its text quotes the user's pattern: the log names the kind only.
             logger.warning("A run of rule set %s stopped: %s.", rule_set.id, type(exc).__name__)

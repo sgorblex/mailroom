@@ -3,20 +3,22 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from mailroom.auth.password import password_matches
 from mailroom.auth.sessions import create_session, session_user
 from mailroom.auth.users import (
+    DEFAULT_TIME_ZONE,
     UserError,
     create_user,
     list_users,
     remove_user,
     set_password,
+    time_zone_of,
     user_by_username,
     user_count,
 )
-from mailroom.models import UserSession
+from mailroom.models import User, UserSession
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -86,3 +88,12 @@ def test_a_removed_admin_removes_nobody(db_session: Session) -> None:
     with pytest.raises(UserError, match="You have been removed"):
         remove_user(db_session, first, by=second)
     assert [user.username for user in list_users(db_session)] == ["root"]
+
+
+def test_a_stored_zone_this_machine_no_longer_knows_reads_as_the_default(
+    db_session: Session,
+) -> None:
+    user = create_user(db_session, "alice", "correct horse battery staple")
+    db_session.execute(update(User).where(User.id == user.id).values(time_zone="Mars/Base"))
+    db_session.commit()
+    assert time_zone_of(db_session, user.id) == DEFAULT_TIME_ZONE
