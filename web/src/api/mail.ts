@@ -174,26 +174,34 @@ export async function deleteFolder(accountId: string, folder: string, messages: 
   await apiPostJson(`${accountPath(accountId)}/folders/delete`, { folder, messages }, { schema: folderDeletedSchema })
 }
 
+/** A folder's messages; with `subfolders`, its subfolders' too, merged newest first. */
 export function listMessages(
   accountId: string,
-  options: { folder: string; cursor?: string | null; limit?: number },
+  options: { folder: string; subfolders?: boolean; cursor?: string | null; limit?: number },
   signal?: AbortSignal,
 ): Promise<MessagePage> {
   const path = withQuery(`${accountPath(accountId)}/messages`, {
     folder: options.folder,
+    subfolders: options.subfolders === true ? true : undefined,
     limit: options.limit,
     cursor: options.cursor ?? undefined,
   })
   return apiGetJson(path, { init: { signal }, schema: messagePageSchema })
 }
 
+/** With `subfolders`, the query's one folder is searched with its subfolders. */
 export function searchMessages(
   query: SearchQuery,
-  options: { cursor?: string | null; limit?: number } = {},
+  options: { subfolders?: boolean; cursor?: string | null; limit?: number } = {},
   signal?: AbortSignal,
 ): Promise<MessagePage> {
   // A body, not a query string: search terms stay out of access logs.
-  const body = { ...query, limit: options.limit, cursor: options.cursor ?? undefined }
+  const body = {
+    ...query,
+    subfolders: options.subfolders === true ? true : undefined,
+    limit: options.limit,
+    cursor: options.cursor ?? undefined,
+  }
   return apiPostJson(`${base}/search`, body, { init: { signal }, schema: messagePageSchema })
 }
 

@@ -11,21 +11,25 @@ import { accountDelimiter, isWithin, renamedPath } from './folder-tree.ts'
 import { FolderTree } from './folder-tree-view.tsx'
 import { MAIL_NS } from './i18n.ts'
 import { ACCOUNT_NOT_FOUND, mailErrorMessage } from './messages.ts'
+import { forgetStoredSubfolders, renameStoredSubfolders } from './subfolder-view.ts'
 import { isSameFolder, useAccountFolders } from './triage-context.ts'
 
 /**
  * The user's accounts; the one shown lists its folders with their unread counts, and creates,
- * renames and deletes them. `folder` is the folder shown, `null` while a search is.
+ * renames and deletes them. `folder` is the folder shown, `null` while a search is;
+ * `subfolders`, whether it is listed with its subfolders.
  */
 export function MailSidebar({
   accounts,
   accountId,
   folder,
+  subfolders,
   className,
 }: {
   accounts: string[]
   accountId: string
   folder: string | null
+  subfolders: boolean
   className?: string
 }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
@@ -37,7 +41,7 @@ export function MailSidebar({
       {accounts.map((id) =>
         id === accountId ? (
           <section key={id} aria-labelledby={`mail-account-${id}`} className="flex flex-col gap-1">
-            <FolderList accountId={id} folder={folder} />
+            <FolderList accountId={id} folder={folder} subfolders={subfolders} />
           </section>
         ) : (
           <Link
@@ -60,7 +64,15 @@ interface Notice {
   alert: boolean
 }
 
-function FolderList({ accountId, folder }: { accountId: string; folder: string | null }): ReactElement {
+function FolderList({
+  accountId,
+  folder,
+  subfolders,
+}: {
+  accountId: string
+  folder: string | null
+  subfolders: boolean
+}): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const navigate = useNavigate()
   // Shared with the toolbar, whose actions change the counts in place; read again on mount.
@@ -75,7 +87,10 @@ function FolderList({ accountId, folder }: { accountId: string; folder: string |
     setDialog(null)
     retry()
     const show = (path: string | null): void => {
-      void navigate({ to: '/mail', search: path === null ? { account: accountId } : { account: accountId, folder: path } })
+      void navigate({
+        to: '/mail',
+        search: path === null ? { account: accountId } : { account: accountId, folder: path, sub: subfolders },
+      })
     }
     switch (result.kind) {
       case 'created':
@@ -85,6 +100,7 @@ function FolderList({ accountId, folder }: { accountId: string; folder: string |
       case 'renamed': {
         const { answer } = result
         setReveal(answer.path)
+        renameStoredSubfolders(accountId, answer.folder, answer.path, delimiter)
         if (folder !== null && isWithin(folder, answer.folder, delimiter)) {
           show(renamedPath(folder, answer.folder, answer.path, delimiter))
         }
@@ -102,6 +118,7 @@ function FolderList({ accountId, folder }: { accountId: string; folder: string |
         break
       }
       case 'deleted':
+        forgetStoredSubfolders(accountId, result.path, delimiter)
         if (folder !== null && isSameFolder(folder, result.path)) {
           show(null)
         }
@@ -166,6 +183,7 @@ function FolderList({ accountId, folder }: { accountId: string; folder: string |
         accountId={accountId}
         folders={state.value}
         current={folder}
+        subfolders={subfolders}
         reveal={reveal}
         label={t('folders.of', { id: accountId })}
         onAction={(next) => {

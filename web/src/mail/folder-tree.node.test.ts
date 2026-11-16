@@ -10,6 +10,11 @@ import {
   folderTree,
   initiallyExpanded,
   isWithin,
+  findNode,
+  hasListedSubfolders,
+  listedSubfolders,
+  MAX_LISTED_FOLDERS,
+  listedUnread,
   nameProblem,
   renamedPath,
   subtreeUnread,
@@ -94,6 +99,44 @@ describe('the tree helpers', () => {
       folder('[Gmail]/Spam', { role: 'junk', unread: 3 }),
     ])
     expect(gmail.map(subtreeUnread)).toEqual([3])
+  })
+
+  it('lists a folder with its subfolders as the server reads them, and counts their unread', () => {
+    const inbox = folderTree([
+      folder('INBOX', { role: 'inbox', unread: 1 }),
+      folder('INBOX/Lists', { unread: 2 }),
+      folder('INBOX/Lists/Rust', { unread: 4 }),
+      folder('INBOX/Old', { selectable: false }),
+      folder('INBOX/Old/2025', { unread: 8 }),
+      folder('INBOX/Trash', { role: 'trash', unread: 16 }),
+      folder('INBOX/Trash/Kept', { unread: 32 }),
+    ])[0]
+    if (inbox === undefined) {
+      throw new Error('no inbox')
+    }
+    // Trash and what is under it are left out; a level that holds only folders is not read.
+    expect(listedSubfolders(inbox).map((node) => node.path)).toEqual(['INBOX/Lists', 'INBOX/Lists/Rust', 'INBOX/Old/2025'])
+    expect(listedUnread(inbox)).toBe(15)
+    expect(subtreeUnread(inbox)).toBe(63)
+
+    // Under a folder with the same role, its subfolders are read.
+    const trash = folderTree([folder('Trash', { role: 'trash', unread: 1 }), folder('Trash/Old', { role: 'trash', unread: 2 })])[0]
+    expect(trash === undefined ? [] : listedSubfolders(trash).map((node) => node.path)).toEqual(['Trash/Old'])
+    expect(tree[0] === undefined ? null : listedSubfolders(tree[0])).toEqual([])
+  })
+
+  it('offers a folder with its subfolders within the server cap only, and finds a folder by path', () => {
+    const big = (subfolders: number): FolderNode[] =>
+      folderTree([folder('Big'), ...Array.from({ length: subfolders }, (_, n) => folder(`Big/${String(n)}`))])
+    const atCap = big(MAX_LISTED_FOLDERS - 1)
+    const pastCap = big(MAX_LISTED_FOLDERS)
+    expect(atCap[0] !== undefined && hasListedSubfolders(atCap[0])).toBe(true)
+    expect(pastCap[0] !== undefined && hasListedSubfolders(pastCap[0])).toBe(false)
+    expect(tree[0] !== undefined && hasListedSubfolders(tree[0])).toBe(false)
+
+    expect(findNode(atCap, 'Big/3')?.path).toBe('Big/3')
+    expect(findNode(tree, 'inbox')?.path).toBe('INBOX')
+    expect(findNode(tree, 'Nope')).toBeUndefined()
   })
 
   it('shows only what the open levels hold, with levels and parents', () => {

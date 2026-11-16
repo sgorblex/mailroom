@@ -619,7 +619,15 @@ export function stubMailApi(state: FakeMailState): Mock {
         return json(200, { account_id: account, folders: (state.folders[account] ?? []).map(listedFolder) })
       }
       const folder = query.get('folder') ?? 'INBOX'
-      const all = state.messages[`${account}/${folder}`]
+      const own = state.messages[`${account}/${folder}`]
+      // With its subfolders: every folder under it ('/' as delimiter) merged, by UID.
+      const all =
+        own !== undefined && query.get('subfolders') === 'true'
+          ? Object.entries(state.messages)
+              .filter(([key]) => key === `${account}/${folder}` || key.startsWith(`${account}/${folder}/`))
+              .flatMap(([, items]) => items)
+              .sort((a, b) => uidOf(b) - uidOf(a))
+          : own
       if (all === undefined) {
         return json(404, { detail: { code: 'mailbox_missing', message: 'That folder does not exist.' } })
       }

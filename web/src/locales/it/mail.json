@@ -12,7 +12,10 @@
     "unread_one": "{{count}} non letto",
     "unread_other": "{{count}} non letti",
     "expand": "Espandi",
-    "collapse": "Comprimi"
+    "collapse": "Comprimi",
+    "includeSubfolders": "Includi le sottocartelle",
+    "onlyThisFolder": "Solo questa cartella",
+    "withSubfolders": "{{name}}, con le sottocartelle"
   },
   "folderActions": {
     "menu": "Azioni per {{name}}",
@@ -114,7 +117,8 @@
     "flagged": "Speciali",
     "has_attachment": "Con allegati",
     "gmail_query": "Ricerca Gmail",
-    "gmailHint": "La sintassi di ricerca di Gmail, solo per gli account Gmail."
+    "gmailHint": "La sintassi di ricerca di Gmail, solo per gli account Gmail.",
+    "withSubfolders": "{{folder}} e le sue sottocartelle"
   },
   "message": {
     "label": "Messaggio",

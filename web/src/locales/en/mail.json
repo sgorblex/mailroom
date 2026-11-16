@@ -12,7 +12,10 @@
     "unread_one": "{{count}} unread",
     "unread_other": "{{count}} unread",
     "expand": "Expand",
-    "collapse": "Collapse"
+    "collapse": "Collapse",
+    "includeSubfolders": "Include subfolders",
+    "onlyThisFolder": "This folder only",
+    "withSubfolders": "{{name}}, with subfolders"
   },
   "folderActions": {
     "menu": "Actions for {{name}}",
@@ -114,7 +117,8 @@
     "flagged": "Starred",
     "has_attachment": "With attachments",
     "gmail_query": "Gmail search",
-    "gmailHint": "Gmail's own search syntax, for Gmail accounts only."
+    "gmailHint": "Gmail's own search syntax, for Gmail accounts only.",
+    "withSubfolders": "{{folder}} and its subfolders"
   },
   "message": {
     "label": "Message",

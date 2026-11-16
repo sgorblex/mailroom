@@ -18,15 +18,19 @@ type More = { kind: 'idle' } | { kind: 'loading' } | { kind: 'failed'; message: 
 
 /**
  * A folder's messages or a search's, newest first, a page at a time: "Load more" asks for the
- * next one with the cursor the last page gave. Mounted anew (by key) for each source.
+ * next one with the cursor the last page gave. Mounted anew (by key) for each source. Each row
+ * names where it is: its account and folder in a search, its folder in a folder's subfolders.
  */
 export function MessageList({
   loadPage,
   searching,
+  subfolders = false,
   reloadKey,
 }: {
   loadPage: (cursor: string | null, signal: AbortSignal) => Promise<MessagePage>
   searching: boolean
+  /** Read with its subfolders. */
+  subfolders?: boolean
   /** A new value reads the list again from its first page, keeping it on show meanwhile. */
   reloadKey?: unknown
 }): ReactElement {
@@ -118,7 +122,7 @@ export function MessageList({
                     triage.select([message], event.target.checked)
                   }}
                 />
-                <MessageRow message={message} showSource={searching} />
+                <MessageRow message={message} source={searching ? 'account' : subfolders ? 'folder' : null} />
               </li>
             ))}
           </ul>
@@ -212,7 +216,7 @@ function SelectAll({ messages }: { messages: Target[] }): ReactElement {
   )
 }
 
-function MessageRow({ message, showSource }: { message: MessageItem; showSource: boolean }): ReactElement {
+function MessageRow({ message, source }: { message: MessageItem; source: 'account' | 'folder' | null }): ReactElement {
   const { t, i18n } = useTranslation(MAIL_NS)
   const { message: open } = useSearch({ from: '/mail' })
   const flags = useTriage().flagsOf(message)
@@ -250,9 +254,9 @@ function MessageRow({ message, showSource }: { message: MessageItem; showSource:
       {message.preview !== '' && (
         <span className="line-clamp-1 text-muted-foreground">{message.preview}</span>
       )}
-      {showSource && (
+      {source !== null && (
         <span className="truncate text-xs text-muted-foreground">
-          {`${message.account_id} · ${message.folder}`}
+          {source === 'account' ? `${message.account_id} · ${message.folder}` : message.folder}
         </span>
       )}
     </Link>
