@@ -147,7 +147,14 @@ it in `failures` with its code until paging ends; a carried failure's message is
 never the cursor's text (`cursor_failures`). Header text comes decoded and flattened. RFC 2047 words, RFC 2231 parameters,
 transfer encodings (fetched in windows with `BODY.PEEK[part]<offset.n>` up to the cap), charsets
 and `format=flowed` are decoded. Pages read the sources of different accounts in threads of their
-own, and fetch previews in one FETCH per body part number rather than one per message. Outside
+own, and fetch previews in one FETCH per body part number rather than one per message. Over
+several sources a page fetches each one's candidates with INTERNALDATE only, merges them, then
+fetches the rows it shows, and those only, whole; a source that fails at that second step is a
+failure of the page like any other. `list_messages` and `search_messages` take `subfolders`: the
+folder and its selectable subfolders at any depth (`with_subfolders`; INBOX in any case), without
+the Sent, Drafts, All Mail, Archive, Junk and Trash folders or anything under them, unless the
+folder has that role itself; past `MAX_LISTED_FOLDERS` (50) folders it is `invalid_argument`, as
+is `subfolders` with `ALL_FOLDERS`. A list line can name the message's folder after the ref. Outside
 Gmail, `thread_page` finds a conversation's candidates by a search on Message-ID, References and
 In-Reply-To and one on the subject without its `Re:`/`Fwd:` prefixes, then reads their headers:
 a server's full-text index may leave those headers out (Mailu), and a reply whose subject

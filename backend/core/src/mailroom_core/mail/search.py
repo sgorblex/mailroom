@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Final
 
 from mailroom_core.mail._mime import header_text, text_value
 from mailroom_core.mail.errors import MailError
+from mailroom_core.mail.folders import with_subfolders
 from mailroom_core.mail.pages import Page, PageFailure, Source, read_page
 from mailroom_core.mail.ref import MessageRef, check_fresh, parse_ref
 from mailroom_core.mail.selected import search_uids
@@ -102,6 +103,23 @@ def searchable_folders(connections: MailConnections, account: str) -> list[str]:
     return [f.path for f in folders if f.selectable and f.role not in ("junk", "trash")]
 
 
+def check_subfolders(folder: str, *, subfolders: bool) -> None:
+    """Refuses (`invalid_argument`) `subfolders` with `ALL_FOLDERS`."""
+    if subfolders and folder == ALL_FOLDERS:
+        raise MailError("invalid_argument", 'subfolders cannot go with folder "*".')
+
+
+def read_folders(
+    connections: MailConnections, account: str, folder: str, *, subfolders: bool
+) -> list[str]:
+    """The folders a list or search of `folder` reads: itself, or with `subfolders` the set
+    `with_subfolders` gives (`mailbox_missing`, `invalid_argument` past its cap)."""
+    check_subfolders(folder, subfolders=subfolders)
+    if not subfolders:
+        return [folder]
+    return with_subfolders(connections.folders(account), folder, account)
+
+
 def list_messages(
     connections: MailConnections,
     account: str,
@@ -110,12 +128,16 @@ def list_messages(
     limit: int = 20,
     cursor: str | None = None,
     previews: bool = True,
+    subfolders: bool = False,
 ) -> Page:
-    """The newest messages of one folder. A failing folder is the page's only failure: a host
-    showing one folder may raise `MailError(page.failures[0].code)` instead."""
+    """The newest messages of one folder, or with `subfolders` of it and its subfolders merged
+    (`read_folders`). A failing folder is a failure of the page: when it reads one folder, the
+    only one, and a host showing one folder may raise `MailError(page.failures[0].code)`
+    instead."""
+    folders = read_folders(connections, account, folder, subfolders=subfolders)
     return read_page(
         connections,
-        [Source(account, folder)],
+        [Source(account, path) for path in folders],
         ["ALL"],
         limit=limit,
         cursor=cursor,
@@ -132,10 +154,13 @@ def search_messages(
     limit: int = 20,
     cursor: str | None = None,
     previews: bool = True,
+    subfolders: bool = False,
 ) -> Page:
     """`query` over `accounts` (the ids the caller may use, already resolved from `*`), in one
-    folder or all (`ALL_FOLDERS`). With several accounts one that cannot be searched becomes a
-    failure with no folder and the others still answer; with one, its MailError is raised."""
+    folder (with `subfolders`, its subfolders too: `read_folders`) or all (`ALL_FOLDERS`).
+    With several accounts one that cannot be searched becomes a failure with no folder and the
+    others still answer; with one, its MailError is raised."""
+    check_subfolders(folder, subfolders=subfolders)
     sources: list[Source] = []
     failures: list[PageFailure] = []
     criteria: dict[str, Criteria] = {}
@@ -150,7 +175,9 @@ def search_messages(
                     f'gmail_query works only on Gmail accounts; "{account}" is not one.',
                 )
             folders = (
-                searchable_folders(connections, account) if folder == ALL_FOLDERS else [folder]
+                searchable_folders(connections, account)
+                if folder == ALL_FOLDERS
+                else read_folders(connections, account, folder, subfolders=subfolders)
             )
             sources.extend(Source(account, path) for path in folders)
             criteria[account] = query.criteria(gmail=gmail)

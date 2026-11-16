@@ -96,10 +96,12 @@ def list_messages(
     *,
     limit: int = 25,
     cursor: str | None = None,
+    subfolders: bool = False,
     via: Via = "web",
 ) -> Page:
     """One folder, newest first. A folder that cannot be read is refused with its error, not
-    reported in the page."""
+    reported in the page. With ``subfolders``, the folder and its subfolders merged
+    (mailroom-core's ``read_folders``): each one that cannot be read is a failure of the page."""
     accounts = _accounts(ctx, user_id)
     _usable(ctx, user_id, accounts, account_id)
     page = _call(
@@ -110,11 +112,12 @@ def list_messages(
         via,
         account_id,
         lambda connections: core.list_messages(
-            connections, account_id, folder, limit=limit, cursor=cursor
+            connections, account_id, folder, limit=limit, cursor=cursor, subfolders=subfolders
         ),
     )
     page = _with_password_failures(ctx, user_id, page)
-    _first_failure(page)
+    if not subfolders:
+        _first_failure(page)
     return page
 
 
@@ -127,19 +130,22 @@ def search(
     *,
     limit: int = 25,
     cursor: str | None = None,
+    subfolders: bool = False,
     via: Via = "web",
 ) -> Page:
-    """``query`` over one account or all (``ALL_ACCOUNTS``), in one folder or all
+    """``query`` over one account or all (``ALL_ACCOUNTS``), in one folder (with
+    ``subfolders``, its subfolders too; refused with ``ALL_FOLDERS``) or all
     (``ALL_FOLDERS``: not Junk or Trash; only the ``\\All`` folder where there is one). Over all
     accounts, one that cannot be searched is a failure of the page with no folder (an account
     without a usable password: code ``password_missing``; one too slow: ``timeout``) and the
     others still answer, however many there are. Over one account and one folder, its error is
-    refused, as for a list."""
-    accounts = _accounts(ctx, user_id)
+    refused, as for a list, unless it reads subfolders too."""
     try:
         core.search_arguments(query.criteria())  # a line break in a term: refused up front
+        core.check_subfolders(folder, subfolders=subfolders)
     except MailError as error:
         raise mail_refusal(error.code, error.message) from None
+    accounts = _accounts(ctx, user_id)
     skipped: list[PageFailure] = []
     if account == ALL_ACCOUNTS:
         wanted = accounts.ids()
@@ -161,7 +167,13 @@ def search(
             via,
             account,
             lambda connections: _search_accounts(
-                connections, usable, folder, query, limit=limit, cursor=cursor
+                connections,
+                usable,
+                folder,
+                query,
+                limit=limit,
+                cursor=cursor,
+                subfolders=subfolders,
             ),
             on=usable,
         )
@@ -176,11 +188,17 @@ def search(
         via,
         account,
         lambda connections: core.search_messages(
-            connections, [account], folder, query, limit=limit, cursor=cursor
+            connections,
+            [account],
+            folder,
+            query,
+            limit=limit,
+            cursor=cursor,
+            subfolders=subfolders,
         ),
     )
     page = _with_password_failures(ctx, user_id, page)
-    if folder != ALL_FOLDERS:
+    if folder != ALL_FOLDERS and not subfolders:
         _first_failure(page)
     return page
 
@@ -218,7 +236,7 @@ def _first_failure(page: Page) -> None:
 
 
 def _sources(
-    connections: MailConnections, account: str, folder: str, query: SearchQuery
+    connections: MailConnections, account: str, folder: str, query: SearchQuery, subfolders: bool
 ) -> tuple[list[Source], Criteria]:
     """What mailroom-core's ``search_messages`` reads in ``account``, and with which criteria:
     as it does, a Gmail account's ``has_attachment`` goes into X-GM-RAW (Gmail ignores the
@@ -231,7 +249,11 @@ def _sources(
         raise MailError(
             "unsupported", f'gmail_query works only on Gmail accounts; "{account}" is not one.'
         )
-    paths = core.searchable_folders(connections, account) if folder == ALL_FOLDERS else [folder]
+    paths = (
+        core.searchable_folders(connections, account)
+        if folder == ALL_FOLDERS
+        else core.read_folders(connections, account, folder, subfolders=subfolders)
+    )
     return [Source(account, path) for path in paths], query.criteria(gmail=gmail)
 
 
@@ -275,6 +297,7 @@ def _search_accounts(
     *,
     limit: int,
     cursor: str | None,
+    subfolders: bool = False,
 ) -> Page:
     """mailroom-core's ``search_messages`` over several accounts, with a deadline per account:
     their folders are found side by side, ``SOURCES_SECONDS`` at most, and the accounts still
@@ -287,7 +310,7 @@ def _search_accounts(
     criteria: dict[str, Criteria] = {}
     finder = ThreadPoolExecutor(max_workers=min(len(accounts), 8), thread_name_prefix="mail-src")
     found = {
-        account: finder.submit(_sources, connections, account, folder, query)
+        account: finder.submit(_sources, connections, account, folder, query, subfolders)
         for account in accounts
     }
     wait(found.values(), timeout=SOURCES_SECONDS)

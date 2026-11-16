@@ -27,12 +27,18 @@ if TYPE_CHECKING:
     from imapclient import IMAPClient
 
     from mailroom_core.mail.audit import Note
-    from mailroom_core.mail.imap import Folder, MailConnections
+    from mailroom_core.mail.imap import Folder, FolderRole, MailConnections
 
 MAX_FOLDER_DEPTH: Final = 32
 """Of a folder's path, in segments, also for every subfolder a rename moves."""
 MAX_FOLDER_NAME: Final = 255
 """Characters of one segment, the name a create or a rename gives."""
+MAX_LISTED_FOLDERS: Final = 50
+"""Of a folder read with its subfolders, the folders at most, itself included."""
+_APART_ROLES: Final[frozenset[FolderRole]] = frozenset(
+    {"sent", "drafts", "all", "archive", "junk", "trash"}
+)
+"""Roles whose folders a folder's subfolders leave out, unless the folder has the same role."""
 _MAX_PATH: Final = 1000
 _WILDCARDS: Final = ("*", "%")
 _UNCERTAIN: Final = ("unreachable", "timeout")
@@ -98,8 +104,43 @@ def check_folder_name(name: str, delimiter: str | None) -> None:
 
 
 def subfolders_of(folders: Iterable[Folder], path: str) -> list[Folder]:
-    """The folders of `folders` under `path`, at any depth, in their order."""
-    return [f for f in folders if f.delimiter and f.path.startswith(f"{path}{f.delimiter}")]
+    """The folders of `folders` under `path`, at any depth, in their order; under INBOX in any
+    case."""
+    inbox = path.upper() == "INBOX"
+
+    def under(folder: Folder) -> bool:
+        if not folder.delimiter:
+            return False
+        head = f"{path}{folder.delimiter}"
+        start = folder.path[: len(head)]
+        return start == head or (inbox and start.upper() == head.upper())
+
+    return [f for f in folders if under(f)]
+
+
+def with_subfolders(folders: Sequence[Folder], path: str, account: str) -> list[str]:
+    """The paths a read of `path` with its subfolders covers: the folder (INBOX in any case),
+    then its selectable subfolders at any depth, leaving out the folders with a role in
+    `_APART_ROLES` (Sent, Drafts, All Mail, Archive, Junk, Trash) and everything under them,
+    unless `path` has that role itself. `mailbox_missing` when `path` is not a folder of
+    `account`; `invalid_argument` past `MAX_LISTED_FOLDERS`."""
+    found = _find(folders, path)
+    if found is None:
+        raise _missing(path, account)
+    under = subfolders_of(folders, found.path)
+    left_out: set[str] = set()
+    for folder in under:
+        if folder.role in _APART_ROLES and folder.role != found.role:
+            left_out |= {folder.path, *(f.path for f in subfolders_of(under, folder.path))}
+    kept = [f.path for f in under if f.selectable and f.path not in left_out]
+    paths = ([found.path] if found.selectable else []) + kept
+    if len(paths) > MAX_LISTED_FOLDERS:
+        raise MailError(
+            "invalid_argument",
+            f"With its subfolders this folder is {len(paths)} folders; at most "
+            f"{MAX_LISTED_FOLDERS} are read together. List a subfolder instead.",
+        )
+    return paths
 
 
 def create_folder(

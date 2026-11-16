@@ -23,6 +23,7 @@ from mailroom_core.config import time_zone_name
 from mailroom_core.mail import (
     ATTACHMENT_FILE_NOTE,
     DISPLAYED_IMAGES,
+    MAX_LISTED_FOLDERS,
     SearchQuery,
     ToolNames,
     attachment_label,
@@ -69,6 +70,11 @@ Ref = Annotated[
 ]
 Criterion = Annotated[str, Field(min_length=1, max_length=service.MAX_TERM)]
 FolderPath = Annotated[str, Field(min_length=1, max_length=service.MAX_FOLDER)]
+SUBFOLDERS: Final = (
+    "Also its subfolders, at any depth, merged newest first (not the Sent, Drafts, All Mail, "
+    f"Archive, Junk or Trash ones); at most {MAX_LISTED_FOLDERS} folders. Each line then names "
+    "its folder."
+)
 
 
 def _calendar_date(text: str) -> str:
@@ -94,6 +100,7 @@ class MessagesListArguments(Arguments):
         default="INBOX",
         description="Folder path, as folders_list gives it in `path` (default INBOX).",
     )
+    subfolders: StrictBool = Field(default=False, description=SUBFOLDERS)
     limit: Limit = 20
     cursor: Cursor | None = None
 
@@ -129,6 +136,7 @@ class MessagesSearchArguments(Arguments):
     gmail_query: Criterion | None = Field(
         default=None, description="Gmail search syntax (X-GM-RAW), Gmail accounts only."
     )
+    subfolders: StrictBool = Field(default=False, description=f'{SUBFOLDERS} Not with folder "*".')
     limit: Limit = 20
     cursor: Cursor | None = None
 
@@ -195,10 +203,12 @@ async def _messages_list(args: MessagesListArguments, call: ToolCall) -> types.C
             args.folder,
             limit=args.limit,
             cursor=args.cursor,
+            subfolders=args.subfolders,
             via="mcp",
         )
     )
-    return text_result(page_text(page, empty_folder_text(args.folder), TIME_ZONE, tools=TOOL_NAMES))
+    empty = empty_folder_text(args.folder, subfolders=args.subfolders)
+    return text_result(page_text(page, empty, TIME_ZONE, tools=TOOL_NAMES, folders=args.subfolders))
 
 
 async def _messages_search(args: MessagesSearchArguments, call: ToolCall) -> types.CallToolResult:
@@ -224,10 +234,15 @@ async def _messages_search(args: MessagesSearchArguments, call: ToolCall) -> typ
             query,
             limit=args.limit,
             cursor=args.cursor,
+            subfolders=args.subfolders,
             via="mcp",
         )
     )
-    return text_result(page_text(page, "No matching messages.", TIME_ZONE, tools=TOOL_NAMES))
+    return text_result(
+        page_text(
+            page, "No matching messages.", TIME_ZONE, tools=TOOL_NAMES, folders=args.subfolders
+        )
+    )
 
 
 async def _message_read(args: MessageReadArguments, call: ToolCall) -> types.CallToolResult:

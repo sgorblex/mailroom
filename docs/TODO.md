@@ -83,7 +83,8 @@ released and checked in production before the next one starts. Batch 15 is the r
 - [ ] **A folder with its subfolders** (urgent) — a folder's messages listed and searched together
       with all its subfolders' (an Inbox kept in subfolders, say), newest first: a toggle on the
       folder in the web, an option on `messages_list` and `messages_search` over MCP. Until the
-      index, a bounded merge of the folders' own listings.
+      index, a bounded merge of the folders' own listings. Backend, REST and MCP done; the web
+      toggle is next.
 - [ ] **Time zone per user** (urgent) — dates in the user's time zone, set on the profile, in the
       web and over MCP; today the app keeps none and gives UTC.
 

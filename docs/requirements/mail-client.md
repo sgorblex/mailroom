@@ -15,7 +15,8 @@ live updates yet.
 ## Slice A: read
 
 - **Folders** per account, with their role and unread/total counts.
-- **Message list** of one folder, newest first, 25 at a time with a "load more".
+- **Message list** of one folder, newest first, 25 at a time with a "load more"; optionally with
+  its subfolders merged in (`subfolders`, below).
 - **Search** over one account or all, with the search fields of mailroom-mcp's `search`.
 - **Message view:** headers, the text body (quotes and signatures collapsed), attachments and a
   calendar note; a **standalone HTML view** when the message has an HTML body; attachment download.
@@ -789,10 +790,17 @@ flagged, sent, drafts, all, archive, junk, trash, then the rest by path. Counts 
 here (STATUS; 0 for a folder whose STATUS failed). Errors: 404 `not_found` (account), 409, 502,
 504.
 
-### `GET /accounts/{account_id}/messages?folder=INBOX&limit=25&cursor=`
+### `GET /accounts/{account_id}/messages?folder=INBOX&limit=25&cursor=&subfolders=false`
 
 One folder, newest first (by arrival: UID). `folder` defaults to `INBOX`; `limit` is 1..50,
 default 25 (a value outside is 422). Response: a **page**.
+
+With `subfolders=true` the page merges the folder with its selectable subfolders at any depth,
+newest first by arrival (INTERNALDATE), each item naming its `folder`. Left out are the folders
+with the role Sent, Drafts, All Mail, Archive, Junk or Trash and everything under them, unless
+the listed folder has that same role; INBOX matches in any case. More than 50 folders in all is
+400 `invalid_argument`, naming the cap; a folder not listed is 404 `mailbox_missing`. In that
+mode a folder that cannot be read is reported in `failures`, as in a search, never refused.
 
 ```jsonc
 {
@@ -845,15 +853,16 @@ same page shape.
 | `unread`, `flagged` | Booleans. |
 | `has_attachment` | `true` only (approximate: `multipart/mixed`; on Gmail, which ignores that header search, `has:attachment` through X-GM-RAW, over one account or all); `false` is ignored, not a criterion. |
 | `gmail_query` | Gmail search syntax (X-GM-RAW); Gmail accounts only, else `unsupported`. |
+| `subfolders` | `true`: the folder's subfolders too, as for the list (default `false`); with `folder` `*`, 400 `invalid_argument`. |
 | `limit`, `cursor` | As for the list. |
 
 Every field is optional. The criteria and `cursor` take `null`, meaning absent; `account`,
 `folder` and `limit` do not (422). An unknown field is 422. With no criteria,
 everything in the folder matches. A text criterion with a line break or NUL is 400
 `invalid_argument`. A search of one account and one folder that fails answers its error status
-instead of a page, as the list does. Otherwise a source that cannot be searched is reported in
-`failures` (`folder` is `null` when the account failed before a folder was chosen) and the others
-still answer. Each account of an all-accounts search has its own deadline, so a slow one is a
+instead of a page, as the list does (not with `subfolders`, whose folders fail in `failures`).
+Otherwise a source that cannot be searched is reported in `failures` (`folder` is `null` when the
+account failed before a folder was chosen) and the others still answer. Each account of an all-accounts search has its own deadline, so a slow one is a
 `timeout` failure, not a 504 for the whole page. An account without a password that opens is such
 a failure too, with the app's code `password_missing`.
 

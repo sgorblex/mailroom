@@ -13,6 +13,7 @@ from imapclient.exceptions import IMAPClientAbortError, IMAPClientError
 from mailroom_core.mail import (
     MAX_FOLDER_DEPTH,
     MAX_FOLDER_NAME,
+    MAX_LISTED_FOLDERS,
     AuditItem,
     Folder,
     FolderChange,
@@ -25,6 +26,7 @@ from mailroom_core.mail import (
     mail_error,
     rename_folder,
     subfolders_of,
+    with_subfolders,
 )
 from mailroom_core.mail.imap import folders_from
 
@@ -95,6 +97,56 @@ def test_subfolders_of() -> None:
     assert [f.path for f in subfolders_of(folders, "A/B")] == ["A/B/C"]
     assert subfolders_of(folders, "A/B/C") == []
     assert subfolders_of(folders, "AB") == []
+
+
+def test_with_subfolders_leaves_out_the_role_folders_unless_the_folder_has_the_role() -> None:
+    folders = folders_from(
+        [
+            ((b"\\HasChildren",), b"/", "INBOX"),
+            ((), b"/", "INBOX/Work"),
+            ((b"\\Noselect",), b"/", "INBOX/Work/Old"),
+            ((), b"/", "INBOX/Work/Old/2024"),
+            ((b"\\Trash",), b"/", "INBOX/Trash"),
+            ((), b"/", "INBOX/Trash/Kept"),
+            ((b"\\Sent",), b"/", "INBOX/Sent"),
+            ((b"\\Junk",), b"/", "Spam"),
+            ((), b"/", "Spam/Older"),
+            ((b"\\Noselect",), b"/", "Projects"),
+            ((), b"/", "Projects/A"),
+            ((b"\\Archive",), b"/", "Projects/A/Archive"),
+        ]
+    )
+    expected = ["INBOX", "INBOX/Work", "INBOX/Work/Old/2024"]
+    assert with_subfolders(folders, "INBOX", "a") == expected
+    assert with_subfolders(folders, "inbox", "a") == expected
+    assert with_subfolders(folders, "Spam", "a") == ["Spam", "Spam/Older"]
+    assert with_subfolders(folders, "Projects", "a") == ["Projects/A"]
+    assert with_subfolders(folders, "INBOX/Work/Old", "a") == ["INBOX/Work/Old/2024"]
+    missing = refused(lambda: with_subfolders(folders, "Nope", "a"), "mailbox_missing")
+    assert '"Nope" is not a folder of a' in missing.message
+
+
+def test_with_subfolders_keeps_a_subfolder_of_the_folders_own_role() -> None:
+    folders = [
+        Folder(path="Archive", delimiter=".", role="archive", flags=()),
+        Folder(path="Archive.2025", delimiter=".", role="archive", flags=()),
+        Folder(path="Archive.Trash", delimiter=".", role="trash", flags=()),
+    ]
+    assert with_subfolders(folders, "Archive", "a") == ["Archive", "Archive.2025"]
+
+
+def test_with_subfolders_refuses_more_than_the_cap() -> None:
+    listing: Listing = [((), b"/", "Big")]
+    listing += [((), b"/", f"Big/{n}") for n in range(MAX_LISTED_FOLDERS - 1)]
+    assert len(with_subfolders(folders_from(listing), "Big", "a")) == MAX_LISTED_FOLDERS
+    listing.append(((), b"/", "Big/one more"))
+    error = refused(lambda: with_subfolders(folders_from(listing), "Big", "a"))
+    assert f"at most {MAX_LISTED_FOLDERS}" in error.message
+
+
+def test_subfolders_of_inbox_in_any_case() -> None:
+    folders = folders_from([((), b"/", "INBOX"), ((), b"/", "Inbox/Lists"), ((), b"/", "INBOXES")])
+    assert [f.path for f in subfolders_of(folders, "inbox")] == ["Inbox/Lists"]
 
 
 # A fake account

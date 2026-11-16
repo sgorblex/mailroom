@@ -11,6 +11,7 @@ import os
 import threading
 import time
 from dataclasses import replace
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import quote
 
@@ -211,6 +212,33 @@ def test_list_refusals(mailbox: Mailbox) -> None:
     unknown = client.get(f"{MAIL}/accounts/home/messages")
     assert unknown.json() == {"detail": {"code": "not_found", "message": "No such account."}}
     assert detail(client.get(f"{MAIL}/accounts/home/folders")) == (404, "not_found")
+
+
+def test_a_folder_lists_and_searches_with_its_subfolders(mailbox: Mailbox) -> None:
+    create_folders(mailbox.server, mailbox.login, "Projects", "Projects/Old")
+    for subject, folder, day in (
+        ("Kickoff", "Projects", 1),
+        ("Retro", "Projects/Old", 2),
+        ("Elsewhere", "INBOX", 3),
+    ):
+        arrived = datetime(2026, 10, day, 9, tzinfo=UTC)
+        seed(mailbox.server, mailbox.login, folder, mime(subject, text="plan"), (), arrived)
+
+    alone = mailbox.get("/accounts/work/messages", folder="Projects")
+    assert [m["subject"] for m in alone["messages"]] == ["Kickoff"]
+    merged = mailbox.get("/accounts/work/messages", folder="Projects", subfolders="true")
+    assert [(m["subject"], m["folder"]) for m in merged["messages"]] == [
+        ("Retro", "Projects/Old"),
+        ("Kickoff", "Projects"),
+    ]
+    assert (merged["next_cursor"], merged["failures"]) == (None, [])
+
+    found = mailbox.search(account="work", folder="Projects", text="plan", subfolders=True)
+    assert [m["subject"] for m in found["messages"]] == ["Retro", "Kickoff"]
+    refused = mailbox.client.post(
+        f"{MAIL}/search", json={"account": "work", "folder": "*", "subfolders": True}
+    )
+    assert detail(refused) == (400, "invalid_argument")
 
 
 def test_search_reads_the_fields_and_leaves_junk_out(mailbox: Mailbox) -> None:
