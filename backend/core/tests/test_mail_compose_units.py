@@ -63,7 +63,7 @@ if TYPE_CHECKING:
 
 ACCOUNT = AccountConfig.model_validate(
     {
-        "id": "acc",
+        "id": 1,
         "login": "me",
         "send_mode": "direct",
         "auth": {"type": "password"},
@@ -75,7 +75,7 @@ ACCOUNT = AccountConfig.model_validate(
         ],
     }
 )
-REF = MessageRef("acc", "INBOX", 1, 1)
+REF = MessageRef(1, "INBOX", 1, 1)
 
 
 def headers_of(raw: bytes) -> list[str]:
@@ -409,7 +409,7 @@ class TestCompose:
 
 
 class TestDraftMark:
-    ANSWERED = format_ref(MessageRef("acc", "INBOX", 7, 42))
+    ANSWERED = format_ref(MessageRef(1, "INBOX", 7, 42))
 
     def test_carries_what_a_draft_answers_and_never_leaves_with_the_message(self) -> None:
         composed = compose(replace(BASE, draft=True, answers=self.ANSWERED))
@@ -420,7 +420,7 @@ class TestDraftMark:
         assert not is_own_draft(composed.wire)
 
     def test_folds_a_long_mark_and_still_reads_it(self) -> None:
-        long_ref = format_ref(MessageRef("acc", "Archivio/" + "x" * 200, 7, 42))
+        long_ref = format_ref(MessageRef(1, "Archivio/" + "x" * 200, 7, 42))
         stored = compose(replace(BASE, draft=True, answers=long_ref)).stored
         assert f"{DRAFT_HEADER}: 1;\r\n answers=".encode() in stored
         assert draft_answers(stored) == parse_ref(long_ref)
@@ -662,7 +662,7 @@ class TestCaps:
 class TestAudit:
     def test_records_an_outgoing_message_without_its_content(self) -> None:
         message = replace(BASE, attachments=(OutgoingAttachment("a", "text/plain", b"x"),))
-        item = outgoing_item("acc", message, "ok", folder="Drafts", message_id="<m@x.org>")
+        item = outgoing_item(1, message, "ok", folder="Drafts", message_id="<m@x.org>")
         record = item.record
         assert record["from"] == "me@example.test"
         assert record["to"] == ("ana@example.org",)
@@ -678,11 +678,11 @@ class TestAudit:
         assert len(str(record["subject_sha256"])) == 64
 
     def test_hashes_a_subject_with_lone_surrogates(self) -> None:
-        assert outgoing_item("acc", replace(BASE, subject="a\ud800"), "ok").subject_sha256
+        assert outgoing_item(1, replace(BASE, subject="a\ud800"), "ok").subject_sha256
 
     def test_needs_neither_folder_nor_uid_and_records_a_removal(self) -> None:
-        item = AuditItem(account="acc", removed="failed", result="internal")
-        assert item.record == {"account": "acc", "removed": "failed", "result": "internal"}
+        item = AuditItem(account=1, removed="failed", result="internal")
+        assert item.record == {"account": 1, "removed": "failed", "result": "internal"}
 
     def test_counts_internal_and_delivery_unknown_as_failures_not_refusals(self) -> None:
         assert audit_outcome(["internal"]) == "failed"

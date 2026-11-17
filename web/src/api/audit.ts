@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { type AccountId, accountIdSchema } from './accounts.ts'
 import { apiGetJson } from './http.ts'
 
 export const ACTORS = ['user', 'agent', 'filter'] as const
@@ -32,7 +33,7 @@ export const auditRecordSchema = z.object({
   rule_set_id: z.number().nullable(),
   run_id: z.number().nullable(),
   action: z.string(),
-  account_id: z.string(),
+  account_id: accountIdSchema,
   result: z.string(),
   detail: z.record(z.string(), z.unknown()),
 })
@@ -42,7 +43,7 @@ const pageSchema = z.object({ records: z.array(auditRecordSchema), next_cursor: 
 export type AuditPage = z.infer<typeof pageSchema>
 
 export interface AuditFilters {
-  account_id?: string
+  account_id?: AccountId
   action?: string
   actor?: Actor
   /** `ok`, `failed` (anything but ok) or an error code. */
@@ -52,8 +53,8 @@ export interface AuditFilters {
 export function listAudit(filters: AuditFilters, cursor: string | null, signal?: AbortSignal): Promise<AuditPage> {
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(filters)) {
-    if (typeof value === 'string' && value !== '') {
-      params.set(key, value)
+    if ((typeof value === 'string' && value !== '') || typeof value === 'number') {
+      params.set(key, String(value))
     }
   }
   if (cursor !== null) {

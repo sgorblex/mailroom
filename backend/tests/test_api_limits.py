@@ -56,7 +56,7 @@ def test_a_user_changes_their_limits_and_keeps_their_accounts(
     assert response.json() == {**changed, "attachment_max_mb": 25.0, "move_max_mb": 25.0}
     assert user_client.get("/api/v1/me/limits").json() == response.json()
     settings = load_accounts(user_store(migrated_engine, user.id)).settings
-    assert [account.id for account in settings.account] == ["work"]
+    assert [account.login for account in settings.account] == ["work@example.org"]
     listed = user_client.get("/api/v1/accounts").json()[0]
     assert (listed["attachment_max_mb"], listed["max_recipients"]) == (25.0, 30)
     assert [

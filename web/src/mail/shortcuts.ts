@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 
+import type { AccountId } from '@/api/accounts.ts'
 import type { PrefillMode } from '@/api/mail.ts'
 
 import { useCompose, type Compose } from './compose-context.ts'
@@ -35,7 +36,7 @@ const REPEATING = new Set(['j', 'k'])
  * for an account in send mode off. None while typing, none with Ctrl or Meta (but for AltGr,
  * which types characters), and no letter with Alt.
  */
-export function useMailShortcuts(accountId: string): void {
+export function useMailShortcuts(accountId: AccountId): void {
   const triage = useTriage()
   const actions = useTriageActions()
   const compose = useCompose()
@@ -71,7 +72,7 @@ export function useMailShortcuts(accountId: string): void {
 
     function handled(
       key: string,
-      current: { triage: typeof triage; actions: TriageActions; compose: Compose; accountId: string },
+      current: { triage: typeof triage; actions: TriageActions; compose: Compose; accountId: AccountId },
     ): boolean {
       const { triage: state, actions: offered, compose: writer } = current
       const run = (action: (() => void) | null | undefined): boolean => {

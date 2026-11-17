@@ -48,7 +48,7 @@ def test_makes_a_lone_identity_the_default_one() -> None:
 def test_freezes_the_result() -> None:
     settings = parse_core(EXAMPLE)
     with pytest.raises(ValidationError):
-        settings.account[0].id = "other"  # type: ignore[misc]
+        settings.account[0].id = 3  # type: ignore[misc]
     assert isinstance(settings.account, tuple)
     assert isinstance(settings.account[0].identities, tuple)
 
@@ -82,7 +82,7 @@ def test_rejects_an_identity_used_by_two_accounts() -> None:
         'identities   = [{ address = "CLUB@example.net" }]',
         1,
     )
-    assert 'club@example.net is already used by account "home"' in config_error(text)
+    assert 'club@example.net is already used by account "me@example.net"' in config_error(text)
 
 
 def test_requires_exactly_one_default_among_several_identities() -> None:
@@ -106,11 +106,11 @@ def test_refuses_duplicate_account_ids_and_logins_that_differ_only_in_case() -> 
             count=1,
         )
 
-    assert 'duplicate account id "home"' in config_error(with_copy(one_identity(second)))
+    assert "duplicate account id 1" in config_error(with_copy(one_identity(second)))
     assert 'duplicate login "ME@example.net"' in config_error(
         with_copy(
             one_identity(
-                second.replace('id         = "home"', 'id         = "upper"', 1).replace(
+                second.replace("id         = 1", "id         = 3", 1).replace(
                     'login      = "me@example.net"', 'login      = "ME@example.net"', 1
                 )
             )
@@ -121,10 +121,8 @@ def test_refuses_duplicate_account_ids_and_logins_that_differ_only_in_case() -> 
 def test_an_account_may_have_a_name_and_a_colour() -> None:
     unnamed = parse_core(EXAMPLE).account[0]
     assert (unnamed.name, unnamed.colour) == (None, None)
-    text = EXAMPLE.replace('id         = "home"', 'id         = "home"\nname = "Casa"', 1)
-    named = parse_core(
-        text.replace('id         = "home"', 'id         = "home"\ncolour = "teal"', 1)
-    )
+    text = EXAMPLE.replace("id         = 1", 'id         = 1\nname = "Casa"', 1)
+    named = parse_core(text.replace("id         = 1", 'id         = 1\ncolour = "teal"', 1))
     assert (named.account[0].name, named.account[0].colour) == ("Casa", "teal")
 
 
@@ -139,7 +137,7 @@ def test_an_account_may_have_a_name_and_a_colour() -> None:
     ],
 )
 def test_refuses_a_malformed_name_or_colour(line: str, path: str) -> None:
-    error = config_error(EXAMPLE.replace('id         = "home"', f'id         = "home"\n{line}', 1))
+    error = config_error(EXAMPLE.replace("id         = 1", f"id         = 1\n{line}", 1))
     assert f"at account[0].{path}" in error
 
 

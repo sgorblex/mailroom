@@ -72,7 +72,6 @@ def _check_time_zone(zone: TimeZoneName) -> TimeZoneName:
 TimeZone = Annotated[TimeZoneName, Strict(), AfterValidator(_check_time_zone)]
 """A config field holding an IANA time zone, e.g. `Europe/Rome`."""
 
-_SLUG = re.compile(r"[a-z0-9][a-z0-9-]*")
 # zod's email check, so that both servers accept the same addresses.
 _EMAIL = re.compile(
     r"(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}"
@@ -89,11 +88,8 @@ def _matching(pattern: re.Pattern[str], message: str) -> Callable[[str], str]:
     return check
 
 
-Slug = Annotated[
-    StrictStr,
-    AfterValidator(_matching(_SLUG, "must be lowercase letters, digits and dashes")),
-]
-"""Ids that appear in URLs and tool arguments: `account = "<id>"`."""
+AccountId = Annotated[StrictInt, Field(ge=1, le=MAX_SAFE_INTEGER)]
+"""An account's id: a positive integer, which the app allocates and never reuses."""
 NonEmpty = Annotated[StrictStr, Field(min_length=1)]
 _Email = Annotated[StrictStr, AfterValidator(_matching(_EMAIL, "Invalid email address"))]
 _RecipientRule = Annotated[
@@ -154,9 +150,9 @@ class AccountConfig(StrictModel):
     """One mail account: login, send mode, servers, identities and auto-approved recipients;
     the name and colour it is shown with."""
 
-    id: Slug
+    id: AccountId
     name: _AccountName | None = None
-    """What the user calls the account; unset, listings show its id."""
+    """What the user calls the account; unset, listings show its login."""
     colour: AccountColour | None = None
     login: NonEmpty
     send_mode: SendMode
@@ -213,12 +209,12 @@ def core_settings_or_issues(raw: object) -> CoreSettings | tuple[ConfigIssue, ..
 
 def _cross_check(settings: CoreSettings) -> tuple[ConfigIssue, ...]:
     issues: list[ConfigIssue] = []
-    ids: set[str] = set()
+    ids: set[int] = set()
     logins: set[str] = set()
-    addresses: dict[str, str] = {}
+    addresses: dict[str, AccountConfig] = {}
     for i, acc in enumerate(settings.account):
         if acc.id in ids:
-            issues.append(ConfigIssue(("account", i, "id"), f'duplicate account id "{acc.id}"'))
+            issues.append(ConfigIssue(("account", i, "id"), f"duplicate account id {acc.id}"))
         ids.add(acc.id)
         # Tools accept a login in any case, so two logins differing only in case would be
         # ambiguous.
@@ -242,8 +238,12 @@ def _cross_check(settings: CoreSettings) -> tuple[ConfigIssue, ...]:
                 issues.append(
                     ConfigIssue(
                         ("account", i, "identities", j, "address"),
-                        f'identity {address} is already used by account "{owner}"',
+                        f'identity {address} is already used by account "{_label(owner)}"',
                     )
                 )
-            addresses[address] = acc.id
+            addresses[address] = acc
     return tuple(issues)
+
+
+def _label(account: AccountConfig) -> str:
+    return account.name or account.login

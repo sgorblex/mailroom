@@ -1,3 +1,4 @@
+import type { AccountId } from '@/api/accounts.ts'
 import { SEARCH_FLAG_FIELDS, SEARCH_TEXT_FIELDS, type SearchQuery } from '@/api/mail.ts'
 
 /**
@@ -8,7 +9,7 @@ import { SEARCH_FLAG_FIELDS, SEARCH_TEXT_FIELDS, type SearchQuery } from '@/api/
  * Kept out of the screen's own chunk: the router validates it before the screen loads.
  */
 export interface MailSearch {
-  account?: string
+  account?: AccountId
   folder?: string
   sub?: boolean
   message?: string
@@ -24,6 +25,11 @@ function text(value: unknown): string | undefined {
   return typeof value === 'string' && value !== '' ? value : undefined
 }
 
+function accountId(value: unknown): AccountId | undefined {
+  const number = typeof value === 'string' && /^[1-9][0-9]*$/.test(value) ? Number(value) : value
+  return typeof number === 'number' && Number.isSafeInteger(number) && number > 0 ? number : undefined
+}
+
 function searchQuery(value: unknown): SearchQuery | undefined {
   if (typeof value !== 'object' || value === null) {
     return undefined
@@ -36,6 +42,10 @@ function searchQuery(value: unknown): SearchQuery | undefined {
       query[key] = field
     }
   }
+  // A search saved before ids were numbers names its account by a slug: searched by default instead.
+  if (query.account !== undefined && query.account !== '*' && !/^[1-9][0-9]*$/.test(query.account)) {
+    delete query.account
+  }
   for (const key of SEARCH_FLAG_FIELDS) {
     if (fields[key] === true) {
       query[key] = true
@@ -46,7 +56,7 @@ function searchQuery(value: unknown): SearchQuery | undefined {
 
 export function validateMailSearch(raw: Record<string, unknown>): MailSearch {
   const search: MailSearch = {}
-  const account = text(raw['account'])
+  const account = accountId(raw['account'])
   const folder = text(raw['folder'])
   const message = text(raw['message'])
   const q = searchQuery(raw['q'])

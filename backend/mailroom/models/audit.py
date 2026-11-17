@@ -33,7 +33,7 @@ class AuditRecord(Base):
     rule_set_id: Mapped[int | None] = mapped_column(BigInteger)
     run_id: Mapped[int | None] = mapped_column(BigInteger)
     action: Mapped[str] = mapped_column(Text)
-    account_id: Mapped[str] = mapped_column(Text)
+    account_id: Mapped[int] = mapped_column(BigInteger)
     result: Mapped[str] = mapped_column(Text)
     detail: Mapped[dict[str, Any]] = mapped_column(JSONB)
     """The item's fields (``AuditItem.record``) but its account and result."""

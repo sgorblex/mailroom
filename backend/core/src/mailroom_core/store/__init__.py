@@ -20,6 +20,7 @@ from mailroom_core.store.accounts import (
     StoredSettings,
     current_settings,
     forget_user,
+    new_account_id,
     write_settings,
 )
 from mailroom_core.store.database import (
@@ -58,6 +59,7 @@ __all__ = [
     "downgrade",
     "forget_user",
     "migrate",
+    "new_account_id",
     "run_migrations",
     "upgrade",
     "write_settings",

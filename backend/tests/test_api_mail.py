@@ -70,6 +70,8 @@ NO_REMOTE_CSP = (
     "style-src 'unsafe-inline'; img-src data:; frame-ancestors 'self'; base-uri 'none'"
 )
 
+pytestmark = pytest.mark.usefixtures("numbered_accounts")
+
 
 class Mailbox:
     """The signed-in user's account ``work`` on a fresh Dovecot user."""
@@ -93,7 +95,7 @@ class Mailbox:
         return response.json()
 
     def refs(self, folder: str = "INBOX") -> list[str]:
-        page = self.get("/accounts/work/messages", folder=folder)
+        page = self.get("/accounts/1/messages", folder=folder)
         return [item["ref"] for item in page["messages"]]
 
     def organize(self, action: str, **body: Any) -> Any:
@@ -110,6 +112,7 @@ def endpoint(server: ImapTestServer) -> dict[str, Any]:
 
 @pytest.fixture
 def mailbox(
+    numbered_accounts: None,
     user_client: TestClient,
     imap_server: ImapTestServer,
     application: FastAPI,
@@ -130,8 +133,8 @@ def test_signed_out_browsers_are_refused_uncached(api_client: TestClient) -> Non
     refused = [
         api_client.get(f"{MAIL}{path}")
         for path in (
-            "/accounts/work/folders",
-            "/accounts/work/messages",
+            "/accounts/1/folders",
+            "/accounts/1/messages",
             "/messages/x",
             "/messages/x/html",
             "/messages/x/parts/2",
@@ -152,8 +155,8 @@ def test_signed_out_browsers_are_refused_uncached(api_client: TestClient) -> Non
 def test_folders_carry_roles_and_counts(mailbox: Mailbox) -> None:
     mailbox.seed(mime("one"))
     mailbox.seed(mime("two"), flags=("\\Seen",))
-    listed = mailbox.get("/accounts/work/folders")
-    assert listed["account_id"] == "work"
+    listed = mailbox.get("/accounts/1/folders")
+    assert listed["account_id"] == 1
     folders = {folder["path"]: folder for folder in listed["folders"]}
     assert folders["INBOX"] == {
         "path": "INBOX",
@@ -178,7 +181,7 @@ def test_a_folder_pages_newest_first(mailbox: Mailbox) -> None:
             ),
             flags=("\\Flagged",) if n == 0 else (),
         )
-    first = mailbox.get("/accounts/work/messages", limit=2)
+    first = mailbox.get("/accounts/1/messages", limit=2)
     assert [m["subject"] for m in first["messages"]] == ["Message 2", "Message 1"]
     assert first["failures"] == []
     item = first["messages"][0]
@@ -187,13 +190,13 @@ def test_a_folder_pages_newest_first(mailbox: Mailbox) -> None:
     assert item["flags"] == {"seen": False, "flagged": False, "answered": False, "draft": False}
     assert item["preview"] == "Body number 2."
     assert (item["account_id"], item["folder"], item["has_attachments"]) == (
-        "work",
+        1,
         "INBOX",
         False,
     )
     assert item["size"] > 0
 
-    rest = mailbox.get("/accounts/work/messages", limit=2, cursor=first["next_cursor"])
+    rest = mailbox.get("/accounts/1/messages", limit=2, cursor=first["next_cursor"])
     assert [m["subject"] for m in rest["messages"]] == ["Message 0"]
     assert rest["messages"][0]["flags"]["flagged"] is True
     assert rest["next_cursor"] is None
@@ -201,17 +204,17 @@ def test_a_folder_pages_newest_first(mailbox: Mailbox) -> None:
 
 def test_list_refusals(mailbox: Mailbox) -> None:
     client = mailbox.client
-    assert detail(client.get(f"{MAIL}/accounts/work/messages", params={"folder": "Nowhere"})) == (
+    assert detail(client.get(f"{MAIL}/accounts/1/messages", params={"folder": "Nowhere"})) == (
         404,
         "mailbox_missing",
     )
-    bad_cursor = client.get(f"{MAIL}/accounts/work/messages", params={"cursor": "nope"})
+    bad_cursor = client.get(f"{MAIL}/accounts/1/messages", params={"cursor": "nope"})
     assert detail(bad_cursor) == (400, "invalid_argument")
-    too_many = client.get(f"{MAIL}/accounts/work/messages", params={"limit": 51})
+    too_many = client.get(f"{MAIL}/accounts/1/messages", params={"limit": 51})
     assert too_many.status_code == 422
-    unknown = client.get(f"{MAIL}/accounts/home/messages")
+    unknown = client.get(f"{MAIL}/accounts/2/messages")
     assert unknown.json() == {"detail": {"code": "not_found", "message": "No such account."}}
-    assert detail(client.get(f"{MAIL}/accounts/home/folders")) == (404, "not_found")
+    assert detail(client.get(f"{MAIL}/accounts/2/folders")) == (404, "not_found")
 
 
 def test_a_folder_lists_and_searches_with_its_subfolders(mailbox: Mailbox) -> None:
@@ -224,19 +227,19 @@ def test_a_folder_lists_and_searches_with_its_subfolders(mailbox: Mailbox) -> No
         arrived = datetime(2026, 10, day, 9, tzinfo=UTC)
         seed(mailbox.server, mailbox.login, folder, mime(subject, text="plan"), (), arrived)
 
-    alone = mailbox.get("/accounts/work/messages", folder="Projects")
+    alone = mailbox.get("/accounts/1/messages", folder="Projects")
     assert [m["subject"] for m in alone["messages"]] == ["Kickoff"]
-    merged = mailbox.get("/accounts/work/messages", folder="Projects", subfolders="true")
+    merged = mailbox.get("/accounts/1/messages", folder="Projects", subfolders="true")
     assert [(m["subject"], m["folder"]) for m in merged["messages"]] == [
         ("Retro", "Projects/Old"),
         ("Kickoff", "Projects"),
     ]
     assert (merged["next_cursor"], merged["failures"]) == (None, [])
 
-    found = mailbox.search(account="work", folder="Projects", text="plan", subfolders=True)
+    found = mailbox.search(account=1, folder="Projects", text="plan", subfolders=True)
     assert [m["subject"] for m in found["messages"]] == ["Retro", "Kickoff"]
     refused = mailbox.client.post(
-        f"{MAIL}/search", json={"account": "work", "folder": "*", "subfolders": True}
+        f"{MAIL}/search", json={"account": 1, "folder": "*", "subfolders": True}
     )
     assert detail(refused) == (400, "invalid_argument")
 
@@ -246,7 +249,7 @@ def test_search_reads_the_fields_and_leaves_junk_out(mailbox: Mailbox) -> None:
     mailbox.seed(mime("Invoice April", sender="Shop <shop@example.org>"), folder="Junk")
     mailbox.seed(mime("Holiday plans", sender="Ada <ada@example.org>"), flags=("\\Seen",))
 
-    inbox = mailbox.search(account="work", subject="invoice")
+    inbox = mailbox.search(account=1, subject="invoice")
     assert [m["subject"] for m in inbox["messages"]] == ["Invoice March"]
     everywhere = mailbox.search(folder="*", **{"from": "shop"})
     assert [m["subject"] for m in everywhere["messages"]] == ["Invoice March"]
@@ -260,13 +263,13 @@ def test_search_reads_the_fields_and_leaves_junk_out(mailbox: Mailbox) -> None:
     def post(**body: Any) -> Any:
         return mailbox.client.post(f"{MAIL}/search", json=body)
 
-    assert detail(post(account="home")) == (404, "not_found")
+    assert detail(post(account=2)) == (404, "not_found")
     assert post(since="2026-02-30").status_code == 422
     assert post(query="shop").status_code == 422  # an unknown field is refused
     assert post(sender="shop").status_code == 422  # the field is "from"
     for field in ("account", "folder", "limit"):
         assert post(**{field: None}).status_code == 422
-    assert detail(post(account="work", gmail_query="x")) == (502, "unsupported")
+    assert detail(post(account=1, gmail_query="x")) == (502, "unsupported")
     for term in ("a\r\nb", "a\nDELETE INBOX", "a\x00b"):
         assert detail(post(account="*", text=term)) == (400, "invalid_argument")
     # The criteria never reach the query string, so no access log sees them.
@@ -281,13 +284,13 @@ def test_a_failing_account_is_a_failure_of_an_all_accounts_search(
     assert mailbox.client.post("/api/v1/accounts", json=closed).status_code == 201
     page = mailbox.search()
     assert [m["subject"] for m in page["messages"]] == ["Kept"]
-    assert page["failures"] == [{"account_id": "closed", "folder": "INBOX", "code": "unreachable"}]
+    assert page["failures"] == [{"account_id": 2, "folder": "INBOX", "code": "unreachable"}]
     # Over every folder it failed before one was chosen.
     page = mailbox.search(folder="*")
     assert [m["subject"] for m in page["messages"]] == ["Kept"]
-    assert page["failures"] == [{"account_id": "closed", "folder": None, "code": "unreachable"}]
+    assert page["failures"] == [{"account_id": 2, "folder": None, "code": "unreachable"}]
     # Searched alone, a single folder's failure is the answer, as for a list.
-    closed_only = mailbox.client.post(f"{MAIL}/search", json={"account": "closed"})
+    closed_only = mailbox.client.post(f"{MAIL}/search", json={"account": 2})
     assert detail(closed_only) == (502, "unreachable")
 
 
@@ -299,15 +302,15 @@ def test_an_all_accounts_search_with_one_usable_account_still_answers_a_page(
     closed = new_account("closed", login="closed@example.org")
     assert mailbox.client.post("/api/v1/accounts", json=closed).status_code == 201
     monkeypatch.setattr(
-        service_read, "_missing_password", lambda _ctx, _user, account_id: account_id == "work"
+        service_read, "_missing_password", lambda _ctx, _user, account_id: account_id == 1
     )
     for folder in ("INBOX", "*"):
         page = mailbox.search(folder=folder)
         assert page["messages"] == []
         assert page["failures"] == [
-            {"account_id": "work", "folder": None, "code": "password_missing"},
+            {"account_id": 1, "folder": None, "code": "password_missing"},
             {
-                "account_id": "closed",
+                "account_id": 2,
                 "folder": None if folder == "*" else "INBOX",
                 "code": "unreachable",
             },
@@ -330,7 +333,7 @@ def test_a_slow_account_is_a_timeout_failure_of_an_all_accounts_search(
     page = mailbox.search(folder="*")
     assert time.monotonic() - started < 9
     assert [m["subject"] for m in page["messages"]] == ["Kept"]
-    assert page["failures"] == [{"account_id": "silent", "folder": None, "code": "timeout"}]
+    assert page["failures"] == [{"account_id": 2, "folder": None, "code": "timeout"}]
 
 
 def test_a_message_reads_without_marking_it_seen(
@@ -378,7 +381,7 @@ def test_a_message_reads_without_marking_it_seen(
     assert "\\Seen" not in folder_contents(mailbox.server, mailbox.login, "INBOX")[0].flags
 
     record = next(r for r in caplog.records if r.msg == "mail_read")
-    assert (record.__dict__["via"], record.__dict__["account_id"]) == ("web", "work")
+    assert (record.__dict__["via"], record.__dict__["account_id"]) == ("web", 1)
     assert "Notes" not in str(record.__dict__)
 
 
@@ -390,11 +393,11 @@ def test_refs_of_other_accounts_and_stale_refs_are_refused(
     message = parse_ref(ref)
     client = mailbox.client
 
-    stale = format_ref(MessageRef("work", "INBOX", message.uid_validity + 1, message.uid))
+    stale = format_ref(MessageRef(1, "INBOX", message.uid_validity + 1, message.uid))
     for path in ("", "/html", "/parts/2"):
         assert detail(client.get(f"{MAIL}/messages/{stale}{path}")) == (409, "stale_reference")
 
-    elsewhere = format_ref(MessageRef("home", "INBOX", message.uid_validity, message.uid))
+    elsewhere = format_ref(MessageRef(2, "INBOX", message.uid_validity, message.uid))
     for path in ("", "/html", "/parts/2"):
         response = client.get(f"{MAIL}/messages/{elsewhere}{path}")
         assert response.json() == {
@@ -402,11 +405,11 @@ def test_refs_of_other_accounts_and_stale_refs_are_refused(
         }
     assert detail(client.get(f"{MAIL}/messages/garbage")) == (400, "invalid_argument")
 
-    # Another user has no account "work": the ref is not theirs to read.
+    # Another user has no account 1: the ref is not theirs to read.
     bob = create_user(db_session, "bob", PASSWORD)
     api_client.cookies.set(SESSION_COOKIE_NAME, create_session(db_session, bob))
     assert detail(api_client.get(f"{MAIL}/messages/{ref}")) == (404, "not_found")
-    assert detail(api_client.get(f"{MAIL}/accounts/work/folders")) == (404, "not_found")
+    assert detail(api_client.get(f"{MAIL}/accounts/1/folders")) == (404, "not_found")
     assert api_client.post(f"{MAIL}/search", json={}).json() == {
         "messages": [],
         "next_cursor": None,
@@ -444,7 +447,7 @@ def test_the_html_view_is_a_sanitised_standalone_document(mailbox: Mailbox) -> N
     assert (view["has_html"], view["has_remote_content"]) == (True, True)
     # The logo the HTML shows in place is no attachment.
     assert view["attachments"] == []
-    assert mailbox.get("/accounts/work/messages")["messages"][0]["has_attachments"] is False
+    assert mailbox.get("/accounts/1/messages")["messages"][0]["has_attachments"] is False
 
     response = mailbox.client.get(f"{MAIL}/messages/{ref}/html")
     assert response.status_code == 200
@@ -542,7 +545,7 @@ def test_download_names_and_types() -> None:
 def test_an_unreachable_server_is_refused(user_client: TestClient) -> None:
     """Port 9 on loopback is closed."""
     assert user_client.post("/api/v1/accounts", json=new_account()).status_code == 201
-    response = user_client.get(f"{MAIL}/accounts/work/folders")
+    response = user_client.get(f"{MAIL}/accounts/1/folders")
     assert detail(response) == (502, "unreachable")
     assert response.json()["detail"]["message"] == (
         "The mail server for this account could not be reached."
@@ -563,7 +566,7 @@ def test_a_silent_server_times_out_without_stalling_the_api(
     answers: dict[str, Any] = {}
 
     def slow() -> None:
-        answers["folders"] = user_client.get(f"{MAIL}/accounts/work/folders")
+        answers["folders"] = user_client.get(f"{MAIL}/accounts/1/folders")
 
     started = time.monotonic()
     waiting = threading.Thread(target=slow)
@@ -582,19 +585,19 @@ def test_a_silent_server_times_out_without_stalling_the_api(
 def test_changing_an_account_drops_its_connections(mailbox: Mailbox) -> None:
     mailbox.seed(mime("one"))
     client = mailbox.client
-    assert client.get(f"{MAIL}/accounts/work/folders").status_code == 200
+    assert client.get(f"{MAIL}/accounts/1/folders").status_code == 200
     account = new_account(login=mailbox.login, imap=endpoint(mailbox.server))
-    change = {k: v for k, v in account.items() if k not in {"id", "password"}}
+    change = {k: v for k, v in account.items() if k != "password"}
     change["password"] = "wrong password"
-    assert client.put("/api/v1/accounts/work", json=change).status_code == 200
+    assert client.put("/api/v1/accounts/1", json=change).status_code == 200
     # The open connection logged in with the old password; it went with the change.
-    assert detail(client.get(f"{MAIL}/accounts/work/folders")) == (409, "auth_failed")
+    assert detail(client.get(f"{MAIL}/accounts/1/folders")) == (409, "auth_failed")
 
     change["password"] = mailbox.server.password
-    assert client.put("/api/v1/accounts/work", json=change).status_code == 200
-    assert client.get(f"{MAIL}/accounts/work/folders").status_code == 200
-    assert client.delete("/api/v1/accounts/work").status_code == 204
-    assert detail(client.get(f"{MAIL}/accounts/work/folders")) == (404, "not_found")
+    assert client.put("/api/v1/accounts/1", json=change).status_code == 200
+    assert client.get(f"{MAIL}/accounts/1/folders").status_code == 200
+    assert client.delete("/api/v1/accounts/1").status_code == 204
+    assert detail(client.get(f"{MAIL}/accounts/1/folders")) == (404, "not_found")
 
 
 class _Connections:
@@ -633,11 +636,11 @@ def test_the_pool_closes_idle_users_and_rebuilds_on_a_new_revision(
             assert older is rebuilt
         assert made[0].closed == [None]
         assert len(made) == 2
-        pool.invalidate(1, "work")
-        assert made[1].closed == ["work"]
+        pool.invalidate(1, 1)
+        assert made[1].closed == [1]
         assert pool.close_idle() == 0
         assert pool.close_idle(now=time.monotonic() + 61) == 1
-        assert made[1].closed == ["work", None]
+        assert made[1].closed == [1, None]
     finally:
         pool.close()
 
@@ -998,18 +1001,18 @@ def test_a_folder_call_past_its_deadline_opens_no_session_but_may_confirm_a_writ
         cast("MailConnections", sessions), stop, confirming=True
     )
     ran: list[str] = []
-    assert stoppable.with_connection("work", lambda _client: "done") == "done"
+    assert stoppable.with_connection(1, lambda _client: "done") == "done"
     sessions.readied = stop.set  # the deadline passes while the session readies
     with pytest.raises(MailError) as cut:
-        stoppable.with_connection("work", lambda _client: ran.append("fn"))
+        stoppable.with_connection(1, lambda _client: ran.append("fn"))
     assert (cut.value.code, ran, sessions.sessions) == ("timeout", [], 2)
     with pytest.raises(MailError):
-        stoppable.with_connection("work", lambda _client: ran.append("fn"))
+        stoppable.with_connection(1, lambda _client: ran.append("fn"))
     assert (ran, sessions.sessions) == ([], 2)
-    assert stoppable.folders("work") == []
+    assert stoppable.folders(1) == []
     plain = service_shared._Stoppable(cast("MailConnections", sessions), stop)  # noqa: SLF001
     with pytest.raises(MailError):
-        plain.folders("work")
+        plain.folders(1)
     assert sessions.lists == 1
 
 
@@ -1024,7 +1027,7 @@ def test_an_unexpected_failure_is_a_failed_refusal(
 
     monkeypatch.setattr(service_read.core, "list_messages", broken)
     with caplog.at_level(logging.INFO, logger="mailroom.mail.service"):
-        response = mailbox.client.get(f"{MAIL}/accounts/work/messages")
+        response = mailbox.client.get(f"{MAIL}/accounts/1/messages")
     assert detail(response) == (500, "failed")
     [record] = [r for r in caplog.records if r.msg == "mail_listed"]
     assert record.__dict__["outcome"] == "failed"
@@ -1045,7 +1048,7 @@ def test_a_password_removed_once_the_call_began_is_password_missing(
         return real(store, subkey, account_id)
 
     monkeypatch.setattr(connections, "account_password", removed_meanwhile)
-    response = mailbox.client.get(f"{MAIL}/accounts/work/messages")
+    response = mailbox.client.get(f"{MAIL}/accounts/1/messages")
     assert detail(response) == (409, "password_missing")
     assert user_store(migrated_engine, user.id).secrets() == {}
 
@@ -1064,19 +1067,17 @@ def test_an_all_accounts_search_reports_a_password_removed_meanwhile(
 
     monkeypatch.setattr(connections, "account_password", removed_meanwhile)
     page = mailbox.search()
-    assert page["failures"] == [
-        {"account_id": "work", "folder": "INBOX", "code": "password_missing"}
-    ]
+    assert page["failures"] == [{"account_id": 1, "folder": "INBOX", "code": "password_missing"}]
 
 
 def test_a_password_that_does_not_open_is_refused_before_connecting(
     mailbox: Mailbox, application: FastAPI, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(application.state, "secrets_subkey", secrets_subkey(os.urandom(32)))
-    for path in ("/accounts/work/folders", "/accounts/work/messages"):
+    for path in ("/accounts/1/folders", "/accounts/1/messages"):
         response = mailbox.client.get(f"{MAIL}{path}")
         assert detail(response) == (409, "password_missing")
-    one = mailbox.client.post(f"{MAIL}/search", json={"account": "work"})
+    one = mailbox.client.post(f"{MAIL}/search", json={"account": 1})
     assert detail(one) == (409, "password_missing")
 
 
@@ -1086,7 +1087,7 @@ def test_without_the_secrets_key_mail_is_unavailable(
     mailbox.seed(mime("one"))
     [ref] = mailbox.refs()
     monkeypatch.setattr(application.state, "secrets_subkey", None)
-    for path in ("/accounts/work/folders", "/accounts/work/messages", f"/messages/{ref}"):
+    for path in ("/accounts/1/folders", "/accounts/1/messages", f"/messages/{ref}"):
         assert detail(mailbox.client.get(f"{MAIL}{path}")) == (503, "secrets_key_missing")
     assert detail(mailbox.client.post(f"{MAIL}/search", json={})) == (503, "secrets_key_missing")
 
@@ -1097,7 +1098,7 @@ def test_a_full_process_answers_busy(
     full = MailPool(process_calls=0)
     monkeypatch.setattr(application.state, "mail_pool", full)
     try:
-        response = mailbox.client.get(f"{MAIL}/accounts/work/folders")
+        response = mailbox.client.get(f"{MAIL}/accounts/1/folders")
     finally:
         full.close()
     assert detail(response) == (429, "busy")
@@ -1109,8 +1110,8 @@ def test_mail_answers_are_never_cached(mailbox: Mailbox) -> None:
     [ref] = mailbox.refs()
     client = mailbox.client
     for response in (
-        client.get(f"{MAIL}/accounts/work/folders"),
-        client.get(f"{MAIL}/accounts/work/messages"),
+        client.get(f"{MAIL}/accounts/1/folders"),
+        client.get(f"{MAIL}/accounts/1/messages"),
         client.post(f"{MAIL}/search", json={}),
         client.get(f"{MAIL}/messages/{ref}"),
     ):
@@ -1119,10 +1120,10 @@ def test_mail_answers_are_never_cached(mailbox: Mailbox) -> None:
     refused = client.get(f"{MAIL}/messages/{ref}/html")
     assert detail(refused) == (404, "not_found")
     assert refused.headers["cache-control"] == "private, no-store"
-    missing = client.get(f"{MAIL}/accounts/home/folders")
+    missing = client.get(f"{MAIL}/accounts/2/folders")
     assert missing.json() == {"detail": {"code": "not_found", "message": "No such account."}}
     assert missing.headers["cache-control"] == "private, no-store"
-    invalid = client.get(f"{MAIL}/accounts/work/messages", params={"limit": 0})
+    invalid = client.get(f"{MAIL}/accounts/1/messages", params={"limit": 0})
     assert invalid.status_code == 422
     assert invalid.headers["cache-control"] == "private, no-store"
 
@@ -1149,7 +1150,7 @@ def test_a_move_answers_the_new_refs_and_the_old_ones_are_gone(
     with caplog.at_level(logging.INFO, logger="mailroom.mail.service"):
         [group] = mailbox.organize("move", refs=refs, folder="Archive")
     assert {k: v for k, v in group.items() if k != "new_refs"} == {
-        "account": "work",
+        "account": 1,
         "folder": "INBOX",
         "ok": True,
         "count": 2,
@@ -1191,7 +1192,7 @@ def test_a_move_answers_the_new_refs_and_the_old_ones_are_gone(
     }
     assert logged == {
         "via": "web",
-        "account_ids": ["work"],
+        "account_ids": [1],
         "ref_count": 2,
         "changed": 2,
         "groups": 1,
@@ -1247,7 +1248,7 @@ def test_a_batch_over_two_folders_answers_each_group(mailbox: Mailbox) -> None:
     before = (subjects(mailbox, "INBOX"), subjects(mailbox, "Junk"))
     [kept] = mailbox.refs()
     message = parse_ref(kept)
-    stale = format_ref(MessageRef("work", "INBOX", message.uid_validity + 1, message.uid))
+    stale = format_ref(MessageRef(1, "INBOX", message.uid_validity + 1, message.uid))
     refused = mailbox.client.post(
         f"{MAIL}/messages/move", json={"refs": [stale, *mailbox.refs("Junk")], "folder": "Junk"}
     )
@@ -1322,7 +1323,7 @@ def test_archive_moves_to_the_archive_folder_or_is_unsupported(
     [archived] = group["new_refs"]
     refused = mailbox.client.post(f"{MAIL}/messages/archive", json={"refs": [archived]})
     assert detail(refused) == (502, "unsupported")
-    assert refused.json()["detail"]["message"].endswith("work has no Archive folder.")
+    assert refused.json()["detail"]["message"].endswith("Account 1 has no Archive folder.")
     assert subjects(mailbox, "Archive") == ["keep"]
 
 
@@ -1337,7 +1338,7 @@ def test_trash_moves_to_trash_and_never_deletes(
     assert (record.actor, record.action, record.account_id, record.result) == (
         "user",
         "trash",
-        "work",
+        1,
         "ok",
     )
     assert (record.detail["folder"], record.detail["destination"]) == ("INBOX", "Trash")
@@ -1375,8 +1376,8 @@ def test_removing_an_account_keeps_its_records(
 ) -> None:
     mailbox.seed(mime("unwanted"))
     mailbox.organize("trash", refs=mailbox.refs())
-    assert mailbox.client.delete("/api/v1/accounts/work").status_code == 204
-    assert [(r.action, r.account_id) for r in audited(user.id)] == [("trash", "work")]
+    assert mailbox.client.delete("/api/v1/accounts/1").status_code == 204
+    assert [(r.action, r.account_id) for r in audited(user.id)] == [("trash", 1)]
 
 
 def test_flags_change_read_back_and_repeat(mailbox: Mailbox) -> None:
@@ -1390,7 +1391,7 @@ def test_flags_change_read_back_and_repeat(mailbox: Mailbox) -> None:
     for _ in range(2):  # the same change twice answers the same
         [group] = mailbox.organize("flag", refs=[ref], seen=True)
         assert group == {
-            "account": "work",
+            "account": 1,
             "folder": "INBOX",
             "ok": True,
             "count": 1,
@@ -1418,8 +1419,8 @@ def test_a_batch_is_refused_whole_before_any_write(mailbox: Mailbox) -> None:
     mailbox.seed(mime("mine"))
     [ref] = mailbox.refs()
     message = parse_ref(ref)
-    elsewhere = format_ref(MessageRef("home", "INBOX", message.uid_validity, message.uid))
-    stale = format_ref(MessageRef("work", "INBOX", message.uid_validity + 1, message.uid))
+    elsewhere = format_ref(MessageRef(2, "INBOX", message.uid_validity, message.uid))
+    stale = format_ref(MessageRef(1, "INBOX", message.uid_validity + 1, message.uid))
     client = mailbox.client
 
     def post(action: str, **body: Any) -> Any:
@@ -1466,11 +1467,11 @@ def test_a_batch_naming_an_account_that_cannot_log_in_is_refused_before_any_writ
     assert added.status_code == 201, added.text
     store = user_store(migrated_engine, user.id)
     current = load_accounts(store)
-    store.save_settings(current.doc, current.revision, SecretChanges(remove=["home"]))
+    store.save_settings(current.doc, current.revision, SecretChanges(remove=[2]))
     mailbox.seed(mime("mine"))
     [ref] = mailbox.refs()
     message = parse_ref(ref)
-    locked = format_ref(MessageRef("home", "INBOX", message.uid_validity, message.uid))
+    locked = format_ref(MessageRef(2, "INBOX", message.uid_validity, message.uid))
     actions: tuple[tuple[str, dict[str, Any]], ...] = (
         ("move", {"folder": "Archive"}),
         ("archive", {}),
@@ -1504,7 +1505,7 @@ def test_a_cross_site_organize_is_refused(mailbox: Mailbox) -> None:
 
 
 def folder_paths(mailbox: Mailbox, **params: Any) -> dict[str, dict[str, Any]]:
-    listed = mailbox.get("/accounts/work/folders", **params)["folders"]
+    listed = mailbox.get("/accounts/1/folders", **params)["folders"]
     return {folder["path"]: folder for folder in listed}
 
 
@@ -1514,8 +1515,8 @@ def server_folders(mailbox: Mailbox) -> set[str]:
 
 
 def folder_call(mailbox: Mailbox, action: str, **body: Any) -> Any:
-    """``POST /accounts/work/folders[/<action>]``: the response."""
-    path = f"{MAIL}/accounts/work/folders" + (f"/{action}" if action != "create" else "")
+    """``POST /accounts/1/folders[/<action>]``: the response."""
+    path = f"{MAIL}/accounts/1/folders" + (f"/{action}" if action != "create" else "")
     return mailbox.client.post(path, json=body)
 
 
@@ -1524,7 +1525,7 @@ def add_rule_set(
     user_id: int,
     folder: list[str],
     *specs: dict[str, Any],
-    account_id: str = "work",
+    account_id: int = 1,
     enabled: bool = False,
     name: str = "rules",
 ) -> RuleSet:
@@ -1557,18 +1558,18 @@ def test_folders_are_created_renamed_and_deleted(
     created = folder_call(mailbox, "create", parent=None, name="Projects")
     assert (created.status_code, created.json()) == (
         201,
-        {"account_id": "work", "path": "Projects"},
+        {"account_id": 1, "path": "Projects"},
     )
     assert created.headers["cache-control"] == "private, no-store"
     inner = folder_call(mailbox, "create", parent="Projects", name="Città 2026")
-    assert inner.json() == {"account_id": "work", "path": "Projects/Città 2026"}
+    assert inner.json() == {"account_id": 1, "path": "Projects/Città 2026"}
     assert {"Projects", "Projects/Città 2026"} <= set(folder_paths(mailbox))
 
     renamed = folder_call(mailbox, "rename", folder="Projects", parent=None, name="Work")
     assert (renamed.status_code, renamed.json()) == (
         200,
         {
-            "account_id": "work",
+            "account_id": 1,
             "folder": "Projects",
             "path": "Work",
             "rule_sets": [],
@@ -1584,22 +1585,22 @@ def test_folders_are_created_renamed_and_deleted(
     deleted = folder_call(mailbox, "delete", folder="Work/Città 2026", messages=2)
     assert (deleted.status_code, deleted.json()) == (
         200,
-        {"account_id": "work", "folder": "Work/Città 2026", "messages": 2},
+        {"account_id": 1, "folder": "Work/Città 2026", "messages": 2},
     )
     assert "Work/Città 2026" not in server_folders(mailbox)
 
     records = audited(user.id)
     assert [(r.actor, r.action, r.account_id, r.result, r.detail) for r in records] == [
-        ("user", "folder_create", "work", "ok", {"folder": "Projects"}),
-        ("user", "folder_create", "work", "ok", {"folder": "Projects/Città 2026"}),
+        ("user", "folder_create", 1, "ok", {"folder": "Projects"}),
+        ("user", "folder_create", 1, "ok", {"folder": "Projects/Città 2026"}),
         (
             "user",
             "folder_rename",
-            "work",
+            1,
             "ok",
             {"folder": "Projects", "destination": "Work", "rule_sets": [], "filters": []},
         ),
-        ("user", "folder_delete", "work", "ok", {"folder": "Work/Città 2026", "messages": 2}),
+        ("user", "folder_delete", 1, "ok", {"folder": "Work/Città 2026", "messages": 2}),
     ]
 
 
@@ -1676,12 +1677,12 @@ def test_folder_requests_are_checked_before_anything_connects(mailbox: Mailbox) 
         response = folder_call(mailbox, action, **body)
         assert response.status_code == 422, (action, body)
     unknown = mailbox.client.post(
-        f"{MAIL}/accounts/home/folders/delete", json={"folder": "Lists", "messages": 0}
+        f"{MAIL}/accounts/2/folders/delete", json={"folder": "Lists", "messages": 0}
     )
     assert detail(unknown) == (404, "not_found")
     for headers in ({"Sec-Fetch-Site": "cross-site"}, {"Origin": "https://evil.example"}):
         response = mailbox.client.post(
-            f"{MAIL}/accounts/work/folders",
+            f"{MAIL}/accounts/1/folders",
             json={"parent": None, "name": "Evil"},
             headers=headers,
         )
@@ -1701,7 +1702,7 @@ def test_a_rename_carries_the_rule_sets_with_it(
     mover = add_rule_set(
         db_session, user.id, ["INBOX"], moving_to("Older"), moving_to("Old", "Sub")
     )
-    other_account = add_rule_set(db_session, user.id, ["Old"], account_id="home")
+    other_account = add_rule_set(db_session, user.id, ["Old"], account_id=2)
     bob = create_user(db_session, "bob", PASSWORD)
     bobs = add_rule_set(db_session, bob.id, ["Old"], moving_to("Old"))
     [stays, moves] = db_session.query(Filter).filter_by(rule_set_id=mover.id).order_by(Filter.id)
@@ -1709,7 +1710,7 @@ def test_a_rename_carries_the_rule_sets_with_it(
     answer = folder_call(mailbox, "rename", folder="Old", parent="Older", name="New")
     assert answer.status_code == 200, answer.text
     assert answer.json() == {
-        "account_id": "work",
+        "account_id": 1,
         "folder": "Old",
         "path": "Older/New",
         "rule_sets": [enabled.id, below.id, mover.id],
@@ -1782,7 +1783,7 @@ def test_a_folder_a_rule_set_names_is_not_deleted(
     create_folders(mailbox.server, mailbox.login, "Lists", "Other")
     mailbox.seed(mime("news"), folder="Lists")
     mover = add_rule_set(db_session, user.id, ["INBOX"], moving_to("Lists"), name="Newsletters")
-    add_rule_set(db_session, user.id, ["Lists"], account_id="home", name="Elsewhere")
+    add_rule_set(db_session, user.id, ["Lists"], account_id=2, name="Elsewhere")
 
     refused = folder_call(mailbox, "delete", folder="Lists", messages=1)
     assert detail(refused) == (409, "folder_in_use")
@@ -1825,7 +1826,7 @@ def test_folder_logs_carry_counts_never_names(
         ("mail_folder_deleted", "ok"),
     }
     renamed = records["mail_folder_renamed", "ok"].__dict__
-    assert (renamed["via"], renamed["account_id"]) == ("web", "work")
+    assert (renamed["via"], renamed["account_id"]) == ("web", 1)
     assert (renamed["rule_sets"], renamed["filters"], renamed["rule_sets_updated"]) == (0, 0, True)
     assert records["mail_folder_deleted", "ok"].__dict__["messages"] == 1
     for record in records.values():

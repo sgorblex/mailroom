@@ -81,7 +81,7 @@ class MailboxContext:
     uid_validity: int
     exists: int
     uid_next: int | None
-    account: str
+    account: int
     """The account's id, as `with_mailbox` was given it."""
 
 
@@ -177,8 +177,8 @@ class MailConnections:
 
     def __init__(
         self,
-        account: Callable[[str], AccountConfig | None],
-        password: Callable[[str], str | None],
+        account: Callable[[int], AccountConfig | None],
+        password: Callable[[int], str | None],
         *,
         ssl_context: ssl.SSLContext | None = None,
         pool_size: int = 1,
@@ -197,13 +197,13 @@ class MailConnections:
         self._timeouts = timeouts
         self._health_cache = health_cache
         self._lock = threading.Lock()
-        self._accounts: dict[str, _Account] = {}
+        self._accounts: dict[int, _Account] = {}
 
     @classmethod
     def from_accounts(
         cls,
         accounts: Iterable[AccountConfig],
-        passwords: Mapping[str, str],
+        passwords: Mapping[int, str],
         *,
         ssl_context: ssl.SSLContext | None = None,
         pool_size: int = 1,
@@ -214,10 +214,10 @@ class MailConnections:
         copied now; the options are the constructor's. Two accounts with one id are a
         ValueError; an account with no password, or an empty one, fails with a RuntimeError
         when it opens."""
-        by_id: dict[str, AccountConfig] = {}
+        by_id: dict[int, AccountConfig] = {}
         for account in accounts:
             if account.id in by_id:
-                raise ValueError(f'duplicate account id "{account.id}"')
+                raise ValueError(f"duplicate account id {account.id}")
             by_id[account.id] = account
         # An empty password is a missing one: never an empty-password login.
         secrets = {account_id: secret for account_id, secret in passwords.items() if secret}
@@ -234,7 +234,7 @@ class MailConnections:
 
     def with_mailbox[T](
         self,
-        account_id: str,
+        account_id: int,
         path: str,
         read_only: bool,
         fn: Callable[[MailboxContext], T],
@@ -257,7 +257,7 @@ class MailConnections:
         except _AttemptFailedError as failure:
             raise failure.error from None
 
-    def with_connection[T](self, account_id: str, fn: Callable[[IMAPClient], T]) -> T:
+    def with_connection[T](self, account_id: int, fn: Callable[[IMAPClient], T]) -> T:
         """Runs `fn` on a connection of the account with no mailbox selected: for commands on
         folders themselves (CREATE, RENAME, DELETE), which must not meet a mailbox this
         connection still holds open.
@@ -279,11 +279,11 @@ class MailConnections:
         except _AttemptFailedError as failure:
             raise failure.error from None
 
-    def serves(self, account_id: str) -> bool:
+    def serves(self, account_id: int) -> bool:
         """Whether `account_id` is one of these connections' accounts; opens nothing."""
         return self._lookup_account(account_id) is not None
 
-    def capabilities(self, account_id: str) -> Capabilities:
+    def capabilities(self, account_id: int) -> Capabilities:
         """What the account's server supports, as it announced after the login."""
         state = self._state(account_id)
         known = state.capabilities
@@ -296,7 +296,7 @@ class MailConnections:
                 state.capabilities = found
         return found
 
-    def delimiter(self, account_id: str) -> str | None:
+    def delimiter(self, account_id: int) -> str | None:
         """The account's hierarchy delimiter (`LIST "" ""`), None when it has no hierarchy;
         asked once, then cached until the account's connections are closed."""
         state = self._state(account_id)
@@ -310,7 +310,7 @@ class MailConnections:
                 state.delimiter = (found,)
         return found
 
-    def folders(self, account_id: str, *, with_status: bool = False) -> list[Folder]:
+    def folders(self, account_id: int, *, with_status: bool = False) -> list[Folder]:
         """The account's folders: special-use ones first in `FOLDER_ROLES` order, then the rest
         by path. `with_status` adds the counts (one STATUS per selectable folder)."""
 
@@ -322,14 +322,14 @@ class MailConnections:
 
         return self._on_connection(account_id, run)
 
-    def special_folder(self, account_id: str, role: FolderRole) -> Folder:
+    def special_folder(self, account_id: int, role: FolderRole) -> Folder:
         """The account's folder with `role`; `unsupported` if it has none."""
         for folder in self.folders(account_id):
             if folder.role == role:
                 return folder
-        raise MailError("unsupported", f"{account_id} has no {role.capitalize()} folder.")
+        raise MailError("unsupported", f"Account {account_id} has no {role.capitalize()} folder.")
 
-    def reachability(self, account_id: str) -> Reachability:
+    def reachability(self, account_id: int) -> Reachability:
         """Whether the account answers a login and a NOOP; cached for `health_cache` seconds,
         so that health probes cost nothing. Never raises: any failure is an answer.
 
@@ -363,7 +363,7 @@ class MailConnections:
                 state.health = (time.monotonic(), result)
         return result
 
-    def test_login(self, account_id: str) -> None:
+    def test_login(self, account_id: int) -> None:
         """Logs in to the account and out again on a connection of its own, outside the pool,
         so a busy account is still tested; every connect and reply is bounded by
         `Timeouts.probe`, with no retry. A failure is a MailError (`auth_failed`,
@@ -371,7 +371,7 @@ class MailConnections:
         every connection."""
         _log_out(self._open_unpooled(account_id, read_timeout=self._timeouts.probe))
 
-    def interrupt(self, account_id: str) -> int:
+    def interrupt(self, account_id: int) -> int:
         """Cuts the account's connections that are in use, and returns how many.
 
         For a host whose own deadline passed while a call still runs in its worker thread:
@@ -398,7 +398,7 @@ class MailConnections:
                 socket.socket.shutdown(client.socket(), socket.SHUT_RDWR)
         return len(cut)
 
-    def close(self, account_id: str) -> None:
+    def close(self, account_id: int) -> None:
         """Logs out the account's connections and forgets what was learnt from them.
 
         Never waits: a connection in use is dropped when its caller is done with it. The next
@@ -418,7 +418,7 @@ class MailConnections:
 
     # Connections
 
-    def _state(self, account_id: str) -> _Account:
+    def _state(self, account_id: int) -> _Account:
         with self._lock:
             state = self._accounts.get(account_id)
         if state is not None:
@@ -426,7 +426,7 @@ class MailConnections:
         # The host's lookup may be a database query: never under the instance-wide lock. Ids
         # come from tool input, so an unknown one must not leave state behind.
         if self._lookup_account(account_id) is None:
-            raise MailError("invalid_argument", f'Unknown account "{account_id}".')
+            raise MailError("invalid_argument", f"Unknown account {account_id}.")
         with self._lock:
             return self._accounts.setdefault(
                 account_id, _Account([_Slot() for _ in range(self._pool_size)])
@@ -434,7 +434,7 @@ class MailConnections:
 
     @contextmanager
     def _slot(
-        self, account_id: str, *, fresh: bool = False, wait: float | None = None
+        self, account_id: int, *, fresh: bool = False, wait: float | None = None
     ) -> Iterator[tuple[_Account, _Slot]]:
         """A free slot of the account, waiting up to `wait` (`Timeouts.lock`) for one.
 
@@ -481,7 +481,7 @@ class MailConnections:
                     _log_out(stale)
 
     def _client(
-        self, account_id: str, state: _Account, slot: _Slot, *, read: float | None = None
+        self, account_id: int, state: _Account, slot: _Slot, *, read: float | None = None
     ) -> IMAPClient:
         """The slot's connection, opened if it has none; `read` bounds the opening's replies
         instead of `Timeouts.read`, and stays set on the new connection."""
@@ -495,7 +495,7 @@ class MailConnections:
         return slot.client
 
     def _open(
-        self, account_id: str, state: _Account, generation: int, read: float | None
+        self, account_id: int, state: _Account, generation: int, read: float | None
     ) -> IMAPClient:
         client = self._open_unpooled(account_id, read_timeout=read)
         try:
@@ -509,17 +509,17 @@ class MailConnections:
                 state.capabilities = capabilities
         return client
 
-    def _open_unpooled(self, account_id: str, *, read_timeout: float | None = None) -> IMAPClient:
+    def _open_unpooled(self, account_id: int, *, read_timeout: float | None = None) -> IMAPClient:
         """A logged-in connection to the account, owned by the caller and outside the slots:
         implicit TLS or STARTTLS, then the login `_log_in` chooses. `read_timeout` bounds the
         opening's replies instead of `Timeouts.read`, and stays set on the connection."""
         account = self._lookup_account(account_id)
         if account is None:
-            raise MailError("invalid_argument", f'Unknown account "{account_id}".')
+            raise MailError("invalid_argument", f"Unknown account {account_id}.")
         password = self._lookup_password(account_id)
         if password is None:
             # Never an empty-password login: a host that knows the account knows its secret.
-            raise RuntimeError(f'no password for account "{account_id}"')
+            raise RuntimeError(f"no password for account {account_id}")
         implicit = account.imap.tls == "implicit"
         timeout = (
             SocketTimeout(connect=self._timeouts.connect, read=self._timeouts.read)
@@ -555,7 +555,7 @@ class MailConnections:
 
     def _attempt[T](
         self,
-        account_id: str,
+        account_id: int,
         path: str,
         read_only: bool,
         fn: Callable[[MailboxContext], T],
@@ -589,7 +589,7 @@ class MailConnections:
                 self._discard(slot)
                 raise
 
-    def _bare_attempt[T](self, account_id: str, fn: Callable[[IMAPClient], T], *, fresh: bool) -> T:
+    def _bare_attempt[T](self, account_id: int, fn: Callable[[IMAPClient], T], *, fresh: bool) -> T:
         with self._slot(account_id, fresh=fresh) as (state, slot):
             reused = slot.client is not None
             client = self._client(account_id, state, slot)
@@ -610,7 +610,7 @@ class MailConnections:
                 raise
 
     def _unselected(
-        self, account_id: str, state: _Account, slot: _Slot, client: IMAPClient, *, reused: bool
+        self, account_id: int, state: _Account, slot: _Slot, client: IMAPClient, *, reused: bool
     ) -> IMAPClient:
         """The slot's connection with no mailbox selected: UNSELECT, or a new connection when
         the server has no UNSELECT (never CLOSE, which expunges `\\Deleted` messages)."""
@@ -625,7 +625,7 @@ class MailConnections:
 
     def _failure(
         self,
-        account_id: str,
+        account_id: int,
         state: _Account,
         slot: _Slot,
         error: Exception,
@@ -644,7 +644,7 @@ class MailConnections:
             self._discard(slot)
         return _AttemptFailedError(mapped, retry)
 
-    def _mapped(self, account_id: str, state: _Account, slot: _Slot, error: Exception) -> MailError:
+    def _mapped(self, account_id: int, state: _Account, slot: _Slot, error: Exception) -> MailError:
         """`error` as a MailError, dropping the connections it shows to be unusable."""
         mapped = mail_error(error, account_id)
         if mapped.code == "unreachable" and not slot.interrupted:
@@ -659,7 +659,7 @@ class MailConnections:
         return mapped
 
     def _on_connection[T](
-        self, account_id: str, fn: Callable[[IMAPClient], T], *, wait: float | None = None
+        self, account_id: int, fn: Callable[[IMAPClient], T], *, wait: float | None = None
     ) -> T:
         """`fn` on a connection of the account, with any folder selected; for commands that
         change nothing, so a connection found dead is replaced once, by a newly opened one
@@ -678,7 +678,7 @@ class MailConnections:
                     raise
         raise AssertionError("unreachable")  # pragma: no cover
 
-    def _probe(self, account_id: str) -> None:
+    def _probe(self, account_id: int) -> None:
         """A NOOP on a connection of the account, opening one if need be, with every connect
         and reply bounded by `Timeouts.probe` and no retry: a health check answers quickly."""
         bound = self._timeouts.probe
@@ -733,7 +733,7 @@ class MailConnections:
 
 def connections_from(
     settings: Mapping[str, object] | CoreSettings,
-    passwords: Mapping[str, str],
+    passwords: Mapping[int, str],
     *,
     ssl_context: ssl.SSLContext | None = None,
     pool_size: int = 1,

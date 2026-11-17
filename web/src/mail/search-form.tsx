@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { Search } from 'lucide-react'
 
-import type { Account } from '@/api/accounts.ts'
+import type { AccountId, Account } from '@/api/accounts.ts'
 import { SEARCH_FLAG_FIELDS, type SearchQuery } from '@/api/mail.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Input } from '@/components/ui/input.tsx'
@@ -16,6 +16,7 @@ const TEXT_FIELDS = ['from', 'to', 'subject'] as const
 const DATE_FIELDS = ['since', 'before'] as const
 
 interface Draft {
+  /** `*` or an account's id, as the select holds it. */
   account: string
   folder: string
   text: string
@@ -31,9 +32,9 @@ interface Draft {
 }
 
 /** A new search starts where the reader is: the account and folder shown. */
-function draftOf(query: SearchQuery | undefined, accountId: string, folder: string): Draft {
+function draftOf(query: SearchQuery | undefined, accountId: AccountId, folder: string): Draft {
   return {
-    account: query?.account ?? accountId,
+    account: query?.account ?? String(accountId),
     folder: query?.folder ?? folder,
     text: query?.text ?? '',
     from: query?.from ?? '',
@@ -77,7 +78,7 @@ export function SearchForm({
   query,
 }: {
   accounts: Account[]
-  accountId: string
+  accountId: AccountId
   folder: string
   /** The folder shown is listed with its subfolders: a search in it reads them too. */
   subfolders: boolean
@@ -106,7 +107,7 @@ export function SearchForm({
   // The folder shown is offered, next to the inbox and every folder; in the account shown, it
   // takes its subfolders along.
   const shownLabel = folder.toUpperCase() === 'INBOX' ? t('search.folderInbox') : folder
-  const withSubfolders = subfolders && draft.account === accountId
+  const withSubfolders = subfolders && draft.account === String(accountId)
   const folderOptions = [
     ...(folder.toUpperCase() === 'INBOX' ? [] : [['INBOX', t('search.folderInbox')]]),
     ...(folder !== ALL ? [[folder, withSubfolders ? t('search.withSubfolders', { folder: shownLabel }) : shownLabel]] : []),

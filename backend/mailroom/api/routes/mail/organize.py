@@ -11,6 +11,7 @@ from mailroom.api.deps import Context, CurrentUser
 from mailroom.api.routes.mail._shared import BatchRef, mail_router
 from mailroom.errors import mail_refusal
 from mailroom.mail import service
+from mailroom_core.config import MAX_SAFE_INTEGER
 
 if TYPE_CHECKING:
     from mailroom_core.mail import FlagState, GroupResult, OrganizeResult
@@ -27,7 +28,7 @@ class MoveRequest(RefsRequest):
 
 
 class MoveToAccountRequest(MoveRequest):
-    account: Annotated[str, Field(min_length=1, max_length=64)]
+    account: Annotated[int, Field(ge=1, le=MAX_SAFE_INTEGER)]
     """Another of the user's accounts than any ref's."""
     removal: Literal["trash", "delete"]
     """What becomes of the originals once copied: to their account's Trash, or deleted for
@@ -55,12 +56,12 @@ class GroupError(BaseModel):
 
 
 class GroupOutcome(BaseModel):
-    account: str
+    account: int
     folder: str
     ok: bool
     count: int
     new_refs: list[str] | None
-    destination_account: str | None
+    destination_account: int | None
     """On a move to another account, that account: ``new_refs`` are its."""
     junk: Literal["spam", "ham"] | None
     flags: list[MessageFlags]

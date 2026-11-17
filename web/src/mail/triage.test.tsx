@@ -2,20 +2,20 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { bodiesTo, messageItem, messageView, refusal, stubMailApi, type FakeMailState } from '@/test/fake-mail-api.ts'
+import { bodiesTo, type FakeMailState, HOME, messageItem, messageView, refusal, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
 import { renderMailApp } from '@/test/mail-app.tsx'
 
 const UNREAD = { seen: false, flagged: false, answered: false, draft: false }
 const inbox = Array.from({ length: 5 }, (_, index) =>
-  messageItem('work', 'INBOX', 10 - index, index === 0 ? { flags: UNREAD } : {}),
+  messageItem(WORK, 'INBOX', 10 - index, index === 0 ? { flags: UNREAD } : {}),
 )
 const [unread, second, third] = inbox
 
 function state(overrides: Partial<FakeMailState> = {}): FakeMailState {
   return {
-    accounts: ['work', 'home'],
+    accounts: [WORK, HOME],
     folders: {
-      work: [
+      [WORK]: [
         { path: 'INBOX', role: 'inbox', unread: 3, total: 5 },
         { path: 'Sent', role: 'sent', unread: 0, total: 4 },
         { path: 'Drafts', role: 'drafts', unread: 0, total: 1 },
@@ -25,14 +25,14 @@ function state(overrides: Partial<FakeMailState> = {}): FakeMailState {
         // Holds only folders: never a destination.
         { path: 'Lists', role: null, unread: 0, total: 0, selectable: false },
       ],
-      home: [
+      [HOME]: [
         { path: 'INBOX', role: 'inbox', unread: 0, total: 1 },
         { path: 'Trash', role: 'trash', unread: 0, total: 0 },
       ],
     },
     messages: {
-      'work/INBOX': inbox,
-      'home/INBOX': [messageItem('home', 'INBOX', 1, { subject: 'From home' })],
+      '1/INBOX': inbox,
+      '2/INBOX': [messageItem(HOME, 'INBOX', 1, { subject: 'From home' })],
     },
     views: Object.fromEntries(inbox.map((item) => [item.ref, messageView(item)])),
     ...overrides,
@@ -133,7 +133,7 @@ describe('triage', () => {
   it('offers no Archive when the archive folder only holds folders', async () => {
     const folders = {
       ...state().folders,
-      work: (state().folders['work'] ?? []).map((folder) =>
+      [WORK]: (state().folders[WORK] ?? []).map((folder) =>
         folder.role === 'archive' ? { ...folder, selectable: false } : folder,
       ),
     }
@@ -172,15 +172,15 @@ describe('triage', () => {
 
   it('shows a failed group in the mail wording and updates the others', async () => {
     const results = {
-      messages: [messageItem('home', 'INBOX', 1, { subject: 'From home' }), messageItem('work', 'INBOX', 9)],
+      messages: [messageItem(HOME, 'INBOX', 1, { subject: 'From home' }), messageItem(WORK, 'INBOX', 9)],
       next_cursor: null,
       failures: [],
     }
     stubMailApi(
       state({
         searchResult: results,
-        messages: { 'work/INBOX': inbox, 'home/INBOX': [results.messages[0] ?? messageItem('home', 'INBOX', 1)] },
-        groupFailures: { 'work/INBOX': 'stale_reference' },
+        messages: { '1/INBOX': inbox, '2/INBOX': [results.messages[0] ?? messageItem(HOME, 'INBOX', 1)] },
+        groupFailures: { '1/INBOX': 'stale_reference' },
       }),
     )
     renderMailApp('/mail?q=%7B%7D')
@@ -208,7 +208,7 @@ describe('triage', () => {
   })
 
   it('words a batch where every group failed as the refusal', async () => {
-    stubMailApi(state({ groupFailures: { 'work/INBOX': 'not_found' } }))
+    stubMailApi(state({ groupFailures: { '1/INBOX': 'not_found' } }))
     renderMailApp('/mail')
 
     const list = await messagesList()
@@ -285,16 +285,16 @@ describe('triage', () => {
   })
 
   it('lists a folder that failed in several batches once', async () => {
-    const many = (account: string, count: number): ReturnType<typeof messageItem>[] =>
+    const many = (account: number, count: number): ReturnType<typeof messageItem>[] =>
       Array.from({ length: count }, (_, index) => messageItem(account, 'INBOX', 1000 - index))
-    const work = many('work', 60)
-    const home = many('home', 50)
+    const work = many(WORK, 60)
+    const home = many(HOME, 50)
     stubMailApi(
       state({
-        messages: { 'work/INBOX': work, 'home/INBOX': home },
+        messages: { '1/INBOX': work, '2/INBOX': home },
         searchResult: { messages: [...work, ...home], next_cursor: null, failures: [] },
         // The first batch is all work: refused whole; the second fails work's group in a 200.
-        groupFailures: { 'work/INBOX': 'stale_reference' },
+        groupFailures: { '1/INBOX': 'stale_reference' },
       }),
     )
     renderMailApp('/mail?q=%7B%7D')
@@ -310,17 +310,17 @@ describe('triage', () => {
   })
 
   it('sends a large selection 50 at a time, and reports a refused batch without stopping', async () => {
-    const many = (account: string, folder: string, count: number): ReturnType<typeof messageItem>[] =>
+    const many = (account: number, folder: string, count: number): ReturnType<typeof messageItem>[] =>
       Array.from({ length: count }, (_, index) => messageItem(account, folder, 1000 - index))
-    const work = many('work', 'INBOX', 50)
-    const projects = many('work', 'Projects', 50)
-    const home = many('home', 'INBOX', 10)
+    const work = many(WORK, 'INBOX', 50)
+    const projects = many(WORK, 'Projects', 50)
+    const home = many(HOME, 'INBOX', 10)
     const fetchMock = stubMailApi(
       state({
-        messages: { 'work/INBOX': work, 'work/Projects': projects, 'home/INBOX': home },
+        messages: { '1/INBOX': work, '1/Projects': projects, '2/INBOX': home },
         searchResult: { messages: [...work, ...projects, ...home], next_cursor: null, failures: [] },
         // The second batch is all Projects: refused as a whole.
-        groupFailures: { 'work/Projects': 'stale_reference' },
+        groupFailures: { '1/Projects': 'stale_reference' },
       }),
     )
     renderMailApp('/mail?q=%7B%7D')
@@ -341,7 +341,7 @@ describe('triage', () => {
   })
 
   it('starts a new folder from what it reads: no selection, no flags changed before', async () => {
-    const fake = state({ messages: { 'work/INBOX': inbox, 'work/Projects': [] } })
+    const fake = state({ messages: { '1/INBOX': inbox, '1/Projects': [] } })
     stubMailApi(fake)
     renderMailApp('/mail')
 
@@ -350,7 +350,7 @@ describe('triage', () => {
     await userEvent.click(within(await actions()).getByRole('button', { name: 'Mark as unread' }))
     expect(await within(list).findByRole('link', { name: /Unread:\s*Message 9Preview/ })).toBeInTheDocument()
     // Another client reads it meanwhile.
-    fake.messages['work/INBOX'] = (fake.messages['work/INBOX'] ?? []).map((item) =>
+    fake.messages['1/INBOX'] = (fake.messages['1/INBOX'] ?? []).map((item) =>
       item.ref === second?.ref ? { ...item, flags: { ...item.flags, seen: true } } : item,
     )
 
@@ -366,8 +366,8 @@ describe('triage', () => {
   })
 
   it('keeps Load more, without calling the folder empty, once every loaded row moved away', async () => {
-    const long = Array.from({ length: 26 }, (_, index) => messageItem('work', 'INBOX', 100 - index))
-    stubMailApi(state({ messages: { 'work/INBOX': long } }))
+    const long = Array.from({ length: 26 }, (_, index) => messageItem(WORK, 'INBOX', 100 - index))
+    stubMailApi(state({ messages: { '1/INBOX': long } }))
     renderMailApp('/mail')
 
     await messagesList()
@@ -382,8 +382,8 @@ describe('triage', () => {
   })
 
   it('goes on below the last loaded row once it moved away, showing no row twice', async () => {
-    const long = Array.from({ length: 26 }, (_, index) => messageItem('work', 'INBOX', 100 - index))
-    stubMailApi(state({ messages: { 'work/INBOX': long } }))
+    const long = Array.from({ length: 26 }, (_, index) => messageItem(WORK, 'INBOX', 100 - index))
+    stubMailApi(state({ messages: { '1/INBOX': long } }))
     renderMailApp('/mail')
 
     const list = await messagesList()
@@ -401,7 +401,7 @@ describe('triage', () => {
 
   it('hides Archive for an account without an Archive folder', async () => {
     stubMailApi(state())
-    renderMailApp('/mail?account=home')
+    renderMailApp('/mail?account=2')
 
     const list = await messagesList()
     await userEvent.click(within(list).getByRole('checkbox', { name: 'Select From home' }))

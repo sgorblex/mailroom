@@ -50,6 +50,7 @@ from mailroom.mail.service.folder_writes import (
 from mailroom.mail.service.organize import MAX_REFS, archive, flag, move, move_to_account, trash
 from mailroom.mail.service.read import (
     ALL_ACCOUNTS,
+    AllAccounts,
     account_ids,
     attachment,
     folder_segments,
@@ -82,6 +83,7 @@ __all__ = [
     "MAX_REF_LENGTH",
     "MAX_TERM",
     "SEND_HOLDS_THE_DRAFT",
+    "AllAccounts",
     "Dispatched",
     "DraftFields",
     "DraftView",

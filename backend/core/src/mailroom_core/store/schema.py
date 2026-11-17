@@ -17,6 +17,8 @@ from sqlalchemy import (
     Integer,
     LargeBinary,
     MetaData,
+    PrimaryKeyConstraint,
+    Sequence,
     Table,
     Text,
     text,
@@ -36,6 +38,9 @@ NAMING_CONVENTION: Final = {
 
 metadata = MetaData(schema=CORE_SCHEMA, naming_convention=NAMING_CONVENTION)
 
+# Account ids: allocated across the whole instance, never reused.
+account_ids = Sequence("account_ids", metadata=metadata)
+
 # Each user's accounts and limits: one validated JSON document per revision, replaced whole. The
 # highest revision is the current one, so two editors cannot overwrite each other; recent ones are
 # kept.
@@ -48,13 +53,12 @@ settings = Table(
     Column("saved_at", DateTime(timezone=True), nullable=False),
 )
 
-# Mailbox secrets entered on the settings page, sealed under MAILROOM_SECRETS_KEY. Account ids are
-# unique per user only.
+# Mailbox secrets entered on the settings page, sealed under MAILROOM_SECRETS_KEY.
 account_secrets = Table(
     "account_secrets",
     metadata,
     Column("user_id", Text, primary_key=True),
-    Column("account_id", Text, primary_key=True),
+    Column("account_id", BigInteger, primary_key=True),
     Column("purpose", Text, primary_key=True),
     Column("blob", LargeBinary, nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
@@ -71,7 +75,7 @@ sends = Table(
     Column("at", DateTime(timezone=True), nullable=False),
     Column("key", Text),
     Column("state", Text),
-    Column("account", Text),
+    Column("account", BigInteger),
     Column("result", JSONB(none_as_null=True)),
     Index("ix_sends_user_id_at", "user_id", "at"),
     Index(
@@ -81,4 +85,16 @@ sends = Table(
         unique=True,
         postgresql_where=text("key is not null"),
     ),
+)
+
+# The slug each account had before ids became numbers (core_0004): its secrets stay sealed to it,
+# and a host's own migration mapped its rows by it.
+former_slugs = Table(
+    "former_slugs",
+    metadata,
+    Column("user_id", Text, nullable=False),
+    Column("account_id", BigInteger, nullable=False),
+    Column("slug", Text, nullable=False),
+    PrimaryKeyConstraint("user_id", "account_id"),
+    Index("uq_former_slugs_user_id_slug", "user_id", "slug", unique=True),
 )

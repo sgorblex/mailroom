@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, Literal
 
 from mailroom.accounts.service import (
     account_not_found,
@@ -92,13 +92,13 @@ class _Accounts:
         cap = attachment_limit_mb(self.limits)
         return self.limits.model_copy(update={"attachment_max_mb": cap})
 
-    def config(self, account_id: str) -> AccountConfig:
+    def config(self, account_id: int) -> AccountConfig:
         return self.loaded.account(account_id)
 
-    def ids(self) -> list[str]:
+    def ids(self) -> list[int]:
         return [account.id for account in self.loaded.settings.account]
 
-    def has(self, account_id: str) -> bool:
+    def has(self, account_id: int) -> bool:
         return account_id in self.ids()
 
 
@@ -106,11 +106,11 @@ def _accounts(ctx: AppContext, user_id: int) -> _Accounts:
     return _Accounts(load_accounts(ctx.store(user_id)))
 
 
-def _missing_password(ctx: AppContext, user_id: int, account_id: str) -> bool:
+def _missing_password(ctx: AppContext, user_id: int, account_id: int) -> bool:
     return account_password(ctx.store(user_id), ctx.subkey, account_id) is None
 
 
-def _usable(ctx: AppContext, user_id: int, accounts: _Accounts, account_id: str) -> None:
+def _usable(ctx: AppContext, user_id: int, accounts: _Accounts, account_id: int) -> None:
     """Refuse an account that is not the user's, or that cannot log in: no secrets key
     (``secrets_key_missing``), no password that opens (``password_missing``)."""
     if not accounts.has(account_id):
@@ -136,7 +136,7 @@ def _run[T](
     user_id: int,
     accounts: _Accounts,
     event: str,
-    used: Sequence[str],
+    used: Sequence[int],
     work: Callable[[MailConnections], T],
     *,
     on_deadline: Callable[[], None] | None = None,
@@ -175,10 +175,10 @@ def _call[T](
     accounts: _Accounts,
     event: str,
     via: Via,
-    account_id: str,
+    account_id: int | Literal["*"],
     work: Callable[[MailConnections], T],
     *,
-    on: Sequence[str] | None = None,
+    on: Sequence[int] | None = None,
     on_deadline: Callable[[], None] | None = None,
 ) -> T:
     """``work`` as ``_run`` does it, logged. ``on``: the accounts it uses, when not just
@@ -186,7 +186,7 @@ def _call[T](
     started = time.monotonic()
     outcome = "ok"
     try:
-        used = [account_id] if on is None else list(on)
+        used = list(on) if on is not None else [account_id] if account_id != "*" else []
         return _run(ctx, user_id, accounts, event, used, work, on_deadline=on_deadline)
     except Refusal as refusal:
         outcome = refusal.code
@@ -207,10 +207,10 @@ def _call[T](
 
 def _ref_accounts(
     ctx: AppContext, user_id: int, accounts: _Accounts, refs: Sequence[str]
-) -> list[str]:
+) -> list[int]:
     """The accounts ``refs`` name, in order, once every ref parses and names one of the user's
     usable accounts: else the whole batch is refused, before anything is written."""
-    named: list[str] = []
+    named: list[int] = []
     for ref in refs:
         try:
             account_id = core.parse_ref(ref).account
@@ -246,7 +246,7 @@ class _Stoppable:
 
     def with_mailbox[T](
         self,
-        account_id: str,
+        account_id: int,
         path: str,
         read_only: bool,
         fn: Callable[[MailboxContext], T],
@@ -259,7 +259,7 @@ class _Stoppable:
 
         return self._connections.with_mailbox(account_id, path, read_only, checked)
 
-    def with_connection[T](self, account_id: str, fn: Callable[[IMAPClient], T]) -> T:
+    def with_connection[T](self, account_id: int, fn: Callable[[IMAPClient], T]) -> T:
         self._check()
 
         def checked(client: IMAPClient) -> T:
@@ -268,7 +268,7 @@ class _Stoppable:
 
         return self._connections.with_connection(account_id, checked)
 
-    def folders(self, account_id: str, *, with_status: bool = False) -> list[Folder]:
+    def folders(self, account_id: int, *, with_status: bool = False) -> list[Folder]:
         if not self._confirming:
             self._check()
         return self._connections.folders(account_id, with_status=with_status)

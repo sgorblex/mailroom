@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement, t
 import { flushSync } from 'react-dom'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 
-import type { Account } from '@/api/accounts.ts'
+import type { AccountId, Account } from '@/api/accounts.ts'
 
 import { ComposeContext, type Announcement, type Compose, type EditorHandle, type SendNotice } from './compose-context.ts'
 import { composeKey, sourceFromParam, type ComposeSession, type ComposeSource } from './compose-session.ts'
@@ -22,7 +22,7 @@ export function ComposeProvider({
   children,
 }: {
   accounts: Account[]
-  accountId: string
+  accountId: AccountId
   children: ReactNode
 }): ReactElement {
   const search = useSearch({ from: '/mail' })
@@ -30,7 +30,7 @@ export function ComposeProvider({
   const { loadFolders } = useTriage()
   const [session, setSession] = useState<ComposeSession | null>(null)
   // Known once the editor has loaded: what the URL names it by, and whose draft it is.
-  const [named, setNamed] = useState<{ key: string; account: string } | null>(null)
+  const [named, setNamed] = useState<{ key: string; account: AccountId } | null>(null)
   const [shownOver, setShownOver] = useState<string | undefined | typeof BEHIND>(BEHIND)
   const [revision, setRevision] = useState(0)
   const [notice, setNotice] = useState<SendNotice | null>(null)
@@ -114,7 +114,7 @@ export function ComposeProvider({
     }
   }, [dropParam, loadFolders, mailChanged])
 
-  const identified = useCallback((composeId: string, account: string) => {
+  const identified = useCallback((composeId: string, account: AccountId) => {
     setNamed({ key: composeKey(composeId, account), account })
   }, [])
 

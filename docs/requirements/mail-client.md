@@ -221,11 +221,11 @@ JSON bodies (unknown fields are 422), CSRF as for every state-changing route.
 {
   "results": [
     {
-      "account": "work",
+      "account": 1,
       "folder": "INBOX",
       "ok": true,
       "count": 2,
-      "new_refs": ["WzEsIndvcmsiLC…"],      // null when the server gave no COPYUID; [] for flags
+      "new_refs": ["WzIsMSwiSU5CT1gi…"],      // null when the server gave no COPYUID; [] for flags
       "destination_account": null,          // a move to another account: that account
       "junk": null,                         // "spam" | "ham" | null
       "flags": [],                          // flag route: [{ "ref", "seen", "flagged" }]
@@ -635,19 +635,19 @@ The static route `GET /drafts/find` is matched before `GET /drafts/{ref}`.
 ```jsonc
 // POST /drafts: the `draft` part (to, cc, bcc are lists of Address; text is plain text)
 {
-  "account": "work",
+  "account": 1,
   "compose_id": "6f1c0a2e-…",                  // UUID; required
-  "ref": "WzEsIndvcmsiLC…",                    // the latest version being replaced; null for the first save
-  "answers": "WzEsIndvcmsiLC…",                // the message being replied to; null otherwise
+  "ref": "WzIsMSwiSU5CT1gi…",                    // the latest version being replaced; null for the first save
+  "answers": "WzIsMSwiSU5CT1gi…",                // the message being replied to; null otherwise
   "from": "me@example.org",                    // one of the identities; null: the default
   "to": [ { "name": "", "address": "ada@example.org" } ],
   "cc": [], "bcc": [],
   "subject": "Re: Notes on the engine",
   "text": "Thanks, …",
-  "keep": [ { "ref": "WzEsIndvcmsiLC…", "part": "2" } ]   // parts of existing messages, or of the draft itself
+  "keep": [ { "ref": "WzIsMSwiSU5CT1gi…", "part": "2" } ]   // parts of existing messages, or of the draft itself
 }
 // 201
-{ "ref": "WzEsIndvcmsiLC…", "parts": [ { "part": "2", "name": "notes.pdf", "type": "application/pdf", "size": 40211 } ],
+{ "ref": "WzIsMSwiSU5CT1gi…", "parts": [ { "part": "2", "name": "notes.pdf", "type": "application/pdf", "size": 40211 } ],
   "replaced": true, "autosave": true }
 ```
 
@@ -706,14 +706,16 @@ characters are already stripped from headers.
 ### Refs and cursors
 
 - A **ref** names one message exactly (account, folder, UIDVALIDITY, UID): base64url of the JSON
-  array `[1, account, folder, uidValidity, uid]`, byte-compatible with mailroom-mcp's
-  (`src/mail/ref.ts`). It is **opaque to the client**: store it, put it in a URL, never build or
+  array `[2, account, folder, uidValidity, uid]`, the account by its id. It is **opaque to the
+  client**: store it, put it in a URL, never build or
   parse it. It is URL-safe, so it goes in the path as is. A ref whose folder changed (UIDVALIDITY)
-  answers `stale_reference`; one of an account that is not the user's answers `not_found`, as a
+  answers `stale_reference`, as does one made before account ids were numbers (version 1, the
+  account by its slug); one of an account that is not the user's answers `not_found`, as a
   missing one.
-- A **cursor** is equally opaque (mailroom-mcp's `encodeCursor`: base64url of `[1, positions]`,
-  then, when a folder failed, `[account, folder, code, certificate]` for each such folder):
-  pass `next_cursor` back as `cursor`, with the same query. A malformed one is `invalid_argument`.
+- A **cursor** is equally opaque (base64url of `[2, positions]`, then, when a folder failed,
+  `[account, folder, code, certificate]` for each such folder): pass `next_cursor` back as
+  `cursor`, with the same query. A malformed one is `invalid_argument`; one made before account
+  ids were numbers is `stale_reference`.
 
 ### Errors
 
@@ -776,11 +778,14 @@ carried: each page tries it again.
 `date` is the `Date` header, else the arrival time (INTERNALDATE), as ISO 8601 with offset (UTC
 as `Z`: `"2026-10-30T09:12:00Z"`), or `null` when the message has neither.
 
+An account is named by its id, a positive integer the server gives it (`account_id`, `account`,
+`destination_account`, the `{account_id}` in a path); the web shows its name, never the id.
+
 ### `GET /accounts/{account_id}/folders`
 
 ```jsonc
 {
-  "account_id": "work",
+  "account_id": 1,
   "folders": [
     { "path": "INBOX", "role": "inbox", "unread": 3, "total": 120, "delimiter": "/", "selectable": true },
     { "path": "Archive/2025", "role": null, "unread": 0, "total": 842, "delimiter": "/", "selectable": true }
@@ -813,8 +818,8 @@ mode a folder that cannot be read is reported in `failures`, as in a search, nev
 {
   "messages": [
     {
-      "ref": "WzEsIndvcmsiLC…",
-      "account_id": "work",
+      "ref": "WzIsMSwiSU5CT1gi…",
+      "account_id": 1,
       "folder": "INBOX",
       "date": "2026-10-30T09:12:00Z",
       "from": { "name": "Ada Lovelace", "address": "ada@example.org" },
@@ -825,8 +830,8 @@ mode a folder that cannot be read is reported in `failures`, as in a search, nev
       "size": 48213
     }
   ],
-  "next_cursor": "WzEsW1sid29yayIs…",   // null when there is no more
-  "failures": [ { "account_id": "work", "folder": "INBOX", "code": "unreachable" } ]
+  "next_cursor": "WzIsW1sxLCJJTkJP…",   // null when there is no more
+  "failures": [ { "account_id": 1, "folder": "INBOX", "code": "unreachable" } ]
 }
 ```
 
@@ -851,7 +856,7 @@ same page shape.
 
 | Field | Meaning |
 | --- | --- |
-| `account` | An account id, or `*` for every account of the user (default `*`). |
+| `account` | An account's id (a number), or `*` for every account of the user (default `*`). |
 | `folder` | A folder path, or `*` for every folder (default `INBOX`). `*` leaves out **Junk and Trash** on every account, and an account with an `\All` folder (Gmail's All Mail) is read through it only. |
 | `from`, `to` | Address or name contains this. |
 | `subject` | Subject contains this. |
@@ -877,8 +882,8 @@ a failure too, with the app's code `password_missing`.
 
 ```jsonc
 {
-  "ref": "WzEsIndvcmsiLC…",
-  "account_id": "work",
+  "ref": "WzIsMSwiSU5CT1gi…",
+  "account_id": 1,
   "folder": "INBOX",
   "from": { "name": "Ada Lovelace", "address": "ada@example.org" },        // null when absent
   "to": [ { "name": "", "address": "charles@example.org" } ],

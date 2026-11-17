@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { PenLine } from 'lucide-react'
 
+import type { AccountId } from '@/api/accounts.ts'
 import { Button } from '@/components/ui/button.tsx'
 
 import { useCompose } from './compose-context.ts'
@@ -9,7 +10,7 @@ import { MAIL_NS } from './i18n.ts'
 import { SentNotice } from './send-status.tsx'
 
 /** Starts a message on the account shown, or goes back to the draft a message is in front of. */
-export function ComposeBar({ accountId }: { accountId: string }): ReactElement {
+export function ComposeBar({ accountId }: { accountId: AccountId }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const { session, shown, start, backToDraft, canCompose } = useCompose()
   const hintId = useId()

@@ -2,43 +2,35 @@ import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import {
-  bodiesTo,
-  messageItem,
-  messageView,
-  queriesTo,
-  refusal,
-  stubMailApi,
-  type FakeMailState,
-} from '@/test/fake-mail-api.ts'
+import { bodiesTo, type FakeMailState, HOME, messageItem, messageView, queriesTo, refusal, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
 import { onSessionEnded } from '@/api/http.ts'
 import { renderMailApp } from '@/test/mail-app.tsx'
 
 import { HTML_SANDBOX } from './html-body.tsx'
 
 const inbox = Array.from({ length: 30 }, (_, index) =>
-  messageItem('work', 'INBOX', 100 - index, index === 0 ? { flags: { seen: false, flagged: true, answered: false, draft: false } } : {}),
+  messageItem(WORK, 'INBOX', 100 - index, index === 0 ? { flags: { seen: false, flagged: true, answered: false, draft: false } } : {}),
 )
-const plain = inbox[1] ?? messageItem('work', 'INBOX', 0)
-const html = inbox[2] ?? messageItem('work', 'INBOX', 0)
-const htmlOnly = inbox[3] ?? messageItem('work', 'INBOX', 0)
-const long = inbox[4] ?? messageItem('work', 'INBOX', 0)
+const plain = inbox[1] ?? messageItem(WORK, 'INBOX', 0)
+const html = inbox[2] ?? messageItem(WORK, 'INBOX', 0)
+const htmlOnly = inbox[3] ?? messageItem(WORK, 'INBOX', 0)
+const long = inbox[4] ?? messageItem(WORK, 'INBOX', 0)
 
 function state(overrides: Partial<FakeMailState> = {}): FakeMailState {
   return {
-    accounts: ['work', 'home'],
+    accounts: [WORK, HOME],
     folders: {
-      work: [
+      [WORK]: [
         { path: 'INBOX', role: 'inbox', unread: 3, total: 30 },
         { path: 'Sent Messages', role: 'sent', unread: 0, total: 4 },
         { path: 'Archive/2025', role: null, unread: 0, total: 2 },
       ],
-      home: [{ path: 'INBOX', role: 'inbox', unread: 0, total: 1 }],
+      [HOME]: [{ path: 'INBOX', role: 'inbox', unread: 0, total: 1 }],
     },
     messages: {
-      'work/INBOX': inbox,
-      'work/Archive/2025': [messageItem('work', 'Archive/2025', 7, { subject: 'Old news' })],
-      'home/INBOX': [messageItem('home', 'INBOX', 1, { subject: 'From home' })],
+      '1/INBOX': inbox,
+      '1/Archive/2025': [messageItem(WORK, 'Archive/2025', 7, { subject: 'Old news' })],
+      '2/INBOX': [messageItem(HOME, 'INBOX', 1, { subject: 'From home' })],
     },
     views: {
       [plain.ref]: {
@@ -108,7 +100,7 @@ describe('MailScreen', () => {
   })
 
   it('names each account by its name, with its colour, never by its id', async () => {
-    stubMailApi(state({ names: { work: { name: 'Work mail', colour: 'teal' }, home: { name: 'Home', colour: null } } }))
+    stubMailApi(state({ names: { [WORK]: { name: 'Work mail', colour: 'teal' }, [HOME]: { name: 'Home', colour: null } } }))
     renderMailApp('/mail')
 
     expect(await screen.findByRole('tree', { name: 'Folders of Work mail' })).toBeInTheDocument()
@@ -121,8 +113,8 @@ describe('MailScreen', () => {
     const accounts = within(screen.getByLabelText('Account')).getAllByRole('option')
     expect(accounts.map((option) => [option.getAttribute('value'), option.textContent])).toEqual([
       ['*', 'All accounts'],
-      ['work', 'Work mail'],
-      ['home', 'Home'],
+      ['1', 'Work mail'],
+      ['2', 'Home'],
     ])
   })
 
@@ -135,7 +127,7 @@ describe('MailScreen', () => {
     expect(await within(list).findByRole('link', { name: /Message 71/ })).toBeInTheDocument()
     expect(within(list).getAllByRole('listitem')).toHaveLength(30)
     expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument()
-    const cursors = queriesTo(fetchMock, '/api/v1/mail/accounts/work/messages').map((query) => query.get('cursor'))
+    const cursors = queriesTo(fetchMock, '/api/v1/mail/accounts/1/messages').map((query) => query.get('cursor'))
     expect(cursors).toEqual([null, 'before:76'])
   })
 
@@ -145,7 +137,7 @@ describe('MailScreen', () => {
     renderMailApp('/mail')
 
     const list = await messagesList()
-    fake.refuse = { 'GET /api/v1/mail/accounts/work/messages': refusal(504, 'timeout') }
+    fake.refuse = { 'GET /api/v1/mail/accounts/1/messages': refusal(504, 'timeout') }
     await userEvent.click(screen.getByRole('button', { name: 'Load more' }))
     expect(await within(await listRegion()).findByRole('alert')).toHaveTextContent('The mail server did not answer in time.')
     expect(within(list).getAllByRole('listitem')).toHaveLength(25)
@@ -200,16 +192,16 @@ describe('MailScreen', () => {
 
   it('shows nested folders as a tree that opens, closes and remembers', async () => {
     const folders = {
-      work: [
+      [WORK]: [
         { path: 'INBOX', role: 'inbox' as const, unread: 1, total: 1 },
         { path: 'Lists', role: null, unread: 0, total: 0, selectable: false },
         { path: 'Lists/Rust', role: null, unread: 2, total: 3 },
         { path: 'Lists/Rust/Async', role: null, unread: 5, total: 5 },
         { path: 'Projects', role: null, unread: 0, total: 0 },
       ],
-      home: [{ path: 'INBOX', role: 'inbox' as const, unread: 0, total: 1 }],
+      [HOME]: [{ path: 'INBOX', role: 'inbox' as const, unread: 0, total: 1 }],
     }
-    const messages = { ...state().messages, 'work/Lists/Rust': [] }
+    const messages = { ...state().messages, '1/Lists/Rust': [] }
     stubMailApi(state({ folders, messages }))
     const history = renderMailApp('/mail')
 
@@ -262,18 +254,18 @@ describe('MailScreen', () => {
 
   it('lists a folder with its subfolders when asked, each row naming its folder, and remembers it', async () => {
     const folders = {
-      work: [
+      [WORK]: [
         { path: 'INBOX', role: 'inbox' as const, unread: 1, total: 1 },
         { path: 'INBOX/Lists', role: null, unread: 2, total: 1 },
         { path: 'INBOX/Trash', role: 'trash' as const, unread: 4, total: 0 },
         { path: 'Projects', role: null, unread: 0, total: 0 },
       ],
-      home: [{ path: 'INBOX', role: 'inbox' as const, unread: 0, total: 1 }],
+      [HOME]: [{ path: 'INBOX', role: 'inbox' as const, unread: 0, total: 1 }],
     }
     const messages = {
-      'work/INBOX': [messageItem('work', 'INBOX', 1, { subject: 'Hello' })],
-      'work/INBOX/Lists': [messageItem('work', 'INBOX/Lists', 2, { subject: 'Release notes' })],
-      'work/Projects': [],
+      '1/INBOX': [messageItem(WORK, 'INBOX', 1, { subject: 'Hello' })],
+      '1/INBOX/Lists': [messageItem(WORK, 'INBOX/Lists', 2, { subject: 'Release notes' })],
+      '1/Projects': [],
     }
     const fetchMock = stubMailApi(state({ folders, messages }))
     const history = renderMailApp('/mail')
@@ -290,7 +282,7 @@ describe('MailScreen', () => {
     expect(await within(list).findByRole('link', { name: /Release notes/ })).toHaveTextContent('INBOX/Lists')
     expect(within(list).getByRole('link', { name: /Hello/ })).toHaveTextContent(/INBOX$/)
     expect(history.location.search).toContain('sub=true')
-    expect(queriesTo(fetchMock, '/api/v1/mail/accounts/work/messages').map((query) => query.get('subfolders'))).toEqual([null, 'true'])
+    expect(queriesTo(fetchMock, '/api/v1/mail/accounts/1/messages').map((query) => query.get('subfolders'))).toEqual([null, 'true'])
     // Its count is what the list reads: Trash under it is left out.
     expect(within(tree).getByRole('treeitem', { name: 'Inbox, with subfolders, 3 unread' })).toBeInTheDocument()
 
@@ -300,7 +292,7 @@ describe('MailScreen', () => {
     expect(screen.getByLabelText('Folder')).toHaveDisplayValue('Inbox and its subfolders')
     await userEvent.click(screen.getByRole('button', { name: 'Search' }))
     await waitFor(() => {
-      expect(bodiesTo(fetchMock, '/api/v1/mail/search')).toEqual([{ account: 'work', folder: 'INBOX', text: 'notes', subfolders: true }])
+      expect(bodiesTo(fetchMock, '/api/v1/mail/search')).toEqual([{ account: WORK, folder: 'INBOX', text: 'notes', subfolders: true }])
     })
     await userEvent.click(screen.getByRole('button', { name: 'Clear search' }))
 
@@ -317,7 +309,7 @@ describe('MailScreen', () => {
     const tree2 = await screen.findByRole('tree', { name: 'Folders of work' })
     expect(await within(tree2).findByRole('treeitem', { name: 'Inbox, with subfolders, 3 unread' })).toBeInTheDocument()
     expect(await screen.findByRole('link', { name: /Release notes/ })).toBeInTheDocument()
-    expect(queriesTo(again, '/api/v1/mail/accounts/work/messages').map((query) => query.get('subfolders'))).toEqual(['true'])
+    expect(queriesTo(again, '/api/v1/mail/accounts/1/messages').map((query) => query.get('subfolders'))).toEqual(['true'])
     within(tree2).getByRole('treeitem', { name: /^Inbox/ }).focus()
     await userEvent.keyboard('{Shift>}{F10}{/Shift}')
     const checked = within(screen.getByRole('menu')).getByRole('menuitemcheckbox', { name: 'Include subfolders' })
@@ -331,19 +323,19 @@ describe('MailScreen', () => {
 
   it('lists a folder alone once it has no subfolders to read, whatever the URL asks', async () => {
     const folders = {
-      work: [
+      [WORK]: [
         { path: 'INBOX', role: 'inbox' as const, unread: 0, total: 0 },
         { path: 'Projects', role: null, unread: 0, total: 1 },
       ],
-      home: [{ path: 'INBOX', role: 'inbox' as const, unread: 0, total: 0 }],
+      [HOME]: [{ path: 'INBOX', role: 'inbox' as const, unread: 0, total: 0 }],
     }
-    const messages = { 'work/Projects': [messageItem('work', 'Projects', 1, { subject: 'Plan' })] }
+    const messages = { '1/Projects': [messageItem(WORK, 'Projects', 1, { subject: 'Plan' })] }
     const fetchMock = stubMailApi(state({ folders, messages }))
-    renderMailApp('/mail?account=work&folder=Projects&sub=true')
+    renderMailApp('/mail?account=1&folder=Projects&sub=true')
 
     const tree = await screen.findByRole('tree', { name: 'Folders of work' })
     await waitFor(() => {
-      expect(queriesTo(fetchMock, '/api/v1/mail/accounts/work/messages').at(-1)?.get('subfolders')).toBeNull()
+      expect(queriesTo(fetchMock, '/api/v1/mail/accounts/1/messages').at(-1)?.get('subfolders')).toBeNull()
     })
     expect(within(tree).getByRole('treeitem', { name: 'Projects' })).toBeInTheDocument()
     expect(await screen.findByRole('link', { name: /Plan/ })).not.toHaveTextContent('Projects')
@@ -481,13 +473,13 @@ describe('MailScreen', () => {
   it('searches with the form fields and lists the results with their source', async () => {
     const fetchMock = stubMailApi(
       state({
-        names: { work: { name: 'Work mail', colour: 'teal' }, home: { name: 'Home', colour: 'pink' } },
+        names: { [WORK]: { name: 'Work mail', colour: 'teal' }, [HOME]: { name: 'Home', colour: 'pink' } },
         searchResult: {
-          messages: [messageItem('home', 'INBOX', 5, { subject: 'Invoice' })],
+          messages: [messageItem(HOME, 'INBOX', 5, { subject: 'Invoice' })],
           next_cursor: null,
           failures: [
-            { account_id: 'work', folder: null, code: 'auth_failed' },
-            { account_id: 'home', folder: null, code: 'password_missing' },
+            { account_id: WORK, folder: null, code: 'auth_failed' },
+            { account_id: HOME, folder: null, code: 'password_missing' },
           ],
         },
       }),
@@ -519,7 +511,7 @@ describe('MailScreen', () => {
   })
 
   it('words a folder that fails to list, and lets the reader retry', async () => {
-    stubMailApi(state({ refuse: { 'GET /api/v1/mail/accounts/work/folders': refusal(409, 'auth_failed') } }))
+    stubMailApi(state({ refuse: { 'GET /api/v1/mail/accounts/1/folders': refusal(409, 'auth_failed') } }))
     renderMailApp('/mail')
 
     const sidebar = await screen.findByRole('navigation', { name: 'Accounts and folders' })

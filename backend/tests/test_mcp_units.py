@@ -287,7 +287,7 @@ def test_a_plain_tag_name_does_not_shield_a_disguised_one() -> None:
 
 def test_a_result_wraps_only_mail_fields() -> None:
     result = {
-        "account": "work",
+        "account": 1,
         "filters": [
             {"action": "star", "matched": [{"uid": 1, "from": "A", "subject": None, "date": "d"}]}
         ],
@@ -298,7 +298,7 @@ def test_a_result_wraps_only_mail_fields() -> None:
     assert message["from"].startswith("<untrusted_email")
     assert message["from"].endswith(">")
     assert (message["uid"], message["subject"], message["date"]) == (1, None, "d")
-    assert wrapped["account"] == "work"
+    assert wrapped["account"] == 1
     assert wrapped_result(None) is None
 
 
@@ -489,7 +489,7 @@ def test_a_call_to_a_tool_the_grant_did_not_approve_is_refused(
 def _summary(folder: str, uid: int) -> MessageSummary:
     return MessageSummary(
         ref=f"ref{uid}",
-        account="work",
+        account=1,
         folder=folder,
         uid=uid,
         uid_validity=1,
@@ -525,12 +525,12 @@ def test_messages_list_with_subfolders_names_each_lines_folder(
     call = ToolCall(cast("AppContext", _ZonedContext()), 1)
 
     def text(**arguments: Any) -> str:
-        args = mail_read.MessagesListArguments.model_validate({"account_id": "work", **arguments})
+        args = mail_read.MessagesListArguments.model_validate({"account_id": 1, **arguments})
         result = anyio.run(tool.run, args, call)
         return cast("Any", result.content[0]).text
 
     listed = text(subfolders=True)
-    assert asked == {"account": "work", "folder": "INBOX", "subfolders": True}
+    assert asked == {"account": 1, "folder": "INBOX", "subfolders": True}
     assert "ref2 · INBOX/Lists · 2026-10-02 11:00 · " in listed
     assert "ref1 · INBOX · 2026-10-01 11:00 · " in listed
     assert "Each line: ref · folder · date · from" in listed
@@ -544,7 +544,7 @@ def test_messages_list_with_subfolders_names_each_lines_folder(
 def test_messages_search_refuses_subfolders_with_every_folder() -> None:
     tool = next(tool for tool in TOOLS if tool.name == "messages_search")
     args = mail_read.MessagesSearchArguments.model_validate(
-        {"account_id": "work", "folder": "*", "subfolders": True}
+        {"account_id": 1, "folder": "*", "subfolders": True}
     )
     with pytest.raises(Refusal) as refused:
         anyio.run(tool.run, args, ToolCall(cast("AppContext", object()), 1))

@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Annotated
 from fastapi import Query
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
-from mailroom.api.deps import Context, CurrentUser
-from mailroom.api.routes.mail._shared import AccountId, mail_router
+from mailroom.api.deps import AccountId, Context, CurrentUser
+from mailroom.api.routes.mail._shared import mail_router
 from mailroom.mail import service
 
 if TYPE_CHECKING:
@@ -39,7 +39,7 @@ class MailFolder(BaseModel):
 
 
 class FolderList(BaseModel):
-    account_id: str
+    account_id: int
     folders: list[MailFolder]
 
 
@@ -87,12 +87,12 @@ class FolderDeleteRequest(BaseModel):
 
 
 class FolderCreated(BaseModel):
-    account_id: str
+    account_id: int
     path: str
 
 
 class FolderRenamedAnswer(BaseModel):
-    account_id: str
+    account_id: int
     folder: str
     """The old path."""
     path: str
@@ -102,7 +102,7 @@ class FolderRenamedAnswer(BaseModel):
 
 
 class FolderDeleted(BaseModel):
-    account_id: str
+    account_id: int
     folder: str
     messages: int
 

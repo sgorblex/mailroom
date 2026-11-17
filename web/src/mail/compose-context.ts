@@ -1,6 +1,6 @@
 import { createContext, useContext, type Dispatch, type SetStateAction } from 'react'
 
-import type { Account } from '@/api/accounts.ts'
+import type { AccountId, Account } from '@/api/accounts.ts'
 import type { SendResult } from '@/api/mail.ts'
 
 import type { ComposeSession, ComposeSource } from './compose-session.ts'
@@ -35,12 +35,12 @@ export interface Compose {
   /** Reveals the editor from a control that goes away with that, handing it the focus. */
   backToDraft: () => void
   hide: () => void
-  account: (id: string) => Account | undefined
+  account: (id: AccountId) => Account | undefined
   /** The account's send mode is not `off`. */
-  canCompose: (id: string) => boolean
+  canCompose: (id: AccountId) => boolean
   attach: (handle: EditorHandle) => () => void
   /** The editor has its `compose_id` and account: the URL can name it. */
-  identified: (composeId: string, account: string) => void
+  identified: (composeId: string, account: AccountId) => void
   /** The account's drafts changed: what lists them is out of date. */
   mailChanged: () => void
   /** Bumped by `mailChanged`. */

@@ -1,6 +1,6 @@
 import { vi, type Mock } from 'vitest'
 
-import type { AccountColour, Identity } from '@/api/accounts.ts'
+import type { AccountId, AccountColour, Identity } from '@/api/accounts.ts'
 import type {
   Draft,
   DraftFields,
@@ -20,8 +20,13 @@ export function listedFolder(folder: FakeFolder): MailFolder {
   return { delimiter: '/', selectable: true, ...folder }
 }
 
+/** The accounts the tests use, and the names the fake lists them under. */
+export const WORK = 1
+export const HOME = 2
+const ACCOUNT_NAMES: Record<AccountId, string> = { [WORK]: 'work', [HOME]: 'home' }
+
 export interface FakeMailState {
-  accounts: string[]
+  accounts: AccountId[]
   /** Each account's folders; `delimiter` is `/` and `selectable` true unless they say otherwise. */
   folders: Record<string, FakeFolder[]>
   /** `"<account>/<folder path>"` → its messages, newest (highest uid) first. */
@@ -40,8 +45,8 @@ export interface FakeMailState {
   hold?: (request: string, body: unknown) => Promise<void> | undefined
   /** Each account's send mode; `drafts` unless it says otherwise. */
   sendModes?: Record<string, string>
-  /** Each account's name and colour; unnamed (shown by its id) and without a colour unless it says otherwise. */
-  names?: Record<string, { name: string; colour: AccountColour | null }>
+  /** Each account's name and colour; `ACCOUNT_NAMES`' unless it says otherwise (else unnamed and shown by its login), without a colour. */
+  names?: Partial<Record<AccountId, { name: string; colour: AccountColour | null }>>
   identities?: Record<string, Identity[]>
   attachmentMaxMb?: number
   /** The user's limit on To, Cc and Bcc together; 10 unless it says otherwise. */
@@ -96,8 +101,8 @@ export function refusal(status: number, code: string): { status: number; body: u
 const notFound = (): Response => json(404, { detail: { code: 'not_found', message: 'No such message or part.' } })
 
 /** A ref made up from the account, folder and uid, opaque to the client as the real one. */
-function fakeRef(account: string, folder: string, uid: number): string {
-  return `ref-${account}-${folder}-${String(uid)}`
+function fakeRef(account: AccountId, folder: string, uid: number): string {
+  return `ref-${String(account)}-${folder}-${String(uid)}`
 }
 
 /** The uid `fakeRef` put in the ref of `item`. */
@@ -106,7 +111,7 @@ function uidOf(item: MessageItem): number {
 }
 
 /** A list item; `ref` is made up from the account, folder and uid (`fakeRef`). */
-export function messageItem(account: string, folder: string, uid: number, fields: Partial<MessageItem> = {}): MessageItem {
+export function messageItem(account: AccountId, folder: string, uid: number, fields: Partial<MessageItem> = {}): MessageItem {
   return {
     ref: fakeRef(account, folder, uid),
     account_id: account,
@@ -158,7 +163,7 @@ export function messageView(item: MessageItem, fields: Partial<MessageView> = {}
 function organize(
   state: FakeMailState,
   route: string,
-  body: { refs: string[]; folder?: string; account?: string; removal?: string; seen?: boolean; flagged?: boolean },
+  body: { refs: string[]; folder?: string; account?: AccountId; removal?: string; seen?: boolean; flagged?: boolean },
 ): Response {
   if (body.refs.length === 0 || body.refs.length > 50) {
     return json(422, { detail: [{ type: 'too_long', loc: ['body', 'refs'], msg: 'List should have at most 50 items' }] })
@@ -182,7 +187,7 @@ function organize(
     }
   }
   const results: OrganizeGroup[] = [...groups].map(([key, items]) => {
-    const { account_id: account, folder } = items[0] ?? messageItem('', '', 0)
+    const { account_id: account, folder } = items[0] ?? messageItem(0, '', 0)
     const group: OrganizeGroup = {
       account,
       folder,
@@ -232,7 +237,7 @@ function organize(
     // A move to another account lands there; any other move stays in the account.
     const to = route === 'move-to-account' ? (body.account ?? account) : account
     // New uids above the destination's, as a server gives them, so its list stays in uid order.
-    const there = state.messages[`${to}/${destination}`] ?? []
+    const there = state.messages[`${String(to)}/${destination}`] ?? []
     const top = Math.max(0, ...there.map(uidOf))
     const moved = items.map((item, index) => ({
       ...item,
@@ -242,7 +247,7 @@ function organize(
     }))
     const newRefs = moved.map((item) => item.ref)
     const copiedOnly = state.copiedNotRemoved?.[key]
-    state.messages[`${to}/${destination}`] = [...moved, ...there]
+    state.messages[`${String(to)}/${destination}`] = [...moved, ...there]
     if (copiedOnly !== undefined) {
       // Copied there, but still here: the group fails with the copies' refs.
       return { ...failed(copiedOnly), destination_account: to, new_refs: newRefs }
@@ -277,12 +282,12 @@ function heldRefusal(send: { send_id: string; state: string; code: string | null
 
 let nextUid = 500
 
-function defaultIdentity(state: FakeMailState, account: string): string | null {
+function defaultIdentity(state: FakeMailState, account: AccountId): string | null {
   const identities = state.identities?.[account] ?? []
   return (identities.find((each) => each.default === true) ?? identities[0])?.address ?? null
 }
 
-function isOff(state: FakeMailState, account: string): boolean {
+function isOff(state: FakeMailState, account: AccountId): boolean {
   return state.sendModes?.[account] === 'off'
 }
 
@@ -292,7 +297,7 @@ function deliverable(address: string): boolean {
 
 /** The account's Drafts list holds the draft under its new ref, as the server's folder would. */
 function listDraft(state: FakeMailState, draft: Draft, previous: string | null): void {
-  const key = `${draft.account}/Drafts`
+  const key = `${String(draft.account)}/Drafts`
   const list = state.messages[key]
   if (list === undefined) {
     return
@@ -304,7 +309,7 @@ function listDraft(state: FakeMailState, draft: Draft, previous: string | null):
 }
 
 function unlistDraft(state: FakeMailState, draft: Draft): void {
-  const key = `${draft.account}/Drafts`
+  const key = `${String(draft.account)}/Drafts`
   const list = state.messages[key]
   if (list !== undefined) {
     state.messages[key] = list.filter((each) => each.ref !== draft.ref)
@@ -493,7 +498,7 @@ function composeRoutes(state: FakeMailState, url: URL, init?: RequestInit): Resp
     const draft = (state.drafts ?? []).findLast(
       (each) =>
         each.compose_id === composeId &&
-        each.account === url.searchParams.get('account') &&
+        String(each.account) === url.searchParams.get('account') &&
         state.unindexed?.includes(each.ref) !== true,
     )
     return draft === undefined ? notFound() : json(200, { ref: draft.ref, parts: draft.parts })
@@ -533,7 +538,7 @@ function folderRoutes(state: FakeMailState, url: URL, init?: RequestInit): Respo
   if (match === null || init?.method !== 'POST') {
     return null
   }
-  const account = decodeURIComponent(match[1] ?? '')
+  const account = Number(match[1])
   const folders = state.folders[account] ?? []
   const body = JSON.parse(typeof init.body === 'string' ? init.body : '{}') as {
     parent?: string | null
@@ -560,7 +565,7 @@ function folderRoutes(state: FakeMailState, url: URL, init?: RequestInit): Respo
     const moved = (path: string): string => (path === from || path.startsWith(`${from}/`) ? to + path.slice(from.length) : path)
     state.folders[account] = folders.map((each) => ({ ...each, path: moved(each.path) }))
     state.messages = Object.fromEntries(
-      Object.entries(state.messages).map(([key, items]) => [key.startsWith(`${account}/`) ? `${account}/${moved(key.slice(account.length + 1))}` : key, items]),
+      Object.entries(state.messages).map(([key, items]) => [key.startsWith(`${String(account)}/`) ? `${String(account)}/${moved(key.slice(String(account).length + 1))}` : key, items]),
     )
     return json(200, { account_id: account, folder: from, path: to, rule_sets: [], filters: [], rule_sets_updated: true })
   }
@@ -586,13 +591,13 @@ export function stubMailApi(state: FakeMailState): Mock {
       return json(
         200,
         state.accounts.map((id) => {
-          const endpoint = { host: `imap.${id}.example`, port: 993, tls: 'implicit' }
+          const endpoint = { host: `imap.${String(id)}.example`, port: 993, tls: 'implicit' }
           return {
             id,
-            name: state.names?.[id]?.name ?? null,
-            display_name: state.names?.[id]?.name ?? id,
+            name: state.names?.[id]?.name ?? ACCOUNT_NAMES[id] ?? null,
+            display_name: state.names?.[id]?.name ?? ACCOUNT_NAMES[id] ?? `me@${String(id)}.example`,
             colour: state.names?.[id]?.colour ?? null,
-            login: `me@${id}.example`,
+            login: `me@${String(id)}.example`,
             send_mode: state.sendModes?.[id] ?? 'drafts',
             imap: endpoint,
             smtp: endpoint,
@@ -616,7 +621,7 @@ export function stubMailApi(state: FakeMailState): Mock {
     }
     let match = /^\/api\/v1\/mail\/accounts\/([^/]+)\/(folders|messages)$/.exec(path)
     if (match !== null) {
-      const account = decodeURIComponent(match[1] ?? '')
+      const account = Number(match[1])
       if (!state.accounts.includes(account)) {
         return notFound()
       }
@@ -624,12 +629,12 @@ export function stubMailApi(state: FakeMailState): Mock {
         return json(200, { account_id: account, folders: (state.folders[account] ?? []).map(listedFolder) })
       }
       const folder = query.get('folder') ?? 'INBOX'
-      const own = state.messages[`${account}/${folder}`]
+      const own = state.messages[`${String(account)}/${folder}`]
       // With its subfolders: every folder under it ('/' as delimiter) merged, by UID.
       const all =
         own !== undefined && query.get('subfolders') === 'true'
           ? Object.entries(state.messages)
-              .filter(([key]) => key === `${account}/${folder}` || key.startsWith(`${account}/${folder}/`))
+              .filter(([key]) => key === `${String(account)}/${folder}` || key.startsWith(`${String(account)}/${folder}/`))
               .flatMap(([, items]) => items)
               .sort((a, b) => uidOf(b) - uidOf(a))
           : own
@@ -698,7 +703,7 @@ export function stubMailApi(state: FakeMailState): Mock {
 }
 
 /** A draft of the fake's, with the fields a test cares about. */
-export function fakeDraft(account: string, uid: number, fields: Partial<Draft> = {}): Draft {
+export function fakeDraft(account: AccountId, uid: number, fields: Partial<Draft> = {}): Draft {
   return {
     ref: fakeRef(account, 'Drafts', uid),
     account,

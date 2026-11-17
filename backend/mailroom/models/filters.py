@@ -47,7 +47,7 @@ class RuleSet(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey(User.id, ondelete="CASCADE"), index=True)
-    account_id: Mapped[str] = mapped_column(Text)
+    account_id: Mapped[int] = mapped_column(BigInteger)
     folder: Mapped[list[str]] = mapped_column(ARRAY(Text))
     """Path segments, as the server's delimiter splits them: ``["Archive", "2026"]``."""
     name: Mapped[str] = mapped_column(String(200))

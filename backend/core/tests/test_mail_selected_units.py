@@ -74,7 +74,7 @@ def selected(client: FakeClient) -> MailboxContext:
         uid_validity=1,
         exists=3,
         uid_next=None,
-        account="acc",
+        account=1,
     )
 
 
@@ -186,17 +186,17 @@ FOLDERS = [
 
 
 def test_move_target() -> None:
-    assert move_target("Projects", "inbox", FOLDERS, account="acc") == FOLDERS[0]
-    assert move_target("INBOX", "Trash", FOLDERS, account="acc") == FOLDERS[3]
+    assert move_target("Projects", "inbox", FOLDERS, account=1) == FOLDERS[0]
+    assert move_target("INBOX", "Trash", FOLDERS, account=1) == FOLDERS[3]
     for target, code, text in [
-        ("Nowhere", "mailbox_missing", '"Nowhere" is not a folder of acc; list its folders.'),
-        ("Parent", "mailbox_missing", '"Parent" is not a folder of acc'),
+        ("Nowhere", "mailbox_missing", '"Nowhere" is not a folder of account 1; list its folders.'),
+        ("Parent", "mailbox_missing", '"Parent" is not a folder of account 1'),
         ("Projects", "invalid_argument", "They are already in that folder."),
         ("Drafts", "invalid_argument", "cannot be moved into Drafts or Sent"),
         ("Sent", "invalid_argument", "cannot be moved into Drafts or Sent"),
     ]:
         with pytest.raises(MailError) as caught:
-            move_target("Projects", target, FOLDERS, account="acc")
+            move_target("Projects", target, FOLDERS, account=1)
         assert (caught.value.code, text in caught.value.message) == (code, True), target
     assert special_folder_in(FOLDERS, "trash") == FOLDERS[3]
     assert special_folder_in(FOLDERS, "archive") is None

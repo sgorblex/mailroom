@@ -1,9 +1,10 @@
 """Give a user the dev Dovecot's mailboxes: ``seed_dev_mail <username>``.
 
-Adds (or resets) the accounts ``dev`` and ``team`` on the dev mail backends (``mise run dev-mail``:
-IMAPS 127.0.0.1:33993, SMTPS 127.0.0.1:33025, any login with ``DEV_MAIL_PASSWORD``), then puts
-sample mail in each INBOX that is still empty: a few senders, old and new, one starred, for trying
-filters on. The database must be migrated (``mise run migrate``) and ``MAILROOM_SECRETS_KEY`` set.
+Adds (or resets) the accounts with the logins ``dev`` and ``team`` on the dev mail backends
+(``mise run dev-mail``: IMAPS 127.0.0.1:33993, SMTPS 127.0.0.1:33025, any login with
+``DEV_MAIL_PASSWORD``), then puts sample mail in each INBOX that is still empty: a few senders,
+old and new, one starred, for trying filters on. The database must be migrated
+(``mise run migrate``) and ``MAILROOM_SECRETS_KEY`` set.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 from email.utils import format_datetime, make_msgid
+from functools import partial
 from typing import TYPE_CHECKING, Final
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -51,17 +53,18 @@ _SAMPLES: Final = (
 )
 
 
-def _account(account_id: str) -> dict[str, Json]:
-    address = f"{account_id}@{DEV_DOMAIN}"
-    return {
-        "id": account_id,
-        "login": account_id,
+def _account(login: str, account_id: int | None) -> dict[str, Json]:
+    address = f"{login}@{DEV_DOMAIN}"
+    account: dict[str, Json] = {
+        "name": login,
+        "login": login,
         "send_mode": "drafts",
         "auth": {"type": "password"},
         "imap": {"host": DEV_HOST, "port": DEV_IMAP_PORT, "tls": "implicit"},
         "smtp": {"host": DEV_HOST, "port": DEV_SMTP_PORT, "tls": "implicit"},
-        "identities": [{"address": address, "name": f"Dev {account_id}"}],
+        "identities": [{"address": address, "name": f"Dev {login}"}],
     }
+    return account if account_id is None else {"id": account_id, **account}
 
 
 def _message(sender: str, subject: str, recipient: str, date: datetime) -> bytes:
@@ -75,12 +78,12 @@ def _message(sender: str, subject: str, recipient: str, date: datetime) -> bytes
     return message.as_bytes()
 
 
-def _seeded(context: MailboxContext) -> int:
-    """Put the samples in the selected INBOX if it is empty; how many went in."""
+def _seeded(login: str, context: MailboxContext) -> int:
+    """Put the samples in the selected INBOX of ``login`` if it is empty; how many went in."""
     if context.exists:
         return 0
     now = datetime.now(UTC)
-    recipient = f"{context.account}@{DEV_DOMAIN}"
+    recipient = f"{login}@{DEV_DOMAIN}"
     for sender, subject, age, starred in _SAMPLES:
         date = now - timedelta(days=age)
         context.client.append(
@@ -118,11 +121,12 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         store = user_store(engine, user.id)
         configs: list[AccountConfig] = []
-        for account_id in ACCOUNTS:
-            existing = {account.id for account in load_accounts(store).settings.account}
+        for login in ACCOUNTS:
+            stored = load_accounts(store).settings.account
+            account_id = next((a.id for a in stored if a.login == login), None)
             configs.append(
                 save_account(
-                    store, subkey, _account(account_id), password, new=account_id not in existing
+                    store, subkey, _account(login, account_id), password, new=account_id is None
                 )
             )
     except (AccountError, RevisionConflict, SettingsBusy) as exc:
@@ -143,18 +147,20 @@ def main(argv: list[str] | None = None) -> int:
     try:
         for config in configs:
             try:
-                added = connections.with_mailbox(config.id, "INBOX", False, _seeded)
+                added = connections.with_mailbox(
+                    config.id, "INBOX", False, partial(_seeded, config.login)
+                )
             except MailError as exc:
                 print(
-                    f"{config.id}: cannot seed the dev Dovecot ({exc}); `mise run dev-mail`, and "
-                    "MAILROOM_MAIL_CA_FILE naming its CA.",
+                    f"{config.login}: cannot seed the dev Dovecot ({exc}); `mise run dev-mail`, "
+                    "and MAILROOM_MAIL_CA_FILE naming its CA.",
                     file=sys.stderr,
                 )
                 return 1
             if added:
-                print(f"{config.id}: {added} sample messages in INBOX.")
+                print(f"{config.login}: {added} sample messages in INBOX.")
             else:
-                print(f"{config.id}: INBOX already has mail; left as it is.")
+                print(f"{config.login}: INBOX already has mail; left as it is.")
     finally:
         connections.close_all()
     return 0

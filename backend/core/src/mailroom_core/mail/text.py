@@ -110,7 +110,7 @@ def thread_text(page: Page, time_zone: str) -> str:
     )
 
 
-def folders_block(account: str, folders: Sequence[Folder]) -> str:
+def folders_block(account: int, folders: Sequence[Folder]) -> str:
     """One account's folders, selectable ones only, with role and counts when listed with
     `with_status`."""
     lines = []

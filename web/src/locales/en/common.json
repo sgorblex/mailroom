@@ -122,7 +122,7 @@
     "editTitle": "Edit {{account}}",
     "displayName": "Account name",
     "unknown": "Removed account",
-    "displayNameHint": "Optional: how Mailroom names this account to you. Without one, it uses the account id.",
+    "displayNameHint": "Optional: how Mailroom names this account to you. Without one, it uses the login.",
     "colour": "Colour",
     "colours": {
       "none": "No colour",
@@ -137,8 +137,6 @@
       "violet": "Violet",
       "pink": "Pink"
     },
-    "id": "Account id",
-    "idHint": "Lowercase letters, digits and dashes, e.g. work. It cannot change later.",
     "address": "Email address",
     "name": "Your name",
     "nameHint": "Optional: shown to the people you write to.",
@@ -260,7 +258,6 @@
     "wrongPassword": "Your current password is wrong."
   },
   "accountErrors": {
-    "accountExists": "There already is an account with that id.",
     "invalidAccount": "Check the highlighted fields.",
     "accountNameTaken": "Another of your accounts already has this name.",
     "accountsChanged": "Your accounts changed meanwhile. Reload the page and try again.",

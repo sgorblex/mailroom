@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import type { AccountId } from '@/api/accounts.ts'
 import { listFolders } from '@/api/filters.ts'
 import { accountErrorMessage } from '@/accounts/messages.ts'
 import { FILTERS_NS } from './i18n.ts'
@@ -11,9 +12,9 @@ export type FoldersState =
   | { kind: 'loaded'; paths: string[][] }
 
 /** The account's folders, as path segments, for the folder pickers. */
-export function useFolders(accountId: string): FoldersState {
+export function useFolders(accountId: AccountId): FoldersState {
   const { t } = useTranslation(FILTERS_NS)
-  const [state, setState] = useState<{ accountId: string; folders: FoldersState }>({
+  const [state, setState] = useState<{ accountId: AccountId; folders: FoldersState }>({
     accountId,
     folders: { kind: 'loading' },
   })

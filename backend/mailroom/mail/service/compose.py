@@ -62,7 +62,7 @@ DRAFT_GONE: Final = frozenset({"not_found", "stale_reference"})
 class Prefill:
     """The fields of the draft a reply or a forward starts as; nothing is written yet."""
 
-    account: str
+    account: int
     sender: str
     to: tuple[Mailbox, ...]
     cc: tuple[Mailbox, ...]
@@ -81,7 +81,7 @@ class DraftFields:
     """A draft as the user wrote it. Its addresses are checked here; the caps on the text and on
     the attachments too (``core.check_fields``, ``core.check_uploads``)."""
 
-    account: str
+    account: int
     compose_id: str
     ref: str | None = None
     answers: str | None = None
@@ -157,10 +157,10 @@ def _stoppable_call[T](
     accounts: _Accounts,
     event: str,
     via: Via,
-    account_id: str,
+    account_id: int,
     work: Callable[[MailConnections], T],
     *,
-    on: Sequence[str] | None = None,
+    on: Sequence[int] | None = None,
 ) -> T:
     """``_call``, writing nothing further once the deadline has passed (``_Stoppable``)."""
     stop = threading.Event()
@@ -441,7 +441,7 @@ def read_draft(ctx: AppContext, user_id: int, ref: str, *, via: Via = "web") -> 
 
 
 def find_draft(
-    ctx: AppContext, user_id: int, account_id: str, compose_id: str, *, via: Via = "web"
+    ctx: AppContext, user_id: int, account_id: int, compose_id: str, *, via: Via = "web"
 ) -> Draft:
     """The newest version saved under ``compose_id``, ``not_found`` without one: what recovers
     a save whose answer was lost."""

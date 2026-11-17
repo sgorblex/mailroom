@@ -89,7 +89,7 @@ class MailError(Exception):
         return str(self)
 
 
-def mail_error(error: BaseException, account: str, *, secret: bool = False) -> MailError:
+def mail_error(error: BaseException, account: int, *, secret: bool = False) -> MailError:
     """`error` as a MailError; a MailError passes through as it is.
 
     The original goes to the log with the account id: its text may echo server responses, so it

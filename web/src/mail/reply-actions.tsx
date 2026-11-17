@@ -2,6 +2,7 @@ import { useId, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Forward, Reply, ReplyAll, type LucideIcon } from 'lucide-react'
 
+import type { AccountId } from '@/api/accounts.ts'
 import type { PrefillMode } from '@/api/mail.ts'
 import { Button } from '@/components/ui/button.tsx'
 
@@ -15,7 +16,7 @@ const ACTIONS: { mode: PrefillMode; label: string; shortcut: string; icon: Lucid
 ]
 
 /** Reply, reply all and forward of the open message; each opens the composer with its fields. */
-export function ReplyActions({ account, messageRef }: { account: string; messageRef: string }): ReactElement {
+export function ReplyActions({ account, messageRef }: { account: AccountId; messageRef: string }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const { start, canCompose } = useCompose()
   const hintId = useId()

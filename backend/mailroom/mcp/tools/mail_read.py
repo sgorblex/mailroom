@@ -19,6 +19,7 @@ from pydantic import AfterValidator, AnyUrl, Field, StrictBool
 from mailroom.errors import Refusal
 from mailroom.mail import service
 from mailroom.mcp.tool import MAILBOX_READ, Arguments, Tool, content_result, text_result
+from mailroom_core.config import MAX_SAFE_INTEGER
 from mailroom_core.mail import (
     ATTACHMENT_FILE_NOTE,
     DISPLAYED_IMAGES,
@@ -47,8 +48,8 @@ TOOL_NAMES: Final = ToolNames(
 NO_ACCOUNT: Final = "No mail account yet: the user adds one in Mailroom (Accounts)."
 
 _ACCOUNT_ID = Field(
-    max_length=64,
-    min_length=1,
+    ge=1,
+    le=MAX_SAFE_INTEGER,
     description="An account id, from accounts_list (optional with a single account).",
 )
 Limit = Annotated[int, Field(ge=1, le=50, description="Messages per page (default 20, max 50).")]
@@ -92,7 +93,7 @@ IsoDate = Annotated[
 
 
 class MessagesListArguments(Arguments):
-    account_id: Annotated[str, _ACCOUNT_ID] | None = None
+    account_id: Annotated[int, _ACCOUNT_ID] | None = None
     folder: FolderPath = Field(
         default="INBOX",
         description="Folder path, as folders_list gives it in `path` (default INBOX).",
@@ -103,7 +104,7 @@ class MessagesListArguments(Arguments):
 
 
 class MessagesSearchArguments(Arguments):
-    account_id: Annotated[str, _ACCOUNT_ID] | None = Field(
+    account_id: Annotated[int, _ACCOUNT_ID] | service.AllAccounts | None = Field(
         default=None,
         description='An account id, or "*" for every account (optional with a single account).',
     )
@@ -178,21 +179,22 @@ def _dated(text: str, zone: str) -> types.CallToolResult:
     return text_result(f"{text}\nDates are in {zone}.")
 
 
-async def named_account(account_id: str | None, call: ToolCall, *, every: bool = False) -> str:
+async def named_account(account_id: int | None, call: ToolCall) -> int:
     """``account_id``, or the user's only account when none is given."""
-    if account_id is not None:
-        if account_id == service.ALL_ACCOUNTS and not every:
-            message = 'Name one account, not "*".'
-            raise Refusal("invalid", "invalid_argument", message)
-        return account_id
+    return account_id if account_id is not None else await _only_account(call, every=False)
+
+
+async def _only_account(call: ToolCall, *, every: bool) -> int:
+    """The user's only account; refused when they have none or several."""
     ids = await call.thread(lambda: list(service.account_ids(call.ctx, call.user_id)))
     if len(ids) == 1:
         return ids[0]
     if not ids:
         raise Refusal("not_found", "not_found", NO_ACCOUNT, coded=True)
-    options = ", ".join(ids)
+    options = ", ".join(str(account_id) for account_id in ids)
     star = ' (or "*" for every account)' if every else ""
-    raise Refusal("invalid", "invalid_argument", f"Name an account{star}: {options}.")
+    message = f"Name an account{star}, by its id from accounts_list: {options}."
+    raise Refusal("invalid", "invalid_argument", message)
 
 
 async def _messages_list(args: MessagesListArguments, call: ToolCall) -> types.CallToolResult:
@@ -217,7 +219,9 @@ async def _messages_list(args: MessagesListArguments, call: ToolCall) -> types.C
 
 
 async def _messages_search(args: MessagesSearchArguments, call: ToolCall) -> types.CallToolResult:
-    account = await named_account(args.account_id, call, every=True)
+    account = (
+        args.account_id if args.account_id is not None else await _only_account(call, every=True)
+    )
     query = SearchQuery(
         sender=args.sender,
         to=args.to,

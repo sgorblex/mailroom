@@ -2,14 +2,14 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { bodiesTo, messageItem, stubMailApi, type FakeMailState } from '@/test/fake-mail-api.ts'
+import { bodiesTo, type FakeMailState, messageItem, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
 import { renderMailApp } from '@/test/mail-app.tsx'
 
 function state(overrides: Partial<FakeMailState> = {}): FakeMailState {
   return {
-    accounts: ['work'],
+    accounts: [WORK],
     folders: {
-      work: [
+      [WORK]: [
         { path: 'INBOX', role: 'inbox', unread: 0, total: 1 },
         { path: 'Trash', role: 'trash', unread: 0, total: 0 },
         { path: 'Lists', role: null, unread: 0, total: 0 },
@@ -18,9 +18,9 @@ function state(overrides: Partial<FakeMailState> = {}): FakeMailState {
       ],
     },
     messages: {
-      'work/INBOX': [messageItem('work', 'INBOX', 1)],
-      'work/Projects': [messageItem('work', 'Projects', 3), messageItem('work', 'Projects', 2), messageItem('work', 'Projects', 1)],
-      'work/Lists': [],
+      '1/INBOX': [messageItem(WORK, 'INBOX', 1)],
+      '1/Projects': [messageItem(WORK, 'Projects', 3), messageItem(WORK, 'Projects', 2), messageItem(WORK, 'Projects', 1)],
+      '1/Lists': [],
     },
     views: {},
     ...overrides,
@@ -106,7 +106,7 @@ describe('folder actions', () => {
     // The parent opens on the new folder.
     expect(await within(await tree()).findByRole('treeitem', { name: '2026' })).toHaveAttribute('aria-level', '2')
     // The listings are GETs to the same path, with no body.
-    expect(bodiesTo(fetchMock, '/api/v1/mail/accounts/work/folders').filter((body) => body !== null)).toEqual([
+    expect(bodiesTo(fetchMock, '/api/v1/mail/accounts/1/folders').filter((body) => body !== null)).toEqual([
       { parent: null, name: 'Receipts' },
       { parent: 'Projects', name: '2026' },
     ])
@@ -125,7 +125,7 @@ describe('folder actions', () => {
 
   it('renames and moves the folder on screen, following it to its new path', async () => {
     const fetchMock = stubMailApi(state())
-    const history = renderMailApp('/mail?account=work&folder=Projects')
+    const history = renderMailApp('/mail?account=1&folder=Projects')
 
     await userEvent.click(within(await menuOf('Projects')).getByRole('menuitem', { name: 'Rename or move…' }))
     const dialog = screen.getByRole('dialog', { name: 'Rename or move “Projects”' })
@@ -149,7 +149,7 @@ describe('folder actions', () => {
       expect(history.location.search).toContain('folder=Lists%2FWork')
     })
     expect(await within(await tree()).findByRole('treeitem', { name: 'Work' })).toHaveAttribute('aria-current', 'page')
-    expect(bodiesTo(fetchMock, '/api/v1/mail/accounts/work/folders/rename')).toEqual([
+    expect(bodiesTo(fetchMock, '/api/v1/mail/accounts/1/folders/rename')).toEqual([
       { folder: 'Projects', parent: 'Lists', name: 'Work' },
     ])
     expect(screen.getByText('Renamed to Lists/Work.')).toBeInTheDocument()
@@ -159,9 +159,9 @@ describe('folder actions', () => {
     stubMailApi(
       state({
         refuse: {
-          'POST /api/v1/mail/accounts/work/folders/rename': {
+          'POST /api/v1/mail/accounts/1/folders/rename': {
             status: 200,
-            body: { account_id: 'work', folder: 'Projects', path: 'Work', rule_sets: [], filters: [], rule_sets_updated: false },
+            body: { account_id: WORK, folder: 'Projects', path: 'Work', rule_sets: [], filters: [], rule_sets_updated: false },
           },
         },
       }),
@@ -179,7 +179,7 @@ describe('folder actions', () => {
   it('deletes after confirming the count, and asks again when it changed', async () => {
     const fake = state()
     const fetchMock = stubMailApi(fake)
-    const history = renderMailApp('/mail?account=work&folder=Projects')
+    const history = renderMailApp('/mail?account=1&folder=Projects')
 
     await userEvent.click(within(await menuOf('Projects')).getByRole('menuitem', { name: 'Delete…' }))
     const dialog = screen.getByRole('dialog', { name: 'Delete “Projects”' })
@@ -191,7 +191,7 @@ describe('folder actions', () => {
     expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus()
 
     // Mail arrives while the user reads.
-    const projects = fake.folders['work']?.find((folder) => folder.path === 'Projects')
+    const projects = fake.folders[WORK]?.find((folder) => folder.path === 'Projects')
     if (projects !== undefined) {
       projects.total = 4
     }
@@ -206,7 +206,7 @@ describe('folder actions', () => {
       expect(history.location.search).not.toContain('folder=Projects')
     })
     expect(within(await tree()).queryByRole('treeitem', { name: 'Projects' })).not.toBeInTheDocument()
-    expect(bodiesTo(fetchMock, '/api/v1/mail/accounts/work/folders/delete')).toEqual([
+    expect(bodiesTo(fetchMock, '/api/v1/mail/accounts/1/folders/delete')).toEqual([
       { folder: 'Projects', messages: 3 },
       { folder: 'Projects', messages: 4 },
     ])
@@ -216,7 +216,7 @@ describe('folder actions', () => {
     stubMailApi(
       state({
         refuse: {
-          'POST /api/v1/mail/accounts/work/folders/delete': {
+          'POST /api/v1/mail/accounts/1/folders/delete': {
             status: 409,
             body: { detail: { code: 'folder_in_use', message: 'Rule sets use this folder.', rule_sets: [{ id: 7, name: 'Newsletters' }] } },
           },

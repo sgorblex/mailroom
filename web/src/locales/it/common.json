@@ -122,7 +122,7 @@
     "editTitle": "Modifica {{account}}",
     "displayName": "Nome dell'account",
     "unknown": "Account rimosso",
-    "displayNameHint": "Facoltativo: come Mailroom ti mostra questo account. Senza, usa l'id dell'account.",
+    "displayNameHint": "Facoltativo: come Mailroom ti mostra questo account. Senza, usa il login.",
     "colour": "Colore",
     "colours": {
       "none": "Nessun colore",
@@ -137,8 +137,6 @@
       "violet": "Viola",
       "pink": "Rosa"
     },
-    "id": "Id dell'account",
-    "idHint": "Lettere minuscole, cifre e trattini, per esempio lavoro. Non si può cambiare in seguito.",
     "address": "Indirizzo email",
     "name": "Il tuo nome",
     "nameHint": "Facoltativo: lo vedono le persone a cui scrivi.",
@@ -260,7 +258,6 @@
     "wrongPassword": "La password attuale è errata."
   },
   "accountErrors": {
-    "accountExists": "Esiste già un account con questo id.",
     "invalidAccount": "Controlla i campi evidenziati.",
     "accountNameTaken": "Un altro dei tuoi account ha già questo nome.",
     "accountsChanged": "I tuoi account sono cambiati nel frattempo. Ricarica la pagina e riprova.",

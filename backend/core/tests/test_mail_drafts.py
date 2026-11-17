@@ -93,7 +93,7 @@ def user(imap_server: ImapTestServer) -> str:
 
 @pytest.fixture
 def account(imap_server: ImapTestServer, user: str) -> AccountConfig:
-    return test_account("acc", user, imap_server)
+    return test_account(1, user, imap_server)
 
 
 def message(account: AccountConfig, text: str = "Shall we meet?", **fields: object) -> MessageInput:
@@ -124,7 +124,7 @@ def drafts_of(imap_server: ImapTestServer, user: str) -> list[bytes]:
 
 
 def refs_in(mail: MailConnections, folder: str = "Drafts") -> list[MessageRef]:
-    return [parse_ref(m.ref) for m in list_messages(mail, "acc", folder, previews=False).messages]
+    return [parse_ref(m.ref) for m in list_messages(mail, 1, folder, previews=False).messages]
 
 
 def drop_response_code(monkeypatch: pytest.MonkeyPatch, code: bytes = b"Append completed.") -> None:
@@ -142,11 +142,11 @@ def test_takes_the_uid_from_a_real_appenduid(imap_server, harness, user, account
     seed(imap_server, user, "Drafts", mime("first"))
     mail = harness(account)
     composed = compose(message(account, draft=True))
-    ref = append_message(mail, "acc", "Drafts", composed.stored, DRAFT_FLAGS, composed.message_id)
+    ref = append_message(mail, 1, "Drafts", composed.stored, DRAFT_FLAGS, composed.message_id)
 
     [_first, stored] = folder_contents(imap_server, user, "Drafts")
     assert ref is not None
-    assert (ref.account, ref.folder, ref.uid) == ("acc", "Drafts", stored.uid)
+    assert (ref.account, ref.folder, ref.uid) == (1, "Drafts", stored.uid)
     assert refs_in(mail)[0] == ref
 
 
@@ -198,7 +198,7 @@ def test_a_failed_read_back_gives_no_ref_and_keeps_the_old_version(
     assert new.replaced is None
     assert [item.result for item in items] == ["ok"]
     assert len(drafts_of(imap_server, user)) == 2
-    assert find_drafts(mail, "acc", "same-id")[1] == old.ref
+    assert find_drafts(mail, 1, "same-id")[1] == old.ref
 
 
 def test_a_search_that_only_finds_the_old_version_does_not_replace_it(
@@ -246,7 +246,7 @@ def test_a_save_is_read_back_and_found_without_a_header_search(
     assert new.ref is not None
     assert new.replaced is not None
     assert len(drafts_of(imap_server, user)) == 1
-    assert find_drafts(mail, "acc", "same-id") == (new.ref,)
+    assert find_drafts(mail, 1, "same-id") == (new.ref,)
 
 
 def test_keeps_the_flags_of_drafts_saved_after_drafts_was_listed(
@@ -309,7 +309,7 @@ def test_bcc_threading_and_answers_round_trip(imap_server, harness, user, accoun
         ),
     )
     mail = harness(account)
-    original = parse_ref(list_messages(mail, "acc", "INBOX", previews=False).messages[0].ref)
+    original = parse_ref(list_messages(mail, 1, "INBOX", previews=False).messages[0].ref)
     thread = thread_of(original_message(mail, original))
     saved, _ = save(
         mail,
@@ -345,7 +345,7 @@ def test_bcc_threading_and_answers_round_trip(imap_server, harness, user, accoun
 
 
 def test_answers_in_another_account_does_not_count(imap_server, harness, user, account) -> None:
-    elsewhere = format_ref(MessageRef("other", "INBOX", 1, 1))
+    elsewhere = format_ref(MessageRef(2, "INBOX", 1, 1))
     raw = mime("by hand").replace(
         "MIME-Version", f"X-Mailroom-Draft: 1; answers={elsewhere}\r\nMIME-Version", 1
     )
@@ -368,7 +368,7 @@ def test_a_new_version_replaces_the_old_keeping_its_attachments(
         mime("files", attachments=[MimeAttachment("a.pdf", "application/pdf", PDF)]),
     )
     mail = harness(account)
-    with_file = parse_ref(list_messages(mail, "acc", "INBOX", previews=False).messages[0].ref)
+    with_file = parse_ref(list_messages(mail, 1, "INBOX", previews=False).messages[0].ref)
     first, _ = save(
         mail,
         account,
@@ -413,7 +413,7 @@ def test_uploads_and_kept_parts_share_the_cap(imap_server, harness, user, accoun
         mime("files", attachments=[MimeAttachment("a.pdf", "application/pdf", PDF)]),
     )
     mail = harness(account)
-    source = parse_ref(list_messages(mail, "acc", "INBOX", previews=False).messages[0].ref)
+    source = parse_ref(list_messages(mail, 1, "INBOX", previews=False).messages[0].ref)
     upload = OutgoingAttachment("b.bin", "application/octet-stream", b"x" * 40)
     items: list[AuditItem] = []
     with pytest.raises(MailError, match="may total 60 B") as raised:
@@ -663,8 +663,8 @@ def test_finds_every_version_newest_first_whatever_the_identity(
     assert first.ref is not None
     assert second.ref is not None
     assert first.message_id != second.message_id
-    assert find_drafts(mail, "acc", compose_id) == (second.ref, first.ref)
-    assert find_drafts(mail, "acc", str(uuid.uuid4())) == ()
+    assert find_drafts(mail, 1, compose_id) == (second.ref, first.ref)
+    assert find_drafts(mail, 1, str(uuid.uuid4())) == ()
 
 
 def test_a_save_whose_answer_was_lost_is_found_again(
@@ -684,7 +684,7 @@ def test_a_save_whose_answer_was_lost_is_found_again(
     monkeypatch.undo()
 
     assert raised.value.code == "unreachable"
-    [newest, oldest] = find_drafts(mail, "acc", "same-id")
+    [newest, oldest] = find_drafts(mail, 1, "same-id")
     assert oldest == old.ref
     assert read_draft(mail, newest).text.startswith("v2")
 
@@ -734,7 +734,7 @@ class CuttingProxy:
 def test_an_append_cut_mid_literal_leaves_the_old_version_alone(imap_server, harness, user) -> None:
     proxy = CuttingProxy(imap_server.host, imap_server.port)
     account = test_account(
-        "acc",
+        1,
         user,
         imap_server,
         imap={"host": "127.0.0.1", "port": proxy.port, "tls": "implicit"},
@@ -769,7 +769,7 @@ def test_an_append_cut_mid_literal_leaves_the_old_version_alone(imap_server, har
 def test_refuses_what_a_save_or_removal_must_not_touch(imap_server, harness, user, account) -> None:
     seed(imap_server, user, "INBOX", mime("not a draft"))
     mail = harness(account)
-    inbox = parse_ref(list_messages(mail, "acc", "INBOX", previews=False).messages[0].ref)
+    inbox = parse_ref(list_messages(mail, 1, "INBOX", previews=False).messages[0].ref)
     saved, _ = save(mail, account)
     assert saved.ref is not None
 
@@ -792,7 +792,7 @@ def test_refuses_what_a_save_or_removal_must_not_touch(imap_server, harness, use
         save(mail, account, replaces=missing)
     assert raised.value.code == "not_found"
     with pytest.raises(MailError, match="another account"):
-        save(mail, account, replaces=replace(saved.ref, account="other"))
+        save(mail, account, replaces=replace(saved.ref, account=2))
 
     off = account.model_copy(update={"send_mode": "off"})
     with pytest.raises(MailError) as raised:
@@ -851,7 +851,7 @@ def test_a_server_that_cannot_move_a_foreign_draft_gets_no_new_version(
     seed(imap_server, user, "Drafts", mime("by hand"), ["\\Draft"])
     mail = harness(account)
     [ref] = refs_in(mail)
-    capabilities = mail.capabilities("acc")
+    capabilities = mail.capabilities(1)
     monkeypatch.setattr(
         MailConnections,
         "capabilities",
@@ -884,7 +884,7 @@ def test_without_uidplus_versions_go_to_trash_and_autosave_is_off(
     imap_server, harness, user, account, monkeypatch
 ) -> None:
     mail = harness(account)
-    capabilities = mail.capabilities("acc")
+    capabilities = mail.capabilities(1)
     monkeypatch.setattr(
         MailConnections, "capabilities", lambda self, _id: replace(capabilities, uidplus=False)
     )

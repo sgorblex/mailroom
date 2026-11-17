@@ -38,7 +38,7 @@ def unverified_context() -> ssl.SSLContext:
 
 
 def test_account(
-    account_id: str, user: str, server: ImapTestServer, **overrides: object
+    account_id: int, user: str, server: ImapTestServer, **overrides: object
 ) -> AccountConfig:
     """An account on the test servers logging in as `user`; `overrides` replace fields
     (`imap={"host": "127.0.0.1", "port": 9, "tls": "implicit"}`, say)."""
@@ -67,7 +67,7 @@ test_account.__test__ = False  # type: ignore[attr-defined]
 def connections_for(
     server: ImapTestServer,
     accounts: Iterable[AccountConfig],
-    passwords: Mapping[str, str] | None = None,
+    passwords: Mapping[int, str] | None = None,
     *,
     pool_size: int = 1,
     timeouts: Timeouts | None = None,

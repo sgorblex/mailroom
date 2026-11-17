@@ -13,8 +13,8 @@ function json(status: number, body: unknown): Response {
 }
 
 interface StoredAccount {
-  id: string
-  /** The account's own, as stored; `null` when it has none. */
+  id: number
+  /** The account's own, as stored; `null` when it has none (then listed by its login). */
   name: string | null
   colour: string | null
   login: string
@@ -28,10 +28,10 @@ interface StoredAccount {
 }
 
 const WORK: StoredAccount = {
-  id: 'work',
+  id: 1,
   name: null,
   colour: null,
-  login: 'alice@example.org',
+  login: 'work',
   send_mode: 'drafts',
   imap: { host: 'imap.example.org', port: 993, tls: 'implicit' },
   smtp: { host: 'smtp.example.org', port: 465, tls: 'implicit' },
@@ -48,9 +48,9 @@ function withoutPassword(body: Body): Body {
   return Object.fromEntries(Object.entries(body).filter(([key]) => key !== 'password'))
 }
 
-/** As the API lists it: the name as stored, and what to call it (its name, else its id). */
+/** As the API lists it: the name as stored, and what to call it (its name, else its login). */
 function listed(account: StoredAccount): StoredAccount & { display_name: string } {
-  return { ...account, display_name: account.name ?? account.id }
+  return { ...account, display_name: account.name ?? account.login }
 }
 
 const NAME_TAKEN = "Another account is already named 'Home'."
@@ -59,7 +59,7 @@ const NAME_TAKEN = "Another account is already named 'Home'."
  * Whether another of `accounts` than `id` has `name`, trimmed and whatever its case, as the API
  * compares them.
  */
-function nameTaken(accounts: StoredAccount[], id: string | undefined, name: unknown): boolean {
+function nameTaken(accounts: StoredAccount[], id: number | undefined, name: unknown): boolean {
   const key = (value: string): string => value.trim().toLowerCase()
   return (
     typeof name === 'string' &&
@@ -74,11 +74,13 @@ function nameTakenResponse(): Response {
 }
 
 /**
- * A fake accounts API holding `initial`; refuses an id that is not a slug, as mailroom-core does,
- * and a name another account has, as the API does.
+ * A fake accounts API holding `initial`: it numbers a new account itself, never reusing an id,
+ * refuses a login without an `@` as a duplicate, as mailroom-core refuses one, and refuses a name
+ * another account has, as the API does.
  */
 function stubApi(initial: StoredAccount[] = [WORK]): ReturnType<typeof vi.fn> {
   let accounts = [...initial]
+  let lastId = Math.max(0, ...initial.map((account) => account.id))
   const fetchMock = vi.fn((path: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET'
     const body = init?.body == null ? {} : (JSON.parse(init.body as string) as Body)
@@ -86,22 +88,23 @@ function stubApi(initial: StoredAccount[] = [WORK]): ReturnType<typeof vi.fn> {
       return Promise.resolve(json(200, accounts.map(listed)))
     }
     if (path === '/api/v1/accounts' && method === 'POST') {
-      if (!/^[a-z0-9][a-z0-9-]*$/.test(body['id'] as string)) {
-        const issues = [{ path: ['id'], message: 'must be lowercase letters, digits and dashes' }]
+      if (!(body['login'] as string).includes('@')) {
+        const issues = [{ path: ['login'], message: `duplicate login "${body['login'] as string}"` }]
         return Promise.resolve(
-          json(400, { detail: { code: 'invalid_account', message: 'imap.port: …', issues } }),
+          json(400, { detail: { code: 'invalid_account', message: 'login: …', issues } }),
         )
       }
       if (nameTaken(accounts, undefined, body['name'])) {
         return Promise.resolve(nameTakenResponse())
       }
       const fields = withoutPassword(body)
-      const created = { ...fields, has_password: true, run_filters: false } as unknown as StoredAccount
+      lastId += 1
+      const created = { ...fields, id: lastId, has_password: true, run_filters: false } as unknown as StoredAccount
       accounts = [...accounts, created]
       return Promise.resolve(json(201, listed(created)))
     }
     const match = /^\/api\/v1\/accounts\/([^/]+)(\/.*)?$/.exec(path)
-    const id = match?.[1]
+    const id = Number(match?.[1])
     const rest = match?.[2] ?? ''
     const account = accounts.find((candidate) => candidate.id === id)
     if (account === undefined) {
@@ -122,15 +125,15 @@ function stubApi(initial: StoredAccount[] = [WORK]): ReturnType<typeof vi.fn> {
     }
     if (rest === '/test' && method === 'POST') {
       return Promise.resolve(
-        json(200, account.login.startsWith('alice')
-          ? { ok: true, code: null, message: null }
+        json(200, account.login.startsWith('bob')
+          ? { ok: false, code: 'auth_failed', message: 'The mail server rejected the login for this account.' }
           : account.login.startsWith('carol')
             ? {
                 ok: false,
                 code: 'unreachable',
                 message: 'The mail server for this account could not be reached. Its TLS certificate did not verify.',
               }
-            : { ok: false, code: 'auth_failed', message: 'The mail server rejected the login for this account.' }),
+            : { ok: true, code: null, message: null }),
       )
     }
     if (rest === '/filter-settings' && method === 'PUT') {
@@ -171,30 +174,28 @@ describe('AccountsScreen', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Add an account' }))
     const form = screen.getByRole('form', { name: 'Add an account' })
-    await userEvent.type(within(form).getByLabelText('Account id'), 'Home')
+    // The server numbers the account: no id to choose.
+    expect(within(form).queryByLabelText(/\bid\b/i)).not.toBeInTheDocument()
     await userEvent.type(within(form).getByLabelText('Email address'), 'me@home.example')
-    await userEvent.type(within(form).getByLabelText('Login'), 'me@home.example')
+    await userEvent.type(within(form).getByLabelText('Login'), 'me')
     await userEvent.type(within(form).getByLabelText('Password'), 'mailbox secret')
     await userEvent.type(within(form).getByLabelText('IMAP server'), 'imap.home.example')
     await userEvent.type(within(form).getByLabelText('SMTP server'), 'smtp.home.example')
     await userEvent.click(within(form).getByRole('button', { name: 'Add account' }))
 
     expect(await within(form).findByRole('alert')).toHaveTextContent('Check the highlighted fields.')
-    const id = within(form).getByLabelText('Account id')
-    expect(id).toHaveAttribute('aria-invalid', 'true')
-    expect(id).toHaveAccessibleDescription(
-      expect.stringContaining('must be lowercase letters, digits and dashes'),
-    )
+    const login = within(form).getByLabelText('Login')
+    expect(login).toHaveAttribute('aria-invalid', 'true')
+    expect(login).toHaveAccessibleDescription(expect.stringContaining('duplicate login "me"'))
 
-    await userEvent.clear(id)
-    await userEvent.type(id, 'home')
+    await userEvent.type(login, '@home.example')
     await userEvent.click(within(form).getByRole('button', { name: 'Add account' }))
     const list = await screen.findByRole('list', { name: 'Mail accounts' })
-    expect(within(list).getByText('home')).toBeInTheDocument()
+    // Unnamed, it goes by its login.
+    expect(within(list).getByText('me@home.example')).toBeInTheDocument()
     expect(screen.queryByRole('form', { name: 'Add an account' })).not.toBeInTheDocument()
 
     expect(sent(fetchMock, 'POST', '/api/v1/accounts')).toEqual({
-      id: 'home',
       name: null,
       colour: null,
       login: 'me@home.example',
@@ -213,14 +214,13 @@ describe('AccountsScreen', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Edit work' }))
     const form = screen.getByRole('form', { name: 'Edit work' })
-    expect(within(form).queryByLabelText('Account id')).not.toBeInTheDocument()
-    expect(within(form).getByText('work')).toBeInTheDocument()
+    expect(within(form).queryByLabelText(/\bid\b/i)).not.toBeInTheDocument()
     expect(within(form).getByLabelText('Password')).not.toBeRequired()
     await userEvent.selectOptions(within(form).getByLabelText('Sending'), 'Off')
     await userEvent.click(within(form).getByRole('button', { name: 'Save' }))
 
     expect(await screen.findByRole('button', { name: 'Edit work' })).toHaveFocus()
-    const body = sent(fetchMock, 'PUT', '/api/v1/accounts/work')
+    const body = sent(fetchMock, 'PUT', '/api/v1/accounts/1')
     expect(body).not.toHaveProperty('password')
     expect(body).toMatchObject({
       send_mode: 'off',
@@ -228,7 +228,7 @@ describe('AccountsScreen', () => {
     })
   })
 
-  it('names an account and gives it a colour, showing its id only in its settings', async () => {
+  it('names an account and gives it a colour; unnamed, it goes by its login', async () => {
     const fetchMock = stubApi()
     renderSignedIn(<AccountsScreen />, ALICE)
 
@@ -236,13 +236,14 @@ describe('AccountsScreen', () => {
     const form = screen.getByRole('form', { name: 'Edit work' })
     const name = within(form).getByLabelText('Account name')
     expect(name).toHaveValue('')
+    expect(name).toHaveAttribute('placeholder', 'work')
     expect(within(form).getByRole('radio', { name: 'No colour' })).toBeChecked()
     await userEvent.type(name, 'Work mail')
     await userEvent.click(within(form).getByRole('radio', { name: 'Teal' }))
     await userEvent.click(within(form).getByRole('button', { name: 'Save' }))
 
     expect(await screen.findByRole('button', { name: 'Edit Work mail' })).toHaveFocus()
-    expect(sent(fetchMock, 'PUT', '/api/v1/accounts/work')).toMatchObject({ name: 'Work mail', colour: 'teal' })
+    expect(sent(fetchMock, 'PUT', '/api/v1/accounts/1')).toMatchObject({ name: 'Work mail', colour: 'teal' })
     const list = screen.getByRole('list', { name: 'Mail accounts' })
     expect(within(list).getByText('Work mail')).toBeInTheDocument()
     expect(within(list).queryByText('work')).not.toBeInTheDocument()
@@ -252,16 +253,15 @@ describe('AccountsScreen', () => {
     const again = screen.getByRole('form', { name: 'Edit Work mail' })
     expect(within(again).getByLabelText('Account name')).toHaveValue('Work mail')
     expect(within(again).getByRole('radio', { name: 'Teal' })).toBeChecked()
-    expect(within(again).getByText('work')).toBeInTheDocument()
     await userEvent.clear(within(again).getByLabelText('Account name'))
     await userEvent.click(within(again).getByRole('radio', { name: 'No colour' }))
     await userEvent.click(within(again).getByRole('button', { name: 'Save' }))
 
     expect(await screen.findByRole('button', { name: 'Edit work' })).toBeInTheDocument()
-    expect(sent(fetchMock, 'PUT', '/api/v1/accounts/work')).toMatchObject({ name: null, colour: null })
+    expect(sent(fetchMock, 'PUT', '/api/v1/accounts/1')).toMatchObject({ name: null, colour: null })
   })
 
-  it('keeps the name and colour through every save, even a name that is the id', async () => {
+  it('keeps the name and colour through every save, even a name that is the login', async () => {
     const fetchMock = stubApi([{ ...WORK, name: 'work', colour: 'amber' }])
     renderSignedIn(<AccountsScreen />, ALICE)
 
@@ -273,17 +273,17 @@ describe('AccountsScreen', () => {
     await userEvent.click(within(form).getByRole('button', { name: 'Save' }))
 
     expect(await screen.findByRole('button', { name: 'Edit work' })).toHaveFocus()
-    expect(sent(fetchMock, 'PUT', '/api/v1/accounts/work')).toMatchObject({
+    expect(sent(fetchMock, 'PUT', '/api/v1/accounts/1')).toMatchObject({
       name: 'work',
       colour: 'amber',
       send_mode: 'off',
     })
-    const body = sent(fetchMock, 'PUT', '/api/v1/accounts/work')
+    const body = sent(fetchMock, 'PUT', '/api/v1/accounts/1')
     expect(body).not.toHaveProperty('display_name')
   })
 
   it('shows a name another account has as refused on the name field', async () => {
-    const fetchMock = stubApi([WORK, { ...WORK, id: 'home', name: 'Home', login: 'me@home.example' }])
+    const fetchMock = stubApi([WORK, { ...WORK, id: 2, name: 'Home', login: 'home' }])
     renderSignedIn(<AccountsScreen />, ALICE)
 
     await userEvent.click(await screen.findByRole('button', { name: 'Edit work' }))
@@ -298,7 +298,7 @@ describe('AccountsScreen', () => {
     expect(name).toHaveAccessibleDescription(expect.stringContaining(refused) as string)
     expect(within(form).getByText('Check the highlighted fields.')).toBeInTheDocument()
     expect(within(form).queryByText(NAME_TAKEN)).not.toBeInTheDocument()
-    expect(sent(fetchMock, 'PUT', '/api/v1/accounts/work')).toMatchObject({ name: 'HOME' })
+    expect(sent(fetchMock, 'PUT', '/api/v1/accounts/1')).toMatchObject({ name: 'HOME' })
 
     await userEvent.clear(name)
     await userEvent.type(name, 'Work')
@@ -332,7 +332,7 @@ describe('AccountsScreen', () => {
     await userEvent.click(within(form).getByRole('button', { name: 'Save' }))
 
     expect(await screen.findByRole('button', { name: 'Edit work' })).toBeInTheDocument()
-    expect(sent(fetchMock, 'PUT', '/api/v1/accounts/work')).toMatchObject({
+    expect(sent(fetchMock, 'PUT', '/api/v1/accounts/1')).toMatchObject({
       identities: [
         { address: 'alice@example.org', name: 'Alice', default: false },
         { address: 'info@example.org', name: null, default: true },
@@ -396,7 +396,7 @@ describe('AccountsScreen', () => {
   })
 
   it('tests the login and reports a refusal', async () => {
-    stubApi([WORK, { ...WORK, id: 'old', login: 'bob@example.org' }])
+    stubApi([WORK, { ...WORK, id: 2, name: 'old', login: 'bob@example.org' }])
     renderSignedIn(<AccountsScreen />, ALICE)
 
     await userEvent.click(await screen.findByRole('button', { name: 'Test the login of work' }))
@@ -409,7 +409,7 @@ describe('AccountsScreen', () => {
   })
 
   it('says when the login test met a certificate that did not verify', async () => {
-    stubApi([{ ...WORK, id: 'selfsigned', login: 'carol@example.org' }])
+    stubApi([{ ...WORK, name: 'selfsigned', login: 'carol@example.org' }])
     renderSignedIn(<AccountsScreen />, ALICE)
 
     await userEvent.click(await screen.findByRole('button', { name: 'Test the login of selfsigned' }))
@@ -446,7 +446,7 @@ describe('AccountsScreen', () => {
     await vi.waitFor(() => {
       expect(toggle).toBeChecked()
     })
-    expect(sent(fetchMock, 'PUT', '/api/v1/accounts/work/filter-settings')).toEqual({
+    expect(sent(fetchMock, 'PUT', '/api/v1/accounts/1/filter-settings')).toEqual({
       run_filters: true,
     })
     await userEvent.click(toggle)
@@ -476,6 +476,6 @@ describe('AccountsScreen', () => {
     expect(within(form).queryByLabelText('Sending') !== null).toBe(shown)
     await userEvent.click(within(form).getByRole('button', { name: 'Save' }))
     await screen.findByRole('button', { name: 'Edit work' })
-    expect(sent(fetchMock, 'PUT', '/api/v1/accounts/work')).toMatchObject({ send_mode: 'approval' })
+    expect(sent(fetchMock, 'PUT', '/api/v1/accounts/1')).toMatchObject({ send_mode: 'approval' })
   })
 })

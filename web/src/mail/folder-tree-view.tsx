@@ -19,6 +19,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 
+import type { AccountId } from '@/api/accounts.ts'
 import type { FolderRole, MailFolder } from '@/api/mail.ts'
 import { Menu, type MenuItem } from '@/components/ui/menu.tsx'
 import { cn } from '@/lib/utils.ts'
@@ -62,7 +63,7 @@ const EXPANDED_PREFIX = 'mailroom.mail.expandedFolders.'
  * just created or renamed), open whenever they change.
  */
 function useExpanded(
-  account: string,
+  account: AccountId,
   folders: readonly MailFolder[],
   current: string | null,
   reveal: string | null,
@@ -91,7 +92,7 @@ function useExpanded(
 }
 
 interface TreeState {
-  accountId: string
+  accountId: AccountId
   current: string | null
   expanded: ReadonlySet<string>
   setOpen: (path: string, open: boolean) => void
@@ -123,7 +124,7 @@ export function FolderTree({
   label,
   onAction,
 }: {
-  accountId: string
+  accountId: AccountId
   folders: readonly MailFolder[]
   current: string | null
   /** The folder shown is listed with its subfolders. */

@@ -27,6 +27,7 @@ from mailroom_core.mail.errors import (
 )
 from mailroom_core.mail.ref import (
     MessageRef,
+    account_number,
     b64url_encode,
     b64url_json,
     format_ref,
@@ -50,7 +51,9 @@ if TYPE_CHECKING:
 
     from mailroom_core.mail.imap import MailboxContext, MailConnections
 
-_CURSOR_VERSION: Final = 1
+_CURSOR_VERSION: Final = 2
+_SLUG_CURSOR_VERSION: Final = 1
+"""Named each source's account by the slug it had before ids became numbers."""
 _MAX_UID: Final = 0xFFFFFFFF
 """UIDs are 32-bit (RFC 3501): a cursor position beyond is no position."""
 _FROM_NEWEST: Final = 0
@@ -76,7 +79,7 @@ _SPACES: Final = re.compile(f"{_SPACE}+")
 class Source:
     """One folder of one account that a page reads from."""
 
-    account: str
+    account: int
     folder: str
 
 
@@ -85,7 +88,7 @@ class Position:
     """Per source: the UIDVALIDITY the walk started under (`""`: not known) and the UID below
     which it continues (0: from the newest)."""
 
-    account: str
+    account: int
     folder: str
     uid_validity: str
     before_uid: int
@@ -99,7 +102,7 @@ def encode_cursor(positions: Sequence[Position], failed: Sequence[PageFailure] =
     """The cursor for the next page: ``positions`` as base64url-encoded, versioned JSON, then
     the sources that ``failed`` (folder failures only), each as account, folder and code.
 
-    With nothing failed it is the TypeScript's `[1, positions]`, byte for byte.
+    With nothing failed it is `[2, positions]`, as before failures were carried.
     """
     value: list[object] = [_CURSOR_VERSION, [p.json() for p in positions]]
     carried = [f for f in failed if f.folder is not None]
@@ -109,13 +112,13 @@ def encode_cursor(positions: Sequence[Position], failed: Sequence[PageFailure] =
 
 
 def decode_cursor(text: str) -> list[Position]:
-    """`invalid_argument` unless `text` is a cursor `encode_cursor` (or the TypeScript) made."""
+    """`invalid_argument` unless `text` is a cursor `encode_cursor` made; `stale_reference` if an
+    earlier version made it."""
     return _read_cursor(text)[0]
 
 
 def cursor_failures(text: str) -> list[PageFailure]:
-    """The failed sources `text` carries (see `encode_cursor`); `invalid_argument` as
-    `decode_cursor`."""
+    """The failed sources `text` carries (see `encode_cursor`); refused as by `decode_cursor`."""
     return _read_cursor(text)[1]
 
 
@@ -124,6 +127,8 @@ def _read_cursor(text: str) -> tuple[list[Position], list[PageFailure]]:
         value = b64url_json(text)
     except ValueError:
         value = None
+    if isinstance(value, list) and value and js_integer(value[0]) == _SLUG_CURSOR_VERSION:
+        raise MailError("stale_reference", "The cursor is out of date; start over without one.")
     if (
         isinstance(value, list)
         and len(value) in (2, 3)
@@ -141,17 +146,14 @@ def _positions(value: list[object]) -> list[Position] | None:
     positions: list[Position] = []
     for p in value:
         if not (
-            isinstance(p, list)
-            and len(p) == 4
-            and isinstance(p[0], str)
-            and isinstance(p[1], str)
-            and isinstance(p[2], str)
+            isinstance(p, list) and len(p) == 4 and isinstance(p[1], str) and isinstance(p[2], str)
         ):
             return None
+        account = account_number(p[0])
         before = js_integer(p[3])
-        if before is None or not 0 <= before <= _MAX_UID:
+        if account is None or before is None or not 0 <= before <= _MAX_UID:
             return None
-        positions.append(Position(p[0], p[1], p[2], before))
+        positions.append(Position(account, p[1], p[2], before))
     return positions
 
 
@@ -165,15 +167,17 @@ def _failed(value: object) -> list[PageFailure] | None:
         if not (
             isinstance(f, list)
             and len(f) == 4
-            and isinstance(f[0], str)
             and isinstance(f[1], str)
             and f[2] in MAIL_ERROR_CODES
             and isinstance(f[3], bool)
         ):
             return None
+        account = account_number(f[0])
+        if account is None:
+            return None
         code = cast("MailErrorCode", f[2])
         error = MailError(code, CERTIFICATE_DETAIL if f[3] else None)
-        failed.append(PageFailure.of(f[0], f[1], error))
+        failed.append(PageFailure.of(account, f[1], error))
     return failed
 
 
@@ -183,7 +187,7 @@ class MessageSummary:
     characters), but still the sender's words: escape it, or put it in the envelope."""
 
     ref: str
-    account: str
+    account: int
     folder: str
     uid: int
     uid_validity: int
@@ -234,7 +238,7 @@ class MessageSummary:
 class PageFailure:
     """A source that could not be read: the page goes on without it."""
 
-    account: str
+    account: int
     folder: str | None
     """None when the account failed before a folder was chosen (search over all folders)."""
     code: MailErrorCode
@@ -242,7 +246,7 @@ class PageFailure:
     """The MailError's fixed message."""
 
     @classmethod
-    def of(cls, account: str, folder: str | None, error: MailError) -> PageFailure:
+    def of(cls, account: int, folder: str | None, error: MailError) -> PageFailure:
         """The failure of one source, from the error that stopped it."""
         return cls(account, folder, error.code, error.message)
 
@@ -367,7 +371,7 @@ def _by_account[T](
 ) -> dict[int, T | BaseException]:
     """`run(index)` for every source: the sources of one account one after the other (they share
     its connections), different accounts side by side."""
-    groups: dict[str, list[int]] = {}
+    groups: dict[int, list[int]] = {}
     for index, source in enumerate(sources):
         groups.setdefault(source.account, []).append(index)
 
@@ -394,7 +398,7 @@ def _by_account[T](
 def read_page(
     connections: MailConnections,
     sources: Sequence[Source],
-    criteria: Criteria | Mapping[str, Criteria] | Mapping[Source, Criteria],
+    criteria: Criteria | Mapping[int, Criteria] | Mapping[Source, Criteria],
     *,
     limit: int,
     cursor: str | None = None,
@@ -411,7 +415,7 @@ def read_page(
     """
     if limit < 1:
         raise MailError("invalid_argument", "limit must be at least 1.")
-    given: dict[str | Source, Criteria]
+    given: dict[int | Source, Criteria]
     if isinstance(criteria, Mapping):
         given = dict(criteria.items())
     else:

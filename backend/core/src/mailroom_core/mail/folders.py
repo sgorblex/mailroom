@@ -54,7 +54,7 @@ class FolderChange:
     """What a create, rename or delete did: the folder (`path`, its old path on a rename), its
     new path on a rename, and on a delete how many messages went with it."""
 
-    account: str
+    account: int
     path: str
     delimiter: str | None
     """The account's hierarchy delimiter, None when it has none."""
@@ -118,7 +118,7 @@ def subfolders_of(folders: Iterable[Folder], path: str) -> list[Folder]:
     return [f for f in folders if under(f)]
 
 
-def with_subfolders(folders: Sequence[Folder], path: str, account: str) -> list[str]:
+def with_subfolders(folders: Sequence[Folder], path: str, account: int) -> list[str]:
     """The paths a read of `path` with its subfolders covers: the folder (INBOX in any case),
     then its selectable subfolders at any depth, leaving out the folders with a role in
     `_APART_ROLES` (Sent, Drafts, All Mail, Archive, Junk, Trash) and everything under them,
@@ -144,7 +144,7 @@ def with_subfolders(folders: Sequence[Folder], path: str, account: str) -> list[
 
 
 def create_folder(
-    connections: MailConnections, account: str, parent: str | None, name: str, note: Note
+    connections: MailConnections, account: int, parent: str | None, name: str, note: Note
 ) -> FolderChange:
     """Creates `name` under `parent` (None: at the top level) and subscribes it. Refused when
     the parent is not listed (`mailbox_missing`), or the folder exists (`folder_exists`)."""
@@ -172,7 +172,7 @@ def create_folder(
 
 def rename_folder(
     connections: MailConnections,
-    account: str,
+    account: int,
     folder: str,
     parent: str | None,
     name: str,
@@ -237,7 +237,7 @@ def rename_folder(
 
 
 def delete_folder(
-    connections: MailConnections, account: str, folder: str, *, messages: int, note: Note
+    connections: MailConnections, account: int, folder: str, *, messages: int, note: Note
 ) -> FolderChange:
     """Deletes `folder` and its mail for good, and unsubscribes it. `messages` is how many
     messages the caller saw in it and confirmed: STATUS reads the count again, and when it
@@ -273,7 +273,7 @@ def delete_folder(
 
 def _run(
     connections: MailConnections,
-    account: str,
+    account: int,
     progress: _Progress,
     run: Callable[[IMAPClient], None],
     done: Callable[[Sequence[Folder]], bool],
@@ -303,7 +303,7 @@ def _run(
         )
 
 
-def _write(progress: _Progress, account: str, command: Callable[[], object]) -> None:
+def _write(progress: _Progress, account: int, command: Callable[[], object]) -> None:
     """The one CREATE, RENAME or DELETE, with the server's refusals that name their reason as
     our codes; others go to `with_connection` to map."""
     progress.stage = "writing"
@@ -340,7 +340,7 @@ def _answer(text: str) -> MailError | None:
     return None
 
 
-def _subscribed(client: IMAPClient, account: str, path: str) -> list[str]:
+def _subscribed(client: IMAPClient, account: int, path: str) -> list[str]:
     """`path` and the folders under it that are subscribed; best effort, as the subscriptions
     are: none when the server refuses LSUB (deprecated in IMAP4rev2)."""
     try:
@@ -362,7 +362,7 @@ def _subscribed(client: IMAPClient, account: str, path: str) -> list[str]:
 
 def _update_subscriptions(
     client: IMAPClient,
-    account: str,
+    account: int,
     *,
     subscribe: Sequence[str] = (),
     unsubscribe: Sequence[str] = (),
@@ -424,19 +424,19 @@ def _find(folders: Iterable[Folder], path: str) -> Folder | None:
     )
 
 
-def _missing(path: str, account: str) -> MailError:
+def _missing(path: str, account: int) -> MailError:
     return MailError(
         "mailbox_missing",
-        f'"{clean_header(path, 200)}" is not a folder of {account}; list its folders.',
+        f'"{clean_header(path, 200)}" is not a folder of account {account}; list its folders.',
     )
 
 
-def _check_parent(folders: Sequence[Folder], parent: str | None, account: str) -> None:
+def _check_parent(folders: Sequence[Folder], parent: str | None, account: int) -> None:
     if parent is not None and _find(folders, parent) is None:
         raise _missing(parent, account)
 
 
-def _changeable(folders: Sequence[Folder], path: str, account: str, verb: str) -> Folder:
+def _changeable(folders: Sequence[Folder], path: str, account: int, verb: str) -> Folder:
     """The listed folder at `path`, unless it is INBOX or has a role."""
     found = _find(folders, path)
     if found is None:

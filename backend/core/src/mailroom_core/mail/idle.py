@@ -125,7 +125,7 @@ class IdleWatch:
     def __init__(
         self,
         connections: MailConnections,
-        account_id: str,
+        account_id: int,
         path: str,
         *,
         on_change: Callable[[IdleChange], None],

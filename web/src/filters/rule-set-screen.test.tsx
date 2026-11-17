@@ -2,7 +2,7 @@ import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { sentBody, stubFiltersApi, type FakeState } from '@/test/fake-filters-api.ts'
+import { type FakeState, sentBody, stubFiltersApi, WORK } from '@/test/fake-filters-api.ts'
 import { renderFiltersApp } from '@/test/filters-app.tsx'
 
 const NEWS_SPEC = {
@@ -16,12 +16,12 @@ const OLD_SPEC = {
 
 function state(overrides: Partial<FakeState> = {}): FakeState {
   return {
-    accounts: [{ id: 'work', run_filters: true }],
+    accounts: [{ id: WORK, run_filters: true }],
     folders: [['INBOX'], ['Archive'], ['Lists', 'Nerds']],
     ruleSets: [
       {
         id: 1,
-        account_id: 'work',
+        account_id: WORK,
         folder: ['INBOX'],
         name: 'Inbox sorting',
         trigger: 'new_mail',
@@ -231,7 +231,7 @@ describe('RuleSetScreen', () => {
   })
 
   it('runs now, and refuses while Run filters is off', async () => {
-    const fake = state({ accounts: [{ id: 'work', run_filters: false, name: 'Work mail', colour: 'teal' }] })
+    const fake = state({ accounts: [{ id: WORK, run_filters: false, name: 'Work mail', colour: 'teal' }] })
     const fetchMock = stubFiltersApi(fake)
     renderFiltersApp('/filters/1')
 
@@ -262,7 +262,7 @@ describe('RuleSetScreen', () => {
     renderFiltersApp('/filters/1')
 
     const run = await screen.findByRole('button', { name: 'Run now' })
-    fake.accounts = [{ id: 'work', run_filters: false }]
+    fake.accounts = [{ id: WORK, run_filters: false }]
     await userEvent.click(run)
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Run filters is off for this account: turn it on in Accounts first.',
@@ -282,7 +282,7 @@ describe('RuleSetScreen', () => {
             finished_at: '2026-10-19T09:00:02Z',
             dry_run: false,
             result: {
-              account: 'work',
+              account: WORK,
               folder: ['INBOX'],
               dry_run: false,
               filters: [
@@ -373,7 +373,7 @@ describe('RuleSetScreen', () => {
       ...queued,
       started_at: '2026-10-19T09:00:01Z',
       finished_at: '2026-10-19T09:00:02Z',
-      result: { account: 'work', folder: ['INBOX'], dry_run: false, filters: [], error: null },
+      result: { account: WORK, folder: ['INBOX'], dry_run: false, filters: [], error: null },
     }
     await vi.advanceTimersByTimeAsync(2000)
     await vi.waitFor(() => {
@@ -467,7 +467,7 @@ describe('RuleSetScreen', () => {
     stubFiltersApi(
       state({
         refuse: {
-          'GET /api/v1/accounts/work/folders': {
+          'GET /api/v1/accounts/1/folders': {
             status: 502,
             body: {
               detail: {
@@ -492,7 +492,7 @@ describe('RuleSetScreen', () => {
     const fetchMock = stubFiltersApi(
       state({
         refuse: {
-          'GET /api/v1/accounts/work/folders': {
+          'GET /api/v1/accounts/1/folders': {
             status: 502,
             body: { detail: { code: 'unreachable', message: 'The mail server for this account could not be reached.' } },
           },
@@ -528,7 +528,7 @@ describe('RuleSetScreen', () => {
             finished_at: '2026-10-19T09:00:02Z',
             dry_run: false,
             result: {
-              account: 'work',
+              account: WORK,
               folder: ['INBOX'],
               dry_run: false,
               filters: [],

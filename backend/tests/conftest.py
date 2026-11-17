@@ -200,6 +200,18 @@ def _cheap_password_hashing(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
+def numbered_accounts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Accounts added in the test take the ids 1, 2, 3… in the order they are added, as on a new
+    instance, so that the test can name them; the instance's own sequence is tested apart."""
+    from itertools import count
+
+    from mailroom_core.store import AccountStore
+
+    ids = count(1)
+    monkeypatch.setattr(AccountStore, "new_account_id", lambda _store: next(ids))
+
+
+@pytest.fixture
 def user(db_session: Session) -> User:
     """``USERNAME``, signing in with ``PASSWORD``; not an admin."""
     from mailroom.auth.users import create_user

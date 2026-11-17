@@ -147,7 +147,7 @@ def _read_back(
 
 def _append(
     connections: MailConnections,
-    account: str,
+    account: int,
     folder: str,
     raw: bytes,
     flags: Sequence[str],
@@ -173,7 +173,7 @@ def _append(
 
 def append_message(
     connections: MailConnections,
-    account: str,
+    account: int,
     folder: str,
     raw: bytes,
     flags: Sequence[str],
@@ -270,7 +270,7 @@ def _check_compose_id(compose_id: str) -> None:
 
 
 def find_drafts(
-    connections: MailConnections, account: str, compose_id: str
+    connections: MailConnections, account: int, compose_id: str
 ) -> tuple[MessageRef, ...]:
     """The versions of a draft in Drafts, newest first: those whose Message-ID was built on
     `compose_id`, whichever identity's domain it took. Finds a save whose answer was lost; it

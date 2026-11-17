@@ -81,13 +81,13 @@ def user_connections(
     store = user_store(source.engine, user_id)
     subkey = source.subkey
 
-    def account(account_id: str) -> AccountConfig | None:
+    def account(account_id: int) -> AccountConfig | None:
         try:
             return load_accounts(store).account(account_id)
         except AccountNotFound:
             return None
 
-    def password(account_id: str) -> str:
+    def password(account_id: int) -> str:
         found = account_password(store, subkey, account_id)
         if found is None:
             raise PasswordMissing
@@ -99,7 +99,7 @@ def user_connections(
 
 
 def unusable(
-    store: AccountStore, subkey: SecretsSubkey | None, account_id: str
+    store: AccountStore, subkey: SecretsSubkey | None, account_id: int
 ) -> tuple[str, str] | None:
     """Why the store user's ``account_id`` cannot log in, found before any connection: the app's
     own code and fixed message (``secrets_key_missing``, ``password_missing``), or None when it

@@ -192,7 +192,7 @@ class Gate:
 def account(mode: str = "direct", auto_approve: Iterable[str] = ()) -> AccountConfig:
     return AccountConfig.model_validate(
         {
-            "id": "acc",
+            "id": 1,
             "login": "me",
             "send_mode": mode,
             "auth": {"type": "password"},
@@ -475,7 +475,7 @@ def stored_as(
     sender: tuple[Mailbox, ...] = (Mailbox("me@example.test"),),
 ) -> Draft:
     draft = Draft(
-        ref=MessageRef("acc", "Drafts", 1, 5),
+        ref=MessageRef(1, "Drafts", 1, 5),
         own=False,
         message_id="<id@example.test>",
         sender=sender,
@@ -624,7 +624,7 @@ def test_a_stored_draft_s_body_goes_out_with_its_lines_ending_in_crlf(
     composed = prepare_draft(connections, account(), draft.ref, Limits()).prepared.composed
 
     with SmtpStub() as stub:
-        on(stub, NO_TIMEOUT).send("acc", composed.envelope, composed.wire)
+        on(stub, NO_TIMEOUT).send(1, composed.envelope, composed.wire)
 
     assert stub.messages == [b"From: me@example.test\r\nTo: a@x.org\r\nSubject: s\r\n\r\n" + body]
     assert b"Bcc: secret@y.org" in composed.stored
@@ -848,7 +848,7 @@ def test_a_capabilities_failure_after_delivery_keeps_the_sent_item(
 
 
 def stored_draft(answers: MessageRef | None = None) -> Draft:
-    return Draft(ref=MessageRef("acc", "Drafts", 1, 5), own=True, answers=answers)
+    return Draft(ref=MessageRef(1, "Drafts", 1, 5), own=True, answers=answers)
 
 
 class FailingRemoval(StubConnections):
@@ -859,7 +859,7 @@ class FailingRemoval(StubConnections):
 def test_a_draft_that_will_not_go_or_an_original_that_will_not_mark_are_only_notes() -> None:
     items: list[AuditItem] = []
     connections = cast("MailConnections", FailingRemoval())
-    answered = MessageRef("acc", "INBOX", 1, 9)
+    answered = MessageRef(1, "INBOX", 1, 9)
     notes = settle_draft(connections, stored_draft(answered), items.append, filed=True)
     assert notes == (ORIGINAL_NOT_MARKED, DRAFT_NOT_REMOVED)
     assert [(i.folder, i.flag, i.removed, i.result) for i in items] == [
@@ -885,7 +885,7 @@ def test_a_draft_that_was_not_filed_stays_as_the_only_copy() -> None:
     items: list[AuditItem] = []
     # Removing it would fail: nothing must try.
     connections = cast("MailConnections", FailingRemoval())
-    answered = MessageRef("acc", "INBOX", 1, 9)
+    answered = MessageRef(1, "INBOX", 1, 9)
     notes = settle_draft(connections, stored_draft(answered), items.append, filed=False)
     assert notes == (ORIGINAL_NOT_MARKED, DRAFT_KEPT)
     assert [(i.flag, i.removed) for i in items] == [("\\Answered", None)]
@@ -901,7 +901,7 @@ def test_the_notes_have_stable_codes_a_host_can_word() -> None:
 
 def test_a_reply_whose_original_will_not_mark_is_only_a_note() -> None:
     items: list[AuditItem] = []
-    ref = MessageRef("acc", "INBOX", 1, 9)
+    ref = MessageRef(1, "INBOX", 1, 9)
     note = mark_original(cast("MailConnections", StubConnections()), ref, items.append)
     assert note == ORIGINAL_NOT_MARKED
     assert [i.flag for i in items] == ["\\Answered"]

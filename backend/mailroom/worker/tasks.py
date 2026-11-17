@@ -67,7 +67,7 @@ def dispatch_scheduled(timestamp: int) -> None:
         db.commit()
 
 
-def mailbox_lock(user_id: int, account_id: str) -> str:
+def mailbox_lock(user_id: int, account_id: int) -> str:
     """procrastinate ``lock`` of every job acting on one mailbox: they run one at a time."""
     return f"mailbox:{user_id}:{account_id}"
 
@@ -78,7 +78,7 @@ def rule_set_queueing_lock(rule_set_id: int) -> str:
 
 
 def defer_rule_set_run(
-    db: Session, *, run_id: int, rule_set_id: int, user_id: int, account_id: str
+    db: Session, *, run_id: int, rule_set_id: int, user_id: int, account_id: int
 ) -> int:
     """Queue ``run_rule_set`` for ``run_id`` inside ``db``'s transaction, so the job exists exactly
     when the run row does. Returns the job id. Raises procrastinate's ``AlreadyEnqueued`` when a
@@ -173,7 +173,7 @@ def queue_scheduled_runs(db: Session, now: datetime) -> list[int]:
 
 
 def queue_new_mail_runs(
-    db: Session, user_id: int, account_id: str, folder: Sequence[str]
+    db: Session, user_id: int, account_id: int, folder: Sequence[str]
 ) -> list[int]:
     """Queue a run of each runnable ``new_mail`` rule set on the folder (the caller commits).
     Returns the queued runs' ids."""

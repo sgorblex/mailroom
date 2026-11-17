@@ -78,8 +78,8 @@ export function AccountsScreen(): ReactElement {
       )}
       {adding ? (
         <AccountForm
-          save={async (id, fields) => {
-            await addAccount({ ...fields, id, password: fields.password ?? '' })
+          save={async (fields) => {
+            await addAccount({ ...fields, password: fields.password ?? '' })
             setAdding(false)
             reload()
           }}
@@ -179,8 +179,8 @@ function AccountRow({ account, onChange }: { account: Account; onChange: () => v
       <li className="p-3">
         <AccountForm
           account={account}
-          save={async (id, fields) => {
-            await changeAccount(id, fields)
+          save={async (fields) => {
+            await changeAccount(account.id, fields)
             returnFocus.current = 'editing'
             setMode('idle')
             onChange()
@@ -245,12 +245,12 @@ function AccountRow({ account, onChange }: { account: Account; onChange: () => v
           <Switch
             checked={runFilters}
             aria-label={t('accounts.runFiltersOn', { account: account.display_name })}
-            aria-describedby={`account-${account.id}-run-filters-hint`}
+            aria-describedby={`account-${String(account.id)}-run-filters-hint`}
             disabled={pending}
             onCheckedChange={() => void toggleRunFilters()}
           />
           <span className="text-sm">{t('accounts.runFilters')}</span>
-          <span id={`account-${account.id}-run-filters-hint`} className="text-sm text-muted-foreground">
+          <span id={`account-${String(account.id)}-run-filters-hint`} className="text-sm text-muted-foreground">
             {runFilters ? t('accounts.runFiltersOnHint') : t('accounts.runFiltersOffHint')}
           </span>
         </div>

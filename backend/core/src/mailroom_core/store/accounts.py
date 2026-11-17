@@ -16,7 +16,7 @@ from sqlalchemy import and_, delete, func, insert, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert as upsert
 from sqlalchemy.exc import OperationalError
 
-from mailroom_core.store.schema import account_secrets, sends, settings
+from mailroom_core.store.schema import account_ids, account_secrets, former_slugs, sends, settings
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
@@ -71,8 +71,8 @@ class StoredSettings:
 class SecretChanges:
     """Stored secrets to write with a settings save: sealed blobs to set, accounts to clear."""
 
-    set: Mapping[str, bytes] = field(default_factory=lambda: MappingProxyType({}))
-    remove: Sequence[str] = ()
+    set: Mapping[int, bytes] = field(default_factory=lambda: MappingProxyType({}))
+    remove: Sequence[int] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,7 +99,7 @@ class SendRecord:
     id: int
     key: str | None
     state: SendState
-    account: str | None
+    account: int | None
     result: Json
     at: datetime
 
@@ -129,7 +129,7 @@ class SendLog(Protocol):
     def claim_send(
         self,
         key: str | None,
-        account: str,
+        account: int,
         limit: int,
         *,
         confirm_resend: bool = False,
@@ -216,11 +216,18 @@ def write_settings(
     return revision
 
 
+def new_account_id(connection: Connection) -> int:
+    """A fresh account id: unique across the instance, never handed out again, even when the
+    account it was taken for is never saved."""
+    id_: int = connection.execute(account_ids.next_value()).scalar_one()
+    return id_
+
+
 def forget_user(
     connection: Connection, user_id: str, lock_timeout: timedelta = LOCK_TIMEOUT
 ) -> None:
     """Delete everything stored for `user_id`: their settings and its history, their sealed
-    secrets and their send log. Other users' rows are untouched.
+    secrets, their accounts' former slugs and their send log. Other users' rows are untouched.
 
     It queues on the lock `write_settings` takes, so it cannot interleave with a save of the same
     user's settings, and raises `SettingsBusy` after waiting longer than `lock_timeout`. Run inside
@@ -229,6 +236,7 @@ def forget_user(
     _lock_settings(connection, user_id, lock_timeout)
     connection.execute(delete(settings).where(settings.c.user_id == user_id))
     connection.execute(delete(account_secrets).where(account_secrets.c.user_id == user_id))
+    connection.execute(delete(former_slugs).where(former_slugs.c.user_id == user_id))
     connection.execute(delete(sends).where(sends.c.user_id == user_id))
 
 
@@ -356,7 +364,23 @@ class AccountStore:
         with self._engine.begin() as connection:
             forget_user(connection, self.user_id, self._lock_timeout)
 
-    def secrets(self) -> dict[str, bytes]:
+    def new_account_id(self) -> int:
+        """A fresh account id (`new_account_id`)."""
+        with self._engine.begin() as connection:
+            return new_account_id(connection)
+
+    def former_slugs(self) -> dict[int, str]:
+        """The slug each account had before ids became numbers, by account id: what its secrets
+        are sealed to (`seal_secret`'s `former_slug`). Accounts added since have none."""
+        with self._engine.connect() as connection:
+            rows = connection.execute(
+                select(former_slugs.c.account_id, former_slugs.c.slug).where(
+                    former_slugs.c.user_id == self.user_id
+                )
+            )
+            return {row.account_id: row.slug for row in rows}
+
+    def secrets(self) -> dict[int, bytes]:
         """The sealed mailbox secrets, by account id."""
         with self._engine.connect() as connection:
             rows = connection.execute(
@@ -381,7 +405,7 @@ class AccountStore:
     def claim_send(
         self,
         key: str | None,
-        account: str,
+        account: int,
         limit: int,
         *,
         confirm_resend: bool = False,

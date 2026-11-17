@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { type AccountId, accountIdSchema } from './accounts.ts'
 import { getApiBaseUrl } from './api-base-url.ts'
 import { ApiRequestError, apiDeleteJson, apiGetJson, apiPostForm, apiPostJson, reportSessionEnded } from './http.ts'
 
@@ -30,11 +31,11 @@ const mailFolderSchema = z.object({
 })
 export type MailFolder = z.infer<typeof mailFolderSchema>
 
-const folderListSchema = z.object({ account_id: z.string(), folders: z.array(mailFolderSchema) })
+const folderListSchema = z.object({ account_id: accountIdSchema, folders: z.array(mailFolderSchema) })
 
 const messageItemSchema = z.object({
   ref: z.string(),
-  account_id: z.string(),
+  account_id: accountIdSchema,
   folder: z.string(),
   date: z.string().nullable(),
   from: addressSchema,
@@ -46,7 +47,7 @@ const messageItemSchema = z.object({
 })
 export type MessageItem = z.infer<typeof messageItemSchema>
 
-const failureSchema = z.object({ account_id: z.string(), folder: z.string().nullable(), code: z.string() })
+const failureSchema = z.object({ account_id: accountIdSchema, folder: z.string().nullable(), code: z.string() })
 export type SourceFailure = z.infer<typeof failureSchema>
 
 const messagePageSchema = z.object({
@@ -61,7 +62,7 @@ export type MessagePart = z.infer<typeof partSchema>
 
 const messageViewSchema = z.object({
   ref: z.string(),
-  account_id: z.string(),
+  account_id: accountIdSchema,
   folder: z.string(),
   from: addressSchema.nullable(),
   to: z.array(addressSchema),
@@ -115,7 +116,7 @@ export const SEARCH_TEXT_FIELDS = [
 export const SEARCH_FLAG_FIELDS = ['unread', 'flagged', 'has_attachment'] as const
 
 const base = '/api/v1/mail'
-const accountPath = (id: string): string => `${base}/accounts/${encodeURIComponent(id)}`
+const accountPath = (id: AccountId): string => `${base}/accounts/${String(id)}`
 const messagePath = (ref: string): string => `${base}/messages/${encodeURIComponent(ref)}`
 
 function withQuery(path: string, query: Record<string, string | number | boolean | undefined>): string {
@@ -130,7 +131,7 @@ function withQuery(path: string, query: Record<string, string | number | boolean
 }
 
 /** Every folder of the account, the levels that hold only folders too (`selectable: false`). */
-export async function listMailFolders(accountId: string, signal?: AbortSignal): Promise<MailFolder[]> {
+export async function listMailFolders(accountId: AccountId, signal?: AbortSignal): Promise<MailFolder[]> {
   const list = await apiGetJson(`${accountPath(accountId)}/folders?all=true`, {
     init: { signal },
     schema: folderListSchema,
@@ -138,10 +139,10 @@ export async function listMailFolders(accountId: string, signal?: AbortSignal): 
   return list.folders
 }
 
-const folderCreatedSchema = z.object({ account_id: z.string(), path: z.string() })
+const folderCreatedSchema = z.object({ account_id: accountIdSchema, path: z.string() })
 
 const folderRenamedSchema = z.object({
-  account_id: z.string(),
+  account_id: accountIdSchema,
   /** The old path. */
   folder: z.string(),
   path: z.string(),
@@ -153,16 +154,16 @@ const folderRenamedSchema = z.object({
 })
 export type FolderRenamed = z.infer<typeof folderRenamedSchema>
 
-const folderDeletedSchema = z.object({ account_id: z.string(), folder: z.string(), messages: z.number() })
+const folderDeletedSchema = z.object({ account_id: accountIdSchema, folder: z.string(), messages: z.number() })
 
 /** Creates `name` under `parent` (`null`: the top level); the new folder's path. */
-export async function createFolder(accountId: string, parent: string | null, name: string): Promise<string> {
+export async function createFolder(accountId: AccountId, parent: string | null, name: string): Promise<string> {
   const created = await apiPostJson(`${accountPath(accountId)}/folders`, { parent, name }, { schema: folderCreatedSchema })
   return created.path
 }
 
 /** Renames `folder` to `name` under `parent`, its subfolders and mail with it, and its rule sets. */
-export function renameFolder(accountId: string, folder: string, parent: string | null, name: string): Promise<FolderRenamed> {
+export function renameFolder(accountId: AccountId, folder: string, parent: string | null, name: string): Promise<FolderRenamed> {
   return apiPostJson(`${accountPath(accountId)}/folders/rename`, { folder, parent, name }, { schema: folderRenamedSchema })
 }
 
@@ -170,13 +171,13 @@ export function renameFolder(accountId: string, folder: string, parent: string |
  * Deletes `folder` and its mail for good. `messages` is the count the user confirmed: a different
  * count now is refused as `folder_changed`, carrying it.
  */
-export async function deleteFolder(accountId: string, folder: string, messages: number): Promise<void> {
+export async function deleteFolder(accountId: AccountId, folder: string, messages: number): Promise<void> {
   await apiPostJson(`${accountPath(accountId)}/folders/delete`, { folder, messages }, { schema: folderDeletedSchema })
 }
 
 /** A folder's messages; with `subfolders`, its subfolders' too, merged newest first. */
 export function listMessages(
-  accountId: string,
+  accountId: AccountId,
   options: { folder: string; subfolders?: boolean; cursor?: string | null; limit?: number },
   signal?: AbortSignal,
 ): Promise<MessagePage> {
@@ -195,9 +196,12 @@ export function searchMessages(
   options: { subfolders?: boolean; cursor?: string | null; limit?: number } = {},
   signal?: AbortSignal,
 ): Promise<MessagePage> {
-  // A body, not a query string: search terms stay out of access logs.
+  // A body, not a query string: search terms stay out of access logs. The URL keeps the account as
+  // text; the API takes its number, or `*`.
+  const { account, ...terms } = query
   const body = {
-    ...query,
+    ...terms,
+    account: account === undefined || account === '*' ? account : Number(account),
     subfolders: options.subfolders === true ? true : undefined,
     limit: options.limit,
     cursor: options.cursor ?? undefined,
@@ -251,13 +255,13 @@ export function messagePartUrl(ref: string, part: string): string {
 }
 
 const organizeGroupSchema = z.object({
-  account: z.string(),
+  account: accountIdSchema,
   folder: z.string(),
   ok: z.boolean(),
   count: z.number(),
   new_refs: z.array(z.string()).nullable(),
   /** On a move to another account, that account: `new_refs` are its. */
-  destination_account: z.string().nullable().default(null),
+  destination_account: accountIdSchema.nullable().default(null),
   junk: z.enum(['spam', 'ham']).nullable(),
   flags: z.array(z.object({ ref: z.string(), seen: z.boolean().nullable(), flagged: z.boolean().nullable() })),
   error: z.object({ code: z.string(), message: z.string() }).nullable(),
@@ -296,7 +300,7 @@ export type MoveRemoval = 'trash' | 'delete'
  */
 export function moveToAccount(
   refs: string[],
-  account: string,
+  account: AccountId,
   folder: string,
   removal: MoveRemoval,
   signal?: AbortSignal,
@@ -322,7 +326,7 @@ const keepPartSchema = partSchema.extend({ ref: z.string() })
 export type KeptPart = z.infer<typeof keepPartSchema>
 
 const composeFieldsSchema = z.object({
-  account: z.string(),
+  account: accountIdSchema,
   from: z.string().nullable(),
   to: z.array(addressSchema),
   cc: z.array(addressSchema),
@@ -383,7 +387,7 @@ export type SendResult = z.infer<typeof sendResultSchema>
 
 /** The `draft` part of a save. */
 export interface DraftFields {
-  account: string
+  account: AccountId
   compose_id: string
   ref: string | null
   answers: string | null
@@ -421,7 +425,7 @@ export function readDraft(ref: string, signal?: AbortSignal): Promise<Draft> {
 }
 
 /** The newest version saved under `composeId`, or `null` when there is none. */
-export async function findDraft(account: string, composeId: string, signal?: AbortSignal): Promise<FoundDraft | null> {
+export async function findDraft(account: AccountId, composeId: string, signal?: AbortSignal): Promise<FoundDraft | null> {
   const path = withQuery(`${base}/drafts/find`, { account, compose_id: composeId })
   try {
     return await apiGetJson(path, { init: { signal }, schema: foundDraftSchema })

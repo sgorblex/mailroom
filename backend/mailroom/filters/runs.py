@@ -51,7 +51,7 @@ RUNS_KEPT: Final = 100
 """Run history kept per rule set; older runs are pruned as new ones are recorded."""
 
 
-def run_filters_on(db: Session, user_id: int, account_id: str) -> bool:
+def run_filters_on(db: Session, user_id: int, account_id: int) -> bool:
     """Whether the user's Run filters switch is on for ``account_id`` (no row: off)."""
     return bool(
         db.scalar(

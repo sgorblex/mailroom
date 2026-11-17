@@ -79,7 +79,7 @@ class MessageView:
     sender's words: escape it, or put it in the envelope."""
 
     ref: str
-    account: str
+    account: int
     folder: str
     uid: int
     sender: tuple[Address, ...]

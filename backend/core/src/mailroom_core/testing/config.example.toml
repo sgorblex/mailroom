@@ -33,7 +33,7 @@ attachment_max_mb = 10
 move_max_mb       = 25     # a message moved to another account
 
 [[account]]
-id         = "home"
+id         = 1
 login      = "me@example.net"
 send_mode  = "direct"      # off | drafts | approval | direct
 auth       = { type = "password", secret_env = "HOME_TOKEN" }
@@ -46,7 +46,7 @@ identities = [
 ]
 
 [[account]]
-id           = "work"
+id           = 2
 login        = "it@team.example"
 send_mode    = "approval"
 auth         = { type = "password", secret_env = "WORK_APP_PASSWORD" }

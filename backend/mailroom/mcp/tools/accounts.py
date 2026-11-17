@@ -15,12 +15,13 @@ from mailroom.accounts import service
 from mailroom.filters import service as filters_service
 from mailroom.mail import service as mail_service
 from mailroom.mcp.tool import MAILBOX_READ, READ, Arguments, Hints, JsonObject, Tool
+from mailroom_core.config import MAX_SAFE_INTEGER
 
 if TYPE_CHECKING:
     from mailroom.mcp.tool import ToolCall
 
 AccountId = Annotated[
-    str, Field(min_length=1, max_length=64, description="An account id, from accounts_list.")
+    int, Field(ge=1, le=MAX_SAFE_INTEGER, description="An account id, from accounts_list.")
 ]
 
 ACCOUNT_FIELDS: Final = {
@@ -100,7 +101,7 @@ ACCOUNT_TOOLS: Final[tuple[Tool[Any], ...]] = (
         description=(
             "The user's mail accounts: id (what the other tools take), name (what the user "
             "named the account, null when unnamed), display_name (what to call it: its name, "
-            "else its id), login, whether a password is stored, the send mode "
+            "else its login), login, whether a password is stored, the send mode "
             "(what an agent may send: off, drafts, approval or direct) and the identities it "
             "can send as (`address`, `name`, and which is the `default`); where the instance "
             "runs filters, also whether Run filters is on (`run_filters`: rule sets run only on "

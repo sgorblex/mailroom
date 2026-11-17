@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { type AccountId, accountIdSchema } from './accounts.ts'
 import { apiDelete, apiGetJson, apiPatchJson, apiPostJson, apiPutJson } from './http.ts'
 
 export const TRIGGERS = ['new_mail', 'scheduled', 'manual'] as const
@@ -22,7 +23,7 @@ export type Filter = z.infer<typeof filterSchema>
 
 export const ruleSetSchema = z.object({
   id: z.number(),
-  account_id: z.string(),
+  account_id: accountIdSchema,
   folder: z.array(z.string()),
   name: z.string(),
   trigger: z.enum(TRIGGERS),
@@ -103,14 +104,14 @@ export type Folder = z.infer<typeof folderSchema>
 const filterSettingsSchema = z.object({ run_filters: z.boolean() })
 
 const ruleSet = (id: number): string => `/api/v1/rule-sets/${String(id)}`
-const account = (accountId: string): string => `/api/v1/accounts/${encodeURIComponent(accountId)}`
-const accountRuleSets = (accountId: string): string => `${account(accountId)}/rule-sets`
+const account = (accountId: AccountId): string => `/api/v1/accounts/${String(accountId)}`
+const accountRuleSets = (accountId: AccountId): string => `${account(accountId)}/rule-sets`
 
-export function listFolders(accountId: string, signal?: AbortSignal): Promise<Folder[]> {
+export function listFolders(accountId: AccountId, signal?: AbortSignal): Promise<Folder[]> {
   return apiGetJson(`${account(accountId)}/folders`, { init: { signal }, schema: z.array(folderSchema) })
 }
 
-export async function setRunFilters(accountId: string, runFilters: boolean): Promise<boolean> {
+export async function setRunFilters(accountId: AccountId, runFilters: boolean): Promise<boolean> {
   const settings = await apiPutJson(
     `${account(accountId)}/filter-settings`,
     { run_filters: runFilters },
@@ -124,11 +125,11 @@ export function getFilterSchema(signal?: AbortSignal): Promise<unknown> {
   return apiGetJson('/api/v1/filters/schema', { init: { signal } })
 }
 
-export function listRuleSets(accountId: string, signal?: AbortSignal): Promise<RuleSet[]> {
+export function listRuleSets(accountId: AccountId, signal?: AbortSignal): Promise<RuleSet[]> {
   return apiGetJson(accountRuleSets(accountId), { init: { signal }, schema: z.array(ruleSetSchema) })
 }
 
-export function addRuleSet(accountId: string, fields: RuleSetFields): Promise<RuleSet> {
+export function addRuleSet(accountId: AccountId, fields: RuleSetFields): Promise<RuleSet> {
   return apiPostJson(accountRuleSets(accountId), fields, { schema: ruleSetSchema })
 }
 

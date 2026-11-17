@@ -7,8 +7,6 @@ import { ApiRequestError, apiErrorMessage } from '@/api/http.ts'
 export function accountErrorMessage(t: TFunction, failure: unknown, fallback: string): string {
   if (failure instanceof ApiRequestError) {
     switch (failure.code) {
-      case 'account_exists':
-        return t('accountErrors.accountExists')
       case 'invalid_account':
       case 'account_name_taken':
         return t('accountErrors.invalidAccount')

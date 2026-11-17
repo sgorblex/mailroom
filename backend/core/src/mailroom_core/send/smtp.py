@@ -135,7 +135,7 @@ class Sender(Protocol):
     """Hands one composed message to an account's SMTP server."""
 
     def send(
-        self, account_id: str, envelope: Envelope, raw: bytes, transfer: Transfer | None = None
+        self, account_id: int, envelope: Envelope, raw: bytes, transfer: Transfer | None = None
     ) -> Delivery:
         """Returns once the server took it. Raises a `MailError`: `delivery_unknown` when it may
         have gone out, any other code when it did not."""
@@ -262,7 +262,7 @@ def _before_data(error: BaseException, aborted: bool) -> MailError:
 
 
 def smtp_error(
-    error: BaseException, account: str, *, entered_data: bool = False, aborted: bool = False
+    error: BaseException, account: int, *, entered_data: bool = False, aborted: bool = False
 ) -> MailError:
     """An SMTP failure as a MailError, with a fixed message. `delivery_unknown` means the message
     may have gone out; any other code that it did not. The log gets the error's type and reply
@@ -296,8 +296,8 @@ class SmtpSender:
 
     def __init__(
         self,
-        account: Callable[[str], AccountConfig | None],
-        password: Callable[[str], str | None],
+        account: Callable[[int], AccountConfig | None],
+        password: Callable[[int], str | None],
         *,
         ssl_context: ssl.SSLContext | None = None,
         timeouts: SmtpTimeouts = SmtpTimeouts(),  # noqa: B008  (frozen)
@@ -309,17 +309,17 @@ class SmtpSender:
         self._timeouts = timeouts
 
     def send(
-        self, account_id: str, envelope: Envelope, raw: bytes, transfer: Transfer | None = None
+        self, account_id: int, envelope: Envelope, raw: bytes, transfer: Transfer | None = None
     ) -> Delivery:
         """Sends `raw` to the envelope's recipients, each named once, from a connection of its
         own. Never retried. `transfer`, when given, lets the caller abort it; the watchdog runs
         either way."""
         account = self._lookup_account(account_id)
         if account is None:
-            raise MailError("invalid_argument", f'Unknown account "{account_id}".')
+            raise MailError("invalid_argument", f"Unknown account {account_id}.")
         password = self._lookup_password(account_id)
         if password is None:
-            raise RuntimeError(f'no password for account "{account_id}"')
+            raise RuntimeError(f"no password for account {account_id}")
         running = Transfer() if transfer is None else transfer
         connection = _Connection(self._timeouts)
         with watched(running, self._timeouts.watchdog):

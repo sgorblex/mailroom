@@ -51,17 +51,16 @@ def ctx(
 
 
 def _fields() -> dict[str, Any]:
-    return {k: v for k, v in new_account().items() if k not in {"id", "password"}}
+    return {k: v for k, v in new_account().items() if k != "password"}
 
 
 @pytest.fixture
-def account(ctx: AppContext, user: User) -> str:
-    accounts.add_account(ctx, user.id, "work", _fields(), MAILBOX_PASSWORD)
-    return "work"
+def account(ctx: AppContext, user: User) -> int:
+    return accounts.add_account(ctx, user.id, _fields(), MAILBOX_PASSWORD).id
 
 
 @pytest.fixture
-def rule_set_id(ctx: AppContext, db_session: Session, user: User, account: str) -> int:
+def rule_set_id(ctx: AppContext, db_session: Session, user: User, account: int) -> int:
     fields = RuleSetFields(name="Newsletters", folder=["INBOX"], trigger="manual")
     return filters.add_rule_set(ctx, db_session, user.id, account, fields).id
 
@@ -88,7 +87,7 @@ def test_another_users_rows_are_not_found(
     db_session: Session,
     user: User,
     bob: User,
-    account: str,
+    account: int,
     rule_set_id: int,
     filter_id: int,
 ) -> None:
@@ -174,7 +173,7 @@ def test_an_enabled_rule_set_is_refused_where_asked(
 
 
 def test_run_now_keeps_its_guards(
-    ctx: AppContext, db_session: Session, user: User, account: str, rule_set_id: int
+    ctx: AppContext, db_session: Session, user: User, account: int, rule_set_id: int
 ) -> None:
     assert refusal(lambda: filters.run_now(db_session, user.id, rule_set_id)).code == (
         "run_filters_off"
@@ -207,7 +206,7 @@ def test_one_dry_run_at_a_time(
 
 
 def test_checks_refuse_as_invalid(
-    ctx: AppContext, db_session: Session, user: User, account: str, rule_set_id: int
+    ctx: AppContext, db_session: Session, user: User, account: int, rule_set_id: int
 ) -> None:
     scheduled = RuleSetFields(name="x", folder=["INBOX"], trigger="scheduled")
     assert refusal(
@@ -220,9 +219,9 @@ def test_checks_refuse_as_invalid(
     assert refusal(lambda: filters.reorder_filters(db_session, user.id, rule_set_id, [1])).code == (
         "invalid_order"
     )
-    taken = refusal(lambda: accounts.add_account(ctx, user.id, account, _fields(), "x"))
-    assert (taken.kind, taken.code) == ("invalid", "account_exists")
-    assert taken.issues == [{"path": ["id"], "message": "There already is an account 'work'."}]
+    taken = refusal(lambda: accounts.add_account(ctx, user.id, _fields(), "x"))
+    assert (taken.kind, taken.code) == ("invalid", "invalid_account")
+    assert {"path": ["login"], "message": 'duplicate login "work@example.org"'} in taken.issues
 
 
 def test_writes_log_where_they_came_from(
@@ -239,7 +238,7 @@ def test_writes_log_where_they_came_from(
 
 
 def test_accounts_change_without_the_mail_layer(
-    ctx: AppContext, db_session: Session, user: User, account: str
+    ctx: AppContext, db_session: Session, user: User, account: int
 ) -> None:
     bare = replace(ctx, send_runner=None)
     changed = accounts.change_account(bare, db_session, user.id, account, _fields(), None)
@@ -252,7 +251,7 @@ def test_without_a_secrets_key_no_account_is_added(
     ctx: AppContext, db_session: Session, user: User
 ) -> None:
     keyless = replace(ctx, subkey=None)
-    refused = refusal(lambda: accounts.add_account(keyless, user.id, "work", _fields(), "x"))
+    refused = refusal(lambda: accounts.add_account(keyless, user.id, _fields(), "x"))
     assert (refused.kind, refused.code) == ("unavailable", "secrets_key_missing")
     assert accounts.listed_accounts(ctx, db_session, user.id) == []
 

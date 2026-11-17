@@ -76,7 +76,7 @@ def harness(imap_server: ImapTestServer) -> Iterator[object]:
 
 def with_alias(server: ImapTestServer, user: str) -> AccountConfig:
     return test_account(
-        "acc",
+        1,
         user,
         server,
         identities=[
@@ -87,7 +87,7 @@ def with_alias(server: ImapTestServer, user: str) -> AccountConfig:
 
 
 def only_ref(mail: MailConnections, folder: str = "INBOX") -> MessageRef:
-    [message] = list_messages(mail, "acc", folder, previews=False).messages
+    [message] = list_messages(mail, 1, folder, previews=False).messages
     return parse_ref(message.ref)
 
 
@@ -103,7 +103,7 @@ def test_collects_threading_addressing_text_and_attachments(imap_server, harness
         attachments=[MimeAttachment("plan.pdf", "application/octet-stream", PDF)],
     ).replace("MIME-Version", f"Delivered-To: {user}@example.test\r\nMIME-Version", 1)
     seed(imap_server, user, "INBOX", raw)
-    mail = harness(test_account("acc", user, imap_server))
+    mail = harness(test_account(1, user, imap_server))
     ref = only_ref(mail)
 
     original = original_message(mail, ref)
@@ -146,7 +146,7 @@ def test_caps_attachments_together_and_counts_what_is_carried(imap_server, harne
             ],
         ),
     )
-    mail = harness(test_account("acc", user, imap_server))
+    mail = harness(test_account(1, user, imap_server))
     ref = only_ref(mail)
     both = [AttachmentSource(ref, "2"), AttachmentSource(ref, "3")]
 
@@ -171,7 +171,7 @@ def test_attaches_a_calendar_part_but_not_what_html_shows_in_place(imap_server, 
         "--m--\r\n"
     )
     seed(imap_server, user, "INBOX", raw)
-    mail = harness(test_account("acc", user, imap_server))
+    mail = harness(test_account(1, user, imap_server))
     ref = only_ref(mail)
 
     [invite] = attachments_from(mail, [AttachmentSource(ref, "2")], 1024)
@@ -186,7 +186,7 @@ def test_reads_at_most_the_start_of_a_very_long_original(imap_server, harness) -
     user = imap_server.unique_user("long")
     line = "word " * 15 + "\n"
     seed(imap_server, user, "INBOX", mime("long", text=line * 40_000))
-    mail = harness(test_account("acc", user, imap_server))
+    mail = harness(test_account(1, user, imap_server))
 
     text = original_message(mail, only_ref(mail)).text
     assert 10_000 < len(text) <= 20_000
@@ -196,7 +196,7 @@ def test_reads_at_most_the_start_of_a_very_long_original(imap_server, harness) -
 def test_answers_an_html_message_as_text(imap_server, harness) -> None:
     user = imap_server.unique_user("html")
     seed(imap_server, user, "INBOX", mime("h", html="<p>Hello <b>there</b></p>"))
-    mail = harness(test_account("acc", user, imap_server))
+    mail = harness(test_account(1, user, imap_server))
     assert original_message(mail, only_ref(mail)).text == "Hello there"
 
 
@@ -274,7 +274,7 @@ def test_round_trips_bcc_attachments_and_non_ascii_through_the_server(imap_serve
         )
     )
     seed(imap_server, user, "Drafts", composed.stored, ["\\Draft"])
-    mail = harness(test_account("acc", user, imap_server))
+    mail = harness(test_account(1, user, imap_server))
     ref = only_ref(mail, "Drafts")
 
     shown = read_message(mail, ref)
@@ -308,7 +308,7 @@ def test_forwards_with_the_attachments_byte_for_byte(imap_server, harness) -> No
             attachments=[MimeAttachment("invoice.pdf", "application/octet-stream", PDF)],
         ),
     )
-    account = test_account("acc", user, imap_server)
+    account = test_account(1, user, imap_server)
     mail = harness(account)
     ref = only_ref(mail)
     original = original_message(mail, ref)
@@ -334,7 +334,7 @@ def test_forwards_with_the_attachments_byte_for_byte(imap_server, harness) -> No
 def test_marks_the_original_answered(imap_server, harness) -> None:
     user = imap_server.unique_user("answered")
     seed(imap_server, user, "INBOX", mime("Dinner", text="Friday?"))
-    mail = harness(test_account("acc", user, imap_server))
+    mail = harness(test_account(1, user, imap_server))
     ref = only_ref(mail)
 
     mark_answered(mail, ref)
@@ -347,7 +347,7 @@ def test_marks_the_original_answered(imap_server, harness) -> None:
 def test_tags_a_removal_by_trash_in_the_audit_items(imap_server, harness) -> None:
     user = imap_server.unique_user("tag")
     seed(imap_server, user, "Drafts", mime("by hand"))
-    mail = harness(test_account("acc", user, imap_server))
+    mail = harness(test_account(1, user, imap_server))
     ref = format_ref(only_ref(mail, "Drafts"))
 
     result = trash_messages(mail, [ref], removed="trashed")

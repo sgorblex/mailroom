@@ -83,9 +83,10 @@ class StoredAccount(BaseModel):
 class ListedAccount(StoredAccount):
     """Never the password: only whether one is stored."""
 
-    id: str
+    id: int
     display_name: str
-    """What to call the account: its ``name``, else its id. Read-only: an edit sends ``name``."""
+    """What to call the account: its ``name``, else its login. Read-only: an edit sends
+    ``name``."""
     has_password: bool
     run_filters: bool | None = Field(default=None, exclude_if=lambda value: value is None)
     """None, and left out, where the instance does not run filters."""
@@ -116,7 +117,7 @@ def require_subkey(subkey: SecretsSubkey | None) -> SecretsSubkey:
     return subkey
 
 
-def require_account(store: AccountStore, account_id: str) -> AccountConfig:
+def require_account(store: AccountStore, account_id: int) -> AccountConfig:
     """The store user's account ``account_id``, or ``not_found``."""
     try:
         return load_accounts(store).account(account_id)
@@ -148,7 +149,7 @@ def _listed(
     return ListedAccount.model_validate(
         {
             **account.model_dump(mode="json", exclude={"auth"}),
-            "display_name": account.name or account.id,
+            "display_name": account.name or account.login,
             "has_password": has_password,
             "run_filters": run_filters,
             "attachment_max_mb": attachment_limit_mb(limits),
@@ -161,7 +162,7 @@ def _log(event: str, user_id: int, via: Via, **extra: object) -> None:
     logger.info(event, extra={"event": event, "user_id": user_id, "via": via, **extra})
 
 
-def _run_filters_by_account(ctx: AppContext, db: Session, user_id: int) -> dict[str, bool] | None:
+def _run_filters_by_account(ctx: AppContext, db: Session, user_id: int) -> dict[int, bool] | None:
     """Each account's Run filters switch by id, or None where the instance does not run
     filters."""
     if not ctx.features.filters:
@@ -169,7 +170,7 @@ def _run_filters_by_account(ctx: AppContext, db: Session, user_id: int) -> dict[
     return app_data.run_filters_by_account(db, user_id)
 
 
-def _switch(by_account: dict[str, bool] | None, account_id: str) -> bool | None:
+def _switch(by_account: dict[int, bool] | None, account_id: int) -> bool | None:
     """``account_id``'s Run filters switch from ``by_account``, off when it has no row; None
     where the instance does not run filters."""
     return None if by_account is None else by_account.get(account_id, False)
@@ -194,16 +195,15 @@ def listed_accounts(ctx: AppContext, db: Session, user_id: int) -> list[ListedAc
 def add_account(
     ctx: AppContext,
     user_id: int,
-    account_id: str,
     fields: Mapping[str, Json],
     password: str,
     *,
     via: Via = "web",
 ) -> ListedAccount:
-    """Add ``account_id`` with ``fields`` (mailroom-core's account but its id and auth) and its
-    password, sealed."""
+    """Add an account with ``fields`` (mailroom-core's account but its id and auth) and its
+    password, sealed; it is given a new id."""
     key = require_subkey(ctx.subkey)
-    raw = password_account(account_id, fields)
+    raw = password_account(None, fields)
     store = ctx.store(user_id)
     try:
         account = save_account(store, key, raw, password, new=True)
@@ -221,7 +221,7 @@ def change_account(
     ctx: AppContext,
     db: Session,
     user_id: int,
-    account_id: str,
+    account_id: int,
     fields: Mapping[str, Json],
     password: str | None,
     *,
@@ -257,7 +257,7 @@ def change_account(
 
 
 def remove_account(
-    ctx: AppContext, db: Session, user_id: int, account_id: str, *, via: Via = "web"
+    ctx: AppContext, db: Session, user_id: int, account_id: int, *, via: Via = "web"
 ) -> None:
     """Remove the account with its rule sets and the app's rows about it."""
     try:
@@ -270,7 +270,7 @@ def remove_account(
     _log("account_removed", user_id, via, account_id=account_id)
 
 
-def try_login(ctx: AppContext, user_id: int, account_id: str) -> tuple[str, str] | None:
+def try_login(ctx: AppContext, user_id: int, account_id: int) -> tuple[str, str] | None:
     """Log in to the account's IMAP server and out again on a connection of its own
     (mailroom-core's ``test_login``), under the mail pool's gates and deadline. None when it logged
     in; else why not, as a code and its fixed message: mailroom-core's (``auth_failed``,

@@ -2,25 +2,25 @@ import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { bodiesTo, messageItem, stubMailApi, type FakeMailState } from '@/test/fake-mail-api.ts'
+import { bodiesTo, type FakeMailState, HOME, messageItem, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
 import { renderMailApp } from '@/test/mail-app.tsx'
 
 const UNREAD = { seen: false, flagged: false, answered: false, draft: false }
-const inbox = Array.from({ length: 3 }, (_, index) => messageItem('work', 'INBOX', 10 - index, { flags: UNREAD }))
+const inbox = Array.from({ length: 3 }, (_, index) => messageItem(WORK, 'INBOX', 10 - index, { flags: UNREAD }))
 const [, , third] = inbox
 const MOVE_TO_ACCOUNT = '/api/v1/mail/messages/move-to-account'
 
 function state(overrides: Partial<FakeMailState> = {}): FakeMailState {
   return {
-    accounts: ['work', 'home'],
+    accounts: [WORK, HOME],
     // Named: the web shows names, never ids.
-    names: { work: { name: 'Work', colour: 'blue' }, home: { name: 'Home', colour: 'pink' } },
+    names: { [WORK]: { name: 'Work', colour: 'blue' }, [HOME]: { name: 'Home', colour: 'pink' } },
     folders: {
-      work: [
+      [WORK]: [
         { path: 'INBOX', role: 'inbox', unread: 3, total: 3 },
         { path: 'Trash', role: 'trash', unread: 0, total: 0 },
       ],
-      home: [
+      [HOME]: [
         { path: 'INBOX', role: 'inbox', unread: 0, total: 1 },
         { path: 'Drafts', role: 'drafts', unread: 0, total: 0 },
         { path: 'Sent', role: 'sent', unread: 0, total: 0 },
@@ -28,8 +28,8 @@ function state(overrides: Partial<FakeMailState> = {}): FakeMailState {
       ],
     },
     messages: {
-      'work/INBOX': inbox,
-      'home/INBOX': [messageItem('home', 'INBOX', 1, { subject: 'From home' })],
+      '1/INBOX': inbox,
+      '2/INBOX': [messageItem(HOME, 'INBOX', 1, { subject: 'From home' })],
     },
     views: {},
     ...overrides,
@@ -75,7 +75,7 @@ describe('moving to another account', () => {
 
     await reported('polite', 'Moved 1 message to Inbox in Home.')
     expect(bodiesTo(fetchMock, MOVE_TO_ACCOUNT)).toEqual([
-      { refs: [third?.ref], account: 'home', folder: 'INBOX', removal: 'trash' },
+      { refs: [third?.ref], account: HOME, folder: 'INBOX', removal: 'trash' },
     ])
     expect(within(await messagesList()).queryByRole('link', { name: /Message 8Preview/ })).not.toBeInTheDocument()
   })
@@ -125,12 +125,12 @@ describe('moving to another account', () => {
 
     await reported('polite', 'Moved 1 message to Inbox in Home, and deleted the original for good.')
     expect(bodiesTo(fetchMock, MOVE_TO_ACCOUNT)).toEqual([
-      { refs: [third?.ref], account: 'home', folder: 'INBOX', removal: 'delete' },
+      { refs: [third?.ref], account: HOME, folder: 'INBOX', removal: 'delete' },
     ])
   })
 
   it('says when messages were copied but not removed, so they are in both', async () => {
-    stubMailApi(state({ copiedNotRemoved: { 'work/INBOX': 'server_error' } }))
+    stubMailApi(state({ copiedNotRemoved: { '1/INBOX': 'server_error' } }))
     renderMailApp('/mail')
 
     const picker = await pickHome()
@@ -144,7 +144,7 @@ describe('moving to another account', () => {
   })
 
   it('is not offered with a single account, or when the selection spans every account', async () => {
-    stubMailApi(state({ accounts: ['work'] }))
+    stubMailApi(state({ accounts: [WORK] }))
     renderMailApp('/mail')
     const list = await messagesList()
     await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 8' }))
@@ -152,7 +152,7 @@ describe('moving to another account', () => {
     cleanup()
 
     const results = {
-      messages: [messageItem('home', 'INBOX', 1, { subject: 'From home' }), messageItem('work', 'INBOX', 9)],
+      messages: [messageItem(HOME, 'INBOX', 1, { subject: 'From home' }), messageItem(WORK, 'INBOX', 9)],
       next_cursor: null,
       failures: [],
     }

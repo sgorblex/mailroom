@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Annotated
 
-from fastapi import Cookie, Depends, HTTPException, Request
+from fastapi import Cookie, Depends, HTTPException, Path, Request
 from sqlalchemy.orm import Session
 
 from mailroom.auth.sessions import SESSION_COOKIE_NAME, session_user
 from mailroom.context import AppContext, app_context
 from mailroom.models import User
+from mailroom_core.config import MAX_SAFE_INTEGER
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -57,3 +58,6 @@ def require_admin(user: CurrentUser) -> User:
 
 
 CurrentAdmin = Annotated[User, Depends(require_admin)]
+
+AccountId = Annotated[int, Path(ge=1, le=MAX_SAFE_INTEGER)]
+"""An account's id in a route's path."""

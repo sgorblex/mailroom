@@ -5,16 +5,16 @@ import filterSchema from './filter-schema.json'
 type Body = Record<string, unknown>
 
 export interface FakeAccount {
-  id: string
+  id: number
   run_filters: boolean
-  /** Its own name; unnamed, so shown by its id, unless it says otherwise. */
+  /** Its own name: `ACCOUNT_NAMES`' unless it says otherwise, else unnamed and shown by its login. */
   name?: string
   colour?: string
 }
 
 export interface FakeRuleSet {
   id: number
-  account_id: string
+  account_id: number
   folder: string[]
   name: string
   trigger: 'new_mail' | 'scheduled' | 'manual'
@@ -60,18 +60,23 @@ export interface FakeState {
   gates?: Record<string, Promise<unknown>>
 }
 
+/** The accounts the tests use, and the names the fake lists them under. */
+export const WORK = 1
+export const HOME = 2
+const ACCOUNT_NAMES: Record<number, string> = { [WORK]: 'work', [HOME]: 'home' }
+
 function account({ id, run_filters: runFilters, name, colour }: FakeAccount): Body {
-  const endpoint = { host: `imap.${id}.example`, port: 993, tls: 'implicit' }
+  const endpoint = { host: `imap.${String(id)}.example`, port: 993, tls: 'implicit' }
   return {
     id,
-    name: name ?? null,
-    display_name: name ?? id,
+    name: name ?? ACCOUNT_NAMES[id] ?? null,
+    display_name: name ?? ACCOUNT_NAMES[id] ?? `me@${String(id)}.example`,
     colour: colour ?? null,
-    login: `me@${id}.example`,
+    login: `me@${String(id)}.example`,
     send_mode: 'drafts',
     imap: endpoint,
-    smtp: { ...endpoint, host: `smtp.${id}.example`, port: 465 },
-    identities: [{ address: `me@${id}.example`, name: null, default: true }],
+    smtp: { ...endpoint, host: `smtp.${String(id)}.example`, port: 465 },
+    identities: [{ address: `me@${String(id)}.example`, name: null, default: true }],
     auto_approve: [],
     has_password: true,
     run_filters: runFilters,
@@ -114,14 +119,15 @@ export function stubFiltersApi(state: FakeState): Mock {
     }
     let match = /^\/api\/v1\/accounts\/([^/]+)\/(folders|rule-sets)$/.exec(path)
     if (match !== null) {
-      const [, accountId, what] = match
+      const [, id, what] = match
+      const accountId = Number(id)
       if (what === 'folders') {
         return Promise.resolve(json(200, state.folders.map((folder) => ({ path: folder }))))
       }
       if (method === 'GET') {
         return Promise.resolve(json(200, state.ruleSets.filter((item) => item.account_id === accountId)))
       }
-      const created = { ...(fields as unknown as FakeRuleSet), id: (nextId += 1), account_id: accountId ?? '' }
+      const created = { ...(fields as unknown as FakeRuleSet), id: (nextId += 1), account_id: accountId }
       state.ruleSets.push(created)
       return Promise.resolve(json(201, created))
     }

@@ -57,7 +57,7 @@ class AppContext:
         with self.session_maker() as db:
             return time_zone_of(db, user_id)
 
-    def drop_mail_connections(self, user_id: int, account_id: str | None = None) -> None:
+    def drop_mail_connections(self, user_id: int, account_id: int | None = None) -> None:
         """Close the user's open mail connections, of one account or of all."""
         self.mail_pool.invalidate(user_id, account_id)
 
