@@ -123,3 +123,20 @@ export function findSettings(address: string, signal?: AbortSignal): Promise<Aut
   const query = new URLSearchParams({ address })
   return apiGetJson(`${base}/autoconfig?${query.toString()}`, { init: { signal }, schema: autoconfigAnswerSchema })
 }
+
+const usageSchema = z.object({ used: z.number(), limit: z.number() })
+export type QuotaUsage = z.infer<typeof usageSchema>
+
+/** Both null when the server keeps no quota or limits neither. */
+const accountQuotaSchema = z.object({
+  account_id: accountIdSchema,
+  /** In bytes. */
+  storage: usageSchema.nullable(),
+  messages: usageSchema.nullable(),
+})
+export type AccountQuota = z.infer<typeof accountQuotaSchema>
+
+/** The quota the account's INBOX falls under (`docs/requirements/mail-client.md`, *Mailbox quota*). */
+export function accountQuota(id: AccountId, signal?: AbortSignal): Promise<AccountQuota> {
+  return apiGetJson(`${one(id)}/quota`, { init: { signal }, schema: accountQuotaSchema })
+}

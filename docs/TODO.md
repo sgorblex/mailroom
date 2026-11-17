@@ -99,8 +99,8 @@ released and checked in production before the next one starts. Batch 15 is the r
 - [x] **Account autoconfiguration** — on setup, look the address up in the provider's
       autoconfig, Thunderbird's ISPDB and DNS SRV records (RFC 6186); when nothing answers,
       offer presets (Gmail with an app password, iCloud, Fastmail, Yahoo).
-- [ ] **Mailbox quota** — each account's usage, from the server's IMAP `QUOTA`. Backend done
-      (`GET /accounts/{id}/quota`); the web still to show it.
+- [x] **Mailbox quota** — each account's usage, from the server's IMAP `QUOTA`: a bar per
+      account on the *Accounts* page.
 
 ### Milestone B: Acting on mail, reading it, filtering from it
 

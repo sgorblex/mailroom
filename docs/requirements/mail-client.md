@@ -978,6 +978,13 @@ minutes per account (in memory, per process), and asked afresh once the user's a
 a failure is not kept and answers as the mail routes do (`mail_status`). The accounts listing
 asks no server, and MCP's `accounts_list` gives no quota.
 
+The web's *Accounts* page asks each account's quota on its own, so a slow or failing server holds
+up no other row: a bar each for storage and messages (used, limit, share), marked *Nearly full* in
+the destructive colour from 90%. Past the limit, or with a limit of 0, it reads *Over quota* with
+the real share (110%; none for a limit of 0), while the bar and its `aria-valuenow` (a share out of
+100) stop at full. "Unknown" when the server reports neither; a failure as a muted line with
+**Check again**, never an alert.
+
 ## Account autoconfiguration
 
 `GET /api/v1/accounts/autoconfig?address=<email>` (the signed-in user; mounted in every edition)

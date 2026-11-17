@@ -214,7 +214,20 @@
     "runFilters": "Esegui i filtri",
     "runFiltersOn": "Esegui i filtri su {{account}}",
     "runFiltersOnHint": "Il worker esegue i filtri di questo account.",
-    "runFiltersOffHint": "Disattivato: su questo account non viene eseguito nulla finché non lo attivi."
+    "runFiltersOffHint": "Disattivato: su questo account non viene eseguito nulla finché non lo attivi.",
+    "quota": {
+      "storage": "Spazio",
+      "messages": "Messaggi",
+      "storageOf": "Spazio usato da {{account}}",
+      "messagesOf": "Messaggi conservati da {{account}}",
+      "usage": "{{used}} di {{limit}} ({{percent}})",
+      "usageNoShare": "{{used}} di {{limit}}",
+      "nearlyFull": "Quasi pieno: {{usage}}",
+      "overQuota": "Oltre la quota: {{usage}}",
+      "unknown": "Utilizzo sconosciuto: il server di posta non lo comunica.",
+      "failed": "Utilizzo non disponibile: {{reason}}",
+      "retry": "Controlla di nuovo"
+    }
   },
   "profile": {
     "title": "Profilo",

@@ -214,7 +214,20 @@
     "runFilters": "Run filters",
     "runFiltersOn": "Run filters on {{account}}",
     "runFiltersOnHint": "The worker runs this account's filters.",
-    "runFiltersOffHint": "Off: nothing runs on this account until you turn it on."
+    "runFiltersOffHint": "Off: nothing runs on this account until you turn it on.",
+    "quota": {
+      "storage": "Storage",
+      "messages": "Messages",
+      "storageOf": "Storage used by {{account}}",
+      "messagesOf": "Messages kept by {{account}}",
+      "usage": "{{used}} of {{limit}} ({{percent}})",
+      "usageNoShare": "{{used}} of {{limit}}",
+      "nearlyFull": "Nearly full: {{usage}}",
+      "overQuota": "Over quota: {{usage}}",
+      "unknown": "Usage unknown: the mail server does not report it.",
+      "failed": "Usage not available: {{reason}}",
+      "retry": "Check again"
+    }
   },
   "profile": {
     "title": "Profile",
