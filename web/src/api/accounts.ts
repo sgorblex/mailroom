@@ -68,6 +68,31 @@ export const loginTestSchema = z.object({
 })
 export type LoginTest = z.infer<typeof loginTestSchema>
 
+/** A suggested server: `outside_domain` when the domain's own document or SRV names a host outside it. */
+const suggestedEndpointSchema = endpointSchema.extend({ outside_domain: z.boolean() })
+export type SuggestedEndpoint = z.infer<typeof suggestedEndpointSchema>
+
+const suggestionSchema = z.object({
+  source: z.enum(['autoconfig', 'srv', 'mx', 'ispdb', 'preset']),
+  /** Where it was read: the document's URL, the DNS names; null for a preset. */
+  origin: z.string().nullable(),
+  provider: z.string().nullable(),
+  /** False for a provider Mailroom cannot sign in to yet. */
+  supported: z.boolean(),
+  note: z.enum(['app_password', 'oauth_required']).nullable(),
+  /** What the login is: the whole address, or the part before the `@`. */
+  login: z.enum(['address', 'local_part']),
+  imap: suggestedEndpointSchema,
+  smtp: suggestedEndpointSchema,
+})
+export type Suggestion = z.infer<typeof suggestionSchema>
+
+const autoconfigAnswerSchema = z.object({
+  domain: z.string(),
+  suggestion: suggestionSchema.nullable(),
+})
+export type AutoconfigAnswer = z.infer<typeof autoconfigAnswerSchema>
+
 const base = '/api/v1/accounts'
 const one = (id: AccountId): string => `${base}/${String(id)}`
 
@@ -91,4 +116,10 @@ export function removeAccount(id: AccountId): Promise<null> {
 /** Logs in to IMAP and out again; a refused login comes back as `ok: false`. */
 export function testAccount(id: AccountId): Promise<LoginTest> {
   return apiPostJson(`${one(id)}/test`, undefined, { schema: loginTestSchema })
+}
+
+/** The servers suggested for `address` (`docs/requirements/mail-client.md`, *Account autoconfiguration*). */
+export function findSettings(address: string, signal?: AbortSignal): Promise<AutoconfigAnswer> {
+  const query = new URLSearchParams({ address })
+  return apiGetJson(`${base}/autoconfig?${query.toString()}`, { init: { signal }, schema: autoconfigAnswerSchema })
 }

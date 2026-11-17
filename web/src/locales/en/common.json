@@ -138,6 +138,33 @@
       "pink": "Pink"
     },
     "address": "Email address",
+    "autoconfig": {
+      "find": "Find settings",
+      "hint": "Find settings asks the domain itself, its DNS and Thunderbird's provider database, sending them only the domain.",
+      "looking": "Finding the settings…",
+      "sources": {
+        "autoconfig": "Settings published by the domain ({{origin}}).",
+        "srv": "Settings from the domain's DNS records ({{origin}}).",
+        "mx": "Settings of {{provider}}, where the domain's mail goes ({{origin}}).",
+        "ispdb": "Settings from Thunderbird's provider database ({{origin}}).",
+        "preset": "Mailroom's own settings for {{provider}}."
+      },
+      "appPassword": "{{provider}} wants an app password, created in your {{provider}} account's security settings, not your usual password.",
+      "check": "Check them before adding the account.",
+      "outsideDomain_one": "These settings send your password to a server outside {{domain}}: {{hosts}}. Use them only if you know your mail is hosted there.",
+      "outsideDomain_other": "These settings send your password to servers outside {{domain}}: {{hosts}}. Use them only if you know your mail is hosted there.",
+      "useOutside": "Use",
+      "declineOutside": "Don't use",
+      "declined": "Settings not used. Pick your provider or enter the settings yourself.",
+      "none": "No settings found for {{domain}}. Pick your provider or enter the settings yourself.",
+      "unsupported": "{{provider}} accounts are not supported yet: they need a sign-in Mailroom cannot do yet.",
+      "invalidAddress": "Enter a whole email address, such as you@example.org.",
+      "busy": "Too many lookups: try again in a minute.",
+      "failed": "Could not look up the settings. Pick your provider or enter the settings yourself.",
+      "presets": "Your provider",
+      "usePreset": "Use {{provider}}",
+      "manual": "Enter settings manually"
+    },
     "name": "Your name",
     "nameHint": "Optional: shown to the people you write to.",
     "otherAddress": "Other address {{n}}",

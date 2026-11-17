@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactElement, type ReactNode, type SubmitEvent } from 'react'
+import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { Ban } from 'lucide-react'
 
@@ -6,10 +7,12 @@ import {
   ACCOUNT_COLOURS,
   SEND_MODES,
   TLS_MODES,
+  findSettings,
   type Account,
   type AccountColour,
   type AccountFields,
   type Endpoint,
+  type Suggestion,
 } from '@/api/accounts.ts'
 import { ApiRequestError, refusalIssues, type RefusalIssue } from '@/api/http.ts'
 import { useMailLayer } from '@/auth/auth-context.ts'
@@ -17,6 +20,7 @@ import { Button } from '@/components/ui/button.tsx'
 import { Input } from '@/components/ui/input.tsx'
 import { AccountDot } from '@/accounts/account-name.tsx'
 import { accountErrorMessage } from '@/accounts/messages.ts'
+import { PRESETS } from '@/accounts/presets.ts'
 
 /** The most identities an account may have, as the API takes them. */
 const MAX_IDENTITIES = 50
@@ -120,6 +124,93 @@ function initialState(account: Account | undefined): FormState {
   }
 }
 
+/** The form with `suggestion`'s servers and login for `address`. */
+function withSuggestion(state: FormState, suggestion: Suggestion, address: string): FormState {
+  return {
+    ...state,
+    login: suggestion.login === 'address' ? address : address.slice(0, address.lastIndexOf('@')),
+    imapHost: suggestion.imap.host,
+    imapPort: String(suggestion.imap.port),
+    imapTls: suggestion.imap.tls,
+    smtpHost: suggestion.smtp.host,
+    smtpPort: String(suggestion.smtp.port),
+    smtpTls: suggestion.smtp.tls,
+  }
+}
+
+/** The hosts of `suggestion` outside the address's domain, each once. */
+function hostsOutside(suggestion: Suggestion): string[] {
+  const hosts = [suggestion.imap, suggestion.smtp]
+    .filter((endpoint) => endpoint.outside_domain)
+    .map((endpoint) => endpoint.host)
+  return [...new Set(hosts)]
+}
+
+/**
+ * Find settings: what the lookup of the address answered. `confirm` holds a suggestion naming a
+ * host outside the domain until the user says whether to use it; `declined` is one they did not.
+ */
+type Lookup =
+  | { kind: 'idle' }
+  | { kind: 'looking' }
+  | { kind: 'found'; suggestion: Suggestion }
+  | { kind: 'confirm'; suggestion: Suggestion; domain: string; address: string }
+  | { kind: 'declined' }
+  | { kind: 'none'; domain: string }
+  | { kind: 'failed'; message: string }
+
+/** The lookup's outcome worded for the reader: where the settings came from, or why there are none. */
+function lookupMessage(t: TFunction, lookup: Lookup): string | null {
+  switch (lookup.kind) {
+    case 'idle':
+      return null
+    case 'looking':
+      return t('accounts.autoconfig.looking')
+    case 'none':
+      return t('accounts.autoconfig.none', { domain: lookup.domain })
+    case 'failed':
+      return lookup.message
+    case 'declined':
+      return t('accounts.autoconfig.declined')
+    case 'confirm': {
+      const { suggestion, domain } = lookup
+      const hosts = hostsOutside(suggestion)
+      return [
+        t(`accounts.autoconfig.sources.${suggestion.source}`, {
+          origin: suggestion.origin ?? '',
+          provider: suggestion.provider ?? '',
+        }),
+        t('accounts.autoconfig.outsideDomain', { count: hosts.length, domain, hosts: hosts.join(', ') }),
+      ].join(' ')
+    }
+    case 'found': {
+      const { suggestion } = lookup
+      const provider = suggestion.provider ?? ''
+      if (!suggestion.supported) {
+        return t('accounts.autoconfig.unsupported', { provider })
+      }
+      const parts = [
+        t(`accounts.autoconfig.sources.${suggestion.source}`, { origin: suggestion.origin ?? '', provider }),
+        suggestion.note === 'app_password' ? t('accounts.autoconfig.appPassword', { provider }) : null,
+        t('accounts.autoconfig.check'),
+      ]
+      return parts.filter((part) => part !== null).join(' ')
+    }
+  }
+}
+
+function lookupFailure(t: TFunction, failure: unknown): string {
+  if (failure instanceof ApiRequestError) {
+    switch (failure.code) {
+      case 'invalid_address':
+        return t('accounts.autoconfig.invalidAddress')
+      case 'autoconfig_busy':
+        return t('accounts.autoconfig.busy')
+    }
+  }
+  return t('accounts.autoconfig.failed')
+}
+
 function fieldsOf(state: FormState, account: Account | undefined): AccountFields {
   const many = state.identities.length > 1
   const identities = state.identities.map((identity, index) => {
@@ -146,7 +237,11 @@ function fieldsOf(state: FormState, account: Account | undefined): AccountFields
 
 /**
  * Adds an account (no `account`), which the server numbers, or edits one, where an empty password
- * keeps the stored one. The account's name and colour are how the web shows it.
+ * keeps the stored one. Adding starts from the email address: Find settings fills the servers and
+ * login from the API's suggestion and says where it came from, first asking whether to use a
+ * suggestion naming a host outside the address's domain; when nothing is found, or the user does
+ * not use it, the presets are offered; entering the settings by hand is always possible. The account's name and colour are
+ * how the web shows it.
  * Every identity is edited here: the first, more added or removed, and which one is
  * the default once there are several. `save` sends it; a refusal shows next to the fields
  * mailroom-core found wrong. The send mode shows only with the mail client or MCP; otherwise the
@@ -172,6 +267,12 @@ export function AccountForm({
   const nextIdentityKey = useRef(state.identities.length)
   const addButton = useRef<HTMLButtonElement>(null)
   const focusAdd = useRef(false)
+  const [step, setStep] = useState<'address' | 'details'>(editing ? 'details' : 'address')
+  const [lookup, setLookup] = useState<Lookup>({ kind: 'idle' })
+  const lookingUp = useRef<AbortController | null>(null)
+  const loginInput = useRef<HTMLInputElement>(null)
+  const passwordInput = useRef<HTMLInputElement>(null)
+  const focusNext = useRef<'login' | 'password' | null>(null)
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]): void {
     setState((current) => ({ ...current, [key]: value }))
@@ -211,6 +312,72 @@ export function AccountForm({
     focusAdd.current = true
   }
 
+  useEffect(() => () => lookingUp.current?.abort(), [])
+
+  useEffect(() => {
+    const next = focusNext.current
+    focusNext.current = null
+    if (next !== null) {
+      ;(next === 'login' ? loginInput : passwordInput).current?.focus()
+    }
+  }, [step, lookup])
+
+  /**
+   * Fills the servers and the login for `address` from `suggestion`, unless Mailroom cannot sign in
+   * to its provider.
+   */
+  function apply(suggestion: Suggestion, address: string): void {
+    setLookup({ kind: 'found', suggestion })
+    if (suggestion.supported) {
+      setState((current) => withSuggestion(current, suggestion, address))
+      setStep('details')
+    }
+  }
+
+  /** Stops a running lookup, and forgets what the last one said. */
+  function forgetLookup(): void {
+    lookingUp.current?.abort()
+    setLookup((current) => (current.kind === 'idle' ? current : { kind: 'idle' }))
+  }
+
+  async function find(): Promise<void> {
+    const address = state.identities[0]?.address.trim() ?? ''
+    if (!address.includes('@')) {
+      setLookup({ kind: 'failed', message: t('accounts.autoconfig.invalidAddress') })
+      return
+    }
+    lookingUp.current?.abort()
+    const controller = new AbortController()
+    lookingUp.current = controller
+    setLookup({ kind: 'looking' })
+    try {
+      const answer = await findSettings(address, controller.signal)
+      if (controller.signal.aborted) {
+        return
+      }
+      if (answer.suggestion === null) {
+        setLookup({ kind: 'none', domain: answer.domain })
+      } else if (answer.suggestion.supported && hostsOutside(answer.suggestion).length > 0) {
+        // A host the domain names outside itself would get the password: the user decides first.
+        setLookup({ kind: 'confirm', suggestion: answer.suggestion, domain: answer.domain, address })
+      } else {
+        apply(answer.suggestion, address)
+      }
+    } catch (failure) {
+      if (!controller.signal.aborted) {
+        setLookup({ kind: 'failed', message: lookupFailure(t, failure) })
+      }
+    }
+  }
+
+  function enterManually(): void {
+    if (lookup.kind === 'looking') {
+      forgetLookup()
+    }
+    focusNext.current = 'login'
+    setStep('details')
+  }
+
   useEffect(() => {
     if (focusAdd.current) {
       focusAdd.current = false
@@ -220,6 +387,10 @@ export function AccountForm({
 
   async function submit(event: SubmitEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
+    if (step === 'address') {
+      await find()
+      return
+    }
     setSubmitting(true)
     setError(null)
     setIssues({})
@@ -342,6 +513,94 @@ export function AccountForm({
     )
   }
 
+  const firstAddress = identityField(0, 'address')
+  const lookupId = `${prefix}-lookup`
+  const message = lookupMessage(t, lookup)
+  const offerPresets = lookup.kind === 'none' || lookup.kind === 'failed' || lookup.kind === 'declined'
+  /** Adding: the first address, with Find settings, what it found, the presets and manual entry. */
+  const addressRow = (
+    <div className="flex flex-col gap-2">
+      {row(
+        firstAddress,
+        t('accounts.address'),
+        <div className="flex flex-wrap gap-2">
+          <Input
+            {...control(firstAddress, true)}
+            type="email"
+            required
+            maxLength={320}
+            className="min-w-48 flex-1"
+            value={state.identities[0]?.address ?? ''}
+            onChange={(event) => {
+              forgetLookup()
+              setIdentity(0, 'address', event.target.value)
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            aria-describedby={message === null ? undefined : lookupId}
+            disabled={lookup.kind === 'looking'}
+            onClick={() => void find()}
+          >
+            {t('accounts.autoconfig.find')}
+          </Button>
+        </div>,
+        t('accounts.autoconfig.hint'),
+      )}
+      <p id={lookupId} role="status" className="text-sm">
+        {message}
+      </p>
+      {lookup.kind === 'confirm' && (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            aria-describedby={lookupId}
+            onClick={() => {
+              focusNext.current = 'password'
+              apply(lookup.suggestion, lookup.address)
+            }}
+          >
+            {t('accounts.autoconfig.useOutside')}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            aria-describedby={lookupId}
+            onClick={() => {
+              setLookup({ kind: 'declined' })
+            }}
+          >
+            {t('accounts.autoconfig.declineOutside')}
+          </Button>
+        </div>
+      )}
+      {offerPresets && (
+        <div role="group" aria-label={t('accounts.autoconfig.presets')} className="flex flex-wrap gap-2">
+          {PRESETS.map((preset) => (
+            <Button
+              key={preset.provider}
+              type="button"
+              variant="outline"
+              onClick={() => {
+                focusNext.current = 'password'
+                apply(preset, state.identities[0]?.address.trim() ?? '')
+              }}
+            >
+              {t('accounts.autoconfig.usePreset', { provider: preset.provider })}
+            </Button>
+          ))}
+        </div>
+      )}
+      {step === 'address' && (
+        <Button type="button" variant="ghost" className="self-start" onClick={enterManually}>
+          {t('accounts.autoconfig.manual')}
+        </Button>
+      )}
+    </div>
+  )
+
   return (
     <form
       aria-labelledby={titleId}
@@ -352,206 +611,216 @@ export function AccountForm({
       <h2 id={titleId} className="font-medium">
         {editing ? t('accounts.editTitle', { account: account.display_name }) : t('accounts.add')}
       </h2>
-      {row(
-        'name',
-        t('accounts.displayName'),
-        <Input
-          {...control('name', true)}
-          maxLength={64}
-          placeholder={state.login}
-          value={state.name}
-          onChange={(event) => {
-            set('name', event.target.value)
-          }}
-        />,
-        t('accounts.displayNameHint'),
-      )}
-      <fieldset aria-describedby={issues.colour === undefined ? undefined : `${prefix}-colour-issue`} className="flex flex-col gap-1">
-        <legend className="mb-1 text-sm font-medium">{t('accounts.colour')}</legend>
-        <div className="flex flex-wrap gap-2">
-          {[null, ...ACCOUNT_COLOURS].map((colour) => {
-            const label = t(`accounts.colours.${colour ?? 'none'}`)
-            return (
-              <label
-                key={colour ?? 'none'}
-                title={label}
-                className="flex size-8 cursor-pointer items-center justify-center rounded-full border has-checked:border-foreground has-checked:ring-2 has-checked:ring-ring has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ring"
-              >
-                <input
-                  type="radio"
-                  name={`${prefix}-colour`}
-                  className="sr-only"
-                  checked={state.colour === colour}
-                  onChange={() => {
-                    set('colour', colour)
-                  }}
-                />
-                <span className="sr-only">{label}</span>
-                {colour === null ? (
-                  <Ban aria-hidden="true" className="size-4 text-muted-foreground" />
-                ) : (
-                  <AccountDot colour={colour} className="size-4" />
+      {!editing && addressRow}
+      {step === 'details' && (
+        <>
+          {row(
+            'name',
+            t('accounts.displayName'),
+            <Input
+              {...control('name', true)}
+              maxLength={64}
+              placeholder={state.login}
+              value={state.name}
+              onChange={(event) => {
+                set('name', event.target.value)
+              }}
+            />,
+            t('accounts.displayNameHint'),
+          )}
+          <fieldset aria-describedby={issues.colour === undefined ? undefined : `${prefix}-colour-issue`} className="flex flex-col gap-1">
+            <legend className="mb-1 text-sm font-medium">{t('accounts.colour')}</legend>
+            <div className="flex flex-wrap gap-2">
+              {[null, ...ACCOUNT_COLOURS].map((colour) => {
+                const label = t(`accounts.colours.${colour ?? 'none'}`)
+                return (
+                  <label
+                    key={colour ?? 'none'}
+                    title={label}
+                    className="flex size-8 cursor-pointer items-center justify-center rounded-full border has-checked:border-foreground has-checked:ring-2 has-checked:ring-ring has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ring"
+                  >
+                    <input
+                      type="radio"
+                      name={`${prefix}-colour`}
+                      className="sr-only"
+                      checked={state.colour === colour}
+                      onChange={() => {
+                        set('colour', colour)
+                      }}
+                    />
+                    <span className="sr-only">{label}</span>
+                    {colour === null ? (
+                      <Ban aria-hidden="true" className="size-4 text-muted-foreground" />
+                    ) : (
+                      <AccountDot colour={colour} className="size-4" />
+                    )}
+                  </label>
+                )
+              })}
+            </div>
+            {issues.colour !== undefined && (
+              <p id={`${prefix}-colour-issue`} className="text-sm text-destructive">
+                {issues.colour}
+              </p>
+            )}
+          </fieldset>
+          {state.identities.map((identity, index) => {
+            const address = identityField(index, 'address')
+            const name = identityField(index, 'name')
+            const first = index === 0
+            const fields = (
+              <>
+                {(!first || editing) &&
+                  row(
+                    address,
+                    first ? t('accounts.address') : t('accounts.otherAddress', { n: index }),
+                    <Input
+                      {...control(address)}
+                      type="email"
+                      required
+                      maxLength={320}
+                      value={identity.address}
+                      onChange={(event) => {
+                        setIdentity(index, 'address', event.target.value)
+                      }}
+                    />,
+                  )}
+                {row(
+                  name,
+                  first ? t('accounts.name') : t('accounts.otherName', { n: index }),
+                  <Input
+                    {...control(name, first)}
+                    maxLength={200}
+                    value={identity.name}
+                    onChange={(event) => {
+                      setIdentity(index, 'name', event.target.value)
+                    }}
+                  />,
+                  first ? t('accounts.nameHint') : undefined,
                 )}
-              </label>
+              </>
+            )
+            if (first) {
+              return (
+                <div key={identity.key} className="flex flex-col gap-3">
+                  {fields}
+                </div>
+              )
+            }
+            return (
+              <div key={identity.key} className="flex flex-col gap-3 rounded-md border p-3">
+                {fields}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="self-start"
+                  onClick={() => {
+                    removeIdentity(index)
+                  }}
+                >
+                  {t('accounts.removeAddress', { n: index })}
+                </Button>
+              </div>
             )
           })}
-        </div>
-        {issues.colour !== undefined && (
-          <p id={`${prefix}-colour-issue`} className="text-sm text-destructive">
-            {issues.colour}
-          </p>
-        )}
-      </fieldset>
-      {state.identities.map((identity, index) => {
-        const address = identityField(index, 'address')
-        const name = identityField(index, 'name')
-        const first = index === 0
-        const fields = (
-          <>
-            {row(
-              address,
-              first ? t('accounts.address') : t('accounts.otherAddress', { n: index }),
-              <Input
-                {...control(address)}
-                type="email"
-                required
-                maxLength={320}
-                value={identity.address}
-                onChange={(event) => {
-                  setIdentity(index, 'address', event.target.value)
-                }}
-              />,
-            )}
-            {row(
-              name,
-              first ? t('accounts.name') : t('accounts.otherName', { n: index }),
-              <Input
-                {...control(name, first)}
-                maxLength={200}
-                value={identity.name}
-                onChange={(event) => {
-                  setIdentity(index, 'name', event.target.value)
-                }}
-              />,
-              first ? t('accounts.nameHint') : undefined,
-            )}
-          </>
-        )
-        if (first) {
-          return (
-            <div key={identity.key} className="flex flex-col gap-3">
-              {fields}
-            </div>
-          )
-        }
-        return (
-          <div key={identity.key} className="flex flex-col gap-3 rounded-md border p-3">
-            {fields}
-            <Button
-              type="button"
-              variant="ghost"
-              className="self-start"
-              onClick={() => {
-                removeIdentity(index)
-              }}
-            >
-              {t('accounts.removeAddress', { n: index })}
+          {state.identities.length < MAX_IDENTITIES && (
+            <Button ref={addButton} type="button" variant="outline" className="self-start" onClick={addIdentity}>
+              {t('accounts.addAddress')}
             </Button>
-          </div>
-        )
-      })}
-      {state.identities.length < MAX_IDENTITIES && (
-        <Button ref={addButton} type="button" variant="outline" className="self-start" onClick={addIdentity}>
-          {t('accounts.addAddress')}
-        </Button>
-      )}
-      {state.identities.length > 1 &&
-        row(
-          'default',
-          t('accounts.defaultAddress'),
-          <select
-            {...control('default', true)}
-            className="h-9 rounded-md border bg-transparent px-2 text-sm"
-            value={state.defaultIdentity}
-            onChange={(event) => {
-              set('defaultIdentity', Number(event.target.value))
-            }}
-          >
-            {state.identities.map((identity, index) => (
-              <option key={identity.key} value={index}>
-                {identity.address.trim() === ''
-                  ? index === 0
-                    ? t('accounts.address')
-                    : t('accounts.otherAddress', { n: index })
-                  : identity.address.trim()}
-              </option>
-            ))}
-          </select>,
-          t('accounts.defaultAddressHint'),
-        )}
-      {row(
-        'login',
-        t('accounts.login'),
-        <Input
-          {...control('login')}
-          required
-          maxLength={320}
-          autoComplete="off"
-          autoCapitalize="none"
-          spellCheck={false}
-          value={state.login}
-          onChange={(event) => {
-            set('login', event.target.value)
-          }}
-        />,
-      )}
-      {row(
-        'password',
-        t('accounts.password'),
-        <Input
-          {...control('password', true)}
-          type="password"
-          autoComplete="new-password"
-          required={!editing}
-          maxLength={4096}
-          value={state.password}
-          onChange={(event) => {
-            set('password', event.target.value)
-          }}
-        />,
-        editing ? t('accounts.passwordKeep') : t('accounts.passwordHint'),
-      )}
-      {endpoint('imap')}
-      {endpoint('smtp')}
-      {sends &&
-        row(
-          'send_mode',
-          t('accounts.sendMode'),
-          <select
-            {...control('send_mode', true)}
-            className="h-9 rounded-md border bg-transparent px-2 text-sm"
-            value={state.sendMode}
-            onChange={(event) => {
-              set('sendMode', event.target.value as AccountFields['send_mode'])
-            }}
-          >
-            {SEND_MODES.map((mode) => (
-              <option key={mode} value={mode}>
-                {t(`accounts.sendModes.${mode}`)}
-              </option>
-            ))}
-          </select>,
-          t('accounts.sendModeHint'),
-        )}
-      {error !== null && (
-        <p id={errorId} role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
+          )}
+          {state.identities.length > 1 &&
+            row(
+              'default',
+              t('accounts.defaultAddress'),
+              <select
+                {...control('default', true)}
+                className="h-9 rounded-md border bg-transparent px-2 text-sm"
+                value={state.defaultIdentity}
+                onChange={(event) => {
+                  set('defaultIdentity', Number(event.target.value))
+                }}
+              >
+                {state.identities.map((identity, index) => (
+                  <option key={identity.key} value={index}>
+                    {identity.address.trim() === ''
+                      ? index === 0
+                        ? t('accounts.address')
+                        : t('accounts.otherAddress', { n: index })
+                      : identity.address.trim()}
+                  </option>
+                ))}
+              </select>,
+              t('accounts.defaultAddressHint'),
+            )}
+          {row(
+            'login',
+            t('accounts.login'),
+            <Input
+              {...control('login')}
+              ref={loginInput}
+              required
+              maxLength={320}
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              value={state.login}
+              onChange={(event) => {
+                set('login', event.target.value)
+              }}
+            />,
+          )}
+          {row(
+            'password',
+            t('accounts.password'),
+            <Input
+              {...control('password', true)}
+              ref={passwordInput}
+              type="password"
+              autoComplete="new-password"
+              required={!editing}
+              maxLength={4096}
+              value={state.password}
+              onChange={(event) => {
+                set('password', event.target.value)
+              }}
+            />,
+            editing ? t('accounts.passwordKeep') : t('accounts.passwordHint'),
+          )}
+          {endpoint('imap')}
+          {endpoint('smtp')}
+          {sends &&
+            row(
+              'send_mode',
+              t('accounts.sendMode'),
+              <select
+                {...control('send_mode', true)}
+                className="h-9 rounded-md border bg-transparent px-2 text-sm"
+                value={state.sendMode}
+                onChange={(event) => {
+                  set('sendMode', event.target.value as AccountFields['send_mode'])
+                }}
+              >
+                {SEND_MODES.map((mode) => (
+                  <option key={mode} value={mode}>
+                    {t(`accounts.sendModes.${mode}`)}
+                  </option>
+                ))}
+              </select>,
+              t('accounts.sendModeHint'),
+            )}
+          {error !== null && (
+            <p id={errorId} role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
+        </>
       )}
       <div className="flex gap-2">
-        <Button type="submit" disabled={submitting}>
-          {editing ? t('accounts.save') : t('accounts.addButton')}
-        </Button>
+        {step === 'details' && (
+          <Button type="submit" disabled={submitting}>
+            {editing ? t('accounts.save') : t('accounts.addButton')}
+          </Button>
+        )}
         <Button type="button" variant="ghost" onClick={onCancel}>
           {t('accounts.cancel')}
         </Button>

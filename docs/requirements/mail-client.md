@@ -1012,6 +1012,19 @@ password. A known provider's own hosts are not outside: when the IMAP host names
 beside them still is. Hosts from the ISPDB, the MX match and the presets are never flagged
 (`outside_domain` is false), since Mailroom or Thunderbird chose them, not the domain.
 
+The web's *Accounts* form adds an account starting from the address alone, with **Find settings**
+(or Enter) and **Enter settings manually**. A suggestion fills the login, the IMAP and SMTP
+servers, and the form says where it came from (the document's URL, the DNS records, the provider
+the MX points to, Thunderbird's database, Mailroom's own presets) and when the provider wants an
+app password; everything stays editable. Nothing found, or a failed lookup, offers the supported
+presets (Gmail, iCloud, Fastmail, Yahoo, as the web's own copy of the API's list). An unsupported
+provider (Microsoft) is named as not supported yet and fills nothing. Entering the settings by
+hand drops a lookup still running, and changing the address forgets what the last one found
+(the fields it filled stay). Editing an account does not look anything up. A suggestion with an
+endpoint `outside_domain` fills nothing at first: the form names the hosts outside the domain,
+says the password would go to them, and asks **Use** (fill it, then focus the password) or
+**Don't use** (fill nothing, and offer the presets and manual entry as when nothing is found).
+
 ## MCP
 
 The same service layer backs the `mail_read` tool group

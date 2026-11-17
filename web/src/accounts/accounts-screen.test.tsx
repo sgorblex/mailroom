@@ -73,17 +73,26 @@ function nameTakenResponse(): Response {
   return json(409, { detail: { code: 'account_name_taken', message: NAME_TAKEN, issues } })
 }
 
+/** What the fake autoconfig route answers for an address; none means nothing found. */
+type Autoconfig = (address: string) => Response | Promise<Response>
+
+const NOTHING_FOUND: Autoconfig = (address) =>
+  json(200, { domain: address.slice(address.indexOf('@') + 1), suggestion: null })
+
 /**
  * A fake accounts API holding `initial`: it numbers a new account itself, never reusing an id,
  * refuses a login without an `@` as a duplicate, as mailroom-core refuses one, and refuses a name
  * another account has, as the API does.
  */
-function stubApi(initial: StoredAccount[] = [WORK]): ReturnType<typeof vi.fn> {
+function stubApi(initial: StoredAccount[] = [WORK], autoconfig: Autoconfig = NOTHING_FOUND): ReturnType<typeof vi.fn> {
   let accounts = [...initial]
   let lastId = Math.max(0, ...initial.map((account) => account.id))
   const fetchMock = vi.fn((path: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET'
     const body = init?.body == null ? {} : (JSON.parse(init.body as string) as Body)
+    if (path.startsWith('/api/v1/accounts/autoconfig?') && method === 'GET') {
+      return Promise.resolve(autoconfig(new URLSearchParams(path.split('?')[1]).get('address') ?? ''))
+    }
     if (path === '/api/v1/accounts' && method === 'GET') {
       return Promise.resolve(json(200, accounts.map(listed)))
     }
@@ -157,6 +166,17 @@ function sent(fetchMock: ReturnType<typeof vi.fn>, method: string, path: string)
   return JSON.parse((call[1] as RequestInit).body as string) as Body
 }
 
+const SUGGESTION = {
+  source: 'ispdb',
+  origin: 'https://autoconfig.thunderbird.net/v1.1/home.example',
+  provider: null,
+  supported: true,
+  note: null,
+  login: 'local_part',
+  imap: { host: 'mail.home.example', port: 143, tls: 'starttls', outside_domain: false },
+  smtp: { host: 'mail.home.example', port: 587, tls: 'starttls', outside_domain: false },
+}
+
 afterEach(() => {
   vi.unstubAllGlobals()
 })
@@ -176,7 +196,11 @@ describe('AccountsScreen', () => {
     const form = screen.getByRole('form', { name: 'Add an account' })
     // The server numbers the account: no id to choose.
     expect(within(form).queryByLabelText(/\bid\b/i)).not.toBeInTheDocument()
+    // It starts from the address alone.
+    expect(within(form).queryByLabelText('Login')).not.toBeInTheDocument()
     await userEvent.type(within(form).getByLabelText('Email address'), 'me@home.example')
+    await userEvent.click(within(form).getByRole('button', { name: 'Enter settings manually' }))
+    expect(within(form).getByLabelText('Login')).toHaveFocus()
     await userEvent.type(within(form).getByLabelText('Login'), 'me')
     await userEvent.type(within(form).getByLabelText('Password'), 'mailbox secret')
     await userEvent.type(within(form).getByLabelText('IMAP server'), 'imap.home.example')
@@ -206,6 +230,216 @@ describe('AccountsScreen', () => {
       identities: [{ address: 'me@home.example', name: null }],
       auto_approve: [],
     })
+  })
+
+  it('fills the servers and login from the settings found, saying where they came from', async () => {
+    const fetchMock = stubApi([], () => json(200, { domain: 'home.example', suggestion: SUGGESTION }))
+    renderSignedIn(<AccountsScreen />, ALICE)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add an account' }))
+    const form = screen.getByRole('form', { name: 'Add an account' })
+    // Enter in the address field looks it up.
+    await userEvent.type(within(form).getByLabelText('Email address'), 'me@home.example{Enter}')
+
+    expect(await within(form).findByRole('status')).toHaveTextContent(
+      "Settings from Thunderbird's provider database (https://autoconfig.thunderbird.net/v1.1/home.example). " +
+        'Check them before adding the account.',
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/accounts/autoconfig?address=me%40home.example',
+      expect.objectContaining({ method: 'GET' }),
+    )
+    expect(within(form).getByLabelText('Login')).toHaveValue('me')
+    expect(within(form).getByLabelText('IMAP server')).toHaveValue('mail.home.example')
+    expect(within(form).getByLabelText('IMAP port')).toHaveValue(143)
+    expect(within(form).getByLabelText('IMAP security')).toHaveDisplayValue('STARTTLS')
+    expect(within(form).getByLabelText('SMTP port')).toHaveValue(587)
+    expect(within(form).queryByRole('button', { name: 'Enter settings manually' })).not.toBeInTheDocument()
+
+    // The address stays, as the first identity.
+    expect(within(form).getByLabelText('Email address')).toHaveValue('me@home.example')
+  })
+
+  /** The domain's own document, naming `imap` and `smtp` hosts outside it. */
+  function documentNaming(imap: string, smtp: string): Autoconfig {
+    const suggestion = {
+      ...SUGGESTION,
+      source: 'autoconfig',
+      origin: 'https://autoconfig.home.example/mail/config-v1.1.xml',
+      login: 'address',
+      imap: { host: imap, port: 993, tls: 'implicit', outside_domain: !imap.endsWith('.home.example') },
+      smtp: { host: smtp, port: 465, tls: 'implicit', outside_domain: !smtp.endsWith('.home.example') },
+    }
+    return () => json(200, { domain: 'home.example', suggestion })
+  }
+
+  it('asks before filling a server outside the domain, and fills it on Use', async () => {
+    const fetchMock = stubApi([], documentNaming('imap.hoster.example', 'smtp.home.example'))
+    renderSignedIn(<AccountsScreen />, ALICE)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add an account' }))
+    const form = screen.getByRole('form', { name: 'Add an account' })
+    await userEvent.type(within(form).getByLabelText('Email address'), 'me@home.example{Enter}')
+
+    expect(await within(form).findByRole('status')).toHaveTextContent(
+      'Settings published by the domain (https://autoconfig.home.example/mail/config-v1.1.xml). ' +
+        'These settings send your password to a server outside home.example: imap.hoster.example. ' +
+        'Use them only if you know your mail is hosted there.',
+    )
+    // Nothing is filled until the user says so.
+    expect(within(form).queryByLabelText('IMAP server')).not.toBeInTheDocument()
+    expect(within(form).queryByRole('group', { name: 'Your provider' })).not.toBeInTheDocument()
+
+    await userEvent.click(within(form).getByRole('button', { name: 'Use' }))
+    expect(within(form).getByLabelText('IMAP server')).toHaveValue('imap.hoster.example')
+    expect(within(form).getByLabelText('SMTP server')).toHaveValue('smtp.home.example')
+    expect(within(form).getByLabelText('Login')).toHaveValue('me@home.example')
+    expect(within(form).getByLabelText('Password')).toHaveFocus()
+    expect(within(form).getByRole('status')).toHaveTextContent(/^Settings published by the domain .* Check them/)
+    expect(within(form).queryByRole('button', { name: 'Use' })).not.toBeInTheDocument()
+
+    await userEvent.type(within(form).getByLabelText('Password'), 'mailbox secret')
+    await userEvent.click(within(form).getByRole('button', { name: 'Add account' }))
+    await screen.findByRole('list', { name: 'Mail accounts' })
+    // The flag is the lookup's, not the account's: the saved servers carry no outside_domain.
+    expect(sent(fetchMock, 'POST', '/api/v1/accounts')).toMatchObject({
+      imap: { host: 'imap.hoster.example', port: 993, tls: 'implicit' },
+    })
+    expect(sent(fetchMock, 'POST', '/api/v1/accounts')['imap']).not.toHaveProperty('outside_domain')
+  })
+
+  it("fills nothing on Don't use, offering the presets and manual entry", async () => {
+    stubApi([], documentNaming('imap.hoster.example', 'smtp.relay.example'))
+    renderSignedIn(<AccountsScreen />, ALICE)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add an account' }))
+    const form = screen.getByRole('form', { name: 'Add an account' })
+    await userEvent.type(within(form).getByLabelText('Email address'), 'me@home.example{Enter}')
+    // Both hosts named, in one sentence.
+    expect(await within(form).findByRole('status')).toHaveTextContent(
+      'These settings send your password to servers outside home.example: imap.hoster.example, smtp.relay.example.',
+    )
+
+    await userEvent.click(within(form).getByRole('button', { name: "Don't use" }))
+    expect(within(form).getByRole('status')).toHaveTextContent(
+      'Settings not used. Pick your provider or enter the settings yourself.',
+    )
+    expect(within(form).queryByRole('button', { name: 'Use' })).not.toBeInTheDocument()
+    expect(within(form).getByRole('group', { name: 'Your provider' })).toBeInTheDocument()
+    await userEvent.click(within(form).getByRole('button', { name: 'Enter settings manually' }))
+    expect(within(form).getByLabelText('IMAP server')).toHaveValue('')
+    expect(within(form).getByLabelText('Login')).toHaveValue('')
+  })
+
+  it('drops a lookup still running when the user enters the settings by hand', async () => {
+    let answer: (response: Response) => void = () => undefined
+    stubApi([], () => new Promise((resolve) => (answer = resolve)))
+    renderSignedIn(<AccountsScreen />, ALICE)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add an account' }))
+    const form = screen.getByRole('form', { name: 'Add an account' })
+    await userEvent.type(within(form).getByLabelText('Email address'), 'me@home.example')
+    await userEvent.click(within(form).getByRole('button', { name: 'Find settings' }))
+    await userEvent.click(within(form).getByRole('button', { name: 'Enter settings manually' }))
+    await userEvent.type(within(form).getByLabelText('IMAP server'), 'imap.typed.example')
+    answer(json(200, { domain: 'home.example', suggestion: SUGGESTION }))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    expect(within(form).getByRole('status')).toBeEmptyDOMElement()
+    expect(within(form).getByLabelText('IMAP server')).toHaveValue('imap.typed.example')
+    expect(within(form).getByLabelText('Login')).toHaveValue('')
+  })
+
+  it('forgets the settings found once the address changes, keeping the fields filled', async () => {
+    stubApi([], () => json(200, { domain: 'home.example', suggestion: SUGGESTION }))
+    renderSignedIn(<AccountsScreen />, ALICE)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add an account' }))
+    const form = screen.getByRole('form', { name: 'Add an account' })
+    await userEvent.type(within(form).getByLabelText('Email address'), 'me@home.example{Enter}')
+    expect(await within(form).findByRole('status')).toHaveTextContent(/^Settings from/)
+
+    await userEvent.type(within(form).getByLabelText('Email address'), 'x')
+    expect(within(form).getByRole('status')).toBeEmptyDOMElement()
+    expect(within(form).getByLabelText('IMAP server')).toHaveValue('mail.home.example')
+  })
+
+  it('offers the presets when nothing is found', async () => {
+    const fetchMock = stubApi([])
+    renderSignedIn(<AccountsScreen />, ALICE)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add an account' }))
+    const form = screen.getByRole('form', { name: 'Add an account' })
+    await userEvent.type(within(form).getByLabelText('Email address'), 'me@mydomain.example')
+    await userEvent.click(within(form).getByRole('button', { name: 'Find settings' }))
+
+    expect(await within(form).findByText(/No settings found for mydomain\.example\./)).toBeInTheDocument()
+    expect(within(form).queryByLabelText('Login')).not.toBeInTheDocument()
+    const presets = within(form).getByRole('group', { name: 'Your provider' })
+    await userEvent.click(within(presets).getByRole('button', { name: 'Use Gmail' }))
+
+    expect(within(form).getByRole('status')).toHaveTextContent(
+      "Mailroom's own settings for Gmail. Gmail wants an app password, created in your Gmail account's " +
+        'security settings, not your usual password.',
+    )
+    expect(within(form).getByLabelText('Password')).toHaveFocus()
+    expect(within(form).getByLabelText('Login')).toHaveValue('me@mydomain.example')
+    await userEvent.type(within(form).getByLabelText('Password'), 'app password')
+    await userEvent.click(within(form).getByRole('button', { name: 'Add account' }))
+    await screen.findByRole('list', { name: 'Mail accounts' })
+    expect(sent(fetchMock, 'POST', '/api/v1/accounts')).toMatchObject({
+      imap: { host: 'imap.gmail.com', port: 993, tls: 'implicit' },
+      smtp: { host: 'smtp.gmail.com', port: 465, tls: 'implicit' },
+    })
+  })
+
+  it('says Microsoft is not supported yet, leaving manual entry', async () => {
+    const suggestion = {
+      source: 'preset',
+      origin: null,
+      provider: 'Microsoft',
+      supported: false,
+      note: 'oauth_required',
+      login: 'address',
+      imap: { host: 'outlook.office365.com', port: 993, tls: 'implicit', outside_domain: false },
+      smtp: { host: 'smtp.office365.com', port: 587, tls: 'starttls', outside_domain: false },
+    }
+    stubApi([], () => json(200, { domain: 'outlook.com', suggestion }))
+    renderSignedIn(<AccountsScreen />, ALICE)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add an account' }))
+    const form = screen.getByRole('form', { name: 'Add an account' })
+    await userEvent.type(within(form).getByLabelText('Email address'), 'me@outlook.com')
+    await userEvent.click(within(form).getByRole('button', { name: 'Find settings' }))
+
+    expect(await within(form).findByText(/Microsoft accounts are not supported yet/)).toBeInTheDocument()
+    expect(within(form).queryByLabelText('IMAP server')).not.toBeInTheDocument()
+    expect(within(form).queryByRole('group', { name: 'Your provider' })).not.toBeInTheDocument()
+    await userEvent.click(within(form).getByRole('button', { name: 'Enter settings manually' }))
+    expect(within(form).getByLabelText('IMAP server')).toHaveValue('')
+  })
+
+  it.each([
+    {
+      answer: () => json(429, { detail: { code: 'autoconfig_busy', message: 'Too many lookups' } }),
+      shown: 'Too many lookups: try again in a minute.',
+    },
+    {
+      answer: () => json(400, { detail: { code: 'invalid_address', message: 'Not an email address.' } }),
+      shown: 'Enter a whole email address, such as you@example.org.',
+    },
+  ])('says why the lookup failed and offers the presets ($shown)', async ({ answer, shown }) => {
+    stubApi([], answer)
+    renderSignedIn(<AccountsScreen />, ALICE)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add an account' }))
+    const form = screen.getByRole('form', { name: 'Add an account' })
+    await userEvent.type(within(form).getByLabelText('Email address'), 'me@home.example')
+    await userEvent.click(within(form).getByRole('button', { name: 'Find settings' }))
+
+    expect(await within(form).findByText(shown)).toBeInTheDocument()
+    expect(within(form).getByRole('group', { name: 'Your provider' })).toBeInTheDocument()
+    expect(within(form).getByRole('button', { name: 'Enter settings manually' })).toBeInTheDocument()
   })
 
   it('edits an account, keeping the stored password unless one is typed', async () => {
