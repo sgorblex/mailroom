@@ -928,7 +928,13 @@ class _GmailConnections:
         self.asked.append(account_id)
         gmail = account_id == "gmail"
         return Capabilities(
-            gmail=gmail, thread=gmail, move=True, uidplus=True, condstore=True, special_use=True
+            gmail=gmail,
+            thread=gmail,
+            move=True,
+            uidplus=True,
+            condstore=True,
+            special_use=True,
+            quota=False,
         )
 
 

@@ -364,16 +364,17 @@ bounded to one minor because the server relies on its handlers.
   not a positive integer a 422): list, add (`POST`, with the password and no id: the answer
   carries it), edit (`PUT /{id}`; no password keeps it), remove
   (`DELETE /{id}`, its switch too), `POST /{id}/test` (an IMAP login and logout:
-  `{"ok", "code", "message"}`), `GET /autoconfig?address=` (suggested servers, stored nowhere:
-  [`mail-client.md`](mail-client.md) — *Account autoconfiguration*). Responses carry
-  `has_password`, never the password. An account may have a `name` (1 to 64 characters, not
-  blank) and a `colour` (`slate`, `red`, `orange`, `amber`, `green`, `teal`, `sky`, `blue`,
-  `violet` or `pink`), each null when unset and given back as stored, so a client tells an
-  unnamed account from one named after its login. Responses also carry a read-only
-  `display_name`, what to call the account: its `name`, else its login (a body that sends it
-  back has it ignored). An edit replaces `name` and `colour` like the other fields. No two of a
-  user's accounts share a name, compared trimmed and whatever their case; unnamed accounts
-  share none. An account's folders and its Run filters switch are the filters' routes
+  `{"ok", "code", "message"}`), `GET /{id}/quota` (the server's quota, kept 10 minutes:
+  [`mail-client.md`](mail-client.md) — *Mailbox quota*), `GET /autoconfig?address=` (suggested
+  servers, stored nowhere: [`mail-client.md`](mail-client.md) — *Account autoconfiguration*).
+  Responses carry `has_password`, never the password. An account may have a `name` (1 to 64
+  characters, not blank) and a `colour` (`slate`, `red`, `orange`, `amber`, `green`, `teal`,
+  `sky`, `blue`, `violet` or `pink`), each null when unset and given back as stored, so a
+  client tells an unnamed account from one named after its login. Responses also carry a
+  read-only `display_name`, what to call the account: its `name`, else its login (a body that
+  sends it back has it ignored). An edit replaces `name` and `colour` like the other fields. No
+  two of a user's accounts share a name, compared trimmed and whatever their case; unnamed
+  accounts share none. An account's folders and its Run filters switch are the filters' routes
   ([Filters](#filters)).
 - **Checks:** mailroom-core's config models (`core_settings_or_issues`) validate the whole document
   before each save; a refusal is 400 `{"detail": {"code": "invalid_account", "message",
@@ -461,13 +462,14 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   is retried. The group running at the cut is cut with its connection: with `MOVE` it is done or
   not; without `MOVE` it can be copied but not removed, so after a 504 a client should reload the
   folders rather than repeat the call.
-- **Logs:** `mail_folders`, `mail_listed`, `mail_searched`, `mail_read`, `mail_thread_read` (MCP
-  only), `mail_html_read`, `mail_attachment_read`, each with `user_id`, `account_id`, `via`, `outcome` (`ok` or the code)
-  and `duration_ms`; never a subject, an address, a folder name or a body. `mail_moved`,
-  `mail_archived`, `mail_trashed` and `mail_flagged` carry `user_id`, `via`, `account_ids`,
-  `ref_count`, `changed` (messages), `groups`, `failed_groups`, `codes` (the failed groups'),
-  `outcome` (`ok`, `partial`, `refused`, `failed`, or the code of a refused call) and
-  `duration_ms`: counts and codes only, never a folder, a ref, a `Message-ID` or a sender.
+- **Logs:** `mail_folders`, `mail_quota`, `mail_listed`, `mail_searched`, `mail_read`,
+  `mail_thread_read` (MCP only), `mail_html_read`, `mail_attachment_read`, each with `user_id`,
+  `account_id`, `via`, `outcome` (`ok` or the code) and `duration_ms`; never a subject, an
+  address, a folder name or a body. `mail_moved`, `mail_archived`, `mail_trashed` and
+  `mail_flagged` carry `user_id`, `via`, `account_ids`, `ref_count`, `changed` (messages),
+  `groups`, `failed_groups`, `codes` (the failed groups'), `outcome` (`ok`, `partial`,
+  `refused`, `failed`, or the code of a refused call) and `duration_ms`: counts and codes only,
+  never a folder, a ref, a `Message-ID` or a sender.
   `mail_folder_created`, `mail_folder_renamed` and `mail_folder_deleted` carry `user_id`, `via`,
   `account_id`, `outcome`, `duration_ms` and counts only (`rule_sets`, `filters`,
   `rule_sets_updated`, `messages`); `folder_rule_sets_failed`, a rename whose rule sets could not

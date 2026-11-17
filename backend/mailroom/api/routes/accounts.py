@@ -1,5 +1,5 @@
-"""Each user's mail accounts: list, add, edit, remove and test the login. Only the signed-in user's
-own: another user's account id is a 404."""
+"""Each user's mail accounts: list, add, edit, remove, test the login and read the quota. Only the
+signed-in user's own: another user's account id is a 404."""
 
 from __future__ import annotations
 
@@ -14,8 +14,10 @@ from mailroom.accounts.autoconfig import Autoconfig, AutoconfigAnswer, address_d
 from mailroom.accounts.service import ListedAccount, StoredAccount, StoredEndpoint, StoredIdentity
 from mailroom.api.deps import AccountId, Context, CurrentUser, DbSession
 from mailroom.errors import Refusal
+from mailroom.mail import service as mail
 
 if TYPE_CHECKING:
+    from mailroom_core.mail import QuotaUsage
     from mailroom_core.store import Json
 
 logger = logging.getLogger(__name__)
@@ -59,6 +61,24 @@ class LoginTest(BaseModel):
     ok: bool
     code: str | None = None
     message: str | None = None
+
+
+class Usage(BaseModel):
+    used: int
+    limit: int
+
+    @classmethod
+    def of(cls, usage: QuotaUsage | None) -> Usage | None:
+        return None if usage is None else cls(used=usage.used, limit=usage.limit)
+
+
+class AccountQuota(BaseModel):
+    """Both null when the server keeps no quota (no QUOTA) or limits neither."""
+
+    account_id: int
+    storage: Usage | None
+    """In bytes."""
+    messages: Usage | None
 
 
 def _fields(body: AccountFields) -> dict[str, Json]:
@@ -124,6 +144,20 @@ def test_account(account_id: AccountId, ctx: Context, user: CurrentUser) -> Logi
         return LoginTest(ok=False, code=code, message=message)
     _log_test(user.id, account_id, "ok")
     return LoginTest(ok=True)
+
+
+@accounts_router.get("/{account_id}/quota")
+def account_quota(
+    account_id: AccountId, request: Request, ctx: Context, user: CurrentUser
+) -> AccountQuota:
+    """The quota the account's INBOX falls under, as its server said it at most 10 minutes ago;
+    a mailbox failure is the mail client's refusal."""
+    found = mail.quota(ctx, user.id, account_id, request.app.state.quotas)
+    return AccountQuota(
+        account_id=account_id,
+        storage=None if found is None else Usage.of(found.storage),
+        messages=None if found is None else Usage.of(found.messages),
+    )
 
 
 def _log_test(user_id: int, account_id: int, outcome: str) -> None:

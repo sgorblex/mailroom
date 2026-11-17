@@ -29,7 +29,13 @@ from imapclient import IMAPClient, SocketTimeout
 from imapclient.exceptions import IMAPClientAbortError, IMAPClientError
 
 from mailroom_core.config import ConfigError, CoreSettings, core_settings_or_issues, issues_text
-from mailroom_core.mail.errors import MailError, MailErrorCode, is_connection_error, mail_error
+from mailroom_core.mail.errors import (
+    MailError,
+    MailErrorCode,
+    is_connection_error,
+    is_temporary,
+    mail_error,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator, Mapping
@@ -68,6 +74,25 @@ class Capabilities:
     uidplus: bool
     condstore: bool
     special_use: bool
+    quota: bool
+    """QUOTA (RFC 2087, RFC 9208): the account's usage and limits can be asked."""
+
+
+@dataclass(frozen=True, slots=True)
+class QuotaUsage:
+    """One resource of a quota: how much is used, out of the limit."""
+
+    used: int
+    limit: int
+
+
+@dataclass(frozen=True, slots=True)
+class Quota:
+    """The quota INBOX falls under, by resource; None for one the server does not limit."""
+
+    storage: QuotaUsage | None
+    """In bytes (the server counts KiB)."""
+    messages: QuotaUsage | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -321,6 +346,14 @@ class MailConnections:
             return [_with_status(client, f) if f.selectable else f for f in folders]
 
         return self._on_connection(account_id, run)
+
+    def quota(self, account_id: int) -> Quota | None:
+        """The quota INBOX falls under (GETQUOTAROOT); None when the server has no QUOTA, answers
+        NO to GETQUOTAROOT (a temporary refusal aside) or puts no limit on storage or message
+        count."""
+        if not self.capabilities(account_id).quota:
+            return None
+        return self._on_connection(account_id, _quota)
 
     def special_folder(self, account_id: int, role: FolderRole) -> Folder:
         """The account's folder with `role`; `unsupported` if it has none."""
@@ -806,7 +839,34 @@ def _capabilities(raw: tuple[bytes, ...]) -> Capabilities:
         uidplus=b"UIDPLUS" in caps,
         condstore=b"CONDSTORE" in caps,
         special_use=b"SPECIAL-USE" in caps,
+        quota=b"QUOTA" in caps,
     )
+
+
+def _quota(client: IMAPClient) -> Quota | None:
+    try:
+        roots, quotas = client.get_quota_root("INBOX")
+    except IMAPClientAbortError:
+        raise
+    except IMAPClientError as error:
+        # imapclient words a NO as "<command> failed: ..." (a BAD is imaplib's "command error"):
+        # a server that offers QUOTA but keeps none for INBOX, as no QUOTA at all. A temporary
+        # refusal ([UNAVAILABLE]) is a failure, and so not kept.
+        if str(error).startswith("GETQUOTAROOT failed:") and not is_temporary(str(error)):
+            return None
+        raise
+    found: dict[str, QuotaUsage] = {}
+    for entry in quotas:
+        resource = entry.resource.upper()
+        if entry.quota_root in roots.quota_roots and resource not in found:
+            found[resource] = QuotaUsage(used=int(entry.usage), limit=int(entry.limit))
+    storage = found.get("STORAGE")
+    if storage is not None:
+        storage = QuotaUsage(used=storage.used * 1024, limit=storage.limit * 1024)
+    messages = found.get("MESSAGE")
+    if storage is None and messages is None:
+        return None
+    return Quota(storage=storage, messages=messages)
 
 
 # Folder roles, as imapflow assigns them (`commands/list.js`, `special-use.js`): the special-use

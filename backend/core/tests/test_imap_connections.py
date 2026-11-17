@@ -5,7 +5,10 @@ import threading
 from typing import TYPE_CHECKING
 
 import pytest
-from imapclient.exceptions import IMAPClientError
+from imapclient import IMAPClient
+from imapclient.exceptions import IMAPClientAbortError, IMAPClientError
+from imapclient.imapclient import MailboxQuotaRoots
+from imapclient.imapclient import Quota as RawQuota
 
 from mailroom_core.mail import (
     Capabilities,
@@ -13,11 +16,13 @@ from mailroom_core.mail import (
     MailboxContext,
     MailConnections,
     MailError,
+    Quota,
+    QuotaUsage,
     Reachability,
     Timeouts,
     retriable,
 )
-from mailroom_core.mail.imap import folders_from
+from mailroom_core.mail.imap import _capabilities, _quota, folders_from
 from mailroom_core.testing import (
     ImapTestServer,
     connections_for,
@@ -137,8 +142,99 @@ def _client_of(connections: MailConnections, path: str = "INBOX", *, read_only: 
 def test_opens_lazily_and_reports_capabilities(imap_server, connections) -> None:
     mail = connections(test_account(1, imap_server.unique_user("caps"), imap_server))
     assert mail.capabilities(1) == Capabilities(
-        gmail=False, thread=True, move=True, uidplus=True, condstore=True, special_use=True
+        gmail=False,
+        thread=True,
+        move=True,
+        uidplus=True,
+        condstore=True,
+        special_use=True,
+        quota=True,
     )
+
+
+@pytest.mark.parametrize(
+    ("raw", "offered"),
+    [((b"IMAP4rev1", b"QUOTA"), True), ((b"QUOTA=RES-STORAGE", b"quota"), True), ((), False)],
+)
+def test_reads_the_quota_capability(raw: tuple[bytes, ...], offered: bool) -> None:
+    assert _capabilities(raw).quota is offered
+
+
+class _QuotaClient:
+    def __init__(
+        self, roots: list[str], quotas: list[RawQuota], *, error: Exception | None = None
+    ) -> None:
+        self.answer = (MailboxQuotaRoots("INBOX", roots), quotas)
+        self.error = error
+
+    def get_quota_root(self, mailbox: str) -> tuple[MailboxQuotaRoots, list[RawQuota]]:
+        assert mailbox == "INBOX"
+        if self.error is not None:
+            raise self.error
+        return self.answer
+
+
+def _answered(typ: str, text: bytes) -> IMAPClientError:
+    """The error imapclient raises for GETQUOTAROOT answered `typ` (NO, say) with `text`."""
+    try:
+        # imapclient's own wording, so a change to it fails here.
+        IMAPClient._check_resp(None, "OK", "GETQUOTAROOT", typ, [text])  # type: ignore[arg-type]  # noqa: SLF001
+    except IMAPClientError as error:
+        return error
+    raise AssertionError(typ)
+
+
+def test_reads_inboxs_quota_in_bytes_from_its_own_roots() -> None:
+    client = _QuotaClient(
+        ["User quota", "Shared"],
+        [
+            RawQuota("Elsewhere", "STORAGE", 1, 2),
+            RawQuota("User quota", "storage", 10, 1024),
+            RawQuota("User quota", "MESSAGE", 3, 100),
+            RawQuota("Shared", "STORAGE", 99, 99),
+        ],
+    )
+    assert _quota(client) == Quota(  # type: ignore[arg-type]
+        storage=QuotaUsage(used=10 * 1024, limit=1024 * 1024),
+        messages=QuotaUsage(used=3, limit=100),
+    )
+
+
+def test_a_quota_root_without_storage_or_message_limits_is_none() -> None:
+    assert _quota(_QuotaClient([], [])) is None  # type: ignore[arg-type]
+    unlimited = _QuotaClient(["User quota"], [RawQuota("User quota", "MAILBOX", 1, 5)])
+    assert _quota(unlimited) is None  # type: ignore[arg-type]
+
+
+def test_a_no_to_getquotaroot_is_no_quota() -> None:
+    refused = _QuotaClient([], [], error=_answered("NO", b"[NONEXISTENT] No quota root"))
+    assert _quota(refused) is None  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        _answered("NO", b"[UNAVAILABLE] Quota backend down"),
+        IMAPClientError("GETQUOTAROOT command error: BAD [b'Unknown command']"),
+        IMAPClientAbortError("socket error: EOF"),
+    ],
+)
+def test_other_getquotaroot_errors_are_raised(error: Exception) -> None:
+    with pytest.raises(type(error)):
+        _quota(_QuotaClient([], [], error=error))  # type: ignore[arg-type]
+
+
+@pytest.mark.integration
+def test_reports_the_quota_of_inbox(imap_server, connections) -> None:
+    user = imap_server.unique_user("quota")
+    seed(imap_server, user, "INBOX", mime("one"))
+    mail = connections(test_account(1, user, imap_server))
+    quota = mail.quota(1)
+    assert quota is not None
+    assert quota.storage is not None
+    assert quota.storage.limit == 1024**3
+    assert 0 < quota.storage.used < quota.storage.limit
+    assert quota.messages == QuotaUsage(used=1, limit=100000)
 
 
 @pytest.mark.integration

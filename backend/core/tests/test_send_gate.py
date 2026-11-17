@@ -104,6 +104,7 @@ class StubConnections:
             uidplus=True,
             condstore=False,
             special_use=True,
+            quota=False,
         )
 
     def special_folder(self, _account: str, role: str) -> SimpleNamespace:

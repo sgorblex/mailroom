@@ -67,6 +67,9 @@ through the Vite proxy. Engineering baseline:
   when a server is outside the domain; when nothing is found it offers the presets, and the
   settings can always be entered by hand
   ([`requirements/mail-client.md`](requirements/mail-client.md) — *Account autoconfiguration*).
+  The API gives each account's storage and message quota as its server reports it (IMAP `QUOTA`),
+  apart from the listing ([`requirements/mail-client.md`](requirements/mail-client.md) — *Mailbox
+  quota*).
   How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md)
   — *Mail accounts*.
 - Where the instance reads and sends mail (mail or MCP), each user sets their own **mail limits**
