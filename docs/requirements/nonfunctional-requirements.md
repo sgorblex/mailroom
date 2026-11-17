@@ -6,7 +6,7 @@ Engineering baseline for Mailroom. Product scope: [`../REQUIREMENTS.md`](../REQU
 
 | Area | Choice |
 | --- | --- |
-| Backend | Python 3.14+ (dev pin 3.15 via mise), FastAPI, SQLAlchemy 2 (sync) + psycopg 3, Alembic, uv; PyJWT and httpx for OIDC |
+| Backend | Python 3.14+ (dev pin 3.15 via mise), FastAPI, SQLAlchemy 2 (sync) + psycopg 3, Alembic, uv; PyJWT and httpx for OIDC; dnspython and lxml for account autoconfiguration |
 | Worker | procrastinate (psycopg 3) on the app's database, `python -m mailroom.worker`; it also watches folders over IMAP IDLE |
 | Web | React 19, Vite, TanStack Router (code-based routes), Tailwind 4 + shadcn (`web/components.json`), i18next, Zod at the API boundary, ESLint `strictTypeChecked` (no Prettier) |
 | Database | PostgreSQL 18 |
@@ -364,15 +364,17 @@ bounded to one minor because the server relies on its handlers.
   not a positive integer a 422): list, add (`POST`, with the password and no id: the answer
   carries it), edit (`PUT /{id}`; no password keeps it), remove
   (`DELETE /{id}`, its switch too), `POST /{id}/test` (an IMAP login and logout:
-  `{"ok", "code", "message"}`). Responses carry `has_password`, never the password. An account
-  may have a `name` (1 to 64 characters, not blank) and a `colour` (`slate`, `red`, `orange`,
-  `amber`, `green`, `teal`, `sky`, `blue`, `violet` or `pink`), each null when unset and given
-  back as stored, so a client tells an unnamed account from one named after its login.
-  Responses also carry a read-only `display_name`, what to call the account: its `name`, else
-  its login (a body that sends it back has it ignored). An edit replaces `name` and `colour`
-  like the other fields. No two of a user's accounts share a name, compared trimmed and
-  whatever their case; unnamed accounts share none. An account's
-  folders and its Run filters switch are the filters' routes ([Filters](#filters)).
+  `{"ok", "code", "message"}`), `GET /autoconfig?address=` (suggested servers, stored nowhere:
+  [`mail-client.md`](mail-client.md) — *Account autoconfiguration*). Responses carry
+  `has_password`, never the password. An account may have a `name` (1 to 64 characters, not
+  blank) and a `colour` (`slate`, `red`, `orange`, `amber`, `green`, `teal`, `sky`, `blue`,
+  `violet` or `pink`), each null when unset and given back as stored, so a client tells an
+  unnamed account from one named after its login. Responses also carry a read-only
+  `display_name`, what to call the account: its `name`, else its login (a body that sends it
+  back has it ignored). An edit replaces `name` and `colour` like the other fields. No two of a
+  user's accounts share a name, compared trimmed and whatever their case; unnamed accounts
+  share none. An account's folders and its Run filters switch are the filters' routes
+  ([Filters](#filters)).
 - **Checks:** mailroom-core's config models (`core_settings_or_issues`) validate the whole document
   before each save; a refusal is 400 `{"detail": {"code": "invalid_account", "message",
   "issues": [{"path", "message"}]}}`, `path` inside the account. A name another of the user's
@@ -404,7 +406,8 @@ bounded to one minor because the server relies on its handlers.
   their fixed messages.
 - **Logs:** `account_added`, `account_changed`, `account_removed`, `account_tested` (with
   `outcome`), each with `user_id` and `account_id`, and the changes with `via` (`web`, or `mcp`
-  for the MCP server); never a login, a host or a password.
+  for the MCP server); `account_autoconfig` with `user_id` and `outcome` (the source, or
+  `none`); never a login, a host or a password.
 - **Removing a user** removes, in the same transaction, the app's rows about their accounts and
   mailroom-core's (`forget_user`: settings with their history, sealed passwords, send log). While
   a save of their accounts holds them past mailroom-core's lock timeout, nothing is removed: 503

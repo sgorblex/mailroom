@@ -4,14 +4,16 @@ own: another user's account id is a 404."""
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel, Field
 
 from mailroom.accounts import service
+from mailroom.accounts.autoconfig import Autoconfig, AutoconfigAnswer, address_domain
 from mailroom.accounts.service import ListedAccount, StoredAccount, StoredEndpoint, StoredIdentity
 from mailroom.api.deps import AccountId, Context, CurrentUser, DbSession
+from mailroom.errors import Refusal
 
 if TYPE_CHECKING:
     from mailroom_core.store import Json
@@ -67,6 +69,32 @@ def _fields(body: AccountFields) -> dict[str, Json]:
 @accounts_router.get("")
 def accounts(ctx: Context, db: DbSession, user: CurrentUser) -> list[ListedAccount]:
     return service.listed_accounts(ctx, db, user.id)
+
+
+@accounts_router.get("/autoconfig")
+async def autoconfig(
+    request: Request, user: CurrentUser, address: Annotated[str, Query(max_length=320)]
+) -> AutoconfigAnswer:
+    """Suggested servers for ``address``, or ``suggestion`` null; looked up, never stored.
+    ``invalid_address`` (400) for no address, ``autoconfig_busy`` (429) past the user's limit."""
+    domain = address_domain(address)
+    if domain is None:
+        msg = "Not an email address."
+        raise Refusal("invalid", "invalid_address", msg)
+    lookups: Autoconfig = request.app.state.autoconfig
+    if not lookups.limit.allow(f"user:{user.id}"):
+        msg = "Too many lookups: try again in a minute."
+        raise Refusal("busy", "autoconfig_busy", msg)
+    suggestion = await lookups.lookup(domain)
+    logger.info(
+        "account_autoconfig",
+        extra={
+            "event": "account_autoconfig",
+            "user_id": user.id,
+            "outcome": "none" if suggestion is None else suggestion.source,
+        },
+    )
+    return AutoconfigAnswer(domain=domain, suggestion=suggestion)
 
 
 @accounts_router.post("", status_code=201)

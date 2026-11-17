@@ -59,6 +59,11 @@ through the Vite proxy. Engineering baseline:
   colour, never by its id; the API and MCP name it by that id, a number. An account that is gone
   (named by a rule set or an audit record) shows as *Removed account*. A name another of the
   user's accounts has is refused on the name field.
+  The API suggests an address's IMAP and SMTP servers (the domain's own autoconfig, DNS SRV, its
+  MX against known providers, Thunderbird's ISPDB, then presets; Microsoft marked unsupported until
+  OAuth2), storing nothing, and flags a host the domain's autoconfig or SRV names outside the
+  domain; the *Accounts* form does not use it yet
+  ([`requirements/mail-client.md`](requirements/mail-client.md) — *Account autoconfiguration*).
   How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md)
   — *Mail accounts*.
 - Where the instance reads and sends mail (mail or MCP), each user sets their own **mail limits**

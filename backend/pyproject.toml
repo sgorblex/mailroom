@@ -37,6 +37,10 @@ dependencies = [
   # external issuer's JWTs checked against them (pyjwt). mcp brings both too.
   "httpx>=0.28",
   "pyjwt[crypto]>=2.10",
+  # Account autoconfiguration (mailroom.accounts.autoconfig): SRV and MX lookups, and the
+  # autoconfig documents' XML (mailroom-core brings lxml too, for rendering).
+  "dnspython>=2.9.2",
+  "lxml>=6.1.3",
 ]
 
 [dependency-groups]

@@ -966,6 +966,52 @@ no-store`. Capped at the user's `attachment_max_mb` (mailroom-core settings, def
 it, 413 `too_large`. A part that is not an attachment, an inline part or the calendar part of that
 message: 404 `not_found`.
 
+## Account autoconfiguration
+
+`GET /api/v1/accounts/autoconfig?address=<email>` (the signed-in user; mounted in every edition)
+suggests an account's IMAP and SMTP servers for an address
+(`mailroom.accounts.autoconfig`). It stores nothing: no account, no address, no log line naming
+either. It asks, in this order, and answers with the first that gives both servers:
+
+1. The domain's own autoconfig document, `https://autoconfig.<domain>/mail/config-v1.1.xml`, then
+   `https://<domain>/.well-known/autoconfig/mail/config-v1.1.xml`, without the address.
+2. DNS SRV records (RFC 6186): `_imaps._tcp` (implicit TLS), else `_imap._tcp` (STARTTLS); and
+   `_submissions._tcp` (implicit), else `_submission._tcp` (STARTTLS). The lowest priority wins,
+   then the highest weight; a target `.` means the service is not offered. Login: the address.
+3. The domain's MX against known providers: Google (Google Workspace) suggests Gmail; Microsoft
+   (`*.protection.outlook.com`) suggests Outlook, marked unsupported.
+4. Thunderbird's ISPDB, `https://autoconfig.thunderbird.net/v1.1/<domain>`, which learns only the
+   domain.
+5. Built-in presets by domain: Gmail, iCloud, Fastmail and Yahoo (each wanting an app password),
+   Outlook and the other Microsoft domains (unsupported until OAuth2).
+
+Every fetch goes through `safe_fetch` ([`nonfunctional-requirements.md`](nonfunctional-requirements.md)
+— *Security*), two redirects at most, 64 KiB and 8 s each. The XML is parsed by lxml with no
+entity resolved, no DTD loaded and no network. From a document, only IMAP and SMTP servers with
+implicit TLS or STARTTLS, a password login (or none named) and a username of `%EMAILADDRESS%` or
+`%EMAILLOCALPART%` count, the first IMAP server with the first SMTP server of the same login. DNS
+goes through dnspython, each query within 3 s. The whole lookup has 20 s, after which only a
+preset answers. An answer is kept for 10 minutes per domain (in memory, per process, at most
+1024 domains), and a timed-out lookup is not kept.
+
+The answer: `{"domain", "suggestion"}`, `domain` lower case and IDNA-encoded, `suggestion` null
+when nothing answered, else `source` (`autoconfig`, `srv`, `mx`, `ispdb` or `preset`), `origin`
+(the document's URL, the SRV names or the MX host; null for a preset), `provider` (a known one's
+name, also when its servers came from a document, else null), `supported` (false for Microsoft),
+`note` (`app_password`, `oauth_required` or null), `login` (`address` or `local_part`), and
+`imap` and `smtp` as `{"host", "port", "tls", "outside_domain"}`. Not an address: 400
+`invalid_address`. Each user may look up 20 addresses a minute (429 `autoconfig_busy`). Logged as
+`account_autoconfig` with `user_id` and the `outcome` (the source, or `none`).
+
+A host the domain's own autoconfig document or its SRV records name that is neither the domain nor
+a name under it (`imap.hoster.example` for `example.org`; `badexample.org` is not under it either)
+is kept, since domains often hand their mail to a hoster, but its endpoint says
+`"outside_domain": true`, so that the address's owner can check it before giving it the
+password. A known provider's own hosts are not outside: when the IMAP host names a provider
+(`provider` set), that provider's IMAP and SMTP hosts are never flagged, though another host
+beside them still is. Hosts from the ISPDB, the MX match and the presets are never flagged
+(`outside_domain` is false), since Mailroom or Thunderbird chose them, not the domain.
+
 ## MCP
 
 The same service layer backs the `mail_read` tool group
