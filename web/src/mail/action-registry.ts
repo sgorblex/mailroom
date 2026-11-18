@@ -1,0 +1,218 @@
+import {
+  Archive,
+  ArrowRightLeft,
+  BookmarkCheck,
+  BookmarkPlus,
+  FolderInput,
+  Forward,
+  Mail,
+  MailOpen,
+  PenLine,
+  Reply,
+  ReplyAll,
+  Star,
+  StarOff,
+  Trash2,
+  type LucideIcon,
+} from 'lucide-react'
+
+import type { AccountId } from '@/api/accounts.ts'
+import type { PrefillMode } from '@/api/mail.ts'
+
+import type { Compose } from './compose-context.ts'
+import type { TriageActions } from './triage-actions.ts'
+import type { Target } from './triage-context.ts'
+
+/** What an action is run on, and what it runs with. */
+export interface ActionContext {
+  /** The triage actions on the targets. */
+  actions: TriageActions
+  /** The message a reply or a forward answers: the open one, or the one a menu is for. */
+  message: Pick<Target, 'ref' | 'account_id'> | null
+  /** The account a new message is written on, where one can be. */
+  account: AccountId | null
+  compose: Pick<Compose, 'start' | 'canCompose'>
+  /** Opens (or, from the toolbar, toggles) the move picker or the account move picker. */
+  openPicker: (picker: 'move' | 'account') => void
+}
+
+/**
+ * A mail action: the toolbar, the shortcuts, the reply buttons and the context menus all read
+ * these. `triage` ones act on the targets and wait while another runs; `reply` and `compose` ones
+ * open the composer, and their keys wait while one is open.
+ */
+export interface MailAction {
+  id: string
+  group: 'reply' | 'compose' | 'triage'
+  /** Its name's key in the `mail` namespace. */
+  label: (context: ActionContext) => string
+  icon: (context: ActionContext) => LucideIcon
+  shortcut?: string
+  /** Whether it can be run on these targets. */
+  available: (context: ActionContext) => boolean
+  /** Whether the toolbar and the menus list it, when available; the key works either way. */
+  listed?: (context: ActionContext) => boolean
+  /** Why it is offered greyed out and not run (a key in the `mail` namespace), or `null`. */
+  unavailable?: (context: ActionContext) => string | null
+  run: (context: ActionContext) => void
+  /** Opens a picker instead of acting at once. */
+  picker?: 'move' | 'account'
+  destructive?: boolean
+}
+
+function answer(id: string, mode: PrefillMode, label: string, icon: LucideIcon, shortcut: string): MailAction {
+  return {
+    id,
+    group: 'reply',
+    label: () => label,
+    icon: () => icon,
+    shortcut,
+    available: ({ message }) => message !== null,
+    unavailable: ({ message, compose }) =>
+      message !== null && !compose.canCompose(message.account_id) ? 'compose.offHint' : null,
+    run: ({ message, compose }) => {
+      if (message !== null) {
+        compose.start({ kind: mode, account: message.account_id, ref: message.ref })
+      }
+    },
+  }
+}
+
+export const MAIL_ACTIONS: readonly MailAction[] = [
+  answer('reply', 'reply', 'compose.reply', Reply, 'r'),
+  answer('replyAll', 'reply_all', 'compose.replyAll', ReplyAll, 'a'),
+  answer('forward', 'forward', 'compose.forward', Forward, 'f'),
+  {
+    id: 'compose',
+    group: 'compose',
+    label: () => 'compose.compose',
+    icon: () => PenLine,
+    shortcut: 'c',
+    available: ({ account }) => account !== null,
+    unavailable: ({ account, compose }) => (account === null || compose.canCompose(account) ? null : 'compose.offHint'),
+    run: ({ account, compose }: ActionContext): void => {
+      if (account !== null) {
+        compose.start({ kind: 'new', account })
+      }
+    },
+  },
+  {
+    id: 'archive',
+    group: 'triage',
+    label: () => 'triage.archive',
+    icon: () => Archive,
+    shortcut: 'e',
+    available: ({ actions }) => actions.archive !== null,
+    run: ({ actions }) => actions.archive?.(),
+  },
+  {
+    id: 'trash',
+    group: 'triage',
+    label: () => 'triage.trash',
+    icon: () => Trash2,
+    shortcut: '#',
+    available: ({ actions }) => actions.trash !== null,
+    run: ({ actions }) => actions.trash?.(),
+    destructive: true,
+  },
+  {
+    id: 'move',
+    group: 'triage',
+    label: () => 'triage.move',
+    icon: () => FolderInput,
+    shortcut: 'v',
+    available: ({ actions }) => actions.moveChoices !== null,
+    run: ({ openPicker }: ActionContext): void => {
+      openPicker('move')
+    },
+    picker: 'move',
+  },
+  {
+    id: 'moveToAccount',
+    group: 'triage',
+    label: () => 'triage.moveToAccount',
+    icon: () => ArrowRightLeft,
+    available: ({ actions }) => actions.otherAccounts !== null,
+    run: ({ openPicker }: ActionContext): void => {
+      openPicker('account')
+    },
+    picker: 'account',
+  },
+  {
+    id: 'star',
+    group: 'triage',
+    label: ({ actions }) => (actions.star?.flagged === false ? 'triage.unstar' : 'triage.star'),
+    icon: ({ actions }) => (actions.star?.flagged === false ? StarOff : Star),
+    shortcut: 's',
+    available: ({ actions }) => actions.star !== null,
+    run: ({ actions }) => actions.star?.run(),
+  },
+  {
+    id: 'toSort',
+    group: 'triage',
+    label: ({ actions }) => (actions.toSort?.toSort === false ? 'triage.sorted' : 'triage.toSort'),
+    icon: ({ actions }) => (actions.toSort?.toSort === false ? BookmarkCheck : BookmarkPlus),
+    shortcut: 't',
+    available: ({ actions }) => actions.toSort !== null,
+    unavailable: ({ actions }) => (actions.toSort?.unsupported === true ? 'triage.toSortUnsupported' : null),
+    run: ({ actions }) => actions.toSort?.run(),
+  },
+  {
+    id: 'markRead',
+    group: 'triage',
+    label: () => 'triage.markRead',
+    icon: () => MailOpen,
+    available: ({ actions }) => actions.read?.seen === true,
+    run: ({ actions }) => actions.read?.run(),
+  },
+  {
+    // Listed when every target is read; `u` marks unread whatever they are.
+    id: 'markUnread',
+    group: 'triage',
+    label: () => 'triage.markUnread',
+    icon: () => Mail,
+    shortcut: 'u',
+    available: ({ actions }) => actions.markUnread !== null,
+    listed: ({ actions }) => actions.read?.seen === false,
+    run: ({ actions }) => actions.markUnread?.(),
+  },
+]
+
+/** The actions of `group` the toolbar or a menu lists for this context, in order. */
+export function listedActions(group: MailAction['group'], context: ActionContext): MailAction[] {
+  return MAIL_ACTIONS.filter(
+    (action) => action.group === group && action.available(context) && (action.listed?.(context) ?? true),
+  )
+}
+
+/** Why `action` is greyed out here, or `null` when it can run. */
+export function unavailableReason(action: MailAction, context: ActionContext): string | null {
+  return action.unavailable?.(context) ?? null
+}
+
+/** The action `key` runs, when it can run now: available, not greyed out, not waiting on `busy` or an open composer. */
+export function shortcutAction(
+  key: string,
+  context: ActionContext,
+  { busy, composing }: { busy: boolean; composing: boolean },
+): MailAction | undefined {
+  const action = MAIL_ACTIONS.find((each) => each.shortcut === key)
+  if (
+    action === undefined ||
+    (action.group === 'triage' ? busy : composing) ||
+    !action.available(context) ||
+    unavailableReason(action, context) !== null
+  ) {
+    return undefined
+  }
+  return action
+}
+
+/** The registry's action `id`; throws for one it lacks. */
+export function mailAction(id: string): MailAction {
+  const action = MAIL_ACTIONS.find((each) => each.id === id)
+  if (action === undefined) {
+    throw new Error(`no mail action ${id}`)
+  }
+  return action
+}

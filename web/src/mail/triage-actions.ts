@@ -29,14 +29,31 @@ export interface TriageActions {
   moveToAccount: (account: AccountId, folder: MailFolder, removal: MoveRemoval) => void
 }
 
+/** Nothing to act on. */
+export const NO_TRIAGE_ACTIONS: TriageActions = {
+  targets: [],
+  archive: null,
+  trash: null,
+  star: null,
+  toSort: null,
+  read: null,
+  markUnread: null,
+  moveChoices: null,
+  move: () => undefined,
+  otherAccounts: null,
+  moveToAccount: () => undefined,
+}
+
 /** Where a message may be moved to in an account: a selectable folder other than Drafts and Sent. */
 export function movableInto(folder: MailFolder): boolean {
   return folder.selectable && folder.role !== 'drafts' && folder.role !== 'sent'
 }
 
-export function useTriageActions(): TriageActions {
+/** The actions on `of`, by default what the toolbar acts on (the selection, else the open message). */
+export function useTriageActions(of?: Target[]): TriageActions {
   const triage = useTriage()
-  const { targets, run, flagsOf, loadFolders } = triage
+  const { run, flagsOf, loadFolders } = triage
+  const targets = of ?? triage.targets
   const keywordsOf = useAccountKeywords()
   const accounts = [...new Set(targets.map((target) => target.account_id))]
   const accountsKey = JSON.stringify(accounts)
@@ -55,19 +72,7 @@ export function useTriageActions(): TriageActions {
     })
 
   if (targets.length === 0) {
-    return {
-      targets,
-      archive: null,
-      trash: null,
-      star: null,
-      toSort: null,
-      read: null,
-      markUnread: null,
-      moveChoices: null,
-      move: () => undefined,
-      otherAccounts: null,
-      moveToAccount: () => undefined,
-    }
+    return NO_TRIAGE_ACTIONS
   }
 
   const canArchive =

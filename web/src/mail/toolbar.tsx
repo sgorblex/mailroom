@@ -1,19 +1,7 @@
-import { useEffect, useRef, useState, type ReactElement, type ReactNode, type Ref } from 'react'
+import { createElement, useEffect, useRef, useState, type ReactElement, type ReactNode, type Ref } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import {
-  Archive,
-  ArrowRightLeft,
-  BookmarkCheck,
-  BookmarkPlus,
-  FolderInput,
-  Mail,
-  MailOpen,
-  Star,
-  StarOff,
-  Trash2,
-  X,
-} from 'lucide-react'
+import { X } from 'lucide-react'
 
 import type { AccountId } from '@/api/accounts.ts'
 import { useAccountName } from '@/accounts/accounts-context.ts'
@@ -22,6 +10,8 @@ import { Button } from '@/components/ui/button.tsx'
 import { cn } from '@/lib/utils.ts'
 
 import { AccountMovePicker, MoveForGoodDialog } from './account-move-picker.tsx'
+import { listedActions, unavailableReason, type ActionContext } from './action-registry.ts'
+import { useCompose } from './compose-context.ts'
 import { MAIL_NS } from './i18n.ts'
 import { folderName, mailCodeMessage, mailErrorMessage } from './messages.ts'
 import { useTriageActions } from './triage-actions.ts'
@@ -42,6 +32,7 @@ export function Toolbar({ className }: { className?: string }): ReactElement | n
   const { t } = useTranslation(MAIL_NS)
   const triage = useTriage()
   const actions = useTriageActions()
+  const compose = useCompose()
   const trigger = useRef<HTMLButtonElement>(null)
   const pickerWasOpen = useRef(false)
   const picker = triage.picker && actions.moveChoices !== null
@@ -73,6 +64,20 @@ export function Toolbar({ className }: { className?: string }): ReactElement | n
   if (actions.targets.length === 0 && triage.outcome === null) {
     return null
   }
+  const context: ActionContext = {
+    actions,
+    message: null,
+    account: null,
+    compose,
+    // The toolbar's buttons open and close their pickers.
+    openPicker: (kind) => {
+      if (kind === 'move') {
+        triage.setPicker(!picker)
+      } else {
+        triage.setAccountPicker(!showAccountPicker)
+      }
+    },
+  }
   const disabled = triage.busy
   return (
     <div className={cn('flex flex-col gap-2', className)}>
@@ -86,75 +91,25 @@ export function Toolbar({ className }: { className?: string }): ReactElement | n
           <span className="mr-auto text-sm text-muted-foreground">
             {triage.selection.size > 0 ? t('triage.selected', { count: triage.selection.size }) : t('triage.thisMessage')}
           </span>
-          {actions.archive !== null && (
-            <ToolButton label={t('triage.archive')} shortcut="e" disabled={disabled} onClick={actions.archive}>
-              <Archive aria-hidden="true" />
-            </ToolButton>
-          )}
-          {actions.trash !== null && (
-            <ToolButton label={t('triage.trash')} shortcut="#" disabled={disabled} onClick={actions.trash}>
-              <Trash2 aria-hidden="true" />
-            </ToolButton>
-          )}
-          {actions.moveChoices !== null && (
-            <ToolButton
-              ref={trigger}
-              label={t('triage.move')}
-              shortcut="v"
-              disabled={disabled}
-              expanded={picker}
-              onClick={() => {
-                triage.setPicker(!picker)
-              }}
-            >
-              <FolderInput aria-hidden="true" />
-            </ToolButton>
-          )}
-          {actions.otherAccounts !== null && (
-            <ToolButton
-              ref={accountTrigger}
-              label={t('triage.moveToAccount')}
-              shortcut={undefined}
-              disabled={disabled}
-              expanded={showAccountPicker}
-              onClick={() => {
-                triage.setAccountPicker(!showAccountPicker)
-              }}
-            >
-              <ArrowRightLeft aria-hidden="true" />
-            </ToolButton>
-          )}
-          {actions.star !== null && (
-            <ToolButton
-              label={actions.star.flagged ? t('triage.star') : t('triage.unstar')}
-              shortcut="s"
-              disabled={disabled}
-              onClick={actions.star.run}
-            >
-              {actions.star.flagged ? <Star aria-hidden="true" /> : <StarOff aria-hidden="true" />}
-            </ToolButton>
-          )}
-          {actions.toSort !== null && (
-            <ToolButton
-              label={actions.toSort.toSort ? t('triage.toSort') : t('triage.sorted')}
-              shortcut="t"
-              disabled={disabled}
-              unavailable={actions.toSort.unsupported ? t('triage.toSortUnsupported') : undefined}
-              onClick={actions.toSort.run}
-            >
-              {actions.toSort.toSort ? <BookmarkPlus aria-hidden="true" /> : <BookmarkCheck aria-hidden="true" />}
-            </ToolButton>
-          )}
-          {actions.read !== null && (
-            <ToolButton
-              label={actions.read.seen ? t('triage.markRead') : t('triage.markUnread')}
-              shortcut={actions.read.seen ? undefined : 'u'}
-              disabled={disabled}
-              onClick={actions.read.run}
-            >
-              {actions.read.seen ? <MailOpen aria-hidden="true" /> : <Mail aria-hidden="true" />}
-            </ToolButton>
-          )}
+          {listedActions('triage', context).map((action) => {
+            const reason = unavailableReason(action, context)
+            return (
+              <ToolButton
+                key={action.id}
+                ref={action.picker === 'move' ? trigger : action.picker === 'account' ? accountTrigger : undefined}
+                label={t(action.label(context))}
+                shortcut={action.shortcut}
+                disabled={disabled}
+                unavailable={reason === null ? undefined : t(reason)}
+                expanded={action.picker === 'move' ? picker : action.picker === 'account' ? showAccountPicker : undefined}
+                onClick={() => {
+                  action.run(context)
+                }}
+              >
+                {createElement(action.icon(context), { 'aria-hidden': true })}
+              </ToolButton>
+            )
+          })}
         </div>
       )}
       {picker && actions.moveChoices !== null && (

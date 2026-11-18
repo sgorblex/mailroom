@@ -2,10 +2,10 @@ import { useEffect, useRef } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 
 import type { AccountId } from '@/api/accounts.ts'
-import type { PrefillMode } from '@/api/mail.ts'
 
-import { useCompose, type Compose } from './compose-context.ts'
-import { useTriageActions, type TriageActions } from './triage-actions.ts'
+import { shortcutAction, type ActionContext } from './action-registry.ts'
+import { useCompose } from './compose-context.ts'
+import { useTriageActions } from './triage-actions.ts'
 import { useTriage } from './triage-context.ts'
 
 /** Inputs whose keys are not text: a checkbox just ticked still lets `e` archive. */
@@ -30,11 +30,10 @@ const REPEATING = new Set(['j', 'k'])
 
 /**
  * The mail screen's keyboard shortcuts (`docs/requirements/mail-client.md`): j/k move through
- * the list, x selects, e archives, # trashes, s stars, t marks To sort (or sorted), u marks
- * unread, v opens the move picker, Escape closes it or clears the selection; r, a and f reply,
- * reply to all and forward the open message, c writes a new one on `accountId`, and those four
- * wait while a composer is open or for an account in send mode off. None while typing, none with
- * Ctrl or Meta (but for AltGr, which types characters), and no letter with Alt.
+ * the list, x selects, Escape closes a picker or clears the selection; the other keys are the
+ * action registry's, on the selection or the open message (a reply on the open one, a new
+ * message on `accountId`). None while typing, none with Ctrl or Meta (but for AltGr, which types
+ * characters), and no letter with Alt.
  */
 export function useMailShortcuts(accountId: AccountId): void {
   const triage = useTriage()
@@ -61,27 +60,8 @@ export function useMailShortcuts(accountId: AccountId): void {
       return true
     }
 
-    function answer(mode: PrefillMode, writer: Compose, state: typeof triage): boolean {
-      const open = state.open
-      if (open === null || writer.session !== null || !writer.canCompose(open.account_id)) {
-        return false
-      }
-      writer.start({ kind: mode, account: open.account_id, ref: open.ref })
-      return true
-    }
-
-    function handled(
-      key: string,
-      current: { triage: typeof triage; actions: TriageActions; compose: Compose; accountId: AccountId },
-    ): boolean {
+    function handled(key: string, current: typeof latest.current): boolean {
       const { triage: state, actions: offered, compose: writer } = current
-      const run = (action: (() => void) | null | undefined): boolean => {
-        if (action === null || action === undefined || state.busy) {
-          return false
-        }
-        action()
-        return true
-      }
       switch (key) {
         case 'j':
           return openAt(1)
@@ -95,32 +75,6 @@ export function useMailShortcuts(accountId: AccountId): void {
           state.select([open], !state.selection.has(open.ref))
           return true
         }
-        case 'e':
-          return run(offered.archive)
-        case '#':
-          return run(offered.trash)
-        case 's':
-          return run(offered.star?.run)
-        case 't':
-          return run(offered.toSort === null || offered.toSort.unsupported ? null : offered.toSort.run)
-        case 'u':
-          return run(offered.markUnread)
-        case 'v':
-          return run(offered.moveChoices === null ? null : () => {
-            state.setPicker(true)
-          })
-        case 'r':
-          return answer('reply', writer, state)
-        case 'a':
-          return answer('reply_all', writer, state)
-        case 'f':
-          return answer('forward', writer, state)
-        case 'c':
-          if (writer.session !== null || !writer.canCompose(current.accountId)) {
-            return false
-          }
-          writer.start({ kind: 'new', account: current.accountId })
-          return true
         case 'Escape':
           if (state.picker) {
             state.setPicker(false)
@@ -135,9 +89,26 @@ export function useMailShortcuts(accountId: AccountId): void {
             return true
           }
           return false
-        default:
-          return false
       }
+      const context: ActionContext = {
+        actions: offered,
+        message: state.open,
+        account: current.accountId,
+        compose: writer,
+        openPicker: (picker) => {
+          if (picker === 'move') {
+            state.setPicker(true)
+          } else {
+            state.setAccountPicker(true)
+          }
+        },
+      }
+      const action = shortcutAction(key, context, { busy: state.busy, composing: writer.session !== null })
+      if (action === undefined) {
+        return false
+      }
+      action.run(context)
+      return true
     }
 
     function onKeyDown(event: KeyboardEvent): void {

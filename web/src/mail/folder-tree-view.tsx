@@ -21,7 +21,7 @@ import {
 
 import type { AccountId } from '@/api/accounts.ts'
 import type { FolderRole, MailFolder } from '@/api/mail.ts'
-import { Menu, type MenuItem } from '@/components/ui/menu.tsx'
+import { Menu, type MenuItem, type MenuPoint } from '@/components/ui/menu.tsx'
 import { cn } from '@/lib/utils.ts'
 
 import type { FolderDialog } from './folder-dialogs.tsx'
@@ -98,8 +98,11 @@ interface TreeState {
   setOpen: (path: string, open: boolean) => void
   tabStop: string | undefined
   setFocused: (path: string) => void
-  /** Opens the actions menu of the folder at `path`; absent where there are none. */
-  openMenu: ((path: string) => void) | null
+  /**
+   * Opens the actions menu of the folder at `path`, or closes it if open; at `point`, as a context
+   * menu, it always opens there. Absent where there are none.
+   */
+  openMenu: ((path: string, point?: MenuPoint) => void) | null
   /** Whether the folder at `path` is listed with its subfolders. */
   subfoldersOf: (path: string) => boolean
   /** Lists the folder at `path` with its subfolders or without, remembering the choice. */
@@ -110,10 +113,11 @@ interface TreeState {
  * An account's folders as a tree (the ARIA tree pattern): each level opens and closes, ↑ and ↓
  * move, → and ← open and close, Enter opens the folder. A level that holds only folders is not a
  * link, and a closed one shows the unread count of everything under it. With `onAction`, each
- * listed folder has a menu (its ⋯ button, or Shift+F10 / the context-menu key): a new subfolder,
- * rename or move, delete, each disabled with the reason where the server would refuse it. A
- * folder with subfolders to list is listed with them or without (its menu's "Include subfolders",
- * or the button on its row), as this browser last chose for it; its count is then theirs too.
+ * listed folder has a menu (its ⋯ button, a right-click but with Shift, or Shift+F10 / the
+ * context-menu key): a new subfolder, rename or move, delete, each disabled with the reason where
+ * the server would refuse it. A folder with subfolders to list is listed with them or without (its
+ * menu's "Include subfolders", or the button on its row), as this browser last chose for it; its
+ * count is then theirs too.
  */
 export function FolderTree({
   accountId,
@@ -138,7 +142,11 @@ export function FolderTree({
   const roots = useMemo(() => folderTree(folders), [folders])
   const [expanded, setOpen] = useExpanded(accountId, folders, current, reveal)
   const [focused, setFocused] = useState<string | null>(null)
-  const [menuFor, setMenuFor] = useState<{ node: FolderNode & { folder: MailFolder }; anchor: HTMLElement } | null>(null)
+  const [menuFor, setMenuFor] = useState<{
+    node: FolderNode & { folder: MailFolder }
+    anchor: HTMLElement
+    point?: MenuPoint
+  } | null>(null)
   const closeMenu = useCallback(() => {
     setMenuFor(null)
   }, [])
@@ -158,15 +166,15 @@ export function FolderTree({
   const openMenu =
     onAction === undefined
       ? null
-      : (path: string): void => {
-          if (menuFor?.node.path === path) {
+      : (path: string, point?: MenuPoint): void => {
+          if (menuFor?.node.path === path && point === undefined) {
             setMenuFor(null)
             return
           }
           const node = shown.find((entry) => entry.node.path === path)?.node
           const anchor = itemAt(path)
           if (node?.folder != null && anchor !== undefined) {
-            setMenuFor({ node: { ...node, folder: node.folder }, anchor })
+            setMenuFor({ node: { ...node, folder: node.folder }, anchor, point })
           }
         }
 
@@ -248,6 +256,8 @@ export function FolderTree({
       </ul>
       {menuFor !== null && onAction !== undefined && (
         <Menu
+          key={menuFor.point === undefined ? menuFor.node.path : `${menuFor.node.path} ${String(menuFor.point.x)} ${String(menuFor.point.y)}`}
+          point={menuFor.point}
           label={t('folderActions.menu', { name: menuFor.node.folder.role === null ? menuFor.node.name : t(`roles.${menuFor.node.folder.role}`) })}
           anchor={menuFor.anchor}
           items={actionItems(t, menuFor.node, accountDelimiter(folders) !== null, subfoldersOf(menuFor.node.path), setSubfolders, onAction)}
@@ -356,6 +366,13 @@ function TreeItem({ node, level, tree }: { node: FolderNode; level: number; tree
   return (
     <li role="none" className="flex flex-col">
       <div
+        onContextMenu={(event) => {
+          // Shift+right-click keeps the browser's own menu.
+          if (menu && !event.shiftKey) {
+            event.preventDefault()
+            tree.openMenu?.(node.path, { x: event.clientX, y: event.clientY })
+          }
+        }}
         className={cn(
           'group/row flex items-center rounded-md',
           current ? 'bg-accent font-medium text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground',

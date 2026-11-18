@@ -93,7 +93,8 @@
     "unread": "Unread",
     "flagged": "Starred",
     "toSort": "To sort",
-    "hasAttachments": "Has attachments"
+    "hasAttachments": "Has attachments",
+    "menu": "Actions for {{subject}}"
   },
   "search": {
     "label": "Search mail",
@@ -192,6 +193,7 @@
     "toSort": "Mark To sort",
     "sorted": "Mark sorted",
     "toSortUnsupported": "the mail server cannot keep the To sort mark",
+    "busy": "another action is still running",
     "markRead": "Mark as read",
     "markUnread": "Mark as unread",
     "dismiss": "Dismiss",
