@@ -29,6 +29,10 @@ if TYPE_CHECKING:
 
 type SendMode = Literal["off", "drafts", "approval", "direct"]
 SEND_MODES: Final[tuple[SendMode, ...]] = get_args(SendMode.__value__)
+type AccountColour = Literal[
+    "slate", "red", "orange", "amber", "green", "teal", "sky", "blue", "violet", "pink"
+]
+"""The colours an account can be shown in."""
 
 MAX_SAFE_INTEGER: Final = 2**53 - 1
 """The largest integer a JavaScript number holds exactly: the TypeScript server's bound on
@@ -105,6 +109,15 @@ _RecipientRule = Annotated[
 _Count = Annotated[StrictInt, Field(ge=1, le=MAX_SAFE_INTEGER)]
 
 
+def _not_blank(text: str) -> str:
+    if not text.strip():
+        raise config_problem("must not be blank")
+    return text
+
+
+_AccountName = Annotated[StrictStr, Field(min_length=1, max_length=64), AfterValidator(_not_blank)]
+
+
 class StrictModel(BaseModel):
     """Base of the config models: unknown keys are an error, what is parsed is read-only."""
 
@@ -138,9 +151,13 @@ type AccountAuth = PasswordAuth
 
 
 class AccountConfig(StrictModel):
-    """One mail account: login, send mode, servers, identities and auto-approved recipients."""
+    """One mail account: login, send mode, servers, identities and auto-approved recipients;
+    the name and colour it is shown with."""
 
     id: Slug
+    name: _AccountName | None = None
+    """What the user calls the account; unset, listings show its id."""
+    colour: AccountColour | None = None
     login: NonEmpty
     send_mode: SendMode
     auth: AccountAuth

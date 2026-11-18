@@ -23,7 +23,16 @@ AccountId = Annotated[
     str, Field(min_length=1, max_length=64, description="An account id, from accounts_list.")
 ]
 
-ACCOUNT_FIELDS: Final = {"id", "login", "has_password", "run_filters", "send_mode", "identities"}
+ACCOUNT_FIELDS: Final = {
+    "id",
+    "name",
+    "display_name",
+    "login",
+    "has_password",
+    "run_filters",
+    "send_mode",
+    "identities",
+}
 
 
 class NoArguments(Arguments):
@@ -89,7 +98,9 @@ ACCOUNT_TOOLS: Final[tuple[Tool[Any], ...]] = (
         name="accounts_list",
         title="List accounts",
         description=(
-            "The user's mail accounts: id, login, whether a password is stored, the send mode "
+            "The user's mail accounts: id (what the other tools take), name (what the user "
+            "named the account, null when unnamed), display_name (what to call it: its name, "
+            "else its id), login, whether a password is stored, the send mode "
             "(what an agent may send: off, drafts, approval or direct) and the identities it "
             "can send as (`address`, `name`, and which is the `default`); where the instance "
             "runs filters, also whether Run filters is on (`run_filters`: rule sets run only on "

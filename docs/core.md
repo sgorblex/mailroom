@@ -33,7 +33,7 @@ the tools answer with, and the app's MCP writes thin tools over it. The filter e
 
 | Module | Holds |
 |---|---|
-| `config` | The settings document: accounts, identities, send modes, limits (`CoreSettings`) |
+| `config` | The settings document: accounts (with an optional name and colour), identities, send modes, limits (`CoreSettings`) |
 | `crypto` | Sealed secrets |
 | `store` | `AccountStore` and core's migrations, in schema `core` |
 | `render` | Bodies to text, quotes, the untrusted-content envelope, `safe_html` |
