@@ -94,7 +94,9 @@
     "flagged": "Speciale",
     "toSort": "Da smistare",
     "hasAttachments": "Con allegati",
-    "menu": "Azioni per {{subject}}"
+    "menu": "Azioni per {{subject}}",
+    "dragging_one": "{{count}} messaggio",
+    "dragging_other": "{{count}} messaggi"
   },
   "search": {
     "label": "Cerca nella posta",

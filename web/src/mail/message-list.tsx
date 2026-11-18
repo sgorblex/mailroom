@@ -17,6 +17,7 @@ import { listedActions, unavailableReason, type ActionContext } from './action-r
 import { useCompose } from './compose-context.ts'
 import { addressLabel, formatListDate } from './format.ts'
 import { MAIL_NS } from './i18n.ts'
+import { endMessageDrag, startMessageDrag } from './message-drag.ts'
 import { ACCOUNT_NOT_FOUND, mailCodeMessage, mailErrorMessage } from './messages.ts'
 import { TOAST_RETURN_ID } from './toast.tsx'
 import { useTriageActions } from './triage-actions.ts'
@@ -127,6 +128,13 @@ export function MessageList({
               <li
                 key={message.ref}
                 className="group/row flex items-start"
+                // Dragged onto a folder, it moves the selection when it is in it, else itself alone.
+                draggable
+                onDragStart={(event) => {
+                  const targets = triage.selection.has(message.ref) ? [...triage.selection.values()] : [message]
+                  startMessageDrag(event.dataTransfer, targets, t('list.dragging', { count: targets.length }))
+                }}
+                onDragEnd={endMessageDrag}
                 onContextMenu={(event) => {
                   const anchor = event.currentTarget.querySelector('a')
                   // Shift+right-click keeps the browser's own menu.
@@ -412,6 +420,8 @@ function MessageRow({ message, source }: { message: MessageItem; source: 'accoun
       aria-current={message.ref === open ? 'true' : undefined}
       aria-haspopup="menu"
       aria-keyshortcuts="Shift+F10"
+      // The row drags its messages, not the link's URL.
+      draggable={false}
       className={cn(
         'flex min-w-0 flex-1 flex-col gap-0.5 p-3 text-sm hover:bg-accent',
         message.ref === open && 'bg-accent',

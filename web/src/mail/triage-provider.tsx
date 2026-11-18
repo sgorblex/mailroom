@@ -27,6 +27,7 @@ import {
   roleFolder,
   TriageContext,
   type Action,
+  type Destination,
   type Failure,
   type Flags,
   type FolderState,
@@ -51,6 +52,7 @@ interface Scope {
   outcome: Outcome | null
   picker: boolean
   accountPicker: boolean
+  accountPickerInto: Destination | null
 }
 
 const NO_SELECTION: ReadonlyMap<string, Target> = new Map()
@@ -58,7 +60,7 @@ const NO_OVERRIDES: ReadonlyMap<string, Flags> = new Map()
 const NO_ACCOUNTS: readonly AccountId[] = []
 
 function freshScope(key: string): Scope {
-  return { key, selection: NO_SELECTION, overrides: NO_OVERRIDES, outcome: null, picker: false, accountPicker: false }
+  return { key, selection: NO_SELECTION, overrides: NO_OVERRIDES, outcome: null, picker: false, accountPicker: false, accountPickerInto: null }
 }
 
 /** Where a move-like action puts an account's messages; `undefined` while that is not known. */
@@ -622,8 +624,12 @@ export function TriageProvider({
     [sourceKey, updateScope],
   )
   const setAccountPicker = useCallback(
-    (accountPicker: boolean) => {
-      updateScope(sourceKey, (current) => ({ accountPicker, picker: accountPicker ? false : current.picker }))
+    (accountPicker: boolean, into?: Destination) => {
+      updateScope(sourceKey, (current) => ({
+        accountPicker,
+        accountPickerInto: into ?? null,
+        picker: accountPicker ? false : current.picker,
+      }))
     },
     [sourceKey, updateScope],
   )
@@ -650,6 +656,7 @@ export function TriageProvider({
     picker: scope.picker,
     setPicker,
     accountPicker: scope.accountPicker,
+    accountPickerInto: scope.accountPickerInto,
     setAccountPicker,
   }
   return <TriageContext value={value}>{children}</TriageContext>

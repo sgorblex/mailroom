@@ -1,4 +1,14 @@
-import { useCallback, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactElement, type ReactNode } from 'react'
+import {
+  useCallback,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type KeyboardEvent,
+  type ReactElement,
+  type ReactNode,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { Link, useNavigate } from '@tanstack/react-router'
@@ -24,6 +34,8 @@ import type { FolderRole, MailFolder } from '@/api/mail.ts'
 import { Menu, type MenuItem, type MenuPoint } from '@/components/ui/menu.tsx'
 import { cn } from '@/lib/utils.ts'
 
+import { dropAction, type ActionContext } from './action-registry.ts'
+import { useCompose } from './compose-context.ts'
 import type { FolderDialog } from './folder-dialogs.tsx'
 import {
   accountDelimiter,
@@ -39,9 +51,11 @@ import {
   type FolderRefusal,
 } from './folder-tree.ts'
 import { MAIL_NS } from './i18n.ts'
+import { carriesMessages, endMessageDrag, useDraggedMessages } from './message-drag.ts'
 import { storedPaths, storePaths } from './stored-paths.ts'
 import { storedSubfolders, storeSubfolders } from './subfolder-view.ts'
-import { isSameFolder } from './triage-context.ts'
+import { useTriageActions } from './triage-actions.ts'
+import { isSameFolder, useTriage, type Destination, type Target } from './triage-context.ts'
 
 const ROLE_ICONS: Record<FolderRole, LucideIcon> = {
   inbox: Inbox,
@@ -107,6 +121,10 @@ interface TreeState {
   subfoldersOf: (path: string) => boolean
   /** Lists the folder at `path` with its subfolders or without, remembering the choice. */
   setSubfolders: (path: string, on: boolean) => void
+  /** Whether the messages being dragged can be dropped on `folder`; `null` while none are. */
+  canDrop: ((folder: MailFolder) => boolean) | null
+  /** Moves the messages being dragged to `folder`, or opens the account picker on it. */
+  dropOn: (folder: MailFolder) => void
 }
 
 /**
@@ -117,7 +135,8 @@ interface TreeState {
  * context-menu key): a new subfolder, rename or move, delete, each disabled with the reason where
  * the server would refuse it. A folder with subfolders to list is listed with them or without (its
  * menu's "Include subfolders", or the button on its row), as this browser last chose for it; its
- * count is then theirs too.
+ * count is then theirs too. Messages dragged from the list drop on a folder they can move to,
+ * highlighted while over it.
  */
 export function FolderTree({
   accountId,
@@ -151,6 +170,7 @@ export function FolderTree({
     setMenuFor(null)
   }, [])
   const treeRef = useRef<HTMLUListElement>(null)
+  const dropping = useDrop(accountId)
   const shown = visibleNodes(roots, expanded)
   const tabStop =
     shown.find(({ node }) => node.path === focused)?.node.path ??
@@ -245,7 +265,18 @@ export function FolderTree({
     storeSubfolders(accountId, path, on)
     void navigate({ to: '/mail', search: { account: accountId, folder: path, sub: on } })
   }
-  const tree: TreeState = { accountId, current, expanded, setOpen, tabStop, setFocused, openMenu, subfoldersOf, setSubfolders }
+  const tree: TreeState = {
+    accountId,
+    current,
+    expanded,
+    setOpen,
+    tabStop,
+    setFocused,
+    openMenu,
+    subfoldersOf,
+    setSubfolders,
+    ...dropping,
+  }
   return (
     <>
       {/* The keys belong to the treeitems inside; the tree handles them in one place. */}
@@ -266,6 +297,50 @@ export function FolderTree({
       )}
     </>
   )
+}
+
+/**
+ * Dropping the messages dragged from the list on a folder of `accountId`: the registry's move
+ * within their account, or its move to another account, whose picker opens on that folder. A
+ * picker acts on the selection, so an unselected row dragged alone becomes it.
+ */
+function useDrop(accountId: AccountId): Pick<TreeState, 'canDrop' | 'dropOn'> {
+  const triage = useTriage()
+  const compose = useCompose()
+  const dragged = useDraggedMessages()
+  const actions = useTriageActions(dragged ?? [])
+  if (dragged === null) {
+    return { canDrop: null, dropOn: () => undefined }
+  }
+  const makeSelection = (targets: Target[]): void => {
+    if (targets.length !== triage.selection.size || !targets.every((target) => triage.selection.has(target.ref))) {
+      triage.clearSelection()
+      triage.select(targets, true)
+    }
+  }
+  const context = (folder: MailFolder): ActionContext & { into: Destination } => ({
+    actions,
+    message: null,
+    account: null,
+    compose,
+    into: { account: accountId, folder },
+    openPicker: (picker, into) => {
+      makeSelection(dragged)
+      if (picker === 'move') {
+        triage.setPicker(true)
+      } else {
+        triage.setAccountPicker(true, into)
+      }
+    },
+  })
+  return {
+    canDrop: (folder) => !triage.busy && dropAction(context(folder)) !== undefined,
+    dropOn: (folder) => {
+      const action = triage.busy ? undefined : dropAction(context(folder))
+      endMessageDrag()
+      action?.run(context(folder))
+    },
+  }
 }
 
 const REFUSALS = {
@@ -334,6 +409,20 @@ function TreeItem({ node, level, tree }: { node: FolderNode; level: number; tree
   const shownName = role === null ? node.name : t(`roles.${role}`)
   const name = merged ? t('folders.withSubfolders', { name: shownName }) : shownName
   const menu = folder !== null && tree.openMenu !== null
+  const [over, setOver] = useState(false)
+  // A drag that ended elsewhere, or was cancelled over it, leaves nothing highlighted.
+  if (over && tree.canDrop === null) {
+    setOver(false)
+  }
+  const droppable = (transfer: DataTransfer): boolean =>
+    folder !== null && tree.canDrop !== null && carriesMessages(transfer) && tree.canDrop(folder)
+  const dragOver = (event: DragEvent<HTMLDivElement>): void => {
+    if (droppable(event.dataTransfer)) {
+      event.preventDefault()
+      event.dataTransfer.dropEffect = 'move'
+      setOver(true)
+    }
+  }
 
   const content: ReactNode = (
     <>
@@ -373,9 +462,24 @@ function TreeItem({ node, level, tree }: { node: FolderNode; level: number; tree
             tree.openMenu?.(node.path, { x: event.clientX, y: event.clientY })
           }
         }}
+        onDragEnter={dragOver}
+        onDragOver={dragOver}
+        onDragLeave={(event) => {
+          if (!(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) {
+            setOver(false)
+          }
+        }}
+        onDrop={(event) => {
+          setOver(false)
+          if (folder !== null && droppable(event.dataTransfer)) {
+            event.preventDefault()
+            tree.dropOn(folder)
+          }
+        }}
         className={cn(
           'group/row flex items-center rounded-md',
           current ? 'bg-accent font-medium text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+          over && 'bg-accent text-foreground ring-2 ring-ring',
         )}
       >
         {branch ? (

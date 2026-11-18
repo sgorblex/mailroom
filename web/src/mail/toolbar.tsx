@@ -123,7 +123,10 @@ export function Toolbar({ className }: { className?: string }): ReactElement | n
       )}
       {showAccountPicker && actions.otherAccounts !== null && (
         <AccountMovePicker
+          // A drop on another folder opens it anew there.
+          key={triage.accountPickerInto === null ? '' : `${String(triage.accountPickerInto.account)} ${triage.accountPickerInto.folder.path}`}
           accounts={actions.otherAccounts}
+          into={triage.accountPickerInto}
           onChoose={(account: AccountId, folder: MailFolder, removal: MoveRemoval) => {
             triage.setAccountPicker(false)
             if (removal === 'delete') {

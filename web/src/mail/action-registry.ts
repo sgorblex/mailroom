@@ -20,8 +20,8 @@ import type { AccountId } from '@/api/accounts.ts'
 import type { PrefillMode } from '@/api/mail.ts'
 
 import type { Compose } from './compose-context.ts'
-import type { TriageActions } from './triage-actions.ts'
-import type { Target } from './triage-context.ts'
+import { movableInto, type TriageActions } from './triage-actions.ts'
+import { isSameFolder, type Destination, type Target } from './triage-context.ts'
 
 /** What an action is run on, and what it runs with. */
 export interface ActionContext {
@@ -32,8 +32,10 @@ export interface ActionContext {
   /** The account a new message is written on, where one can be. */
   account: AccountId | null
   compose: Pick<Compose, 'start' | 'canCompose'>
-  /** Opens (or, from the toolbar, toggles) the move picker or the account move picker. */
-  openPicker: (picker: 'move' | 'account') => void
+  /** Opens (or, from the toolbar, toggles) the move picker or the account move picker, on `into` where a drop chose it. */
+  openPicker: (picker: 'move' | 'account', into?: Destination) => void
+  /** Where a drag dropped the targets: a move goes there instead of opening a picker. */
+  into?: Destination
 }
 
 /**
@@ -124,8 +126,12 @@ export const MAIL_ACTIONS: readonly MailAction[] = [
     icon: () => FolderInput,
     shortcut: 'v',
     available: ({ actions }) => actions.moveChoices !== null,
-    run: ({ openPicker }: ActionContext): void => {
-      openPicker('move')
+    run: ({ actions, openPicker, into }: ActionContext): void => {
+      if (into === undefined) {
+        openPicker('move')
+      } else {
+        actions.move(into.folder)
+      }
     },
     picker: 'move',
   },
@@ -135,8 +141,8 @@ export const MAIL_ACTIONS: readonly MailAction[] = [
     label: () => 'triage.moveToAccount',
     icon: () => ArrowRightLeft,
     available: ({ actions }) => actions.otherAccounts !== null,
-    run: ({ openPicker }: ActionContext): void => {
-      openPicker('account')
+    run: ({ openPicker, into }: ActionContext): void => {
+      openPicker('account', into)
     },
     picker: 'account',
   },
@@ -210,6 +216,23 @@ export function shortcutAction(
     return undefined
   }
   return action
+}
+
+/**
+ * The action dropping the targets on `into` runs: a move, when it is a folder of their account
+ * they can go to; a move to another account, when it is a folder of one holding none of them;
+ * else none, and the drop is refused.
+ */
+export function dropAction(context: ActionContext & { into: Destination }): MailAction | undefined {
+  const { actions, into } = context
+  const ownAccount = actions.targets.every((target) => target.account_id === into.account)
+  if (ownAccount && actions.moveChoices?.some((folder) => isSameFolder(folder.path, into.folder.path)) === true) {
+    return mailAction('move')
+  }
+  if (actions.otherAccounts?.includes(into.account) === true && movableInto(into.folder)) {
+    return mailAction('moveToAccount')
+  }
+  return undefined
 }
 
 /** The registry's action `id`; throws for one it lacks. */
