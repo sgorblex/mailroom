@@ -248,8 +248,10 @@ bounded to one minor because the server relies on its handlers.
 ### Sign-in
 
 - **Users** (`app.user`): a username, stored lowercase (1-64 of `a-z 0-9 . _ -`, starting with a
-  letter or digit), an Argon2id password hash (passwords of 12-1024 characters), an admin flag, and
-  an optional time zone (`time_zone`, an IANA name; null means UTC). `mise run create-user`
+  letter or digit), an Argon2id password hash (passwords of 12-1024 characters), an admin flag,
+  an optional time zone (`time_zone`, an IANA name; null means UTC), and what "mark all as read"
+  on a folder with subfolders does first (`mark_read_subfolders`, true by default: them too;
+  revision `202611191200`). `mise run create-user`
   makes one; startup warns while there are none. An unknown username still checks a dummy hash, and
   both failures answer the same 401, so neither timing nor wording tells whether a user exists.
 - **Sessions** (`app.user_session`): one per signed-in browser, deleted with their user. The
@@ -287,6 +289,11 @@ bounded to one minor because the server relies on its handlers.
   on *Profile*, and saves the browser's zone once when it finds a signed-in user without one
   (`web/src/auth/auth-provider.tsx`); its dates use the saved zone, or the browser's when this
   browser does not know it.
+- **Own "mark all as read" default** (`PUT /api/v1/auth/me/mark-read-subfolders`,
+  `{"mark_read_subfolders": false}`, a JSON boolean): whether marking a folder with subfolders
+  read takes them too unless the user picks the other item
+  ([`mail-client.md`](mail-client.md) — *Folder management*). `auth/me`'s `user` carries it;
+  logged as `mark_read_subfolders_changed`.
 - **A session ending under the user:** any 401 from the API but a refused sign-in signs the web
   app out (`onSessionEnded` in `web/src/api/http.ts`), and the sign-in screen says the session
   has ended.
@@ -295,7 +302,7 @@ bounded to one minor because the server relies on its handlers.
 - **Logs:** `login_succeeded` (with `user_id`; `via="sso"` through SSO), `login_failed`,
   `logout`, `user_created`,
   `user_removed`, `password_reset` (with `user_id`, the admin, and `target_user_id`),
-  `password_changed`, `password_change_failed`, `sso_refused` and `sso_failed` (with the
+  `password_changed`, `mark_read_subfolders_changed`, `password_change_failed`, `sso_refused` and `sso_failed` (with the
   `outcome`), `sso_not_linked`, `sso_identity_linked` (with `user_id` and `via`: `profile` or the
   link claim), `sso_identity_unlinked`; never a password, a token, or a username.
 
@@ -481,10 +488,10 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   `groups`, `failed_groups`, `codes` (the failed groups'), `outcome` (`ok`, `partial`,
   `refused`, `failed`, or the code of a refused call) and `duration_ms`: counts and codes only,
   never a folder, a ref, a `Message-ID` or a sender.
-  `mail_folder_created`, `mail_folder_renamed` and `mail_folder_deleted` carry `user_id`, `via`,
-  `account_id`, `outcome`, `duration_ms` and counts only (`rule_sets`, `filters`,
-  `rule_sets_updated`, `messages`); `folder_rule_sets_failed`, a rename whose rule sets could not
-  follow, the error's type. Search criteria travel
+  `mail_folder_created`, `mail_folder_renamed`, `mail_folder_deleted` and
+  `mail_folder_marked_read` carry `user_id`, `via`, `account_id`, `outcome`, `duration_ms` and
+  counts only (`rule_sets`, `filters`, `rule_sets_updated`, `messages`); `folder_rule_sets_failed`,
+  a rename whose rule sets could not follow, the error's type. Search criteria travel
   in a `POST` body, so access logs (nginx's, the host proxy's) never see them, and the web
   image's nginx logs paths without their query string (a list's `folder`, a search the SPA keeps
   in its URL; [`../deploy.md`](../deploy.md)). A ref is in the path of the message routes, and it
@@ -518,17 +525,17 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
     mailroom-core produces an audit item for each draft and send (recipients, and a `removed` tag
     on a draft's removal), which goes to the audit trail (below), never to these logs.
 - **Audit trail** (`app.audit_record`, `mailroom.audit`): one record per message a write acted
-  on or tried to, and per folder created, renamed or deleted, refused attempts included: the
-  item's fields (account, folder, UID, `Message-ID`, sender and recipients in clear, the
-  subject's SHA-256, destination, flags, junk, removal, send mode and delivery stage, a deleted
-  folder's confirmed message count, the rule sets and filters a rename changed) with who acted
-  (`user` on the web, `agent` with the MCP `client_id` and `grant_id`, or `filter`, a real run,
-  with its `rule_set_id` and `run_id`),
+  on or tried to, and per folder created, renamed, deleted or marked read, refused attempts
+  included: the item's fields (account, folder, UID, `Message-ID`, sender and recipients in
+  clear, the subject's SHA-256, destination, flags, junk, removal, send mode and delivery stage,
+  a deleted folder's confirmed message count, the count a folder's mark read marked, the rule
+  sets and filters a rename changed) with who acted (`user` on the web, `agent` with the MCP
+  `client_id` and `grant_id`, or `filter`, a real run, with its `rule_set_id` and `run_id`),
   the action (`move`, `move_to_account`, `archive`, `trash`, `flag`, `draft_save`,
-  `draft_remove`, `send`, `folder_create`, `folder_rename`, `folder_delete`, or the filter's
-  action as its report names it) and the result. A move to another account is recorded in
-  both: the original's record names the `destination_account`, the copy's (in the target
-  account) its `source_account` and `source_folder`. A run records each message its report
+  `draft_remove`, `send`, `folder_create`, `folder_rename`, `folder_delete`, `mark_folder_read`,
+  or the filter's action as its report names it) and the result. A move to another account is
+  recorded in both: the original's record names the `destination_account`, the copy's (in the
+  target account) its `source_account` and `source_folder`. A run records each message its report
   lists (the folder as its segments joined by `/`, UID, the sender's address, the date, the
   subject's hash, the filter's id and name), one more record counting those past the report's
   200, and, when the run failed partway, one `run_failed` record naming the filter it failed on,

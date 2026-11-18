@@ -1,5 +1,5 @@
-"""An account's folders: the listing, which changes nothing, and creating, renaming and deleting
-folders."""
+"""An account's folders: the listing, which changes nothing, creating, renaming and deleting
+folders, and marking one read."""
 
 from __future__ import annotations
 
@@ -25,6 +25,10 @@ class MailFolder(BaseModel):
     """The account's hierarchy delimiter, None on a server without one."""
     selectable: bool
     """False for a ``\\Noselect`` folder (listed with ``all`` only), counts 0."""
+    uid_validity: int | None
+    uid_next: int | None
+    """With ``uid_validity``, what a mark-read sends back: None for a ``\\Noselect`` folder or
+    one whose STATUS failed."""
 
     @classmethod
     def of(cls, folder: Folder) -> MailFolder:
@@ -35,6 +39,8 @@ class MailFolder(BaseModel):
             total=folder.messages or 0,
             delimiter=folder.delimiter,
             selectable=folder.selectable,
+            uid_validity=folder.uid_validity,
+            uid_next=folder.uid_next,
         )
 
 
@@ -86,6 +92,18 @@ class FolderDeleteRequest(BaseModel):
     """The count the user saw (the listing's ``total``) and confirmed."""
 
 
+UidNumber = Annotated[StrictInt, Field(ge=1, le=2**32)]
+
+
+class FolderMarkReadRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    folder: FolderPath
+    uid_validity: UidNumber
+    uid_next: UidNumber
+    """The listing's: messages that arrived after it stay unread."""
+
+
 class FolderCreated(BaseModel):
     account_id: int
     path: str
@@ -105,6 +123,12 @@ class FolderDeleted(BaseModel):
     account_id: int
     folder: str
     messages: int
+
+
+class FolderMarkedRead(BaseModel):
+    account_id: int
+    folder: str
+    marked: int
 
 
 @mail_router.post("/accounts/{account_id}/folders", status_code=201)
@@ -141,3 +165,18 @@ def delete_folder(
         ctx, user.id, account_id, request.folder, messages=request.messages
     )
     return FolderDeleted(account_id=account_id, folder=change.path, messages=request.messages)
+
+
+@mail_router.post("/accounts/{account_id}/folders/mark-read")
+def mark_folder_read(
+    account_id: AccountId, request: FolderMarkReadRequest, ctx: Context, user: CurrentUser
+) -> FolderMarkedRead:
+    marked = service.mark_folder_read(
+        ctx,
+        user.id,
+        account_id,
+        request.folder,
+        uid_validity=request.uid_validity,
+        uid_next=request.uid_next,
+    )
+    return FolderMarkedRead(account_id=account_id, folder=request.folder, marked=marked)

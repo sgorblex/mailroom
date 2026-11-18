@@ -38,6 +38,7 @@
     "folder_create": "Cartella creata",
     "folder_rename": "Cartella rinominata",
     "folder_delete": "Cartella eliminata",
+    "mark_folder_read": "Cartella segnata come letta",
     "run_failed": "Esecuzione dei filtri non riuscita"
   },
   "results": {

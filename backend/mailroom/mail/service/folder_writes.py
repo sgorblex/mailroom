@@ -1,5 +1,5 @@
-"""An account's folders: creating, renaming (the rule sets naming the folder follow it) and
-deleting."""
+"""An account's folders: creating, renaming (the rule sets naming the folder follow it),
+deleting, and marking one read."""
 
 from __future__ import annotations
 
@@ -280,3 +280,40 @@ def delete_folder(
         deleted = _folder_write(ctx, user_id, accounts, "mail_folder_deleted", account_id, work)
         logged["messages"] = deleted.messages
         return deleted
+
+
+def mark_folder_read(
+    ctx: AppContext,
+    user_id: int,
+    account_id: int,
+    folder: str,
+    *,
+    uid_validity: int,
+    uid_next: int,
+    origin: Origin = WEB,
+) -> int:
+    """Marks read every unread message of ``folder`` below ``uid_next``, the UIDNEXT of the
+    listing the user confirmed from (``uid_validity`` its UIDVALIDITY, ``stale_reference`` when
+    it changed): mailroom-core's ``mark_folder_read``. Returns how many it marked. Recorded once
+    for the folder as ``mark_folder_read`` with that count, refusals too."""
+    accounts = _accounts(ctx, user_id)
+    _usable(ctx, user_id, accounts, account_id)
+    trail = AuditTrail(ctx.session_maker, user_id, origin, "mark_folder_read")
+    with _logged_folder_call("mail_folder_marked_read", user_id, origin.via, account_id) as logged:
+        marked = _folder_write(
+            ctx,
+            user_id,
+            accounts,
+            "mail_folder_marked_read",
+            account_id,
+            lambda connections: core.mark_folder_read(
+                connections,
+                account_id,
+                folder,
+                uid_validity=uid_validity,
+                uid_next=uid_next,
+                note=trail.note,
+            ),
+        )
+        logged["messages"] = marked
+        return marked

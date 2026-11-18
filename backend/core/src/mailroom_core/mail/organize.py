@@ -1,5 +1,6 @@
 """Moving, trashing, archiving and flagging messages: `src/mail/organize.ts`, with the grouping,
-refusals and Junk training of `src/mcp/tools/organize.ts`, on the operations of `selected`.
+refusals and Junk training of `src/mcp/tools/organize.ts`, on the operations of `selected`; and
+marking a whole folder read, up to the UIDNEXT the caller read.
 
 Refs may come from several folders and accounts. Every one is parsed and its account checked
 before anything is written; then each folder is one group, done in one mailbox session, and a
@@ -16,6 +17,7 @@ from mailroom_core.mail.audit import (
     Junk,
     Removal,
     audit_outcome,
+    audit_result,
     message_item,
 )
 from mailroom_core.mail.errors import MailError, mail_error
@@ -28,6 +30,7 @@ from mailroom_core.mail.selected import (
     fetch_envelopes,
     move_target,
     move_uids,
+    search_uids,
     special_folder_in,
     store_flags,
 )
@@ -41,6 +44,7 @@ if TYPE_CHECKING:
     from mailroom_core.mail.selected import Moved
 
 MAX_REFS: Final = 50
+_STORE_CHUNK: Final = 1000
 _SEEN: Final = "\\Seen"
 _FLAGGED: Final = "\\Flagged"
 
@@ -250,6 +254,51 @@ def set_flags(
         return connections.with_mailbox(group.account, group.folder, False, run)
 
     return _each_group(groups, act)
+
+
+def mark_folder_read(
+    connections: MailConnections,
+    account: int,
+    folder: str,
+    *,
+    uid_validity: int,
+    uid_next: int,
+    note: Note,
+) -> int:
+    """Sets \\Seen on every unread message of `folder` below `uid_next`, the UIDNEXT the caller
+    read under `uid_validity` (a folder's listing): mail that arrived since stays unread.
+    `stale_reference` when the folder's UIDVALIDITY is no longer `uid_validity`. Returns how many
+    it marked; notes one audit item for the folder, with that count as `messages`, refused ones
+    included."""
+    marked = 0
+    try:
+        if not all(_is_uid(value) for value in (uid_validity, uid_next)):
+            raise MailError(
+                "invalid_argument", "UIDVALIDITY and UIDNEXT are whole numbers, 1 or more."
+            )
+
+        def run(context: MailboxContext) -> None:
+            nonlocal marked
+            if context.uid_validity != uid_validity:
+                raise MailError("stale_reference")
+            if uid_next == 1:
+                return
+            uids = sorted(search_uids(context, ["UNSEEN", "UID", f"1:{uid_next - 1}"]))
+            for start in range(0, len(uids), _STORE_CHUNK):
+                chunk = uids[start : start + _STORE_CHUNK]
+                store_flags(context, chunk, add=[_SEEN])
+                marked += len(chunk)
+
+        connections.with_mailbox(account, folder, False, run)
+    except Exception as error:
+        note(AuditItem(account=account, folder=folder, messages=marked, result=audit_result(error)))
+        raise
+    note(AuditItem(account=account, folder=folder, messages=marked, result="ok"))
+    return marked
+
+
+def _is_uid(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= 2**32
 
 
 def _groups(connections: MailConnections, texts: Sequence[str]) -> list[_Group]:

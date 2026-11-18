@@ -18,6 +18,7 @@ export const MAIL_ACTIONS = [
   'folder_create',
   'folder_rename',
   'folder_delete',
+  'mark_folder_read',
 ] as const
 
 /** One message a write acted on, or tried to: never its subject or body. */

@@ -9,10 +9,12 @@ import pytest
 from imapclient import IMAPClient
 
 from mailroom_core.mail import (
+    AuditItem,
     MailConnections,
     MailError,
     archive_messages,
     list_messages,
+    mark_folder_read,
     move_messages,
     organize_text,
     parse_ref,
@@ -285,3 +287,76 @@ def test_marks_messages_read_unread_and_flagged_idempotently(imap_server, harnes
     marked = set_flags(mail, [ref], to_sort=True)
     assert organize_text(marked) == f"1/INBOX: updated 1: {ref} unread, flagged, to sort"
     assert contents(imap_server, user, "INBOX") == [("flag me", {"\\Flagged", "$MailroomSort"})]
+
+
+def test_marks_a_folder_read_up_to_the_uidnext_it_was_given(
+    imap_server, harness, monkeypatch
+) -> None:
+    monkeypatch.setattr("mailroom_core.mail.organize._STORE_CHUNK", 2)
+    user = imap_server.unique_user("markread")
+    create_folders(imap_server, user, "Lists")
+    for subject in ("one", "two", "three"):
+        seed(imap_server, user, "Lists", mime(subject))
+    seed(imap_server, user, "Lists", mime("read already"), flags=("\\Seen",))
+    mail = harness((1, user))
+    [listed] = [f for f in mail.folders(1, with_status=True) if f.path == "Lists"]
+    assert listed.uid_validity is not None
+    assert listed.uid_next is not None
+    seed(imap_server, user, "Lists", mime("arrived later"))
+    items: list[AuditItem] = []
+
+    marked = mark_folder_read(
+        mail,
+        1,
+        "Lists",
+        uid_validity=listed.uid_validity,
+        uid_next=listed.uid_next,
+        note=items.append,
+    )
+    assert marked == 3
+    assert contents(imap_server, user, "Lists") == [
+        ("one", {"\\Seen"}),
+        ("two", {"\\Seen"}),
+        ("three", {"\\Seen"}),
+        ("read already", {"\\Seen"}),
+        ("arrived later", set()),
+    ]
+    assert [i.record for i in items] == [
+        {"account": 1, "folder": "Lists", "messages": 3, "result": "ok"}
+    ]
+
+    again = mark_folder_read(
+        mail, 1, "Lists", uid_validity=listed.uid_validity, uid_next=1, note=items.append
+    )
+    assert again == 0
+    assert contents(imap_server, user, "Lists")[-1] == ("arrived later", set())
+
+
+def test_marking_a_folder_read_is_refused_when_it_changed(imap_server, harness) -> None:
+    user = imap_server.unique_user("markstale")
+    create_folders(imap_server, user, "Lists")
+    seed(imap_server, user, "Lists", mime("unread"))
+    mail = harness((1, user))
+    [listed] = [f for f in mail.folders(1, with_status=True) if f.path == "Lists"]
+    assert listed.uid_validity is not None
+    assert listed.uid_next is not None
+    items: list[AuditItem] = []
+
+    for validity, uid_next, code in (
+        (listed.uid_validity + 1, listed.uid_next, "stale_reference"),
+        (listed.uid_validity, 0, "invalid_argument"),
+    ):
+        with pytest.raises(MailError) as refused:
+            mark_folder_read(
+                mail, 1, "Lists", uid_validity=validity, uid_next=uid_next, note=items.append
+            )
+        assert refused.value.code == code
+    with pytest.raises(MailError) as missing:
+        mark_folder_read(mail, 1, "Gone", uid_validity=1, uid_next=2, note=items.append)
+    assert missing.value.code == "mailbox_missing"
+    assert [(i.folder, i.messages, i.result) for i in items] == [
+        ("Lists", 0, "stale_reference"),
+        ("Lists", 0, "invalid_argument"),
+        ("Gone", 0, "mailbox_missing"),
+    ]
+    assert contents(imap_server, user, "Lists") == [("unread", set())]

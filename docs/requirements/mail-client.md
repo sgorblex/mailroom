@@ -308,7 +308,8 @@ keep counts and codes only, never these fields.
 
 The user creates, renames and deletes an account's folders; mailroom-core's `create_folder`,
 `rename_folder` and `delete_folder` ([`../core.md`](../core.md) — *Folders*), each on one
-connection with no mailbox selected, every check there.
+connection with no mailbox selected, every check there. Marking a folder read is
+`mark_folder_read` (*Organize* there), on the folder selected read-write.
 
 - **Create** a folder under a parent (`null`: the top level), subscribed. Refused when it exists
   (`folder_exists`) or the parent is not listed (`mailbox_missing`).
@@ -327,6 +328,13 @@ connection with no mailbox selected, every check there.
   `rule_sets: [{id, name}]`), and while the folder has subfolders (`\Noselect` ones too). On
   Gmail a folder is a label: its mail stays in All Mail. Mail that arrives between the count and
   the delete goes with the folder; IMAP cannot close that window, the count keeps it to seconds.
+- **Mark read** every unread message of a folder. The caller sends the `uid_validity` and
+  `uid_next` of the listing the user confirmed from: only messages below that `uid_next` are
+  marked, so mail that arrived since stays unread, and a changed UIDVALIDITY is refused with
+  `stale_reference`. The answer counts the messages marked. A folder marked read with its
+  subfolders is one call per folder, each with its own listing's values and its own audit
+  record; whether that is what the user gets first is theirs to choose (`mark_read_subfolders`,
+  [`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *Sign-in*).
 
 **On the web** the actions live in the sidebar's folder menus. What the server would refuse is
 disabled with the reason (INBOX and role folders, a folder holding one for a rename, a folder with
@@ -346,8 +354,9 @@ deleted, nor a folder holding one renamed (`invalid_argument`).
 
 Every call is recorded in the audit trail, refused ones included: `folder_create` (`folder`),
 `folder_rename` (`folder`, `destination`, and the `rule_sets` and `filters` ids it changed, or
-`rule_sets_error: true`), `folder_delete` (`folder`, `messages`). Its log lines,
-`mail_folder_created`, `mail_folder_renamed` and `mail_folder_deleted`, carry `via`,
+`rule_sets_error: true`), `folder_delete` (`folder`, `messages`), `mark_folder_read` (one record
+for the folder: `folder`, and `messages`, the count marked). Its log lines, `mail_folder_created`,
+`mail_folder_renamed`, `mail_folder_deleted` and `mail_folder_marked_read`, carry `via`,
 `account_id`, `outcome`, `duration_ms` and counts (`rule_sets`, `filters`, `rule_sets_updated`,
 `messages`), never a folder's name. The standing safeguards of a permanent delete:
 [`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *Security*, *The app*.
@@ -358,15 +367,17 @@ Every call is recorded in the audit trail, refused ones included: `folder_create
 | `POST /accounts/{account_id}/folders` | `{"parent": "Projects", "name": "2026"}` | `201` `{"account_id", "path"}` |
 | `POST /accounts/{account_id}/folders/rename` | `{"folder": "Projects/2026", "parent": null, "name": "2026"}` | `200` `{"account_id", "folder", "path", "rule_sets", "filters", "rule_sets_updated"}`: `folder` the old path, `path` the new one |
 | `POST /accounts/{account_id}/folders/delete` | `{"folder": "Projects/2026", "messages": 12}` | `200` `{"account_id", "folder", "messages"}` |
+| `POST /accounts/{account_id}/folders/mark-read` | `{"folder": "Lists", "uid_validity": 1700000000, "uid_next": 812}` | `200` `{"account_id", "folder", "marked"}` |
 
 Paths travel in the body, since they hold the delimiter. Unknown fields are 422; `parent` is
 required (`null` for the top level), so that a rename names where the folder goes; `folder` and
-`parent` are at most 1,000 characters and `name` 255; `messages` is a JSON integer, 0 or more.
-CSRF as for every state-changing route. Errors: 400 `invalid_argument`, 404 `not_found`
-(account) and `mailbox_missing`, 409 `folder_exists`, `folder_changed` and `folder_in_use`, 422,
-429, 502, 504. A create, rename or delete that outlives the 30 s deadline answers `timeout`
-while the server may finish it: the next listing shows the outcome, and a rename that finished
-late still points its rule sets at the new path.
+`parent` are at most 1,000 characters and `name` 255; `messages` is a JSON integer, 0 or more;
+`uid_validity` and `uid_next` JSON integers from 1 to 2³². CSRF as for every state-changing
+route. Errors: 400 `invalid_argument`, 404 `not_found` (account) and `mailbox_missing`, 409
+`folder_exists`, `folder_changed`, `folder_in_use` and `stale_reference`, 422,
+429, 502, 504. A create, rename, delete or mark read that outlives the 30 s deadline answers
+`timeout` while the server may finish it: the next listing shows the outcome, and a rename that
+finished late still points its rule sets at the new path.
 
 The MCP tools `folder_create`, `folder_rename` and `folder_delete` (group `mail_folders`,
 [`mcp.md`](mcp.md)) are these routes for an agent; `folder_delete` is destructive and only for the
@@ -844,8 +855,10 @@ An account is named by its id, a positive integer the server gives it (`account_
 {
   "account_id": 1,
   "folders": [
-    { "path": "INBOX", "role": "inbox", "unread": 3, "total": 120, "delimiter": "/", "selectable": true },
-    { "path": "Archive/2025", "role": null, "unread": 0, "total": 842, "delimiter": "/", "selectable": true }
+    { "path": "INBOX", "role": "inbox", "unread": 3, "total": 120, "delimiter": "/", "selectable": true,
+      "uid_validity": 1700000000, "uid_next": 4211 },
+    { "path": "Archive/2025", "role": null, "unread": 0, "total": 842, "delimiter": "/", "selectable": true,
+      "uid_validity": 1700000001, "uid_next": 843 }
   ]
 }
 ```
@@ -856,8 +869,9 @@ the account's hierarchy delimiter (`null` on a server without one). Unselectable
 (`\Noselect`) are left out, unless `?all=true`: then they are listed too, `selectable: false`,
 counts 0 (a tree's parents). Order: the folders with a role first, in the order inbox,
 flagged, sent, drafts, all, archive, junk, trash, then the rest by path. Counts are always present
-here (STATUS; 0 for a folder whose STATUS failed). Errors: 404 `not_found` (account), 409, 502,
-504.
+here (STATUS; 0 for a folder whose STATUS failed). `uid_validity` and `uid_next` are STATUS's
+too, what a [mark read](#folder-management) sends back: `null` for an unselectable folder or one
+whose STATUS failed. Errors: 404 `not_found` (account), 409, 502, 504.
 
 ### `GET /accounts/{account_id}/messages?folder=INBOX&limit=25&cursor=&subfolders=false`
 

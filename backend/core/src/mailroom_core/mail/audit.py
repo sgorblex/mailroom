@@ -105,7 +105,8 @@ class AuditItem:
     rejected: tuple[str, ...] | None = None
     """Recipients the server refused while taking the others."""
     messages: int | None = None
-    """How many messages a deleted folder held, as the caller confirmed."""
+    """How many messages a deleted folder held, as the caller confirmed; on a folder marked read,
+    how many it marked."""
     result: AuditResult
 
     @property
