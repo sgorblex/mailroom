@@ -56,13 +56,19 @@ function listed(account: StoredAccount): StoredAccount & { display_name: string 
 const NAME_TAKEN = "Another account is already named 'Home'."
 
 /**
- * Whether another of `accounts` than `id` has `name`, trimmed and whatever its case, as the API
- * compares them.
+ * Whether another of `accounts` than `id` has `name`, NFKC-normalised, trimmed and whatever its
+ * case, as the API compares them; never when it is `stored`, the account's own name, kept.
  */
-function nameTaken(accounts: StoredAccount[], id: number | undefined, name: unknown): boolean {
-  const key = (value: string): string => value.trim().toLowerCase()
+function nameTaken(
+  accounts: StoredAccount[],
+  id: number | undefined,
+  name: unknown,
+  stored: string | null = null,
+): boolean {
+  const key = (value: string): string => value.normalize('NFKC').trim().toLowerCase()
   return (
     typeof name === 'string' &&
+    (stored === null || key(stored) !== key(name)) &&
     accounts.some((other) => other.id !== id && other.name !== null && key(other.name) === key(name))
   )
 }
@@ -129,7 +135,7 @@ function stubApi(
       return Promise.resolve(json(404, { detail: 'No such account' }))
     }
     if (rest === '' && method === 'PUT') {
-      if (nameTaken(accounts, id, body['name'])) {
+      if (nameTaken(accounts, id, body['name'], account.name)) {
         return Promise.resolve(nameTakenResponse())
       }
       const fields = withoutPassword(body)

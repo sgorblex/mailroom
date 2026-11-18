@@ -5,6 +5,7 @@ is ported in `mcp/tests/test_store.py`, with the whole document. These cover wha
 """
 
 import json
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 
@@ -389,3 +390,63 @@ def test_number_the_slug_ids_and_give_them_back(throwaway_databases) -> None:
         ]
         migrate(engine)
         assert schema_differences(engine, metadata) == []
+
+
+def test_later_accounts_lose_a_name_an_earlier_one_has(throwaway_databases) -> None:
+    """core_0005: in each user's newest revision, a name an earlier account has (trimmed,
+    NFKC-normalised, case-folded) is taken from the later one; older revisions stay as they are."""
+    with throwaway_databases.migrated(lambda _: None) as engine:
+        upgrade(engine, CORE_MIGRATIONS, "core_0004")
+        old = {"account": [_account(1, name="Café"), _account(2, name="café")]}
+        newest = {
+            "account": [
+                _account(1, name="Café"),
+                _account(2, name=unicodedata.normalize("NFD", " CAFÉ ")),
+                _account(3, name=chr(0xFF23) + "afé"),
+                _account(4),
+                _account(5, name="Home"),
+                _account(6, name="home"),
+                {"odd": True},
+            ],
+            "limits": {"send_per_hour": 5},
+        }
+        bob = {"account": [_account(7, name="Café")]}
+        with engine.begin() as connection:
+            for user, revision, doc in (
+                (ALICE, 1, old),
+                (ALICE, 2, newest),
+                (BOB, 1, bob),
+                ("carol", 1, {"n": 1}),
+            ):
+                connection.execute(
+                    text(
+                        "insert into core.settings (user_id, revision, doc, saved_at) "
+                        "values (:u, :r, cast(:d as jsonb), now())"
+                    ),
+                    {"u": user, "r": revision, "d": json.dumps(doc)},
+                )
+
+        migrate(engine)
+        assert AccountStore(engine, ALICE).settings().doc == {
+            "account": [
+                _account(1, name="Café"),
+                _account(2, name=None),
+                _account(3, name=None),
+                _account(4),
+                _account(5, name="Home"),
+                _account(6, name=None),
+                {"odd": True},
+            ],
+            "limits": {"send_per_hour": 5},
+        }
+        assert _rows(
+            engine, "select user_id, revision, doc from core.settings order by user_id, revision"
+        ) == [
+            (ALICE, 1, old),
+            (ALICE, 2, AccountStore(engine, ALICE).settings().doc),
+            (BOB, 1, bob),
+            ("carol", 1, {"n": 1}),
+        ]
+
+        downgrade(engine, CORE_MIGRATIONS, "core_0004")
+        assert AccountStore(engine, ALICE).settings().doc["account"][1] == _account(2, name=None)

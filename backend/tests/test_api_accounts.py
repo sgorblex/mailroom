@@ -4,6 +4,7 @@ import logging
 import os
 import ssl
 import threading
+import unicodedata
 from datetime import UTC, datetime, timedelta
 from functools import partial
 from typing import TYPE_CHECKING, Any
@@ -254,6 +255,43 @@ def test_a_user_names_each_account_differently(
     bob = create_user(db_session, "bob", PASSWORD)
     user_client.cookies.set(SESSION_COOKIE_NAME, create_session(db_session, bob))
     added(user_client, new_account(name="Lavoro"))
+
+
+def test_only_a_new_or_changed_name_is_refused_when_taken(
+    user_client: TestClient, user: User, migrated_engine: Engine
+) -> None:
+    """Names are compared NFKC-normalised; an account that already shares its name (stored before
+    names were unique) can still be saved as long as its name stays."""
+    work = added(user_client, new_account(name="Café"))
+    decomposed = new_account("home", name=unicodedata.normalize("NFD", "CAFÉ"))
+    refused = user_client.post("/api/v1/accounts", json=decomposed)
+    assert (refused.status_code, refused.json()["detail"]["code"]) == (409, "account_name_taken")
+    fullwidth = new_account("home", name=chr(0xFF23) + "afé")
+    refused = user_client.post("/api/v1/accounts", json=fullwidth)
+    assert (refused.status_code, refused.json()["detail"]["code"]) == (409, "account_name_taken")
+
+    home = added(user_client, new_account("home"))
+    store = user_store(migrated_engine, user.id)
+    current = load_accounts(store)
+    store.save_settings(
+        {
+            **current.doc,
+            "account": [
+                a if a["id"] != home else a | {"name": unicodedata.normalize("NFD", "café")}
+                for a in current.raw_accounts()
+            ],
+        },
+        current.revision,
+    )
+    unchanged = edited(decomposed)
+    assert user_client.put(f"/api/v1/accounts/{home}", json=unchanged).status_code == 200
+    restyled = edited(new_account("home", name="CAFÉ"))
+    assert user_client.put(f"/api/v1/accounts/{home}", json=restyled).status_code == 200
+    assert (
+        user_client.put(f"/api/v1/accounts/{work}", json=edited(new_account())).status_code == 200
+    )
+    renamed = user_client.put(f"/api/v1/accounts/{work}", json=edited(new_account(name="Café")))
+    assert (renamed.status_code, renamed.json()["detail"]["code"]) == (409, "account_name_taken")
 
 
 def test_logins_are_unique(user_client: TestClient) -> None:
