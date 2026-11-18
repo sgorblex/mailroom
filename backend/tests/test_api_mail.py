@@ -322,16 +322,17 @@ def test_a_slow_account_is_a_timeout_failure_of_an_all_accounts_search(
 ) -> None:
     from mailroom.mail.service import read as service_read
 
-    # Long enough for the healthy account under a loaded test run, far below the silent one's
-    # 10 s connect timeout.
-    monkeypatch.setattr(service_read, "SOURCES_SECONDS", 4.0)
+    # Long enough for the healthy account under a loaded test run, below the silent one's 10 s
+    # connect timeout: the search waits the full 8 s for it, and answering before 9.5 s proves
+    # it was cut rather than waited out (its `timeout` code says so too).
+    monkeypatch.setattr(service_read, "SOURCES_SECONDS", 8.0)
     mailbox.seed(mime("Kept"))
     imap = {"host": "127.0.0.1", "port": silent_server, "tls": "implicit"}
     silent = new_account("silent", login="silent@example.org", imap=imap)
     assert mailbox.client.post("/api/v1/accounts", json=silent).status_code == 201
     started = time.monotonic()
     page = mailbox.search(folder="*")
-    assert time.monotonic() - started < 9
+    assert time.monotonic() - started < 9.5
     assert [m["subject"] for m in page["messages"]] == ["Kept"]
     assert page["failures"] == [{"account_id": 2, "folder": None, "code": "timeout"}]
 
