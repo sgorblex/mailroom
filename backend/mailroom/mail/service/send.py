@@ -40,7 +40,6 @@ from mailroom.mail.service._shared import (
 )
 from mailroom.mail.service.compose import (
     DRAFT_GONE,
-    TIME_ZONE,
     SendView,
     _as_refusals,
     _attachment_sources,
@@ -255,6 +254,7 @@ def _admit(
     claim and start the send, so a ``timeout`` refusal does not mean nothing went out. An own
     draft's key guards a retry only while the draft exists, and the send removes the draft, so a
     caller must treat that refusal as not confirmed."""
+    zone = ctx.time_zone(user_id)
     with _as_refusals():
         slot = _runner(ctx).reserve(user_id)
     stop = threading.Event()
@@ -270,7 +270,7 @@ def _admit(
             smtp=_smtp(ctx, user_id),
             send_log=ctx.store(user_id),
             limits=limits,
-            time_zone=TIME_ZONE,
+            time_zone=zone,
         )
         admitted = gate.admit(
             deps,
@@ -532,6 +532,7 @@ def send_reply(
     extra_cc, extra_bcc = _deliverable(cc), _deliverable(bcc)
     limits = accounts.write_limits
     sources = _attachment_sources(attachments)
+    zone = ctx.time_zone(user_id)
 
     def build(connections: MailConnections) -> _Outgoing:
         original = core.original_message(connections, original_ref)
@@ -544,7 +545,7 @@ def send_reply(
             cc=_deliverable((*answered.cc, *extra_cc)),
             bcc=extra_bcc,
             subject=_subject_cut(core.reply_subject(original.subject)),
-            text=f"{text}\n\n{core.quoted_original(original, TIME_ZONE)}" if quote else text,
+            text=f"{text}\n\n{core.quoted_original(original, zone)}" if quote else text,
             answers=ref,
             in_reply_to=thread.in_reply_to,
             references=thread.references,
@@ -582,10 +583,11 @@ def send_forward(
         core.check_fields(to=to, cc=cc, bcc=bcc, text=text or "")
     recipients = _deliverable(to), _deliverable(cc), _deliverable(bcc)
     limits = accounts.write_limits
+    zone = ctx.time_zone(user_id)
 
     def message(connections: MailConnections) -> MessageInput:
         original = core.original_message(connections, original_ref)
-        forwarded = core.forwarded_original(original, TIME_ZONE)
+        forwarded = core.forwarded_original(original, zone)
         sources = (
             [core.AttachmentSource(original_ref, part.part) for part in original.attachments]
             if include_attachments

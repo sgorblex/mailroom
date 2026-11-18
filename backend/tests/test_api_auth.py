@@ -8,6 +8,7 @@ from sqlalchemy import delete, update
 
 from mailroom.api.deps import CurrentUser  # noqa: TC001  (FastAPI reads it at runtime)
 from mailroom.auth.sessions import SESSION_COOKIE_NAME
+from mailroom.auth.users import time_zone_of
 from mailroom.config.features import Features
 from mailroom.models import User, UserSession
 from tests.conftest import PASSWORD, USERNAME
@@ -19,7 +20,10 @@ if TYPE_CHECKING:
 
 
 EVERY_FEATURE = ["mail", "mcp", "filters"]
-SIGNED_IN = {"user": {"username": USERNAME, "is_admin": False}, "features": EVERY_FEATURE}
+SIGNED_IN = {
+    "user": {"username": USERNAME, "is_admin": False, "time_zone": None},
+    "features": EVERY_FEATURE,
+}
 SIGNED_OUT = {"user": None, "features": EVERY_FEATURE}
 CREDENTIALS = {"username": USERNAME, "password": PASSWORD}
 
@@ -166,3 +170,40 @@ def test_cross_site_writes_are_refused(api_client: TestClient, headers: dict[str
 def test_same_origin_writes_pass(api_client: TestClient, headers: dict[str, str]) -> None:
     response = api_client.post("/api/v1/auth/login", json=CREDENTIALS, headers=headers)
     assert response.status_code == 200
+
+
+def test_the_user_sets_their_time_zone(
+    user_client: TestClient, db_session: Session, user: User
+) -> None:
+    response = user_client.put("/api/v1/auth/me/time-zone", json={"time_zone": "europe/rome"})
+    assert response.status_code == 200
+    assert response.json()["time_zone"] == "Europe/Rome"
+    assert user_client.get("/api/v1/auth/me").json()["user"]["time_zone"] == "Europe/Rome"
+    db_session.expire_all()
+    assert time_zone_of(db_session, user.id) == "Europe/Rome"
+
+    response = user_client.put("/api/v1/auth/me/time-zone", json={"time_zone": None})
+    assert response.json()["time_zone"] is None
+    db_session.expire_all()
+    assert time_zone_of(db_session, user.id) == "UTC"
+
+
+@pytest.mark.parametrize("zone", ["Mars/Olympus_Mons", "", 3, "Europe/Rome\n"])
+def test_an_unknown_time_zone_is_refused(user_client: TestClient, zone: object) -> None:
+    response = user_client.put("/api/v1/auth/me/time-zone", json={"time_zone": zone})
+    assert response.status_code == 422
+    assert user_client.get("/api/v1/auth/me").json()["user"]["time_zone"] is None
+
+
+def test_setting_a_time_zone_needs_a_session(api_client: TestClient) -> None:
+    response = api_client.put("/api/v1/auth/me/time-zone", json={"time_zone": "UTC"})
+    assert response.status_code == 401
+
+
+def test_a_cross_site_time_zone_change_is_refused(user_client: TestClient) -> None:
+    response = user_client.put(
+        "/api/v1/auth/me/time-zone",
+        json={"time_zone": "UTC"},
+        headers={"Sec-Fetch-Site": "cross-site"},
+    )
+    assert response.status_code == 403

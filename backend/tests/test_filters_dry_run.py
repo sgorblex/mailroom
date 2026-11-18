@@ -3,8 +3,11 @@ one); skipped without it."""
 
 from __future__ import annotations
 
+from datetime import datetime
 from email.message import EmailMessage
+from email.utils import format_datetime
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo
 
 import pytest
 from imapclient import IMAPClient
@@ -18,6 +21,7 @@ from tests.test_api_filters import SHOP_SPEC, add_filter, rule_set
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
+    from sqlalchemy.orm import Session, sessionmaker
     from starlette.testclient import TestClient
 
     from mailroom_core.testing import ImapTestServer
@@ -277,3 +281,38 @@ def test_a_dry_run_out_of_time_is_stopped(
     monkeypatch.setattr(runs, "DRY_RUN_SECONDS", 0)
     response = user_client.post(f"/api/v1/rule-sets/{rule_set_id}/dry-run")
     assert (response.status_code, response.json()["detail"]["code"]) == (504, "dry_run_timeout")
+
+
+def test_older_than_days_counts_from_the_users_today(
+    user_client: TestClient,
+    mailbox: Mailbox,
+    account: str,
+    application: FastAPI,
+    sessions: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Kiritimati (UTC+14) is always a day or two ahead of Pago Pago (UTC-11)."""
+    monkeypatch.setattr(application.state, "session_maker", sessions)
+    behind = datetime.now(ZoneInfo("Pacific/Pago_Pago")).replace(hour=12, minute=0)
+    mail = EmailMessage()
+    mail["From"] = SHOP
+    mail["Subject"] = "Sale"
+    mail["Date"] = format_datetime(behind)
+    mail.set_content("Hello.\n")
+    mailbox.append_raw("INBOX", mail.as_bytes())
+    rule_set_id = user_client.post(f"/api/v1/accounts/{account}/rule-sets", json=rule_set()).json()[
+        "id"
+    ]
+    spec = {
+        "criterion": {"type": "older_than_days", "args": {"days": 0}},
+        "action": {"type": "mark_as_read"},
+    }
+    add_filter(user_client, rule_set_id, "Before today", spec)
+
+    def matched(zone: str) -> int:
+        body = {"time_zone": zone}
+        assert user_client.put("/api/v1/auth/me/time-zone", json=body).status_code == 200
+        return len(dry_run_of(user_client, rule_set_id)["result"]["filters"][0]["matched"])
+
+    assert matched("Pacific/Kiritimati") == 1
+    assert matched("Pacific/Pago_Pago") == 0

@@ -19,7 +19,6 @@ from pydantic import AfterValidator, AnyUrl, Field, StrictBool
 from mailroom.errors import Refusal
 from mailroom.mail import service
 from mailroom.mcp.tool import MAILBOX_READ, Arguments, Tool, content_result, text_result
-from mailroom_core.config import time_zone_name
 from mailroom_core.mail import (
     ATTACHMENT_FILE_NOTE,
     DISPLAYED_IMAGES,
@@ -41,8 +40,6 @@ from mailroom_core.render import default_marker, untrusted
 if TYPE_CHECKING:
     from mailroom.mcp.tool import ToolCall
 
-TIME_ZONE: Final = time_zone_name("UTC")
-"""The zone of the dates the model reads: the app keeps no per-user zone yet."""
 TOOL_NAMES: Final = ToolNames(
     read="message_read", thread="thread_read", attachment="attachment_read"
 )
@@ -176,6 +173,11 @@ class AttachmentReadArguments(Arguments):
     )
 
 
+def _dated(text: str, zone: str) -> types.CallToolResult:
+    """``text`` with the line that says which zone its dates are in."""
+    return text_result(f"{text}\nDates are in {zone}.")
+
+
 async def named_account(account_id: str | None, call: ToolCall, *, every: bool = False) -> str:
     """``account_id``, or the user's only account when none is given."""
     if account_id is not None:
@@ -195,20 +197,23 @@ async def named_account(account_id: str | None, call: ToolCall, *, every: bool =
 
 async def _messages_list(args: MessagesListArguments, call: ToolCall) -> types.CallToolResult:
     account = await named_account(args.account_id, call)
-    page = await call.thread(
-        lambda: service.list_messages(
-            call.ctx,
-            call.user_id,
-            account,
-            args.folder,
-            limit=args.limit,
-            cursor=args.cursor,
-            subfolders=args.subfolders,
-            via="mcp",
+    page, zone = await call.thread(
+        lambda: (
+            service.list_messages(
+                call.ctx,
+                call.user_id,
+                account,
+                args.folder,
+                limit=args.limit,
+                cursor=args.cursor,
+                subfolders=args.subfolders,
+                via="mcp",
+            ),
+            call.ctx.time_zone(call.user_id),
         )
     )
     empty = empty_folder_text(args.folder, subfolders=args.subfolders)
-    return text_result(page_text(page, empty, TIME_ZONE, tools=TOOL_NAMES, folders=args.subfolders))
+    return _dated(page_text(page, empty, zone, tools=TOOL_NAMES, folders=args.subfolders), zone)
 
 
 async def _messages_search(args: MessagesSearchArguments, call: ToolCall) -> types.CallToolResult:
@@ -225,47 +230,55 @@ async def _messages_search(args: MessagesSearchArguments, call: ToolCall) -> typ
         has_attachment=args.has_attachment,
         gmail_query=args.gmail_query,
     )
-    page = await call.thread(
-        lambda: service.search(
-            call.ctx,
-            call.user_id,
-            account,
-            args.folder,
-            query,
-            limit=args.limit,
-            cursor=args.cursor,
-            subfolders=args.subfolders,
-            via="mcp",
+    page, zone = await call.thread(
+        lambda: (
+            service.search(
+                call.ctx,
+                call.user_id,
+                account,
+                args.folder,
+                query,
+                limit=args.limit,
+                cursor=args.cursor,
+                subfolders=args.subfolders,
+                via="mcp",
+            ),
+            call.ctx.time_zone(call.user_id),
         )
     )
-    return text_result(
-        page_text(
-            page, "No matching messages.", TIME_ZONE, tools=TOOL_NAMES, folders=args.subfolders
-        )
+    return _dated(
+        page_text(page, "No matching messages.", zone, tools=TOOL_NAMES, folders=args.subfolders),
+        zone,
     )
 
 
 async def _message_read(args: MessageReadArguments, call: ToolCall) -> types.CallToolResult:
-    view = await call.thread(
-        lambda: service.read_message(
-            call.ctx,
-            call.user_id,
-            args.ref,
-            offset=args.offset,
-            include_quoted=args.include_quoted,
-            raw_headers=args.raw_headers,
-            marker=default_marker,
-            via="mcp",
+    view, zone = await call.thread(
+        lambda: (
+            service.read_message(
+                call.ctx,
+                call.user_id,
+                args.ref,
+                offset=args.offset,
+                include_quoted=args.include_quoted,
+                raw_headers=args.raw_headers,
+                marker=default_marker,
+                via="mcp",
+            ),
+            call.ctx.time_zone(call.user_id),
         )
     )
-    return text_result(read_text(view, offset=args.offset, time_zone=TIME_ZONE, tools=TOOL_NAMES))
+    return _dated(read_text(view, offset=args.offset, time_zone=zone, tools=TOOL_NAMES), zone)
 
 
 async def _thread_read(args: ThreadReadArguments, call: ToolCall) -> types.CallToolResult:
-    page = await call.thread(
-        lambda: service.thread(call.ctx, call.user_id, args.ref, limit=args.limit, via="mcp")
+    page, zone = await call.thread(
+        lambda: (
+            service.thread(call.ctx, call.user_id, args.ref, limit=args.limit, via="mcp"),
+            call.ctx.time_zone(call.user_id),
+        )
     )
-    return text_result(thread_text(page, TIME_ZONE))
+    return _dated(thread_text(page, zone), zone)
 
 
 async def _attachment_read(args: AttachmentReadArguments, call: ToolCall) -> types.CallToolResult:

@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from mailroom.accounts.store import user_store
+from mailroom.auth.users import time_zone_of
 from mailroom.config.features import ALL_FEATURES
 
 if TYPE_CHECKING:
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
     from mailroom.config.features import Features
     from mailroom.mail.pool import MailPool
     from mailroom.mail.sends import SendRunner
+    from mailroom_core.config import TimeZoneName
     from mailroom_core.crypto import SecretsSubkey
     from mailroom_core.store import AccountStore
 
@@ -49,6 +51,11 @@ class AppContext:
     def store(self, user_id: int) -> AccountStore:
         """The user's accounts, as mailroom-core keeps them."""
         return user_store(self.engine, user_id)
+
+    def time_zone(self, user_id: int) -> TimeZoneName:
+        """The zone the user's dates are written in (``mailroom.auth.users.time_zone_of``)."""
+        with self.session_maker() as db:
+            return time_zone_of(db, user_id)
 
     def drop_mail_connections(self, user_id: int, account_id: str | None = None) -> None:
         """Close the user's open mail connections, of one account or of all."""

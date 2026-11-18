@@ -10,6 +10,7 @@ import pytest
 from imapclient.exceptions import IMAPClientError
 from imapclient.response_types import Address, Envelope
 
+from mailroom_core.config import TimeZoneName
 from mailroom_core.filters.account import Account, Folder
 from mailroom_core.filters.actions.action import Action
 from mailroom_core.filters.actions.flags import MarkAsRead
@@ -227,6 +228,25 @@ class TestFolderRun:
             (account / "INBOX").run(f)
         assert calls.searched == [
             ["UNDELETED", "SENTBEFORE", date(2026, 3, 1)],
+            ["UNDELETED", "SENTBEFORE", date(2026, 3, 31)],
+        ]
+
+    def test_older_than_days_counts_from_the_runs_time_zone(
+        self, account: Account, calls: Calls
+    ) -> None:
+        """At 23:30 UTC on 31 March it is already 1 April in Auckland."""
+
+        class Clock(datetime):
+            @classmethod
+            def now(cls, tz: Any = None) -> datetime:
+                return datetime(2026, 3, 31, 23, 30, tzinfo=UTC).astimezone(tz)
+
+        f = Filter(OlderThanDays(0), MarkAsRead())
+        with patch("mailroom_core.filters.clock.datetime", Clock):
+            (account / "INBOX").run(f, time_zone=TimeZoneName("Pacific/Auckland"))
+            (account / "INBOX").run(f, time_zone=TimeZoneName("UTC"))
+        assert calls.searched == [
+            ["UNDELETED", "SENTBEFORE", date(2026, 4, 1)],
             ["UNDELETED", "SENTBEFORE", date(2026, 3, 31)],
         ]
 

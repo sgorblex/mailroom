@@ -337,7 +337,8 @@ mailroom-mcp's `draft` and `send` tools. Web composing is **plain text**; rich t
   other recipients, minus the account's identities (every address it can send as, not just the one
   answering). A reply to one's own message, from Sent for example, has nobody left that way and
   goes to its To. The subject gets one `Re: `, the threading headers (`In-Reply-To`,
-  `References`) continue the thread, and the body quotes the original. The original is read up to
+  `References`) continue the thread, and the body quotes the original, its date in the user's
+  time zone (UTC until they set one), as a forward's header block has it. The original is read up to
   2 MiB and its text is then cut to 20,000 characters, in a quote and in a forward alike; a longer
   one is cut, never refused.
 - **Forward** has an empty recipient list and the subject with one `Fwd: `. The body holds a
@@ -738,7 +739,7 @@ and mailroom-core's `folder_exists` and `folder_changed`:
 | `invalid_argument` | 400 | Invalid argument. (Optionally followed by what is wrong.) |
 | `too_large` | 413 | Too large: the message, attachment or upload is over its limit. (Optionally followed by the limit that was passed.) |
 | `send_disabled` | 409 | Sending is disabled for this account (send_mode off): no drafts or sends. |
-| `rate_limited` | 429 | The limit is *N* per hour; the next send is possible at *time (UTC)*. |
+| `rate_limited` | 429 | The limit is *N* per hour; the next send is possible at *time (the user's time zone)*. |
 | `recipient_refused` | 422 | A recipient is not a deliverable address, or the mail server refused the message; nothing was sent. |
 | `delivery_unknown` | 409 | Delivery could not be confirmed: the message may already have gone out, so it was not sent again. |
 | `folder_exists` | 409 | A folder with that name already exists. |
@@ -965,8 +966,9 @@ message: 404 `not_found`.
 The same service layer backs the `mail_read` tool group
 ([`mcp.md`](mcp.md)): `messages_list`, `messages_search`, `message_read`, `thread_read`,
 `attachment_read`. The REST routes carry the structured shapes above; the tools return
-mailroom-core's text inside the untrusted envelope, its hints naming the app's tools, and a
-collapsed quote as a marker line that says how to read it. There is no REST route for threads yet.
+mailroom-core's text inside the untrusted envelope, its hints naming the app's tools, its dates
+in the user's time zone (named on the answer's last line), and a collapsed quote as a marker line
+that says how to read it. There is no REST route for threads yet.
 
 ## Later slices
 

@@ -26,10 +26,12 @@ in the browser, tried with a dry run, and run by the worker. Product scope:
   **What a criterion reads**: the first of each address field, the subject as the reader sees it
   (whitespace collapsed), and as the body every inline plain-text part, else the HTML's visible
   text (no tags, styles or images; links as `[text](url)`; the first 2 million characters).
-  Attached messages and named files are not the body. The `*_is` address criteria compare the
-  whole address, ignoring case; the `*_contains` criteria ignore case too. `body_contains` alone
-  is the server's search of the whole body; combined with a criterion that needs the message
-  fetched (a pattern, `subject_is`, an `*_is` address, or a negated one), it reads it as above.
+  Attached messages and named files are not the body. `older_than_days` counts calendar days
+  back from today in the user's time zone (UTC until they set one), in a run and a dry run alike.
+  The `*_is` address criteria compare the whole address, ignoring case; the `*_contains` criteria
+  ignore case too. `body_contains` alone is the server's search of the whole body; combined with
+  a criterion that needs the message fetched (a pattern, `subject_is`, an `*_is` address, or a
+  negated one), it reads it as above.
   **Moves are the mail client's moves**: `move_to` and `trash` need a folder of the account
   (`mailbox_missing` otherwise), never move into Drafts or Sent (`invalid_argument`), and without
   MOVE copy then expunge exactly the copied messages; a move into the folder the rule set runs on

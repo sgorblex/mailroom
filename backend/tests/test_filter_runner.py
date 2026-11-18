@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select, text
 
+from mailroom.auth.users import set_time_zone
 from mailroom.mail.connections import mail_ssl_context
 from mailroom.models import FilterRun, RuleSet
 from mailroom.worker import tasks
@@ -27,6 +28,7 @@ from mailroom.worker.tasks import (
     queue_scheduled_runs,
     run_rule_set,
 )
+from mailroom_core.config import TimeZoneName
 from mailroom_core.filters import Folder
 from mailroom_core.mail import MESSAGES, CopiedNotRemovedError, Moved
 from tests.test_api_accounts import new_account
@@ -307,6 +309,29 @@ def test_a_run_failing_part_way_keeps_the_finished_filters_report(
     assert run["error"] == "run_failed: RuntimeError"
     assert [entry["filter_id"] for entry in run["result"]["filters"]] == [first]
     assert run["result"]["error"] == run["error"]
+
+
+def test_a_run_counts_days_from_the_users_time_zone(
+    user_client: TestClient,
+    db_session: Session,
+    user: User,
+    mailboxes: Mailboxes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The worker runs the folder in the user's zone, which `older_than_days` counts from (core's
+    `test_older_than_days_counts_from_the_runs_time_zone`)."""
+    add_account(user_client)
+    rule_set_id = add_rule_set(user_client)
+    set_time_zone(db_session, user, TimeZoneName("Pacific/Auckland"))
+    run_id = queued_run(user_client, rule_set_id)
+    zones: list[object] = []
+
+    def record(_self: object, _report: object, _filters: object, **kwargs: object) -> None:
+        zones.append(kwargs["time_zone"])
+
+    monkeypatch.setattr(Folder, "run_into", record)
+    execute_run(db_session, run_id, mailboxes)
+    assert zones == ["Pacific/Auckland"]
 
 
 def test_a_move_that_copied_without_removing_turns_the_rule_set_off(

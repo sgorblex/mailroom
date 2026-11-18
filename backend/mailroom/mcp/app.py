@@ -126,7 +126,8 @@ def instructions(groups: Sequence[ToolGroup]) -> str:
             "messages_list and messages_search give one line per message, newest first, each "
             "starting with a ref; pass a ref to message_read, thread_read or attachment_read "
             "(with the part number message_read lists). More results continue with the "
-            "cursor the answer gives. Reading never marks mail as read. Dates are in UTC."
+            "cursor the answer gives. Reading never marks mail as read. Dates are in the user's "
+            "time zone, which each answer states."
         )
     if organizes:
         source = "from messages_list, messages_search or thread_read" if reads else "of messages"

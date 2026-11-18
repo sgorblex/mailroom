@@ -201,6 +201,7 @@ def _dry_run_result(
     if refused is not None:
         raise RunRefused(*refused)
     pool = ctx.mail_pool
+    zone = ctx.time_zone(user_id)
     try:
         with pool.lease(ctx, user_id, load_accounts(store).revision) as connections:
             folder = rule_set_folder(connections, rule_set)
@@ -209,7 +210,9 @@ def _dry_run_result(
                 connections,
                 user_id,
                 [account_id],
-                lambda: folder.run(loaded, dry_run=True, newest=DRY_RUN_MAX_MESSAGES),
+                lambda: folder.run(
+                    loaded, dry_run=True, newest=DRY_RUN_MAX_MESSAGES, time_zone=zone
+                ),
                 deadline=DRY_RUN_SECONDS,
             )
     except InvalidSpecError as exc:

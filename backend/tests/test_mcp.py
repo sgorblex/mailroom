@@ -23,7 +23,7 @@ from starlette.testclient import TestClient
 from mailroom.accounts import service as accounts_service
 from mailroom.accounts.store import load_accounts
 from mailroom.api.main import create_application
-from mailroom.auth.users import create_user
+from mailroom.auth.users import create_user, set_time_zone
 from mailroom.config.features import ALL_FEATURES
 from mailroom.context import app_context
 from mailroom.errors import Refusal, mail_refusal
@@ -36,6 +36,7 @@ from mailroom.mcp.tool import BUSY_MESSAGE, CALLS_PER_USER, call_tool
 from mailroom.mcp.tools import mail_send
 from mailroom.mcp.tools.filters import RUN_FILTERS_OFF_NOTE
 from mailroom.models import AuditRecord, Filter
+from mailroom_core.config import time_zone_name
 from mailroom_core.mail import MESSAGES, Folder, MessageRef, format_ref
 from mailroom_core.store import SEND_CEILING
 from mailroom_core.testing import (
@@ -1092,6 +1093,28 @@ def test_a_thread_follows_a_conversation_into_sent(
     assert "3 message(s) in the conversation." in text
     for folder in ("INBOX", "Sent"):
         assert all("\\Seen" not in m.flags for m in folder_contents(mail.server, login, folder))
+
+
+def test_read_tools_give_dates_in_the_users_time_zone(
+    mcp: Mcp, token: str, mail: MailAccounts, db_session: Session, user: User
+) -> None:
+    login = mail.add()
+    mail.seed(login, mime("Dinner?", date="Wed, 1 Oct 2026 12:00:00 +0000"))
+    listed = mcp.text(token, "messages_list")
+    assert " · 2026-10-01 12:00 · " in listed
+    assert listed.endswith("\nDates are in UTC.")
+
+    set_time_zone(db_session, user, time_zone_name("Asia/Tokyo"))
+    [ref] = refs_in(mcp.text(token, "messages_list"))
+    answers = {
+        "messages_list": mcp.text(token, "messages_list"),
+        "messages_search": mcp.text(token, "messages_search", subject="Dinner"),
+        "message_read": mcp.text(token, "message_read", ref=ref),
+        "thread_read": mcp.text(token, "thread_read", ref=ref),
+    }
+    for name, text in answers.items():
+        assert "2026-10-01 21:00" in text, name
+        assert text.endswith("\nDates are in Asia/Tokyo."), name
 
 
 def test_attachments_come_back_by_type_size_capped(

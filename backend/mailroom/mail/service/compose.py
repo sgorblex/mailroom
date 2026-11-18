@@ -50,8 +50,6 @@ UNDELIVERABLE: Final = (
 UPLOAD_OVERHEAD: Final = 2 * 1024 * 1024
 """What a save's request may hold beyond its attachments: the text, the recipients and the
 multipart framing."""
-TIME_ZONE: Final = "UTC"
-"""Of the dates quoted in a reply or a forward: the user has no time zone yet."""
 SEND_HOLDS_THE_DRAFT: Final = frozenset({"sending", "unknown", "sent"})
 """Its delivery is going, unresolved or done: a new version could slip past ``delivery_unknown``
 with a new key, or make a replayed "sent" name recipients who never got it."""
@@ -202,6 +200,7 @@ def prefill(
         message.account,
         lambda connections: core.original_message(connections, message),
     )
+    zone = ctx.time_zone(user_id)
     with _as_refusals():
         if mode == "forward":
             return Prefill(
@@ -210,7 +209,7 @@ def prefill(
                 to=(),
                 cc=(),
                 subject=_subject_cut(core.forward_subject(original.subject)),
-                text=f"\n\n{core.forwarded_original(original, TIME_ZONE)}",
+                text=f"\n\n{core.forwarded_original(original, zone)}",
                 answers=None,
                 source=ref,
                 attachments=original.attachments,
@@ -222,7 +221,7 @@ def prefill(
             to=tuple(filter(_can_be_sent_to, answered.to)),
             cc=tuple(filter(_can_be_sent_to, answered.cc)),
             subject=_subject_cut(core.reply_subject(original.subject)),
-            text=f"\n\n{core.quoted_original(original, TIME_ZONE)}",
+            text=f"\n\n{core.quoted_original(original, zone)}",
             answers=ref,
             source=ref,
             attachments=(),

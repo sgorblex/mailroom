@@ -8,12 +8,14 @@ from __future__ import annotations
 import inspect
 import json
 import logging
+import re
 import threading
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from email import message_from_bytes, policy
 from typing import TYPE_CHECKING, Any, cast
+from zoneinfo import ZoneInfo
 
 import pytest
 from starlette.datastructures import UploadFile
@@ -49,7 +51,7 @@ if TYPE_CHECKING:
 
     from fastapi import FastAPI
     from sqlalchemy.engine import Engine
-    from sqlalchemy.orm import Session
+    from sqlalchemy.orm import Session, sessionmaker
     from starlette.testclient import TestClient
 
     from mailroom.models import AuditRecord, User
@@ -275,6 +277,23 @@ def test_a_reply_starts_from_its_original_and_writes_nothing(composer: Composer)
         "bob@example.org",
     ]
     assert composer.contents("Drafts") == []
+
+
+def test_a_prefill_quotes_the_date_in_the_users_time_zone(
+    composer: Composer, sessions: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(composer.application.state, "session_maker", sessions)
+    ref = composer.seed(mime("Notes", date="Wed, 1 Oct 2026 12:00:00 +0000", text="Hello"))
+
+    def started(mode: str) -> str:
+        answer = composer.client.post(f"{MAIL}/drafts/prefill", json={"ref": ref, "mode": mode})
+        return answer.json()["text"]
+
+    assert started("reply").startswith("\n\nOn 2026-10-01 12:00, ")
+    zone = {"time_zone": "Asia/Tokyo"}
+    assert composer.client.put("/api/v1/auth/me/time-zone", json=zone).status_code == 200
+    assert started("reply").startswith("\n\nOn 2026-10-01 21:00, ")
+    assert "Date: 2026-10-01 21:00" in started("forward")
 
 
 def test_a_forward_offers_the_attachments(composer: Composer) -> None:
@@ -1261,16 +1280,31 @@ def test_a_full_runner_is_busy_before_anything_is_claimed(
 
 
 def test_the_hourly_limit_is_refused_before_smtp(
-    composer: Composer, smtp_server: SmtpTestServer, migrated_engine: Engine, user: User
+    composer: Composer,
+    smtp_server: SmtpTestServer,
+    migrated_engine: Engine,
+    user: User,
+    sessions: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """The time it names is in the user's zone."""
+    monkeypatch.setattr(composer.application.state, "session_maker", sessions)
     composer.set_limits(migrated_engine, user.id, send_per_hour=1)
+    zone = {"time_zone": "Pacific/Kiritimati"}
+    assert composer.client.put("/api/v1/auth/me/time-zone", json=zone).status_code == 200
     first, second = stranger(), stranger()
     ref = composer.save(to=[address(first)], subject="One", text="Hello")["ref"]
     assert composer.sent(ref)["state"] == "sent"
     ref = composer.save(to=[address(second)], subject="Two", text="Hello")["ref"]
     refused = composer.post_send(ref)
     assert detail(refused) == (429, "rate_limited")
-    assert "the next send is possible at" in refused.json()["detail"]["message"]
+    message = refused.json()["detail"]["message"]
+    when = re.search(r"the next send is possible at (\d{4}-\d\d-\d\d \d\d:\d\d)\.", message)
+    assert when is not None, message
+    local = datetime.strptime(when[1], "%Y-%m-%d %H:%M").replace(
+        tzinfo=ZoneInfo("Pacific/Kiritimati")
+    )
+    assert abs(local - (datetime.now(UTC) + timedelta(hours=1))) < timedelta(minutes=5)
     assert smtp_server.delivered_to(second) == []
 
 
