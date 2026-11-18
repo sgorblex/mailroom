@@ -46,6 +46,8 @@ REFUSALS: Final[frozenset[AuditResult]] = frozenset(
         "rate_limited",
         "folder_exists",
         "folder_changed",
+        "count_changed",
+        "too_many",
         # The mailbox lock was never acquired, so nothing was written.
         "busy",
     }
@@ -106,7 +108,7 @@ class AuditItem:
     """Recipients the server refused while taking the others."""
     messages: int | None = None
     """How many messages a deleted folder held, as the caller confirmed; on a folder marked read,
-    how many it marked."""
+    how many it marked; on a bulk call refused, how many the account matched."""
     result: AuditResult
 
     @property

@@ -28,7 +28,7 @@ from mailroom_core.mail import DISPLAYED_IMAGES, TO_SORT, SearchQuery
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from mailroom_core.mail import MessageSummary, MessageView, Page
+    from mailroom_core.mail import MessageSummary, MessageView, Page, PageFailure
     from mailroom_core.render import Address
 
 PAGE_SIZE: Final = 25
@@ -124,6 +124,10 @@ class SourceFailure(BaseModel):
     folder: str | None
     code: str
 
+    @classmethod
+    def of(cls, failure: PageFailure) -> SourceFailure:
+        return cls(account_id=failure.account, folder=failure.folder, code=failure.code)
+
 
 class MessagePage(BaseModel):
     messages: list[MessageItem]
@@ -135,10 +139,7 @@ class MessagePage(BaseModel):
         return cls(
             messages=[MessageItem.of(summary) for summary in page.messages],
             next_cursor=page.next_cursor,
-            failures=[
-                SourceFailure(account_id=f.account, folder=f.folder, code=f.code)
-                for f in page.failures
-            ],
+            failures=[SourceFailure.of(failure) for failure in page.failures],
         )
 
 
@@ -228,9 +229,9 @@ def messages(
     return MessagePage.of(page)
 
 
-class SearchRequest(BaseModel):
-    """A search's criteria, in a body rather than the query string so that they stay out of
-    access logs."""
+class MatchRequest(BaseModel):
+    """A search's scope and criteria, in a body rather than the query string so that they stay
+    out of access logs: a search's, and a count's and bulk action's over what it matches."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -248,8 +249,6 @@ class SearchRequest(BaseModel):
     flagged: bool | None = None
     has_attachment: bool | None = None
     gmail_query: Annotated[str | None, Field(max_length=service.MAX_TERM)] = None
-    limit: Annotated[int, Field(ge=1, le=MAX_PAGE_SIZE)] = PAGE_SIZE
-    cursor: Annotated[str | None, Field(max_length=service.MAX_CURSOR)] = None
     subfolders: bool = False
 
     def query(self) -> SearchQuery:
@@ -265,6 +264,11 @@ class SearchRequest(BaseModel):
             has_attachment=self.has_attachment,
             gmail_query=_term(self.gmail_query),
         )
+
+
+class SearchRequest(MatchRequest):
+    limit: Annotated[int, Field(ge=1, le=MAX_PAGE_SIZE)] = PAGE_SIZE
+    cursor: Annotated[str | None, Field(max_length=service.MAX_CURSOR)] = None
 
 
 @mail_router.post("/search")

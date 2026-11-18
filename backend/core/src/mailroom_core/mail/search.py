@@ -124,6 +124,34 @@ def read_folders(
     return with_subfolders(connections.folders(account), folder, account)
 
 
+def search_sources(
+    connections: MailConnections,
+    account: int,
+    folder: str,
+    query: SearchQuery,
+    *,
+    subfolders: bool,
+) -> tuple[list[str], Criteria]:
+    """The folders a search of `folder` reads in `account` (`searchable_folders` for
+    `ALL_FOLDERS`, else `read_folders`), and `query`'s criteria there: on Gmail
+    `has_attachment` goes into X-GM-RAW, so the capabilities are asked only when the query needs
+    them. `unsupported` for a `gmail_query` elsewhere."""
+    gmail = (
+        query.gmail_query is not None or query.has_attachment is True
+    ) and connections.capabilities(account).gmail
+    if query.gmail_query is not None and not gmail:
+        raise MailError(
+            "unsupported",
+            f"gmail_query works only on Gmail accounts; account {account} is not one.",
+        )
+    folders = (
+        searchable_folders(connections, account)
+        if folder == ALL_FOLDERS
+        else read_folders(connections, account, folder, subfolders=subfolders)
+    )
+    return folders, query.criteria(gmail=gmail)
+
+
 def list_messages(
     connections: MailConnections,
     account: int,
@@ -174,21 +202,10 @@ def search_messages(
         if account in failed_before:
             continue
         try:
-            gmail = (
-                query.gmail_query is not None or query.has_attachment is True
-            ) and connections.capabilities(account).gmail
-            if query.gmail_query is not None and not gmail:
-                raise MailError(
-                    "unsupported",
-                    f"gmail_query works only on Gmail accounts; account {account} is not one.",
-                )
-            folders = (
-                searchable_folders(connections, account)
-                if folder == ALL_FOLDERS
-                else read_folders(connections, account, folder, subfolders=subfolders)
+            folders, criteria[account] = search_sources(
+                connections, account, folder, query, subfolders=subfolders
             )
             sources.extend(Source(account, path) for path in folders)
-            criteria[account] = query.criteria(gmail=gmail)
         except MailError as error:
             if len(accounts) == 1:
                 raise

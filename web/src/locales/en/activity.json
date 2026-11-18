@@ -39,6 +39,9 @@
     "folder_rename": "Folder renamed",
     "folder_delete": "Folder deleted",
     "mark_folder_read": "Folder marked read",
+    "bulk_flag": "Flags changed (all matching)",
+    "bulk_move": "Moved (all matching)",
+    "bulk_trash": "Moved to Trash (all matching)",
     "run_failed": "Filter run failed"
   },
   "results": {

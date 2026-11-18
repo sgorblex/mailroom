@@ -1,12 +1,13 @@
 """A user's mail as every front end reads and writes it (the REST routes, the MCP tools): folders,
 pages of messages, one message, its HTML and its attachments, an account's quota, over
 mailroom-core; moves (to another of the user's accounts too), archiving, trashing and flag
-changes of batches of refs; drafts and sends; creating, renaming and deleting folders, and marking
-one read. Reading changes nothing, not even ``\\Seen``. Mail is deleted only deliberately:
-nothing is expunged beyond what a move takes away and a draft mailroom wrote (*The own-draft
-exception*), a move to another account removes for good only when asked, once the copies are
-confirmed, and a folder's delete takes its mail for good only with the count the user confirmed
-(*Folder management*; all in ``docs/requirements/mail-client.md``).
+changes of batches of refs, and of every message a search matches; drafts and sends; creating,
+renaming and deleting folders, and marking one read. Reading changes nothing, not even
+``\\Seen``. Mail is deleted only deliberately: nothing is expunged beyond what a move takes away
+and a draft mailroom wrote (*The own-draft exception*), a move to another account removes for
+good only when asked, once the copies are confirmed, and a folder's delete takes its mail for
+good only with the count the user confirmed (*Folder management*; all in
+``docs/requirements/mail-client.md``).
 
 Only the user's own accounts: an account id, or the account a ref names, that is not theirs is
 ``not_found`` exactly as one that does not exist. A mailbox failure is a ``Refusal`` of kind
@@ -16,13 +17,15 @@ an async caller runs it in a worker thread. The log names the call, the account 
 (``via``), never a subject, an address, a folder or a body; an organize call's and a send's add
 only counts and codes.
 
-The package is split by concern: ``read``, ``organize``, ``folder_writes`` (creating, renaming
-and deleting folders, marking one read; ``folders`` is the listing, re-exported here),
-``compose`` (drafts with it) and ``send``, with what more than one of them uses in ``_shared``.
-This facade re-exports what the front ends call, so they keep calling ``service.X``.
+The package is split by concern: ``read``, ``organize``, ``bulk`` (every message a search
+matches), ``folder_writes`` (creating, renaming and deleting folders, marking one read;
+``folders`` is the listing, re-exported here), ``compose`` (drafts with it) and ``send``, with
+what more than one of them uses in ``_shared``. This facade re-exports what the front ends call,
+so they keep calling ``service.X``.
 """
 
 from mailroom.mail.service._shared import MAX_CURSOR, MAX_FOLDER, MAX_REF_LENGTH, MAX_TERM
+from mailroom.mail.service.bulk import BULK_BATCH, BULK_MAX, act_on_matching, count_matching
 from mailroom.mail.service.compose import (
     DRAFT_GONE,
     DRAFT_NOT_EDITABLE,
@@ -79,6 +82,8 @@ from mailroom.mail.service.send import (
 
 __all__ = [
     "ALL_ACCOUNTS",
+    "BULK_BATCH",
+    "BULK_MAX",
     "DRAFT_GONE",
     "DRAFT_NOT_EDITABLE",
     "MAX_CURSOR",
@@ -100,8 +105,10 @@ __all__ = [
     "SendView",
     "account_ids",
     "account_keywords",
+    "act_on_matching",
     "archive",
     "attachment",
+    "count_matching",
     "create_folder",
     "delete_draft",
     "delete_folder",

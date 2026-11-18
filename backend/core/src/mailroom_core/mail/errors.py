@@ -32,6 +32,8 @@ type MailErrorCode = Literal[
     "delivery_unknown",
     "folder_exists",
     "folder_changed",
+    "count_changed",
+    "too_many",
     "server_error",
 ]
 MAIL_ERROR_CODES: Final[tuple[MailErrorCode, ...]] = get_args(MailErrorCode.__value__)
@@ -58,6 +60,8 @@ MESSAGES: Final[Mapping[MailErrorCode, str]] = {
     ),
     "folder_exists": "A folder with that name already exists.",
     "folder_changed": "The folder changed since it was read.",
+    "count_changed": "The messages matching changed since they were counted.",
+    "too_many": "Too many messages match to act on them all.",
     "server_error": "The mail server reported an error.",
 }
 
