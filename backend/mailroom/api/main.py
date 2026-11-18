@@ -14,6 +14,7 @@ from starlette.routing import Route
 
 from mailroom import database as mailroom_database
 from mailroom import db_migrations as mailroom_db_migrations
+from mailroom.accounts.autoconfig import Autoconfig
 from mailroom.accounts.secrets_key import secrets_subkey_from_env
 from mailroom.api.build_info import (
     api_deploy_env,
@@ -282,6 +283,7 @@ def create_application(
     application.add_exception_handler(Refusal, _refusal_answer)
     application.state.login_throttle = LoginThrottle()
     application.state.sso_start_limit = sso_start_limit()
+    application.state.autoconfig = Autoconfig()
     application.add_middleware(CrossSiteRequestMiddleware)
     if features.mail:
         application.add_middleware(NotStored, prefix=f"/api/v1{mail_router.prefix}/")
