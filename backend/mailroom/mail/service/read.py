@@ -1,5 +1,5 @@
 """Reading a user's mail: folders, pages of messages (a list, a search), one message, its thread,
-its HTML and its attachments."""
+its HTML and its attachments, and an account's quota."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import threading
 import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, wait
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, Literal, cast
 
 from mailroom.accounts.service import require_subkey
@@ -36,6 +37,7 @@ if TYPE_CHECKING:
         MailConnections,
         MailErrorCode,
         MessageView,
+        Quota,
     )
     from mailroom_core.render import Marker, SafeHtml
 
@@ -414,6 +416,64 @@ def thread(ctx: AppContext, user_id: int, ref: str, *, limit: int = 30, via: Via
         message.account,
         lambda connections: core.thread_page(connections, message, limit=limit),
     )
+
+
+QUOTA_SECONDS: Final = 600.0
+"""How long an account's quota is answered from ``Quotas`` before the server is asked again."""
+
+
+@dataclass(frozen=True, slots=True)
+class KeptQuota:
+    expires: float
+    quota: Quota | None
+
+
+class Quotas:
+    """The accounts' quotas as last read, each for ``QUOTA_SECONDS``, keyed by the account and
+    the revision of its user's accounts, so that a changed account is read afresh. Failures are
+    not kept."""
+
+    def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._kept: dict[tuple[int, int], KeptQuota] = {}
+
+    def get(self, account_id: int, revision: int) -> KeptQuota | None:
+        """The kept quota; None when there is none still fresh."""
+        with self._lock:
+            kept = self._kept.get((account_id, revision))
+            if kept is None or kept.expires <= self._clock():
+                return None
+            return kept
+
+    def put(self, account_id: int, revision: int, quota: Quota | None) -> None:
+        now = self._clock()
+        with self._lock:
+            self._kept = {key: kept for key, kept in self._kept.items() if kept.expires > now}
+            self._kept[account_id, revision] = KeptQuota(now + QUOTA_SECONDS, quota)
+
+
+def quota(
+    ctx: AppContext, user_id: int, account_id: int, quotas: Quotas, *, via: Via = "web"
+) -> Quota | None:
+    """The quota the account's INBOX falls under, None when the server keeps none (no QUOTA);
+    from ``quotas`` while it is fresh."""
+    accounts = _accounts(ctx, user_id)
+    _usable(ctx, user_id, accounts, account_id)
+    kept = quotas.get(account_id, accounts.revision)
+    if kept is not None:
+        return kept.quota
+    found = _call(
+        ctx,
+        user_id,
+        accounts,
+        "mail_quota",
+        via,
+        account_id,
+        lambda connections: connections.quota(account_id),
+    )
+    quotas.put(account_id, accounts.revision, found)
+    return found
 
 
 def account_ids(ctx: AppContext, user_id: int) -> Sequence[int]:

@@ -966,6 +966,18 @@ no-store`. Capped at the user's `attachment_max_mb` (mailroom-core settings, def
 it, 413 `too_large`. A part that is not an attachment, an inline part or the calendar part of that
 message: 404 `not_found`.
 
+## Mailbox quota
+
+`GET /api/v1/accounts/{id}/quota` (the signed-in user's own account; mounted in every edition)
+gives the quota the account's INBOX falls under, from the server's `GETQUOTAROOT` (RFC 2087):
+`{"account_id", "storage", "messages"}`, each `{"used", "limit"}` or null, `storage` in bytes.
+Both are null when the server offers no `QUOTA`, answers `NO` to `GETQUOTAROOT INBOX` (it
+advertises `QUOTA` but keeps none for this mailbox) or limits neither; a `NO [UNAVAILABLE]` is a
+temporary failure instead, and a `BAD` a server error. An answer, a null one too, is kept for 10
+minutes per account (in memory, per process), and asked afresh once the user's accounts change;
+a failure is not kept and answers as the mail routes do (`mail_status`). The accounts listing
+asks no server, and MCP's `accounts_list` gives no quota.
+
 ## Account autoconfiguration
 
 `GET /api/v1/accounts/autoconfig?address=<email>` (the signed-in user; mounted in every edition)

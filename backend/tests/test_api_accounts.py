@@ -9,6 +9,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Any
 
 import pytest
+from imapclient.exceptions import IMAPClientError
 from sqlalchemy import text
 
 from mailroom.accounts import service as accounts_service
@@ -16,9 +17,18 @@ from mailroom.accounts.store import load_accounts, user_store
 from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
 from mailroom.auth.users import create_user
 from mailroom.mail.connections import mail_ssl_context
+from mailroom.mail.service import Quotas
 from mailroom.models import User
 from mailroom_core.crypto import open_secret, seal_secret
-from mailroom_core.mail import CERTIFICATE_DETAIL, MESSAGES, MailConnections, MailError
+from mailroom_core.mail import (
+    CERTIFICATE_DETAIL,
+    MESSAGES,
+    Capabilities,
+    MailConnections,
+    MailError,
+    Quota,
+    QuotaUsage,
+)
 from mailroom_core.store import RevisionConflict, SettingsBusy, forget_user
 from mailroom_core.testing import SmtpStub
 from tests.conftest import PASSWORD
@@ -304,6 +314,7 @@ def test_users_see_only_their_own_accounts(user_client: TestClient, db_session: 
     assert user_client.put(f"/api/v1/accounts/{work}", json=change).status_code == 404
     assert user_client.delete(f"/api/v1/accounts/{work}").status_code == 404
     assert user_client.post(f"/api/v1/accounts/{work}/test").status_code == 404
+    assert user_client.get(f"/api/v1/accounts/{work}/quota").status_code == 404
     # The same login is theirs to use, under an id of its own.
     assert added(user_client) != work
 
@@ -562,6 +573,110 @@ def test_the_dev_mailbox_logs_in(
         "code": "auth_failed",
         "message": MESSAGES["auth_failed"],
     }
+
+
+class _Clock:
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def test_a_quota_is_asked_once_in_ten_minutes(
+    user_client: TestClient, application: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    work = added(user_client)
+    clock = _Clock()
+    monkeypatch.setattr(application.state, "quotas", Quotas(clock))
+    asked: list[int] = []
+
+    def fake_quota(_connections: MailConnections, account_id: int) -> Quota:
+        asked.append(account_id)
+        return Quota(storage=QuotaUsage(used=len(asked), limit=2048), messages=None)
+
+    monkeypatch.setattr(MailConnections, "quota", fake_quota)
+    first = {"account_id": work, "storage": {"used": 1, "limit": 2048}, "messages": None}
+    assert user_client.get(f"/api/v1/accounts/{work}/quota").json() == first
+    clock.now += 599
+    assert user_client.get(f"/api/v1/accounts/{work}/quota").json() == first
+    clock.now += 2
+    assert user_client.get(f"/api/v1/accounts/{work}/quota").json()["storage"]["used"] == 2
+    # A changed account is asked afresh.
+    change = edited(new_account()) | {"name": "Work"}
+    assert user_client.put(f"/api/v1/accounts/{work}", json=change).status_code == 200
+    assert user_client.get(f"/api/v1/accounts/{work}/quota").json()["storage"]["used"] == 3
+    assert asked == [work, work, work]
+
+
+def test_a_failed_quota_is_refused_and_not_kept(
+    user_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    work = added(user_client)
+    answers: list[Quota | MailError | None] = [MailError("server_error"), None]
+
+    def fake_quota(_connections: MailConnections, _account_id: int) -> Quota | None:
+        answer = answers.pop(0)
+        if isinstance(answer, MailError):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(MailConnections, "quota", fake_quota)
+    refused = user_client.get(f"/api/v1/accounts/{work}/quota")
+    assert refused.status_code == 502
+    assert refused.json()["detail"]["code"] == "server_error"
+    none = {"account_id": work, "storage": None, "messages": None}
+    assert user_client.get(f"/api/v1/accounts/{work}/quota").json() == none
+    assert user_client.get(f"/api/v1/accounts/{work}/quota").json() == none
+    assert answers == []
+
+
+def test_a_server_that_answers_no_has_no_quota_for_ten_minutes(
+    user_client: TestClient, application: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    work = added(user_client)
+    clock = _Clock()
+    monkeypatch.setattr(application.state, "quotas", Quotas(clock))
+    asked: list[str] = []
+
+    class Refusing:
+        def get_quota_root(self, mailbox: str) -> None:
+            asked.append(mailbox)
+            raise IMAPClientError("GETQUOTAROOT failed: [NONEXISTENT] No quota root")
+
+    offered = Capabilities(
+        gmail=False,
+        thread=True,
+        move=True,
+        uidplus=True,
+        condstore=True,
+        special_use=True,
+        quota=True,
+    )
+    monkeypatch.setattr(MailConnections, "capabilities", lambda _connections, _id: offered)
+    monkeypatch.setattr(
+        MailConnections, "_on_connection", lambda _connections, _id, fn, **_: fn(Refusing())
+    )
+    none = {"account_id": work, "storage": None, "messages": None}
+    assert user_client.get(f"/api/v1/accounts/{work}/quota").json() == none
+    clock.now += 599
+    assert user_client.get(f"/api/v1/accounts/{work}/quota").json() == none
+    assert asked == ["INBOX"]
+    clock.now += 2
+    assert user_client.get(f"/api/v1/accounts/{work}/quota").json() == none
+    assert asked == ["INBOX", "INBOX"]
+
+
+def test_the_dev_mailbox_has_a_quota(
+    user_client: TestClient,
+    imap_server: ImapTestServer,
+    application: FastAPI,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    account = dev_mailbox_account(user_client, imap_server, application, monkeypatch, "quota")
+    answer = user_client.get(f"/api/v1/accounts/{account['id']}/quota").json()
+    assert answer["storage"]["limit"] == 1024**3
+    assert answer["messages"] == {"used": 0, "limit": 100000}
 
 
 def test_the_mail_ssl_context_verifies(monkeypatch: pytest.MonkeyPatch) -> None:

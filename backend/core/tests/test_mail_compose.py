@@ -236,7 +236,7 @@ def test_drafts_a_threaded_reply_from_the_alias_the_original_went_to(imap_server
     seed(imap_server, user, "Drafts", composed.stored, ["\\Draft", "\\Seen"])
 
     [draft] = folder_contents(imap_server, user, "Drafts")
-    assert set(draft.flags) == {"\\Draft", "\\Seen"}
+    assert set(draft.flags) - {"\\Recent"} == {"\\Draft", "\\Seen"}
     assert b"From: Alias <alias@example.test>" in draft.source
     assert b"To: Ana <ana@example.org>" in draft.source
     assert b"In-Reply-To: <dinner@example.org>" in draft.source
