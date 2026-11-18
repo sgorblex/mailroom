@@ -60,8 +60,6 @@ In order. The reasons are in [`CONTEXT.md`](CONTEXT.md) — *Where the family is
   - [x] **Web** — `/mail`: folders with counts, list with load more, message view with the
         sandboxed HTML iframe and remote-content gate.
   - [x] **MCP** — the `mail_read` group.
-- [ ] **Index and live updates** — schema, initial sync, IDLE-driven refresh, push to the browser;
-      lists and search move to the index.
 - [x] **Tier 2 triage** (slice B, [`requirements/mail-client.md`](requirements/mail-client.md)) —
       move, archive, trash and flag over REST, the web triage (multi-select, toolbar, shortcuts,
       mark read on open) and the `mail_organize` MCP group.
@@ -71,6 +69,193 @@ In order. The reasons are in [`CONTEXT.md`](CONTEXT.md) — *Where the family is
       the web composer and the `mail_draft` and `mail_send` MCP groups.
 - [x] **Host proxy limit for drafts** — the production proxy sets no body limit, and its read
       timeout is now 300 s, so a 30 MB draft has time to arrive.
+
+## Next: milestones and batches
+
+In order. A batch is one stack, its items one branch each, in the order listed; a milestone is
+released and checked in production before the next one starts. Batch 15 is the roadmap's:
+*Suggestions* and the command-line tools.
+
+### Milestone A: Urgent and accounts
+
+#### 1. Urgent
+
+- [ ] **A folder with its subfolders** (urgent) — a folder's messages listed and searched together
+      with all its subfolders' (an Inbox kept in subfolders, say), newest first: a toggle on the
+      folder in the web, an option on `messages_list` and `messages_search` over MCP. Until the
+      index, a bounded merge of the folders' own listings.
+- [ ] **Time zone per user** (urgent) — dates in the user's time zone, set on the profile, in the
+      web and over MCP; today the app keeps none and gives UTC.
+
+#### 2. Accounts
+
+- [ ] **Account display names** — an editable name per account, shown wherever the web names an
+      account; the id stays the key that filters, the audit trail, refs and MCP use.
+- [ ] **Account colours** — so the accounts stay apart in unified lists.
+- [ ] **Account autoconfiguration** — on setup, look the address up in the provider's
+      autoconfig, Thunderbird's ISPDB and DNS SRV records (RFC 6186); when nothing answers,
+      offer presets (Gmail with an app password, iCloud, Fastmail, Yahoo).
+- [ ] **Mailbox quota** — each account's usage, from the server's IMAP `QUOTA`.
+
+### Milestone B: Acting on mail, reading it, filtering from it
+
+#### 3. Actions
+
+- [ ] **Shared action registry and context menu** — one list of message actions behind the
+      toolbar, the shortcuts and a right-click menu on messages and folders.
+- [ ] **Shortcut sheet** — `?` lists the keyboard shortcuts, read from the action registry.
+- [ ] **Undo** — a toast with Undo for a few seconds after a move, archive or trash.
+- [ ] **Drag and drop** — messages onto a folder, of the same account or another one.
+- [ ] **Select all matching** — after selecting all, act on every message the list or search
+      matches, not only those loaded, with the count to confirm.
+- [ ] **Mark folder as read** — every message in a folder at once, with the count to confirm.
+- [ ] **Command palette** — Ctrl/⌘+K: go to an account, a folder or a settings page, and run the
+      registry's actions on the open or selected messages; recents on an empty query.
+
+#### 4. Reading a message
+
+- [ ] **Sender mismatch warning** — when a sender's display name is or looks like an address other
+      than the one it sends from, show the real one and flag it.
+- [ ] **Sender authentication** — a badge for the SPF, DKIM and DMARC results, and a warning when
+      they fail.
+- [ ] **Link safety** — a link's real address on hover, and a warning when its text names
+      another site.
+- [ ] **"Sent to" address** — which of the user's addresses or aliases a message arrived at.
+- [ ] **Recipient summary** — "to you and 12 others", expanded on click.
+- [ ] **Mailing list badge** — the list's name, with its archive and unsubscribe at hand.
+- [ ] **Unsubscribe** — `List-Unsubscribe` one-click (RFC 8058) where the list supports it, else
+      its link or address; never automatic, and with the offer of a filter instead.
+- [ ] **Replied indicator** — a mark on the rows the user answered or forwarded.
+- [ ] **Remote content per sender** — the remote-content gate remembers the senders the user
+      trusts.
+- [ ] **Tracker count** — how many trackers the remote-content gate blocked, beside it.
+- [ ] **Print and download** — a message printed as shown, or saved as its `.eml`.
+
+#### 5. Filters from the client
+
+- [ ] **A filter from a message** — the filter editor pre-filled from a message (sender, list,
+      subject); which fields, and how to keep it from making overly broad rules, to settle
+      first.
+- [ ] **A filter from a search** — the current search turned into a filter's conditions.
+- [ ] **Report spam** — the message to Junk and, if the user wants, a filter that keeps
+      trashing its sender.
+- [ ] **Mute a thread** — later replies skip the inbox and arrive read.
+- [ ] **Match counts per filter** — how often each filter matched lately, so dead ones stand out.
+- [ ] **Rules for all accounts** — one rule set applied to every account of the user.
+- [ ] **Filters that move to another account** — a `mailroom_core.filters` action naming the
+      target account, resolved by the host at load time (the user's own only, checked on save
+      and at run), with an account and folder picker in the filter editor. Needs a guard against loops (A to B and
+      B to A, or the target's new-mail filters picking the message up again) and a run that
+      writes to two mailboxes.
+
+### Milestone C: The index
+
+#### 6. Index and what it unlocks
+
+- [ ] **Index and live updates** — schema, initial sync, IDLE-driven refresh, push to the browser;
+      lists and search move to the index.
+- [ ] **Unified folders and saved searches** (after *Index and live updates*) — a folder made of
+      any folders of any of the user's accounts (*All inboxes* first), and a search kept as a
+      folder; one mechanism for both.
+- [ ] **Unread only and quick filters** — one-click views of the list (unread, flagged, with
+      attachments), which are preset searches: both, the same mechanism.
+- [ ] **Search syntax** — `from:`, `to:`, `has:attachment`, `is:unread`, `before:` and the like
+      in the search box, with chips to build them.
+- [ ] **Snippets** (after *Index and live updates*) — the opening of each message's text under its
+      subject in the list.
+- [ ] **Conversations in the list** — messages grouped by thread, not only on open.
+- [ ] **Large folders** — a virtualised list, so a folder of tens of thousands of messages stays
+      smooth.
+- [ ] **Desktop notifications** (after *Index and live updates*) — new mail, per folder.
+
+### Milestone D: Writing and sending
+
+#### 7. Compose
+
+- [ ] **Reply from the right address** — a reply goes from the identity the message arrived at.
+- [ ] **Signatures** — one per identity, added in compose.
+- [ ] **Quote the selection** — Reply with text selected quotes only that.
+- [ ] **Paste images inline** — a pasted image becomes an inline part of the message.
+- [ ] **Address autocomplete** — in compose, from the addresses the user wrote to.
+- [ ] **Rich text compose** — formatting (Markdown or a rich editor) sent as HTML with a plain
+      text part; to be expanded.
+
+#### 8. Scheduled by the worker
+
+- [ ] **Undo send** — a sent message is held for a few seconds, with Undo, before it goes to the
+      mail server.
+- [ ] **Send later and snooze** — a time to send a message or bring one back, run by the worker.
+- [ ] **Vacation auto-reply** — on and off, with dates, once per sender, through the send gate.
+
+#### 9. HTML and templated mail
+
+- [ ] **HTML and templated mail** (to specify) — two parts, sharing the send path:
+  - **Designed HTML mail:** a ready-built message (HTML, its plain-text part, inline `cid:`
+    images, attachments) taken in as a draft, maybe later authored here from MJML. Previewed
+    at phone and desktop widths, light and dark; checked before sending (images without
+    `alt`, a `cid:` with no image or the reverse, over Gmail's 102 KB clip); a test send to
+    the user; sent from the account, so it lands in Sent and its thread.
+  - **Templates with variants per recipient:** logic-free `{{ placeholders }}`, each value
+    HTML-escaped, from the recipient (a contact) or typed per recipient (a table, a CSV); a
+    missing value holds back that recipient only. Rendered once on the server, so the
+    preview cannot drift from what is sent; sent one by one by the worker, each recipient
+    pending, sending (recorded before the server is called), then sent or failed, so none
+    gets it twice. A real sandboxed engine with autoescape only if conditions are ever
+    needed.
+
+### Milestone E: Profile, design, agents, integrations, operations
+
+#### 10. Profile, security and data
+
+- [ ] **Sessions** — the user's signed-in sessions on the profile, each one endable.
+- [ ] **Personal API tokens** — made and revoked on the profile, for scripts and the command-line
+      client (*Command-line tools*).
+- [ ] **Export** — the user's rule sets as JSON and their audit trail as CSV.
+- [ ] **Audit retention** — how long the audit trail is kept, a setting.
+
+#### 11. Design
+
+- [ ] **Theme and design pass** — palette, typography, light/dark switch, app shell.
+- [ ] **Layout and density** — the reading pane on the right, below the list or off; compact or
+      comfortable rows.
+- [ ] **Dark mode for HTML mail** — the sandboxed frame's colours adapted to a dark theme, off
+      for a message with one click.
+- [ ] **Calendar invites** — an `.ics` invite shown as a card, with Accept, Tentative and Decline.
+- [ ] **Mobile and installable** — a layout pass for phones, and a web app manifest (with
+      *Theme and design pass*).
+- [ ] **Swipe actions** — on phones, archive and trash by swiping, the actions configurable.
+- [ ] **Accessibility pass** — screen readers, keyboard focus and contrast across the app, with
+      automated checks in CI.
+
+#### 12. MCP extras
+
+- [ ] **Attachments from agents** — `draft_*` and the send tools take new files as content
+      (size-capped, type checked against the content) and rename attachments kept from
+      messages. Lifts the rule that attachments are named by `ref` and `part` only, so its
+      reasons are weighed first: what an agent may attach unasked, and tool calls that size.
+- [ ] **Per-app limits** (maybe) — a connected app sees only the accounts the user chooses,
+      and may send less than the account allows (drafts only, say).
+- [ ] **Activity per app** (maybe) — the audit trail of one connected app, linked from Connected
+      apps.
+
+#### 13. Integrations
+
+- [ ] **Microsoft accounts over OAuth2** — Outlook.com and Microsoft 365 refuse a password over
+      IMAP: sign-in through Microsoft, tokens stored and refreshed like passwords are kept.
+- [ ] **Contacts over CardDAV** — the user's address book for autocomplete and sender names.
+- [ ] **Filter import** — Sieve scripts and Thunderbird filters turned into rule sets.
+- [ ] **Remote image proxy** (maybe) — allowed remote images fetched through the server, so the
+      sender never sees the user's address or when they read. Its security comes first: no
+      request to private or loopback addresses (SSRF), images only, size and time limits, never
+      an open proxy.
+
+#### 14. Operations
+
+- [ ] **Staging pipeline** — a staging instance, deployed from CI.
+- [ ] **Admin page** — users, invites and instance settings in the web, not only on the command
+      line.
+- [ ] **Instance health** — the worker's last run, its queue and the failing accounts, for the
+      admin.
 
 ## Folders and moves across accounts
 
@@ -88,11 +273,6 @@ In this order, after *One IMAP stack* (*Family roadmap*): each builds on the one
       that fails leaves the message in both and says so; at most the user's `move_max_mb`.
       *Move to another account…* on the web, the `mail_transfer` MCP group (preview), recorded
       in both accounts.
-- [ ] **Filters that move to another account** — a `mailroom_core.filters` action naming the
-      target account, resolved by the host at load time (the user's own only, checked on save
-      and at run), with an account and folder picker in the filter editor. Needs a guard against loops (A to B and
-      B to A, or the target's new-mail filters picking the message up again) and a run that
-      writes to two mailboxes.
 
 ## MCP and suggestions
 
@@ -121,5 +301,3 @@ In this order, after *One IMAP stack* (*Family roadmap*): each builds on the one
       Postgres, backup line, Quadlet units, Traefik route.
 - [x] **Release pipeline** — a release tag builds and pushes both images; the host's config
       repository deploys them.
-- [ ] **Staging pipeline** — a staging instance, deployed from CI.
-- [ ] **Theme and design pass** — palette, typography, light/dark switch, app shell.
