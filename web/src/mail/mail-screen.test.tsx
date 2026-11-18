@@ -9,7 +9,7 @@ import { renderMailApp } from '@/test/mail-app.tsx'
 import { HTML_SANDBOX } from './html-body.tsx'
 
 const inbox = Array.from({ length: 30 }, (_, index) =>
-  messageItem(WORK, 'INBOX', 100 - index, index === 0 ? { flags: { seen: false, flagged: true, answered: false, draft: false } } : {}),
+  messageItem(WORK, 'INBOX', 100 - index, index === 0 ? { flags: { seen: false, flagged: true, answered: false, draft: false, to_sort: false } } : {}),
 )
 const plain = inbox[1] ?? messageItem(WORK, 'INBOX', 0)
 const html = inbox[2] ?? messageItem(WORK, 'INBOX', 0)

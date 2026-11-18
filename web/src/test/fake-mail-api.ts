@@ -43,6 +43,8 @@ export interface FakeMailState {
   copiedNotRemoved?: Record<string, string>
   /** Called with each request (`"POST /api/v1/mail/messages/flag"`, its body); the answer waits for the promise it returns. */
   hold?: (request: string, body: unknown) => Promise<void> | undefined
+  /** Whether each account's server keeps keywords (To sort); `null` unless it says otherwise. */
+  keywords?: Record<string, boolean | null>
   /** Each account's send mode; `drafts` unless it says otherwise. */
   sendModes?: Record<string, string>
   /** Each account's name and colour; `ACCOUNT_NAMES`' unless it says otherwise (else unnamed and shown by its login), without a colour. */
@@ -119,7 +121,7 @@ export function messageItem(account: AccountId, folder: string, uid: number, fie
     date: '2026-10-30T09:12:00+00:00',
     from: { name: `Sender ${String(uid)}`, address: `sender${String(uid)}@example.org` },
     subject: `Message ${String(uid)}`,
-    flags: { seen: true, flagged: false, answered: false, draft: false },
+    flags: { seen: true, flagged: false, answered: false, draft: false, to_sort: false },
     has_attachments: false,
     preview: `Preview of ${String(uid)}`,
     size: 1000,
@@ -163,7 +165,15 @@ export function messageView(item: MessageItem, fields: Partial<MessageView> = {}
 function organize(
   state: FakeMailState,
   route: string,
-  body: { refs: string[]; folder?: string; account?: AccountId; removal?: string; seen?: boolean; flagged?: boolean },
+  body: {
+    refs: string[]
+    folder?: string
+    account?: AccountId
+    removal?: string
+    seen?: boolean
+    flagged?: boolean
+    to_sort?: boolean
+  },
 ): Response {
   if (body.refs.length === 0 || body.refs.length > 50) {
     return json(422, { detail: [{ type: 'too_long', loc: ['body', 'refs'], msg: 'List should have at most 50 items' }] })
@@ -214,7 +224,12 @@ function organize(
       const changed = new Map(
         items.map((item) => [
           item.ref,
-          { ...item.flags, seen: body.seen ?? item.flags.seen, flagged: body.flagged ?? item.flags.flagged },
+          {
+            ...item.flags,
+            seen: body.seen ?? item.flags.seen,
+            flagged: body.flagged ?? item.flags.flagged,
+            to_sort: body.to_sort ?? item.flags.to_sort,
+          },
         ]),
       )
       state.messages[key] = (state.messages[key] ?? []).map((item) => {
@@ -227,7 +242,16 @@ function organize(
           state.views[ref] = { ...view, flags }
         }
       }
-      return { ...group, new_refs: [], flags: [...changed].map(([ref, flags]) => ({ ref, seen: flags.seen, flagged: flags.flagged })) }
+      return {
+        ...group,
+        new_refs: [],
+        flags: [...changed].map(([ref, flags]) => ({
+          ref,
+          seen: flags.seen,
+          flagged: flags.flagged,
+          to_sort: flags.to_sort,
+        })),
+      }
     }
     const role = route === 'archive' ? 'archive' : route === 'trash' ? 'trash' : null
     const destination = role === null ? body.folder : state.folders[account]?.find((each) => each.role === role)?.path
@@ -607,6 +631,7 @@ export function stubMailApi(state: FakeMailState): Mock {
             run_filters: false,
             attachment_max_mb: state.attachmentMaxMb ?? 10,
             max_recipients: state.maxRecipients ?? 10,
+            keywords: state.keywords?.[id] ?? null,
           }
         }),
       )

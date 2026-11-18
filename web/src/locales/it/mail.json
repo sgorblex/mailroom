@@ -92,6 +92,7 @@
     "failedFolder": "{{account}}, {{folder}}: {{reason}}",
     "unread": "Non letto",
     "flagged": "Speciale",
+    "toSort": "Da smistare",
     "hasAttachments": "Con allegati"
   },
   "search": {
@@ -188,6 +189,9 @@
     "cancel": "Annulla",
     "star": "Aggiungi a Speciali",
     "unstar": "Rimuovi da Speciali",
+    "toSort": "Segna da smistare",
+    "sorted": "Segna come smistato",
+    "toSortUnsupported": "il server di posta non può conservare il segno Da smistare",
     "markRead": "Segna come letto",
     "markUnread": "Segna come non letto",
     "dismiss": "Chiudi",
@@ -207,6 +211,10 @@
     "starred_other": "{{count}} messaggi aggiunti a Speciali.",
     "unstarred_one": "{{count}} messaggio rimosso da Speciali.",
     "unstarred_other": "{{count}} messaggi rimossi da Speciali.",
+    "markedToSort_one": "{{count}} messaggio segnato da smistare.",
+    "markedToSort_other": "{{count}} messaggi segnati da smistare.",
+    "markedSorted_one": "{{count}} messaggio segnato come smistato.",
+    "markedSorted_other": "{{count}} messaggi segnati come smistati.",
     "markedRead_one": "{{count}} messaggio segnato come letto.",
     "markedRead_other": "{{count}} messaggi segnati come letti.",
     "markedUnread_one": "{{count}} messaggio segnato come non letto.",

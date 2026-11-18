@@ -363,6 +363,7 @@ export function TriageProvider({
           const after = {
             seen: read?.seen ?? change.seen ?? before.seen,
             flagged: read?.flagged ?? change.flagged ?? before.flagged,
+            to_sort: read?.to_sort ?? change.to_sort ?? before.to_sort,
           }
           next.set(target.ref, after)
           unread += Number(!after.seen) - Number(!before.seen)

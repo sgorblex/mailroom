@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { bodiesTo, type FakeMailState, HOME, messageItem, messageView, refusal, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
 import { renderMailApp } from '@/test/mail-app.tsx'
 
-const UNREAD = { seen: false, flagged: false, answered: false, draft: false }
+const UNREAD = { seen: false, flagged: false, answered: false, draft: false, to_sort: false }
 const inbox = Array.from({ length: 5 }, (_, index) =>
   messageItem(WORK, 'INBOX', 10 - index, index === 0 ? { flags: UNREAD } : {}),
 )
@@ -79,6 +79,8 @@ function row(list: HTMLElement, subject: string): HTMLElement {
 }
 const starToggle = (list: HTMLElement, subject: string): HTMLElement =>
   within(row(list, subject)).getByRole('button', { name: 'Star' })
+const toSortToggle = (list: HTMLElement, subject: string): HTMLElement =>
+  within(row(list, subject)).getByRole('button', { name: 'To sort' })
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -264,6 +266,69 @@ describe('triage', () => {
       { refs: [second?.ref], seen: false },
       { refs: [second?.ref], seen: true },
     ])
+  })
+
+  it('marks To sort and sorted from the toolbar and from the row, in place', async () => {
+    const fetchMock = stubMailApi(state({ keywords: { [WORK]: true } }))
+    renderMailApp('/mail')
+
+    const list = await messagesList()
+    await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 9' }))
+    const group = await actions()
+    await userEvent.click(within(group).getByRole('button', { name: 'Mark To sort' }))
+    await reported('polite', 'Marked 1 message To sort.')
+    expect(toSortToggle(list, 'Message 9')).toHaveAttribute('aria-pressed', 'true')
+    expect(toSortToggle(list, 'Message 9')).toHaveAttribute('title', 'Mark sorted')
+    expect(rowLink(list, 'Message 9')).toHaveAccessibleName(/To sort/)
+    await userEvent.click(within(group).getByRole('button', { name: 'Mark sorted' }))
+    await reported('polite', 'Marked 1 message sorted.')
+    expect(toSortToggle(list, 'Message 9')).toHaveAttribute('aria-pressed', 'false')
+    expect(rowLink(list, 'Message 9')).not.toHaveAccessibleName(/To sort/)
+
+    await userEvent.click(toSortToggle(list, 'Message 8'))
+    await reported('polite', 'Marked 1 message To sort.')
+    expect(toSortToggle(list, 'Message 8')).toHaveAttribute('aria-pressed', 'true')
+    expect(starToggle(list, 'Message 8')).toHaveAttribute('aria-pressed', 'false')
+    expect(bodiesTo(fetchMock, FLAG)).toEqual([
+      { refs: [second?.ref], to_sort: true },
+      { refs: [second?.ref], to_sort: false },
+      { refs: [third?.ref], to_sort: true },
+    ])
+  })
+
+  it("greys To sort out, saying why, where the account's server keeps no keywords", async () => {
+    const fetchMock = stubMailApi(state({ keywords: { [WORK]: false } }))
+    renderMailApp(`/mail?message=${String(second?.ref)}`)
+
+    const list = await messagesList()
+    const button = within(await actions()).getByRole('button', { name: 'Mark To sort' })
+    expect(button).toHaveAttribute('aria-disabled', 'true')
+    expect(button).toHaveAccessibleDescription('Mark To sort (t): the mail server cannot keep the To sort mark')
+    await userEvent.click(button)
+    await userEvent.keyboard('t')
+    const toggle = toSortToggle(list, 'Message 9')
+    expect(toggle).toHaveAttribute('aria-disabled', 'true')
+    expect(toggle).toHaveAccessibleDescription('Mark To sort: the mail server cannot keep the To sort mark')
+    await userEvent.click(toggle)
+    // The star is still there to mark with.
+    await userEvent.keyboard('s')
+    await reported('polite', 'Starred 1 message.')
+    expect(bodiesTo(fetchMock, FLAG)).toEqual([{ refs: [second?.ref], flagged: true }])
+  })
+
+  it("offers To sort where keywords are not known, and reports the server's refusal", async () => {
+    stubMailApi(state({ groupFailures: { '1/INBOX': 'unsupported' } }))
+    renderMailApp('/mail')
+
+    const list = await messagesList()
+    await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 9' }))
+    await userEvent.click(within(await actions()).getByRole('button', { name: 'Mark To sort' }))
+    await reported('assertive', 'The mail server does not support this.')
+    expect(toSortToggle(list, 'Message 9')).toHaveAttribute('aria-pressed', 'false')
+
+    await userEvent.click(toSortToggle(list, 'Message 8'))
+    await reported('assertive', 'The mail server does not support this.')
+    expect(toSortToggle(list, 'Message 8')).toHaveAttribute('aria-pressed', 'false')
   })
 
   it("stars and unstars one row from its star, leaving the selection and the open message as they are", async () => {
@@ -625,6 +690,7 @@ describe('keyboard shortcuts', () => {
     ['e', '/api/v1/mail/messages/archive', { refs: [second?.ref] }],
     ['#', '/api/v1/mail/messages/trash', { refs: [second?.ref] }],
     ['s', '/api/v1/mail/messages/flag', { refs: [second?.ref], flagged: true }],
+    ['t', '/api/v1/mail/messages/flag', { refs: [second?.ref], to_sort: true }],
     ['u', '/api/v1/mail/messages/flag', { refs: [second?.ref], seen: false }],
   ])('%s acts on the open message', async (key, path, body) => {
     const fetchMock = stubMailApi(state())

@@ -6,6 +6,7 @@ import type { FlagChange, FolderRole, MailFolder, MessageItem, MoveRemoval } fro
 export interface Flags {
   seen: boolean
   flagged: boolean
+  to_sort: boolean
 }
 
 /** What an action needs of a message: where it is, and its flags as the list or view read them. */

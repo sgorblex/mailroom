@@ -34,3 +34,9 @@ export function useAccountName(): (id: AccountId) => string {
   const label = useAccountLabel()
   return useCallback((id: AccountId) => label(id).display_name, [label])
 }
+
+/** Whether an account's server keeps keywords, so its mail can be marked To sort; `null` when not known. */
+export function useAccountKeywords(): (id: AccountId) => boolean | null {
+  const accounts = useContext(AccountsContext)
+  return useCallback((id: AccountId) => accounts?.find((each) => each.id === id)?.keywords ?? null, [accounts])
+}
