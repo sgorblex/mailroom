@@ -120,6 +120,7 @@ from mailroom_core.mail.pages import (
     cursor_failures,
     decode_cursor,
     encode_cursor,
+    failed_accounts,
     preview_of,
     read_page,
 )
@@ -325,6 +326,7 @@ __all__ = [
     "empty_folder_text",
     "encode_cursor",
     "envelope_mailboxes",
+    "failed_accounts",
     "fetch_envelopes",
     "fetch_source",
     "fetch_sources",

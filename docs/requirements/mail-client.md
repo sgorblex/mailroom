@@ -717,8 +717,9 @@ characters are already stripped from headers.
   answers `stale_reference`, as does one made before account ids were numbers (version 1, the
   account by its slug); one of an account that is not the user's answers `not_found`, as a
   missing one.
-- A **cursor** is equally opaque (base64url of `[2, positions]`, then, when a folder failed,
-  `[account, folder, code, certificate]` for each such folder): pass `next_cursor` back as
+- A **cursor** is equally opaque (base64url of `[2, positions]`, then, when a folder or an
+  account failed, `[account, folder, code, certificate]` for each, `folder` `null` for an
+  account): pass `next_cursor` back as
   `cursor`, with the same query. A malformed one is `invalid_argument`; one made before account
   ids were numbers is `stale_reference`.
 
@@ -767,8 +768,11 @@ In a list or search page a failing source does not fail the page: it is reported
 code, below. It is not read again: `next_cursor` carries it as failed, every later page of the
 same query reports it again in `failures`, with the code (and message) it failed with, and paging
 ends once the other sources are done. A page whose `failures` is empty is then complete for the
-sources it read, whichever page it is. An account that failed before a folder was chosen is not
-carried: each page tries it again.
+sources it read, whichever page it is. An account that failed before a folder was chosen (folder
+`null`, an all-accounts search's `timeout` included) is carried the same way: later pages report
+it without asking it again, even if it would answer now. An account skipped as
+`password_missing` is carried too: later pages report it without checking its password again,
+even once it is back.
 
 ### Types
 

@@ -159,7 +159,12 @@ changed fails with `stale_reference`, never naming another message, as does a ve
 cursor, which named the account by its slug. Refs are not signed: the host checks the account is the caller's. A
 folder that fails is never read again by the following pages: their cursor carries it as failed
 (a third element, absent when nothing failed), and each page reports it in `failures` with its
-code until paging ends; a carried failure's message is the code's own, never the cursor's text
+code until paging ends. A search's account that failed before its folders were found is carried
+too, with no folder: `search_messages` and a host's own search skip the accounts
+`failed_accounts` names and pass the new ones to `read_page` as `account_failures`. A code that
+is not core's own is carried only for an account, and only when the host declares it: the cursor
+functions and `read_page` take `host_codes`, each of the host's codes with its fixed message (the
+app's `password_missing`). A carried failure's message is the code's own, never the cursor's text
 (`cursor_failures`). Header text comes decoded and flattened. RFC 2047 words, RFC 2231 parameters,
 transfer encodings (fetched in windows with `BODY.PEEK[part]<offset.n>` up to the cap), charsets
 and `format=flowed` are decoded. Pages read the sources of different accounts in threads of their

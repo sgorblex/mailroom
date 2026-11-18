@@ -12,6 +12,7 @@ import threading
 import time
 from dataclasses import replace
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import quote
 
@@ -27,6 +28,7 @@ from mailroom_core.crypto import secrets_subkey
 from mailroom_core.mail import (
     MESSAGES,
     Capabilities,
+    MailboxContext,
     MailConnections,
     MailError,
     MessageRef,
@@ -315,6 +317,40 @@ def test_an_all_accounts_search_with_one_usable_account_still_answers_a_page(
                 "code": "unreachable",
             },
         ]
+
+
+def test_an_account_without_a_password_stays_a_failure_of_every_later_page(
+    mailbox: Mailbox, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An account skipped as ``password_missing`` is carried by the cursor: later pages report
+    it without checking its password again, even once it is back (its mail would have no place
+    in the cursor and be skipped in silence), until paging ends."""
+    from mailroom.mail.service import read as service_read
+
+    for subject in ("One", "Two", "Three"):
+        mailbox.seed(mime(subject))
+    other = new_account("other", login="other@example.org")
+    assert mailbox.client.post("/api/v1/accounts", json=other).status_code == 201
+    checked: list[int] = []
+
+    def missing(_ctx: object, _user: int, account_id: int) -> bool:
+        checked.append(account_id)
+        return account_id == 2 and checked.count(2) == 1
+
+    monkeypatch.setattr(service_read, "_missing_password", missing)
+    subjects: list[str] = []
+    failures: list[Any] = []
+    cursor = None
+    for _ in range(5):
+        page = mailbox.search(limit=2, **({} if cursor is None else {"cursor": cursor}))
+        subjects += [m["subject"] for m in page["messages"]]
+        failures.append(page["failures"])
+        cursor = page["next_cursor"]
+        if cursor is None:
+            break
+    assert (subjects, cursor) == (["Three", "Two", "One"], None)
+    assert failures == [[{"account_id": 2, "folder": None, "code": "password_missing"}]] * 2
+    assert checked.count(2) == 1
 
 
 def test_a_slow_account_is_a_timeout_failure_of_an_all_accounts_search(
@@ -917,6 +953,72 @@ def test_an_all_accounts_search_cuts_only_the_accounts_still_reading(
     # "fast" was done long before: another call of the user on it is not cut.
     assert connections.interrupted == ["slow"]
     assert [(f.account, f.folder, f.code) for f in page.failures] == [("slow", "INBOX", "timeout")]
+
+
+class _PagedConnections:
+    """Account 1 has three messages in INBOX; account 2's folders fail once, then answer; account
+    3 reads until it is interrupted."""
+
+    def __init__(self) -> None:
+        self.cut = threading.Event()
+        self.asked: list[int] = []
+
+    def folders(self, account_id: int) -> list[Folder]:
+        self.asked.append(account_id)
+        if account_id == 2 and self.asked.count(2) == 1:
+            raise MailError("unreachable")
+        return [cast("Folder", SimpleNamespace(path="INBOX", role=None, selectable=True))]
+
+    def with_mailbox(self, account_id: int, path: str, read_only: bool, fn: Any) -> Any:
+        if account_id == 3:
+            self.cut.wait(5)
+            raise MailError("unreachable")
+        arrived = datetime(2026, 9, 1, tzinfo=UTC)
+
+        class Client:
+            def _raw_command_untagged(self, _command: bytes, arguments: list[Any]) -> list[bytes]:
+                top = 3
+                if b"UID" in arguments:
+                    top = int(arguments[arguments.index(b"UID") + 1].split(b":")[1])
+                return [" ".join(str(uid) for uid in range(1, min(top, 3) + 1)).encode()]
+
+            def fetch(self, uids: list[int], _items: list[str]) -> dict[int, dict[bytes, Any]]:
+                return {uid: {b"INTERNALDATE": arrived.replace(hour=uid)} for uid in uids}
+
+        return fn(MailboxContext(Client(), path, read_only, 7, 3, None, account_id))  # type: ignore[arg-type]
+
+    def interrupt(self, account_id: int) -> int:
+        if account_id == 3:
+            self.cut.set()
+        return 1
+
+
+def test_an_all_accounts_search_reports_a_failed_account_on_every_page(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An account that failed, before its folders were found or when it was cut, is reported
+    with its code on every later page without being asked again, even when it would answer
+    now (it would have no place in the cursor, so its mail would be skipped in silence), and
+    paging ends."""
+    from mailroom.mail.service import read as service_read
+
+    monkeypatch.setattr(service_read, "ACCOUNT_SECONDS", 0.3)
+    connections: Any = _PagedConnections()
+    seen: list[tuple[int, int]] = []
+    failed: list[list[tuple[int, str | None, str]]] = []
+    cursor = None
+    for _ in range(5):
+        page = service_read._search_accounts(  # noqa: SLF001 - the cursor, without IMAP
+            connections, [1, 2, 3], "*", SearchQuery(), limit=2, cursor=cursor
+        )
+        failed.append([(f.account, f.folder, f.code) for f in page.failures])
+        seen += [(m.account, m.uid) for m in page.messages]
+        cursor = page.next_cursor
+        if cursor is None:
+            break
+    assert (seen, cursor) == ([(1, 3), (1, 2), (1, 1)], None)
+    assert failed == [[(2, None, "unreachable"), (3, "INBOX", "timeout")]] * 2
+    assert connections.asked.count(2) == 1
 
 
 class _GmailConnections:
