@@ -52,9 +52,22 @@
       "folderMissing": "Scegli la cartella che questa regola smista.",
       "trigger": "Quando gira",
       "interval": "Ogni (minuti)",
-      "starredOnly": "Solo con stella",
-      "starredOnlyHint": "Smista solo i messaggi con la stella, e la toglie a ciascuno una volta gestito: metti la stella a un messaggio per farlo smistare.",
-      "starredOnlyShort": "solo con stella",
+      "markedOnly": "Solo i messaggi segnati",
+      "markedOnlyHint": "Smista solo i messaggi con il segno qui sotto, e lo toglie a ciascuno una volta gestito: segna un messaggio per farlo smistare.",
+      "marker": "Segno",
+      "markers": {
+        "star": "Stella",
+        "to_sort": "Da smistare"
+      },
+      "markerHints": {
+        "star": "La stella che usi anche per mettere in evidenza i messaggi.",
+        "to_sort": "Un segno a parte, distinto dalla stella."
+      },
+      "toSortUnsupported": "Il server di posta di questo account non può conservare il segno Da smistare.",
+      "markerShort": {
+        "star": "solo con stella",
+        "to_sort": "solo da smistare"
+      },
       "enabled": "Abilitata",
       "enabledHint": "Lasciala spenta finché una simulazione non mostra che i suoi filtri fanno ciò che vuoi.",
       "isEnabled": "abilitata",
@@ -93,6 +106,7 @@
       "root": "Condizione",
       "condition": "Condizione {{n}}",
       "typeOf": "Tipo di {{name}}",
+      "toSortUnavailable": "{{label}} (il server di posta di questo account non può conservare il segno Da smistare)",
       "groups": "Gruppi",
       "and": "Tutte queste",
       "or": "Almeno una di queste",
@@ -254,6 +268,7 @@
   },
   "filterErrors": {
     "invalidSpec": "Il filtro non è valido: {{message}}",
+    "toSortUnsupported": "Il server di posta di questo account non può conservare il segno Da smistare: usa la stella.",
     "runFiltersOff": "Esegui filtri è spento per questo account: prima attivalo negli account.",
     "ruleSetDisabled": "Questa regola è disabilitata: prima abilitala.",
     "notFound": "Non c'è più: potrebbe essere stato rimosso nel frattempo. Ricarica la pagina.",

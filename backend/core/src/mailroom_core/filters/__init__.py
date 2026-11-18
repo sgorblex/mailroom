@@ -65,7 +65,7 @@ from mailroom_core.filters.pattern import (
 )
 from mailroom_core.filters.query import All, IMAPQuery, Q
 from mailroom_core.filters.report import FilterReport, FolderReport, MessageSummary
-from mailroom_core.filters.runner import Rules, RunRulesError, monitor, run_rules, starred_only
+from mailroom_core.filters.runner import Rules, RunRulesError, marked_only, monitor, run_rules
 from mailroom_core.filters.selected import Selected
 from mailroom_core.filters.spec import (
     NotSerializableError,
@@ -149,8 +149,8 @@ __all__ = [
     "load_action",
     "load_criterion",
     "load_filter",
+    "marked_only",
     "monitor",
     "run_rules",
     "set_match_timeout",
-    "starred_only",
 ]

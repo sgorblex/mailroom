@@ -276,7 +276,7 @@ def test_initialize_names_the_server_and_warns_about_mail(mcp: Mcp, token: str) 
 
 ANNOTATIONS = {
     # name: (readOnly, destructive, idempotent, openWorld)
-    "accounts_list": (True, False, True, False),
+    "accounts_list": (True, False, True, True),
     "folders_list": (True, False, True, True),
     "account_run_filters": (False, True, True, False),
     "filter_schema": (True, False, True, False),
@@ -358,6 +358,28 @@ def test_a_rule_set_created_over_mcp_starts_disabled(
     assert [rule_set["id"] for rule_set in listed] == [rule_set_id]
 
 
+def test_a_rule_set_s_marker_is_set_over_mcp(
+    mcp: Mcp, token: str, account: int, rule_set_id: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert mcp.call(token, "rule_set_get", rule_set_id=rule_set_id)["marker"] == "none"
+    changed = mcp.call(token, "rule_set_update", rule_set_id=rule_set_id, marker="star")
+    assert changed["marker"] == "star"
+    monkeypatch.setattr(filters_service.mail_service, "keywords", lambda *_, **__: False)
+    refused = mcp.error(token, "rule_set_update", rule_set_id=rule_set_id, marker="to_sort")
+    assert "cannot keep the To sort mark" in refused
+    monkeypatch.setattr(filters_service.mail_service, "keywords", lambda *_, **__: True)
+    created = mcp.call(
+        token,
+        "rule_set_create",
+        account_id=account,
+        name="Sort",
+        folder=["INBOX"],
+        trigger="manual",
+        marker="to_sort",
+    )
+    assert created["marker"] == "to_sort"
+
+
 def test_edits_wait_for_a_disabled_rule_set(mcp: Mcp, token: str, rule_set_id: int) -> None:
     added = mcp.call(token, "filter_add", rule_set_id=rule_set_id, name="Shop", spec=SHOP_SPEC)
     second = mcp.call(token, "filter_add", rule_set_id=rule_set_id, name="Two", spec=SHOP_SPEC)
@@ -410,6 +432,8 @@ def test_run_now_and_the_run_filters_switch(
             "run_filters": True,
             "send_mode": "drafts",
             "identities": [{"address": "work@example.org", "name": "Alice", "default": True}],
+            # The server does not answer.
+            "keywords": None,
         }
     ]
     assert mcp.error(token, "run_now", rule_set_id=rule_set_id) == "Enable the rule set to run it."
@@ -1490,7 +1514,11 @@ def test_flag_marks_read_unread_and_flagged_idempotently(
     assert f"{ref} read, flagged" in again
     assert f"{ref} unread, flagged" in mcp.text(token, "messages_flag", refs=[ref], seen=False)
     assert stored(mail, login, "INBOX")[0][1] == ("\\Flagged",)
-    assert "Give `seen`, `flagged` or both." in mcp.error(token, "messages_flag", refs=[ref])
+    sorting = mcp.text(token, "messages_flag", refs=[ref], to_sort=True)
+    assert f"{ref} unread, flagged, to sort" in sorting
+    assert stored(mail, login, "INBOX")[0][1] == ("$MailroomSort", "\\Flagged")
+    error = mcp.error(token, "messages_flag", refs=[ref])
+    assert "Give `seen`, `flagged`, `to_sort` or several." in error
 
 
 def test_organize_calls_log_keys_only(

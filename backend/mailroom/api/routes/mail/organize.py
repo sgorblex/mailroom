@@ -38,16 +38,19 @@ class MoveToAccountRequest(MoveRequest):
 class FlagRequest(RefsRequest):
     seen: bool | None = None
     flagged: bool | None = None
+    to_sort: bool | None = None
+    """The To sort mark: ``unsupported`` where the server keeps no keywords."""
 
 
 class MessageFlags(BaseModel):
     ref: str
     seen: bool | None
     flagged: bool | None
+    to_sort: bool | None
 
     @classmethod
     def of(cls, state: FlagState) -> MessageFlags:
-        return cls(ref=state.ref, seen=state.seen, flagged=state.flagged)
+        return cls(ref=state.ref, seen=state.seen, flagged=state.flagged, to_sort=state.to_sort)
 
 
 class GroupError(BaseModel):
@@ -128,5 +131,12 @@ def trash(request: RefsRequest, ctx: Context, user: CurrentUser) -> OrganizeAnsw
 @mail_router.post("/messages/flag")
 def flag(request: FlagRequest, ctx: Context, user: CurrentUser) -> OrganizeAnswer:
     return organize_answer(
-        service.flag(ctx, user.id, request.refs, seen=request.seen, flagged=request.flagged)
+        service.flag(
+            ctx,
+            user.id,
+            request.refs,
+            seen=request.seen,
+            flagged=request.flagged,
+            to_sort=request.to_sort,
+        )
     )

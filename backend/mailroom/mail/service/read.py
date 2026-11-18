@@ -1,5 +1,5 @@
 """Reading a user's mail: folders, pages of messages (a list, a search), one message, its thread,
-its HTML and its attachments, and an account's quota."""
+its HTML and its attachments, an account's quota and whether its server keeps keywords."""
 
 from __future__ import annotations
 
@@ -8,18 +8,20 @@ import threading
 import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, wait
+from contextlib import suppress
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Literal, cast
 
 from mailroom.accounts.service import require_subkey
-from mailroom.errors import mail_refusal
-from mailroom.mail.connections import PASSWORD_MISSING, PASSWORD_MISSING_TEXT
+from mailroom.errors import Refusal, mail_refusal
+from mailroom.mail.connections import PASSWORD_MISSING, PASSWORD_MISSING_TEXT, PasswordMissing
 from mailroom.mail.service._shared import (
     _accounts,
     _call,
     _message_ref,
     _missing_password,
+    _run,
     _usable,
 )
 from mailroom_core import mail as core
@@ -56,6 +58,9 @@ SOURCES_SECONDS: Final = 12.0
 blackholed server costs two 10 s connects). The capabilities can log in, so such a query logs in
 within this bound even when it reads one folder; mailroom-core's ``search_messages`` does the
 same."""
+KEYWORDS_SECONDS: Final = 5.0
+"""How long the accounts listing waits for its accounts' keyword answers (``account_keywords``):
+an account still asked then is listed as not known, so one slow server holds no listing up."""
 ACCOUNT_SECONDS: Final = 25.0
 """When an all-accounts search cuts the accounts still reading their mailbox (``timeout``
 failures), inside the pool's 30 s deadline, so the others still answer."""
@@ -496,6 +501,103 @@ def quota(
         lambda connections: connections.quota(account_id),
     )
     quotas.put(account_id, accounts.revision, found)
+    return found
+
+
+def keywords(ctx: AppContext, user_id: int, account_id: int, *, via: Via = "web") -> bool:
+    """Whether the account's server keeps keywords such as To sort: mailroom-core's
+    ``MailConnections.keywords`` (a read-write SELECT of INBOX, asked once while the user's
+    connections last; never on Gmail)."""
+    accounts = _accounts(ctx, user_id)
+    _usable(ctx, user_id, accounts, account_id)
+    return _call(
+        ctx,
+        user_id,
+        accounts,
+        "mail_keywords",
+        via,
+        account_id,
+        lambda connections: connections.keywords(account_id),
+    )
+
+
+KEYWORD_FAILURE_SECONDS: Final = 300.0
+"""How long ``account_keywords`` leaves alone an account whose server refused the login or could
+not be reached (``KeywordFailures``)."""
+_KEPT_KEYWORD_FAILURES: Final = frozenset({"auth_failed", "unreachable"})
+
+
+class KeywordFailures:
+    """The accounts whose keywords could not be asked because their server refused the login or
+    could not be reached, each for ``KEYWORD_FAILURE_SECONDS``, keyed by the account and the
+    revision of its user's accounts: listings do not log in to them again meanwhile (a wrong
+    password tried on each could get the account locked out), and a changed account is asked
+    afresh."""
+
+    def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._until: dict[tuple[int, int], float] = {}
+
+    def failed(self, account_id: int, revision: int) -> bool:
+        """Whether the account failed lately, under this revision."""
+        with self._lock:
+            return self._until.get((account_id, revision), 0.0) > self._clock()
+
+    def put(self, account_id: int, revision: int) -> None:
+        now = self._clock()
+        with self._lock:
+            self._until = {key: until for key, until in self._until.items() if until > now}
+            self._until[account_id, revision] = now + KEYWORD_FAILURE_SECONDS
+
+
+def account_keywords(ctx: AppContext, user_id: int) -> dict[int, bool | None]:
+    """``keywords`` for each of the user's accounts, asked side by side, ``KEYWORDS_SECONDS`` at
+    most: None for one that cannot log in (no secrets key, no password that opens), that failed
+    (lately: ``ctx.keyword_failures``) or that has not answered by then, whose connection is cut.
+    Never refuses."""
+    found: dict[int, bool | None] = dict.fromkeys(account_ids(ctx, user_id))
+    if ctx.subkey is None:
+        return found
+    accounts = _accounts(ctx, user_id)
+    failures = ctx.keyword_failures
+    asked = [
+        account
+        for account in found
+        if not failures.failed(account, accounts.revision)
+        and not _missing_password(ctx, user_id, account)
+    ]
+    if not asked:
+        return found
+
+    def ask(connections: MailConnections) -> dict[int, bool]:
+        finder = ThreadPoolExecutor(max_workers=min(len(asked), 8), thread_name_prefix="mail-kw")
+        answers = {account: finder.submit(connections.keywords, account) for account in asked}
+        wait(answers.values(), timeout=KEYWORDS_SECONDS)
+        finder.shutdown(wait=False, cancel_futures=True)
+        known: dict[int, bool] = {}
+        for account, answer in answers.items():
+            if not answer.done():
+                connections.interrupt(account)
+                continue
+            if answer.cancelled():
+                continue
+            error = answer.exception()
+            if error is None:
+                known[account] = answer.result()
+            elif isinstance(error, MailError):
+                if error.code in _KEPT_KEYWORD_FAILURES:
+                    failures.put(account, accounts.revision)
+            elif not isinstance(error, PasswordMissing):
+                logger.error(
+                    "mail_keywords_failed",
+                    exc_info=error,
+                    extra={"event": "mail_keywords_failed", "account_id": account},
+                )
+        return known
+
+    with suppress(Refusal):
+        found.update(_run(ctx, user_id, accounts, "mail_keywords", (), ask))
     return found
 
 

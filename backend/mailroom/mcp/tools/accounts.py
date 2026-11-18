@@ -14,7 +14,7 @@ from pydantic import Field, StrictBool
 from mailroom.accounts import service
 from mailroom.filters import service as filters_service
 from mailroom.mail import service as mail_service
-from mailroom.mcp.tool import MAILBOX_READ, READ, Arguments, Hints, JsonObject, Tool
+from mailroom.mcp.tool import MAILBOX_READ, Arguments, Hints, JsonObject, Tool
 from mailroom.mcp.tool import AccountId as BareAccountId
 
 if TYPE_CHECKING:
@@ -31,6 +31,7 @@ ACCOUNT_FIELDS: Final = {
     "run_filters",
     "send_mode",
     "identities",
+    "keywords",
 }
 
 
@@ -55,7 +56,8 @@ class RunFiltersArguments(Arguments):
 
 
 async def _accounts_list(_args: NoArguments, call: ToolCall) -> JsonObject:
-    listed = await call.db(lambda db: service.listed_accounts(call.ctx, db, call.user_id))
+    keywords = await call.thread(lambda: mail_service.account_keywords(call.ctx, call.user_id))
+    listed = await call.db(lambda db: service.listed_accounts(call.ctx, db, call.user_id, keywords))
     return {
         "accounts": [account.model_dump(mode="json", include=ACCOUNT_FIELDS) for account in listed]
     }
@@ -101,9 +103,11 @@ ACCOUNT_TOOLS: Final[tuple[Tool[Any], ...]] = (
             "named the account, null when unnamed), display_name (what to call it: its name, "
             "else its login), login, whether a password is stored, the send mode "
             "(what an agent may send: off, drafts, approval or direct) and the identities it "
-            "can send as (`address`, `name`, and which is the `default`); where the instance "
-            "runs filters, also whether Run filters is on (`run_filters`: rule sets run only on "
-            "an account where it is). Call this first."
+            "can send as (`address`, `name`, and which is the `default`), and whether its server "
+            "keeps keywords (`keywords`: only then can messages be marked To sort; null when "
+            "the server did not answer); where the instance runs filters, also whether Run "
+            "filters is on (`run_filters`: rule sets run only on an account where it is). Call "
+            "this first."
         ),
         group="filters_read",
         also_in=(
@@ -115,7 +119,7 @@ ACCOUNT_TOOLS: Final[tuple[Tool[Any], ...]] = (
             "mail_send",
         ),
         arguments=NoArguments,
-        hints=READ,
+        hints=MAILBOX_READ,
         run=_accounts_list,
     ),
     Tool(

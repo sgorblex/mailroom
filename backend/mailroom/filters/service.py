@@ -42,6 +42,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 Trigger = Literal["new_mail", "scheduled", "manual"]
+Marker = Literal["none", "star", "to_sort"]
+"""The mark a rule set limits itself to, cleared once a message is handled (``RuleSet.marker``)."""
 Segment = Annotated[str, Field(min_length=1, max_length=255, pattern=r"^[^\x00-\x1f\x7f]+$")]
 Name = Annotated[str, Field(min_length=1, max_length=200)]
 IntervalMinutes = Annotated[int, Field(ge=1, le=7 * 24 * 60)]
@@ -60,7 +62,8 @@ class RuleSetFields(BaseModel):
     trigger: Trigger
     interval_minutes: IntervalMinutes | None = None
     """``scheduled`` only, and required there."""
-    starred_only: bool = False
+    marker: Marker = "none"
+    """``to_sort`` only on an account whose server keeps keywords (``to_sort_unsupported``)."""
     enabled: bool = False
 
 
@@ -71,7 +74,7 @@ class RuleSetPatch(BaseModel):
     folder: list[Segment] | None = Field(default=None, min_length=1, max_length=32)
     trigger: Trigger | None = None
     interval_minutes: IntervalMinutes | None = None
-    starred_only: bool | None = None
+    marker: Marker | None = None
     enabled: bool | None = None
 
 
@@ -93,7 +96,7 @@ class RuleSetOut(BaseModel):
     name: str
     trigger: Trigger
     interval_minutes: int | None
-    starred_only: bool
+    marker: Marker
     enabled: bool
     created_at: datetime
     updated_at: datetime
@@ -215,6 +218,39 @@ def check_schedule(trigger: str, interval_minutes: int | None) -> None:
         raise Refusal("invalid", "invalid_rule_set", msg)
 
 
+def check_marker(ctx: AppContext, user_id: int, account_id: int, via: Via) -> None:
+    """Refuse To sort (``to_sort_unsupported``) on an account whose server keeps no keywords; a
+    mailbox failure while asking is refused as the mail client's."""
+    if not mail_service.keywords(ctx, user_id, account_id, via=via):
+        msg = "This account's server cannot keep the To sort mark: use the star instead."
+        raise Refusal("invalid", "to_sort_unsupported", msg)
+
+
+_TO_SORT_ACTIONS: Final = frozenset({"mark_to_sort", "unmark_to_sort"})
+
+
+def marks_to_sort(spec: object) -> bool:
+    """Whether a filter spec's action marks or unmarks To sort: refused, as the marker, on an
+    account whose server keeps no keywords (its criteria only match nothing there)."""
+
+    def acts(node: object) -> bool:
+        if isinstance(node, list):
+            return any(acts(each) for each in node)
+        if isinstance(node, dict):
+            return node.get("type") in _TO_SORT_ACTIONS or any(acts(v) for v in node.values())
+        return False
+
+    return isinstance(spec, dict) and acts(spec.get("action"))
+
+
+def _check_to_sort_actions(
+    ctx: AppContext, db: Session, user_id: int, account_id: int, via: Via
+) -> None:
+    # Not idle in a transaction, the row locked, while the mailbox answers.
+    db.commit()
+    check_marker(ctx, user_id, account_id, via)
+
+
 def checked_spec(spec: Spec) -> Spec:
     """``spec`` as the filter engine serialises it, or ``invalid_spec``."""
     try:
@@ -276,6 +312,8 @@ def add_rule_set(
 ) -> RuleSetDetail:
     require_account(ctx.store(user_id), account_id)
     check_schedule(fields.trigger, fields.interval_minutes)
+    if fields.marker == "to_sort":
+        check_marker(ctx, user_id, account_id, via)
     rule_set = RuleSet(user_id=user_id, account_id=account_id, **fields.model_dump())
     db.add(rule_set)
     db.commit()
@@ -290,6 +328,7 @@ def rule_set_detail(db: Session, user_id: int, rule_set_id: int) -> RuleSetDetai
 
 
 def change_rule_set(
+    ctx: AppContext,
     db: Session,
     user_id: int,
     rule_set_id: int,
@@ -299,10 +338,18 @@ def change_rule_set(
     via: Via = "web",
 ) -> RuleSetOut:
     """Change the fields ``patch`` sets (a None one stays, but for ``interval_minutes``).
-    ``disabled_only``: refuse an enabled rule set (``refuse_enabled``)."""
+    ``disabled_only``: refuse an enabled rule set (``refuse_enabled``). A marker changed to
+    ``to_sort`` is checked as a new rule set's is."""
+    if patch.marker == "to_sort":
+        current = _owned_for_change(db, user_id, rule_set_id, disabled_only=disabled_only)
+        account_id, marker = current.account_id, current.marker
+        # Not idle in a transaction, the row locked, while the mailbox answers.
+        db.commit()
+        if marker != "to_sort":
+            check_marker(ctx, user_id, account_id, via)
     rule_set = _owned_for_change(db, user_id, rule_set_id, disabled_only=disabled_only)
     changes = patch.model_dump(exclude_unset=True)
-    for field in ("name", "folder", "trigger", "starred_only", "enabled"):
+    for field in ("name", "folder", "trigger", "marker", "enabled"):
         if changes.get(field, None) is None:
             changes.pop(field, None)
     trigger = changes.get("trigger", rule_set.trigger)
@@ -339,6 +386,7 @@ def remove_rule_set(
 
 
 def add_filter(
+    ctx: AppContext,
     db: Session,
     user_id: int,
     rule_set_id: int,
@@ -347,9 +395,13 @@ def add_filter(
     disabled_only: bool = False,
     via: Via = "web",
 ) -> FilterOut:
-    """Add a filter after the rule set's last one."""
+    """Add a filter after the rule set's last one. One that marks or unmarks To sort is checked
+    as a To sort marker is (``check_marker``)."""
     rule_set = _owned_for_change(db, user_id, rule_set_id, disabled_only=disabled_only)
     spec = checked_spec(fields.spec)
+    if marks_to_sort(spec):
+        _check_to_sort_actions(ctx, db, user_id, rule_set.account_id, via)
+        rule_set = _owned_for_change(db, user_id, rule_set_id, disabled_only=disabled_only)
     count, last = db.execute(
         select(func.count(), func.max(Filter.position)).where(Filter.rule_set_id == rule_set.id)
     ).one()
@@ -371,6 +423,7 @@ def add_filter(
 
 
 def change_filter(
+    ctx: AppContext,
     db: Session,
     user_id: int,
     filter_id: int,
@@ -379,16 +432,23 @@ def change_filter(
     disabled_only: bool = False,
     via: Via = "web",
 ) -> FilterOut:
-    """Change the fields ``patch`` sets (a None one stays)."""
+    """Change the fields ``patch`` sets (a None one stays). A spec changed to mark or unmark To
+    sort is checked as a new filter's is."""
     row, rule_set = owned_filter(db, user_id, filter_id)
     if disabled_only:
         refuse_enabled(rule_set)
+    spec = None if patch.spec is None else checked_spec(patch.spec)
+    if spec is not None and marks_to_sort(spec) and not marks_to_sort(row.spec):
+        _check_to_sort_actions(ctx, db, user_id, rule_set.account_id, via)
+        row, rule_set = owned_filter(db, user_id, filter_id)
+        if disabled_only:
+            refuse_enabled(rule_set)
     if patch.name is not None:
         row.name = patch.name
     if patch.enabled is not None:
         row.enabled = patch.enabled
-    if patch.spec is not None:
-        row.spec = checked_spec(patch.spec)
+    if spec is not None:
+        row.spec = spec
     db.commit()
     db.refresh(row)
     _log("filter_changed", user_id, via, rule_set_id=rule_set.id, filter_id=row.id)

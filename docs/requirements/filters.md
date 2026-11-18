@@ -14,8 +14,17 @@ in the browser, tried with a dry run, and run by the worker. Product scope:
   - `scheduled` — runs every `interval_minutes`;
   - `manual` — runs only on *Run now*.
 
-  Any enabled rule set can also be run now. **Starred only** restricts a rule set to starred
-  (`\Flagged`) messages, which it unstars once handled (the filter engine's `starred_only`).
+  Any enabled rule set can also be run now. **Only marked** restricts a rule set to the messages
+  with its **marker**, which it clears once handled (the filter engine's `marked_only`): the star
+  (`\Flagged`) or [**To sort**](../GLOSSARY.md) (the keyword `$MailroomSort`); `none`, the
+  default, is every message. To sort is taken only on an account whose server keeps keywords
+  (the accounts listing's `keywords`): elsewhere the web greys it out with the reason, and the API
+  and MCP refuse it (`to_sort_unsupported`), checked when a rule set is created with it or changed
+  to it. The same holds for a filter's `mark_to_sort` and `unmark_to_sort` actions, checked when a
+  filter is added with one or its spec changed to one; the To sort criteria are always taken
+  (there they match nothing). Ticking *Only marked* in the web picks To sort where the account keeps keywords, else
+  the star; the API and MCP always take the marker as given. Rule sets from before markers keep
+  the star.
 - A rule set holds **ordered filters**, each a filter spec (criteria plus actions), stored as
   the [filter engine](../GLOSSARY.md) serialises it and validated with its `load_filter`, its JSON
   Schema, and every `pattern` compiled as a regular expression (with `regex`, which the engine
@@ -94,7 +103,7 @@ Schema `app`; every row belongs to the user who owns the account.
 
 | Table | Columns |
 | --- | --- |
-| `rule_set` | `id`, `user_id`, `account_id`, `folder` (`text[]`, path segments), `name`, `trigger` (`new_mail` \| `scheduled` \| `manual`), `interval_minutes` (`scheduled` only), `starred_only`, `enabled`, timestamps |
+| `rule_set` | `id`, `user_id`, `account_id`, `folder` (`text[]`, path segments), `name`, `trigger` (`new_mail` \| `scheduled` \| `manual`), `interval_minutes` (`scheduled` only), `marker` (`none` \| `star` \| `to_sort`), `enabled`, timestamps |
 | `filter` | `id`, `rule_set_id`, `position`, `name`, `enabled`, `spec` (`jsonb`, a filter spec), timestamps |
 | `filter_run` | `id`, `rule_set_id`, `trigger`, `created_at`, `started_at` (null while queued), `finished_at`, `dry_run`, `result` (`jsonb`, the filter engine's run report), `error` |
 
@@ -125,6 +134,9 @@ An unknown or foreign id is a `404` with a plain `detail` (`"No such rule set"`)
 - `400` `invalid_spec`, carrying the filter engine's `SpecError` text, the schema's or the regular
   expression's complaint;
 - `400` `invalid_rule_set` (an `interval_minutes` exactly when `scheduled`), `invalid_order`;
+- creating a rule set with the `to_sort` marker, or changing one to it: `400`
+  `to_sort_unsupported` where the account's server keeps no keywords, and the mailbox failures
+  of the account's folder listing when it cannot be asked;
 - adding a filter: `400` `too_many_filters` when the rule set already holds 100;
 - *Run now*: `400` `run_filters_off` while the account's *Run filters* is off, `400`
   `rule_set_disabled`, `409` `run_pending` while a run of that rule set is still waiting;

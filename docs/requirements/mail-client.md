@@ -62,8 +62,11 @@ Behaviour is mailroom-core's `mail.organize` (`move_messages`, `archive_messages
   for an account without one.
 - **Trash:** move to the account's folder with role `trash`. This is never a permanent delete:
   organizing deletes no mail (deleting a whole folder is [its own action](#folder-management)).
-- **Flag:** set or clear `\Seen` (read/unread) and `\Flagged` (star/unstar); `seen`, `flagged` or
-  both. Only these two flags can be changed. The answer reads them back per message.
+- **Flag:** set or clear `\Seen` (read/unread), `\Flagged` (star/unstar) and the
+  [To sort](../GLOSSARY.md) keyword `$MailroomSort`; `seen`, `flagged`, `to_sort`, at least one.
+  Only these can be changed. To sort is `unsupported` in a folder whose server keeps no keywords
+  (and on Gmail); the accounts listing's `keywords` says which do. The answer reads them back
+  per message.
 
 A **batch** is 1 to 50 refs, from any folders and accounts of the user (not 0, not 51: 422 on the
 REST routes, `invalid_argument` from mailroom-core). Every ref is parsed and its account checked
@@ -86,8 +89,8 @@ The answer has one **result per group**: `account`, `folder` (the source folder)
 - `destination_account`: on a move to another account, that account (`new_refs` are its), else
   `null`.
 - `junk`: `"spam"` or `"ham"` when the move trained the account's Junk (below), else `null`.
-- `flags`: for the flag route, each message's `seen` and `flagged` read back (`null` when the read
-  failed; the change stands).
+- `flags`: for the flag route, each message's `seen`, `flagged` and `to_sort` read back (`null`
+  when the read failed; the change stands).
 - `error`: `{code, message}` of the group's failure, else `null`.
 
 The call answers `200` when at least one group succeeded, with the failures in the list. When
@@ -107,7 +110,8 @@ shows each failed group with the mail error wording and updates the rows of the 
 | Trash, and the messages are already in Trash | `invalid_argument`: "They are already in Trash; mailroom never deletes permanently." |
 | Trash, and the account has no Trash folder | `unsupported` |
 | Archive, and the account has no Archive folder | `unsupported`: "<account> has no Archive folder." |
-| Neither `seen` nor `flagged` given | `invalid_argument`: "Give `seen`, `flagged` or both." |
+| None of `seen`, `flagged`, `to_sort` given | `invalid_argument`: "Give `seen`, `flagged`, `to_sort` or several." |
+| `to_sort` in a folder that keeps no keywords | `unsupported` |
 | The server has neither MOVE nor UIDPLUS | `unsupported` |
 | A move without MOVE copied the messages but could not remove them from the source | The connection's failure code (`server_error` for a refusal, as something was written), with `new_refs`: "They were copied to the destination but may not have been removed from this folder: do not repeat the move. New refs: …" |
 
@@ -218,7 +222,7 @@ JSON bodies (unknown fields are 422), CSRF as for every state-changing route.
 | `POST /messages/move-to-account` | `{"refs": ["…"], "account": "home", "folder": "INBOX", "removal": "trash"}` (`removal`: `trash` or `delete`) |
 | `POST /messages/archive` | `{"refs": ["…"]}` |
 | `POST /messages/trash` | `{"refs": ["…"]}` |
-| `POST /messages/flag` | `{"refs": ["…"], "seen": true, "flagged": false}` (`seen`, `flagged` optional, at least one) |
+| `POST /messages/flag` | `{"refs": ["…"], "seen": true, "flagged": false, "to_sort": true}` (`seen`, `flagged`, `to_sort` optional, at least one) |
 
 `refs` holds 1 to 50 strings of at most 4096 characters. Answer, `200`:
 
@@ -233,7 +237,7 @@ JSON bodies (unknown fields are 422), CSRF as for every state-changing route.
       "new_refs": ["WzIsMSwiSU5CT1gi…"],      // null when the server gave no COPYUID; [] for flags
       "destination_account": null,          // a move to another account: that account
       "junk": null,                         // "spam" | "ham" | null
-      "flags": [],                          // flag route: [{ "ref", "seen", "flagged" }]
+      "flags": [],                          // flag route: [{ "ref", "seen", "flagged", "to_sort" }]
       "error": null                         // or { "code": "not_found", "message": "…" }
     }
   ]
@@ -781,7 +785,7 @@ even once it is back.
 { "name": "Ada Lovelace", "address": "ada@example.org" }   // name "" when absent
 
 // Flags
-{ "seen": true, "flagged": false, "answered": false, "draft": false }
+{ "seen": true, "flagged": false, "answered": false, "draft": false, "to_sort": false }
 ```
 
 `date` is the `Date` header, else the arrival time (INTERNALDATE), as ISO 8601 with offset (UTC
@@ -833,7 +837,7 @@ mode a folder that cannot be read is reported in `failures`, as in a search, nev
       "date": "2026-10-30T09:12:00Z",
       "from": { "name": "Ada Lovelace", "address": "ada@example.org" },
       "subject": "Notes on the engine",
-      "flags": { "seen": false, "flagged": false, "answered": false, "draft": false },
+      "flags": { "seen": false, "flagged": false, "answered": false, "draft": false, "to_sort": false },
       "has_attachments": true,
       "preview": "Dear Charles, the notes are attached…",
       "size": 48213
@@ -901,7 +905,7 @@ a failure too, with the app's code `password_missing`.
   "date": "2026-10-30T09:12:00Z",
   "subject": "Notes on the engine",
   "message_id": "<a1b2@example.org>",                                        // null when absent
-  "flags": { "seen": false, "flagged": false, "answered": false, "draft": false },
+  "flags": { "seen": false, "flagged": false, "answered": false, "draft": false, "to_sort": false },
   "text": {
     "content": "Dear Charles, …",
     "removed_chars": 0,

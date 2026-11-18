@@ -25,7 +25,7 @@ from mailroom.mail.connections import (
 )
 from mailroom.mail.pool import DeadlineExceeded
 from mailroom.models import AccountFilterSettings, Filter, FilterRun
-from mailroom_core.filters import Account, Folder, MatchTimeoutError, Path, starred_only
+from mailroom_core.filters import Account, Flag, Folder, MatchTimeoutError, Path, marked_only
 from mailroom_core.filters import Filter as EngineFilter
 from mailroom_core.mail import MailError
 
@@ -47,6 +47,8 @@ DRY_RUN_MAX_MESSAGES: Final = 500
 DRY_RUN_SECONDS: Final = 30.0
 """A dry run still going after this long is stopped: the pool cuts the user's connections to the
 account that are in use (``MailPool.call``'s deadline)."""
+_MARKS: Final = {"star": Flag.FLAGGED, "to_sort": Flag.TO_SORT}
+"""The filter engine's flag for each marker a rule set may limit itself to."""
 RUNS_KEPT: Final = 100
 """Run history kept per rule set; older runs are pruned as new ones are recorded."""
 
@@ -83,12 +85,13 @@ def rule_set_folder(connections: MailConnections, rule_set: RuleSet) -> Folder:
 def engine_filters(
     rule_set: RuleSet, folder: Folder, filters: Sequence[Filter]
 ) -> list[EngineFilter]:
-    """``filters`` as the filter engine runs them on ``folder``: limited to starred messages, which
-    they unstar, when the rule set is ``starred_only``. Raises ``InvalidSpecError`` for a stored
-    spec the filter engine no longer loads."""
+    """``filters`` as the filter engine runs them on ``folder``: limited to the messages with the
+    rule set's marker (the star or To sort), which they clear, unless it is ``none``. Raises
+    ``InvalidSpecError`` for a stored spec the filter engine no longer loads."""
     loaded = [loaded_filter(row.spec) for row in filters]
-    if rule_set.starred_only:
-        [(_folder, loaded)] = starred_only([(folder, loaded)])
+    mark = _MARKS.get(rule_set.marker)
+    if mark is not None:
+        [(_folder, loaded)] = marked_only([(folder, loaded)], mark)
     return loaded
 
 
@@ -96,7 +99,7 @@ def labelled_report(
     report: FolderReport, filters: Sequence[Filter], loaded: Sequence[EngineFilter]
 ) -> dict[str, Any]:
     """``report`` as a run's ``result``: each filter's entry with its ``filter_id``, the spec as
-    stored (the one run may be wrapped, e.g. for starred only), the action's name as ``loaded``
+    stored (the one run may be wrapped, e.g. for a marker), the action's name as ``loaded``
     (what ran) has it, and no NUL character, which ``jsonb`` refuses (a message header may carry
     one).
 

@@ -6,12 +6,13 @@ import logging
 import signal
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from mailroom_core.filters.account import Folder
-from mailroom_core.filters.actions.flags import Unstar
-from mailroom_core.filters.criteria.flags import IsStarred
+from mailroom_core.filters.actions.flags import UnmarkToSort, Unstar
+from mailroom_core.filters.criteria.flags import IsStarred, IsToSort
 from mailroom_core.filters.filter import Filter
+from mailroom_core.filters.flags import Flag
 from mailroom_core.mail import IdleWatch, MailError
 
 if TYPE_CHECKING:
@@ -26,13 +27,21 @@ Rules = list[tuple[Folder, list[Filter]]]
 log = logging.getLogger(__name__)
 
 
-def starred_only(rules: Rules) -> Rules:
-    """Wrap sort rules: only starred messages, unstar before applying each action."""
-    out: Rules = []
-    for folder, filters in rules:
-        wrapped = [Filter(IsStarred() & f.criterion, Unstar() + f.action) for f in filters]
-        out.append((folder, wrapped))
-    return out
+_MARKERS: Final = {Flag.FLAGGED: (IsStarred, Unstar), Flag.TO_SORT: (IsToSort, UnmarkToSort)}
+"""The marks a rule set may limit itself to: the star, and To sort."""
+
+
+def marked_only(rules: Rules, marker: Flag) -> Rules:
+    """Wrap sort rules: only messages with ``marker`` (``Flag.FLAGGED`` or ``Flag.TO_SORT``),
+    the mark cleared before applying each action. ``ValueError`` for any other flag."""
+    if marker not in _MARKERS:
+        msg = f"not a marker: {marker.name}"
+        raise ValueError(msg)
+    has, clear = _MARKERS[marker]
+    return [
+        (folder, [Filter(has() & f.criterion, clear() + f.action) for f in filters])
+        for folder, filters in rules
+    ]
 
 
 class RunRulesError(RuntimeError):

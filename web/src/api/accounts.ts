@@ -45,6 +45,8 @@ export const accountSchema = z.object({
   attachment_max_mb: z.number().optional(),
   /** The user's limit on To, Cc and Bcc together; absent from an API older than slice C. */
   max_recipients: z.number().optional(),
+  /** Whether the server keeps keywords, so messages can be marked To sort; `null` when it did not say. */
+  keywords: z.boolean().nullable().optional(),
 })
 export type Account = z.infer<typeof accountSchema>
 

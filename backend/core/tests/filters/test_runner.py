@@ -1,4 +1,4 @@
-"""Tests for the rule runner: run_rules, starred_only and monitor."""
+"""Tests for the rule runner: run_rules, marked_only and monitor."""
 
 from __future__ import annotations
 
@@ -13,13 +13,14 @@ from unittest.mock import call, patch
 import pytest
 
 from mailroom_core.filters.account import Folder
-from mailroom_core.filters.actions.flags import MarkAsRead, Unstar
+from mailroom_core.filters.actions.flags import MarkAsRead, UnmarkToSort, Unstar
 from mailroom_core.filters.actions.move import MoveTo
 from mailroom_core.filters.criteria.address import FromIs
-from mailroom_core.filters.criteria.flags import IsStarred
+from mailroom_core.filters.criteria.flags import IsStarred, IsToSort
 from mailroom_core.filters.filter import Filter
+from mailroom_core.filters.flags import Flag
 from mailroom_core.filters.path import Path
-from mailroom_core.filters.runner import Rules, RunRulesError, monitor, run_rules, starred_only
+from mailroom_core.filters.runner import Rules, RunRulesError, marked_only, monitor, run_rules
 from mailroom_core.mail import IdleChange, MailError
 
 if TYPE_CHECKING:
@@ -98,24 +99,34 @@ class TestRunRules:
         assert run_rules([], dry_run=False, parallel=True) == []
 
 
-class TestStarredOnly:
-    """Test starred_only wrapping."""
+class TestMarkedOnly:
+    """Test marked_only wrapping."""
 
-    def test_wraps_criterion_and_action(self, account: Account) -> None:
+    @pytest.mark.parametrize(
+        ("marker", "has", "clear"),
+        [(Flag.FLAGGED, IsStarred(), Unstar()), (Flag.TO_SORT, IsToSort(), UnmarkToSort())],
+    )
+    def test_wraps_criterion_and_action(
+        self, account: Account, marker: Flag, has: Any, clear: Any
+    ) -> None:
         rules = _rules(account)
-        wrapped = starred_only(rules)
+        wrapped = marked_only(rules, marker)
         assert [f for f, _ in wrapped] == [f for f, _ in rules]
         for (_, original), (_, filters) in zip(rules, wrapped, strict=True):
             assert len(filters) == len(original)
             for orig, new in zip(original, filters, strict=True):
-                assert new.criterion == IsStarred() & orig.criterion
-                assert new.action == Unstar() + orig.action
+                assert new.criterion == has & orig.criterion
+                assert new.action == clear + orig.action
 
     def test_does_not_modify_input(self, account: Account) -> None:
         rules = _rules(account)
         before = [(f, list(fs)) for f, fs in rules]
-        starred_only(rules)
+        marked_only(rules, Flag.FLAGGED)
         assert rules == before
+
+    def test_refuses_another_flag(self, account: Account) -> None:
+        with pytest.raises(ValueError, match="SEEN"):
+            marked_only(_rules(account), Flag.SEEN)
 
 
 SignalHandler = Callable[[int, FrameType | None], Any]

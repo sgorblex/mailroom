@@ -94,6 +94,10 @@ class ListedAccount(StoredAccount):
     """The user's limit on a written message's attachments, at most ``ATTACHMENT_MAX_MB``."""
     max_recipients: int
     """The user's limit on To, Cc and Bcc together."""
+    keywords: bool | None = None
+    """Whether the account's server keeps keywords, so messages can be marked To sort (never on
+    Gmail); None when not known: not asked (an answer to a change), or the server did not
+    answer the listing."""
 
 
 def attachment_limit_mb(limits: Limits) -> float:
@@ -144,7 +148,12 @@ def _store_refusal(error: RevisionConflict | SettingsBusy) -> Refusal:
 
 
 def _listed(
-    account: AccountConfig, limits: Limits, *, has_password: bool, run_filters: bool | None
+    account: AccountConfig,
+    limits: Limits,
+    *,
+    has_password: bool,
+    run_filters: bool | None,
+    keywords: bool | None = None,
 ) -> ListedAccount:
     return ListedAccount.model_validate(
         {
@@ -154,6 +163,7 @@ def _listed(
             "run_filters": run_filters,
             "attachment_max_mb": attachment_limit_mb(limits),
             "max_recipients": limits.max_recipients,
+            "keywords": keywords,
         }
     )
 
@@ -176,7 +186,14 @@ def _switch(by_account: dict[int, bool] | None, account_id: int) -> bool | None:
     return None if by_account is None else by_account.get(account_id, False)
 
 
-def listed_accounts(ctx: AppContext, db: Session, user_id: int) -> list[ListedAccount]:
+def listed_accounts(
+    ctx: AppContext,
+    db: Session,
+    user_id: int,
+    keywords: Mapping[int, bool | None] | None = None,
+) -> list[ListedAccount]:
+    """The user's accounts, with each one's ``keywords`` as given (the mail service's
+    ``account_keywords``)."""
     store = ctx.store(user_id)
     passwords = accounts_with_password(store)
     by_account = _run_filters_by_account(ctx, db, user_id)
@@ -187,6 +204,7 @@ def listed_accounts(ctx: AppContext, db: Session, user_id: int) -> list[ListedAc
             settings.limits,
             has_password=account.id in passwords,
             run_filters=_switch(by_account, account.id),
+            keywords=None if keywords is None else keywords.get(account.id),
         )
         for account in settings.account
     ]

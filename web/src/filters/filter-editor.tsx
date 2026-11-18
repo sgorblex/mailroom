@@ -48,12 +48,15 @@ export function FilterEditor({
   filter,
   vocabulary,
   folders,
+  keywords,
   save,
   onCancel,
 }: {
   filter?: Filter
   vocabulary: Vocabulary
   folders: FoldersState
+  /** Whether the account's server keeps keywords: where not, the To sort actions are greyed out. */
+  keywords?: boolean | null
   save: (fields: FilterFields) => Promise<unknown>
   onCancel: () => void
 }): ReactElement {
@@ -224,7 +227,13 @@ export function FilterEditor({
         )}
         <div id={panelId} role="tabpanel" aria-labelledby={tabId(mode)}>
           {mode === 'tree' && model !== null ? (
-            <SpecTree model={model} vocabulary={vocabulary} folders={folders} onChange={setModel} />
+            <SpecTree
+              model={model}
+              vocabulary={vocabulary}
+              folders={folders}
+              keywords={keywords}
+              onChange={setModel}
+            />
           ) : (
             <div className="flex flex-col gap-1">
               <label htmlFor={`${prefix}-json`} className="text-sm font-medium">

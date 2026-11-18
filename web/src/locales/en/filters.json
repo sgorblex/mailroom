@@ -52,9 +52,22 @@
       "folderMissing": "Choose the folder this rule set sorts.",
       "trigger": "Runs",
       "interval": "Every (minutes)",
-      "starredOnly": "Starred only",
-      "starredOnlyHint": "Only starred messages are sorted, and each is unstarred once handled: star a message to have it sorted.",
-      "starredOnlyShort": "starred only",
+      "markedOnly": "Only marked messages",
+      "markedOnlyHint": "Only messages with the mark below are sorted, and each loses it once handled: mark a message to have it sorted.",
+      "marker": "Mark",
+      "markers": {
+        "star": "Star",
+        "to_sort": "To sort"
+      },
+      "markerHints": {
+        "star": "The star you also use to pick out messages.",
+        "to_sort": "A mark of its own, kept apart from the star."
+      },
+      "toSortUnsupported": "This account's mail server cannot keep the To sort mark.",
+      "markerShort": {
+        "star": "starred only",
+        "to_sort": "to sort only"
+      },
       "enabled": "Enabled",
       "enabledHint": "Leave it off until a dry run shows its filters do what you want.",
       "isEnabled": "enabled",
@@ -93,6 +106,7 @@
       "root": "Condition",
       "condition": "Condition {{n}}",
       "typeOf": "Type of {{name}}",
+      "toSortUnavailable": "{{label}} (this account's mail server cannot keep the To sort mark)",
       "groups": "Groups",
       "and": "All of these",
       "or": "Any of these",
@@ -254,6 +268,7 @@
   },
   "filterErrors": {
     "invalidSpec": "The filter is not valid: {{message}}",
+    "toSortUnsupported": "This account's mail server cannot keep the To sort mark: use the star instead.",
     "runFiltersOff": "Run filters is off for this account: turn it on in Accounts first.",
     "ruleSetDisabled": "This rule set is disabled: enable it first.",
     "notFound": "It is not there any more: it may have been removed meanwhile. Reload the page.",
