@@ -33,10 +33,13 @@ class Criterion(SpecSerializable):
         """Build a criterion from a predicate and optional IMAP query.
 
         is_efficient marks criteria the IMAP query answers exactly (no fetch needed).
+        `negated_prefilter` is set on the negation of an inexact criterion: its operand's query,
+        outside which the negation matches without a fetch.
         """
         self.func = func
         self.imap_query = imap_query if imap_query is not None else All
         self.is_efficient = is_efficient
+        self.negated_prefilter: IMAPQuery | None = None
         self._spec = None
 
     def select(self, messages: dict[int, Message]) -> dict[int, Message]:
@@ -65,7 +68,11 @@ class Criterion(SpecSerializable):
         def func(msg: Message) -> bool:
             return not self.func(msg)
 
-        result = Criterion(func, ~self.imap_query, self.is_efficient)
+        # Only an exact query can be negated: NOT of a prefilter would drop matching messages.
+        query = ~self.imap_query if self.is_efficient else All
+        result = Criterion(func, query, self.is_efficient)
+        if not self.is_efficient:
+            result.negated_prefilter = self.imap_query
         result._spec = None if self._spec is None else {"not": self._spec}
         return result
 

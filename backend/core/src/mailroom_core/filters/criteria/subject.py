@@ -23,8 +23,10 @@ class SubjectContains(Criterion):
 
         """
 
+        wanted = substring.casefold()
+
         def func(msg: Message) -> bool:
-            return substring in (msg.parsed.subject or "")
+            return wanted in (msg.parsed.subject or "").casefold()
 
         super().__init__(func, Q(("SUBJECT", substring)), is_efficient=True)
 

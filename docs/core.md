@@ -397,13 +397,17 @@ or loaded from their data form. Its tests are in `tests/filters`.
   `If(criterion).then(action)`.
 - **A criterion** has two halves that must agree: an IMAP SEARCH query (`IMAPQuery`, run by the
   server) and a predicate on the fetched `Message`. `is_efficient` says the query alone is exact,
-  so nothing is fetched; a looser query (`SUBJECT` matches substrings, pattern criteria search
-  wider) is only a prefilter, and the predicate decides. The predicate reads a `ParsedMessage`:
-  the first of each address field, decoded, the subject as the view shows it, the UTC date, and
-  as the body every inline plain-text part outside attached messages, else the HTML parts'
-  visible text (so a body pattern matches across tags and never inside them). `&`, `|` and `~`
-  combine both halves, efficient only if every operand is. `IMAPQuery.Deferred` builds its query
-  at search time, for criteria relative to the run (`OlderThanDays`).
+  so nothing is fetched. A looser query is only a prefilter and the predicate decides: `SUBJECT`,
+  `FROM`, `TO`, `CC` and `BCC` match substrings, so the `*_is` criteria are prefiltered, and
+  pattern criteria search wider. The `*_contains` and exact-address predicates ignore case, as
+  the server's search does. A negated prefilter searches `ALL`; when it is a filter's whole
+  criterion, the engine searches twice instead: outside the prefilter it matches unfetched,
+  inside it the predicate decides. The predicate reads a `ParsedMessage`: the first of each
+  address field, decoded, the subject as the view shows it, the UTC date, and as the body every
+  inline plain-text part outside attached messages, else the HTML parts' visible text (so a
+  body pattern matches across tags and never inside them). `&`, `|` and `~` combine both halves,
+  efficient only if every operand is. `IMAPQuery.Deferred` builds its query at search time, for
+  criteria relative to the run (`OlderThanDays`).
 - **User patterns** compile when the criterion is built (a bad one is a `SpecError` on load) and
   match with `regex`, never `re`, under the process-wide match timeout (1 s for each match by
   default; past it, `MatchTimeoutError`).

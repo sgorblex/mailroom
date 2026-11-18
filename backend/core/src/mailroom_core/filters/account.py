@@ -93,7 +93,7 @@ class Folder:
         action (a move, say) changes what a later one finds. A dry run applies no action, so its
         filters all see the folder as it is.
 
-        Criteria with is_efficient=True (e.g. FromIs, ToIs, SubjectContains) are answered by
+        Criteria with is_efficient=True (e.g. FromContains, IsUnread) are answered by
         the server's SEARCH alone. The others fetch the candidates' source (`BODY.PEEK[]`,
         which never sets ``\\Seen``), parse it with ``mailroom_core.mail.parsed_message`` and
         match it here; a message is fetched once per run, and fetched again only after an action
@@ -214,9 +214,7 @@ class Folder:
             "executed": False,
         }
         context = selected.context
-        uids = search_uids(context, [*window, _UNDELETED, *f.criterion.imap_query.criteria()])
-        if not f.criterion.is_efficient:
-            uids = self._select(f, context, uids, fetched)
+        uids = self._matching(f, context, [*window, _UNDELETED], fetched)
         if not uids:
             self.log.debug("no messages matched for action %s", f.action)
             return result
@@ -237,6 +235,25 @@ class Folder:
         for uid in uids:
             fetched.pop(uid, None)
         return result
+
+    def _matching(
+        self,
+        f: Filter,
+        context: MailboxContext,
+        bounds: list[object],
+        fetched: dict[int, Message],
+    ) -> list[int]:
+        """The UIDs within `bounds` that `f`'s criterion matches, fetching only what it needs."""
+        criterion = f.criterion
+        inner = criterion.negated_prefilter
+        if inner is None:
+            uids = search_uids(context, [*bounds, *criterion.imap_query.criteria()])
+            return uids if criterion.is_efficient else self._select(f, context, uids, fetched)
+        # The negation of an inexact criterion: outside its operand's prefilter the operand cannot
+        # match, so those messages match unfetched; inside it the predicate decides.
+        outside = search_uids(context, [*bounds, *(~inner).criteria()])
+        inside = search_uids(context, [*bounds, *inner.criteria()])
+        return sorted({*outside, *self._select(f, context, inside, fetched)})
 
     def _select(
         self, f: Filter, context: MailboxContext, uids: list[int], fetched: dict[int, Message]

@@ -146,6 +146,38 @@ class TestAddressCriteria:
         assert isinstance(criterion, Criterion)
         assert criterion.imap_query.criteria() == ["BCC", "test@example.com"]
 
+    @pytest.mark.parametrize(
+        ("criterion", "field"),
+        [
+            (FromIs("ana@x.org"), "sender"),
+            (ToIs("ana@x.org"), "to"),
+            (CcIs("ana@x.org"), "cc"),
+            (BccIs("ana@x.org"), "bcc"),
+        ],
+    )
+    def test_exact_address_criteria_are_only_prefiltered(
+        self, criterion: Criterion, field: str
+    ) -> None:
+        """The server's FROM/TO/CC/BCC search matches substrings: the address is checked once
+        fetched, exactly but in any case."""
+        from mailroom_core.filters.message import Message
+
+        messages = {
+            uid: Message(uid, _parsed(**{field: (Address(None, address),)}), [])
+            for uid, address in enumerate(
+                ["ana@x.org", "banana@x.org", "Ana@X.org", "ana@x.org.uk"]
+            )
+        }
+        assert criterion.is_efficient is False
+        assert sorted(criterion.select(messages)) == [0, 2]
+        assert sorted((~criterion).select(messages)) == [1, 3]
+
+    @pytest.mark.parametrize("criterion", [FromContains("x"), ToContains("x", incl_cc=True)])
+    def test_contains_address_criteria_are_answered_by_the_server(
+        self, criterion: Criterion
+    ) -> None:
+        assert criterion.is_efficient is True
+
     def test_from_matches_creation(self) -> None:
         """Test FromMatches criterion creation."""
         criterion = FromMatches(r".*@example\.com")
@@ -453,6 +485,26 @@ class TestCriteriaFiltering:
         assert BodyContains("total due").select(messages) == messages
         assert BodyContains("class").select(messages) == {}
 
+    def test_contains_criteria_ignore_case_as_the_server_does(self) -> None:
+        """Combined with a criterion that needs a fetch, a `*_contains` is decided by its
+        predicate, which must agree with the server's case-insensitive search."""
+        from mailroom_core.filters.message import Message
+
+        p = _parsed(
+            sender=(Address(None, "news@shop.example"),),
+            subject="Your ORDER",
+            text="Invoice attached",
+        )
+        messages = {1: Message(1, p, [])}
+        for contains in (
+            FromContains("Shop.example"),
+            SubjectContains("order"),
+            BodyContains("INVOICE"),
+        ):
+            either = contains | FromIs("x@y.example")
+            assert either.is_efficient is False
+            assert either.select(messages) == messages
+
     def test_body_matches_select_multiline_dotall(self) -> None:
         """BodyMatches uses re.search with DOTALL across newlines."""
         from mailroom_core.filters.message import Message
@@ -483,8 +535,15 @@ class TestCriteriaFiltering:
         ]
 
     def test_criteria_negation_imap_query(self) -> None:
-        """Test that negation creates NOT query."""
-        criterion = FromIs("sender@example.com")
-        negated = ~criterion
-        assert negated.imap_query is not None
-        assert negated.imap_query.criteria() == ["NOT", "FROM", "sender@example.com"]
+        """Negating an exact query gives its NOT; a prefilter's NOT would drop matches, so a
+        negated prefilter searches everything and the predicate decides."""
+        assert (~FromContains("sender@example.com")).imap_query.criteria() == [
+            "NOT",
+            "FROM",
+            "sender@example.com",
+        ]
+        for prefiltered in (FromIs("sender@example.com"), SubjectIs("x"), BodyMatches("x")):
+            negated = ~prefiltered
+            assert negated.is_efficient is False
+            assert negated.imap_query.criteria() == ["ALL"]
+            assert negated.negated_prefilter is prefiltered.imap_query

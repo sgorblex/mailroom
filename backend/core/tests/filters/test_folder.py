@@ -14,7 +14,7 @@ from mailroom_core.filters.account import Account, Folder
 from mailroom_core.filters.actions.action import Action
 from mailroom_core.filters.actions.flags import MarkAsRead
 from mailroom_core.filters.actions.move import MoveTo
-from mailroom_core.filters.criteria.address import FromIs
+from mailroom_core.filters.criteria.address import FromContains, FromIs
 from mailroom_core.filters.criteria.criterion import Anything
 from mailroom_core.filters.criteria.date import OlderThanDays
 from mailroom_core.filters.criteria.flags import IsRead
@@ -167,7 +167,7 @@ class TestFolderRun:
 
     def test_searches_send_the_criteria(self, account: Account, calls: Calls) -> None:
         (account / "INBOX").run(
-            Filter(FromIs("a@b.example") & ~FromIs("c@d.example"), MarkAsRead())
+            Filter(FromIs("a@b.example") & ~FromContains("c@d.example"), MarkAsRead())
         )
         assert calls.searched == [
             ["UNDELETED", "FROM", "a@b.example", "NOT", "FROM", "c@d.example"]
@@ -243,9 +243,41 @@ class TestFolderRun:
     def test_an_efficient_criterion_fetches_nothing(self, account: Account, calls: Calls) -> None:
         calls.searches = [[1, 2]]
         action, done = recording()
-        (account / "INBOX").run(Filter(FromIs("a@b.example"), action))
+        (account / "INBOX").run(Filter(FromContains("b.example"), action))
         assert calls.fetched == []
         assert done == [[1, 2]]
+
+    def test_matches_exactly_on_the_fetched_address(self, account: Account, calls: Calls) -> None:
+        """FromIs searches FROM (a substring) and checks the parsed sender."""
+        calls.searches = [[1, 2]]
+        calls.sources = {
+            uid: fetched(uid, f"From: {sender}\r\nSubject: s\r\n\r\n")
+            for uid, sender in {1: "ana@x.org", 2: "banana@x.org"}.items()
+        }
+        action, done = recording()
+        (account / "INBOX").run(Filter(FromIs("ana@x.org"), action))
+        assert calls.searched == [["UNDELETED", "FROM", "ana@x.org"]]
+        assert calls.fetched == [[1, 2]]
+        assert done == [[1]]
+
+    def test_a_negated_prefilter_fetches_only_its_candidates(
+        self, account: Account, calls: Calls
+    ) -> None:
+        """Outside FromIs's FROM search the negation matches unfetched; inside, the predicate
+        decides."""
+        calls.searches = [[3], [1, 2]]
+        calls.sources = {
+            uid: fetched(uid, f"From: {sender}\r\nSubject: s\r\n\r\n")
+            for uid, sender in {1: "ana@x.org", 2: "banana@x.org"}.items()
+        }
+        action, done = recording()
+        (account / "INBOX").run(Filter(~FromIs("ana@x.org"), action))
+        assert calls.searched == [
+            ["UNDELETED", "NOT", "FROM", "ana@x.org"],
+            ["UNDELETED", "FROM", "ana@x.org"],
+        ]
+        assert calls.fetched == [[1, 2]]
+        assert done == [[2, 3]]
 
     def test_messages_are_fetched_once_per_run(self, account: Account, calls: Calls) -> None:
         calls.searches = [[1, 2, 3], [2, 3, 4]]
@@ -318,7 +350,7 @@ class TestFolderReport:
             1: _envelope(b"Hello", b"Ann", b"ann", b"example.com"),
             2: _envelope(b"Again", None, b"bob", b"example.com"),
         }
-        f = Filter(FromIs("ann@example.com"), MoveTo(Path("Dest")))
+        f = Filter(FromContains("example.com"), MoveTo(Path("Dest")))
         with patch("mailroom_core.filters.actions.move._move") as move:
             report = (account / "INBOX").run(f, dry_run=False)
         assert move.call_args.args[1:] == ([1, 2], "Dest")
