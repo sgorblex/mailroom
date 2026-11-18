@@ -117,13 +117,13 @@ def test_with_subfolders_leaves_out_the_role_folders_unless_the_folder_has_the_r
         ]
     )
     expected = ["INBOX", "INBOX/Work", "INBOX/Work/Old/2024"]
-    assert with_subfolders(folders, "INBOX", "a") == expected
-    assert with_subfolders(folders, "inbox", "a") == expected
-    assert with_subfolders(folders, "Spam", "a") == ["Spam", "Spam/Older"]
-    assert with_subfolders(folders, "Projects", "a") == ["Projects/A"]
-    assert with_subfolders(folders, "INBOX/Work/Old", "a") == ["INBOX/Work/Old/2024"]
-    missing = refused(lambda: with_subfolders(folders, "Nope", "a"), "mailbox_missing")
-    assert '"Nope" is not a folder of a' in missing.message
+    assert with_subfolders(folders, "INBOX", 1) == expected
+    assert with_subfolders(folders, "inbox", 1) == expected
+    assert with_subfolders(folders, "Spam", 1) == ["Spam", "Spam/Older"]
+    assert with_subfolders(folders, "Projects", 1) == ["Projects/A"]
+    assert with_subfolders(folders, "INBOX/Work/Old", 1) == ["INBOX/Work/Old/2024"]
+    missing = refused(lambda: with_subfolders(folders, "Nope", 1), "mailbox_missing")
+    assert '"Nope" is not a folder of account 1' in missing.message
 
 
 def test_with_subfolders_keeps_a_subfolder_of_the_folders_own_role() -> None:
@@ -132,15 +132,15 @@ def test_with_subfolders_keeps_a_subfolder_of_the_folders_own_role() -> None:
         Folder(path="Archive.2025", delimiter=".", role="archive", flags=()),
         Folder(path="Archive.Trash", delimiter=".", role="trash", flags=()),
     ]
-    assert with_subfolders(folders, "Archive", "a") == ["Archive", "Archive.2025"]
+    assert with_subfolders(folders, "Archive", 1) == ["Archive", "Archive.2025"]
 
 
 def test_with_subfolders_refuses_more_than_the_cap() -> None:
     listing: Listing = [((), b"/", "Big")]
     listing += [((), b"/", f"Big/{n}") for n in range(MAX_LISTED_FOLDERS - 1)]
-    assert len(with_subfolders(folders_from(listing), "Big", "a")) == MAX_LISTED_FOLDERS
+    assert len(with_subfolders(folders_from(listing), "Big", 1)) == MAX_LISTED_FOLDERS
     listing.append(((), b"/", "Big/one more"))
-    error = refused(lambda: with_subfolders(folders_from(listing), "Big", "a"))
+    error = refused(lambda: with_subfolders(folders_from(listing), "Big", 1))
     assert f"at most {MAX_LISTED_FOLDERS}" in error.message
 
 
@@ -259,7 +259,7 @@ def account(
 
 
 def run[T](call: Callable[..., T], connections: FakeConnections, *args: Any, **kwargs: Any) -> T:
-    return call(cast("MailConnections", connections), "acc", *args, **kwargs)
+    return call(cast("MailConnections", connections), 1, *args, **kwargs)
 
 
 def nested(depth: int) -> str:
@@ -305,9 +305,9 @@ class TestCreate:
     def test_creates_and_subscribes(self) -> None:
         client, connections, notes = account()
         change = run(create_folder, connections, "Projects", "2027", notes.append)
-        assert change == FolderChange(account="acc", path="Projects/2027", delimiter="/")
+        assert change == FolderChange(account=1, path="Projects/2027", delimiter="/")
         assert client.writes == [("create", "Projects/2027"), ("subscribe", "Projects/2027")]
-        assert notes == [AuditItem(account="acc", folder="Projects/2027", result="ok")]
+        assert notes == [AuditItem(account=1, folder="Projects/2027", result="ok")]
 
     def test_an_inbox_parent_in_any_case_is_spelled_as_listed(self) -> None:
         client, connections, notes = account()
@@ -437,7 +437,7 @@ class TestSubscriptions:
         )
         change = run(rename_folder, connections, "Projects", "Old", "P", notes.append)
         assert change == FolderChange(
-            account="acc", path="Projects", delimiter="/", destination="Old/P"
+            account=1, path="Projects", delimiter="/", destination="Old/P"
         )
         assert client.writes == [
             ("rename", "Projects", "Old/P"),
@@ -446,9 +446,7 @@ class TestSubscriptions:
             ("unsubscribe", "Projects"),
             ("unsubscribe", "Projects/2026"),
         ]
-        assert notes == [
-            AuditItem(account="acc", folder="Projects", destination="Old/P", result="ok")
-        ]
+        assert notes == [AuditItem(account=1, folder="Projects", destination="Old/P", result="ok")]
 
     def test_a_rename_stands_when_lsub_is_refused(self) -> None:
         client, connections, notes = account(subscribed=("Projects",))
@@ -461,7 +459,7 @@ class TestSubscriptions:
         client, connections, notes = account(counts={"Old": 4})
         run(delete_folder, connections, "Old", messages=4, note=notes.append)
         assert client.writes == [("delete", "Old"), ("unsubscribe", "Old")]
-        assert notes == [AuditItem(account="acc", folder="Old", messages=4, result="ok")]
+        assert notes == [AuditItem(account=1, folder="Old", messages=4, result="ok")]
 
 
 class TestRenameRefusals:
@@ -531,9 +529,7 @@ class TestDelete:
         assert "3 messages" in caught.value.message
         assert ("status", "Old", ("MESSAGES",)) in client.calls
         assert client.writes == []
-        assert notes == [
-            AuditItem(account="acc", folder="Old", messages=2, result="folder_changed")
-        ]
+        assert notes == [AuditItem(account=1, folder="Old", messages=2, result="folder_changed")]
 
     def test_a_noselect_folder_holds_nothing(self) -> None:
         client, connections, notes = account([*BASE, entry("Box", b"\\Noselect")])
@@ -633,27 +629,27 @@ def names(log: list[tuple[object, ...]], opened: list[SessionClient]) -> list[st
 
 
 def leave_selected(connections: MailConnections) -> None:
-    connections.with_mailbox("acc", "Projects", False, lambda _context: None)
+    connections.with_mailbox(1, "Projects", False, lambda _context: None)
 
 
 class TestWithConnection:
     def test_unselects_a_selected_mailbox(self, pool) -> None:
         connections, opened, log = pool(b"IMAP4REV1", b"UNSELECT")
         leave_selected(connections)
-        seen = connections.with_connection("acc", lambda client: client.state)
+        seen = connections.with_connection(1, lambda client: client.state)
         assert seen == "AUTH"
         assert names(log, opened) == ["select@0", "unselect@0"]
 
     def test_imap4rev2_without_the_name_unselects_too(self, pool) -> None:
         connections, opened, log = pool(b"IMAP4REV2")
         leave_selected(connections)
-        connections.with_connection("acc", lambda _client: None)
+        connections.with_connection(1, lambda _client: None)
         assert names(log, opened) == ["select@0", "raw UNSELECT@0"]
 
     def test_without_unselect_opens_a_new_connection_never_close(self, pool) -> None:
         connections, opened, log = pool(b"IMAP4REV1")
         leave_selected(connections)
-        used = connections.with_connection("acc", lambda client: client)
+        used = connections.with_connection(1, lambda client: client)
         assert used is opened[1]
         assert opened[1].state == "AUTH"
         assert names(log, opened) == ["select@0", "shutdown@0"]
@@ -661,16 +657,16 @@ class TestWithConnection:
 
     def test_a_reused_idle_connection_answers_a_noop_first(self, pool) -> None:
         connections, opened, log = pool(b"IMAP4REV1", b"UNSELECT")
-        connections.with_connection("acc", lambda _client: None)
-        connections.with_connection("acc", lambda _client: None)
+        connections.with_connection(1, lambda _client: None)
+        connections.with_connection(1, lambda _client: None)
         assert names(log, opened) == ["noop@0"]
 
     def test_retries_once_while_readying(self, pool) -> None:
         connections, opened, log = pool(b"IMAP4REV1", b"UNSELECT")
-        connections.with_connection("acc", lambda _client: None)
+        connections.with_connection(1, lambda _client: None)
         opened[0].fail["noop"] = OSError("connection reset")
         calls: list[object] = []
-        connections.with_connection("acc", calls.append)
+        connections.with_connection(1, calls.append)
         assert calls == [opened[1]]
         assert names(log, opened) == ["noop@0", "shutdown@0"]
 
@@ -679,7 +675,7 @@ class TestWithConnection:
         leave_selected(connections)
         opened[0].fail["unselect"] = IMAPClientAbortError("socket error: EOF")
         calls: list[object] = []
-        connections.with_connection("acc", calls.append)
+        connections.with_connection(1, calls.append)
         assert calls == [opened[1]]
 
     def test_never_retries_fn(self, pool) -> None:
@@ -691,7 +687,7 @@ class TestWithConnection:
             calls += 1
             raise OSError("connection reset")
 
-        refused(lambda: connections.with_connection("acc", fn), "unreachable")
+        refused(lambda: connections.with_connection(1, fn), "unreachable")
         assert calls == 1
         assert len(opened) == 1
 
@@ -703,5 +699,5 @@ class TestWithConnection:
             raise error
 
         with pytest.raises(FolderChangedError) as caught:
-            connections.with_connection("acc", fn)
+            connections.with_connection(1, fn)
         assert caught.value is error

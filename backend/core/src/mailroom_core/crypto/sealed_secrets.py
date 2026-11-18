@@ -33,33 +33,50 @@ def secrets_subkey(secrets_key: bytes) -> SecretsSubkey:
 
 
 def seal_secret(
-    subkey: SecretsSubkey, account_id: str, purpose: SecretPurpose, plaintext: str
+    subkey: SecretsSubkey,
+    account_id: int,
+    purpose: SecretPurpose,
+    plaintext: str,
+    *,
+    former_slug: str | None = None,
 ) -> bytes:
     """AES-256-GCM, as `format ‖ nonce ‖ ciphertext ‖ tag`.
 
     The account and purpose are bound in as associated data: a blob copied to another account or
-    use does not open.
+    use does not open. An account that had a slug before ids became numbers stays bound by that
+    slug (`former_slug`, `AccountStore.former_slugs`), so the secrets sealed then still open.
     """
     nonce = token_bytes(_NONCE_BYTES)
     sealed = AESGCM(subkey).encrypt(
-        nonce, plaintext.encode(), _associated_data(account_id, purpose)
+        nonce, plaintext.encode(), _associated_data(account_id, former_slug, purpose)
     )
     return bytes([_FORMAT]) + nonce + sealed
 
 
-def open_secret(subkey: SecretsSubkey, account_id: str, purpose: SecretPurpose, blob: bytes) -> str:
+def open_secret(
+    subkey: SecretsSubkey,
+    account_id: int,
+    purpose: SecretPurpose,
+    blob: bytes,
+    *,
+    former_slug: str | None = None,
+) -> str:
     """Raise `SealedSecretError` (without the value) unless the blob opens for this account."""
     if len(blob) < 1 + _NONCE_BYTES + _TAG_BYTES or blob[0] != _FORMAT:
         raise SealedSecretError("not a stored secret of a known format")
     nonce = blob[1 : 1 + _NONCE_BYTES]
     try:
         plaintext = AESGCM(subkey).decrypt(
-            nonce, blob[1 + _NONCE_BYTES :], _associated_data(account_id, purpose)
+            nonce,
+            blob[1 + _NONCE_BYTES :],
+            _associated_data(account_id, former_slug, purpose),
         )
     except InvalidTag:
         raise SealedSecretError("stored secret does not open") from None
     return plaintext.decode()
 
 
-def _associated_data(account_id: str, purpose: SecretPurpose) -> bytes:
-    return f"mailroom/v1/{account_id}/{purpose}".encode()
+def _associated_data(account_id: int, former_slug: str | None, purpose: SecretPurpose) -> bytes:
+    # `#` is in no slug, so an id never binds as a slug did.
+    account = f"#{account_id}" if former_slug is None else former_slug
+    return f"mailroom/v1/{account}/{purpose}".encode()

@@ -67,29 +67,27 @@ def _login_error_during(error: BaseException) -> LoginError:
     ],
 )
 def test_maps(error: BaseException, code: str) -> None:
-    assert mail_error(error, "acc").code == code
+    assert mail_error(error, 1).code == code
 
 
 def test_says_when_the_certificate_did_not_verify() -> None:
     unverified = ssl.SSLCertVerificationError(1, "certificate verify failed: self-signed")
     for error in (unverified, _login_error_during(unverified)):
-        mapped = mail_error(error, "acc")
+        mapped = mail_error(error, 1)
         assert mapped.code == "unreachable"
         assert mapped.message == f"{MESSAGES['unreachable']} {CERTIFICATE_DETAIL}"
     for error in (ssl.SSLError("handshake failure"), ConnectionRefusedError(111, "refused")):
-        assert mail_error(error, "acc").detail is None
+        assert mail_error(error, 1).detail is None
 
 
 def test_keeps_server_text_out_of_the_message_but_logs_it(caplog: pytest.LogCaptureFixture) -> None:
     with caplog.at_level(logging.WARNING, logger="mailroom_core.mail"):
-        mapped = mail_error(
-            LoginError("NO [AUTHENTICATIONFAILED] login me@x.org pass hunter2"), "acc"
-        )
+        mapped = mail_error(LoginError("NO [AUTHENTICATIONFAILED] login me@x.org pass hunter2"), 1)
     assert str(mapped) == "The mail server rejected the login for this account."
     assert "hunter2" not in repr(mapped)
     [record] = caplog.records
     assert record.getMessage() == "imap_error"
-    assert record.__dict__["account"] == "acc"
+    assert record.__dict__["account"] == 1
     assert record.__dict__["mapped"] == "auth_failed"
     assert "hunter2" in record.__dict__["error"]
 
@@ -99,7 +97,7 @@ def test_logs_only_the_type_of_a_login_error(caplog: pytest.LogCaptureFixture) -
         "perché".encode("ascii")
     except UnicodeEncodeError as error:
         with caplog.at_level(logging.WARNING, logger="mailroom_core.mail"):
-            mapped = mail_error(error, "acc", secret=True)
+            mapped = mail_error(error, 1, secret=True)
     assert mapped.code == "server_error"
     [record] = caplog.records
     assert record.__dict__["error_type"] == "UnicodeEncodeError"
@@ -110,8 +108,8 @@ def test_logs_only_the_type_of_a_login_error(caplog: pytest.LogCaptureFixture) -
 
 def test_logs_a_bug_with_its_traceback(caplog: pytest.LogCaptureFixture) -> None:
     with caplog.at_level(logging.WARNING, logger="mailroom_core.mail"):
-        mail_error(KeyError(b"BODY[1]"), "acc")
-        mail_error(imaplib.IMAP4.abort("socket error: EOF"), "acc")
+        mail_error(KeyError(b"BODY[1]"), 1)
+        mail_error(imaplib.IMAP4.abort("socket error: EOF"), 1)
     bug, connection = caplog.records
     assert bug.exc_info is not None
     assert connection.exc_info is None
@@ -119,7 +117,7 @@ def test_logs_a_bug_with_its_traceback(caplog: pytest.LogCaptureFixture) -> None
 
 def test_passes_mail_errors_through(caplog: pytest.LogCaptureFixture) -> None:
     error = MailError("stale_reference")
-    assert mail_error(error, "acc") is error
+    assert mail_error(error, 1) is error
     assert caplog.records == []
 
 

@@ -151,7 +151,7 @@ def direct(server: ImapTestServer, user: str, **overrides: object) -> AccountCon
         ],
         **overrides,
     }
-    return test_account("acc", user, server, **fields)
+    return test_account(1, user, server, **fields)
 
 
 def from_user(user: str, to: list[str], **fields: Any) -> MessageInput:
@@ -162,7 +162,7 @@ def from_user(user: str, to: list[str], **fields: Any) -> MessageInput:
 def ref_to(server: ImapTestServer, user: str, folder: str, uid: int) -> MessageRef:
     with raw_client(server, user) as client:
         status = client.folder_status(folder, [b"UIDVALIDITY"])
-    return MessageRef("acc", folder, status[b"UIDVALIDITY"], uid)
+    return MessageRef(1, folder, status[b"UIDVALIDITY"], uid)
 
 
 # gate.it.test.ts
@@ -174,7 +174,7 @@ def test_delivers_hides_bcc_and_files_the_full_copy_in_sent(
     smtp_server: SmtpTestServer,
     user: str,
 ) -> None:
-    account = test_account("acc", user, imap_server, send_mode="direct")
+    account = test_account(1, user, imap_server, send_mode="direct")
     to = f"{user}-to@example.org"
     hidden = f"{user}-bcc@example.org"
     gate = live(account)
@@ -210,7 +210,7 @@ def test_the_wire_copy_has_no_bcc_while_the_envelope_names_it() -> None:
     with SmtpStub() as stub:
         account = AccountConfig.model_validate(
             {
-                "id": "acc",
+                "id": 1,
                 "login": "me",
                 "send_mode": "direct",
                 "auth": {"type": "password"},
@@ -221,7 +221,7 @@ def test_the_wire_copy_has_no_bcc_while_the_envelope_names_it() -> None:
         )
         SmtpSender(
             lambda _id: account, lambda _id: "x", ssl_context=SmtpStub.trusted_context()
-        ).send("acc", composed.envelope, composed.wire)
+        ).send(1, composed.envelope, composed.wire)
     assert any("hidden@example.org" in command for command in stub.commands)
     assert b"hidden" not in stub.messages[0]
     assert b"bcc" not in stub.messages[0].lower()
@@ -309,7 +309,7 @@ def test_starttls_against_mailpit(
     imap_server: ImapTestServer, smtp_starttls_server: SmtpTestServer, user: str
 ) -> None:
     account = test_account(
-        "acc",
+        1,
         user,
         imap_server,
         smtp={
@@ -321,7 +321,7 @@ def test_starttls_against_mailpit(
     to = f"{user}-to@example.org"
     composed = compose(from_user(user, [to]))
     SmtpSender(lambda _id: account, lambda _id: "any", ssl_context=unverified_context()).send(
-        "acc", composed.envelope, composed.wire
+        1, composed.envelope, composed.wire
     )
     [delivered] = smtp_starttls_server.delivered_to(to)
     assert b"Subject: Gate test" in delivered.raw
@@ -330,12 +330,12 @@ def test_starttls_against_mailpit(
 def test_implicit_tls_against_mailpit(
     imap_server: ImapTestServer, smtp_server: SmtpTestServer, user: str
 ) -> None:
-    account = test_account("acc", user, imap_server)
+    account = test_account(1, user, imap_server)
     assert account.smtp.tls == "implicit"
     to = f"{user}-to@example.org"
     composed = compose(from_user(user, [to]))
     SmtpSender(lambda _id: account, lambda _id: "any", ssl_context=unverified_context()).send(
-        "acc", composed.envelope, composed.wire
+        1, composed.envelope, composed.wire
     )
     assert len(smtp_server.delivered_to(to)) == 1
 
@@ -343,18 +343,18 @@ def test_implicit_tls_against_mailpit(
 def test_mailpit_s_self_signed_certificate_is_refused_by_default(
     imap_server: ImapTestServer, user: str
 ) -> None:
-    account = test_account("acc", user, imap_server)
+    account = test_account(1, user, imap_server)
     composed = compose(from_user(user, [f"{user}-to@example.org"]))
     sender = SmtpSender(lambda _id: account, lambda _id: "any")
     with pytest.raises(MailError) as raised:
-        sender.send("acc", composed.envelope, composed.wire)
+        sender.send(1, composed.envelope, composed.wire)
     assert raised.value.code == "unreachable"
 
 
 def test_verify_smtp_logs_in_at_mailpit(
     imap_server: ImapTestServer, smtp_server: SmtpTestServer, user: str
 ) -> None:
-    account = test_account("acc", user, imap_server)
+    account = test_account(1, user, imap_server)
     assert verify_smtp(account, "any", ssl_context=unverified_context()) is None
     assert verify_smtp(account, "any") == "unreachable"
 
@@ -742,7 +742,7 @@ def test_only_drafts_in_drafts_mode_and_in_approval_for_others(
     with raw_client(imap_server, other):
         pass
     approval = test_account(
-        "team", other, imap_server, send_mode="approval", auto_approve=["@team.example"]
+        2, other, imap_server, send_mode="approval", auto_approve=["@team.example"]
     )
     approving = live(approval)
     message = from_user(other, [team], subject="s", text="t")
@@ -802,7 +802,7 @@ def test_a_refused_recipient_comes_back_while_the_others_get_it(
 ) -> None:
     """With the real connections for Sent and the stub for SMTP, end to end."""
     with SmtpStub(refuse=["bo@example.org"]) as stub:
-        account = test_account("acc", user, imap_server, send_mode="direct", smtp=stub.smtp())
+        account = test_account(1, user, imap_server, send_mode="direct", smtp=stub.smtp())
         mail = connections_for(imap_server, [account])
         try:
             deps = GateDeps(

@@ -58,7 +58,7 @@ class FlagState:
 class GroupResult:
     """What happened to the refs of one folder of one account."""
 
-    account: str
+    account: int
     folder: str
     count: int = 0
     """Messages changed."""
@@ -73,7 +73,7 @@ class GroupResult:
     """None when the group succeeded."""
     destination: str | None = None
     """Where a move took them, or copied them before it failed; None for a flag change."""
-    destination_account: str | None = None
+    destination_account: int | None = None
     """On a move to another account, that account: `destination` and `new_refs` are its."""
 
     @property
@@ -110,7 +110,7 @@ class OrganizeResult:
 class _Group:
     """Refs of one folder of one account: what one mailbox session acts on."""
 
-    account: str
+    account: int
     folder: str
     refs: tuple[MessageRef, ...]
 
@@ -139,7 +139,7 @@ def archive_messages(connections: MailConnections, refs: Sequence[str]) -> Organ
         folders = folders_of(group.account)
         archive = special_folder_in(folders, "archive")
         if archive is None or not archive.selectable:
-            raise MailError("unsupported", f"{group.account} has no Archive folder.")
+            raise MailError("unsupported", f"Account {group.account} has no Archive folder.")
         target = move_target(group.folder, archive.path, folders, account=group.account)
         return _move_to(connections, group, folders, target, note)
 
@@ -157,7 +157,7 @@ def trash_messages(
     def act(group: _Group, note: Note) -> GroupResult:
         trash = special_folder_in(folders_of(group.account), "trash")
         if trash is None:
-            raise MailError("unsupported", f"{group.account} has no Trash folder.")
+            raise MailError("unsupported", f"Account {group.account} has no Trash folder.")
         if trash.path == group.folder:
             raise MailError(
                 "invalid_argument",
@@ -244,13 +244,11 @@ def _groups(connections: MailConnections, texts: Sequence[str]) -> list[_Group]:
     or one for an account these connections do not serve, refuses the whole call."""
     if not 1 <= len(texts) <= MAX_REFS:
         raise MailError("invalid_argument", f"Give between 1 and {MAX_REFS} message refs.")
-    by_folder: dict[tuple[str, str], list[MessageRef]] = {}
+    by_folder: dict[tuple[int, str], list[MessageRef]] = {}
     for text in texts:
         ref = parse_ref(text)
         if not connections.serves(ref.account):
-            raise MailError(
-                "invalid_argument", f'Unknown account "{clean_header(ref.account, 200)}".'
-            )
+            raise MailError("invalid_argument", f"Unknown account {ref.account}.")
         by_folder.setdefault((ref.account, ref.folder), []).append(ref)
     return [_Group(account, folder, tuple(refs)) for (account, folder), refs in by_folder.items()]
 
@@ -296,11 +294,11 @@ class _CopiedGroupError(MailError):
         self.result = result
 
 
-def _folder_lookup(connections: MailConnections) -> Callable[[str], list[Folder]]:
+def _folder_lookup(connections: MailConnections) -> Callable[[int], list[Folder]]:
     """The account's folders, listed once per account per call."""
-    cache: dict[str, list[Folder]] = {}
+    cache: dict[int, list[Folder]] = {}
 
-    def lookup(account: str) -> list[Folder]:
+    def lookup(account: int) -> list[Folder]:
         if account not in cache:
             cache[account] = connections.folders(account)
         return cache[account]

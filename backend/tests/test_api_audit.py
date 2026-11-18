@@ -23,7 +23,7 @@ def add(db_session: Session, user_id: int, **fields: Any) -> int:
         **{
             "actor": "user",
             "action": "move",
-            "account_id": "work",
+            "account_id": 1,
             "result": "ok",
             "detail": {"folder": "INBOX", "uid": 1, "from": "ana@example.org"},
             **fields,
@@ -68,13 +68,13 @@ def test_the_filters_narrow_the_list(
     user_client: TestClient, db_session: Session, user: User
 ) -> None:
     move = add(db_session, user.id)
-    sent = add(db_session, user.id, actor="agent", action="send", account_id="home")
+    sent = add(db_session, user.id, actor="agent", action="send", account_id=2)
     refused = add(db_session, user.id, actor="agent", action="trash", result="invalid_argument")
 
     def ids(**params: Any) -> list[int]:
         return [r["id"] for r in listed(user_client, **params)["records"]]
 
-    assert ids(account_id="home") == [sent]
+    assert ids(account_id=2) == [sent]
     assert ids(actor="agent") == [refused, sent]
     assert ids(action="move") == [move]
     assert ids(result="failed") == [refused]
@@ -114,7 +114,7 @@ def test_a_filters_record_names_its_rule_set_while_it_exists(
     user_client: TestClient, db_session: Session, user: User
 ) -> None:
     rule_set = RuleSet(
-        user_id=user.id, account_id="work", folder=["INBOX"], name="Shops", trigger="manual"
+        user_id=user.id, account_id=1, folder=["INBOX"], name="Shops", trigger="manual"
     )
     db_session.add(rule_set)
     db_session.flush()
@@ -122,7 +122,7 @@ def test_a_filters_record_names_its_rule_set_while_it_exists(
     add(db_session, user.id, actor="filter", rule_set_id=rule_set.id + 1000, run_id=4)
     other = create_user(db_session, "someone-else", "a long enough password")
     theirs = RuleSet(
-        user_id=other.id, account_id="work", folder=["INBOX"], name="Theirs", trigger="manual"
+        user_id=other.id, account_id=1, folder=["INBOX"], name="Theirs", trigger="manual"
     )
     db_session.add(theirs)
     db_session.flush()

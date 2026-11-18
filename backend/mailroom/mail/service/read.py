@@ -8,7 +8,7 @@ import threading
 import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, wait
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final, Literal, cast
 
 from mailroom.accounts.service import require_subkey
 from mailroom.errors import mail_refusal
@@ -41,7 +41,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-ALL_ACCOUNTS: Final = "*"
+type AllAccounts = Literal["*"]
+ALL_ACCOUNTS: Final[AllAccounts] = "*"
 ALL_FOLDERS: Final = core.ALL_FOLDERS
 INLINE_IMAGE_BYTES: Final = 5 * 1024 * 1024
 """The ``cid:`` images inlined into one HTML view, in total; past it an image keeps only its
@@ -60,7 +61,7 @@ failures), inside the pool's 30 s deadline, so the others still answer."""
 def folders(
     ctx: AppContext,
     user_id: int,
-    account_id: str,
+    account_id: int,
     *,
     counts: bool = True,
     every: bool = False,
@@ -91,7 +92,7 @@ def folder_segments(folder: Folder) -> list[str]:
 def list_messages(
     ctx: AppContext,
     user_id: int,
-    account_id: str,
+    account_id: int,
     folder: str = "INBOX",
     *,
     limit: int = 25,
@@ -124,7 +125,7 @@ def list_messages(
 def search(
     ctx: AppContext,
     user_id: int,
-    account: str,
+    account: int | AllAccounts,
     folder: str,
     query: SearchQuery,
     *,
@@ -203,7 +204,7 @@ def search(
     return page
 
 
-def _password_missing_failure(account_id: str, folder: str | None) -> PageFailure:
+def _password_missing_failure(account_id: int, folder: str | None) -> PageFailure:
     code = cast("MailErrorCode", PASSWORD_MISSING)  # the app's own code
     return PageFailure(account_id, folder, code, PASSWORD_MISSING_TEXT)
 
@@ -212,7 +213,7 @@ def _with_password_failures(ctx: AppContext, user_id: int, page: Page) -> Page:
     """``page`` with each ``server_error`` of an account whose password no longer opens as
     ``password_missing``: mailroom-core reports any failure to open a connection, the pool's
     ``PasswordMissing`` included, as a server error of the source."""
-    missing: dict[str, bool] = {}
+    missing: dict[int, bool] = {}
 
     def checked(failure: PageFailure) -> PageFailure:
         if failure.code != "server_error":
@@ -236,7 +237,7 @@ def _first_failure(page: Page) -> None:
 
 
 def _sources(
-    connections: MailConnections, account: str, folder: str, query: SearchQuery, subfolders: bool
+    connections: MailConnections, account: int, folder: str, query: SearchQuery, subfolders: bool
 ) -> tuple[list[Source], Criteria]:
     """What mailroom-core's ``search_messages`` reads in ``account``, and with which criteria:
     as it does, a Gmail account's ``has_attachment`` goes into X-GM-RAW (Gmail ignores the
@@ -247,7 +248,8 @@ def _sources(
     ) and connections.capabilities(account).gmail
     if query.gmail_query is not None and not gmail:
         raise MailError(
-            "unsupported", f'gmail_query works only on Gmail accounts; "{account}" is not one.'
+            "unsupported",
+            f"gmail_query works only on Gmail accounts; account {account} is not one.",
         )
     paths = (
         core.searchable_folders(connections, account)
@@ -264,11 +266,11 @@ class _Reading:
     def __init__(self, connections: MailConnections) -> None:
         self._connections = connections
         self._lock = threading.Lock()
-        self._open: Counter[str] = Counter()
+        self._open: Counter[int] = Counter()
 
     def with_mailbox[T](
         self,
-        account_id: str,
+        account_id: int,
         path: str,
         read_only: bool,
         fn: Callable[[MailboxContext], T],
@@ -284,14 +286,14 @@ class _Reading:
     def __getattr__(self, name: str) -> object:
         return getattr(self._connections, name)
 
-    def reading(self) -> list[str]:
+    def reading(self) -> list[int]:
         with self._lock:
             return sorted(account for account, count in self._open.items() if count > 0)
 
 
 def _search_accounts(
     connections: MailConnections,
-    accounts: Sequence[str],
+    accounts: Sequence[int],
     folder: str,
     query: SearchQuery,
     *,
@@ -307,7 +309,7 @@ def _search_accounts(
     started = time.monotonic()
     failures: list[PageFailure] = []
     sources: list[Source] = []
-    criteria: dict[str, Criteria] = {}
+    criteria: dict[int, Criteria] = {}
     finder = ThreadPoolExecutor(max_workers=min(len(accounts), 8), thread_name_prefix="mail-src")
     found = {
         account: finder.submit(_sources, connections, account, folder, query, subfolders)
@@ -331,7 +333,7 @@ def _search_accounts(
                 extra={"event": "mail_search_sources_failed", "account_id": account},
             )
             failures.append(PageFailure(account, None, "server_error", MESSAGES["server_error"]))
-    cut: set[str] = set()
+    cut: set[int] = set()
     reading = _Reading(connections)
 
     def expire() -> None:
@@ -414,7 +416,7 @@ def thread(ctx: AppContext, user_id: int, ref: str, *, limit: int = 30, via: Via
     )
 
 
-def account_ids(ctx: AppContext, user_id: int) -> Sequence[str]:
+def account_ids(ctx: AppContext, user_id: int) -> Sequence[int]:
     """The user's account ids, in their order."""
     return _accounts(ctx, user_id).ids()
 

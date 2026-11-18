@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { Link } from '@tanstack/react-router'
 
+import type { AccountId } from '@/api/accounts.ts'
 import { createFolder, deleteFolder, listMailFolders, renameFolder, type FolderRenamed, type MailFolder } from '@/api/mail.ts'
 import { useAccountName } from '@/accounts/accounts-context.ts'
 import { ApiRequestError } from '@/api/http.ts'
@@ -34,7 +35,7 @@ export function FolderDialogs({
   onCancel,
   onDone,
 }: {
-  accountId: string
+  accountId: AccountId
   folders: readonly MailFolder[]
   dialog: FolderDialog
   onCancel: () => void
@@ -160,7 +161,7 @@ function CreateDialog({
   onCancel,
   onDone,
 }: {
-  accountId: string
+  accountId: AccountId
   parent: string | null
   delimiter: string | null
   onCancel: () => void
@@ -225,7 +226,7 @@ function RenameDialog({
   onCancel,
   onDone,
 }: {
-  accountId: string
+  accountId: AccountId
   folders: readonly MailFolder[]
   folder: MailFolder
   delimiter: string | null
@@ -350,7 +351,7 @@ function DeleteDialog({
   onCancel,
   onDone,
 }: {
-  accountId: string
+  accountId: AccountId
   folder: MailFolder
   gmail: boolean
   onCancel: () => void

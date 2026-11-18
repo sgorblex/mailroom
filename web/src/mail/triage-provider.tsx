@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 
+import type { AccountId } from '@/api/accounts.ts'
 import {
   archiveMessages,
   flagMessages,
@@ -49,7 +50,7 @@ interface Scope {
 
 const NO_SELECTION: ReadonlyMap<string, Target> = new Map()
 const NO_OVERRIDES: ReadonlyMap<string, Flags> = new Map()
-const NO_ACCOUNTS: readonly string[] = []
+const NO_ACCOUNTS: readonly AccountId[] = []
 
 function freshScope(key: string): Scope {
   return { key, selection: NO_SELECTION, overrides: NO_OVERRIDES, outcome: null, picker: false, accountPicker: false }
@@ -136,7 +137,7 @@ export function TriageProvider({
   children,
 }: {
   sourceKey: string
-  accounts?: readonly string[]
+  accounts?: readonly AccountId[]
   children: ReactNode
 }): ReactElement {
   const navigate = useNavigate()
@@ -161,7 +162,7 @@ export function TriageProvider({
     visible.current = rows
   }, [])
   const visibleRows = useCallback(() => visible.current, [])
-  const folderRequests = useRef(new Map<string, AbortController>())
+  const folderRequests = useRef(new Map<AccountId, AbortController>())
 
   const scope = scoped.key === sourceKey ? scoped : freshScope(sourceKey)
 
@@ -189,7 +190,7 @@ export function TriageProvider({
   }, [])
 
   const loadFolders = useCallback(
-    (account: string, fresh: boolean) => {
+    (account: AccountId, fresh: boolean) => {
       if (!fresh && foldersRef.current[account] !== undefined) {
         return
       }
@@ -213,7 +214,7 @@ export function TriageProvider({
   )
 
   const adjustFolder = useCallback(
-    (account: string, path: string, unread: number, total: number) => {
+    (account: AccountId, path: string, unread: number, total: number) => {
       setFolders((value) => {
         const state = value[account]
         if (state?.kind !== 'loaded' || (unread === 0 && total === 0)) {

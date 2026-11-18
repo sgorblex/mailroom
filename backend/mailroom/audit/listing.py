@@ -39,7 +39,7 @@ class ListedRecord(BaseModel):
     rule_set_id: int | None
     run_id: int | None
     action: str
-    account_id: str
+    account_id: int
     result: str
     detail: dict[str, Any]
 
@@ -55,7 +55,7 @@ def records(
     *,
     cursor: str | None = None,
     limit: int = PAGE_SIZE,
-    account: str | None = None,
+    account: int | None = None,
     action: str | None = None,
     actor: Actor | None = None,
     result: str | None = None,

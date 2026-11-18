@@ -52,7 +52,7 @@ class FolderRenamed:
 
 @contextmanager
 def _logged_folder_call(
-    event: str, user_id: int, via: Via, account_id: str
+    event: str, user_id: int, via: Via, account_id: int
 ) -> Iterator[dict[str, object]]:
     """Logs a folder call as ``event`` once it ends: its outcome and duration, and the counts the
     caller puts in the dict it is given; never a folder's path or a rule set's name."""
@@ -85,7 +85,7 @@ def _folder_write[T](
     user_id: int,
     accounts: _Accounts,
     event: str,
-    account_id: str,
+    account_id: int,
     work: Callable[[MailConnections], T],
 ) -> T:
     """``work`` on the account under the pool's gates and deadline, past which it writes nothing
@@ -112,7 +112,7 @@ def _segments(path: str, delimiter: str | None) -> list[str]:
 def create_folder(
     ctx: AppContext,
     user_id: int,
-    account_id: str,
+    account_id: int,
     parent: str | None,
     name: str,
     *,
@@ -137,7 +137,7 @@ def create_folder(
 
 
 def _rewrite_rule_sets(
-    ctx: AppContext, user_id: int, account_id: str, change: FolderChange
+    ctx: AppContext, user_id: int, account_id: int, change: FolderChange
 ) -> Rewritten | None:
     """Points the rule sets and filters naming the renamed folder at its new path; what it
     changed, or None, logged, when the database step failed (the rename stands)."""
@@ -167,7 +167,7 @@ def _rewrite_rule_sets(
 def rename_folder(
     ctx: AppContext,
     user_id: int,
-    account_id: str,
+    account_id: int,
     folder: str,
     parent: str | None,
     name: str,
@@ -238,7 +238,7 @@ def _in_use(named: Sequence[RuleSetRef]) -> Refusal:
 def delete_folder(
     ctx: AppContext,
     user_id: int,
-    account_id: str,
+    account_id: int,
     folder: str,
     *,
     messages: int,

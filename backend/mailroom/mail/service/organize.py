@@ -46,7 +46,7 @@ def _organize(
     refs: Sequence[str],
     work: Callable[[MailConnections, _Accounts], OrganizeResult],
     *,
-    target: str | None = None,
+    target: int | None = None,
     deadline: float | None = None,
 ) -> OrganizeResult:
     """``work`` on the batch ``refs`` once each ref is checked (``_ref_accounts``), and the
@@ -126,7 +126,7 @@ def move_to_account(
     ctx: AppContext,
     user_id: int,
     refs: Sequence[str],
-    account: str,
+    account: int,
     folder: str,
     removal: TransferRemoval,
     *,
@@ -164,7 +164,7 @@ def _record_refused(
     user_id: int,
     origin: Origin,
     refs: Sequence[str],
-    account: str,
+    account: int,
     folder: str,
     code: str,
 ) -> None:

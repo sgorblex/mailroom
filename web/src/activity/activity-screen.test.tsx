@@ -19,7 +19,7 @@ function record(id: number, fields: Record<string, unknown> = {}): Record<string
     rule_set_id: null,
     run_id: null,
     action: 'trash',
-    account_id: 'work',
+    account_id: 1,
     result: 'ok',
     detail: { folder: 'INBOX', destination: 'Trash', from: 'ana@example.org', uid: id },
     ...fields,
@@ -33,15 +33,15 @@ function json(body: unknown, status = 200): Promise<Response> {
 /** The accounts list and the audit trail, whose pages `audit` answers by the query string. */
 function stubApi(
   audit: (query: URLSearchParams) => Promise<Response>,
-  accounts: { id: string; name: string | null; colour: string | null }[] = [],
+  accounts: { id: number; name: string | null; colour: string | null }[] = [],
 ): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn((path: string) => {
     if (path === '/api/v1/accounts') {
       return json(
         accounts.map((account) => ({
           ...account,
-          display_name: account.name ?? account.id,
-          login: `me@${account.id}.example`,
+          display_name: account.name ?? `me@${String(account.id)}.example`,
+          login: `me@${String(account.id)}.example`,
           send_mode: 'drafts',
           imap: { host: 'imap.example', port: 993, tls: 'implicit' },
           smtp: { host: 'smtp.example', port: 465, tls: 'implicit' },
@@ -103,19 +103,19 @@ describe('ActivityScreen', () => {
           records: [
             record(1, {
               action: 'move_to_account',
-              detail: { folder: 'INBOX', destination: 'Archive', destination_account: 'home', uid: 1 },
+              detail: { folder: 'INBOX', destination: 'Archive', destination_account: 2, uid: 1 },
             }),
             record(2, {
               action: 'move_to_account',
-              account_id: 'home',
-              detail: { folder: 'Archive', source_account: 'work', source_folder: 'INBOX', uid: 7 },
+              account_id: 2,
+              detail: { folder: 'Archive', source_account: 1, source_folder: 'INBOX', uid: 7 },
             }),
           ],
           next_cursor: null,
         }),
       [
-        { id: 'work', name: 'Work mail', colour: 'teal' },
-        { id: 'home', name: 'Home', colour: null },
+        { id: 1, name: 'Work mail', colour: 'teal' },
+        { id: 2, name: 'Home', colour: null },
       ],
     )
     renderSignedIn(<ActivityScreen />, ALICE)
@@ -132,7 +132,7 @@ describe('ActivityScreen', () => {
     await userEvent.selectOptions(screen.getByLabelText('Account'), 'Home')
     await screen.findByRole('list', { name: 'Recorded activity' })
     const queries = fetchMock.mock.calls.map(([path]) => String(path)).filter((path) => path.startsWith('/api/v1/me/audit'))
-    expect(queries.at(-1)).toContain('account_id=home')
+    expect(queries.at(-1)).toContain('account_id=2')
   })
 
   it('names an account that is gone a removed account, never by its id', async () => {
@@ -142,13 +142,13 @@ describe('ActivityScreen', () => {
           records: [
             record(1, {
               action: 'move_to_account',
-              account_id: 'old-job',
-              detail: { folder: 'INBOX', destination: 'Archive', destination_account: 'old-home', uid: 1 },
+              account_id: 7,
+              detail: { folder: 'INBOX', destination: 'Archive', destination_account: 8, uid: 1 },
             }),
           ],
           next_cursor: null,
         }),
-      [{ id: 'work', name: null, colour: null }],
+      [{ id: 1, name: 'work', colour: null }],
     )
     renderSignedIn(<ActivityScreen />, ALICE)
 
@@ -156,9 +156,8 @@ describe('ActivityScreen', () => {
     const [moved] = within(list).getAllByRole('listitem') as [HTMLElement]
     const named = (await within(moved).findAllByText('Removed account')) as [HTMLElement, ...HTMLElement[]]
     await userEvent.click(named[0])
-    expect(within(moved).getByText('To account').nextElementSibling).toHaveTextContent('Removed account')
-    expect(moved).not.toHaveTextContent('old-job')
-    expect(moved).not.toHaveTextContent('old-home')
+    expect(within(moved).getByText('To account').nextElementSibling?.textContent).toBe('Removed account')
+    expect(named[0].textContent).toBe('Removed account')
     expect(screen.getByRole('option', { name: 'work' })).toBeInTheDocument()
   })
 

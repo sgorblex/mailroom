@@ -90,9 +90,10 @@ released and checked in production before the next one starts. Batch 15 is the r
 #### 2. Accounts
 
 - [x] **Account display names** — an editable name per account, one per account of a user,
-      shown wherever the web names an account; the id stays the key that filters, the audit
-      trail, refs and MCP use, and the web shows it only in the account's own settings (a
-      removed account shows as *Removed account*).
+      shown wherever the web names an account (a removed account shows as *Removed account*).
+- [x] **Numbered account ids** — the id the filters, the audit trail, refs and MCP use is a
+      number the instance gives, never shown in the web; accounts named by a slug before keep it
+      as their name, unless another of the user's accounts already has that name.
 - [x] **Account colours** — so the accounts stay apart in unified lists: a dot beside the
       account's name in the web.
 - [ ] **Account autoconfiguration** — on setup, look the address up in the provider's

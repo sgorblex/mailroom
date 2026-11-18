@@ -12,7 +12,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Path, Query
 from pydantic import BaseModel, Field
 
-from mailroom.api.deps import Context, CurrentUser, DbSession
+from mailroom.api.deps import AccountId, Context, CurrentUser, DbSession
 from mailroom.filters import service
 from mailroom.filters.service import (
     FilterFields,
@@ -28,7 +28,6 @@ from mailroom_core.filters import json_schema
 
 filters_router = APIRouter()
 
-AccountId = Annotated[str, Path(min_length=1, max_length=64)]
 RowId = Annotated[int, Path(ge=1)]
 
 

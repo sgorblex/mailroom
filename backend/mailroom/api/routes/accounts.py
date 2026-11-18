@@ -4,14 +4,14 @@ own: another user's account id is a 404."""
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Path
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from mailroom.accounts import service
 from mailroom.accounts.service import ListedAccount, StoredAccount, StoredEndpoint, StoredIdentity
-from mailroom.api.deps import Context, CurrentUser, DbSession
+from mailroom.api.deps import AccountId, Context, CurrentUser, DbSession
 
 if TYPE_CHECKING:
     from mailroom_core.store import Json
@@ -45,7 +45,6 @@ class AccountFields(StoredAccount):
 
 
 class NewAccount(AccountFields):
-    id: str = Field(max_length=64)
     password: str = Field(min_length=1, max_length=MAX_SECRET_LENGTH)
 
 
@@ -60,13 +59,8 @@ class LoginTest(BaseModel):
     message: str | None = None
 
 
-AccountId = Annotated[str, Path(min_length=1, max_length=64)]
-
-
 def _fields(body: AccountFields) -> dict[str, Json]:
-    fields: dict[str, Json] = body.model_dump(
-        mode="json", exclude={"id", "password"}, exclude_none=True
-    )
+    fields: dict[str, Json] = body.model_dump(mode="json", exclude={"password"}, exclude_none=True)
     return fields
 
 
@@ -77,7 +71,7 @@ def accounts(ctx: Context, db: DbSession, user: CurrentUser) -> list[ListedAccou
 
 @accounts_router.post("", status_code=201)
 def add_account(body: NewAccount, ctx: Context, user: CurrentUser) -> ListedAccount:
-    return service.add_account(ctx, user.id, body.id, _fields(body), body.password)
+    return service.add_account(ctx, user.id, _fields(body), body.password)
 
 
 @accounts_router.put("/{account_id}")
@@ -104,7 +98,7 @@ def test_account(account_id: AccountId, ctx: Context, user: CurrentUser) -> Logi
     return LoginTest(ok=True)
 
 
-def _log_test(user_id: int, account_id: str, outcome: str) -> None:
+def _log_test(user_id: int, account_id: int, outcome: str) -> None:
     logger.info(
         "account_tested",
         extra={

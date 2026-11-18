@@ -34,9 +34,11 @@ if TYPE_CHECKING:
     from mailroom.worker.context import Mailboxes
     from mailroom_core.config import AccountConfig
 
-INBOX = WatchedFolder(1, "work", ("INBOX",))
-ARCHIVE = WatchedFolder(1, "work", ("Archive",))
-HOME = WatchedFolder(1, "home", ("INBOX",))
+pytestmark = pytest.mark.usefixtures("numbered_accounts")
+
+INBOX = WatchedFolder(1, 1, ("INBOX",))
+ARCHIVE = WatchedFolder(1, 1, ("Archive",))
+HOME = WatchedFolder(1, 2, ("INBOX",))
 
 
 def test_the_plan_starts_the_new_and_stops_the_unwanted() -> None:
@@ -63,7 +65,7 @@ def test_a_folder_is_named_with_the_server_delimiter() -> None:
     assert folder_path(["Archive", "2026"], ".") == "Archive.2026"
 
 
-def stored_account(engine: Engine, user: User, account_id: str = "work") -> AccountConfig:
+def stored_account(engine: Engine, user: User, account_id: int = 1) -> AccountConfig:
     return load_accounts(user_store(engine, user.id)).account(account_id)
 
 
@@ -151,13 +153,13 @@ def supervisor(
 def test_the_supervisor_follows_the_rule_sets(
     user_client: TestClient, user: User, supervisor: IdleSupervisor, watches: Watches
 ) -> None:
-    inbox = WatchedFolder(user.id, "work", ("INBOX",))
-    archive = WatchedFolder(user.id, "work", ("Archive",))
+    inbox = WatchedFolder(user.id, 1, ("INBOX",))
+    archive = WatchedFolder(user.id, 1, ("Archive",))
     add_account(user_client)
-    first = add_rule_set(user_client, trigger="new_mail")
-    add_rule_set(user_client, trigger="new_mail")
-    add_rule_set(user_client, trigger="scheduled", interval_minutes=5, folder=["Archive"])
-    add_rule_set(user_client, trigger="manual", folder=["Archive"])
+    first = add_rule_set(user_client, 1, trigger="new_mail")
+    add_rule_set(user_client, 1, trigger="new_mail")
+    add_rule_set(user_client, 1, trigger="scheduled", interval_minutes=5, folder=["Archive"])
+    add_rule_set(user_client, 1, trigger="manual", folder=["Archive"])
 
     supervisor.reconcile()
     assert supervisor.watched == {inbox}
@@ -168,7 +170,7 @@ def test_the_supervisor_follows_the_rule_sets(
     assert len(watches.started) == 1
 
     # Another folder.
-    archived = add_rule_set(user_client, trigger="new_mail", folder=["Archive"])
+    archived = add_rule_set(user_client, 1, trigger="new_mail", folder=["Archive"])
     supervisor.reconcile()
     assert supervisor.watched == {inbox, archive}
 
@@ -185,7 +187,7 @@ def test_the_supervisor_follows_the_rule_sets(
     assert watch.running
 
     # Run filters off: nothing at all for the account.
-    set_run_filters(user_client, "work", on=False)
+    set_run_filters(user_client, 1, on=False)
     supervisor.reconcile()
     assert supervisor.watched == frozenset()
     assert not watch.running
@@ -199,15 +201,15 @@ def test_the_supervisor_restarts_changed_and_dead_watches(
     supervisor: IdleSupervisor,
     watches: Watches,
 ) -> None:
-    inbox = WatchedFolder(user.id, "work", ("INBOX",))
+    inbox = WatchedFolder(user.id, 1, ("INBOX",))
     add_account(user_client)
-    add_rule_set(user_client, trigger="new_mail")
+    add_rule_set(user_client, 1, trigger="new_mail")
     supervisor.reconcile()
     first = watches.latest(inbox)
 
     changed = new_account(login="other@example.org")
-    del changed["id"], changed["password"]
-    assert user_client.put("/api/v1/accounts/work", json=changed).status_code == 200
+    del changed["password"]
+    assert user_client.put("/api/v1/accounts/1", json=changed).status_code == 200
     supervisor.reconcile()
     second = watches.latest(inbox)
     assert second is not first
@@ -216,7 +218,7 @@ def test_the_supervisor_restarts_changed_and_dead_watches(
 
     # The port alone is a change too.
     moved = changed | {"imap": changed["imap"] | {"port": 994}}
-    assert user_client.put("/api/v1/accounts/work", json=moved).status_code == 200
+    assert user_client.put("/api/v1/accounts/1", json=moved).status_code == 200
     supervisor.reconcile()
     third = watches.latest(inbox)
     assert third is not second
@@ -225,7 +227,7 @@ def test_the_supervisor_restarts_changed_and_dead_watches(
 
     # An edit the watch does not depend on leaves it running.
     approval = moved | {"send_mode": "approval"}
-    assert user_client.put("/api/v1/accounts/work", json=approval).status_code == 200
+    assert user_client.put("/api/v1/accounts/1", json=approval).status_code == 200
     supervisor.reconcile()
     assert watches.latest(inbox) is third
     assert third.running
@@ -248,9 +250,9 @@ def test_new_mail_queues_runs(
     watches: Watches,
 ) -> None:
     add_account(user_client)
-    rule_set_id = add_rule_set(user_client, trigger="new_mail")
+    rule_set_id = add_rule_set(user_client, 1, trigger="new_mail")
     supervisor.reconcile()
-    watches.latest(WatchedFolder(user.id, "work", ("INBOX",))).on_new_mail()
+    watches.latest(WatchedFolder(user.id, 1, ("INBOX",))).on_new_mail()
     assert [run.trigger for run in runs(db_session, rule_set_id)] == ["new_mail"]
 
 
@@ -265,7 +267,7 @@ def test_an_account_that_cannot_be_watched_is_logged_once(
     from mailroom.worker.context import Mailboxes
 
     add_account(user_client)
-    add_rule_set(user_client, trigger="new_mail")
+    add_rule_set(user_client, 1, trigger="new_mail")
     keyless = Mailboxes(migrated_engine, None, mail_ssl_context())
     supervisor = IdleSupervisor(sessions, keyless, start_watch=watches)
     caplog.set_level(logging.WARNING, logger="mailroom.worker.idle")
@@ -283,15 +285,15 @@ def test_an_account_that_cannot_be_watched_is_logged_once(
 def test_a_starttls_account_is_watched_and_the_tls_mode_alone_restarts_it(
     user_client: TestClient, user: User, supervisor: IdleSupervisor, watches: Watches
 ) -> None:
-    inbox = WatchedFolder(user.id, "work", ("INBOX",))
+    inbox = WatchedFolder(user.id, 1, ("INBOX",))
     add_account(user_client)
-    add_rule_set(user_client, trigger="new_mail")
+    add_rule_set(user_client, 1, trigger="new_mail")
     supervisor.reconcile()
     watch = watches.latest(inbox)
 
     starttls = new_account(imap={"host": "127.0.0.1", "port": 9, "tls": "starttls"})
-    del starttls["id"], starttls["password"]
-    assert user_client.put("/api/v1/accounts/work", json=starttls).status_code == 200
+    del starttls["password"]
+    assert user_client.put("/api/v1/accounts/1", json=starttls).status_code == 200
     supervisor.reconcile()
     assert watch.joined
     assert watches.latest(inbox) is not watch
@@ -303,7 +305,7 @@ def test_a_password_that_no_longer_opens_ends_the_watch_with_the_app_s_code() ->
     from mailroom.mail.connections import PASSWORD_MISSING_TEXT, PasswordMissing
 
     class Connections:
-        def delimiter(self, _account_id: str) -> str:
+        def delimiter(self, _account_id: int) -> str:
             raise PasswordMissing
 
     class Pool:
@@ -333,9 +335,9 @@ def test_a_watch_that_keeps_failing_is_retried_less_and_less_often(
     watches: Watches,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    inbox = WatchedFolder(user.id, "work", ("INBOX",))
+    inbox = WatchedFolder(user.id, 1, ("INBOX",))
     add_account(user_client)
-    add_rule_set(user_client, trigger="new_mail")
+    add_rule_set(user_client, 1, trigger="new_mail")
     clock = Clock()
     supervisor = IdleSupervisor(sessions, mailboxes, start_watch=watches, interval=30, clock=clock)
     caplog.set_level(logging.WARNING, logger="mailroom.worker.idle")
@@ -379,7 +381,7 @@ def test_a_watch_whose_first_connection_fails_ends(
 ) -> None:
     """The test account's IMAP port 9 on loopback is closed."""
     add_account(user_client)
-    folder = WatchedFolder(user.id, "work", ("INBOX",))
+    folder = WatchedFolder(user.id, 1, ("INBOX",))
     revision = load_accounts(user_store(migrated_engine, user.id)).revision
     queued: list[None] = []
     watch = FolderWatch(mailboxes, folder, revision, lambda: queued.append(None))
@@ -398,7 +400,7 @@ def test_the_supervisor_stops_every_watch_when_told(
     watches: Watches,
 ) -> None:
     add_account(user_client)
-    add_rule_set(user_client, trigger="new_mail")
+    add_rule_set(user_client, 1, trigger="new_mail")
     supervisor = IdleSupervisor(sessions, mailboxes, start_watch=watches, interval=0.01)
     stop = threading.Event()
     thread = threading.Thread(target=supervisor.run, args=(stop,))

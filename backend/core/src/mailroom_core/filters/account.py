@@ -313,11 +313,11 @@ class Account:
     (the second waits up to `Timeouts.lock`, then fails `busy`).
     """
 
-    def __init__(self, connections: MailConnections, account_id: str) -> None:
+    def __init__(self, connections: MailConnections, account_id: int) -> None:
         """The account `account_id` of `connections`."""
         self.connections = connections
         self.account_id = account_id
-        self.log: logging.Logger = logging.getLogger(__name__).getChild(account_id)
+        self.log: logging.Logger = logging.getLogger(__name__).getChild(str(account_id))
         self.inbox = Folder(self, Path("INBOX"))
 
     def delimiter(self) -> str | None:
@@ -339,4 +339,4 @@ class Account:
         return Folder(self, path if isinstance(path, Path) else Path(path))
 
     def __str__(self) -> str:
-        return self.account_id
+        return str(self.account_id)

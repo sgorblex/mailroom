@@ -12,17 +12,17 @@ from fastapi import Path, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from mailroom.api.deps import Context, CurrentUser
+from mailroom.api.deps import AccountId, Context, CurrentUser
 from mailroom.api.routes.mail._shared import (
     _NO_STORE,
     _PART,
-    AccountId,
     MailAddress,
     MessagePart,
     Ref,
     mail_router,
 )
 from mailroom.mail import service
+from mailroom_core.config import MAX_SAFE_INTEGER
 from mailroom_core.mail import DISPLAYED_IMAGES, SearchQuery
 
 if TYPE_CHECKING:
@@ -90,7 +90,7 @@ class Flags(BaseModel):
 
 class MessageItem(BaseModel):
     ref: str
-    account_id: str
+    account_id: int
     folder: str
     date: datetime | None
     from_: MailAddress = Field(serialization_alias="from")
@@ -118,7 +118,7 @@ class MessageItem(BaseModel):
 
 
 class SourceFailure(BaseModel):
-    account_id: str
+    account_id: int
     folder: str | None
     code: str
 
@@ -152,7 +152,7 @@ class BodyText(BaseModel):
 
 class MessageDetail(BaseModel):
     ref: str
-    account_id: str
+    account_id: int
     folder: str
     from_: MailAddress | None = Field(serialization_alias="from")
     to: list[MailAddress]
@@ -232,7 +232,9 @@ class SearchRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    account: Annotated[str, Field(min_length=1, max_length=64)] = service.ALL_ACCOUNTS
+    account: Annotated[int, Field(ge=1, le=MAX_SAFE_INTEGER)] | service.AllAccounts = (
+        service.ALL_ACCOUNTS
+    )
     folder: Annotated[str, Field(min_length=1, max_length=service.MAX_FOLDER)] = "INBOX"
     sender: Annotated[str | None, Field(alias="from", max_length=service.MAX_TERM)] = None
     to: Annotated[str | None, Field(max_length=service.MAX_TERM)] = None

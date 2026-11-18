@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from mailroom_core.store import AccountStore
 
 
-def run_filters_by_account(db: Session, user_id: int) -> dict[str, bool]:
+def run_filters_by_account(db: Session, user_id: int) -> dict[int, bool]:
     """Run filters per account id; an account without a row has it off."""
     rows = db.execute(
         select(AccountFilterSettings.account_id, AccountFilterSettings.run_filters).where(
@@ -28,7 +28,7 @@ def run_filters_by_account(db: Session, user_id: int) -> dict[str, bool]:
     return {row.account_id: row.run_filters for row in rows}
 
 
-def set_run_filters(db: Session, user_id: int, account_id: str, *, run_filters: bool) -> None:
+def set_run_filters(db: Session, user_id: int, account_id: int, *, run_filters: bool) -> None:
     statement = insert(AccountFilterSettings).values(
         user_id=user_id, account_id=account_id, run_filters=run_filters
     )
@@ -41,10 +41,10 @@ def set_run_filters(db: Session, user_id: int, account_id: str, *, run_filters: 
     db.commit()
 
 
-def forget_account(store: AccountStore, db: Session, user_id: int, account_id: str) -> None:
-    """Remove the account from mailroom-core and the app's rows about it. The app's rows go first:
-    if removing the account then fails, nothing is left for a new account with the same id to
-    inherit. Raises ``AccountNotFound``, or ``RevisionConflict`` / ``SettingsBusy``."""
+def forget_account(store: AccountStore, db: Session, user_id: int, account_id: int) -> None:
+    """Remove the account from mailroom-core and the app's rows about it. The app's rows go first,
+    so none is left behind if removing the account then fails. Raises ``AccountNotFound``, or
+    ``RevisionConflict`` / ``SettingsBusy``."""
     load_accounts(store).account(account_id)
     db.execute(
         delete(AccountFilterSettings).where(
@@ -52,7 +52,7 @@ def forget_account(store: AccountStore, db: Session, user_id: int, account_id: s
             AccountFilterSettings.account_id == account_id,
         )
     )
-    # Its rule sets go too, with their filters and runs; a new account may reuse the id.
+    # Its rule sets go too, with their filters and runs.
     db.execute(delete(RuleSet).where(RuleSet.user_id == user_id, RuleSet.account_id == account_id))
     db.commit()
     remove_account(store, account_id)

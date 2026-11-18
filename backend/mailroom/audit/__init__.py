@@ -75,7 +75,7 @@ class Entry:
 
     actor: Actor
     action: str
-    account_id: str
+    account_id: int
     result: str
     detail: dict[str, Any]
     client_id: str | None = None

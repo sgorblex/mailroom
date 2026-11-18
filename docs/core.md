@@ -66,8 +66,10 @@ names (`ToolNames`), so the app's MCP points the model at its own tools.
 **Plain config.** Without the app, `mail.connections_from` builds the connections from the
 settings the app stores, `[[account]]` tables and an optional `[limits]`, checked by
 `core_settings_or_issues` (`ConfigError` lists every problem), and each account's password by id;
-`smtp` and an identity are required as in the app, and the passwords stay out of the file.
-`MailConnections.from_accounts` does the same from `AccountConfig`s.
+`smtp` and an identity are required as in the app, and the passwords stay out of the file. An
+account's `id` is a positive integer, unique among the accounts (`id = 1`): the app hands them
+out, and plain config writes its own. `MailConnections.from_accounts` does the same from
+`AccountConfig`s.
 
 ```python
 import os
@@ -77,7 +79,7 @@ from mailroom_core.mail import connections_from
 
 with open("accounts.toml", "rb") as file:
     settings = tomllib.load(file)
-connections = connections_from(settings, {"personal": os.environ["PERSONAL_PASSWORD"]})
+connections = connections_from(settings, {1: os.environ["PERSONAL_PASSWORD"]})
 ```
 
 ## Store
@@ -86,11 +88,22 @@ Schema `core`, with its own Alembic history whose version table lives in that sc
 shares a database with the app's (`mailroom_core.store`, `AccountStore`):
 
 - **`settings`**: the settings document, one row per revision, the current settings being the
-  highest. Revisions are numbered, and revisions and account ids are unique per user (migration `core_0002`,
-  which gave the rows stored before it to `owner`). A save waits up to 5 s for another save of the
+  highest. Revisions are numbered per user (migration `core_0002`, which gave the rows stored
+  before it to `owner`). A save waits up to 5 s for another save of the
   same user's settings (a per-user advisory lock, so users never wait on each other), then fails
   with `SettingsBusy`.
+- **`account_ids`**: the sequence account ids come from (`new_account_id`), across the instance
+  and never handed out twice, even for an account that is never saved.
 - **`account_secrets`**: the sealed passwords.
+- **`former_slugs`**: the slug each account had before ids became numbers (`core_0004`, which
+  numbered every id in the settings, all revisions, the secrets and the send log, naming an
+  unnamed account by its slug unless another account of that revision has that name, compared
+  trimmed and case-insensitively). Its secrets stay sealed to that slug
+  (`AccountStore.former_slugs`); the downgrade gives each id back its former slug, else its name
+  when that is a free slug, else `account-<id>`, and a secret sealed to an id no longer opens.
+  A host's own migration reads it to map its rows, and is the one place outside core that writes
+  here: it adds rows for slugs only the host stored (an account removed before), and rewrites the
+  `<account>/…` draft keys in `sends`; core's downgrade then reads those rows too.
 - **`sends`**: the send log. `claim_send` writes a row before SMTP, counting and inserting under a
   per-user lock, so concurrent sends admit exactly the limit. A row with a `key` (`core_0003`,
   unique per user) is kept at least 30 days, the others at least one, pruned on the user's next
@@ -98,7 +111,9 @@ shares a database with the app's (`mailroom_core.store`, `AccountStore`):
   `failed` claims again, and `unknown`, which is also what `sending` reads as past 360 s, claims
   again only with `confirm_resend`. Each attempt counts towards the limit. The claim locks the
   key's row, so an outcome lands either before its read, and replays, or after it, and misses the
-  reclaimed row.
+  reclaimed row. A key a host derives from a ref (the app's `ref-<sha256>` for a draft without a
+  `compose_id`) changed with the refs at `core_0004` and cannot be rewritten: a send claimed under
+  the old one does not guard a send of the same draft after the upgrade.
 
 `forget_user` (or `AccountStore.forget`) deletes one user's rows, under the lock a save of their
 settings takes, in the host's transaction. Times are `timestamptz` and JSON is `jsonb`. The tests
@@ -138,13 +153,14 @@ past libxml2's 2048 levels) the text can differ. Deliberate differences, all str
 `search_messages` (with `SearchQuery`), `thread_page`, `read_message`, `read_attachment` and
 `html_view` return typed results (`Page` of `MessageSummary`, `MessageView`, `Attachment`), and
 `mailroom_core.mail.text` writes the tools' text from them. Refs and cursors are the TypeScript
-server's bytes: a ref (`mailroom_core.mail.ref`) is base64url of `[1, account, folder,
-uidValidity, uid]`, and one whose folder's UIDVALIDITY has changed fails with `stale_reference`,
-never naming another message. Refs are not signed: the host checks the account is the caller's. A
+server's bytes but for the account, a number since version 2: a ref (`mailroom_core.mail.ref`) is
+base64url of `[2, account, folder, uidValidity, uid]`, and one whose folder's UIDVALIDITY has
+changed fails with `stale_reference`, never naming another message, as does a version 1 ref or
+cursor, which named the account by its slug. Refs are not signed: the host checks the account is the caller's. A
 folder that fails is never read again by the following pages: their cursor carries it as failed
-(a third element, so a cursor with no failure stays the TypeScript's bytes), and each page reports
-it in `failures` with its code until paging ends; a carried failure's message is the code's own,
-never the cursor's text (`cursor_failures`). Header text comes decoded and flattened. RFC 2047 words, RFC 2231 parameters,
+(a third element, absent when nothing failed), and each page reports it in `failures` with its
+code until paging ends; a carried failure's message is the code's own, never the cursor's text
+(`cursor_failures`). Header text comes decoded and flattened. RFC 2047 words, RFC 2231 parameters,
 transfer encodings (fetched in windows with `BODY.PEEK[part]<offset.n>` up to the cap), charsets
 and `format=flowed` are decoded. Pages read the sources of different accounts in threads of their
 own, and fetch previews in one FETCH per body part number rather than one per message. Over
@@ -504,6 +520,8 @@ share of the defence:
 
 **Sealed secrets** stay byte-compatible with mailroom-mcp's, so its accounts import unchanged:
 HKDF info `mailroom account secrets`, AAD `mailroom/v1/<account>/<purpose>`,
-`format ‖ nonce ‖ ciphertext ‖ tag`. The AAD names no user: account ids are unique per user only,
-so a blob copied to another user's account of the same id would open. Doing that takes write access
+`format ‖ nonce ‖ ciphertext ‖ tag`. `<account>` is the account's former slug where it has one
+(`former_slugs`), else `#<id>`: no slug holds a `#`, so an id never opens what a slug of the same
+digits sealed. The AAD names no user, so a blob copied to another user's account under the same
+former slug would open. Doing that takes write access
 to the database, which can replace the settings anyway.

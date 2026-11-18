@@ -48,7 +48,7 @@ def mail(imap_server: ImapTestServer) -> Iterator[Callable[[str], MailConnection
     made: list[MailConnections] = []
 
     def make(user: str) -> MailConnections:
-        connections = connections_for(imap_server, [test_account("acc", user, imap_server)])
+        connections = connections_for(imap_server, [test_account(1, user, imap_server)])
         made.append(connections)
         return connections
 
@@ -70,7 +70,7 @@ def test_searches_non_ascii_text_inside_or_and_not_groups(imap_server, mail) -> 
 
     def search(criteria: list[object]) -> list[int]:
         return connections.with_mailbox(
-            "acc", "INBOX", True, lambda context: sorted(search_uids(context, criteria))
+            1, "INBOX", True, lambda context: sorted(search_uids(context, criteria))
         )
 
     assert search(["OR", ["SUBJECT", "perché"], ["SUBJECT", "città"]]) == [perche, citta]
@@ -91,7 +91,7 @@ def test_fetches_leave_seen_alone(imap_server, mail) -> None:
         return fetch_sources(context, [uid, uid, 999]), fetch_envelopes(context, [uid, 999])
 
     # Read-write, where a plain BODY[] would set \Seen.
-    sources, envelopes = connections.with_mailbox("acc", "INBOX", False, run)
+    sources, envelopes = connections.with_mailbox(1, "INBOX", False, run)
     assert list(sources) == [uid]
     assert sources[uid].source == raw.encode()
     assert sources[uid].flags - {"\\Recent"} == {"\\Flagged"}
@@ -113,12 +113,12 @@ def test_appends_a_message_as_it_was_with_its_flags_and_arrival_date(imap_server
             context, raw, ["\\Seen", "\\Flagged"], internal_date=arrived
         )
 
-    before, uid = connections.with_mailbox("acc", "INBOX", False, run)
+    before, uid = connections.with_mailbox(1, "INBOX", False, run)
     assert uid is not None
     assert before is not None
     assert uid >= before
     stored = connections.with_mailbox(
-        "acc", "INBOX", True, lambda context: fetch_source(context, uid, len(raw))
+        1, "INBOX", True, lambda context: fetch_source(context, uid, len(raw))
     )
     assert stored.source == raw
     assert stored.flags - {"\\Recent"} == {"\\Seen", "\\Flagged"}
@@ -136,7 +136,7 @@ def test_finds_a_message_id_that_needs_quoting(imap_server, mail) -> None:
 
     def find(since_uid: int) -> list[int]:
         return connections.with_mailbox(
-            "acc",
+            1,
             "INBOX",
             True,
             lambda context: sorted(message_id_uids(context, odd, since_uid=since_uid)),
@@ -155,7 +155,7 @@ def test_fetches_a_whole_source_up_to_a_cap(imap_server, mail) -> None:
 
     def fetch(cap: int) -> MessageSource:
         return connections.with_mailbox(
-            "acc", "INBOX", False, lambda context: fetch_source(context, uid, cap)
+            1, "INBOX", False, lambda context: fetch_source(context, uid, cap)
         )
 
     size = len(raw.encode())
@@ -168,9 +168,7 @@ def test_fetches_a_whole_source_up_to_a_cap(imap_server, mail) -> None:
         fetch(size - 1)
     assert refused.value.code == "too_large"
     with pytest.raises(MailError) as gone:
-        connections.with_mailbox(
-            "acc", "INBOX", True, lambda context: fetch_source(context, 999, size)
-        )
+        connections.with_mailbox(1, "INBOX", True, lambda context: fetch_source(context, 999, size))
     assert gone.value.code == "not_found"
     assert flags_of(imap_server, user) == {"capped": {"\\Answered"}}
 
@@ -182,7 +180,7 @@ def test_sets_and_clears_answered_and_refuses_deleted(imap_server, mail) -> None
 
     def store(**change: list[str]) -> None:
         connections.with_mailbox(
-            "acc", "INBOX", False, lambda context: store_flags(context, [uid], **change)
+            1, "INBOX", False, lambda context: store_flags(context, [uid], **change)
         )
 
     store(add=["\\Answered", "\\Seen"])
@@ -203,7 +201,7 @@ def test_delete_expunges_only_those_uids(imap_server, mail) -> None:
     seed(imap_server, user, "INBOX", mime("and keep me"))
     connections = mail(user)
 
-    connections.with_mailbox("acc", "INBOX", False, lambda context: delete_uids(context, [doomed]))
+    connections.with_mailbox(1, "INBOX", False, lambda context: delete_uids(context, [doomed]))
     assert flags_of(imap_server, user) == {"keep me": {"\\Deleted"}, "and keep me": set()}
 
 
@@ -213,8 +211,8 @@ def test_moves_and_lists_on_the_session_connection(imap_server, mail) -> None:
     create_folders(imap_server, user, "Archive")
     uid = seed(imap_server, user, "INBOX", mime("file me"))
     connections = mail(user)
-    delimiter = connections.delimiter("acc")
-    assert delimiter == connections.delimiter("acc")
+    delimiter = connections.delimiter(1)
+    assert delimiter == connections.delimiter(1)
 
     def run(context: MailboxContext) -> Moved:
         folders = listed_folders(context)
@@ -222,7 +220,7 @@ def test_moves_and_lists_on_the_session_connection(imap_server, mail) -> None:
         assert {f.delimiter for f in folders} == {delimiter}
         return move_uids(context, [uid], "Archive")
 
-    moved = connections.with_mailbox("acc", "INBOX", False, run)
+    moved = connections.with_mailbox(1, "INBOX", False, run)
     archived = folder_contents(imap_server, user, "Archive")
     assert [m.subject for m in archived] == ["file me"]
     assert moved.destination == "Archive"

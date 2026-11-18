@@ -59,7 +59,7 @@ def settings(user: str, server: ImapTestServer) -> dict[str, object]:
     return {
         "account": [
             {
-                "id": "personal",
+                "id": 1,
                 "login": user,
                 "send_mode": "drafts",
                 "auth": {"type": "password"},
@@ -78,12 +78,12 @@ def mail(imap_server: ImapTestServer) -> Iterator[Callable[..., Account]]:
     def make(user: str, *, pool_size: int = 1) -> Account:
         connections = connections_from(
             settings(user, imap_server),
-            {"personal": imap_server.password},
+            {1: imap_server.password},
             ssl_context=unverified_context(),
             pool_size=pool_size,
         )
         made.append(connections)
-        return Account(connections, "personal")
+        return Account(connections, 1)
 
     yield make
     for connections in made:

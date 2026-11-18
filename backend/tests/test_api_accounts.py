@@ -17,7 +17,7 @@ from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
 from mailroom.auth.users import create_user
 from mailroom.mail.connections import mail_ssl_context
 from mailroom.models import User
-from mailroom_core.crypto import open_secret
+from mailroom_core.crypto import open_secret, seal_secret
 from mailroom_core.mail import CERTIFICATE_DETAIL, MESSAGES, MailConnections, MailError
 from mailroom_core.store import RevisionConflict, SettingsBusy, forget_user
 from mailroom_core.testing import SmtpStub
@@ -37,27 +37,34 @@ if TYPE_CHECKING:
 MAILBOX_PASSWORD = "mailbox-secret-3141"
 
 
-def new_account(account_id: str = "work", **changes: Any) -> dict[str, Any]:
+def new_account(label: str = "work", **changes: Any) -> dict[str, Any]:
     account: dict[str, Any] = {
-        "id": account_id,
-        "login": f"{account_id}@example.org",
+        "login": f"{label}@example.org",
         "password": MAILBOX_PASSWORD,
         "send_mode": "drafts",
         "imap": {"host": "127.0.0.1", "port": 9, "tls": "implicit"},
         "smtp": {"host": "127.0.0.1", "port": 9, "tls": "implicit"},
-        "identities": [{"address": f"{account_id}@example.org", "name": "Alice"}],
+        "identities": [{"address": f"{label}@example.org", "name": "Alice"}],
     }
     return account | changes
 
 
 def edited(account: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in account.items() if key not in {"id", "password"}}
+    return {key: value for key, value in account.items() if key != "password"}
+
+
+def added(client: TestClient, account: dict[str, Any] | None = None) -> int:
+    """Add ``account`` (``new_account()``); its id."""
+    response = client.post("/api/v1/accounts", json=new_account() if account is None else account)
+    assert response.status_code == 201
+    account_id: int = response.json()["id"]
+    return account_id
 
 
 def test_signed_out_browsers_are_refused(api_client: TestClient) -> None:
     assert api_client.get("/api/v1/accounts").status_code == 401
     assert api_client.post("/api/v1/accounts", json=new_account()).status_code == 401
-    assert api_client.post("/api/v1/accounts/work/test").status_code == 401
+    assert api_client.post("/api/v1/accounts/1/test").status_code == 401
 
 
 def test_a_user_adds_edits_and_removes_an_account(
@@ -70,14 +77,18 @@ def test_a_user_adds_edits_and_removes_an_account(
     caplog.set_level(logging.DEBUG)
     assert user_client.get("/api/v1/accounts").json() == []
 
-    response = user_client.post("/api/v1/accounts", json=new_account())
+    # A client's own id is no part of an account.
+    response = user_client.post("/api/v1/accounts", json=new_account() | {"id": 7})
     assert response.status_code == 201
-    added = response.json()
-    assert added == {
-        "id": "work",
-        # An unnamed account has no name, and its id to be called by.
+    account = response.json()
+    work = account["id"]
+    assert isinstance(work, int)
+    assert work > 0
+    assert account == {
+        "id": work,
+        # An unnamed account has no name, and its login to be called by.
         "name": None,
-        "display_name": "work",
+        "display_name": "work@example.org",
         "colour": None,
         "login": "work@example.org",
         "send_mode": "drafts",
@@ -91,35 +102,39 @@ def test_a_user_adds_edits_and_removes_an_account(
         "attachment_max_mb": 10.0,
         "max_recipients": 10,
     }
-    assert user_client.get("/api/v1/accounts").json() == [added]
+    assert user_client.get("/api/v1/accounts").json() == [account]
+    # A second account takes another id, never one handed out before.
+    home = added(user_client, new_account("home"))
+    assert home > work
 
     # Stored as mailroom-core stores it: sealed, bound to the account.
     store = user_store(migrated_engine, user.id)
-    blob = store.secrets()["work"]
+    blob = store.secrets()[work]
     assert MAILBOX_PASSWORD.encode() not in blob
-    assert open_secret(secrets_subkey, "work", "password", blob) == MAILBOX_PASSWORD
-    assert load_accounts(store).account("work").auth.type == "password"
+    assert open_secret(secrets_subkey, work, "password", blob) == MAILBOX_PASSWORD
+    assert load_accounts(store).account(work).auth.type == "password"
 
     # Without a password, an edit keeps the stored one.
     change = edited(new_account(send_mode="off", login="alice"))
-    response = user_client.put("/api/v1/accounts/work", json=change)
+    response = user_client.put(f"/api/v1/accounts/{work}", json=change)
     assert response.status_code == 200
     assert (response.json()["send_mode"], response.json()["login"]) == ("off", "alice")
-    assert open_secret(secrets_subkey, "work", "password", store.secrets()["work"]) == (
+    assert open_secret(secrets_subkey, work, "password", store.secrets()[work]) == (
         MAILBOX_PASSWORD
     )
-    response = user_client.put("/api/v1/accounts/work", json=change | {"password": "new one"})
+    response = user_client.put(f"/api/v1/accounts/{work}", json=change | {"password": "new one"})
     assert response.status_code == 200
-    assert open_secret(secrets_subkey, "work", "password", store.secrets()["work"]) == "new one"
+    assert open_secret(secrets_subkey, work, "password", store.secrets()[work]) == "new one"
 
-    assert user_client.delete("/api/v1/accounts/work").status_code == 204
-    assert user_client.get("/api/v1/accounts").json() == []
-    assert store.secrets() == {}
-    assert user_client.delete("/api/v1/accounts/work").status_code == 404
+    assert user_client.delete(f"/api/v1/accounts/{work}").status_code == 204
+    assert [a["id"] for a in user_client.get("/api/v1/accounts").json()] == [home]
+    assert list(store.secrets()) == [home]
+    assert user_client.delete(f"/api/v1/accounts/{work}").status_code == 404
 
     assert MAILBOX_PASSWORD not in caplog.text
     assert "new one" not in caplog.text
     assert [record.msg for record in caplog.records if str(record.msg).startswith("account_")] == [
+        "account_added",
         "account_added",
         "account_changed",
         "account_changed",
@@ -130,7 +145,6 @@ def test_a_user_adds_edits_and_removes_an_account(
 @pytest.mark.parametrize(
     ("account", "code", "path"),
     [
-        (new_account("Not A Slug"), "invalid_account", ["id"]),
         (
             new_account(imap={"host": "x", "port": 0, "tls": "implicit"}),
             "invalid_account",
@@ -145,7 +159,7 @@ def test_a_user_adds_edits_and_removes_an_account(
         (new_account(login=""), "invalid_account", ["login"]),
         (new_account(name=" "), "invalid_account", ["name"]),
     ],
-    ids=["id", "port", "no identity", "address", "login", "blank name"],
+    ids=["port", "no identity", "address", "login", "blank name"],
 )
 def test_accounts_are_checked_by_mailroom_core(
     user_client: TestClient, account: dict[str, Any], code: str, path: list[str | int]
@@ -163,13 +177,14 @@ def test_an_account_has_a_name_and_a_colour(user_client: TestClient) -> None:
     assert response.status_code == 201
     added = response.json()
     assert (added["name"], added["display_name"], added["colour"]) == ("Lavoro", "Lavoro", "sky")
+    work = added["id"]
 
     renamed = edited(new_account(name="Ufficio", colour="pink"))
-    response = user_client.put("/api/v1/accounts/work", json=renamed)
+    response = user_client.put(f"/api/v1/accounts/{work}", json=renamed)
     assert (response.json()["name"], response.json()["colour"]) == ("Ufficio", "pink")
     [listed] = user_client.get("/api/v1/accounts").json()
     assert (listed["id"], listed["name"], listed["display_name"], listed["colour"]) == (
-        "work",
+        work,
         "Ufficio",
         "Ufficio",
         "pink",
@@ -177,36 +192,35 @@ def test_an_account_has_a_name_and_a_colour(user_client: TestClient) -> None:
 
     # A listed account goes back as it came: display_name is read-only, and ignored.
     sent = {key: listed[key] for key in renamed} | {"display_name": "Altro"}
-    response = user_client.put("/api/v1/accounts/work", json=sent)
+    response = user_client.put(f"/api/v1/accounts/{work}", json=sent)
     assert (response.json()["name"], response.json()["display_name"]) == ("Ufficio", "Ufficio")
 
-    # An account named after its id is not an unnamed one.
-    response = user_client.put("/api/v1/accounts/work", json=edited(new_account(name="work")))
-    assert (response.json()["name"], response.json()["display_name"]) == ("work", "work")
+    # An account named after its login is not an unnamed one.
+    named = edited(new_account(name="work@example.org"))
+    response = user_client.put(f"/api/v1/accounts/{work}", json=named)
+    assert (response.json()["name"], response.json()["display_name"]) == (
+        "work@example.org",
+        "work@example.org",
+    )
 
     # An edit replaces them like any field: without them, the account is unnamed again.
-    user_client.put("/api/v1/accounts/work", json=edited(new_account()))
+    user_client.put(f"/api/v1/accounts/{work}", json=edited(new_account()))
     [listed] = user_client.get("/api/v1/accounts").json()
-    assert (listed["name"], listed["display_name"], listed["colour"]) == (None, "work", None)
+    assert (listed["name"], listed["display_name"], listed["colour"]) == (
+        None,
+        "work@example.org",
+        None,
+    )
 
-    assert (
-        user_client.put(
-            "/api/v1/accounts/work", json=edited(new_account(colour="beige"))
-        ).status_code
-        == 422
-    )
-    assert (
-        user_client.put(
-            "/api/v1/accounts/work", json=edited(new_account(name="x" * 65))
-        ).status_code
-        == 422
-    )
+    for wrong in ({"colour": "beige"}, {"name": "x" * 65}):
+        change = edited(new_account(**wrong))
+        assert user_client.put(f"/api/v1/accounts/{work}", json=change).status_code == 422
 
 
 def test_a_user_names_each_account_differently(
     user_client: TestClient, db_session: Session
 ) -> None:
-    assert user_client.post("/api/v1/accounts", json=new_account(name="Lavoro")).status_code == 201
+    work = added(user_client, new_account(name="Lavoro"))
     home = new_account("home", name=" lavoro ")
     taken = user_client.post("/api/v1/accounts", json=home)
     assert taken.status_code == 409
@@ -216,29 +230,25 @@ def test_a_user_names_each_account_differently(
         "message": message,
         "issues": [{"path": ["name"], "message": message}],
     }
-    assert [a["id"] for a in user_client.get("/api/v1/accounts").json()] == ["work"]
+    assert [a["id"] for a in user_client.get("/api/v1/accounts").json()] == [work]
 
     # Unnamed accounts share no name; an edit is checked too, but not against itself.
-    assert user_client.post("/api/v1/accounts", json=new_account("home")).status_code == 201
-    renamed = user_client.put("/api/v1/accounts/home", json=edited(home))
+    home_id = added(user_client, new_account("home"))
+    renamed = user_client.put(f"/api/v1/accounts/{home_id}", json=edited(home))
     assert (renamed.status_code, renamed.json()["detail"]["code"]) == (409, "account_name_taken")
-    again = user_client.put("/api/v1/accounts/work", json=edited(new_account(name="LAVORO")))
+    again = user_client.put(f"/api/v1/accounts/{work}", json=edited(new_account(name="LAVORO")))
     assert (again.status_code, again.json()["name"]) == (200, "LAVORO")
-    other = user_client.put("/api/v1/accounts/home", json=edited(new_account("home", name="Casa")))
-    assert other.status_code == 200
+    other = edited(new_account("home", name="Casa"))
+    assert user_client.put(f"/api/v1/accounts/{home_id}", json=other).status_code == 200
 
     # Another user's accounts take none of this user's names.
     bob = create_user(db_session, "bob", PASSWORD)
     user_client.cookies.set(SESSION_COOKIE_NAME, create_session(db_session, bob))
-    assert user_client.post("/api/v1/accounts", json=new_account(name="Lavoro")).status_code == 201
+    added(user_client, new_account(name="Lavoro"))
 
 
-def test_ids_and_logins_are_unique(user_client: TestClient) -> None:
-    assert user_client.post("/api/v1/accounts", json=new_account()).status_code == 201
-    again = user_client.post("/api/v1/accounts", json=new_account())
-    assert again.status_code == 400
-    assert again.json()["detail"]["code"] == "account_exists"
-
+def test_logins_are_unique(user_client: TestClient) -> None:
+    added(user_client)
     same_login = new_account(
         "home", login="work@example.org", identities=[{"address": "home@example.org"}]
     )
@@ -256,7 +266,12 @@ def test_a_new_account_needs_a_password(user_client: TestClient) -> None:
 
 
 def test_editing_a_missing_account_is_a_404(user_client: TestClient) -> None:
-    assert user_client.put("/api/v1/accounts/work", json=edited(new_account())).status_code == 404
+    assert user_client.put("/api/v1/accounts/1", json=edited(new_account())).status_code == 404
+    for path in ("0", "work", str(2**53)):
+        assert (
+            user_client.put(f"/api/v1/accounts/{path}", json=edited(new_account())).status_code
+            == 422
+        )
 
 
 @pytest.mark.parametrize(
@@ -280,16 +295,17 @@ def test_a_refused_save_is_worded(
 
 
 def test_users_see_only_their_own_accounts(user_client: TestClient, db_session: Session) -> None:
-    assert user_client.post("/api/v1/accounts", json=new_account()).status_code == 201
+    work = added(user_client)
     bob = create_user(db_session, "bob", PASSWORD)
     user_client.cookies.set(SESSION_COOKIE_NAME, create_session(db_session, bob))
 
     assert user_client.get("/api/v1/accounts").json() == []
-    assert user_client.put("/api/v1/accounts/work", json=edited(new_account())).status_code == 404
-    assert user_client.delete("/api/v1/accounts/work").status_code == 404
-    assert user_client.post("/api/v1/accounts/work/test").status_code == 404
-    # The same id is theirs to use.
-    assert user_client.post("/api/v1/accounts", json=new_account()).status_code == 201
+    change = edited(new_account())
+    assert user_client.put(f"/api/v1/accounts/{work}", json=change).status_code == 404
+    assert user_client.delete(f"/api/v1/accounts/{work}").status_code == 404
+    assert user_client.post(f"/api/v1/accounts/{work}/test").status_code == 404
+    # The same login is theirs to use, under an id of its own.
+    assert added(user_client) != work
 
 
 def test_without_a_secrets_key_nothing_is_stored(
@@ -305,28 +321,28 @@ def test_without_a_secrets_key_nothing_is_stored(
 def test_a_test_logs_in_on_the_mail_pool(
     user_client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    assert user_client.post("/api/v1/accounts", json=new_account()).status_code == 201
-    tested: list[str] = []
+    work = added(user_client)
+    tested: list[int] = []
 
-    def fake_login(_connections: MailConnections, account_id: str) -> None:
+    def fake_login(_connections: MailConnections, account_id: int) -> None:
         tested.append(account_id)
 
     monkeypatch.setattr(MailConnections, "test_login", fake_login)
-    response = user_client.post("/api/v1/accounts/work/test")
+    response = user_client.post(f"/api/v1/accounts/{work}/test")
     assert response.json() == {"ok": True, "code": None, "message": None}
-    assert tested == ["work"]
+    assert tested == [work]
 
 
 def test_a_refused_login_is_an_answer(
     user_client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    assert user_client.post("/api/v1/accounts", json=new_account()).status_code == 201
+    work = added(user_client)
 
-    def fake_login(_connections: MailConnections, _account_id: str) -> None:
+    def fake_login(_connections: MailConnections, _account_id: int) -> None:
         raise MailError("auth_failed")
 
     monkeypatch.setattr(MailConnections, "test_login", fake_login)
-    assert user_client.post("/api/v1/accounts/work/test").json() == {
+    assert user_client.post(f"/api/v1/accounts/{work}/test").json() == {
         "ok": False,
         "code": "auth_failed",
         "message": MESSAGES["auth_failed"],
@@ -336,16 +352,16 @@ def test_a_refused_login_is_an_answer(
 def test_a_test_still_going_at_the_pool_s_deadline_is_a_timeout(
     user_client: TestClient, application: FastAPI, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    assert user_client.post("/api/v1/accounts", json=new_account()).status_code == 201
+    work = added(user_client)
     released = threading.Event()
 
-    def fake_login(_connections: MailConnections, _account_id: str) -> None:
+    def fake_login(_connections: MailConnections, _account_id: int) -> None:
         released.wait(5)
 
     monkeypatch.setattr(MailConnections, "test_login", fake_login)
     monkeypatch.setattr(application.state.mail_pool, "deadline_seconds", 0.2)
     try:
-        assert user_client.post("/api/v1/accounts/work/test").json() == {
+        assert user_client.post(f"/api/v1/accounts/{work}/test").json() == {
             "ok": False,
             "code": "timeout",
             "message": MESSAGES["timeout"],
@@ -356,8 +372,8 @@ def test_a_test_still_going_at_the_pool_s_deadline_is_a_timeout(
 
 def test_an_unreachable_server_is_reported(user_client: TestClient) -> None:
     """Port 9 on loopback is closed: a real connection, refused."""
-    assert user_client.post("/api/v1/accounts", json=new_account()).status_code == 201
-    result = user_client.post("/api/v1/accounts/work/test").json()
+    work = added(user_client)
+    result = user_client.post(f"/api/v1/accounts/{work}/test").json()
     assert (result["ok"], result["code"]) == (False, "unreachable")
     assert result["message"] == MESSAGES["unreachable"]
 
@@ -366,8 +382,8 @@ def test_a_certificate_that_does_not_verify_is_said_by_the_test(user_client: Tes
     """The stub's TLS certificate is self-signed: the handshake fails before any IMAP."""
     with SmtpStub() as stub:
         account = new_account(imap={"host": "127.0.0.1", "port": stub.port, "tls": "implicit"})
-        assert user_client.post("/api/v1/accounts", json=account).status_code == 201
-        result = user_client.post("/api/v1/accounts/work/test").json()
+        work = added(user_client, account)
+        result = user_client.post(f"/api/v1/accounts/{work}/test").json()
     assert (result["ok"], result["code"]) == (False, "unreachable")
     assert result["message"] == f"{MESSAGES['unreachable']} {CERTIFICATE_DETAIL}"
 
@@ -375,17 +391,17 @@ def test_a_certificate_that_does_not_verify_is_said_by_the_test(user_client: Tes
 def test_a_starttls_account_is_tested_too(user_client: TestClient) -> None:
     """mailroom-core speaks STARTTLS: the test connects (to a closed port) rather than refusing."""
     account = new_account(imap={"host": "127.0.0.1", "port": 9, "tls": "starttls"})
-    assert user_client.post("/api/v1/accounts", json=account).status_code == 201
-    result = user_client.post("/api/v1/accounts/work/test").json()
+    work = added(user_client, account)
+    result = user_client.post(f"/api/v1/accounts/{work}/test").json()
     assert (result["ok"], result["code"]) == (False, "unreachable")
 
 
 def test_without_a_secrets_key_a_test_is_refused(
     user_client: TestClient, application: FastAPI, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    assert user_client.post("/api/v1/accounts", json=new_account()).status_code == 201
+    work = added(user_client)
     monkeypatch.setattr(application.state, "secrets_subkey", None)
-    response = user_client.post("/api/v1/accounts/work/test")
+    response = user_client.post(f"/api/v1/accounts/{work}/test")
     assert (response.status_code, response.json()["detail"]["code"]) == (
         503,
         "secrets_key_missing",
@@ -397,10 +413,41 @@ def test_a_password_that_does_not_open_is_reported(
 ) -> None:
     from mailroom_core.crypto import secrets_subkey
 
-    assert user_client.post("/api/v1/accounts", json=new_account()).status_code == 201
+    work = added(user_client)
     monkeypatch.setattr(application.state, "secrets_subkey", secrets_subkey(os.urandom(32)))
-    result = user_client.post("/api/v1/accounts/work/test").json()
+    result = user_client.post(f"/api/v1/accounts/{work}/test").json()
     assert (result["ok"], result["code"]) == (False, "password_missing")
+
+
+def test_a_password_sealed_to_a_former_slug_still_opens(
+    user_client: TestClient,
+    user: User,
+    migrated_engine: Engine,
+    secrets_subkey: SecretsSubkey,
+) -> None:
+    """An account numbered by ``core_0004`` keeps the secret it had, sealed to its slug, and a
+    password saved for it later is sealed to the slug too."""
+    from mailroom.accounts.store import account_password
+
+    work = added(user_client)
+    store = user_store(migrated_engine, user.id)
+    sealed = seal_secret(secrets_subkey, work, "password", "old one", former_slug="work")
+    with migrated_engine.begin() as connection:
+        connection.execute(
+            text("insert into core.former_slugs values (:user, :id, 'work')"),
+            {"user": str(user.id), "id": work},
+        )
+        connection.execute(
+            text("update core.account_secrets set blob = :blob where account_id = :id"),
+            {"blob": sealed, "id": work},
+        )
+    assert account_password(store, secrets_subkey, work) == "old one"
+
+    change = edited(new_account()) | {"password": "new one"}
+    assert user_client.put(f"/api/v1/accounts/{work}", json=change).status_code == 200
+    blob = store.secrets()[work]
+    assert open_secret(secrets_subkey, work, "password", blob, former_slug="work") == "new one"
+    assert account_password(store, secrets_subkey, work) == "new one"
 
 
 def _core_rows(db: Session, user_id: int) -> dict[str, int]:
@@ -423,14 +470,13 @@ def _bob_with_an_account(
     store = user_store(migrated_engine, bob.id)
     account = new_account()
     password = account.pop("password")
-    save_account(
+    saved = save_account(
         store, secrets_subkey, account | {"auth": {"type": "password"}}, password, new=True
     )
-    save_account(
-        store, None, account | {"send_mode": "off", "auth": {"type": "password"}}, None, new=False
-    )
+    change = account | {"id": saved.id, "send_mode": "off", "auth": {"type": "password"}}
+    save_account(store, None, change, None, new=False)
     store.record_send(datetime.now(UTC))
-    set_run_filters(db_session, bob.id, "work", run_filters=True)
+    set_run_filters(db_session, bob.id, saved.id, run_filters=True)
     assert _core_rows(db_session, bob.id) == {"settings": 2, "account_secrets": 1, "sends": 1}
     return bob
 
@@ -479,7 +525,7 @@ def test_a_user_whose_accounts_are_being_saved_is_not_removed(
     # Nothing went: neither bob nor any of his rows.
     assert db_session.get(User, bob.id) is not None
     assert _core_rows(db_session, bob.id) == {"settings": 2, "account_secrets": 1, "sends": 1}
-    assert app_data.run_filters_by_account(db_session, bob.id) == {"work": True}
+    assert list(app_data.run_filters_by_account(db_session, bob.id).values()) == [True]
 
 
 def dev_mailbox_account(
@@ -489,15 +535,14 @@ def dev_mailbox_account(
     monkeypatch: pytest.MonkeyPatch,
     prefix: str,
 ) -> dict[str, Any]:
-    """An account ``work`` on a fresh login of the Dovecot ``IMAP_TEST_HOST`` names (``mise run
+    """An account on a fresh login of the Dovecot ``IMAP_TEST_HOST`` names (``mise run
     test-backend-mail`` starts one; ``tests/support/mail.py`` says which TLS it trusts); the tests
     using it are skipped without it."""
     monkeypatch.setattr(application.state, "mail_ssl_context", mail_servers_ssl_context())
     login = imap_server.unique_user(prefix)
     endpoint = {"host": imap_server.host, "port": imap_server.port, "tls": "implicit"}
     account = new_account(login=login, password=imap_server.password, imap=endpoint)
-    assert client.post("/api/v1/accounts", json=account).status_code == 201
-    return account
+    return account | {"id": added(client, account)}
 
 
 def test_the_dev_mailbox_logs_in(
@@ -507,11 +552,12 @@ def test_the_dev_mailbox_logs_in(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     account = dev_mailbox_account(user_client, imap_server, application, monkeypatch, "accounts")
-    assert user_client.post("/api/v1/accounts/work/test").json()["ok"] is True
+    work = account.pop("id")
+    assert user_client.post(f"/api/v1/accounts/{work}/test").json()["ok"] is True
 
     change = edited(account) | {"password": "wrong password"}
-    assert user_client.put("/api/v1/accounts/work", json=change).status_code == 200
-    assert user_client.post("/api/v1/accounts/work/test").json() == {
+    assert user_client.put(f"/api/v1/accounts/{work}", json=change).status_code == 200
+    assert user_client.post(f"/api/v1/accounts/{work}/test").json() == {
         "ok": False,
         "code": "auth_failed",
         "message": MESSAGES["auth_failed"],

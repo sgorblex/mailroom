@@ -66,6 +66,8 @@ FILTERS_PATHS = {
     "/api/v1/rule-sets/{rule_set_id}/run",
 }
 
+pytestmark = pytest.mark.usefixtures("numbered_accounts")
+
 
 @pytest.mark.parametrize(
     ("raw", "features"),
@@ -235,11 +237,11 @@ def test_the_base_has_no_mail_layer_and_none_of_the_features(base: Instance, use
     client = base.sign_in(user)
     assert client.get("/api/v1/auth/me").json()["features"] == []
     for path in (
-        "/api/v1/mail/accounts/work/messages",
+        "/api/v1/mail/accounts/1/messages",
         "/api/v1/filters/schema",
-        "/api/v1/accounts/work/folders",
-        "/api/v1/accounts/work/filter-settings",
-        "/api/v1/accounts/work/rule-sets",
+        "/api/v1/accounts/1/folders",
+        "/api/v1/accounts/1/filter-settings",
+        "/api/v1/accounts/1/rule-sets",
         "/api/v1/oauth/grants",
         LIMITS_PATH,
         AUDIT_PATH,
@@ -257,13 +259,13 @@ def test_the_base_keeps_accounts_and_users(base: Instance, user: User, admin: Us
     assert "run_filters" not in added.json()
     [listed] = client.get("/api/v1/accounts").json()
     assert "run_filters" not in listed
-    changed = client.put("/api/v1/accounts/work", json=edited(new_account(login="w@example.org")))
+    changed = client.put("/api/v1/accounts/1", json=edited(new_account(login="w@example.org")))
     assert changed.status_code == 200
     assert "run_filters" not in changed.json()
     # Port 9 on loopback is closed: the login test reaches it through the mail pool.
-    tested = client.post("/api/v1/accounts/work/test").json()
+    tested = client.post("/api/v1/accounts/1/test").json()
     assert (tested["ok"], tested["code"]) == (False, "unreachable")
-    assert client.delete("/api/v1/accounts/work").status_code == 204
+    assert client.delete("/api/v1/accounts/1").status_code == 204
 
     bob = create_user(base.db, "bob", PASSWORD)
     client = base.sign_in(bob)
@@ -280,13 +282,13 @@ def test_a_filters_only_instance_needs_no_mail_layer(filters_only: Instance, use
     assert client.get("/api/v1/filters/schema").status_code == 200
     added = client.post("/api/v1/accounts", json=new_account())
     assert added.json()["run_filters"] is False
-    settings = client.put("/api/v1/accounts/work/filter-settings", json={"run_filters": True})
+    settings = client.put("/api/v1/accounts/1/filter-settings", json={"run_filters": True})
     assert settings.status_code == 200
-    assert client.get("/api/v1/accounts/work/filter-settings").json() == {"run_filters": True}
+    assert client.get("/api/v1/accounts/1/filter-settings").json() == {"run_filters": True}
     assert client.get("/api/v1/accounts").json()[0]["run_filters"] is True
-    folders = client.get("/api/v1/accounts/work/folders")
+    folders = client.get("/api/v1/accounts/1/folders")
     assert (folders.status_code, folders.json()["detail"]["code"]) == (502, "unreachable")
-    assert client.get("/api/v1/mail/accounts/work/messages").status_code == 404
+    assert client.get("/api/v1/mail/accounts/1/messages").status_code == 404
 
 
 def test_an_mcp_only_instance_serves_the_mail_tools(
@@ -298,8 +300,8 @@ def test_an_mcp_only_instance_serves_the_mail_tools(
     client = instance.sign_in(user)
     assert client.get("/api/v1/auth/me").json()["features"] == ["mcp"]
     assert client.get("/api/v1/oauth/grants").status_code == 200
-    assert client.get("/api/v1/mail/accounts/work/messages").status_code == 404
-    assert client.get("/api/v1/accounts/work/rule-sets").status_code == 404
+    assert client.get("/api/v1/mail/accounts/1/messages").status_code == 404
+    assert client.get("/api/v1/accounts/1/rule-sets").status_code == 404
     assert client.post("/api/v1/accounts", json=new_account()).status_code == 201
 
     token = mcp.verifier.issue(user.id)
@@ -308,5 +310,5 @@ def test_an_mcp_only_instance_serves_the_mail_tools(
     assert not {name for name in tools if name.startswith(("rule_set", "filter", "run"))}
     assert not tools & {"account_run_filters", "dry_run"}
     accounts: list[dict[str, Any]] = mcp.call(token, "accounts_list")["accounts"]
-    assert [account["id"] for account in accounts] == ["work"]
+    assert [account["id"] for account in accounts] == [1]
     assert "run_filters" not in accounts[0]

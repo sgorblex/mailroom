@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactElement, type SubmitEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import type { AccountId } from '@/api/accounts.ts'
 import { AccountName } from '@/accounts/account-name.tsx'
 import { useAccountLabel, useAccountName } from '@/accounts/accounts-context.ts'
 import type { MailFolder, MoveRemoval } from '@/api/mail.ts'
@@ -22,12 +23,12 @@ export function AccountMovePicker({
   accounts,
   onChoose,
 }: {
-  accounts: string[]
-  onChoose: (account: string, folder: MailFolder, removal: MoveRemoval) => void
+  accounts: AccountId[]
+  onChoose: (account: AccountId, folder: MailFolder, removal: MoveRemoval) => void
 }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const [only] = accounts
-  const [account, setAccount] = useState<string | null>(accounts.length === 1 && only !== undefined ? only : null)
+  const [account, setAccount] = useState<AccountId | null>(accounts.length === 1 && only !== undefined ? only : null)
   return (
     <div role="dialog" aria-label={t('triage.moveToAccountTitle')} className="flex flex-col gap-1 rounded-lg border p-2">
       {account === null ? (
@@ -51,7 +52,7 @@ export function AccountMovePicker({
   )
 }
 
-function AccountStep({ accounts, onChoose }: { accounts: string[]; onChoose: (account: string) => void }): ReactElement {
+function AccountStep({ accounts, onChoose }: { accounts: AccountId[]; onChoose: (account: AccountId) => void }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const accountLabel = useAccountLabel()
   const first = useRef<HTMLButtonElement>(null)
@@ -87,7 +88,7 @@ function FolderStep({
   onBack,
   onChoose,
 }: {
-  account: string
+  account: AccountId
   onBack: (() => void) | null
   onChoose: (folder: MailFolder, removal: MoveRemoval) => void
 }): ReactElement {
@@ -192,8 +193,8 @@ export function MoveForGoodDialog({
   onConfirm,
 }: {
   count: number
-  from: string[]
-  account: string
+  from: AccountId[]
+  account: AccountId
   folder: MailFolder
   onCancel: () => void
   onConfirm: () => void

@@ -44,7 +44,7 @@ def claim(
     limit: int = LIMIT,
     confirm_resend: bool = False,
 ) -> SendClaim:
-    return store.claim_send(key, "acc", limit, confirm_resend=confirm_resend, now=now)
+    return store.claim_send(key, 1, limit, confirm_resend=confirm_resend, now=now)
 
 
 def finished(
@@ -65,7 +65,7 @@ def test_write_the_send_before_smtp_and_count_it(core_engine) -> None:
     first = claim(store)
     assert first.fresh
     assert first.send == SendRecord(
-        id=first.send.id, key=KEY, state="sending", account="acc", result=None, at=T0
+        id=first.send.id, key=KEY, state="sending", account=1, result=None, at=T0
     )
     assert store.send_state(first.send.id, T0) == first.send
     assert store.send_state_by_key(KEY, T0) == first.send
@@ -106,10 +106,10 @@ def test_reclaim_a_refused_key_as_a_new_attempt(core_engine) -> None:
     store = AccountStore(core_engine, ALICE)
     send = finished(store, "failed", {"code": "smtp"})
     later = T0 + timedelta(minutes=1)
-    retry = store.claim_send(KEY, "other", LIMIT, now=later)
+    retry = store.claim_send(KEY, 2, LIMIT, now=later)
     assert retry.fresh
     assert retry.send == SendRecord(
-        id=send.id, key=KEY, state="sending", account="other", result=None, at=later
+        id=send.id, key=KEY, state="sending", account=2, result=None, at=later
     )
     assert store.sends_since(T0 - timedelta(seconds=1)) == SendCount(count=2, oldest=T0)
 
@@ -318,7 +318,7 @@ def test_admit_exactly_the_limit_of_concurrent_claims(core_engine) -> None:
     def attempt(_: int) -> SendClaim | SendLimitReached:
         barrier.wait()
         try:
-            return store.claim_send(None, "acc", limit)
+            return store.claim_send(None, 1, limit)
         except SendLimitReached as refused:
             return refused
 
@@ -335,7 +335,7 @@ def test_let_one_of_several_concurrent_claims_of_a_key_win(core_engine) -> None:
 
     def attempt(_: int) -> SendClaim:
         barrier.wait()
-        return store.claim_send(KEY, "acc", LIMIT)
+        return store.claim_send(KEY, 1, LIMIT)
 
     with ThreadPoolExecutor(claims) as pool:
         outcomes = list(pool.map(attempt, range(claims)))
@@ -352,7 +352,7 @@ def test_let_one_of_several_concurrent_reclaims_win(core_engine) -> None:
 
     def attempt(_: int) -> SendClaim:
         barrier.wait()
-        return store.claim_send(KEY, "acc", LIMIT)
+        return store.claim_send(KEY, 1, LIMIT)
 
     with ThreadPoolExecutor(claims) as pool:
         outcomes = list(pool.map(attempt, range(claims)))
@@ -366,7 +366,7 @@ def test_give_each_user_their_own_limit_under_concurrency(core_engine) -> None:
     def attempt(user_id: str) -> int:
         barrier.wait()
         try:
-            AccountStore(core_engine, user_id).claim_send(None, "acc", 2)
+            AccountStore(core_engine, user_id).claim_send(None, 1, 2)
         except SendLimitReached:
             return 0
         return 1

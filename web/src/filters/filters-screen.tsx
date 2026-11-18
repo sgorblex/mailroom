@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from '@tanstack/react-router'
 
 import { AccountName } from '@/accounts/account-name.tsx'
-import { listAccounts, type Account } from '@/api/accounts.ts'
+import { type AccountId, listAccounts, type Account } from '@/api/accounts.ts'
 import {
   addRuleSet,
   changeRuleSet,
@@ -74,7 +74,7 @@ function AccountRuleSets({ account }: { account: Account }): ReactElement {
   const [adding, setAdding] = useState(false)
   const addTrigger = useRef<HTMLButtonElement>(null)
 
-  const headingId = `account-${account.id}-rule-sets`
+  const headingId = `account-${String(account.id)}-rule-sets`
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
@@ -161,7 +161,7 @@ function NewRuleSetForm({
   save,
   onCancel,
 }: {
-  accountId: string
+  accountId: AccountId
   save: (fields: RuleSetFields) => Promise<unknown>
   onCancel: () => void
 }): ReactElement {

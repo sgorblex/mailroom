@@ -136,7 +136,7 @@ class MailPool:
         self._lock = threading.Lock()
         self._users: dict[int, _UserMail] = {}
         self._process = _Gate(process_calls, waiting=0)
-        self._gates: dict[tuple[int, str | None], _Gate] = {}
+        self._gates: dict[tuple[int, int | None], _Gate] = {}
         self._uploads_lock = threading.Lock()
         self._uploads: Counter[int] = Counter()
         self._executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="mail")
@@ -192,7 +192,7 @@ class MailPool:
         self,
         connections: MailConnections,
         user_id: int,
-        accounts: Sequence[str],
+        accounts: Sequence[int],
         work: Callable[[], T],
         *,
         on_deadline: Callable[[], None] | None = None,
@@ -202,7 +202,7 @@ class MailPool:
         through (``MailError("busy")`` otherwise); ``DeadlineExceeded`` after ``deadline``
         seconds (``deadline_seconds`` when None), ``on_deadline`` then called and the accounts'
         connections in use cut."""
-        keys: list[tuple[int, str | None, int]] = [(user_id, None, USER_CALLS)]
+        keys: list[tuple[int, int | None, int]] = [(user_id, None, USER_CALLS)]
         if len(accounts) == 1:
             keys.append((user_id, accounts[0], self.connections_per_account))
         with ExitStack() as entered:
@@ -231,7 +231,7 @@ class MailPool:
                 connections.interrupt(account_id)
         raise DeadlineExceeded
 
-    def invalidate(self, user_id: int, account_id: str | None = None) -> None:
+    def invalidate(self, user_id: int, account_id: int | None = None) -> None:
         """Drop the connections of one of the user's accounts, or of all of them."""
         with self._lock:
             entry = self._users.get(user_id)
@@ -273,7 +273,7 @@ class MailPool:
         for entry in entries:
             entry.connections.close_all()
 
-    def _take_gates(self, keys: Sequence[tuple[int, str | None, int]]) -> list[_Gate]:
+    def _take_gates(self, keys: Sequence[tuple[int, int | None, int]]) -> list[_Gate]:
         with self._lock:
             gates = [
                 self._gates.setdefault((user_id, account_id), _Gate(limit))

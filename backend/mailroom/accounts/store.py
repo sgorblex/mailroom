@@ -70,7 +70,7 @@ class UserAccounts:
     """The settings document as stored."""
     settings: CoreSettings
 
-    def account(self, account_id: str) -> AccountConfig:
+    def account(self, account_id: int) -> AccountConfig:
         for account in self.settings.account:
             if account.id == account_id:
                 return account
@@ -97,15 +97,16 @@ def load_accounts(store: AccountStore) -> UserAccounts:
     )
 
 
-def accounts_with_password(store: AccountStore) -> frozenset[str]:
+def accounts_with_password(store: AccountStore) -> frozenset[int]:
     """The ids of the accounts with a stored password."""
     return frozenset(store.secrets())
 
 
-def password_account(account_id: str, fields: Mapping[str, Json]) -> dict[str, Json]:
+def password_account(account_id: int | None, fields: Mapping[str, Json]) -> dict[str, Json]:
     """The account as mailroom-core stores it from its ``fields``: password auth, the secret kept
-    apart."""
-    return {"id": account_id, **fields, "auth": {"type": "password"}}
+    apart; a new account (``account_id`` None) is given its id when saved."""
+    account: dict[str, Json] = {**fields, "auth": {"type": "password"}}
+    return account if account_id is None else {"id": account_id, **account}
 
 
 def save_account(
@@ -116,36 +117,32 @@ def save_account(
     *,
     new: bool,
 ) -> AccountConfig:
-    """Add the account ``raw`` describes (``new``) or replace the one with its id, storing
-    ``password`` sealed when given (a new account needs one), refusing a name another of the
-    user's accounts has (``account_name_taken``) in the same revision. Raises ``AccountError``,
+    """Add the account ``raw`` describes with a new id (``new``) or replace the one with its id,
+    storing ``password`` sealed when given (a new account needs one), refusing a name another of
+    the user's accounts has (``account_name_taken``) in the same revision. Raises ``AccountError``,
     ``AccountNotFound``, or mailroom-core's ``RevisionConflict`` / ``SettingsBusy``."""
-    account_id = raw.get("id")
-    if not isinstance(account_id, str):
-        msg = "An account needs an id."
-        raise AccountError(msg, "invalid_account", [Issue(("id",), "Required")])
-    current = load_accounts(store)
-    accounts = current.raw_accounts()
-    index = next(
-        (
-            i
-            for i, acc in enumerate(accounts)
-            if isinstance(acc, dict) and acc.get("id") == account_id
-        ),
-        None,
-    )
-    if new and index is not None:
-        msg = f"There already is an account {account_id!r}."
-        raise AccountError(msg, "account_exists", [Issue(("id",), msg)])
-    if not new and index is None:
-        raise AccountNotFound(account_id)
     if new and not password:
         msg = "A new account needs its password."
         raise AccountError(msg, "invalid_account", [Issue(("password",), "Required")])
-    if index is None:
+    current = load_accounts(store)
+    accounts = current.raw_accounts()
+    if new:
+        account_id = store.new_account_id()
         index = len(accounts)
-        accounts.append(dict(raw))
+        accounts.append({"id": account_id, **raw})
     else:
+        stored_id = raw.get("id")
+        found = next(
+            (
+                i
+                for i, acc in enumerate(accounts)
+                if isinstance(acc, dict) and acc.get("id") == stored_id
+            ),
+            None,
+        )
+        if not isinstance(stored_id, int) or found is None:
+            raise AccountNotFound(stored_id)
+        account_id, index = stored_id, found
         accounts[index] = dict(raw)
     doc: dict[str, Json] = {**current.doc, _ACCOUNTS: accounts}
     checked = core_settings_or_issues(doc)
@@ -158,9 +155,14 @@ def save_account(
         if subkey is None:
             msg = "MAILROOM_SECRETS_KEY is not set, so no password can be stored."
             raise AccountError(msg, "secrets_key_missing")
-        secrets = SecretChanges(
-            set={account_id: seal_secret(subkey, account_id, "password", password)}
+        sealed = seal_secret(
+            subkey,
+            account_id,
+            "password",
+            password,
+            former_slug=store.former_slugs().get(account_id),
         )
+        secrets = SecretChanges(set={account_id: sealed})
     store.save_settings(doc, current.revision, secrets)
     return checked.account[index]
 
@@ -210,7 +212,7 @@ def save_limits(
     return checked.limits
 
 
-def remove_account(store: AccountStore, account_id: str) -> None:
+def remove_account(store: AccountStore, account_id: int) -> None:
     """Remove the account and its stored password. Raises ``AccountNotFound``, or
     ``RevisionConflict`` / ``SettingsBusy``."""
     current = load_accounts(store)
@@ -226,7 +228,7 @@ def remove_account(store: AccountStore, account_id: str) -> None:
 
 
 def account_password(
-    store: AccountStore, subkey: SecretsSubkey | None, account_id: str
+    store: AccountStore, subkey: SecretsSubkey | None, account_id: int
 ) -> str | None:
     """The account's password, or None when none is stored or it does not open (no key, or
     another one)."""
@@ -234,7 +236,13 @@ def account_password(
     if blob is None or subkey is None:
         return None
     try:
-        return open_secret(subkey, account_id, "password", blob)
+        return open_secret(
+            subkey,
+            account_id,
+            "password",
+            blob,
+            former_slug=store.former_slugs().get(account_id),
+        )
     except SealedSecretError:
         return None
 

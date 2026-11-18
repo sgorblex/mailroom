@@ -66,7 +66,7 @@ class AuditRecipients:
 class AuditItem:
     """One message, or one folder, in a write call's audit record, with what happened to it."""
 
-    account: str
+    account: int
     folder: str | None = None
     """None on a send that was never filed."""
     uid: int | None = None
@@ -79,9 +79,9 @@ class AuditItem:
     """How many an outgoing message carries."""
     destination: str | None = None
     """Where a move took it."""
-    destination_account: str | None = None
+    destination_account: int | None = None
     """On a move to another account, that account: `destination` is its folder."""
-    source_account: str | None = None
+    source_account: int | None = None
     """On the copy a move from another account made, that account."""
     source_folder: str | None = None
     """On the copy a move from another account made, the folder it came from."""
@@ -131,15 +131,15 @@ def subject_sha256(subject: str) -> str:
 
 
 def message_item(
-    account: str,
+    account: int,
     folder: str,
     uid: int,
     envelope: object,
     result: AuditResult,
     *,
     destination: str | None = None,
-    destination_account: str | None = None,
-    source: tuple[str, str] | None = None,
+    destination_account: int | None = None,
+    source: tuple[int, str] | None = None,
     copied: bool | None = None,
     junk: Junk | None = None,
     seen: bool | None = None,
@@ -176,7 +176,7 @@ def message_item(
 
 
 def outgoing_item(
-    account: str,
+    account: int,
     message: MessageInput,
     result: AuditResult,
     *,

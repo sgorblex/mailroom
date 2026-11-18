@@ -40,7 +40,7 @@ class FilterReport(TypedDict):
 class FolderReport(TypedDict):
     """One folder's run: its filters' reports in order, and the error that stopped it, if any."""
 
-    account: str
+    account: int
     folder: list[str]
     """The folder's path segments."""
     dry_run: bool

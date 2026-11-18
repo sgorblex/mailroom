@@ -22,7 +22,7 @@ from mailroom_core.mail import CERTIFICATE_DETAIL, MESSAGES
 from mailroom_core.testing import SmtpStub
 from tests.conftest import PASSWORD
 from tests.support.mail import mail_servers_ssl_context
-from tests.test_api_accounts import dev_mailbox_account, new_account
+from tests.test_api_accounts import added, dev_mailbox_account, new_account
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -43,13 +43,12 @@ def rule_set(**changes: Any) -> dict[str, Any]:
 
 
 @pytest.fixture
-def account(user_client: TestClient) -> str:
-    assert user_client.post("/api/v1/accounts", json=new_account()).status_code == 201
-    return "work"
+def account(user_client: TestClient) -> int:
+    return added(user_client)
 
 
 @pytest.fixture
-def rule_set_id(user_client: TestClient, account: str) -> int:
+def rule_set_id(user_client: TestClient, account: int) -> int:
     response = user_client.post(f"/api/v1/accounts/{account}/rule-sets", json=rule_set())
     assert response.status_code == 201
     identifier: int = response.json()["id"]
@@ -67,9 +66,9 @@ def add_filter(client: TestClient, rule_set_id: int, name: str, spec: dict[str, 
 
 def test_signed_out_browsers_are_refused(api_client: TestClient) -> None:
     assert api_client.get("/api/v1/filters/schema").status_code == 401
-    assert api_client.get("/api/v1/accounts/work/folders").status_code == 401
-    assert api_client.get("/api/v1/accounts/work/filter-settings").status_code == 401
-    assert api_client.get("/api/v1/accounts/work/rule-sets").status_code == 401
+    assert api_client.get("/api/v1/accounts/1/folders").status_code == 401
+    assert api_client.get("/api/v1/accounts/1/filter-settings").status_code == 401
+    assert api_client.get("/api/v1/accounts/1/rule-sets").status_code == 401
     assert api_client.get("/api/v1/rule-sets/1").status_code == 401
     assert api_client.post("/api/v1/rule-sets/1/dry-run").status_code == 401
     assert api_client.post("/api/v1/rule-sets/1/run").status_code == 401
@@ -79,7 +78,7 @@ def test_the_schema_is_the_engines(user_client: TestClient) -> None:
     assert user_client.get("/api/v1/filters/schema").json() == json_schema()
 
 
-def test_run_filters_is_off_until_turned_on(user_client: TestClient, account: str) -> None:
+def test_run_filters_is_off_until_turned_on(user_client: TestClient, account: int) -> None:
     settings = f"/api/v1/accounts/{account}/filter-settings"
     assert user_client.get(settings).json() == {"run_filters": False}
 
@@ -89,13 +88,16 @@ def test_run_filters_is_off_until_turned_on(user_client: TestClient, account: st
 
     # Removing the account takes the switch with it.
     assert user_client.delete(f"/api/v1/accounts/{account}").status_code == 204
-    assert user_client.post("/api/v1/accounts", json=new_account()).status_code == 201
-    assert user_client.get(settings).json() == {"run_filters": False}
+    assert user_client.get(settings).status_code == 404
+    again = added(user_client)
+    assert user_client.get(f"/api/v1/accounts/{again}/filter-settings").json() == {
+        "run_filters": False
+    }
 
 
 def test_the_folder_picker_answers_mailbox_failures(
     user_client: TestClient,
-    account: str,
+    account: int,
     application: FastAPI,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -107,8 +109,8 @@ def test_the_folder_picker_answers_mailbox_failures(
 
     # STARTTLS is tried too, not refused up front.
     starttls = new_account("home", imap={"host": "127.0.0.1", "port": 9, "tls": "starttls"})
-    assert user_client.post("/api/v1/accounts", json=starttls).status_code == 201
-    response = user_client.get("/api/v1/accounts/home/folders")
+    home = added(user_client, starttls)
+    response = user_client.get(f"/api/v1/accounts/{home}/folders")
     assert (response.status_code, response.json()["detail"]["code"]) == (502, "unreachable")
 
     monkeypatch.setattr(application.state, "secrets_subkey", secrets_subkey(os.urandom(32)))
@@ -120,8 +122,8 @@ def test_the_folder_picker_says_a_certificate_did_not_verify(user_client: TestCl
     """The stub's TLS certificate is self-signed: the handshake fails before any IMAP."""
     with SmtpStub() as stub:
         account = new_account(imap={"host": "127.0.0.1", "port": stub.port, "tls": "implicit"})
-        assert user_client.post("/api/v1/accounts", json=account).status_code == 201
-        response = user_client.get("/api/v1/accounts/work/folders")
+        work = added(user_client, account)
+        response = user_client.get(f"/api/v1/accounts/{work}/folders")
     assert response.status_code == 502
     assert response.json()["detail"] == {
         "code": "unreachable",
@@ -147,7 +149,7 @@ def test_the_dev_mailbox_lists_folders(
     finally:
         conn.logout()
 
-    folders = user_client.get("/api/v1/accounts/work/folders").json()
+    folders = user_client.get(f"/api/v1/accounts/{account['id']}/folders").json()
     assert {"path": ["INBOX"]} in folders
     assert {"path": ["Archive"]} in folders
     # Split on the server's delimiter ("/" here), not the filter engine's default.
@@ -155,7 +157,7 @@ def test_the_dev_mailbox_lists_folders(
 
 
 def test_a_user_adds_edits_and_removes_a_rule_set(
-    user_client: TestClient, account: str, caplog: pytest.LogCaptureFixture
+    user_client: TestClient, account: int, caplog: pytest.LogCaptureFixture
 ) -> None:
     caplog.set_level(logging.INFO)
     rule_sets = f"/api/v1/accounts/{account}/rule-sets"
@@ -168,7 +170,7 @@ def test_a_user_adds_edits_and_removes_a_rule_set(
     assert response.status_code == 201
     added = response.json()
     assert {key: added[key] for key in added if not key.endswith("_at") and key != "id"} == {
-        "account_id": "work",
+        "account_id": account,
         "folder": ["Archive", "2026"],
         "name": "Newsletters",
         "trigger": "scheduled",
@@ -209,7 +211,7 @@ def test_a_user_adds_edits_and_removes_a_rule_set(
     ids=["scheduled without interval", "interval without schedule"],
 )
 def test_only_a_scheduled_rule_set_has_an_interval(
-    user_client: TestClient, account: str, body: dict[str, Any]
+    user_client: TestClient, account: int, body: dict[str, Any]
 ) -> None:
     response = user_client.post(f"/api/v1/accounts/{account}/rule-sets", json=body)
     assert response.status_code == 400
@@ -230,9 +232,10 @@ def test_a_change_keeps_the_interval_with_the_schedule(
 
 
 def test_a_rule_set_needs_one_of_the_users_accounts(user_client: TestClient) -> None:
-    response = user_client.post("/api/v1/accounts/nope/rule-sets", json=rule_set())
+    response = user_client.post("/api/v1/accounts/1/rule-sets", json=rule_set())
     assert response.status_code == 404
-    assert user_client.get("/api/v1/accounts/nope/rule-sets").status_code == 404
+    assert user_client.get("/api/v1/accounts/1/rule-sets").status_code == 404
+    assert user_client.get("/api/v1/accounts/nope/rule-sets").status_code == 422
 
 
 @pytest.mark.parametrize(
@@ -257,7 +260,7 @@ def test_a_rule_set_needs_one_of_the_users_accounts(user_client: TestClient) -> 
     ],
 )
 def test_rule_set_fields_are_checked(
-    user_client: TestClient, account: str, body: dict[str, Any]
+    user_client: TestClient, account: int, body: dict[str, Any]
 ) -> None:
     assert user_client.post(f"/api/v1/accounts/{account}/rule-sets", json=body).status_code == 422
 
@@ -375,13 +378,13 @@ def test_a_rule_set_holds_a_hundred_filters_at_most(
 
 
 def test_an_order_lists_only_the_rule_sets_own_filters(
-    user_client: TestClient, db_session: Session, account: str, rule_set_id: int
+    user_client: TestClient, db_session: Session, account: int, rule_set_id: int
 ) -> None:
     mine = add_filter(user_client, rule_set_id, "Shop", SHOP_SPEC)
     other = user_client.post(f"/api/v1/accounts/{account}/rule-sets", json=rule_set()).json()["id"]
     elsewhere = add_filter(user_client, other, "Shop", SHOP_SPEC)
     bob = create_user(db_session, "bob", PASSWORD)
-    bobs = RuleSet(user_id=bob.id, account_id="work", folder=["INBOX"], name="x", trigger="manual")
+    bobs = RuleSet(user_id=bob.id, account_id=account, folder=["INBOX"], name="x", trigger="manual")
     db_session.add(bobs)
     db_session.flush()
     foreign = Filter(rule_set_id=bobs.id, position=0, name="x", spec=SHOP_SPEC)
@@ -400,19 +403,20 @@ def test_an_order_lists_only_the_rule_sets_own_filters(
 
 
 def test_users_see_only_their_own_filters(
-    user_client: TestClient, db_session: Session, rule_set_id: int
+    user_client: TestClient, db_session: Session, account: int, rule_set_id: int
 ) -> None:
     filter_id = add_filter(user_client, rule_set_id, "Shop", SHOP_SPEC)
     bob = create_user(db_session, "bob", PASSWORD)
     user_client.cookies.set(SESSION_COOKIE_NAME, create_session(db_session, bob))
 
     path = f"/api/v1/rule-sets/{rule_set_id}"
-    assert user_client.get("/api/v1/accounts/work/folders").status_code == 404
-    assert user_client.get("/api/v1/accounts/work/filter-settings").status_code == 404
+    theirs = f"/api/v1/accounts/{account}"
+    assert user_client.get(f"{theirs}/folders").status_code == 404
+    assert user_client.get(f"{theirs}/filter-settings").status_code == 404
     on = {"run_filters": True}
-    assert user_client.put("/api/v1/accounts/work/filter-settings", json=on).status_code == 404
-    assert user_client.get("/api/v1/accounts/work/rule-sets").status_code == 404
-    assert user_client.post("/api/v1/accounts/work/rule-sets", json=rule_set()).status_code == 404
+    assert user_client.put(f"{theirs}/filter-settings", json=on).status_code == 404
+    assert user_client.get(f"{theirs}/rule-sets").status_code == 404
+    assert user_client.post(f"{theirs}/rule-sets", json=rule_set()).status_code == 404
     assert user_client.get(path).status_code == 404
     assert user_client.patch(path, json={"name": "Mine"}).status_code == 404
     assert user_client.delete(path).status_code == 404
@@ -429,15 +433,12 @@ def test_users_see_only_their_own_filters(
 
 
 def test_removing_the_account_removes_its_rule_sets(
-    user_client: TestClient, db_session: Session, rule_set_id: int
+    user_client: TestClient, db_session: Session, account: int, rule_set_id: int
 ) -> None:
     add_filter(user_client, rule_set_id, "Shop", SHOP_SPEC)
-    assert user_client.delete("/api/v1/accounts/work").status_code == 204
+    assert user_client.delete(f"/api/v1/accounts/{account}").status_code == 204
     assert db_session.get(RuleSet, rule_set_id) is None
     assert db_session.scalars(select(Filter)).all() == []
-
-    assert user_client.post("/api/v1/accounts", json=new_account()).status_code == 201
-    assert user_client.get("/api/v1/accounts/work/rule-sets").json() == []
 
 
 def test_removing_the_user_removes_their_rule_sets(
@@ -464,14 +465,14 @@ def jobs(db_session: Session) -> list[dict[str, Any]]:
 
 
 def test_run_now_queues_a_run_for_the_worker(
-    user_client: TestClient, db_session: Session, user: User, rule_set_id: int
+    user_client: TestClient, db_session: Session, user: User, account: int, rule_set_id: int
 ) -> None:
     run = f"/api/v1/rule-sets/{rule_set_id}/run"
     response = user_client.post(run)
     assert response.status_code == 400
     assert response.json()["detail"]["code"] == "run_filters_off"
 
-    settings = "/api/v1/accounts/work/filter-settings"
+    settings = f"/api/v1/accounts/{account}/filter-settings"
     assert user_client.put(settings, json={"run_filters": True}).status_code == 200
     response = user_client.post(run)
     assert response.status_code == 400
@@ -492,7 +493,7 @@ def test_run_now_queues_a_run_for_the_worker(
         {
             "task_name": "run_rule_set",
             "args": {"run_id": queued["id"]},
-            "lock": f"mailbox:{user.id}:work",
+            "lock": f"mailbox:{user.id}:{account}",
             "queueing_lock": f"rule_set:{rule_set_id}",
             "status": "todo",
         }
@@ -510,8 +511,8 @@ def test_a_dry_run_says_a_certificate_did_not_verify(user_client: TestClient) ->
     """On the filter engine's path too: the stub's TLS certificate is self-signed."""
     with SmtpStub() as stub:
         account = new_account(imap={"host": "127.0.0.1", "port": stub.port, "tls": "implicit"})
-        assert user_client.post("/api/v1/accounts", json=account).status_code == 201
-        created = user_client.post("/api/v1/accounts/work/rule-sets", json=rule_set())
+        work = added(user_client, account)
+        created = user_client.post(f"/api/v1/accounts/{work}/rule-sets", json=rule_set())
         rule_set_id = created.json()["id"]
         add_filter(user_client, rule_set_id, "Shop", SHOP_SPEC)
         response = user_client.post(f"/api/v1/rule-sets/{rule_set_id}/dry-run")
@@ -643,7 +644,7 @@ def test_a_dry_run_needs_a_password_that_opens(
 
 
 def test_old_finished_runs_are_pruned(db_session: Session, user: User) -> None:
-    rule_set_row = RuleSet(user_id=user.id, account_id="work", folder=["INBOX"], name="x")
+    rule_set_row = RuleSet(user_id=user.id, account_id=1, folder=["INBOX"], name="x")
     rule_set_row.trigger = "manual"
     db_session.add(rule_set_row)
     db_session.flush()

@@ -38,7 +38,7 @@ def from_identity(
         if identity is None:
             raise MailError(
                 "invalid_argument",
-                f"{account.id} cannot send as that address. Use one of: "
+                "This account cannot send as that address. Use one of: "
                 f"{', '.join(i.address for i in account.identities)}.",
             )
         return _mailbox(identity)

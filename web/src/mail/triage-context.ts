@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect } from 'react'
 
+import type { AccountId } from '@/api/accounts.ts'
 import type { FlagChange, FolderRole, MailFolder, MessageItem, MoveRemoval } from '@/api/mail.ts'
 
 export interface Flags {
@@ -14,11 +15,11 @@ export type Action =
   | { kind: 'archive' }
   | { kind: 'trash' }
   | { kind: 'move'; folder: MailFolder }
-  | { kind: 'moveToAccount'; account: string; folder: MailFolder; removal: MoveRemoval }
+  | { kind: 'moveToAccount'; account: AccountId; folder: MailFolder; removal: MoveRemoval }
   | { kind: 'flag'; change: FlagChange }
 
 export interface Failure {
-  account: string
+  account: AccountId
   folder: string
   code: string
   /** How many a move to another account copied but could not remove here: they are in both. */
@@ -43,10 +44,10 @@ export type FolderState =
 
 export interface Triage {
   /** The user's accounts, for a move to another of them. */
-  accounts: readonly string[]
+  accounts: readonly AccountId[]
   folders: Readonly<Record<string, FolderState>>
   /** Loads an account's folders; `fresh` asks again even when they are there (or failed). */
-  loadFolders: (account: string, fresh: boolean) => void
+  loadFolders: (account: AccountId, fresh: boolean) => void
   /** A message's flags, with what this screen changed since they were read. */
   flagsOf: (target: Target) => Flags
   /** Refs moved away since the list was read: their rows are gone. */
@@ -99,7 +100,7 @@ export function loadedFolders(state: FolderState | undefined): MailFolder[] | un
 }
 
 /** An account's folders from the shared store; `fresh` loads them again on mount (the sidebar's counts). */
-export function useAccountFolders(account: string, fresh = false): { state: FolderState; retry: () => void } {
+export function useAccountFolders(account: AccountId, fresh = false): { state: FolderState; retry: () => void } {
   const { folders, loadFolders } = useTriage()
   useEffect(() => {
     loadFolders(account, fresh)

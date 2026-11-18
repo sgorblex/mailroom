@@ -152,7 +152,7 @@ def selected(path: str = "INBOX", delimiter: str | None = ".", *listed: Folder) 
         uid_validity=1,
         exists=3,
         uid_next=None,
-        account="a",
+        account=1,
     )
     return Selected(context, delimiter)
 

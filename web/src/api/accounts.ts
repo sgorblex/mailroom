@@ -20,12 +20,16 @@ const identitySchema = z.object({
 })
 export type Identity = z.infer<typeof identitySchema>
 
+/** An account's id: a number the server gives it, never shown to the user. */
+export type AccountId = number
+export const accountIdSchema = z.number().int().positive()
+
 /** An account as the API lists it: never its password, only whether one is stored. */
 export const accountSchema = z.object({
-  id: z.string(),
+  id: accountIdSchema,
   /** The account's own name, as stored: `null` when it has none. What an edit sends back. */
   name: z.string().nullable(),
-  /** What to call the account: its name, else its id. Read-only: never sent back. */
+  /** What to call the account: its name, else its login. Read-only: never sent back. */
   display_name: z.string(),
   colour: z.enum(ACCOUNT_COLOURS).nullable(),
   login: z.string(),
@@ -65,25 +69,26 @@ export const loginTestSchema = z.object({
 export type LoginTest = z.infer<typeof loginTestSchema>
 
 const base = '/api/v1/accounts'
-const one = (id: string): string => `${base}/${encodeURIComponent(id)}`
+const one = (id: AccountId): string => `${base}/${String(id)}`
 
 export function listAccounts(signal?: AbortSignal): Promise<Account[]> {
   return apiGetJson(base, { init: { signal }, schema: z.array(accountSchema) })
 }
 
-export function addAccount(account: AccountFields & { id: string; password: string }): Promise<Account> {
+/** Adds an account, which the server gives its id. */
+export function addAccount(account: AccountFields & { password: string }): Promise<Account> {
   return apiPostJson(base, account, { schema: accountSchema })
 }
 
-export function changeAccount(id: string, fields: AccountFields): Promise<Account> {
+export function changeAccount(id: AccountId, fields: AccountFields): Promise<Account> {
   return apiPutJson(one(id), fields, { schema: accountSchema })
 }
 
-export function removeAccount(id: string): Promise<null> {
+export function removeAccount(id: AccountId): Promise<null> {
   return apiDelete(one(id))
 }
 
 /** Logs in to IMAP and out again; a refused login comes back as `ok: false`. */
-export function testAccount(id: string): Promise<LoginTest> {
+export function testAccount(id: AccountId): Promise<LoginTest> {
   return apiPostJson(`${one(id)}/test`, undefined, { schema: loginTestSchema })
 }

@@ -4,7 +4,7 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { FolderPlus } from 'lucide-react'
 
 import { AccountName } from '@/accounts/account-name.tsx'
-import type { Account } from '@/api/accounts.ts'
+import type { AccountId, Account } from '@/api/accounts.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { cn } from '@/lib/utils.ts'
 
@@ -29,7 +29,7 @@ export function MailSidebar({
   className,
 }: {
   accounts: Account[]
-  accountId: string
+  accountId: AccountId
   folder: string | null
   subfolders: boolean
   className?: string
@@ -42,7 +42,7 @@ export function MailSidebar({
     >
       {accounts.map((account) =>
         account.id === accountId ? (
-          <section key={account.id} aria-labelledby={`mail-account-${account.id}`} className="flex flex-col gap-1">
+          <section key={account.id} aria-labelledby={`mail-account-${String(account.id)}`} className="flex flex-col gap-1">
             <FolderList account={account} folder={folder} subfolders={subfolders} />
           </section>
         ) : (
@@ -132,7 +132,7 @@ function FolderList({
 
   const header = (
     <div className="flex items-center gap-1">
-      <h2 id={`mail-account-${accountId}`} className="flex min-w-0 flex-1 px-2 text-sm font-medium">
+      <h2 id={`mail-account-${String(accountId)}`} className="flex min-w-0 flex-1 px-2 text-sm font-medium">
         <AccountName account={account} />
       </h2>
       {state.kind === 'loaded' && (

@@ -24,6 +24,7 @@ from mailroom.api.routes.mail._shared import (
 )
 from mailroom.errors import mail_refusal
 from mailroom.mail import service
+from mailroom_core.config import MAX_SAFE_INTEGER
 from mailroom_core.mail import MAX_UPLOADS, MESSAGES, Mailbox, OutgoingAttachment, format_ref
 
 if TYPE_CHECKING:
@@ -58,7 +59,7 @@ class KeptPart(MessagePart):
 
 
 class PrefillAnswer(BaseModel):
-    account: str
+    account: int
     from_: str = Field(serialization_alias="from")
     to: list[MailAddress]
     cc: list[MailAddress]
@@ -109,7 +110,7 @@ class DraftRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    account: Annotated[str, Field(min_length=1, max_length=64)]
+    account: Annotated[int, Field(ge=1, le=MAX_SAFE_INTEGER)]
     compose_id: Annotated[str, Field(pattern=_COMPOSE_ID)]
     ref: BatchRef | None = None
     answers: BatchRef | None = None
@@ -173,7 +174,7 @@ class DraftSend(BaseModel):
 
 class DraftAnswer(BaseModel):
     ref: str
-    account: str
+    account: int
     compose_id: str | None
     from_: str | None = Field(serialization_alias="from")
     to: list[MailAddress]
@@ -330,7 +331,7 @@ async def save_draft(request: Request, ctx: Context, user: CurrentUser) -> Saved
 # Ahead of /drafts/{ref}, which would take "find" as a ref.
 @mail_router.get("/drafts/find")
 def find_draft(
-    account: Annotated[str, Query(min_length=1, max_length=64)],
+    account: Annotated[int, Query(ge=1, le=MAX_SAFE_INTEGER)],
     compose_id: Annotated[str, Query(pattern=_COMPOSE_ID)],
     ctx: Context,
     user: CurrentUser,

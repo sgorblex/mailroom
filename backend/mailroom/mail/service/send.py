@@ -108,7 +108,7 @@ def _smtp(ctx: AppContext, user_id: int) -> gate.SmtpSender:
     store = ctx.store(user_id)
     subkey = ctx.subkey
 
-    def account(account_id: str) -> AccountConfig | None:
+    def account(account_id: int) -> AccountConfig | None:
         try:
             return load_accounts(store).account(account_id)
         except AccountNotFound:
@@ -126,7 +126,7 @@ def _after_delivery[T](
     user_id: int,
     accounts: _Accounts,
     event: str,
-    account_id: str,
+    account_id: int,
     work: Callable[[MailConnections], T],
     fallback: T,
 ) -> T:
@@ -245,7 +245,7 @@ def _admit(
     *,
     by: Authoriser,
     confirm_resend: bool,
-    on: Sequence[str] | None = None,
+    on: Sequence[int] | None = None,
 ) -> SendView | gate.Drafted:
     """Takes a send to the gate under the pool's deadline, and on to the runner: a place first,
     so that ``busy`` comes before anything is claimed. The running send is started inside the
@@ -393,7 +393,7 @@ class Dispatched:
     """What an agent's direct send came to: ``send`` (follow it with ``read_send``) when the gate
     let it go, else it was saved as a draft (``draft``, None when it could not be read back)."""
 
-    account: str
+    account: int
     send_mode: str
     message: MessageInput
     """As it goes out or was drafted, from and every recipient included."""
@@ -409,7 +409,7 @@ def _dispatch(
     origin: Origin,
     build: Callable[[MailConnections], _Outgoing],
     *,
-    on: Sequence[str],
+    on: Sequence[int],
 ) -> Dispatched:
     """An agent's message to the gate. It has no key and a fresh Message-ID, so a repeat is a
     second message: a retry is the caller's to avoid. Where the send mode only drafts it, the
@@ -438,9 +438,9 @@ def _written(
     ctx: AppContext,
     user_id: int,
     accounts: _Accounts,
-    account_id: str,
+    account_id: int,
     refs: Sequence[str],
-) -> tuple[AccountConfig, list[str]]:
+) -> tuple[AccountConfig, list[int]]:
     """The account that writes, once it may (not ``off``) and every ref is the user's."""
     if not accounts.has(account_id):
         raise unknown_account()
@@ -467,7 +467,7 @@ def _plain(
 def send_message(
     ctx: AppContext,
     user_id: int,
-    account_id: str,
+    account_id: int,
     *,
     sender: str | None = None,
     to: Sequence[Mailbox] = (),

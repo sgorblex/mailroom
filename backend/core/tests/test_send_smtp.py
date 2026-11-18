@@ -39,7 +39,7 @@ FAST = SmtpTimeouts(connect=2, command=0.3, data=0.3, goodbye=0.1, watchdog=30)
 def account_on(stub: SmtpStub, **smtp: object) -> AccountConfig:
     return AccountConfig.model_validate(
         {
-            "id": "acc",
+            "id": 1,
             "login": "me",
             "send_mode": "direct",
             "auth": {"type": "password"},
@@ -71,7 +71,7 @@ def send(
     raw: bytes = RAW,
     **options: object,
 ) -> Delivery:
-    return sender_for(stub, **options).send("acc", Envelope(ME, tuple(recipients)), raw)  # type: ignore[arg-type]
+    return sender_for(stub, **options).send(1, Envelope(ME, tuple(recipients)), raw)  # type: ignore[arg-type]
 
 
 def failure(stub: SmtpStub, *args: object, **options: object) -> MailError:
@@ -142,7 +142,7 @@ def test_a_certificate_for_another_name_gets_no_login(monkeypatch: pytest.Monkey
             lambda _id: account, lambda _id: PASSWORD, ssl_context=SmtpStub.trusted_context()
         )
         with pytest.raises(MailError) as raised:
-            sender.send("acc", Envelope(ME, ("a@example.org",)), RAW)
+            sender.send(1, Envelope(ME, ("a@example.org",)), RAW)
     assert raised.value.code == "unreachable"
     assert stub.commands == []
 
@@ -254,7 +254,7 @@ def test_nothing_listening_is_unreachable() -> None:
         timeouts=FAST,
     )
     with pytest.raises(MailError) as raised:
-        sender.send("acc", Envelope(ME, ("a@example.org",)), RAW)
+        sender.send(1, Envelope(ME, ("a@example.org",)), RAW)
     assert raised.value.code == "unreachable"
 
 
@@ -327,7 +327,7 @@ def test_a_host_can_abort_a_send_from_another_thread() -> None:
         threading.Timer(0.2, transfer.abort).start()
         started = time.monotonic()
         with pytest.raises(MailError) as raised:
-            sender_for(stub, timeouts).send("acc", Envelope(ME, ("a@example.org",)), RAW, transfer)
+            sender_for(stub, timeouts).send(1, Envelope(ME, ("a@example.org",)), RAW, transfer)
     assert raised.value.code == "delivery_unknown"
     assert time.monotonic() - started < 5
 
@@ -347,7 +347,7 @@ def test_an_abort_during_the_tls_handshake_ends_it() -> None:
         threading.Timer(0.2, transfer.abort).start()
         started = time.monotonic()
         with pytest.raises(MailError) as raised:
-            sender.send("acc", Envelope(ME, ("a@example.org",)), RAW, transfer)
+            sender.send(1, Envelope(ME, ("a@example.org",)), RAW, transfer)
     assert raised.value.code == "timeout"
     assert time.monotonic() - started < 5
 
@@ -393,7 +393,7 @@ def test_an_unknown_account_or_password() -> None:
     ],
 )
 def test_maps_errors_before_data(error: Exception, code: str) -> None:
-    assert smtp_error(error, "acc").code == code
+    assert smtp_error(error, 1).code == code
 
 
 @pytest.mark.parametrize(
@@ -401,7 +401,7 @@ def test_maps_errors_before_data(error: Exception, code: str) -> None:
     [TimeoutError(), ConnectionResetError(), ssl.SSLEOFError(), ValueError("a bug")],
 )
 def test_past_data_every_error_is_unknown(error: Exception) -> None:
-    assert smtp_error(error, "acc", entered_data=True).code == "delivery_unknown"
+    assert smtp_error(error, 1, entered_data=True).code == "delivery_unknown"
 
 
 def test_verify_logs_in_and_sends_nothing() -> None:

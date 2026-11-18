@@ -1,4 +1,4 @@
-import type { Account } from '@/api/accounts.ts'
+import type { AccountId, Account } from '@/api/accounts.ts'
 import { ApiRequestError } from '@/api/http.ts'
 import { deleteDraft, findDraft, prefillDraft, readDraft, saveDraft, type Draft, type DraftSend } from '@/api/mail.ts'
 
@@ -8,7 +8,7 @@ import { SaveQueue, type SaveState } from './save-queue.ts'
 
 /** What an editor opens on. */
 export interface ComposeStart {
-  account: string
+  account: AccountId
   composeId: string
   ref: string | null
   answers: string | null
@@ -50,7 +50,7 @@ function draftStart(draft: Draft, composeId: string, account: Account | undefine
 /** Reads what `session` starts from; `null` for a recovered draft that was never saved. */
 export async function loadStart(
   session: ComposeSession,
-  accountOf: (id: string) => Account | undefined,
+  accountOf: (id: AccountId) => Account | undefined,
   signal: AbortSignal,
 ): Promise<ComposeStart | null> {
   const { source, composeId } = session

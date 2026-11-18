@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { Archive, ArrowRightLeft, FolderInput, Mail, MailOpen, Star, StarOff, Trash2, X } from 'lucide-react'
 
+import type { AccountId } from '@/api/accounts.ts'
 import { useAccountName } from '@/accounts/accounts-context.ts'
 import type { MailFolder, MoveRemoval } from '@/api/mail.ts'
 import { Button } from '@/components/ui/button.tsx'
@@ -36,7 +37,7 @@ export function Toolbar({ className }: { className?: string }): ReactElement | n
   const accountPickerWasOpen = useRef(false)
   const showAccountPicker = triage.accountPicker && actions.otherAccounts !== null
   // A move to another account that deletes the originals for good, waiting for the user's yes.
-  const [forGood, setForGood] = useState<{ account: string; folder: MailFolder } | null>(null)
+  const [forGood, setForGood] = useState<{ account: AccountId; folder: MailFolder } | null>(null)
 
   // Closing a picker puts focus back on its button, unless focus went somewhere else.
   useEffect(() => {
@@ -145,7 +146,7 @@ export function Toolbar({ className }: { className?: string }): ReactElement | n
       {showAccountPicker && actions.otherAccounts !== null && (
         <AccountMovePicker
           accounts={actions.otherAccounts}
-          onChoose={(account: string, folder: MailFolder, removal: MoveRemoval) => {
+          onChoose={(account: AccountId, folder: MailFolder, removal: MoveRemoval) => {
             triage.setAccountPicker(false)
             if (removal === 'delete') {
               setForGood({ account, folder })
@@ -255,7 +256,7 @@ function MovePicker({
   )
 }
 
-function doneMessage(t: TFunction, accountName: (id: string) => string, action: Action, count: number): string {
+function doneMessage(t: TFunction, accountName: (id: AccountId) => string, action: Action, count: number): string {
   switch (action.kind) {
     case 'archive':
       return t('triage.archived', { count })
@@ -287,7 +288,7 @@ function OutcomeText({ outcome }: { outcome: Outcome }): ReactElement {
   const { folders } = useTriage()
   const accountName = useAccountName()
   // A failed group's folder as the sidebar names it, once its account's folders are known.
-  const nameOf = (account: string, path: string): string => {
+  const nameOf = (account: AccountId, path: string): string => {
     const folder = loadedFolders(folders[account])?.find((each) => isSameFolder(each.path, path))
     return folder === undefined ? path : folderName(t, folder)
   }

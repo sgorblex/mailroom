@@ -294,7 +294,7 @@ def special_folder_in(folders: Iterable[Folder], role: FolderRole) -> Folder | N
 
 
 def move_target(
-    source: str | None, target: str, folders: Sequence[Folder], *, account: str
+    source: str | None, target: str, folders: Sequence[Folder], *, account: int
 ) -> Folder:
     """The folder of `folders` that a move from `source` to `target` lands in (INBOX in any
     case), or a refusal: `mailbox_missing` when it is not a selectable folder of `account`,
@@ -307,7 +307,8 @@ def move_target(
     if found is None or not found.selectable:
         raise MailError(
             "mailbox_missing",
-            f'"{clean_header(target, 200)}" is not a folder of {account}; list its folders.',
+            f'"{clean_header(target, 200)}" is not a folder of account {account}; '
+            "list its folders.",
         )
     if found.path == source:
         raise MailError("invalid_argument", "They are already in that folder.")

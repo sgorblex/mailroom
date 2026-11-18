@@ -1,7 +1,10 @@
-"""Message refs (`src/mail/ref.ts`), byte for byte: base64url (unpadded) of the JSON array
-`[1, account, folder, uidValidity, uid]`, UIDVALIDITY as a decimal string. A JSON array needs no
-escaping for folder names, which may contain any character. Not signed: a host checks that the
-account is one the caller may use, as for any other account id it is given."""
+"""Message refs: base64url (unpadded) of the JSON array `[2, account, folder, uidValidity, uid]`,
+the account's id as a number and UIDVALIDITY as a decimal string. A JSON array needs no escaping
+for folder names, which may contain any character. Not signed: a host checks that the account is
+one the caller may use, as for any other account id it is given.
+
+Version 1 (`src/mail/ref.ts`) named the account by the slug it had before ids became numbers: such
+a ref is `stale_reference`."""
 
 import base64
 import binascii
@@ -12,7 +15,8 @@ from typing import Final
 
 from mailroom_core.mail.errors import MailError
 
-_VERSION: Final = 1
+_VERSION: Final = 2
+_SLUG_VERSION: Final = 1
 _UINT32: Final = 0xFFFFFFFF
 _DIGITS: Final = re.compile(r"[0-9]+", re.ASCII)
 _SURROGATE: Final = re.compile("[\ud800-\udfff]")
@@ -22,7 +26,7 @@ _SURROGATE: Final = re.compile("[\ud800-\udfff]")
 class MessageRef:
     """Where a message lives, exactly: a UID means nothing without its folder's UIDVALIDITY."""
 
-    account: str
+    account: int
     folder: str
     uid_validity: int
     uid: int
@@ -55,6 +59,12 @@ def _no_constant(name: str) -> object:
     raise ValueError(name)
 
 
+def account_number(value: object) -> int | None:
+    """A parsed JSON value as an account id: a positive integer, else None."""
+    number = js_integer(value)
+    return number if number is not None and number > 0 else None
+
+
 def js_integer(value: object) -> int | None:
     """`Number.isInteger(value)` for a parsed JSON value: the integer, else None."""
     if isinstance(value, bool):
@@ -74,17 +84,21 @@ def format_ref(ref: MessageRef) -> str:
 
 
 def parse_ref(text: str) -> MessageRef:
-    """`invalid_argument` unless `text` is a ref `format_ref` (or the TypeScript) made."""
+    """`invalid_argument` unless `text` is a ref `format_ref` made; `stale_reference` if an
+    earlier version made it."""
     try:
         value = b64url_json(text)
     except ValueError:
         value = None
     if isinstance(value, list) and len(value) == 5:
         version, account, folder, uid_validity, uid = value
+        if js_integer(version) == _SLUG_VERSION:
+            raise MailError("stale_reference")
         number = js_integer(uid)
+        account_id = account_number(account)
         if (
             js_integer(version) == _VERSION
-            and isinstance(account, str)
+            and account_id is not None
             and isinstance(folder, str)
             and isinstance(uid_validity, str)
             and _DIGITS.fullmatch(uid_validity)
@@ -93,7 +107,7 @@ def parse_ref(text: str) -> MessageRef:
             and number is not None
             and 0 < number <= _UINT32
         ):
-            return MessageRef(account, folder, int(uid_validity), number)
+            return MessageRef(account_id, folder, int(uid_validity), number)
     raise MailError("invalid_argument", "Not a message reference: use a ref returned by a listing.")
 
 

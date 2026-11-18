@@ -64,6 +64,8 @@ PDF = b"%PDF-1.4\n1 0 obj << >> endobj\ntrailer << >>\n%%EOF\n"
 
 pytestmark = pytest.mark.integration
 
+pytestmark = pytest.mark.usefixtures("numbered_accounts")
+
 
 def address(address: str, name: str = "") -> dict[str, str]:
     return {"name": name, "address": address}
@@ -98,13 +100,13 @@ class Composer:
         uid = seed(self.server, self.login, folder, message, flags)
         with raw_client(self.server, self.login) as raw:
             validity = raw.select_folder(folder, readonly=True)[b"UIDVALIDITY"]
-        return format_ref(MessageRef("work", folder, validity, uid))
+        return format_ref(MessageRef(1, folder, validity, uid))
 
     def contents(self, folder: str) -> list[RawMessage]:
         return folder_contents(self.server, self.login, folder)
 
     def post_draft(self, *, files: tuple[tuple[str, bytes, str], ...] = (), **fields: Any) -> Any:
-        draft = {"account": "work", "compose_id": str(uuid.uuid4()), **fields}
+        draft = {"account": 1, "compose_id": str(uuid.uuid4()), **fields}
         parts: list[Any] = [("draft", (None, json.dumps(draft)))]
         parts += [("files[]", file) for file in files]
         return self.client.post(f"{MAIL}/drafts", files=parts)
@@ -160,16 +162,16 @@ def imap_endpoint(server: ImapTestServer) -> dict[str, Any]:
     return {"host": server.host, "port": server.port, "tls": "implicit"}
 
 
-def add_account(composer: Composer, account_id: str = "work", **changes: Any) -> None:
+def add_account(composer: Composer, label: str = "work", **changes: Any) -> None:
     created = composer.client.post(
-        "/api/v1/accounts", json=account_fields(composer, account_id) | changes
+        "/api/v1/accounts", json=account_fields(composer, label) | changes
     )
     assert created.status_code == 201, created.text
 
 
-def account_fields(composer: Composer, account_id: str = "work") -> dict[str, Any]:
+def account_fields(composer: Composer, label: str = "work") -> dict[str, Any]:
     return new_account(
-        account_id,
+        label,
         login=composer.login,
         password=composer.server.password,
         send_mode="direct",
@@ -209,9 +211,8 @@ def stubbed(composer: Composer, application: FastAPI, monkeypatch: pytest.Monkey
 
 def point_at(composer: Composer, stub: SmtpStub) -> None:
     fields = account_fields(composer)
-    fields.pop("id")
     fields.pop("password")
-    changed = composer.client.put("/api/v1/accounts/work", json=fields | {"smtp": stub.smtp()})
+    changed = composer.client.put("/api/v1/accounts/1", json=fields | {"smtp": stub.smtp()})
     assert changed.status_code == 200, changed.text
 
 
@@ -220,7 +221,7 @@ def test_signed_out_browsers_are_refused_uncached(api_client: TestClient) -> Non
         api_client.post(f"{MAIL}/drafts/prefill", json={"ref": "x", "mode": "reply"}),
         api_client.post(f"{MAIL}/drafts", files=[("draft", (None, "{}"))]),
         api_client.get(f"{MAIL}/drafts/x"),
-        api_client.get(f"{MAIL}/drafts/find", params={"account": "a", "compose_id": "b"}),
+        api_client.get(f"{MAIL}/drafts/find", params={"account": 1, "compose_id": "b"}),
         api_client.delete(f"{MAIL}/drafts/x"),
         api_client.post(f"{MAIL}/drafts/x/send", json={}),
         api_client.get(f"{MAIL}/sends/1"),
@@ -260,7 +261,7 @@ def test_a_reply_starts_from_its_original_and_writes_nothing(composer: Composer)
     answer = composer.client.post(f"{MAIL}/drafts/prefill", json={"ref": ref, "mode": "reply"})
     assert answer.status_code == 200, answer.text
     started = answer.json()
-    assert started["account"] == "work"
+    assert started["account"] == 1
     assert started["from"] == ALIAS
     assert started["to"] == [address("ada@example.org", "Ada")]
     assert started["cc"] == started["bcc"] == started["attachments"] == []
@@ -374,13 +375,13 @@ def test_saving_replaces_the_previous_version(composer: Composer) -> None:
     assert draft["answers"] is None
 
     found = composer.client.get(
-        f"{MAIL}/drafts/find", params={"account": "work", "compose_id": compose_id}
+        f"{MAIL}/drafts/find", params={"account": 1, "compose_id": compose_id}
     )
     assert found.status_code == 200
     assert found.json() == {"ref": second["ref"], "parts": second["parts"]}
     assert detail(
         composer.client.get(
-            f"{MAIL}/drafts/find", params={"account": "work", "compose_id": str(uuid.uuid4())}
+            f"{MAIL}/drafts/find", params={"account": 1, "compose_id": str(uuid.uuid4())}
         )
     ) == (404, "not_found")
 
@@ -697,7 +698,7 @@ def test_caps_are_refused_by_code(composer: Composer) -> None:
         ({"to": [address("not an address")]}, (422, "recipient_refused")),
         ({"bcc": [address("two@example.org,three@example.org")]}, (422, "recipient_refused")),
         ({"from": "someone@example.org"}, (400, "invalid_argument")),
-        ({"account": "elsewhere"}, (404, "not_found")),
+        ({"account": 99}, (404, "not_found")),
     ]
     for fields, refusal in cases:
         assert detail(composer.post_draft(**fields)) == refusal, fields
@@ -719,7 +720,7 @@ def test_malformed_saves_are_refused(composer: Composer) -> None:
     assert (
         composer.client.post(f"{MAIL}/drafts", files=[("draft", (None, "nope"))]).status_code == 422
     )
-    assert composer.client.get(f"{MAIL}/drafts/find", params={"account": "work"}).status_code == 422
+    assert composer.client.get(f"{MAIL}/drafts/find", params={"account": 1}).status_code == 422
     assert composer.client.post(f"{MAIL}/drafts/x/send", json={"x": 1}).status_code == 422
     assert detail(composer.post_draft(ref="garbage")) == (400, "invalid_argument")
 
@@ -927,7 +928,7 @@ def test_the_same_compose_id_on_two_accounts_is_two_sends(
     to_work, to_home = stranger(), stranger()
     work = composer.save(compose_id=compose_id, to=[address(to_work)], subject="W", text="x")
     home = composer.save(
-        account="home", compose_id=compose_id, to=[address(to_home)], subject="H", text="x"
+        account=2, compose_id=compose_id, to=[address(to_home)], subject="H", text="x"
     )
 
     sent = composer.sent(work["ref"])
@@ -950,10 +951,9 @@ def test_drafts_mode_limits_agents_not_the_user(
     composer: Composer, smtp_server: SmtpTestServer
 ) -> None:
     fields = account_fields(composer)
-    fields.pop("id")
     fields.pop("password")
     changed = composer.client.put(
-        "/api/v1/accounts/work",
+        "/api/v1/accounts/1",
         json=fields | {"send_mode": "drafts", "smtp": smtp_endpoint(smtp_server)},
     )
     assert changed.status_code == 200, changed.text
@@ -969,10 +969,9 @@ def test_off_refuses_everything_that_writes(
     ref = composer.save(to=[address(stranger())], subject="Mine", text="Hello")["ref"]
     original = composer.seed(mime("Notes", text="Hi"))
     fields = account_fields(composer)
-    fields.pop("id")
     fields.pop("password")
     changed = composer.client.put(
-        "/api/v1/accounts/work",
+        "/api/v1/accounts/1",
         json=fields | {"send_mode": "off", "smtp": smtp_endpoint(smtp_server)},
     )
     assert changed.status_code == 200, changed.text
@@ -1195,7 +1194,7 @@ def test_a_stale_sending_reads_unknown_and_resends_only_when_confirmed(
     ]
     long_ago = datetime.now(UTC) - SEND_CEILING - timedelta(seconds=1)
     store = user_store(migrated_engine, user.id)
-    send_id = str(store.claim_send(f"work/{compose_id}", "work", 20, now=long_ago).send.id)
+    send_id = str(store.claim_send(f"1/{compose_id}", 1, 20, now=long_ago).send.id)
 
     assert composer.follow(send_id) == {
         "send_id": send_id,
@@ -1354,13 +1353,13 @@ def test_another_users_refs_parts_and_sends_are_not_found(
     assert (
         detail(
             client.get(
-                f"{MAIL}/drafts/find", params={"account": "work", "compose_id": str(uuid.uuid4())}
+                f"{MAIL}/drafts/find", params={"account": 1, "compose_id": str(uuid.uuid4())}
             )
         )
         == gone
     )
-    own = {"account": "home"}
-    assert detail(theirs.post_draft(account="work")) == gone
+    own = {"account": 2}
+    assert detail(theirs.post_draft(account=1)) == gone
     assert detail(theirs.post_draft(**own, ref=ref)) == gone
     assert detail(theirs.post_draft(**own, answers=attached)) == gone
     assert detail(theirs.post_draft(**own, keep=[{"ref": attached, "part": "2"}])) == gone
@@ -1377,7 +1376,7 @@ def test_a_ref_of_another_account_is_refused(composer: Composer) -> None:
         login=f"{composer.login}-home",
         identities=[{"address": "home@example.org"}],
     )
-    elsewhere = format_ref(MessageRef("home", "Drafts", message.uid_validity, message.uid))
+    elsewhere = format_ref(MessageRef(2, "Drafts", message.uid_validity, message.uid))
     assert detail(composer.post_draft(ref=elsewhere)) == (400, "invalid_argument")
     assert detail(composer.post_draft(answers=elsewhere)) == (400, "invalid_argument")
 

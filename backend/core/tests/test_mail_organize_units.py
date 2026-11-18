@@ -91,7 +91,7 @@ FOLDERS = [
 
 
 class StubConnections:
-    """Connections serving `acc`, every folder with UIDVALIDITY 1 and the same stub client."""
+    """Connections serving account 1, every folder with UIDVALIDITY 1 and the same stub client."""
 
     def __init__(self, client: StubClient, folders: list[Folder] = FOLDERS) -> None:
         self.client = client
@@ -99,7 +99,7 @@ class StubConnections:
         self.selected: list[tuple[str, bool]] = []
 
     def serves(self, account_id: str) -> bool:
-        return account_id == "acc"
+        return account_id == 1
 
     def folders(self, account_id: str) -> list[Folder]:
         return self._folders
@@ -131,7 +131,7 @@ def stubbed(
     return cast("MailConnections", StubConnections(client, folders)), client
 
 
-def ref(uid: int = 5, folder: str = "INBOX", account: str = "acc", validity: int = 1) -> str:
+def ref(uid: int = 5, folder: str = "INBOX", account: int = 1, validity: int = 1) -> str:
     return format_ref(MessageRef(account, folder, validity, uid))
 
 
@@ -151,7 +151,7 @@ class TestMove:
         result = move_messages(connections, [ref()], "Archive")
         assert client.calls == [("move", [5], "Archive")]
         assert result.groups == (
-            GroupResult("acc", "INBOX", count=1, new_refs=None, destination="Archive"),
+            GroupResult(1, "INBOX", count=1, new_refs=None, destination="Archive"),
         )
         assert cast("StubConnections", connections).selected == [("INBOX", False)]
 
@@ -166,8 +166,8 @@ class TestMove:
         [group] = result.groups
         assert group.new_refs is not None
         assert [parse_ref(r) for r in group.new_refs] == [
-            MessageRef("acc", "Archive", 9, 11),
-            MessageRef("acc", "Archive", 9, 12),
+            MessageRef(1, "Archive", 9, 11),
+            MessageRef(1, "Archive", 9, 12),
         ]
         assert [(i.uid, i.sender, i.destination, i.result) for i in result.items] == [
             (5, "ana@example.org", "Archive", "ok"),
@@ -198,8 +198,8 @@ class TestMove:
         assert group.error.code == "unreachable"
         assert group.new_refs is not None
         assert [parse_ref(r) for r in group.new_refs] == [
-            MessageRef("acc", "Archive", 9, 11),
-            MessageRef("acc", "Archive", 9, 12),
+            MessageRef(1, "Archive", 9, 11),
+            MessageRef(1, "Archive", 9, 12),
         ]
         # The error itself names the copies, for a host that raises a lone folder's error.
         assert group.error.detail == (
@@ -214,15 +214,19 @@ class TestMove:
         assert result.items[0].record["copied"] is True
         assert result.outcome == "failed"
         text = organize_text(result)
-        assert text.startswith("acc/INBOX: The mail server for this account could not be reached.")
-        assert text == f"acc/INBOX: {group.error.message}"
+        assert text.startswith("1/INBOX: The mail server for this account could not be reached.")
+        assert text == f"1/INBOX: {group.error.message}"
         assert text.count("New refs:") == 1
 
     def test_refusals(self) -> None:
         connections, client = stubbed({"MOVE"})
         cases = [
-            ("Nowhere", "mailbox_missing", '"Nowhere" is not a folder of acc; list its folders.'),
-            ("Parent", "mailbox_missing", "is not a folder of acc"),
+            (
+                "Nowhere",
+                "mailbox_missing",
+                '"Nowhere" is not a folder of account 1; list its folders.',
+            ),
+            ("Parent", "mailbox_missing", "is not a folder of account 1"),
             ("inbox", "invalid_argument", "They are already in that folder."),
             ("Drafts", "invalid_argument", "cannot be moved into Drafts or Sent"),
             ("Sent", "invalid_argument", "cannot be moved into Drafts or Sent"),
@@ -279,7 +283,7 @@ class TestMove:
 class TestWholeCallRefusals:
     @pytest.mark.parametrize(
         "refs",
-        [[], [ref(uid) for uid in range(1, 52)], [ref(), "garbage"], [ref(), ref(account="other")]],
+        [[], [ref(uid) for uid in range(1, 52)], [ref(), "garbage"], [ref(), ref(account=2)]],
     )
     def test_nothing_is_written(self, refs: list[str]) -> None:
         connections, client = stubbed({"MOVE"})
@@ -297,8 +301,8 @@ class TestWholeCallRefusals:
 
     def test_unknown_account(self) -> None:
         connections, _client = stubbed({"MOVE"})
-        with pytest.raises(MailError, match='Unknown account "other"'):
-            move_messages(connections, [ref(account="other")], "INBOX")
+        with pytest.raises(MailError, match="Unknown account 2"):
+            move_messages(connections, [ref(account=2)], "INBOX")
 
     def test_flags_need_a_change(self) -> None:
         connections, _client = stubbed({"MOVE"})
@@ -310,12 +314,12 @@ def test_trash_and_archive_refuse_what_they_cannot_do() -> None:
     connections, _client = stubbed({"MOVE"}, folders=[Folder("INBOX", "/", "inbox", ())])
     [no_trash] = trash_messages(connections, [ref()]).groups
     assert no_trash.error is not None
-    assert no_trash.error.message.endswith("acc has no Trash folder.")
+    assert no_trash.error.message.endswith("Account 1 has no Trash folder.")
     [no_archive] = archive_messages(connections, [ref()]).groups
     assert no_archive.error is not None
     assert (no_archive.error.code, no_archive.error.detail) == (
         "unsupported",
-        "acc has no Archive folder.",
+        "Account 1 has no Archive folder.",
     )
 
     connections, client = stubbed({"MOVE"})
@@ -375,29 +379,27 @@ def test_organize_text() -> None:
     new = ref(3, "Archive")
     result = OrganizeResult(
         (
-            GroupResult("acc", "INBOX", count=1, new_refs=(new,), destination="Archive"),
-            GroupResult("acc", "Junk", count=2, new_refs=None, junk="ham", destination="INBOX"),
-            GroupResult("acc", "Projects", error=MailError("not_found", "1 of these …")),
+            GroupResult(1, "INBOX", count=1, new_refs=(new,), destination="Archive"),
+            GroupResult(1, "Junk", count=2, new_refs=None, junk="ham", destination="INBOX"),
+            GroupResult(1, "Projects", error=MailError("not_found", "1 of these …")),
             GroupResult(
-                "acc",
+                1,
                 "Sent",
                 count=2,
                 new_refs=(),
                 flags=(FlagState("r1", True, True), FlagState("r2", None, None)),
             ),
-            GroupResult(
-                "acc", "Lists", count=1, new_refs=(), flags=(FlagState("r3", False, False),)
-            ),
+            GroupResult(1, "Lists", count=1, new_refs=(), flags=(FlagState("r3", False, False),)),
         ),
         (),
     )
     assert organize_text(result).split("\n") == [
-        f"acc/INBOX: moved 1 to Archive. New refs: {new}",
+        f"1/INBOX: moved 1 to Archive. New refs: {new}",
         (
-            "acc/Junk: moved 2 to INBOX. Search there for their new refs. "
+            "1/Junk: moved 2 to INBOX. Search there for their new refs. "
             "The spam filter learns them as not spam."
         ),
-        "acc/Projects: No such message or part. 1 of these …",
-        "acc/Sent: updated 2: r1 read, flagged; r2 (flags not read back)",
-        "acc/Lists: updated 1: r3 unread",
+        "1/Projects: No such message or part. 1 of these …",
+        "1/Sent: updated 2: r1 read, flagged; r2 (flags not read back)",
+        "1/Lists: updated 1: r3 unread",
     ]

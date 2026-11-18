@@ -93,7 +93,7 @@ class SearchQuery:
         return out or ["ALL"]
 
 
-def searchable_folders(connections: MailConnections, account: str) -> list[str]:
+def searchable_folders(connections: MailConnections, account: int) -> list[str]:
     """The folders a search over all folders reads: not Junk or Trash, and on Gmail only All
     Mail (every label at once)."""
     folders = connections.folders(account)
@@ -110,7 +110,7 @@ def check_subfolders(folder: str, *, subfolders: bool) -> None:
 
 
 def read_folders(
-    connections: MailConnections, account: str, folder: str, *, subfolders: bool
+    connections: MailConnections, account: int, folder: str, *, subfolders: bool
 ) -> list[str]:
     """The folders a list or search of `folder` reads: itself, or with `subfolders` the set
     `with_subfolders` gives (`mailbox_missing`, `invalid_argument` past its cap)."""
@@ -122,7 +122,7 @@ def read_folders(
 
 def list_messages(
     connections: MailConnections,
-    account: str,
+    account: int,
     folder: str = "INBOX",
     *,
     limit: int = 20,
@@ -147,7 +147,7 @@ def list_messages(
 
 def search_messages(
     connections: MailConnections,
-    accounts: Sequence[str],
+    accounts: Sequence[int],
     folder: str,
     query: SearchQuery,
     *,
@@ -163,7 +163,7 @@ def search_messages(
     check_subfolders(folder, subfolders=subfolders)
     sources: list[Source] = []
     failures: list[PageFailure] = []
-    criteria: dict[str, Criteria] = {}
+    criteria: dict[int, Criteria] = {}
     for account in accounts:
         try:
             gmail = (
@@ -172,7 +172,7 @@ def search_messages(
             if query.gmail_query is not None and not gmail:
                 raise MailError(
                     "unsupported",
-                    f'gmail_query works only on Gmail accounts; "{account}" is not one.',
+                    f"gmail_query works only on Gmail accounts; account {account} is not one.",
                 )
             folders = (
                 searchable_folders(connections, account)

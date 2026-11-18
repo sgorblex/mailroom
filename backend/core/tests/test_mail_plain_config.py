@@ -16,10 +16,10 @@ from mailroom_core.testing import (
 )
 
 
-def _account_toml(account_id: str, login: str, host: str, port: int) -> str:
+def _account_toml(account_id: int | str, login: str, host: str, port: int) -> str:
     return f"""
 [[account]]
-id         = "{account_id}"
+id         = {account_id}
 login      = "{login}"
 send_mode  = "drafts"
 auth       = {{ type = "password" }}
@@ -31,10 +31,10 @@ identities = [{{ address = "{login}@example.test" }}]
 
 def test_invalid_settings_raise_a_config_error_naming_each_issue() -> None:
     settings = tomllib.loads(
-        _account_toml("Personal", "ada", "127.0.0.1", 9).replace('send_mode  = "drafts"\n', "")
+        _account_toml(0, "ada", "127.0.0.1", 9).replace('send_mode  = "drafts"\n', "")
     )
     with pytest.raises(ConfigError) as raised:
-        connections_from(settings, {"Personal": "secret"})
+        connections_from(settings, {0: "secret"})
     message = str(raised.value)
     assert message.startswith("invalid settings:\n")
     assert "→ at account[0].id" in message
@@ -48,27 +48,36 @@ def test_the_app_config_file_is_not_plain_config() -> None:
 
 
 def test_takes_checked_settings_as_they_are() -> None:
-    checked = core_settings_or_issues(tomllib.loads(_account_toml("a", "ada", "127.0.0.1", 9)))
+    checked = core_settings_or_issues(tomllib.loads(_account_toml(1, "ada", "127.0.0.1", 9)))
     assert isinstance(checked, CoreSettings)
-    connections = connections_from(checked, {"a": "secret"})
-    assert connections.serves("a")
-    assert not connections.serves("b")
+    connections = connections_from(checked, {1: "secret"})
+    assert connections.serves(1)
+    assert not connections.serves(2)
 
 
-@pytest.mark.parametrize("passwords", [{}, {"a": ""}])
-def test_an_account_without_a_password_fails_when_it_opens(passwords: dict[str, str]) -> None:
+def test_refuses_an_account_id_that_is_not_a_positive_integer() -> None:
+    for account_id in ('"personal"', 0, -1, 1.5):
+        checked = core_settings_or_issues(
+            tomllib.loads(_account_toml(account_id, "ada", "127.0.0.1", 9))
+        )
+        assert not isinstance(checked, CoreSettings)
+        assert [issue.path for issue in checked] == [("account", 0, "id")]
+
+
+@pytest.mark.parametrize("passwords", [{}, {1: ""}])
+def test_an_account_without_a_password_fails_when_it_opens(passwords: dict[int, str]) -> None:
     connections = connections_from(
-        tomllib.loads(_account_toml("a", "ada", "127.0.0.1", 9)), passwords
+        tomllib.loads(_account_toml(1, "ada", "127.0.0.1", 9)), passwords
     )
-    with pytest.raises(RuntimeError, match='no password for account "a"'):
-        connections.with_mailbox("a", "INBOX", True, lambda ctx: None)
+    with pytest.raises(RuntimeError, match="no password for account 1"):
+        connections.with_mailbox(1, "INBOX", True, lambda ctx: None)
 
 
 def test_from_accounts_refuses_two_accounts_with_one_id() -> None:
     server = ImapTestServer(host="127.0.0.1", port=9, password="x")
-    with pytest.raises(ValueError, match='duplicate account id "a"'):
+    with pytest.raises(ValueError, match="duplicate account id 1"):
         MailConnections.from_accounts(
-            [test_account("a", "one", server), test_account("a", "two", server)], {}
+            [test_account(1, "one", server), test_account(1, "two", server)], {}
         )
 
 
@@ -79,12 +88,12 @@ def test_from_accounts_refuses_two_accounts_with_one_id() -> None:
 def test_connects_from_plain_toml(imap_server: ImapTestServer) -> None:
     user = imap_server.unique_user("plain")
     seed(imap_server, user, "INBOX", mime("hello"))
-    text = _account_toml("personal", user, imap_server.host, imap_server.port)
+    text = _account_toml(7, user, imap_server.host, imap_server.port)
     connections = connections_from(
-        tomllib.loads(text), {"personal": imap_server.password}, ssl_context=unverified_context()
+        tomllib.loads(text), {7: imap_server.password}, ssl_context=unverified_context()
     )
     try:
-        exists = connections.with_mailbox("personal", "INBOX", True, lambda ctx: ctx.exists)
+        exists = connections.with_mailbox(7, "INBOX", True, lambda ctx: ctx.exists)
     finally:
         connections.close_all()
     assert exists == 1

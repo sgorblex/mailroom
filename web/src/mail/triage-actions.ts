@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 
+import type { AccountId } from '@/api/accounts.ts'
 import type { MailFolder, MoveRemoval } from '@/api/mail.ts'
 
 import { isSameFolder, loadedFolders, roleFolder, useTriage, type Target } from './triage-context.ts'
@@ -18,8 +19,8 @@ export interface TriageActions {
   moveChoices: MailFolder[] | null
   move: (folder: MailFolder) => void
   /** The user's other accounts, none of which holds a target, to move to; `null` when there is none. */
-  otherAccounts: string[] | null
-  moveToAccount: (account: string, folder: MailFolder, removal: MoveRemoval) => void
+  otherAccounts: AccountId[] | null
+  moveToAccount: (account: AccountId, folder: MailFolder, removal: MoveRemoval) => void
 }
 
 /** Where a message may be moved to in an account: a selectable folder other than Drafts and Sent. */
@@ -34,12 +35,12 @@ export function useTriageActions(): TriageActions {
   const accountsKey = JSON.stringify(accounts)
 
   useEffect(() => {
-    for (const account of JSON.parse(accountsKey) as string[]) {
+    for (const account of JSON.parse(accountsKey) as AccountId[]) {
       loadFolders(account, false)
     }
   }, [accountsKey, loadFolders])
 
-  const foldersOf = (account: string): MailFolder[] | undefined => loadedFolders(triage.folders[account])
+  const foldersOf = (account: AccountId): MailFolder[] | undefined => loadedFolders(triage.folders[account])
   const outside = (role: 'archive' | 'trash'): Target[] =>
     targets.filter((target) => {
       const where = roleFolder(foldersOf(target.account_id), role)?.path

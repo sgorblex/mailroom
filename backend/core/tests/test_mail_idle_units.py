@@ -144,7 +144,7 @@ def _watch(
         return opened
 
     connections = cast("MailConnections", SimpleNamespace(_open_unpooled=open_unpooled))
-    watch = IdleWatch(connections, "acc", "INBOX", **callbacks)  # type: ignore[arg-type]
+    watch = IdleWatch(connections, 1, "INBOX", **callbacks)  # type: ignore[arg-type]
     watches.append(watch)
     return watch.start()
 
@@ -234,7 +234,7 @@ def test_a_reconnect_the_server_refuses_ends_the_watch(watches, caplog) -> None:
     assert watch.connected
     assert connects == [None]
     [ended] = [r for r in caplog.records if r.getMessage() == "idle_ended"]
-    assert (ended.account, ended.folder, ended.mapped) == ("acc", "INBOX", "auth_failed")  # type: ignore[attr-defined]
+    assert (ended.account, ended.folder, ended.mapped) == (1, "INBOX", "auth_failed")  # type: ignore[attr-defined]
 
 
 def test_a_transient_reconnect_failure_backs_off_and_goes_on(watches, monkeypatch) -> None:

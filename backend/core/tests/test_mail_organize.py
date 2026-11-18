@@ -41,7 +41,7 @@ pytestmark = pytest.mark.integration
 def harness(imap_server: ImapTestServer) -> Iterator[object]:
     made: list[MailConnections] = []
 
-    def make(*accounts: tuple[str, str]) -> MailConnections:
+    def make(*accounts: tuple[int, str]) -> MailConnections:
         connections = connections_for(
             imap_server, [test_account(i, user, imap_server) for i, user in accounts]
         )
@@ -53,7 +53,7 @@ def harness(imap_server: ImapTestServer) -> Iterator[object]:
         connections.close_all()
 
 
-def refs_in(mail: MailConnections, folder: str = "INBOX", account: str = "acc") -> list[str]:
+def refs_in(mail: MailConnections, folder: str = "INBOX", account: int = 1) -> list[str]:
     return [m.ref for m in list_messages(mail, account, folder, previews=False).messages]
 
 
@@ -67,13 +67,13 @@ def test_moves_messages_hands_back_new_refs_and_audits_without_the_subject(
     user = imap_server.unique_user("move")
     create_folders(imap_server, user, "Archive")
     seed(imap_server, user, "INBOX", mime("quarterly report", sender="Ana <ana@example.org>"))
-    mail = harness(("acc", user))
+    mail = harness((1, user))
     [ref] = refs_in(mail)
 
     moved = move_messages(mail, [ref], "Archive")
     assert moved.outcome == "ok"
     text = organize_text(moved)
-    assert text.startswith("acc/INBOX: moved 1 to Archive. New refs: ")
+    assert text.startswith("1/INBOX: moved 1 to Archive. New refs: ")
     [group] = moved.groups
     assert group.new_refs is not None
     [new_ref] = group.new_refs
@@ -85,7 +85,7 @@ def test_moves_messages_hands_back_new_refs_and_audits_without_the_subject(
 
     [item] = moved.items
     assert (item.account, item.folder, item.destination, item.sender, item.result) == (
-        "acc",
+        1,
         "INBOX",
         "Archive",
         "ana@example.org",
@@ -99,12 +99,12 @@ def test_moves_refs_from_several_folders_in_one_call(imap_server, harness) -> No
     create_folders(imap_server, user, "Projects", "Archive")
     seed(imap_server, user, "INBOX", mime("one"))
     seed(imap_server, user, "Projects", mime("two"))
-    mail = harness(("acc", user))
+    mail = harness((1, user))
     refs = refs_in(mail) + refs_in(mail, "Projects")
 
     text = organize_text(move_messages(mail, refs, "Archive"))
-    assert "acc/INBOX: moved 1 to Archive." in text
-    assert "acc/Projects: moved 1 to Archive." in text
+    assert "1/INBOX: moved 1 to Archive." in text
+    assert "1/Projects: moved 1 to Archive." in text
     assert len(folder_contents(imap_server, user, "Archive")) == 2
 
 
@@ -114,12 +114,12 @@ def test_refuses_anything_it_cannot_do_safely(imap_server, harness) -> None:
     seed(imap_server, user, "Projects", mime("old"))
     other = imap_server.unique_user("refuse-other")
     seed(imap_server, other, "INBOX", mime("not yours"))
-    mail = harness(("acc", user))
+    mail = harness((1, user))
     [ref] = refs_in(mail, "Projects")
-    foreign = refs_in(harness(("other", other)), account="other")
+    foreign = refs_in(harness((2, other)), account=2)
 
     for folder, message in (
-        ("Nowhere", "is not a folder of acc"),
+        ("Nowhere", "is not a folder of account 1"),
         ("Projects", "already in that folder"),
     ):
         result = move_messages(mail, [ref], folder)
@@ -127,7 +127,7 @@ def test_refuses_anything_it_cannot_do_safely(imap_server, harness) -> None:
         assert group.error is not None
         assert message in group.error.message
         assert result.outcome == "refused"
-    for refs, message in ((foreign, 'Unknown account "other"'), (["garbage"], "Not a message")):
+    for refs, message in ((foreign, "Unknown account 2"), (["garbage"], "Not a message")):
         with pytest.raises(MailError, match=message):
             move_messages(mail, refs, "INBOX")
 
@@ -148,7 +148,7 @@ def test_a_batch_where_one_folder_fails_is_partial(imap_server, harness) -> None
     create_folders(imap_server, user, "Projects", "Archive")
     seed(imap_server, user, "INBOX", mime("fine"))
     seed(imap_server, user, "Projects", mime("gone soon"))
-    mail = harness(("acc", user))
+    mail = harness((1, user))
     inbox = refs_in(mail)
     projects = refs_in(mail, "Projects")
     # Another client moves the Projects message away first.
@@ -157,17 +157,16 @@ def test_a_batch_where_one_folder_fails_is_partial(imap_server, harness) -> None
     batch = move_messages(mail, inbox + projects, "Archive")
     assert (batch.succeeded, batch.failed, batch.outcome) == (1, 1, "partial")
     text = organize_text(batch)
-    assert "acc/INBOX: moved 1 to Archive." in text
+    assert "1/INBOX: moved 1 to Archive." in text
     assert (
-        "acc/Projects: No such message or part. 1 of these messages are no longer in Projects"
-        in text
+        "1/Projects: No such message or part. 1 of these messages are no longer in Projects" in text
     )
 
 
 def test_refuses_drafts_and_sent_as_destinations(imap_server, harness) -> None:
     user = imap_server.unique_user("drafts")
     seed(imap_server, user, "INBOX", mime("please send me"))
-    mail = harness(("acc", user))
+    mail = harness((1, user))
     [ref] = refs_in(mail)
     for folder in ("Drafts", "Sent"):
         [group] = move_messages(mail, [ref], folder).groups
@@ -179,7 +178,7 @@ def test_refuses_drafts_and_sent_as_destinations(imap_server, harness) -> None:
 def test_moves_into_junk_saying_the_spam_filter_learns_from_it(imap_server, harness) -> None:
     user = imap_server.unique_user("junk")
     seed(imap_server, user, "INBOX", mime("win a prize"))
-    mail = harness(("acc", user))
+    mail = harness((1, user))
     [ref] = refs_in(mail)
     moved = move_messages(mail, [ref], "Junk")
     assert "The spam filter learns them as spam." in organize_text(moved)
@@ -204,11 +203,11 @@ def test_trashes_without_deleting_anything_and_refuses_what_is_in_trash(
     user = imap_server.unique_user("trash")
     seed(imap_server, user, "INBOX", mime("keep me"), ["\\Deleted"])
     seed(imap_server, user, "INBOX", mime("bin me"))
-    mail = harness(("acc", user))
+    mail = harness((1, user))
     bin_ref = refs_in(mail)[0]  # newest first
 
     trashed = trash_messages(mail, [bin_ref])
-    assert organize_text(trashed).startswith("acc/INBOX: moved 1 to Trash.")
+    assert organize_text(trashed).startswith("1/INBOX: moved 1 to Trash.")
     # Another client's \Deleted message is still there: no EXPUNGE reached it.
     assert contents(imap_server, user, "INBOX") == [("keep me", {"\\Deleted"})]
     assert [s for s, _ in contents(imap_server, user, "Trash")] == ["bin me"]
@@ -232,7 +231,7 @@ def test_without_move_expunges_only_the_moved_uids(imap_server, harness, monkeyp
         "has_capability",
         lambda self, name: name.upper() != "MOVE" and has_capability(self, name),
     )
-    mail = harness(("acc", user))
+    mail = harness((1, user))
     refs = refs_in(mail)[:2]
 
     moved = move_messages(mail, refs, "Archive")
@@ -249,25 +248,25 @@ def test_without_move_expunges_only_the_moved_uids(imap_server, harness, monkeyp
 def test_archives_to_the_archive_folder(imap_server, harness) -> None:
     user = imap_server.unique_user("archive")
     seed(imap_server, user, "INBOX", mime("file me"))
-    mail = harness(("acc", user))
+    mail = harness((1, user))
     [ref] = refs_in(mail)
     [missing] = archive_messages(mail, [ref]).groups
     assert missing.error is not None
     assert (missing.error.code, missing.error.detail) == (
         "unsupported",
-        "acc has no Archive folder.",
+        "Account 1 has no Archive folder.",
     )
 
     create_folders(imap_server, user, "Archive")
     archived = archive_messages(mail, [ref])
-    assert organize_text(archived).startswith("acc/INBOX: moved 1 to Archive. New refs: ")
+    assert organize_text(archived).startswith("1/INBOX: moved 1 to Archive. New refs: ")
     assert [s for s, _ in contents(imap_server, user, "Archive")] == ["file me"]
 
 
 def test_marks_messages_read_unread_and_flagged_idempotently(imap_server, harness) -> None:
     user = imap_server.unique_user("flag")
     seed(imap_server, user, "INBOX", mime("flag me"))
-    mail = harness(("acc", user))
+    mail = harness((1, user))
     [ref] = refs_in(mail)
 
     read = set_flags(mail, [ref], seen=True, flagged=True)
@@ -276,7 +275,7 @@ def test_marks_messages_read_unread_and_flagged_idempotently(imap_server, harnes
     assert set_flags(mail, [ref], seen=True, flagged=True).outcome == "ok"
 
     unread = set_flags(mail, [ref], seen=False)
-    assert organize_text(unread) == f"acc/INBOX: updated 1: {ref} unread, flagged"
+    assert organize_text(unread) == f"1/INBOX: updated 1: {ref} unread, flagged"
     assert contents(imap_server, user, "INBOX") == [("flag me", {"\\Flagged"})]
     assert parse_ref(unread.groups[0].flags[0].ref) == parse_ref(ref)
 

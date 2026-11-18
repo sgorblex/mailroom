@@ -60,7 +60,7 @@ class WatchedFolder:
     """One folder of one user's account, watched for new mail."""
 
     user_id: int
-    account_id: str
+    account_id: int
     folder: tuple[str, ...]
 
 
@@ -381,7 +381,7 @@ class IdleSupervisor:
     def _targets(self, folders: Iterable[WatchedFolder]) -> dict[WatchedFolder, _Target]:
         """What each folder that can be watched is watched with; the others are logged once per
         reason."""
-        accounts: dict[tuple[int, str], _Target | str] = {}
+        accounts: dict[tuple[int, int], _Target | str] = {}
         targets: dict[WatchedFolder, _Target] = {}
         problems: dict[WatchedFolder, str] = {}
         for folder in folders:
@@ -404,7 +404,7 @@ class IdleSupervisor:
         self._problems = problems
         return targets
 
-    def _target(self, user_id: int, account_id: str) -> _Target | str:
+    def _target(self, user_id: int, account_id: int) -> _Target | str:
         """The account's target, or why it cannot be watched before any connection: the app's
         code (``secrets_key_missing``, ``password_missing``) or ``account_not_found``. One read
         of the store, one opening of the password."""

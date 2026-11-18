@@ -36,6 +36,8 @@ if TYPE_CHECKING:
 
 TOOLS = ("messages_move_to_account", "messages_move_to_account_for_good")
 
+pytestmark = pytest.mark.usefixtures("numbered_accounts")
+
 
 @pytest.fixture(scope="module")
 def _transfer_application(
@@ -80,7 +82,7 @@ def mail(mcp: Mcp, user: User, imap_server: ImapTestServer) -> MailAccounts:
 
 def work_inbox_ref(mcp: Mcp, token: str) -> str:
     """The ref of the newest message in work's INBOX."""
-    return refs_in(mcp.text(token, "messages_list", account_id="work", folder="INBOX"))[0]
+    return refs_in(mcp.text(token, "messages_list", account_id=1, folder="INBOX"))[0]
 
 
 def test_the_group_is_served_only_when_named() -> None:
@@ -119,19 +121,17 @@ def test_moves_to_another_account_and_trashes_the_originals(
     mail.seed(work, mime("for home"))
     ref = work_inbox_ref(mcp, token)
 
-    moved = mcp.text(
-        token, "messages_move_to_account", refs=[ref], account_id="home", folder="INBOX"
-    )
+    moved = mcp.text(token, "messages_move_to_account", refs=[ref], account_id=2, folder="INBOX")
 
     assert ENVELOPE.search(moved)
-    assert re.search(r"work/INBOX: moved 1 to home/INBOX\. New refs: [\w-]+", moved)
+    assert re.search(r"1/INBOX: moved 1 to 2/INBOX\. New refs: [\w-]+", moved)
     assert stored(mail, home, "INBOX") == [("for home", ())]
     assert stored(mail, work, "INBOX") == []
     assert stored(mail, work, "Trash") == [("for home", ())]
     records = db_session.query(AuditRecord).filter(AuditRecord.user_id == user.id).all()
     assert sorted((r.actor, r.action, r.account_id) for r in records) == [
-        ("agent", "move_to_account", "home"),
-        ("agent", "move_to_account", "work"),
+        ("agent", "move_to_account", 1),
+        ("agent", "move_to_account", 2),
     ]
 
 
@@ -143,9 +143,7 @@ def test_deletes_the_originals_for_good_only_through_its_own_tool(
     mail.seed(work, mime("gone for good"))
     ref = work_inbox_ref(mcp, token)
 
-    mcp.text(
-        token, "messages_move_to_account_for_good", refs=[ref], account_id="home", folder="INBOX"
-    )
+    mcp.text(token, "messages_move_to_account_for_good", refs=[ref], account_id=2, folder="INBOX")
 
     assert stored(mail, home, "INBOX") == [("gone for good", ())]
     assert stored(mail, work, "INBOX") == []
@@ -162,9 +160,9 @@ def test_refusals_are_tool_errors_and_write_nothing(
 
     for tool in TOOLS:
         for account, folder, text in (
-            ("work", "INBOX", "move them within it"),
-            ("home", "Drafts", "Drafts or Sent"),
-            ("elsewhere", "INBOX", "No such account"),
+            (1, "INBOX", "move them within it"),
+            (2, "Drafts", "Drafts or Sent"),
+            (99, "INBOX", "No such account"),
         ):
             error = mcp.error(token, tool, refs=[ref], account_id=account, folder=folder)
             assert text in error, error
@@ -185,9 +183,7 @@ def test_messages_left_in_both_accounts_are_answered_not_refused(
 
     # Inside mailroom-core's move: its removal fails once the copy is made.
     monkeypatch.setattr("mailroom_core.mail.transfer.move_uids", fails)
-    answer = mcp.text(
-        token, "messages_move_to_account", refs=[ref], account_id="home", folder="INBOX"
-    )
+    answer = mcp.text(token, "messages_move_to_account", refs=[ref], account_id=2, folder="INBOX")
 
     assert ENVELOPE.search(answer)
     assert "in both" in answer

@@ -3,37 +3,27 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { SendResult } from '@/api/mail.ts'
-import {
-  bodiesTo,
-  fakeDraft,
-  messageItem,
-  messageView,
-  queriesTo,
-  refusal,
-  savesOf,
-  stubMailApi,
-  type FakeMailState,
-} from '@/test/fake-mail-api.ts'
+import { bodiesTo, fakeDraft, type FakeMailState, HOME, messageItem, messageView, queriesTo, refusal, savesOf, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
 import { renderMailApp } from '@/test/mail-app.tsx'
 
-const inbox = [messageItem('work', 'INBOX', 2), messageItem('work', 'INBOX', 1)]
+const inbox = [messageItem(WORK, 'INBOX', 2), messageItem(WORK, 'INBOX', 1)]
 const [first] = inbox
 const firstRef = first?.ref ?? ''
 const firstLink = /Message 2/
 
 function state(overrides: Partial<FakeMailState> = {}): FakeMailState {
   return {
-    accounts: ['work', 'home'],
+    accounts: [WORK, HOME],
     folders: {
-      work: [
+      [WORK]: [
         { path: 'INBOX', role: 'inbox', unread: 0, total: 2 },
         { path: 'Sent', role: 'sent', unread: 0, total: 0 },
         { path: 'Drafts', role: 'drafts', unread: 0, total: 0 },
         { path: 'Trash', role: 'trash', unread: 0, total: 0 },
       ],
-      home: [{ path: 'INBOX', role: 'inbox', unread: 0, total: 0 }],
+      [HOME]: [{ path: 'INBOX', role: 'inbox', unread: 0, total: 0 }],
     },
-    messages: { 'work/INBOX': inbox, 'work/Sent': [], 'work/Drafts': [], 'home/INBOX': [] },
+    messages: { '1/INBOX': inbox, '1/Sent': [], '1/Drafts': [], '2/INBOX': [] },
     views: Object.fromEntries(inbox.map((item) => [item.ref, messageView(item)])),
     ...overrides,
   }
@@ -163,7 +153,7 @@ describe('composing', () => {
 
   it('offers no compose action on an account in send mode off, and says why', async () => {
     const user = userEvent.setup()
-    stubMailApi(state({ sendModes: { work: 'off' } }))
+    stubMailApi(state({ sendModes: { [WORK]: 'off' } }))
     renderMailApp(`/mail?message=${firstRef}`)
     const button = await screen.findByRole('button', { name: 'Compose' })
     expect(button).toHaveAttribute('aria-disabled', 'true')
@@ -312,8 +302,8 @@ describe('composing', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Delete draft' })
 
     await user.keyboard('#j')
-    expect(fake.messages['work/Trash'] ?? []).toEqual([])
-    expect(fake.messages['work/INBOX']).toHaveLength(2)
+    expect(fake.messages['1/Trash'] ?? []).toEqual([])
+    expect(fake.messages['1/INBOX']).toHaveLength(2)
     expect(history.location.search).toContain(firstRef)
     expect(dialog).toBeVisible()
   })
@@ -342,9 +332,9 @@ describe('composing', () => {
   })
 
   it('brings the composer back after a reload', async () => {
-    const draft = fakeDraft('work', 90, { text: 'Where I was' })
+    const draft = fakeDraft(WORK, 90, { text: 'Where I was' })
     stubMailApi(state({ drafts: [draft] }))
-    renderMailApp(`/mail?compose=${draft.compose_id ?? ''}.work`)
+    renderMailApp(`/mail?compose=${draft.compose_id ?? ''}.1`)
     expect(field(await composer('Draft'), 'Message')).toHaveValue('Where I was')
   })
 
@@ -354,13 +344,13 @@ describe('composing', () => {
     const history = renderMailApp('/mail')
     await compose(user)
     await waitFor(() => {
-      expect(history.location.search).toMatch(/compose=[0-9a-f-]{36}\.work/)
+      expect(history.location.search).toMatch(/compose=[0-9a-f-]{36}\.1/)
     })
   })
 
   it('opens nothing for a composer that was never saved', async () => {
     stubMailApi(state())
-    const history = renderMailApp('/mail?compose=00000000-0000-4000-8000-000000000001.work')
+    const history = renderMailApp('/mail?compose=00000000-0000-4000-8000-000000000001.1')
     await waitFor(() => {
       expect(history.location.search).not.toContain('compose')
     })
@@ -456,14 +446,14 @@ describe('replying and forwarding', () => {
   it('c writes a new message on the account shown', async () => {
     const user = userEvent.setup()
     const fetchMock = stubMailApi(state())
-    renderMailApp('/mail?account=home')
+    renderMailApp('/mail?account=2')
     await screen.findByRole('heading', { name: 'home' })
     await user.keyboard('c')
     const form = await composer()
     await user.type(field(form, 'Message'), 'From home')
     await user.click(within(form).getByRole('button', { name: 'Close' }))
     await waitFor(() => {
-      expect(savesOf(fetchMock)[0]?.fields.account).toBe('home')
+      expect(savesOf(fetchMock)[0]?.fields.account).toBe(HOME)
     })
   })
 })
@@ -474,7 +464,7 @@ describe('identities', () => {
     const fetchMock = stubMailApi(
       state({
         identities: {
-          work: [
+          [WORK]: [
             { address: 'me@work.example', name: 'Me', default: true },
             { address: 'alias@work.example', name: null },
           ],
@@ -526,7 +516,7 @@ describe('attachments', () => {
   it('go with a draft deleted elsewhere: the text is saved again, and the user is told', async () => {
     const user = userEvent.setup()
     const parts = [{ part: '2', name: 'notes.pdf', type: 'application/pdf', size: 10 }]
-    const draft = fakeDraft('work', 41, { text: 'Mine', parts })
+    const draft = fakeDraft(WORK, 41, { text: 'Mine', parts })
     const fake = state({ drafts: [draft] })
     const fetchMock = stubMailApi(fake)
     renderMailApp(`/mail?compose=${draft.ref}`)
@@ -545,15 +535,15 @@ describe('attachments', () => {
 })
 
 describe('drafts', () => {
-  const draft = fakeDraft('work', 40, {
+  const draft = fakeDraft(WORK, 40, {
     to: [{ name: '', address: 'ada@example.org' }],
     subject: 'Half written',
     text: 'So far',
   })
-  const item = messageItem('work', 'Drafts', 40, { ref: draft.ref, subject: draft.subject, flags: { seen: false, flagged: false, answered: false, draft: true } })
+  const item = messageItem(WORK, 'Drafts', 40, { ref: draft.ref, subject: draft.subject, flags: { seen: false, flagged: false, answered: false, draft: true } })
   const withDraft = (fields: Partial<typeof draft> = {}): FakeMailState =>
     state({
-      messages: { 'work/INBOX': inbox, 'work/Sent': [], 'work/Drafts': [item], 'home/INBOX': [] },
+      messages: { '1/INBOX': inbox, '1/Sent': [], '1/Drafts': [item], '2/INBOX': [] },
       views: { [item.ref]: messageView(item) },
       drafts: [{ ...draft, ...fields }],
     })
@@ -571,7 +561,7 @@ describe('drafts', () => {
 
   it('show as a message on an account in send mode off', async () => {
     const fake = withDraft()
-    fake.sendModes = { work: 'off' }
+    fake.sendModes = { [WORK]: 'off' }
     stubMailApi(fake)
     renderMailApp(`/mail?folder=Drafts&message=${item.ref}`)
     await screen.findByRole('heading', { name: 'Half written' })
@@ -1075,7 +1065,7 @@ describe('sending', () => {
 
   it('saves, then sends that draft, whatever the send mode but off', async () => {
     const user = userEvent.setup()
-    const fake = state({ sendModes: { work: 'drafts' }, sendingPolls: 1 })
+    const fake = state({ sendModes: { [WORK]: 'drafts' }, sendingPolls: 1 })
     const fetchMock = stubMailApi(fake)
     renderMailApp('/mail')
     const form = await ready(user)
@@ -1157,7 +1147,7 @@ describe('sending', () => {
     if (saved === undefined) {
       throw new Error('no draft')
     }
-    fake.drafts = [{ ...saved, ref: 'ref-work-Drafts-900', text: 'From an agent' }]
+    fake.drafts = [{ ...saved, ref: 'ref-1-Drafts-900', text: 'From an agent' }]
 
     await user.click(within(form).getByRole('button', { name: 'Send' }))
     await within(form).findByText(/changed elsewhere.*press Send again/)
@@ -1189,7 +1179,7 @@ describe('sending', () => {
     if (saved === undefined) {
       throw new Error('no draft')
     }
-    fake.drafts = [{ ...saved, ref: 'ref-work-Drafts-900', text: 'From an agent' }]
+    fake.drafts = [{ ...saved, ref: 'ref-1-Drafts-900', text: 'From an agent' }]
 
     await user.type(field(form, 'Message'), ' more')
     await user.click(within(form).getByRole('button', { name: 'Send' }))

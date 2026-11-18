@@ -45,7 +45,7 @@ from mailroom_core.mail.selected import (
     move_uids,
     special_folder_in,
 )
-from mailroom_core.render import clean_header, format_size
+from mailroom_core.render import format_size
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -74,7 +74,7 @@ class _Planned:
 class _Plan:
     """Where a group's messages go, and how they leave."""
 
-    account: str
+    account: int
     folder: str
     removal: TransferRemoval
     trash: str | None
@@ -98,7 +98,7 @@ class _Written:
 def move_to_account(
     connections: MailConnections,
     refs: Sequence[str],
-    account: str,
+    account: int,
     folder: str,
     *,
     removal: TransferRemoval,
@@ -113,28 +113,29 @@ def move_to_account(
     source's and the copy's."""
     groups = _groups(connections, refs)
     if not connections.serves(account):
-        raise MailError("invalid_argument", f'Unknown account "{clean_header(account, 200)}".')
+        raise MailError("invalid_argument", f"Unknown account {account}.")
     if any(group.account == account for group in groups):
         raise MailError(
             "invalid_argument",
-            f"Some of these messages are in {account} already: move them within it.",
+            "Some of these messages are in that account already: move them within it.",
         )
     folders_of = _folder_lookup(connections)
     target = move_target(None, folder, folders_of(account), account=account)
     gmail_target = connections.capabilities(account).gmail
-    plans: dict[str, _Plan] = {}
+    plans: dict[int, _Plan] = {}
     for source in dict.fromkeys(group.account for group in groups):
         capabilities = connections.capabilities(source)
         trash = special_folder_in(folders_of(source), "trash")
         if removal == "delete" and not capabilities.uidplus:
             raise MailError(
-                "unsupported", f"{source} cannot delete exactly these messages for good."
+                "unsupported", f"Account {source} cannot delete exactly these messages for good."
             )
         if trash is None and (removal == "trash" or capabilities.gmail):
-            raise MailError("unsupported", f"{source} has no Trash folder.")
+            raise MailError("unsupported", f"Account {source} has no Trash folder.")
         if removal == "trash" and not (capabilities.move or capabilities.uidplus):
             raise MailError(
-                "unsupported", f"{source} can only move mail by also deleting other messages."
+                "unsupported",
+                f"Account {source} can only move mail by also deleting other messages.",
             )
         plans[source] = _Plan(
             account=account,

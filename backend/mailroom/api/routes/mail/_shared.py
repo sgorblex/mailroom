@@ -46,7 +46,6 @@ class NotStored:
 
 mail_router = APIRouter(prefix="/mail")
 
-AccountId = Annotated[str, Path(min_length=1, max_length=64)]
 Ref = Annotated[str, Path(min_length=1, max_length=service.MAX_REF_LENGTH)]
 
 

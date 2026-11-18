@@ -4,7 +4,7 @@ import { Link, useSearch } from '@tanstack/react-router'
 
 import { AccountsContext } from '@/accounts/accounts-context.ts'
 import { accountErrorMessage } from '@/accounts/messages.ts'
-import { listAccounts, type Account } from '@/api/accounts.ts'
+import { type AccountId, listAccounts, type Account } from '@/api/accounts.ts'
 import { listMessages, searchMessages, type SearchQuery } from '@/api/mail.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { useLoad } from '@/lib/use-load.ts'
@@ -98,7 +98,7 @@ function MailPanes({
   requested,
 }: {
   accounts: Account[]
-  accountId: string
+  accountId: AccountId
   folder: string
   /** The folder is to be listed with its subfolders (the URL's `sub`, else this browser's choice). */
   requested: boolean
@@ -169,7 +169,7 @@ function MailPanes({
   )
 }
 
-function MailShortcuts({ accountId }: { accountId: string }): null {
+function MailShortcuts({ accountId }: { accountId: AccountId }): null {
   useMailShortcuts(accountId)
   return null
 }
@@ -179,7 +179,7 @@ function MailShortcuts({ accountId }: { accountId: string }): null {
  * load; then only if it still has subfolders the list can read, so a choice the tree no longer
  * offers to undo (the subfolders gone, or too many) does not hold.
  */
-function useListedSubfolders(accountId: string, folder: string, requested: boolean): boolean {
+function useListedSubfolders(accountId: AccountId, folder: string, requested: boolean): boolean {
   const folders = loadedFolders(useTriage().folders[accountId])
   return useMemo(() => {
     if (!requested || folders === undefined) {
@@ -194,20 +194,20 @@ function useListedSubfolders(accountId: string, folder: string, requested: boole
  * Whether the search reads the folder shown with its subfolders: when they are listed with it and
  * the search is in that folder of that account.
  */
-function searchesSubfolders(accountId: string, folder: string, subfolders: boolean, q: SearchQuery): boolean {
-  return subfolders && q.account === accountId && q.folder !== undefined && isSameFolder(q.folder, folder)
+function searchesSubfolders(accountId: AccountId, folder: string, subfolders: boolean, q: SearchQuery): boolean {
+  return subfolders && q.account === String(accountId) && q.folder !== undefined && isSameFolder(q.folder, folder)
 }
 
 /** Names the list shown: a folder, or a search (`q` is a new object on every navigation). */
-function sourceKey(accountId: string, folder: string, subfolders: boolean, q: SearchQuery | undefined): string {
+function sourceKey(accountId: AccountId, folder: string, subfolders: boolean, q: SearchQuery | undefined): string {
   if (q === undefined) {
-    return `folder:${accountId}:${subfolders ? '1' : '0'}:${folder}`
+    return `folder:${String(accountId)}:${subfolders ? '1' : '0'}:${folder}`
   }
   return `search:${searchesSubfolders(accountId, folder, subfolders, q) ? '1' : '0'}:${JSON.stringify(q)}`
 }
 
 /** The folder's messages, or the search's when there is one; a new source starts over. */
-function Listing({ accountId, folder, subfolders }: { accountId: string; folder: string; subfolders: boolean }): ReactElement {
+function Listing({ accountId, folder, subfolders }: { accountId: AccountId; folder: string; subfolders: boolean }): ReactElement {
   const { q } = useSearch({ from: '/mail' })
   const key = sourceKey(accountId, folder, subfolders, q)
   const searchKey = q === undefined ? null : JSON.stringify(q)

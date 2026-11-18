@@ -22,7 +22,6 @@ import { accountErrorMessage } from '@/accounts/messages.ts'
 const MAX_IDENTITIES = 50
 
 type Field =
-  | 'id'
   | 'name'
   | 'colour'
   | 'login'
@@ -49,7 +48,6 @@ function identityField(index: number, key: 'address' | 'name'): Field {
 function fieldOf(issue: RefusalIssue, identities: number): Field | null {
   const [first, second, third] = issue.path
   switch (first) {
-    case 'id':
     case 'name':
     case 'colour':
     case 'login':
@@ -78,7 +76,6 @@ interface IdentityDraft {
 }
 
 interface FormState {
-  id: string
   name: string
   colour: AccountColour | null
   login: string
@@ -103,7 +100,6 @@ function initialState(account: Account | undefined): FormState {
     name: identity.name ?? '',
   }))
   return {
-    id: account?.id ?? '',
     // The name as stored: an unnamed account's field stays empty, whatever it is called meanwhile.
     name: account?.name ?? '',
     colour: account?.colour ?? null,
@@ -149,8 +145,8 @@ function fieldsOf(state: FormState, account: Account | undefined): AccountFields
 }
 
 /**
- * Adds an account (no `account`) or edits one: its id stays, shown here and nowhere else, and an
- * empty password keeps the stored one. The account's name and colour are how the web shows it.
+ * Adds an account (no `account`), which the server numbers, or edits one, where an empty password
+ * keeps the stored one. The account's name and colour are how the web shows it.
  * Every identity is edited here: the first, more added or removed, and which one is
  * the default once there are several. `save` sends it; a refusal shows next to the fields
  * mailroom-core found wrong. The send mode shows only with the mail client or MCP; otherwise the
@@ -162,7 +158,7 @@ export function AccountForm({
   onCancel,
 }: {
   account?: Account
-  save: (id: string, fields: AccountFields) => Promise<unknown>
+  save: (fields: AccountFields) => Promise<unknown>
   onCancel: () => void
 }): ReactElement {
   const { t } = useTranslation()
@@ -228,7 +224,7 @@ export function AccountForm({
     setError(null)
     setIssues({})
     try {
-      await save(state.id.trim(), fieldsOf(state, account))
+      await save(fieldsOf(state, account))
     } catch (failure) {
       const byField: Partial<Record<Field, string>> = {}
       const general: string[] = []
@@ -362,7 +358,7 @@ export function AccountForm({
         <Input
           {...control('name', true)}
           maxLength={64}
-          placeholder={account?.id}
+          placeholder={state.login}
           value={state.name}
           onChange={(event) => {
             set('name', event.target.value)
@@ -406,29 +402,6 @@ export function AccountForm({
           </p>
         )}
       </fieldset>
-      {editing && (
-        <p className="text-sm">
-          <span className="text-muted-foreground">{t('accounts.id')}: </span>
-          <span className="font-mono">{account.id}</span>
-        </p>
-      )}
-      {!editing &&
-        row(
-          'id',
-          t('accounts.id'),
-          <Input
-            {...control('id', true)}
-            required
-            maxLength={64}
-            autoCapitalize="none"
-            spellCheck={false}
-            value={state.id}
-            onChange={(event) => {
-              set('id', event.target.value)
-            }}
-          />,
-          t('accounts.idHint'),
-        )}
       {state.identities.map((identity, index) => {
         const address = identityField(index, 'address')
         const name = identityField(index, 'name')

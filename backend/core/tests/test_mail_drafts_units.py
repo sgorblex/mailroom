@@ -51,7 +51,7 @@ def input_message(**fields: object) -> MessageInput:
 
 
 def account(mode: str = "direct") -> AccountConfig:
-    return cast("AccountConfig", SimpleNamespace(id="acc", send_mode=mode))
+    return cast("AccountConfig", SimpleNamespace(id=1, send_mode=mode))
 
 
 def test_an_account_with_sending_off_is_refused() -> None:
@@ -70,7 +70,7 @@ def test_an_account_with_sending_off_is_refused() -> None:
 )
 def test_a_compose_id_goes_nowhere_near_a_search_or_a_header_unless_plain(compose_id: str) -> None:
     with pytest.raises(MailError, match="compose id"):
-        find_drafts(nothing_opens(), "acc", compose_id)
+        find_drafts(nothing_opens(), 1, compose_id)
     with pytest.raises(MailError, match="compose id"):
         save_draft(
             nothing_opens(), account(), input_message(), cap=10, note=print, compose_id=compose_id

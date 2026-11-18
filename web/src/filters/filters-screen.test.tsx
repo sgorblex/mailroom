@@ -2,20 +2,20 @@ import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { sentBody, stubFiltersApi, type FakeState } from '@/test/fake-filters-api.ts'
+import { type FakeState, HOME, sentBody, stubFiltersApi, WORK } from '@/test/fake-filters-api.ts'
 import { renderFiltersApp } from '@/test/filters-app.tsx'
 
 function state(overrides: Partial<FakeState> = {}): FakeState {
   return {
     accounts: [
-      { id: 'work', run_filters: true, name: 'Work mail', colour: 'teal' },
-      { id: 'home', run_filters: false },
+      { id: WORK, run_filters: true, name: 'Work mail', colour: 'teal' },
+      { id: HOME, run_filters: false },
     ],
     folders: [['INBOX'], ['Archive'], ['Lists', 'Nerds']],
     ruleSets: [
       {
         id: 1,
-        account_id: 'work',
+        account_id: WORK,
         folder: ['INBOX'],
         name: 'Newsletters',
         trigger: 'scheduled',
@@ -79,7 +79,7 @@ describe('FiltersScreen', () => {
     await userEvent.click(within(form).getByRole('button', { name: 'Add rule set' }))
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Old mail' })).toBeInTheDocument()
-    expect(sentBody(fetchMock, 'POST', '/api/v1/accounts/home/rule-sets')).toEqual({
+    expect(sentBody(fetchMock, 'POST', '/api/v1/accounts/2/rule-sets')).toEqual({
       name: 'Old mail',
       folder: ['Lists', 'Nerds'],
       trigger: 'scheduled',

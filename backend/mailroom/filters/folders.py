@@ -102,7 +102,7 @@ def rewritten_spec(node: object, old: Sequence[str], new: Sequence[str]) -> obje
     return node
 
 
-def _rule_sets(db: Session, user_id: int, account_id: str, *, lock: bool) -> list[RuleSet]:
+def _rule_sets(db: Session, user_id: int, account_id: int, *, lock: bool) -> list[RuleSet]:
     statement = (
         select(RuleSet)
         .where(RuleSet.user_id == user_id, RuleSet.account_id == account_id)
@@ -127,7 +127,7 @@ def _filters(db: Session, rule_sets: Sequence[RuleSet], *, lock: bool) -> list[F
 
 
 def naming_rule_sets(
-    db: Session, user_id: int, account_id: str, segments: Sequence[str]
+    db: Session, user_id: int, account_id: int, segments: Sequence[str]
 ) -> list[RuleSetRef]:
     """The user's rule sets of the account that name the folder ``segments`` or one under it,
     by their own folder or by a filter's action, enabled or not, in id order."""
@@ -142,7 +142,7 @@ def naming_rule_sets(
 
 
 def rewrite_folder(
-    db: Session, user_id: int, account_id: str, old: Sequence[str], new: Sequence[str]
+    db: Session, user_id: int, account_id: int, old: Sequence[str], new: Sequence[str]
 ) -> Rewritten:
     """Points the user's rule sets of the account, and their filters' actions, from the folder
     ``old`` (and every folder under it) to ``new``, in one transaction, committed. Enabled rule

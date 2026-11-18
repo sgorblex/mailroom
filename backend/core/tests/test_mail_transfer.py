@@ -47,13 +47,13 @@ def mail(imap_server: ImapTestServer, users: tuple[str, str]) -> Iterator[MailCo
     source, target = users
     connections = connections_for(
         imap_server,
-        [test_account("a", source, imap_server), test_account("b", target, imap_server)],
+        [test_account(1, source, imap_server), test_account(2, target, imap_server)],
     )
     yield connections
     connections.close_all()
 
 
-def refs_in(mail: MailConnections, account: str = "a", folder: str = "INBOX") -> list[str]:
+def refs_in(mail: MailConnections, account: int = 1, folder: str = "INBOX") -> list[str]:
     return [m.ref for m in list_messages(mail, account, folder, previews=False).messages]
 
 
@@ -77,13 +77,13 @@ def test_moves_a_message_with_its_flags_and_date_and_trashes_the_original(
     seed(imap_server, source, "INBOX", raw, ["\\Seen", "\\Flagged"], ARRIVED)
     [ref] = refs_in(mail)
 
-    result = move_to_account(mail, [ref], "b", "INBOX", removal="trash", max_bytes=CAP)
+    result = move_to_account(mail, [ref], 2, "INBOX", removal="trash", max_bytes=CAP)
 
     assert result.outcome == "ok"
     [group] = result.groups
-    assert (group.count, group.destination, group.destination_account) == (1, "INBOX", "b")
+    assert (group.count, group.destination, group.destination_account) == (1, "INBOX", 2)
     assert group.new_refs is not None
-    assert organize_text(result).startswith("a/INBOX: moved 1 to b/INBOX. New refs: ")
+    assert organize_text(result).startswith("1/INBOX: moved 1 to 2/INBOX. New refs: ")
     [copy] = folder_contents(imap_server, target, "INBOX")
     assert copy.source == raw.encode()
     assert set(copy.flags) - {"\\Recent"} == {"\\Seen", "\\Flagged"}
@@ -92,19 +92,19 @@ def test_moves_a_message_with_its_flags_and_date_and_trashes_the_original(
     assert subjects(imap_server, source, "Trash") == ["quarterly report"]
     [from_item, to_item] = sorted(result.items, key=lambda item: item.account)
     assert from_item.record | {"uid": 0} == {
-        "account": "a",
+        "account": 1,
         "folder": "INBOX",
         "uid": 0,
         "message_id": from_item.message_id,
         "from": "ana@example.org",
         "subject_sha256": from_item.subject_sha256,
         "destination": "INBOX",
-        "destination_account": "b",
+        "destination_account": 2,
         "removed": "trashed",
         "result": "ok",
     }
-    assert (to_item.account, to_item.folder, to_item.result) == ("b", "INBOX", "ok")
-    assert (to_item.source_account, to_item.source_folder) == ("a", "INBOX")
+    assert (to_item.account, to_item.folder, to_item.result) == (2, "INBOX", "ok")
+    assert (to_item.source_account, to_item.source_folder) == (1, "INBOX")
     assert to_item.message_id == from_item.message_id
 
 
@@ -115,13 +115,13 @@ def test_deletes_the_original_for_good_and_nothing_else(imap_server, users, mail
     seed(imap_server, source, "INBOX", mime("and me"))
     refs = refs_in(mail)[:2]  # newest first
 
-    result = move_to_account(mail, refs, "b", "INBOX", removal="delete", max_bytes=CAP)
+    result = move_to_account(mail, refs, 2, "INBOX", removal="delete", max_bytes=CAP)
 
     assert result.outcome == "ok"
     assert subjects(imap_server, target, "INBOX") == ["and me", "move me"]
     assert subjects(imap_server, source, "INBOX") == ["someone else's"]
     assert subjects(imap_server, source, "Trash") == []
-    assert {item.removed for item in result.items if item.account == "a"} == {"expunged"}
+    assert {item.removed for item in result.items if item.account == 1} == {"expunged"}
 
 
 def test_a_gmail_source_deletes_for_good_from_its_trash(
@@ -136,12 +136,12 @@ def test_a_gmail_source_deletes_for_good_from_its_trash(
 
     def gmail_a(self: MailConnections, account: str) -> object:
         found = real(self, account)
-        return replace(found, gmail=True) if account == "a" else found
+        return replace(found, gmail=True) if account == 1 else found
 
     monkeypatch.setattr(MailConnections, "capabilities", gmail_a)
     [ref] = refs_in(mail)
 
-    result = move_to_account(mail, [ref], "b", "INBOX", removal="delete", max_bytes=CAP)
+    result = move_to_account(mail, [ref], 2, "INBOX", removal="delete", max_bytes=CAP)
 
     assert result.outcome == "ok"
     assert subjects(imap_server, source, "INBOX") == []
@@ -155,7 +155,7 @@ def test_moves_in_chunks_within_the_size_limit(imap_server, users, mail) -> None
     refs = refs_in(mail)
     biggest = max(len(m.source) for m in folder_contents(imap_server, source, "INBOX"))
 
-    result = move_to_account(mail, refs, "b", "INBOX", removal="trash", max_bytes=biggest)
+    result = move_to_account(mail, refs, 2, "INBOX", removal="trash", max_bytes=biggest)
 
     assert result.outcome == "ok"
     assert subjects(imap_server, target, "INBOX") == ["one", "three", "two"]
@@ -173,7 +173,7 @@ def test_repeating_a_move_whose_removal_failed_copies_nothing_twice(
         raise MailError("server_error")
 
     monkeypatch.setattr(transfer_module, "move_uids", fails)
-    stuck = move_to_account(mail, [ref], "b", "INBOX", removal="trash", max_bytes=CAP)
+    stuck = move_to_account(mail, [ref], 2, "INBOX", removal="trash", max_bytes=CAP)
     monkeypatch.undo()
 
     [group] = stuck.groups
@@ -182,12 +182,12 @@ def test_repeating_a_move_whose_removal_failed_copies_nothing_twice(
     assert group.new_refs is not None
     assert group.new_refs[0] in group.error.message
     assert stuck.outcome == "partial"  # the copy was made
-    source_item = next(item for item in stuck.items if item.account == "a")
+    source_item = next(item for item in stuck.items if item.account == 1)
     assert (source_item.copied, source_item.removed) == (True, "failed")
     assert subjects(imap_server, target, "INBOX") == ["stuck"]
     assert subjects(imap_server, source, "INBOX") == ["stuck"]
 
-    again = move_to_account(mail, [ref], "b", "INBOX", removal="trash", max_bytes=CAP)
+    again = move_to_account(mail, [ref], 2, "INBOX", removal="trash", max_bytes=CAP)
 
     assert again.outcome == "ok"
     assert subjects(imap_server, target, "INBOX") == ["stuck"]
@@ -201,7 +201,7 @@ def test_a_message_already_in_the_target_is_not_copied_again(imap_server, users,
     seed(imap_server, target, "INBOX", raw)
     [ref] = refs_in(mail)
 
-    result = move_to_account(mail, [ref], "b", "INBOX", removal="trash", max_bytes=CAP)
+    result = move_to_account(mail, [ref], 2, "INBOX", removal="trash", max_bytes=CAP)
 
     assert result.outcome == "ok"
     assert subjects(imap_server, target, "INBOX") == ["delivered to both"]
@@ -235,8 +235,8 @@ def test_a_copy_already_there_is_found_without_a_header_search(
 
     with monkeypatch.context() as patched:
         patched.setattr(transfer_module, "move_uids", fails)
-        move_to_account(mail, [ref], "b", "INBOX", removal="trash", max_bytes=CAP)
-    again = move_to_account(mail, [ref], "b", "INBOX", removal="trash", max_bytes=CAP)
+        move_to_account(mail, [ref], 2, "INBOX", removal="trash", max_bytes=CAP)
+    again = move_to_account(mail, [ref], 2, "INBOX", removal="trash", max_bytes=CAP)
 
     assert again.outcome == "ok"
     assert subjects(imap_server, target, "INBOX") == ["stuck"]
@@ -256,7 +256,7 @@ def test_a_copy_without_appenduid_is_confirmed_without_a_header_search(
         append(*args, **kwargs)
 
     monkeypatch.setattr(transfer_module, "append_raw", without_uid)
-    result = move_to_account(mail, [ref], "b", "INBOX", removal="trash", max_bytes=CAP)
+    result = move_to_account(mail, [ref], 2, "INBOX", removal="trash", max_bytes=CAP)
 
     assert result.outcome == "ok"
     assert subjects(imap_server, target, "INBOX") == ["no appenduid"]
@@ -275,19 +275,19 @@ def test_refuses_what_it_cannot_do_safely_before_writing_anything(
             call()
 
     refused(
-        lambda: move_to_account(mail, [ref], "a", "Trash", removal="trash", max_bytes=CAP),
-        "in a already",
+        lambda: move_to_account(mail, [ref], 1, "Trash", removal="trash", max_bytes=CAP),
+        "in that account already",
     )
     refused(
-        lambda: move_to_account(mail, [ref], "c", "INBOX", removal="trash", max_bytes=CAP),
-        'Unknown account "c"',
+        lambda: move_to_account(mail, [ref], 3, "INBOX", removal="trash", max_bytes=CAP),
+        "Unknown account 3",
     )
     refused(
-        lambda: move_to_account(mail, [ref], "b", "Nowhere", removal="trash", max_bytes=CAP),
-        "is not a folder of b",
+        lambda: move_to_account(mail, [ref], 2, "Nowhere", removal="trash", max_bytes=CAP),
+        "is not a folder of account 2",
     )
     refused(
-        lambda: move_to_account(mail, [ref], "b", "Drafts", removal="trash", max_bytes=CAP),
+        lambda: move_to_account(mail, [ref], 2, "Drafts", removal="trash", max_bytes=CAP),
         "into Drafts or Sent",
     )
     real = MailConnections.capabilities
@@ -297,7 +297,7 @@ def test_refuses_what_it_cannot_do_safely_before_writing_anything(
         lambda self, account: replace(real(self, account), uidplus=False),
     )
     refused(
-        lambda: move_to_account(mail, [ref], "b", "INBOX", removal="delete", max_bytes=CAP),
+        lambda: move_to_account(mail, [ref], 2, "INBOX", removal="delete", max_bytes=CAP),
         "cannot delete exactly these messages",
     )
     monkeypatch.undo()
@@ -315,7 +315,7 @@ def test_refuses_a_folder_with_a_message_it_could_not_confirm_or_too_large(
     [big] = refs_in(mail)
     [no_id] = refs_in(mail, folder="Junk")
 
-    result = move_to_account(mail, [big, no_id], "b", "INBOX", removal="trash", max_bytes=1000)
+    result = move_to_account(mail, [big, no_id], 2, "INBOX", removal="trash", max_bytes=1000)
 
     errors = {group.folder: group.error for group in result.groups}
     assert errors["INBOX"] is not None
@@ -342,7 +342,7 @@ def test_messages_sharing_a_message_id_each_get_a_copy(imap_server, users, mail)
     )
     refs = [refs_in(mail)[0], refs_in(mail, folder="Junk")[0]]
 
-    result = move_to_account(mail, refs, "b", "INBOX", removal="delete", max_bytes=CAP)
+    result = move_to_account(mail, refs, 2, "INBOX", removal="delete", max_bytes=CAP)
 
     assert result.outcome == "ok"
     assert subjects(imap_server, target, "INBOX") == ["direct", "via the list"]
@@ -363,7 +363,7 @@ def test_a_different_message_with_the_same_id_in_the_target_is_no_copy(
     )
     [ref] = refs_in(mail)
 
-    result = move_to_account(mail, [ref], "b", "INBOX", removal="delete", max_bytes=CAP)
+    result = move_to_account(mail, [ref], 2, "INBOX", removal="delete", max_bytes=CAP)
 
     assert result.outcome == "ok"
     assert subjects(imap_server, target, "INBOX") == ["a look-alike", "the original"]
@@ -386,7 +386,7 @@ def test_an_unconfirmed_copy_leaves_its_original_where_it_was(
         return real(*args, **kwargs)  # type: ignore[arg-type]
 
     monkeypatch.setattr(transfer_module, "append_raw", second_fails)
-    result = move_to_account(mail, refs, "b", "INBOX", removal="trash", max_bytes=CAP)
+    result = move_to_account(mail, refs, 2, "INBOX", removal="trash", max_bytes=CAP)
     monkeypatch.undo()
 
     [group] = result.groups
@@ -398,5 +398,5 @@ def test_an_unconfirmed_copy_leaves_its_original_where_it_was(
     assert subjects(imap_server, target, "INBOX") == ["first"]
     assert subjects(imap_server, source, "INBOX") == ["second"]
     assert subjects(imap_server, source, "Trash") == ["first"]
-    noted = [item.uid for item in result.items if item.account == "a"]
+    noted = [item.uid for item in result.items if item.account == 1]
     assert len(noted) == len(set(noted)) == 2

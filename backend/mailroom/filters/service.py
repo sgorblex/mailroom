@@ -88,7 +88,7 @@ class FilterOut(BaseModel):
 
 class RuleSetOut(BaseModel):
     id: int
-    account_id: str
+    account_id: int
     folder: list[str]
     name: str
     trigger: Trigger
@@ -223,7 +223,7 @@ def checked_spec(spec: Spec) -> Spec:
         raise Refusal("invalid", "invalid_spec", str(exc)) from None
 
 
-def account_folders(ctx: AppContext, user_id: int, account_id: str) -> list[list[str]]:
+def account_folders(ctx: AppContext, user_id: int, account_id: int) -> list[list[str]]:
     """The account's selectable folders, each as its path segments split on the server's
     delimiter (``["Archive", "2026"]``), in mailroom-core's order: ``mailroom.mail.service``'s
     listing, under the mail pool's gates and deadline, as MCP's ``folders_list`` gives them."""
@@ -232,7 +232,7 @@ def account_folders(ctx: AppContext, user_id: int, account_id: str) -> list[list
     return [mail_service.folder_segments(folder) for folder in listed]
 
 
-def run_filters(ctx: AppContext, db: Session, user_id: int, account_id: str) -> bool:
+def run_filters(ctx: AppContext, db: Session, user_id: int, account_id: int) -> bool:
     """The account's Run filters switch (off until turned on)."""
     require_account(ctx.store(user_id), account_id)
     return app_data.run_filters_by_account(db, user_id).get(account_id, False)
@@ -242,7 +242,7 @@ def set_run_filters(
     ctx: AppContext,
     db: Session,
     user_id: int,
-    account_id: str,
+    account_id: int,
     *,
     on: bool,
     via: Via = "web",
@@ -254,7 +254,7 @@ def set_run_filters(
     return on
 
 
-def rule_sets(ctx: AppContext, db: Session, user_id: int, account_id: str) -> list[RuleSetOut]:
+def rule_sets(ctx: AppContext, db: Session, user_id: int, account_id: int) -> list[RuleSetOut]:
     """The account's rule sets, oldest first, without their filters."""
     require_account(ctx.store(user_id), account_id)
     rows = db.scalars(
@@ -269,7 +269,7 @@ def add_rule_set(
     ctx: AppContext,
     db: Session,
     user_id: int,
-    account_id: str,
+    account_id: int,
     fields: RuleSetFields,
     *,
     via: Via = "web",

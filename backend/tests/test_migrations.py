@@ -165,9 +165,7 @@ def test_a_recorded_run_and_its_report_take_core_s_codes(db_session: Session, us
 
     from mailroom.models import FilterRun, RuleSet
 
-    rule_set = RuleSet(
-        user_id=user.id, account_id="work", folder=["INBOX"], name="R", trigger="manual"
-    )
+    rule_set = RuleSet(user_id=user.id, account_id=1, folder=["INBOX"], name="R", trigger="manual")
     db_session.add(rule_set)
     db_session.flush()
     error = "login_failed: [AUTHENTICATIONFAILED] no"
@@ -198,3 +196,226 @@ def test_a_recorded_run_and_its_report_take_core_s_codes(db_session: Session, us
         migration.downgrade()
     db_session.expire_all()
     assert (run.error, run.result["error"]) == (f"login_failed: {AUTH}", f"login_failed: {AUTH}")
+
+
+def _rows(engine: Engine, query: str, **params: object) -> list[tuple[Any, ...]]:
+    with engine.connect() as connection:
+        return [tuple(row) for row in connection.execute(text(query), params)]
+
+
+def _insert(engine: Engine, query: str, **params: object) -> Any:
+    with engine.begin() as connection:
+        result = connection.execute(text(query), params)
+        return result.scalar() if result.returns_rows else None
+
+
+def test_account_ids_are_numbered_in_every_table_and_given_back(
+    throwaway_databases: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``core_0004`` and ``202611171200`` on rows as the slug ids left them: every table, JSON
+    field, draft send key and live job lock naming an account takes its number, and the
+    downgrades give each its slug back."""
+    import json
+
+    from alembic import command
+    from alembic.config import Config
+
+    from mailroom.db_migrations import alembic_ini_path
+    from mailroom_core.store import downgrade, upgrade
+
+    with throwaway_databases.migrated(lambda _: None) as engine:
+        monkeypatch.setenv("DATABASE_URL", engine.url.render_as_string(hide_password=False))
+        config = Config(str(alembic_ini_path()))
+        config.attributes["quiet"] = True
+        upgrade(engine, CORE_MIGRATIONS, "core_0003")
+        command.upgrade(config, "202611161200")
+
+        add_user = "insert into app.user (username, password_hash) values (:u, 'x') returning id"
+        alice = _insert(engine, add_user, u="alice")
+        bob = _insert(engine, add_user, u="bob")
+        docs = {
+            alice: [
+                {"id": "work", "login": "a@x.org", "name": "Office"},
+                {"id": "home", "login": "a@y.org"},
+            ],
+            bob: [{"id": "home", "login": "b@x.org"}],
+            # mailroom-core's own rows from before users (core_0002), which the app never names.
+            "owner": [{"id": "home", "login": "o@x.org"}],
+        }
+        for user_id, accounts in docs.items():
+            _insert(
+                engine,
+                "insert into core.settings (user_id, revision, doc, saved_at) "
+                "values (:u, 1, cast(:d as jsonb), now())",
+                u=str(user_id),
+                d=json.dumps({"account": accounts}),
+            )
+        _insert(
+            engine,
+            "insert into core.account_secrets (user_id, account_id, purpose, blob, updated_at) "
+            "values (:u, 'work', 'password', 'x', now())",
+            u=str(alice),
+        )
+        _insert(
+            engine,
+            "insert into core.sends (user_id, at, key, state, account) "
+            "values (:u, now(), 'work/c1', 'sent', 'work'), (:u, now(), 'k', 'sent', 'home')",
+            u=str(alice),
+        )
+        for user_id, account, on in ((alice, "work", True), (alice, "home", False)):
+            _insert(
+                engine,
+                "insert into app.account_filter_settings values (:u, :a, :on)",
+                u=user_id,
+                a=account,
+                on=on,
+            )
+        add_rule_set = (
+            "insert into app.rule_set (user_id, account_id, folder, name, trigger) "
+            "values (:u, :a, '{INBOX}', 'R', 'manual') returning id"
+        )
+        alices = _insert(engine, add_rule_set, u=alice, a="work")
+        bobs = _insert(engine, add_rule_set, u=bob, a="home")
+        _insert(
+            engine,
+            "insert into app.filter_run (rule_set_id, trigger, dry_run, result) values "
+            "(:r, 'manual', true, cast(:result as jsonb)), (:r, 'manual', true, null)",
+            r=alices,
+            result=json.dumps({"account": "work", "folder": ["INBOX"], "filters": []}),
+        )
+        add_record = (
+            "insert into app.audit_record (user_id, actor, action, account_id, result, detail) "
+            "values (:u, 'user', 'move_to_account', :a, 'ok', cast(:d as jsonb))"
+        )
+        _insert(
+            engine,
+            add_record,
+            u=alice,
+            a="work",
+            d=json.dumps({"folder": "INBOX", "destination_account": "home"}),
+        )
+        _insert(engine, add_record, u=alice, a="home", d=json.dumps({"source_account": "work"}))
+        # An account removed before: only the trail names it.
+        _insert(engine, add_record, u=alice, a="gone", d=json.dumps({"folder": "INBOX"}))
+        _insert(engine, add_record, u=bob, a="home", d="{}")
+        with engine.begin() as connection:
+            # procrastinate's triggers name its tables unqualified.
+            connection.execute(text("set local search_path to procrastinate"))
+            for lock, status in (
+                (f"mailbox:{alice}:work", "todo"),
+                (f"mailbox:{alice}:home", "succeeded"),
+            ):
+                connection.execute(
+                    text(
+                        "insert into procrastinate_jobs (queue_name, task_name, lock, status) "
+                        "values ('default', 'run_rule_set', :lock, :status)"
+                    ),
+                    {"lock": lock, "status": status},
+                )
+
+        upgrade(engine, CORE_MIGRATIONS)
+        command.upgrade(config, "head")
+
+        ids = {
+            (int(user) if user.isdecimal() else user, slug): account_id
+            for user, account_id, slug in _rows(engine, "select * from core.former_slugs")
+        }
+        work, home, gone = ids[alice, "work"], ids[alice, "home"], ids[alice, "gone"]
+        bobs_home, owners_home = ids[bob, "home"], ids["owner", "home"]
+        assert len({work, home, gone, bobs_home, owners_home}) == 5
+        assert _rows(engine, "select doc from core.settings where user_id = :u", u=str(alice)) == [
+            (
+                {
+                    "account": [
+                        {"id": work, "login": "a@x.org", "name": "Office"},
+                        {"id": home, "login": "a@y.org", "name": "home"},
+                    ]
+                },
+            )
+        ]
+        assert _rows(engine, "select account_id from core.account_secrets") == [(work,)]
+        assert _rows(engine, "select key, account from core.sends order by id") == [
+            (f"{work}/c1", work),
+            ("k", home),
+        ]
+        assert _rows(
+            engine, "select account_id, run_filters from app.account_filter_settings order by 2"
+        ) == [(home, False), (work, True)]
+        assert _rows(engine, "select id, account_id from app.rule_set order by id") == [
+            (alices, work),
+            (bobs, bobs_home),
+        ]
+        assert _rows(engine, "select result from app.filter_run order by id") == [
+            ({"account": work, "folder": ["INBOX"], "filters": []},),
+            (None,),
+        ]
+        assert _rows(
+            engine, "select user_id, account_id, detail from app.audit_record order by id"
+        ) == [
+            (alice, work, {"folder": "INBOX", "destination_account": home}),
+            (alice, home, {"source_account": work}),
+            (alice, gone, {"folder": "INBOX"}),
+            (bob, bobs_home, {}),
+        ]
+        assert _rows(engine, "select lock from procrastinate.procrastinate_jobs order by id") == [
+            (f"mailbox:{alice}:{work}",),
+            # A finished job's lock stays as it was.
+            (f"mailbox:{alice}:home",),
+        ]
+        # Old refs and cursors are stale; the app queries the new columns as numbers.
+        assert _rows(
+            engine,
+            "select count(*) from app.rule_set where account_id = :a",
+            a=work,
+        ) == [(1,)]
+
+        assert _rows(engine, "select doc from core.settings where user_id = 'owner'") == [
+            ({"account": [{"id": owners_home, "login": "o@x.org", "name": "home"}]},)
+        ]
+
+        command.downgrade(config, "202611161200")
+        downgrade(engine, CORE_MIGRATIONS, "core_0003")
+        assert _rows(engine, "select doc from core.settings where user_id = 'owner'") == [
+            ({"account": [{"id": "home", "login": "o@x.org", "name": "home"}]},)
+        ]
+        assert _rows(engine, "select doc from core.settings where user_id = :u", u=str(alice)) == [
+            (
+                {
+                    "account": [
+                        {"id": "work", "login": "a@x.org", "name": "Office"},
+                        {"id": "home", "login": "a@y.org", "name": "home"},
+                    ]
+                },
+            )
+        ]
+        assert _rows(engine, "select account_id from core.account_secrets") == [("work",)]
+        assert _rows(engine, "select key, account from core.sends order by id") == [
+            ("work/c1", "work"),
+            ("k", "home"),
+        ]
+        assert _rows(engine, "select account_id from app.rule_set order by id") == [
+            ("work",),
+            ("home",),
+        ]
+        assert _rows(engine, "select result from app.filter_run order by id") == [
+            ({"account": "work", "folder": ["INBOX"], "filters": []},),
+            (None,),
+        ]
+        assert _rows(engine, "select account_id, detail from app.audit_record order by id") == [
+            ("work", {"folder": "INBOX", "destination_account": "home"}),
+            ("home", {"source_account": "work"}),
+            ("gone", {"folder": "INBOX"}),
+            ("home", {}),
+        ]
+        assert _rows(engine, "select account_id from app.account_filter_settings order by 1") == [
+            ("home",),
+            ("work",),
+        ]
+        assert _rows(engine, "select lock from procrastinate.procrastinate_jobs order by id") == [
+            (f"mailbox:{alice}:work",),
+            (f"mailbox:{alice}:home",),
+        ]
+
+        upgrade(engine, CORE_MIGRATIONS)
+        command.upgrade(config, "head")
+        assert _rows(engine, "select count(*) from core.former_slugs") == [(5,)]

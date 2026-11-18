@@ -60,7 +60,7 @@ def opened() -> Iterator[list[MailConnections | IdleWatch]]:
 @pytest.fixture
 def connections(imap_server: ImapTestServer, opened: list[MailConnections | IdleWatch]):
     def make(user: str, **options: object) -> MailConnections:
-        made = connections_for(imap_server, [test_account("acc", user, imap_server)], **options)  # type: ignore[arg-type]
+        made = connections_for(imap_server, [test_account(1, user, imap_server)], **options)  # type: ignore[arg-type]
         opened.append(made)
         return made
 
@@ -72,7 +72,7 @@ def watch(opened: list[MailConnections | IdleWatch]):
     def start(connections: MailConnections, path: str, recorder: Recorder) -> IdleWatch:
         made = IdleWatch(
             connections,
-            "acc",
+            1,
             path,
             on_change=recorder.on_change,
             on_connect=recorder.on_connect,
@@ -94,7 +94,7 @@ def test_reports_new_mail_and_stops_within_a_slice(imap_server, connections, wat
     assert watching.connected
     assert watching.alive
     # The watch's connection is not one of the pool's single slot.
-    assert mail.with_mailbox("acc", "INBOX", True, lambda context: context.exists) == 1
+    assert mail.with_mailbox(1, "INBOX", True, lambda context: context.exists) == 1
 
     seed(imap_server, user, "INBOX", mime("arrived"))
     assert recorder.wait_for(recorder.new_mail)
@@ -133,7 +133,7 @@ def test_opens_a_cut_connection_again(imap_server, connections, watch) -> None:
 @pytest.mark.parametrize(
     ("path", "passwords", "code"),
     [
-        ("INBOX", {"acc": "wrong"}, "auth_failed"),
+        ("INBOX", {1: "wrong"}, "auth_failed"),
         ("Nowhere", None, "mailbox_missing"),
     ],
 )
@@ -154,17 +154,17 @@ def test_ends_on_errors_no_reconnect_mends(
 def test_login(imap_server, opened) -> None:
     user = imap_server.unique_user("login")
     accounts = [
-        test_account("ok", user, imap_server),
-        test_account("wrong", user, imap_server),
+        test_account(1, user, imap_server),
+        test_account(2, user, imap_server),
         test_account(
-            "down", user, imap_server, imap={"host": "127.0.0.1", "port": 9, "tls": "implicit"}
+            3, user, imap_server, imap={"host": "127.0.0.1", "port": 9, "tls": "implicit"}
         ),
     ]
-    mail = connections_for(imap_server, accounts, {"wrong": "nope"}, timeouts=Timeouts(probe=5))
+    mail = connections_for(imap_server, accounts, {2: "nope"}, timeouts=Timeouts(probe=5))
     opened.append(mail)
 
-    mail.test_login("ok")
-    for account_id, code in (("wrong", "auth_failed"), ("down", "unreachable")):
+    mail.test_login(1)
+    for account_id, code in ((2, "auth_failed"), (3, "unreachable")):
         with pytest.raises(MailError) as caught:
             mail.test_login(account_id)
         assert caught.value.code == code

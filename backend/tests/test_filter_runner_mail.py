@@ -16,7 +16,7 @@ from mailroom.worker.idle import FolderWatch, WatchedFolder
 from mailroom.worker.runs import execute_run
 from mailroom.worker.tasks import queue_new_mail_runs
 from mailroom_core.mail import subject_sha256
-from tests.test_api_accounts import new_account
+from tests.test_api_accounts import added, new_account
 from tests.test_api_filters import SHOP_SPEC, add_filter
 from tests.test_filter_runner import add_rule_set, queued_run, run_out, set_run_filters
 from tests.test_filters_dry_run import BANK, SHOP, Mailbox
@@ -38,13 +38,12 @@ def mailbox(imap_server: ImapTestServer) -> Mailbox:
 
 
 @pytest.fixture
-def account(user_client: TestClient, mailbox: Mailbox) -> str:
-    """The mailbox as the user's account ``work``."""
+def account(user_client: TestClient, mailbox: Mailbox) -> int:
+    """The mailbox as one of the user's accounts; its id."""
     server = mailbox.server
     endpoint = {"host": server.host, "port": server.port, "tls": "implicit"}
     body = new_account(login=mailbox.login, password=server.password, imap=endpoint)
-    assert user_client.post("/api/v1/accounts", json=body).status_code == 201
-    return "work"
+    return added(user_client, body)
 
 
 def starred(mailbox: Mailbox, folder: str) -> list[int]:
@@ -61,7 +60,7 @@ def test_a_run_acts_on_the_folder_and_reports_it(
     user: User,
     db_session: Session,
     mailbox: Mailbox,
-    account: str,
+    account: int,
     mailboxes: Mailboxes,
 ) -> None:
     mailbox.append("INBOX", (SHOP, "Autumn sale", False), (BANK, "Statement", False))
@@ -82,7 +81,7 @@ def test_a_run_acts_on_the_folder_and_reports_it(
     assert entry["executed"] is True
     assert [m["subject"] for m in entry["matched"]] == ["Autumn sale"]
     [record] = db_session.scalars(select(AuditRecord).where(AuditRecord.user_id == user.id))
-    assert (record.actor, record.account_id, record.result) == ("filter", "work", "ok")
+    assert (record.actor, record.account_id, record.result) == ("filter", account, "ok")
     assert (record.rule_set_id, record.run_id) == (rule_set_id, run_id)
     assert (record.detail["folder"], record.detail["filter"]) == ("INBOX", "Shop")
     assert record.detail["subject_sha256"] == subject_sha256("Autumn sale")
@@ -93,7 +92,7 @@ def test_a_starred_only_run_handles_starred_mail_only(
     user_client: TestClient,
     db_session: Session,
     mailbox: Mailbox,
-    account: str,
+    account: int,
     mailboxes: Mailboxes,
 ) -> None:
     mailbox.append("INBOX", (SHOP, "Autumn sale", False), (SHOP, "Picks", True))
@@ -116,7 +115,7 @@ def test_a_watched_folder_queues_runs_that_move_new_mail(
     db_session: Session,
     user: User,
     mailbox: Mailbox,
-    account: str,
+    account: int,
     mailboxes: Mailboxes,
 ) -> None:
     """mailroom-core's IdleWatch on the folder: once on connecting, then on new mail. The runs are
@@ -166,7 +165,7 @@ def test_a_watched_folder_queues_runs_that_move_new_mail(
 
 
 def test_a_watch_on_a_missing_folder_ends_with_its_code(
-    user: User, account: str, mailboxes: Mailboxes
+    user: User, account: int, mailboxes: Mailboxes
 ) -> None:
     folder = WatchedFolder(user.id, account, ("Nowhere",))
     revision = load_accounts(user_store(mailboxes.engine, user.id)).revision

@@ -79,8 +79,12 @@ export function ActivityScreen(): ReactElement {
   // Until the accounts are loaded, a record's account has no name yet, rather than a removed one.
   const loaded = accounts.state.kind === 'loaded' ? accounts.state.value : null
 
-  function choose(key: keyof AuditFilters, value: string): void {
+  function choose(key: Exclude<keyof AuditFilters, 'account_id'>, value: string): void {
     setFilters((current) => ({ ...current, [key]: value === '' ? undefined : value }))
+  }
+
+  function chooseAccount(value: string): void {
+    setFilters((current) => ({ ...current, account_id: value === '' ? undefined : Number(value) }))
   }
 
   return (
@@ -89,7 +93,7 @@ export function ActivityScreen(): ReactElement {
       <p className="text-sm text-muted-foreground">{t('intro')}</p>
       <fieldset className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <legend className="sr-only">{t('filters.label')}</legend>
-        <Choice label={t('filters.account')} value={filters.account_id} onChange={(v) => { choose('account_id', v) }}>
+        <Choice label={t('filters.account')} value={filters.account_id === undefined ? undefined : String(filters.account_id)} onChange={(v) => { chooseAccount(v) }}>
           {(loaded ?? []).map((account) => (
             <option key={account.id} value={account.id}>
               {account.display_name}
@@ -272,7 +276,7 @@ function Row({ record }: { record: AuditRecord }): ReactElement {
           <div key={name} className="contents">
             <dt className="text-muted-foreground">{t(`fields.${name}`, { defaultValue: name })}</dt>
             <dd className="break-all">
-              {(name === 'destination_account' || name === 'source_account') && typeof value === 'string'
+              {(name === 'destination_account' || name === 'source_account') && typeof value === 'number'
                 ? accountLabel(value).display_name
                 : text(t, name, value)}
             </dd>

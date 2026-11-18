@@ -16,7 +16,7 @@ from mailroom.filters import runs
 from mailroom_core.filters import get_match_timeout, load_filter, set_match_timeout
 from mailroom_core.mail import MESSAGES
 from tests.support.mail import mail_servers_ssl_context
-from tests.test_api_accounts import new_account
+from tests.test_api_accounts import added, new_account
 from tests.test_api_filters import SHOP_SPEC, add_filter, rule_set
 
 if TYPE_CHECKING:
@@ -98,12 +98,11 @@ def mailbox(
 
 
 @pytest.fixture
-def account(user_client: TestClient, mailbox: Mailbox) -> str:
+def account(user_client: TestClient, mailbox: Mailbox) -> int:
     server = mailbox.server
     endpoint = {"host": server.host, "port": server.port, "tls": "implicit"}
     account = new_account(login=mailbox.login, password=server.password, imap=endpoint)
-    assert user_client.post("/api/v1/accounts", json=account).status_code == 201
-    return "work"
+    return added(user_client, account)
 
 
 def dry_run_of(client: TestClient, rule_set_id: int) -> dict[str, Any]:
@@ -114,7 +113,7 @@ def dry_run_of(client: TestClient, rule_set_id: int) -> dict[str, Any]:
 
 
 def test_a_dry_run_reports_matches_and_changes_nothing(
-    user_client: TestClient, mailbox: Mailbox, account: str
+    user_client: TestClient, mailbox: Mailbox, account: int
 ) -> None:
     mailbox.append(
         "INBOX", (SHOP, "Autumn sale", False), (BANK, "Statement", False), (SHOP, "Picks", True)
@@ -156,7 +155,7 @@ def test_a_dry_run_reports_matches_and_changes_nothing(
 
 
 def test_a_nul_in_a_header_does_not_stop_the_report(
-    user_client: TestClient, mailbox: Mailbox, account: str
+    user_client: TestClient, mailbox: Mailbox, account: int
 ) -> None:
     """A third party's encoded word may decode to a NUL, which ``jsonb`` refuses."""
     mailbox.append("INBOX", (SHOP, "Plain", False))
@@ -175,7 +174,7 @@ def test_a_nul_in_a_header_does_not_stop_the_report(
 
 
 def test_starred_only_looks_at_starred_mail(
-    user_client: TestClient, mailbox: Mailbox, account: str
+    user_client: TestClient, mailbox: Mailbox, account: int
 ) -> None:
     mailbox.append("INBOX", (SHOP, "Autumn sale", False), (SHOP, "Picks", True))
     body = rule_set(starred_only=True)
@@ -188,7 +187,7 @@ def test_starred_only_looks_at_starred_mail(
 
 
 def test_a_nested_folder_is_found_with_the_servers_delimiter(
-    user_client: TestClient, mailbox: Mailbox, account: str
+    user_client: TestClient, mailbox: Mailbox, account: int
 ) -> None:
     conn = mailbox.client()
     try:
@@ -206,7 +205,7 @@ def test_a_nested_folder_is_found_with_the_servers_delimiter(
 
 
 def test_a_missing_folder_is_mailbox_missing(
-    user_client: TestClient, mailbox: Mailbox, account: str
+    user_client: TestClient, mailbox: Mailbox, account: int
 ) -> None:
     _ = mailbox
     body = rule_set(folder=["Nowhere"])
@@ -230,7 +229,7 @@ def quick_match_timeout() -> Any:
 
 @pytest.mark.usefixtures("quick_match_timeout")
 def test_a_pattern_out_of_time_fails_the_dry_run(
-    user_client: TestClient, mailbox: Mailbox, account: str
+    user_client: TestClient, mailbox: Mailbox, account: int
 ) -> None:
     """The filter engine times the match out; the run records the kind, not the pattern."""
     mailbox.append("INBOX", (SHOP, "a" * 40 + "!", False))
@@ -250,7 +249,7 @@ def test_a_pattern_out_of_time_fails_the_dry_run(
 
 
 def test_a_dry_run_looks_at_the_newest_messages_only(
-    user_client: TestClient, mailbox: Mailbox, account: str, monkeypatch: pytest.MonkeyPatch
+    user_client: TestClient, mailbox: Mailbox, account: int, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     mailbox.append("INBOX", *[(SHOP, f"Sale {n}", False) for n in range(5)])
     rule_set_id = user_client.post(f"/api/v1/accounts/{account}/rule-sets", json=rule_set()).json()[
@@ -270,7 +269,7 @@ def test_a_dry_run_looks_at_the_newest_messages_only(
 
 
 def test_a_dry_run_out_of_time_is_stopped(
-    user_client: TestClient, mailbox: Mailbox, account: str, monkeypatch: pytest.MonkeyPatch
+    user_client: TestClient, mailbox: Mailbox, account: int, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The pool's deadline: the call is abandoned and the account's connection in use cut."""
     mailbox.append("INBOX", (SHOP, "Sale", False))
@@ -286,7 +285,7 @@ def test_a_dry_run_out_of_time_is_stopped(
 def test_older_than_days_counts_from_the_users_today(
     user_client: TestClient,
     mailbox: Mailbox,
-    account: str,
+    account: int,
     application: FastAPI,
     sessions: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,

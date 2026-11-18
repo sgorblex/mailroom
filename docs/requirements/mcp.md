@@ -16,7 +16,8 @@ server*.
 
 Tool names are noun_verb (`accounts_list`, `folders_list`, `rule_sets_list`), unlike mailroom-mcp's
 bare verbs. The `mail_read` tools take mailroom-mcp's `list`, `search`, `read`, `thread` and
-`attachment` inputs (an account is `account_id`; with one account it may be left out, and
+`attachment` inputs (an account is `account_id`, the number `accounts_list` gives as its `id`;
+with one account it may be left out, and
 `messages_search` takes `"*"` for every account; both take `subfolders`, the folder's subfolders
 merged in as the REST list's `subfolders` reads them, refused with `folder="*"`, each line then
 naming its folder after the ref) and return mailroom-core's text, its hints naming the app's
@@ -115,7 +116,7 @@ not OAuth scope.
 
 | Group (status, default) | Tool | Annotations |
 | --- | --- | --- |
-| `filters_read` or any `mail_*` group (whichever is on) | `accounts_list` (id, `name` (the account's own, null when unnamed), `display_name` (its name, else its id), login, `has_password`, `run_filters` where the instance runs filters, `send_mode`, `identities`) | readOnly, idempotent |
+| `filters_read` or any `mail_*` group (whichever is on) | `accounts_list` (`id`, a number, `name` (the account's own, null when unnamed), `display_name` (its name, else its login), login, `has_password`, `run_filters` where the instance runs filters, `send_mode`, `identities`) | readOnly, idempotent |
 | | `folders_list` (`path` as the mail tools take it, `delimiter`, `segments`, `role`; `counts=true` adds unread and total) | readOnly, idempotent, openWorld |
 | `filters_read` (stable, on) | `filter_schema`, `rule_sets_list`, `rule_set_get` (with its filters), `runs_list` | readOnly, idempotent |
 | `filters_write` (stable, on) | `rule_set_create`, `rule_set_update`, `filter_add`, `filter_update`, `filters_reorder` | none |

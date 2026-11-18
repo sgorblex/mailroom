@@ -31,7 +31,7 @@ from mailroom.worker.tasks import (
 from mailroom_core.config import TimeZoneName
 from mailroom_core.filters import Folder
 from mailroom_core.mail import MESSAGES, CopiedNotRemovedError, Moved
-from tests.test_api_accounts import new_account
+from tests.test_api_accounts import added, new_account
 from tests.test_api_filters import SHOP_SPEC, add_filter, jobs, rule_set
 
 if TYPE_CHECKING:
@@ -43,18 +43,18 @@ if TYPE_CHECKING:
     from mailroom.models import User
 
 
-def add_account(client: TestClient, account_id: str = "work", *, run_filters: bool = True) -> str:
-    assert client.post("/api/v1/accounts", json=new_account(account_id)).status_code == 201
+def add_account(client: TestClient, label: str = "work", *, run_filters: bool = True) -> int:
+    account_id = added(client, new_account(label))
     set_run_filters(client, account_id, on=run_filters)
     return account_id
 
 
-def set_run_filters(client: TestClient, account_id: str, *, on: bool) -> None:
+def set_run_filters(client: TestClient, account_id: int, *, on: bool) -> None:
     settings = f"/api/v1/accounts/{account_id}/filter-settings"
     assert client.put(settings, json={"run_filters": on}).status_code == 200
 
 
-def add_rule_set(client: TestClient, account_id: str = "work", **changes: Any) -> int:
+def add_rule_set(client: TestClient, account_id: int, **changes: Any) -> int:
     body = rule_set(**({"enabled": True} | changes))
     response = client.post(f"/api/v1/accounts/{account_id}/rule-sets", json=body)
     assert response.status_code == 201, response.json()
@@ -85,8 +85,8 @@ EVERY_15 = {"trigger": "scheduled", "interval_minutes": 15}
 def test_scheduled_rule_sets_are_queued_when_due(
     user_client: TestClient, db_session: Session, user: User
 ) -> None:
-    add_account(user_client)
-    due = add_rule_set(user_client, **EVERY_15)
+    work = add_account(user_client)
+    due = add_rule_set(user_client, work, **EVERY_15)
     now = datetime.now(UTC)
 
     [run_id] = queue_scheduled_runs(db_session, now)
@@ -96,7 +96,7 @@ def test_scheduled_rule_sets_are_queued_when_due(
         {
             "task_name": "run_rule_set",
             "args": {"run_id": run_id},
-            "lock": f"mailbox:{user.id}:work",
+            "lock": f"mailbox:{user.id}:{work}",
             "queueing_lock": f"rule_set:{due}",
             "status": "todo",
         }
@@ -115,12 +115,12 @@ def test_scheduled_rule_sets_are_queued_when_due(
 def test_only_runnable_scheduled_rule_sets_are_queued(
     user_client: TestClient, db_session: Session
 ) -> None:
-    add_account(user_client)
-    add_account(user_client, "home", run_filters=False)
-    add_rule_set(user_client, **EVERY_15, enabled=False)
-    add_rule_set(user_client, "home", **EVERY_15)
-    add_rule_set(user_client, trigger="manual")
-    add_rule_set(user_client, trigger="new_mail")
+    work = add_account(user_client)
+    home = add_account(user_client, "home", run_filters=False)
+    add_rule_set(user_client, work, **EVERY_15, enabled=False)
+    add_rule_set(user_client, home, **EVERY_15)
+    add_rule_set(user_client, work, trigger="manual")
+    add_rule_set(user_client, work, trigger="new_mail")
 
     assert queue_scheduled_runs(db_session, datetime.now(UTC)) == []
     assert jobs(db_session) == []
@@ -129,18 +129,18 @@ def test_only_runnable_scheduled_rule_sets_are_queued(
 def test_new_mail_queues_the_folders_new_mail_rule_sets(
     user_client: TestClient, db_session: Session, user: User
 ) -> None:
-    add_account(user_client)
-    add_account(user_client, "home", run_filters=False)
-    inbox = add_rule_set(user_client, trigger="new_mail")
-    add_rule_set(user_client, trigger="new_mail", folder=["Archive"])
-    add_rule_set(user_client, trigger="new_mail", enabled=False)
-    add_rule_set(user_client, trigger="scheduled", interval_minutes=5)
-    add_rule_set(user_client, "home", trigger="new_mail")
+    work = add_account(user_client)
+    home = add_account(user_client, "home", run_filters=False)
+    inbox = add_rule_set(user_client, work, trigger="new_mail")
+    add_rule_set(user_client, work, trigger="new_mail", folder=["Archive"])
+    add_rule_set(user_client, work, trigger="new_mail", enabled=False)
+    add_rule_set(user_client, work, trigger="scheduled", interval_minutes=5)
+    add_rule_set(user_client, home, trigger="new_mail")
 
-    [run_id] = queue_new_mail_runs(db_session, user.id, "work", ["INBOX"])
+    [run_id] = queue_new_mail_runs(db_session, user.id, work, ["INBOX"])
     assert [(run.id, run.trigger) for run in runs(db_session, inbox)] == [(run_id, "new_mail")]
     # More new mail while that run waits: it will see that mail too.
-    assert queue_new_mail_runs(db_session, user.id, "work", ["INBOX"]) == []
+    assert queue_new_mail_runs(db_session, user.id, work, ["INBOX"]) == []
     assert len(jobs(db_session)) == 1
 
 
@@ -160,12 +160,12 @@ def run_out(client: TestClient, rule_set_id: int, run_id: int) -> dict[str, Any]
 def test_a_run_checks_its_rule_set_again_when_it_starts(
     user_client: TestClient, db_session: Session, mailboxes: Mailboxes
 ) -> None:
-    add_account(user_client)
-    rule_set_id = add_rule_set(user_client)
+    work = add_account(user_client)
+    rule_set_id = add_rule_set(user_client, work)
     add_filter(user_client, rule_set_id, "Shop", SHOP_SPEC)
 
     run_id = queued_run(user_client, rule_set_id)
-    set_run_filters(user_client, "work", on=False)
+    set_run_filters(user_client, work, on=False)
     execute_run(db_session, run_id, mailboxes)
     run = run_out(user_client, rule_set_id, run_id)
     assert run["started_at"] is not None
@@ -173,7 +173,7 @@ def test_a_run_checks_its_rule_set_again_when_it_starts(
     assert run["result"] is None
     assert run["error"] == "run_filters_off: Run filters is off for this account."
 
-    set_run_filters(user_client, "work", on=True)
+    set_run_filters(user_client, work, on=True)
     finish_jobs(db_session)
     run_id = queued_run(user_client, rule_set_id)
     user_client.patch(f"/api/v1/rule-sets/{rule_set_id}", json={"enabled": False})
@@ -190,8 +190,8 @@ def test_a_run_records_why_the_mailbox_failed(
 ) -> None:
     """The account's IMAP port 9 on loopback is closed. The task runs through the worker's
     context."""
-    add_account(user_client)
-    rule_set_id = add_rule_set(user_client)
+    work = add_account(user_client)
+    rule_set_id = add_rule_set(user_client, work)
     add_filter(user_client, rule_set_id, "Shop", SHOP_SPEC)
     run_id = queued_run(user_client, rule_set_id)
 
@@ -207,8 +207,8 @@ def test_a_run_records_why_the_mailbox_failed(
 def test_a_run_without_the_secrets_key_records_it(
     user_client: TestClient, db_session: Session, migrated_engine: Engine
 ) -> None:
-    add_account(user_client)
-    rule_set_id = add_rule_set(user_client)
+    work = add_account(user_client)
+    rule_set_id = add_rule_set(user_client, work)
     run_id = queued_run(user_client, rule_set_id)
     execute_run(db_session, run_id, Mailboxes(migrated_engine, None, mail_ssl_context()))
     assert run_out(user_client, rule_set_id, run_id)["error"].startswith("secrets_key_missing: ")
@@ -217,8 +217,8 @@ def test_a_run_without_the_secrets_key_records_it(
 def test_a_removed_run_is_left_alone(
     user_client: TestClient, db_session: Session, mailboxes: Mailboxes
 ) -> None:
-    add_account(user_client)
-    rule_set_id = add_rule_set(user_client)
+    work = add_account(user_client)
+    rule_set_id = add_rule_set(user_client, work)
     run_id = queued_run(user_client, rule_set_id)
     assert user_client.delete(f"/api/v1/rule-sets/{rule_set_id}").status_code == 204
     execute_run(db_session, run_id, mailboxes)
@@ -246,13 +246,13 @@ def test_runs_queue_while_the_worker_has_procrastinate_open(
 
     from mailroom.worker.app import app, database_connector
 
-    add_account(user_client)
-    rule_set_id = add_rule_set(user_client, trigger="new_mail")
+    work = add_account(user_client)
+    rule_set_id = add_rule_set(user_client, work, trigger="new_mail")
     user = db_session.get_one(RuleSet, rule_set_id).user_id
 
     async def queue_with_the_app_open() -> list[int]:
         async with app.open_async():
-            return await asyncio.to_thread(queue_new_mail_runs, db_session, user, "work", ["INBOX"])
+            return await asyncio.to_thread(queue_new_mail_runs, db_session, user, work, ["INBOX"])
 
     with app.replace_connector(database_connector(os.environ["DATABASE_URL"])):
         [run_id] = asyncio.run(queue_with_the_app_open())
@@ -268,8 +268,8 @@ def test_an_unexpected_failure_records_its_type_only(
 ) -> None:
     from mailroom.worker import runs as worker_runs
 
-    add_account(user_client)
-    rule_set_id = add_rule_set(user_client)
+    work = add_account(user_client)
+    rule_set_id = add_rule_set(user_client, work)
     run_id = queued_run(user_client, rule_set_id)
 
     def broken(*_args: object) -> None:
@@ -292,8 +292,8 @@ def test_a_run_failing_part_way_keeps_the_finished_filters_report(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
 
-    add_account(user_client)
-    rule_set_id = add_rule_set(user_client)
+    work = add_account(user_client)
+    rule_set_id = add_rule_set(user_client, work)
     first = add_filter(user_client, rule_set_id, "Shop", SHOP_SPEC)
     add_filter(user_client, rule_set_id, "Shop again", SHOP_SPEC)
     run_id = queued_run(user_client, rule_set_id)
@@ -320,8 +320,8 @@ def test_a_run_counts_days_from_the_users_time_zone(
 ) -> None:
     """The worker runs the folder in the user's zone, which `older_than_days` counts from (core's
     `test_older_than_days_counts_from_the_runs_time_zone`)."""
-    add_account(user_client)
-    rule_set_id = add_rule_set(user_client)
+    work = add_account(user_client)
+    rule_set_id = add_rule_set(user_client, work)
     set_time_zone(db_session, user, TimeZoneName("Pacific/Auckland"))
     run_id = queued_run(user_client, rule_set_id)
     zones: list[object] = []
@@ -343,8 +343,8 @@ def test_a_move_that_copied_without_removing_turns_the_rule_set_off(
 ) -> None:
     """Every new trigger would copy the originals again: the rule set stops until the user
     enables it, and the run's history says why."""
-    add_account(user_client)
-    rule_set_id = add_rule_set(user_client)
+    work = add_account(user_client)
+    rule_set_id = add_rule_set(user_client, work)
     add_filter(user_client, rule_set_id, "Shop", SHOP_SPEC)
     run_id = queued_run(user_client, rule_set_id)
 
@@ -383,12 +383,12 @@ def set_job_status(db: Session, run_id: int, status: str) -> None:
 def test_runs_a_stopped_worker_left_are_closed(
     user_client: TestClient, db_session: Session
 ) -> None:
-    add_account(user_client)
-    waiting = queued_run(user_client, add_rule_set(user_client))
-    running = queued_run(user_client, add_rule_set(user_client))
-    never_started = queued_run(user_client, add_rule_set(user_client))
-    still_running = queued_run(user_client, add_rule_set(user_client))
-    dry = FilterRun(rule_set_id=add_rule_set(user_client), trigger="manual", dry_run=True)
+    work = add_account(user_client)
+    waiting = queued_run(user_client, add_rule_set(user_client, work))
+    running = queued_run(user_client, add_rule_set(user_client, work))
+    never_started = queued_run(user_client, add_rule_set(user_client, work))
+    still_running = queued_run(user_client, add_rule_set(user_client, work))
+    dry = FilterRun(rule_set_id=add_rule_set(user_client, work), trigger="manual", dry_run=True)
     db_session.add(dry)
     started = datetime.now(UTC) - timedelta(minutes=5)
     db_session.get_one(FilterRun, running).started_at = started
@@ -424,8 +424,8 @@ def test_a_pattern_out_of_time_fails_the_run(
     from mailroom.filters.runs import MATCH_TIMEOUT_MESSAGE
     from mailroom_core.filters import MatchTimeoutError
 
-    add_account(user_client)
-    rule_set_id = add_rule_set(user_client)
+    work = add_account(user_client)
+    rule_set_id = add_rule_set(user_client, work)
     first = add_filter(user_client, rule_set_id, "Shop", SHOP_SPEC)
     add_filter(user_client, rule_set_id, "Backtracks", SHOP_SPEC)
     run_id = queued_run(user_client, rule_set_id)

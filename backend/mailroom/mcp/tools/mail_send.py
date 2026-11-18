@@ -163,7 +163,7 @@ async def _answer(call: ToolCall, dispatched: Dispatched) -> types.CallToolResul
         why = " and not every recipient is auto-approved" if approval else ""
         where = "in Drafts" if dispatched.draft is None else format_ref(dispatched.draft)
         return text_result(
-            f"Saved as a draft, NOT sent ({dispatched.account}'s send mode is "
+            f"Saved as a draft, NOT sent (account {dispatched.account}'s send mode is "
             f"{dispatched.send_mode}{why}): {who_text}. Draft: {where}."
         )
     return _outcome(await _settled(call, dispatched.send), f"Sent {who_text}.")

@@ -336,27 +336,37 @@ bounded to one minor because the server relies on its handlers.
 - **Storage:** mailroom-core's `AccountStore(engine, str(user.id))` over its schema `core` in the
   app's database: one settings document per user (revisions, replaced whole) and the passwords
   sealed beside it (AES-256-GCM under a subkey of `MAILROOM_SECRETS_KEY`, 64 hex digits, bound to
-  the account id), byte-compatible with mailroom-mcp. Without the key (or with a malformed one)
+  the account: its former slug, else its id; [`../core.md`](../core.md) — *Compatibility*). Without the key (or with a malformed one)
   startup warns, the accounts stay listed, and adding, a new password, a test or a folder listing
   answers 503 `secrets_key_missing`. The app's own `app.account_filter_settings(user_id,
   account_id, run_filters)` holds the Run filters switch; no row is off.
-- **API** (`/api/v1/accounts`, the signed-in user's own; another user's id is a 404): list, add
-  (`POST`, with the password), edit (`PUT /{id}`, without the id; no password keeps it), remove
+- **Ids:** an account's id is a positive integer from mailroom-core's `account_ids` sequence,
+  given when the account is added, unique across the instance and never reused; the web never
+  shows it. Accounts added before were numbered by `core_0004` and the app's `202611171200`,
+  which rewrote every stored id in one upgrade (the settings and their history, sealed secrets,
+  send log and draft send keys, rule sets, Run filters switches, audit records and their
+  `destination_account` / `source_account`, run reports, waiting jobs' locks), naming an unnamed
+  account by its slug unless another of the user's accounts already has that name (compared
+  trimmed and case-insensitively; slugs, all lowercase, never clash with each other). Refs and
+  cursors made before read as `stale_reference`.
+- **API** (`/api/v1/accounts`, the signed-in user's own; another user's id is a 404, one that is
+  not a positive integer a 422): list, add (`POST`, with the password and no id: the answer
+  carries it), edit (`PUT /{id}`; no password keeps it), remove
   (`DELETE /{id}`, its switch too), `POST /{id}/test` (an IMAP login and logout:
   `{"ok", "code", "message"}`). Responses carry `has_password`, never the password. An account
   may have a `name` (1 to 64 characters, not blank) and a `colour` (`slate`, `red`, `orange`,
   `amber`, `green`, `teal`, `sky`, `blue`, `violet` or `pink`), each null when unset and given
-  back as stored, so a client tells an unnamed account from one named after its id. Responses
-  also carry a read-only `display_name`, what to call the account: its `name`, else its id (a
-  body that sends it back has it ignored). An edit replaces `name` and `colour` like the other
-  fields. No two of a user's accounts share a name, compared trimmed and whatever their case;
-  unnamed accounts share none. An account's
+  back as stored, so a client tells an unnamed account from one named after its login.
+  Responses also carry a read-only `display_name`, what to call the account: its `name`, else
+  its login (a body that sends it back has it ignored). An edit replaces `name` and `colour`
+  like the other fields. No two of a user's accounts share a name, compared trimmed and
+  whatever their case; unnamed accounts share none. An account's
   folders and its Run filters switch are the filters' routes ([Filters](#filters)).
 - **Checks:** mailroom-core's config models (`core_settings_or_issues`) validate the whole document
-  before each save; a refusal is 400 `{"detail": {"code": "invalid_account" | "account_exists",
-  "message", "issues": [{"path", "message"}]}}`, `path` inside the account. A name another of the
-  user's accounts has, on an add or an edit, is 409 `account_name_taken` in the same shape (its
-  issue at `["name"]`), checked in the same revision as the save. A save racing another is 409
+  before each save; a refusal is 400 `{"detail": {"code": "invalid_account", "message",
+  "issues": [{"path", "message"}]}}`, `path` inside the account. A name another of the user's
+  accounts has, on an add or an edit, is 409 `account_name_taken` in the same shape (its issue
+  at `["name"]`), checked in the same revision as the save. A save racing another is 409
   `accounts_changed` or 503 `accounts_busy`.
 - **Limits** (`GET` / `PUT /api/v1/me/limits`, mounted with the mail layer): the signed-in user's
   `send_per_hour`, `max_recipients`, `body_chars`, `attachment_max_mb` and `move_max_mb` (a
