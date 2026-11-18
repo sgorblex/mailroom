@@ -113,7 +113,7 @@ export function MessageList({
           <SelectAll messages={messages} />
           <ul aria-label={searching ? t('list.results') : t('list.messages')} className="flex flex-col divide-y rounded-lg border">
             {messages.map((message) => (
-              <li key={message.ref} className="flex items-start">
+              <li key={message.ref} className="group/row flex items-start">
                 <input
                   type="checkbox"
                   name="message"
@@ -125,6 +125,7 @@ export function MessageList({
                     triage.select([message], event.target.checked)
                   }}
                 />
+                <StarToggle message={message} />
                 <MessageRow message={message} source={searching ? 'account' : subfolders ? 'folder' : null} />
               </li>
             ))}
@@ -220,6 +221,43 @@ function SelectAll({ messages }: { messages: Target[] }): ReactElement {
   )
 }
 
+/**
+ * Stars or unstars this one message, whatever is selected or open, through the triage flag path:
+ * its outcome is the toolbar's. A sibling of the row's link, so a click opens nothing. Filled when
+ * starred; otherwise an outline seen on hover and focus (and always on a touch screen), but
+ * always there for screen readers.
+ */
+function StarToggle({ message }: { message: MessageItem }): ReactElement {
+  const { t } = useTranslation(MAIL_NS)
+  const { flagsOf, run, busy } = useTriage()
+  const { flagged } = flagsOf(message)
+  return (
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      // A toggle keeps one name; its state is aria-pressed. The tooltip says what a click does.
+      aria-label={t('triage.star')}
+      title={flagged ? t('triage.unstar') : t('triage.star')}
+      aria-pressed={flagged}
+      aria-disabled={busy}
+      className={cn(
+        'mt-2.5 ml-1.5 shrink-0 text-muted-foreground hover:text-foreground',
+        // Not opacity: an unstarred row's outline stays hidden until hover or focus.
+        'aria-disabled:cursor-not-allowed aria-disabled:text-muted-foreground/50 aria-disabled:hover:text-muted-foreground/50',
+        !flagged &&
+          'opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100',
+      )}
+      onClick={() => {
+        if (!busy) {
+          void run({ kind: 'flag', change: { flagged: !flagged } }, [message])
+        }
+      }}
+    >
+      <Star aria-hidden="true" className={cn('size-3.5', flagged && 'fill-current text-foreground')} />
+    </Button>
+  )
+}
+
 function MessageRow({ message, source }: { message: MessageItem; source: 'account' | 'folder' | null }): ReactElement {
   const { t, i18n } = useTranslation(MAIL_NS)
   const timeZone = useTimeZone()
@@ -243,9 +281,8 @@ function MessageRow({ message, source }: { message: MessageItem; source: 'accoun
         <span className={cn('min-w-0 flex-1 truncate', unread && 'font-semibold')}>
           {sender === '' ? t('message.noSender') : sender}
         </span>
-        {flags.flagged && (
-          <Star role="img" aria-label={t('list.flagged')} className="size-3.5 shrink-0 self-center fill-current" />
-        )}
+        {/* Shown by the row's star toggle; said here too for whoever goes through the links. */}
+        {flags.flagged && <span className="sr-only">{t('list.flagged')}</span>}
         {message.has_attachments && (
           <Paperclip role="img" aria-label={t('list.hasAttachments')} className="size-3.5 shrink-0 self-center" />
         )}

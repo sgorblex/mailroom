@@ -69,6 +69,16 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 const actions = (): Promise<HTMLElement> => screen.findByRole('group', { name: 'Message actions' })
 const rowLink = (list: HTMLElement, subject: string): HTMLElement =>
   within(list).getByRole('link', { name: new RegExp(`${subject}Preview`) })
+/** The row of the message with `subject`, its checkbox and star toggle included. */
+function row(list: HTMLElement, subject: string): HTMLElement {
+  const item = rowLink(list, subject).closest('li')
+  if (item === null) {
+    throw new Error(`no row for ${subject}`)
+  }
+  return item
+}
+const starToggle = (list: HTMLElement, subject: string): HTMLElement =>
+  within(row(list, subject)).getByRole('button', { name: 'Star' })
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -234,11 +244,13 @@ describe('triage', () => {
     const group = await actions()
     await userEvent.click(within(group).getByRole('button', { name: 'Star' }))
     await reported('polite', 'Starred 1 message.')
-    expect(within(rowLink(list, 'Message 9')).getByLabelText('Starred')).toBeInTheDocument()
+    expect(starToggle(list, 'Message 9')).toHaveAttribute('aria-pressed', 'true')
+    expect(rowLink(list, 'Message 9')).toHaveAccessibleName(/Starred/)
     await userEvent.click(within(group).getByRole('button', { name: 'Unstar' }))
     await waitFor(() => {
-      expect(within(rowLink(list, 'Message 9')).queryByLabelText('Starred')).not.toBeInTheDocument()
+      expect(starToggle(list, 'Message 9')).toHaveAttribute('aria-pressed', 'false')
     })
+    expect(rowLink(list, 'Message 9')).not.toHaveAccessibleName(/Starred/)
 
     await userEvent.click(within(group).getByRole('button', { name: 'Mark as unread' }))
     expect(await within(list).findByRole('link', { name: /Unread:\s*Message 9Preview/ })).toBeInTheDocument()
@@ -252,6 +264,92 @@ describe('triage', () => {
       { refs: [second?.ref], seen: false },
       { refs: [second?.ref], seen: true },
     ])
+  })
+
+  it("stars and unstars one row from its star, leaving the selection and the open message as they are", async () => {
+    const fetchMock = stubMailApi(state())
+    const history = renderMailApp(`/mail?message=${String(third?.ref)}`)
+
+    const list = await messagesList()
+    await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 10' }))
+    const star = starToggle(list, 'Message 9')
+    expect(star).toHaveAccessibleName('Star')
+    expect(star).toHaveAttribute('aria-pressed', 'false')
+    await userEvent.click(star)
+
+    await reported('polite', 'Starred 1 message.')
+    expect(starToggle(list, 'Message 9')).toHaveAccessibleName('Star')
+    expect(starToggle(list, 'Message 9')).toHaveAttribute('title', 'Unstar')
+    expect(starToggle(list, 'Message 9')).toHaveAttribute('aria-pressed', 'true')
+    expect(history.location.search).toContain(`message=${String(third?.ref)}`)
+    expect(await actions()).toHaveTextContent('1 selected')
+    expect(within(list).getByRole('checkbox', { name: 'Select Message 9' })).not.toBeChecked()
+
+    await userEvent.click(starToggle(list, 'Message 9'))
+    await reported('polite', 'Unstarred 1 message.')
+    expect(starToggle(list, 'Message 9')).toHaveAttribute('aria-pressed', 'false')
+    expect(bodiesTo(fetchMock, FLAG)).toEqual([
+      { refs: [second?.ref], flagged: true },
+      { refs: [second?.ref], flagged: false },
+    ])
+    expect(history.location.search).toContain(`message=${String(third?.ref)}`)
+  })
+
+  it("reports a row's star that failed in the toolbar's notice, leaving the row as it was", async () => {
+    stubMailApi(state({ groupFailures: { '1/INBOX': 'not_found' } }))
+    renderMailApp('/mail')
+
+    const list = await messagesList()
+    await userEvent.click(starToggle(list, 'Message 9'))
+    await reported('assertive', 'Not every message is still in that folder. Reload the list.')
+    expect(starToggle(list, 'Message 9')).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it("leaves the s shortcut on the selection after a row's star was clicked", async () => {
+    const fetchMock = stubMailApi(state())
+    renderMailApp('/mail')
+
+    const list = await messagesList()
+    await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 8' }))
+    await userEvent.click(starToggle(list, 'Message 9'))
+    await reported('polite', 'Starred 1 message.')
+    // Focus is on the row's star: a button, so s is still a shortcut, and it acts on the selection.
+    expect(document.activeElement).toBe(starToggle(list, 'Message 9'))
+    await userEvent.keyboard('s')
+    await waitFor(() => {
+      expect(starToggle(list, 'Message 8')).toHaveAttribute('aria-pressed', 'true')
+    })
+    expect(bodiesTo(fetchMock, FLAG)).toEqual([
+      { refs: [second?.ref], flagged: true },
+      { refs: [third?.ref], flagged: true },
+    ])
+  })
+
+  it("leaves a row's star alone while another action runs", async () => {
+    const archive = deferred()
+    const fetchMock = stubMailApi(
+      state({
+        hold: (request) => (request === 'POST /api/v1/mail/messages/archive' ? archive.promise : undefined),
+      }),
+    )
+    renderMailApp('/mail')
+
+    const list = await messagesList()
+    await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 8' }))
+    await userEvent.click(within(await actions()).getByRole('button', { name: 'Archive' }))
+    const star = starToggle(list, 'Message 9')
+    await waitFor(() => {
+      expect(star).toHaveAttribute('aria-disabled', 'true')
+    })
+    await userEvent.click(star)
+    expect(starToggle(list, 'Message 9')).toHaveAttribute('aria-pressed', 'false')
+    expect(bodiesTo(fetchMock, FLAG)).toEqual([])
+
+    archive.resolve()
+    await reported('polite', 'Archived 1 message.')
+    expect(starToggle(list, 'Message 9')).toHaveAttribute('aria-disabled', 'false')
+    expect(starToggle(list, 'Message 9')).toHaveAttribute('aria-pressed', 'false')
+    expect(bodiesTo(fetchMock, FLAG)).toEqual([])
   })
 
   it('announces the same outcome again: the region empties while the next action runs', async () => {

@@ -96,7 +96,7 @@ describe('MailScreen', () => {
     const list = await messagesList()
     expect(within(list).getAllByRole('listitem')).toHaveLength(25)
     expect(within(list).getByRole('link', { name: /Unread:\s*Message 100/ })).toBeInTheDocument()
-    expect(within(list).getByLabelText('Starred')).toBeInTheDocument()
+    expect(within(list).getByRole('button', { name: 'Star', pressed: true })).toBeInTheDocument()
   })
 
   it('names each account by its name, with its colour, never by its id', async () => {
