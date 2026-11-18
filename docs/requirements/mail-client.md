@@ -178,6 +178,11 @@ MCP `message_read` still never set `\Seen`.
   whether the originals go to Trash, the default, or are deleted for good, then the folder;
   deleting for good asks first, naming how many and from which account to which),
   Star/Unstar, Mark read/unread.
+- **A star on each row** stars or unstars that one message, whatever is selected or open, without
+  opening it: filled when starred, else an outline shown on hover and keyboard focus (always on a
+  touch screen) and always there for screen readers, a toggle button named *Star* whose pressed
+  state says whether the message is starred (its tooltip says *Star* or *Unstar*). While another
+  action runs it is disabled and looks it, and a click sends nothing. Its result and any failure show in the toolbar's notice.
 - Results update the list in place: moved or trashed rows disappear, flags change on the row, and
   failed groups are shown with the mail error wording; a group of a move to another account
   whose copies were made but whose originals stayed says they are in both.
