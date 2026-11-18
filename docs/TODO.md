@@ -111,7 +111,7 @@ released and checked in production before the next one starts. Batch 15 is the r
 - [x] **Shortcut sheet** — `?` lists the keyboard shortcuts, read from the action registry.
 - [x] **Undo** — a toast with Undo for a few seconds after a move, archive or trash.
 - [x] **Drag and drop** — messages onto a folder, of the same account or another one.
-- [ ] **Select all matching** — after selecting all, act on every message the list or search
+- [x] **Select all matching** — after selecting all, act on every message the list or search
       matches, not only those loaded, with the count to confirm.
 - [x] **Mark folder as read** — every message in a folder at once, with the count to confirm.
 - [ ] **Command palette** — Ctrl/⌘+K: go to an account, a folder or a settings page, and run the

@@ -5,7 +5,7 @@ import { Link, useSearch } from '@tanstack/react-router'
 import { AccountsContext } from '@/accounts/accounts-context.ts'
 import { accountErrorMessage } from '@/accounts/messages.ts'
 import { type AccountId, listAccounts, type Account } from '@/api/accounts.ts'
-import { listMessages, searchMessages, type SearchQuery } from '@/api/mail.ts'
+import { listMessages, searchMessages, type MatchScope, type SearchQuery } from '@/api/mail.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { useLoad } from '@/lib/use-load.ts'
 import { cn } from '@/lib/utils.ts'
@@ -20,6 +20,7 @@ import { MailSidebar } from './mail-sidebar.tsx'
 import { MessageList } from './message-list.tsx'
 import { MessageView } from './message-view.tsx'
 import { SearchForm } from './search-form.tsx'
+import { BulkHost } from './select-matching.tsx'
 import { ShortcutSheet, ShortcutSheetButton } from './shortcut-sheet.tsx'
 import { ComposeAnnouncer } from './send-status.tsx'
 import { useMailShortcuts } from './shortcuts.ts'
@@ -194,6 +195,7 @@ function MailPanes({
       </section>
       <OutcomeAnnouncer />
       <ComposeAnnouncer />
+      <BulkHost />
     </main>
   )
 }
@@ -249,6 +251,11 @@ function Listing({ accountId, folder, subfolders }: { accountId: AccountId; fold
         : searchMessages(query, { subfolders: merged, cursor }, signal),
     [accountId, folder, query, merged],
   )
+  // What "select all matching" acts on: the search, or the folder as a search with no criteria.
+  const match = useMemo<MatchScope>(
+    () => ({ query: query ?? { account: String(accountId), folder }, subfolders: merged }),
+    [accountId, folder, query, merged],
+  )
   // What the composer does changes these two folders' lists under the user's eyes.
   const { revision } = useCompose()
   const { folders, reloads } = useTriage()
@@ -258,6 +265,7 @@ function Listing({ accountId, folder, subfolders }: { accountId: AccountId; fold
     <MessageList
       key={key}
       loadPage={loadPage}
+      match={match}
       searching={q !== undefined}
       subfolders={merged}
       // An undo moves messages back: every list reads itself again.

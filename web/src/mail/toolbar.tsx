@@ -89,7 +89,11 @@ export function Toolbar({ className }: { className?: string }): ReactElement | n
           className="flex flex-wrap items-center gap-1"
         >
           <span className="mr-auto text-sm text-muted-foreground">
-            {triage.selection.size > 0 ? t('triage.selected', { count: triage.selection.size }) : t('triage.thisMessage')}
+            {actions.matching !== null
+              ? t('matching.selected', { count: actions.matching })
+              : triage.selection.size > 0
+                ? t('triage.selected', { count: triage.selection.size })
+                : t('triage.thisMessage')}
           </span>
           {listedActions('triage', context).map((action) => {
             const reason = unavailableReason(action, context)

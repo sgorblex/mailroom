@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect } from 'react'
 
 import type { AccountId } from '@/api/accounts.ts'
-import type { FlagChange, FolderRole, MailFolder, MessageItem, MoveRemoval } from '@/api/mail.ts'
+import type { FlagChange, FolderRole, MailFolder, MatchScope, MessageItem, MoveRemoval } from '@/api/mail.ts'
 
 export interface Flags {
   seen: boolean
@@ -18,6 +18,15 @@ export type Action =
   | { kind: 'move'; folder: MailFolder }
   | { kind: 'moveToAccount'; account: AccountId; folder: MailFolder; removal: MoveRemoval }
   | { kind: 'flag'; change: FlagChange }
+
+/** Every message the list or search matches is selected, not only the loaded rows: `total` of them. */
+export interface Matching {
+  scope: MatchScope
+  total: number
+}
+
+/** What a bulk action does to every matching message: a flag change, a move or a trash. */
+export type MatchingAction = Extract<Action, { kind: 'flag' | 'move' | 'trash' }>
 
 /** A folder of one of the user's accounts: where a drop moves messages to. */
 export interface Destination {
@@ -68,8 +77,17 @@ export interface Triage {
   /** Refs moved away since the list was read: their rows are gone. */
   removed: ReadonlySet<string>
   selection: ReadonlyMap<string, Target>
+  /** Changing the selection, or clearing it, ends this. */
   select: (targets: Target[], selected: boolean) => void
   clearSelection: () => void
+  /** Every message the list or search matches is selected (`selectMatching`), or `null`. */
+  matching: Matching | null
+  selectMatching: (matching: Matching) => void
+  /** The bulk action asking for its count to be confirmed, or running, on `matching`. */
+  bulk: MatchingAction | null
+  setBulk: (action: MatchingAction | null) => void
+  /** A bulk action ended, having touched `accounts`: the list and their folders are read again, the selection cleared. */
+  bulkDone: (accounts: AccountId[]) => void
   /** The open message, once its view has loaded. */
   open: Target | null
   setOpen: (target: Target | null) => void

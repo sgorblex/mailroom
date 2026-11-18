@@ -2,7 +2,15 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { MailFolder } from '@/api/mail.ts'
 
-import { dropAction, listedActions, MAIL_ACTIONS, mailAction, shortcutAction, type ActionContext } from './action-registry.ts'
+import {
+  dropAction,
+  listedActions,
+  MAIL_ACTIONS,
+  mailAction,
+  shortcutAction,
+  unavailableReason,
+  type ActionContext,
+} from './action-registry.ts'
 import { NO_TRIAGE_ACTIONS, type TriageActions } from './triage-actions.ts'
 import type { Target } from './triage-context.ts'
 
@@ -36,6 +44,32 @@ const ids = (group: 'reply' | 'compose' | 'triage', each: ActionContext): string
   listedActions(group, each).map((action) => action.id)
 
 describe('the action registry', () => {
+  it('greys out all but the flag changes, the move and the trash when every matching message is selected', () => {
+    const matching = context({ ...offered, matching: 1200 })
+    const greyed = listedActions('triage', matching)
+      .filter((action) => unavailableReason(action, matching) !== null)
+      .map((action) => action.id)
+    expect(greyed).toEqual(['archive', 'moveToAccount'])
+    expect(shortcutAction('e', matching, { busy: false, composing: false })).toBeUndefined()
+    expect(shortcutAction('#', matching, { busy: false, composing: false })?.id).toBe('trash')
+  })
+
+  it('lists both ways of each flag change when every matching message is selected', () => {
+    const both = context({ ...offered, read: { seen: true, run: vi.fn() }, matching: 1200, unstar: vi.fn(), markSorted: vi.fn() })
+    expect(ids('triage', both)).toEqual([
+      'archive',
+      'trash',
+      'move',
+      'moveToAccount',
+      'star',
+      'unstar',
+      'toSort',
+      'markSorted',
+      'markRead',
+      'markUnread',
+    ])
+  })
+
   it('has one action per id and per key', () => {
     const keys = MAIL_ACTIONS.flatMap((action) => action.shortcut ?? [])
     expect(new Set(MAIL_ACTIONS.map((action) => action.id)).size).toBe(MAIL_ACTIONS.length)

@@ -11,6 +11,7 @@ import type {
   MessageView,
   OrganizeGroup,
   SendResult,
+  SourceFailure,
 } from '@/api/mail.ts'
 
 type Defaulted = 'delimiter' | 'selectable' | 'uid_validity' | 'uid_next'
@@ -83,6 +84,12 @@ export interface FakeMailState {
   delivered?: { key: string; ref: string; text: string }[]
   /** The request is carried out, and its answer never comes back. */
   lose?: (request: string) => boolean
+  /**
+   * What `/messages/count` and `/messages/bulk` match, whatever the scope: `total` messages of
+   * `folder` (INBOX unless it says otherwise) of WORK, of which each bulk call acts on up to 500.
+   */
+  /** `changing`: with a flag change as the action, how many it would change (else `total`). */
+  matching?: { total: number; changing?: number; folder?: string; failures?: SourceFailure[] }
 }
 
 /** The statuses of the mail codes the organize routes answer (`docs/requirements/mail-client.md`). */
@@ -627,6 +634,47 @@ function folderRoutes(state: FakeMailState, url: URL, init?: RequestInit): Respo
   return json(200, { account_id: account, folder: from, messages: folder.total })
 }
 
+/** Counting and acting on `state.matching`, as the bulk routes do: refused unless `expected` is the count. */
+function matchingRoutes(state: FakeMailState, bulk: boolean, body: { expected?: number; action?: { kind: string } }): Response {
+  const found = state.matching ?? { total: 0 }
+  const failures = found.failures ?? []
+  // A flag change counts, and acts on, those it would change.
+  const flag = body.action?.kind === 'flag' && found.changing !== undefined
+  const matching = { ...found, total: flag ? (found.changing ?? 0) : found.total }
+  const left = (count: number): void => {
+    if (flag) {
+      found.changing = count
+    } else {
+      found.total = count
+    }
+  }
+  if (!bulk) {
+    return json(200, { total: matching.total, failures })
+  }
+  if (matching.total > 5000 || body.expected !== matching.total) {
+    const code = matching.total > 5000 ? 'too_many' : 'count_changed'
+    return json(409, { detail: { code, message: `Server text for ${code}`, matching: matching.total } })
+  }
+  const group: OrganizeGroup = {
+    account: WORK,
+    folder: matching.folder ?? 'INBOX',
+    ok: true,
+    count: Math.min(500, matching.total),
+    new_refs: [],
+    destination_account: null,
+    junk: null,
+    flags: [],
+    error: null,
+  }
+  const failed = state.groupFailures?.[`${String(WORK)}/${group.folder}`]
+  if (failed !== undefined) {
+    const error = { code: failed, message: `Server text for ${failed}` }
+    return json(200, { done: 0, remaining: matching.total, results: [{ ...group, ok: false, count: 0, error }], failures })
+  }
+  left(matching.total - group.count)
+  return json(200, { done: group.count, remaining: matching.total - group.count, results: [group], failures })
+}
+
 /**
  * A fake mail API over `state`: `/api/v1/accounts` and the `/api/v1/mail` routes. A cursor is
  * `"before:<uid>"`, the uid of the last item shown, as opaque to the client as the real ones and,
@@ -706,6 +754,9 @@ export function stubMailApi(state: FakeMailState): Mock {
     match = /^\/api\/v1\/mail\/messages\/(move|move-to-account|archive|trash|flag)$/.exec(path)
     if (match !== null && init?.method === 'POST' && typeof init.body === 'string') {
       return organize(state, match[1] ?? '', JSON.parse(init.body) as Parameters<typeof organize>[2])
+    }
+    if (path === '/api/v1/mail/messages/count' || path === '/api/v1/mail/messages/bulk') {
+      return matchingRoutes(state, path.endsWith('bulk'), JSON.parse(init?.body as string) as { expected?: number; action?: { kind: string } })
     }
     if (path === '/api/v1/mail/search') {
       return json(200, state.searchResult ?? { messages: [], next_cursor: null, failures: [] })

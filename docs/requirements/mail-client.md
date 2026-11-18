@@ -176,6 +176,24 @@ MCP `message_read` still never set `\Seen`.
 ### Web client
 
 - **Multi-select:** a checkbox per row, and a select-all for the loaded page.
+- **Select all matching:** once every loaded row is selected and the list or search has more, a
+  line above the list says so and, from [`POST /messages/count`](#every-message-a-search-matches),
+  offers to select all the messages it matches (a folder's list being a search with no criteria);
+  past 5,000 it says to narrow the search instead, and when the count fails it says so. Then the
+  toolbar says *All N matching selected*, every row shows checked and counts as selected (its
+  menu and a drag act as on the selection), and changing the selection or any action on rows
+  leaves this mode. Only the flag changes, Move to… and Trash act on them; the
+  other actions are greyed out, saying why, and their keys do nothing. Since the loaded rows do
+  not tell which way a flag change should go, each is offered both ways: Star and Unstar, Mark To
+  sort and Mark sorted, Mark as read and Mark as unread (the keys set: `s` stars, `t` marks To
+  sort; `u` marks unread). Each asks first in a dialog stating how many messages it would change,
+  counted by the server with the action (for a flag change, only those not already so; for a
+  move, over the folders it moves from), then calls
+  `POST /messages/bulk` with that count, and again with each answer's `remaining` until none
+  remain, showing a progress bar and a Stop that takes effect between calls. A `count_changed`
+  refusal states the new count and asks again; `too_many` and a folder that failed end it, saying
+  how many were left unchanged. At the end the list and the folders are read again and the
+  selection cleared; done in full, the toast says so, without Undo.
 - **Toolbar** acting on the selection, or on the open message when nothing is selected: Archive
   (hidden when the account has no selectable archive-role folder), Trash, Move to… (a picker over
   the account's selectable folders, Drafts, Sent and the folder the messages are in left out),
