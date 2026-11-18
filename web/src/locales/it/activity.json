@@ -49,6 +49,9 @@
   "fields": {
     "folder": "Cartella",
     "destination": "Nella cartella",
+    "destination_account": "Verso l'account",
+    "source_account": "Dall'account",
+    "source_folder": "Dalla cartella",
     "from": "Da",
     "to": "A",
     "cc": "Cc",

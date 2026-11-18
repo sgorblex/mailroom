@@ -50,10 +50,15 @@ through the Vite proxy. Engineering baseline:
   keeps them in mailroom-core's own schema (`core`, its `AccountStore`) in the app's database, with secrets sealed as
   mailroom-core seals them (byte-compatible with mailroom-mcp, so its data imports unchanged).
 - Each user manages their own accounts on the *Accounts* page: add, edit (the id stays; an empty
-  password keeps the stored one; every [identity](GLOSSARY.md), with which one is the default),
+  password keeps the stored one; every [identity](GLOSSARY.md), with which one is the default;
+  the account's name and colour),
   test the IMAP login, remove (after a confirmation; the mail on the server stays), and, where
   the instance runs filters, a per-account **Run filters** switch, off until turned on. mailroom-core's config models check every change, so a refusal names the
   field. Removing a user removes their accounts, stored passwords and send log with them.
+  Everywhere else the web names an account by its display name (its name, else its id) with a
+  dot of its colour: the id shows only in the account's own settings. An account that is gone
+  (named by a rule set or an audit record) shows as *Removed account*, never by its id. A name
+  another of the user's accounts has is refused on the name field.
   How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md)
   — *Mail accounts*.
 - Where the instance reads and sends mail (mail or MCP), each user sets their own **mail limits**

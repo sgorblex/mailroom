@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { FolderPlus } from 'lucide-react'
 
+import { AccountName } from '@/accounts/account-name.tsx'
+import type { Account } from '@/api/accounts.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { cn } from '@/lib/utils.ts'
 
@@ -26,7 +28,7 @@ export function MailSidebar({
   subfolders,
   className,
 }: {
-  accounts: string[]
+  accounts: Account[]
   accountId: string
   folder: string | null
   subfolders: boolean
@@ -38,19 +40,19 @@ export function MailSidebar({
       aria-label={t('folders.label')}
       className={cn('flex flex-col gap-4 p-3 lg:w-60 lg:shrink-0 lg:overflow-y-auto lg:border-r', className)}
     >
-      {accounts.map((id) =>
-        id === accountId ? (
-          <section key={id} aria-labelledby={`mail-account-${id}`} className="flex flex-col gap-1">
-            <FolderList accountId={id} folder={folder} subfolders={subfolders} />
+      {accounts.map((account) =>
+        account.id === accountId ? (
+          <section key={account.id} aria-labelledby={`mail-account-${account.id}`} className="flex flex-col gap-1">
+            <FolderList account={account} folder={folder} subfolders={subfolders} />
           </section>
         ) : (
           <Link
-            key={id}
+            key={account.id}
             to="/mail"
-            search={{ account: id }}
-            className="truncate rounded-md px-2 py-1 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+            search={{ account: account.id }}
+            className="flex rounded-md px-2 py-1 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
           >
-            {id}
+            <AccountName account={account} />
           </Link>
         ),
       )}
@@ -65,16 +67,17 @@ interface Notice {
 }
 
 function FolderList({
-  accountId,
+  account,
   folder,
   subfolders,
 }: {
-  accountId: string
+  account: Account
   folder: string | null
   subfolders: boolean
 }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const navigate = useNavigate()
+  const accountId = account.id
   // Shared with the toolbar, whose actions change the counts in place; read again on mount.
   const { state, retry } = useAccountFolders(accountId, true)
   const [dialog, setDialog] = useState<FolderDialog | null>(null)
@@ -129,16 +132,16 @@ function FolderList({
 
   const header = (
     <div className="flex items-center gap-1">
-      <h2 id={`mail-account-${accountId}`} className="min-w-0 flex-1 truncate px-2 text-sm font-medium">
-        {accountId}
+      <h2 id={`mail-account-${accountId}`} className="flex min-w-0 flex-1 px-2 text-sm font-medium">
+        <AccountName account={account} />
       </h2>
       {state.kind === 'loaded' && (
         <Button
           type="button"
           variant="ghost"
           size="icon-xs"
-          aria-label={t('folderActions.newTop', { id: accountId })}
-          title={t('folderActions.newTop', { id: accountId })}
+          aria-label={t('folderActions.newTop', { account: account.display_name })}
+          title={t('folderActions.newTop', { account: account.display_name })}
           onClick={() => {
             setNotice(null)
             setDialog({ kind: 'create', parent: null })
@@ -185,7 +188,7 @@ function FolderList({
         current={folder}
         subfolders={subfolders}
         reveal={reveal}
-        label={t('folders.of', { id: accountId })}
+        label={t('folders.of', { account: account.display_name })}
         onAction={(next) => {
           setNotice(null)
           setDialog(next)

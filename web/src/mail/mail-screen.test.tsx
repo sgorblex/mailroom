@@ -107,6 +107,25 @@ describe('MailScreen', () => {
     expect(within(list).getByLabelText('Starred')).toBeInTheDocument()
   })
 
+  it('names each account by its name, with its colour, never by its id', async () => {
+    stubMailApi(state({ names: { work: { name: 'Work mail', colour: 'teal' }, home: { name: 'Home', colour: null } } }))
+    renderMailApp('/mail')
+
+    expect(await screen.findByRole('tree', { name: 'Folders of Work mail' })).toBeInTheDocument()
+    const sidebar = screen.getByRole('navigation', { name: 'Accounts and folders' })
+    expect(within(sidebar).getByRole('heading', { name: 'Work mail' })).toBeInTheDocument()
+    expect(within(sidebar).getByRole('button', { name: 'New folder in Work mail' })).toBeInTheDocument()
+    expect(within(sidebar).getByRole('link', { name: 'Home' })).toBeInTheDocument()
+    expect(within(sidebar).queryByText('work')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'More options' }))
+    const accounts = within(screen.getByLabelText('Account')).getAllByRole('option')
+    expect(accounts.map((option) => [option.getAttribute('value'), option.textContent])).toEqual([
+      ['*', 'All accounts'],
+      ['work', 'Work mail'],
+      ['home', 'Home'],
+    ])
+  })
+
   it('loads the next page with the cursor the last one gave, until there is none', async () => {
     const fetchMock = stubMailApi(state())
     renderMailApp('/mail')
@@ -462,6 +481,7 @@ describe('MailScreen', () => {
   it('searches with the form fields and lists the results with their source', async () => {
     const fetchMock = stubMailApi(
       state({
+        names: { work: { name: 'Work mail', colour: 'teal' }, home: { name: 'Home', colour: 'pink' } },
         searchResult: {
           messages: [messageItem('home', 'INBOX', 5, { subject: 'Invoice' })],
           next_cursor: null,
@@ -483,11 +503,11 @@ describe('MailScreen', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Search' }))
 
     const results = await screen.findByRole('list', { name: 'Search results' })
-    expect(within(results).getByText('home · INBOX')).toBeInTheDocument()
+    expect(within(results).getByRole('link', { name: /Invoice/ })).toHaveTextContent(/Home·INBOX$/)
     const alert = within(await listRegion()).getByRole('alert')
-    expect(alert).toHaveTextContent('work: The mail server rejected the login for this account.')
+    expect(alert).toHaveTextContent('Work mail: The mail server rejected the login for this account.')
     // The app's own code, worded as Accounts words it.
-    expect(alert).toHaveTextContent('home: No stored password works for this account')
+    expect(alert).toHaveTextContent('Home: No stored password works for this account')
     // The criteria go in the body; nothing is in the query string.
     expect(queriesTo(fetchMock, '/api/v1/mail/search').map(String)).toEqual([''])
     expect(bodiesTo(fetchMock, '/api/v1/mail/search')).toEqual([

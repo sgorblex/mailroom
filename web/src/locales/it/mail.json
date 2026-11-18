@@ -6,7 +6,7 @@
   },
   "folders": {
     "label": "Account e cartelle",
-    "of": "Cartelle di {{id}}",
+    "of": "Cartelle di {{account}}",
     "loading": "Caricamento delle cartelle…",
     "loadFailed": "Impossibile elencare le cartelle.",
     "unread_one": "{{count}} non letto",
@@ -20,7 +20,7 @@
   "folderActions": {
     "menu": "Azioni per {{name}}",
     "more": "Azioni sulla cartella",
-    "newTop": "Nuova cartella in {{id}}",
+    "newTop": "Nuova cartella in {{account}}",
     "newSubfolder": "Nuova sottocartella…",
     "rename": "Rinomina o sposta…",
     "delete": "Elimina…",
@@ -28,7 +28,7 @@
     "holdsRole": "Contiene una cartella con un ruolo.",
     "hasSubfolders": "Prima elimina o sposta le sue sottocartelle.",
     "createTitle": "Nuova cartella",
-    "atTop": "Al primo livello di {{id}}.",
+    "atTop": "Al primo livello di {{account}}.",
     "inside": "Dentro {{parent}}.",
     "name": "Nome",
     "parent": "Dentro",

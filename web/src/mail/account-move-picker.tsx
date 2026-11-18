@@ -1,6 +1,8 @@
 import { useEffect, useId, useRef, useState, type ReactElement, type SubmitEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { AccountName } from '@/accounts/account-name.tsx'
+import { useAccountLabel, useAccountName } from '@/accounts/accounts-context.ts'
 import type { MailFolder, MoveRemoval } from '@/api/mail.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Dialog } from '@/components/ui/dialog.tsx'
@@ -12,8 +14,9 @@ import { movableInto } from './triage-actions.ts'
 import { useAccountFolders } from './triage-context.ts'
 
 /**
- * Moving to another of the user's accounts: the account (skipped when there is one), then what
- * becomes of the originals and the folder, which `onChoose` takes. Inline, as the folder picker.
+ * Moving to another of the user's accounts (their ids): the account (skipped when there is one),
+ * then what becomes of the originals and the folder, which `onChoose` takes. Inline, as the
+ * folder picker.
  */
 export function AccountMovePicker({
   accounts,
@@ -50,6 +53,7 @@ export function AccountMovePicker({
 
 function AccountStep({ accounts, onChoose }: { accounts: string[]; onChoose: (account: string) => void }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
+  const accountLabel = useAccountLabel()
   const first = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     first.current?.focus()
@@ -69,7 +73,7 @@ function AccountStep({ accounts, onChoose }: { accounts: string[]; onChoose: (ac
                 onChoose(account)
               }}
             >
-              <span className="truncate">{account}</span>
+              <AccountName account={accountLabel(account)} />
             </Button>
           </li>
         ))}
@@ -88,6 +92,7 @@ function FolderStep({
   onChoose: (folder: MailFolder, removal: MoveRemoval) => void
 }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
+  const accountName = useAccountName()
   const { state, retry } = useAccountFolders(account)
   const [removal, setRemoval] = useState<MoveRemoval>('trash')
   const name = useId()
@@ -99,7 +104,7 @@ function FolderStep({
     <>
       <div className="flex items-center gap-2 px-2">
         <p ref={heading} tabIndex={-1} className="mr-auto text-xs text-muted-foreground outline-none">
-          {t('triage.moveToAccountFolder', { account })}
+          {t('triage.moveToAccountFolder', { account: accountName(account) })}
         </p>
         {onBack !== null && (
           <Button variant="ghost" size="xs" onClick={onBack}>
@@ -194,6 +199,7 @@ export function MoveForGoodDialog({
   onConfirm: () => void
 }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
+  const accountName = useAccountName()
   const title = t('triage.forGoodTitle')
   function submit(event: SubmitEvent<HTMLFormElement>): void {
     event.preventDefault()
@@ -206,8 +212,8 @@ export function MoveForGoodDialog({
         <p className="text-sm">
           {t('triage.forGoodQuestion', {
             count,
-            from: from.join(', '),
-            account,
+            from: from.map(accountName).join(', '),
+            account: accountName(account),
             folder: folderName(t, folder),
           })}
         </p>

@@ -2,6 +2,7 @@ import { useCallback, useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from '@tanstack/react-router'
 
+import { AccountName } from '@/accounts/account-name.tsx'
 import { listAccounts, type Account } from '@/api/accounts.ts'
 import {
   addRuleSet,
@@ -77,8 +78,8 @@ function AccountRuleSets({ account }: { account: Account }): ReactElement {
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h2 id={headingId} className="text-lg font-medium">
-          {account.id}
+        <h2 id={headingId} className="flex min-w-0 text-lg font-medium">
+          <AccountName account={account} />
         </h2>
         <p className="text-sm text-muted-foreground">
           {account.run_filters === true ? t('filters.runFiltersOn') : t('filters.runFiltersOff')}{' '}
@@ -109,7 +110,7 @@ function AccountRuleSets({ account }: { account: Account }): ReactElement {
       )}
       {ruleSets.kind === 'loaded' && ruleSets.value.length > 0 && (
         <ul
-          aria-label={t('filters.ruleSetsOf', { id: account.id })}
+          aria-label={t('filters.ruleSetsOf', { account: account.display_name })}
           className="flex flex-col divide-y rounded-lg border"
         >
           {ruleSets.value.map((ruleSet) => (
@@ -142,7 +143,7 @@ function AccountRuleSets({ account }: { account: Account }): ReactElement {
           ref={addTrigger}
           variant="outline"
           className="self-start"
-          aria-label={t('filters.ruleSet.addTo', { id: account.id })}
+          aria-label={t('filters.ruleSet.addTo', { account: account.display_name })}
           onClick={() => {
             setAdding(true)
           }}

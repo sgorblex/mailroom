@@ -8,7 +8,7 @@ import { renderFiltersApp } from '@/test/filters-app.tsx'
 function state(overrides: Partial<FakeState> = {}): FakeState {
   return {
     accounts: [
-      { id: 'work', run_filters: true },
+      { id: 'work', run_filters: true, name: 'Work mail', colour: 'teal' },
       { id: 'home', run_filters: false },
     ],
     folders: [['INBOX'], ['Archive'], ['Lists', 'Nerds']],
@@ -40,7 +40,7 @@ describe('FiltersScreen', () => {
     stubFiltersApi(state())
     renderFiltersApp('/filters')
 
-    const work = await screen.findByRole('list', { name: 'Rule sets of work' })
+    const work = await screen.findByRole('list', { name: 'Rule sets of Work mail' })
     expect(within(work).getByRole('link', { name: 'Newsletters' })).toHaveAttribute('href', '/filters/1')
     expect(within(work).getByText('INBOX · every 15 minutes')).toBeInTheDocument()
     const home = screen.getByRole('region', { name: 'home' })
@@ -113,10 +113,10 @@ describe('FiltersScreen', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Remove Newsletters' }))
     await userEvent.click(screen.getByRole('button', { name: 'Remove for good' }))
-    const work = screen.getByRole('region', { name: 'work' })
+    const work = screen.getByRole('region', { name: 'Work mail' })
     expect(await within(work).findByText('No rule sets yet.')).toBeInTheDocument()
     await vi.waitFor(() => {
-      expect(within(work).getByRole('button', { name: 'Add a rule set to work' })).toHaveFocus()
+      expect(within(work).getByRole('button', { name: 'Add a rule set to Work mail' })).toHaveFocus()
     })
   })
 })

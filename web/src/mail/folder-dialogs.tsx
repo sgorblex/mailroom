@@ -4,6 +4,7 @@ import type { TFunction } from 'i18next'
 import { Link } from '@tanstack/react-router'
 
 import { createFolder, deleteFolder, listMailFolders, renameFolder, type FolderRenamed, type MailFolder } from '@/api/mail.ts'
+import { useAccountName } from '@/accounts/accounts-context.ts'
 import { ApiRequestError } from '@/api/http.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Dialog } from '@/components/ui/dialog.tsx'
@@ -166,6 +167,7 @@ function CreateDialog({
   onDone: (done: FolderDone) => void
 }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
+  const accountName = useAccountName()
   const id = useId()
   const [name, setName] = useState('')
   const [touched, setTouched] = useState(false)
@@ -199,7 +201,7 @@ function CreateDialog({
       <form noValidate onSubmit={(event) => void submit(event)} className="flex w-80 max-w-full flex-col gap-3">
         <h2 className="text-base font-medium">{t('folderActions.createTitle')}</h2>
         <p className="text-sm text-muted-foreground">
-          {parent === null ? t('folderActions.atTop', { id: accountId }) : t('folderActions.inside', { parent })}
+          {parent === null ? t('folderActions.atTop', { account: accountName(accountId) }) : t('folderActions.inside', { parent })}
         </p>
         <NameField id={id} value={name} error={touched ? problem : null} onChange={setName} />
         {failure !== null && (

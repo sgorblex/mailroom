@@ -5,6 +5,7 @@ import { addAccount, changeAccount, listAccounts, removeAccount, testAccount, ty
 import { setRunFilters } from '@/api/filters.ts'
 import { apiErrorMessage } from '@/api/http.ts'
 import { AccountForm } from '@/accounts/account-form.tsx'
+import { AccountName } from '@/accounts/account-name.tsx'
 import { accountErrorMessage, loginTestMessage } from '@/accounts/messages.ts'
 import { useFeature } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
@@ -194,8 +195,8 @@ function AccountRow({ account, onChange }: { account: Account; onChange: () => v
   return (
     <li className="flex flex-col gap-3 p-3">
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex flex-col">
-          <span className="font-medium">{account.id}</span>
+        <div className="flex min-w-0 flex-col">
+          <AccountName account={account} className="font-medium" />
           <span className="text-sm text-muted-foreground">
             {account.login} · {account.imap.host}:{String(account.imap.port)}
           </span>
@@ -209,7 +210,7 @@ function AccountRow({ account, onChange }: { account: Account; onChange: () => v
               variant="outline"
               size="sm"
               disabled={pending}
-              aria-label={t('accounts.testAccount', { id: account.id })}
+              aria-label={t('accounts.testAccount', { account: account.display_name })}
               onClick={() => void test()}
             >
               {t('accounts.test')}
@@ -218,7 +219,7 @@ function AccountRow({ account, onChange }: { account: Account; onChange: () => v
               ref={editTrigger}
               variant="outline"
               size="sm"
-              aria-label={t('accounts.editTitle', { id: account.id })}
+              aria-label={t('accounts.editTitle', { account: account.display_name })}
               onClick={() => {
                 enter('editing')
               }}
@@ -229,7 +230,7 @@ function AccountRow({ account, onChange }: { account: Account; onChange: () => v
               ref={removeTrigger}
               variant="outline"
               size="sm"
-              aria-label={t('accounts.removeAccount', { id: account.id })}
+              aria-label={t('accounts.removeAccount', { account: account.display_name })}
               onClick={() => {
                 enter('confirming-removal')
               }}
@@ -243,7 +244,7 @@ function AccountRow({ account, onChange }: { account: Account; onChange: () => v
         <div className="flex items-center gap-3">
           <Switch
             checked={runFilters}
-            aria-label={t('accounts.runFiltersOn', { id: account.id })}
+            aria-label={t('accounts.runFiltersOn', { account: account.display_name })}
             aria-describedby={`account-${account.id}-run-filters-hint`}
             disabled={pending}
             onCheckedChange={() => void toggleRunFilters()}
@@ -256,7 +257,7 @@ function AccountRow({ account, onChange }: { account: Account; onChange: () => v
       )}
       {mode === 'confirming-removal' && (
         <div className="flex flex-wrap items-center gap-2">
-          <p className="text-sm">{t('accounts.confirmRemoval', { id: account.id })}</p>
+          <p className="text-sm">{t('accounts.confirmRemoval', { account: account.display_name })}</p>
           <Button
             ref={confirmRemoval}
             variant="destructive"

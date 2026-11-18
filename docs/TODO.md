@@ -89,12 +89,12 @@ released and checked in production before the next one starts. Batch 15 is the r
 
 #### 2. Accounts
 
-- [ ] **Account display names** — an editable name per account, shown wherever the web names an
-      account; the id stays the key that filters, the audit trail, refs and MCP use. Stored (one
-      name per account of a user), listed over REST and in `accounts_list` with a
-      `display_name` to show; the web does not show or edit it yet.
-- [ ] **Account colours** — so the accounts stay apart in unified lists. Stored and listed over
-      REST; the web does not show or edit it yet.
+- [x] **Account display names** — an editable name per account, one per account of a user,
+      shown wherever the web names an account; the id stays the key that filters, the audit
+      trail, refs and MCP use, and the web shows it only in the account's own settings (a
+      removed account shows as *Removed account*).
+- [x] **Account colours** — so the accounts stay apart in unified lists: a dot beside the
+      account's name in the web.
 - [ ] **Account autoconfiguration** — on setup, look the address up in the provider's
       autoconfig, Thunderbird's ISPDB and DNS SRV records (RFC 6186); when nothing answers,
       offer presets (Gmail with an app password, iCloud, Fastmail, Yahoo).

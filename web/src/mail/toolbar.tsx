@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { Archive, ArrowRightLeft, FolderInput, Mail, MailOpen, Star, StarOff, Trash2, X } from 'lucide-react'
 
+import { useAccountName } from '@/accounts/accounts-context.ts'
 import type { MailFolder, MoveRemoval } from '@/api/mail.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { cn } from '@/lib/utils.ts'
@@ -254,7 +255,7 @@ function MovePicker({
   )
 }
 
-function doneMessage(t: TFunction, action: Action, count: number): string {
+function doneMessage(t: TFunction, accountName: (id: string) => string, action: Action, count: number): string {
   switch (action.kind) {
     case 'archive':
       return t('triage.archived', { count })
@@ -265,7 +266,7 @@ function doneMessage(t: TFunction, action: Action, count: number): string {
     case 'moveToAccount':
       return t(action.removal === 'delete' ? 'triage.movedToAccountForGood' : 'triage.movedToAccount', {
         count,
-        account: action.account,
+        account: accountName(action.account),
         folder: folderName(t, action.folder),
       })
     case 'flag':
@@ -284,6 +285,7 @@ function failedOutcome(outcome: Outcome): boolean {
 function OutcomeText({ outcome }: { outcome: Outcome }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const { folders } = useTriage()
+  const accountName = useAccountName()
   // A failed group's folder as the sidebar names it, once its account's folders are known.
   const nameOf = (account: string, path: string): string => {
     const folder = loadedFolders(folders[account])?.find((each) => isSameFolder(each.path, path))
@@ -294,7 +296,7 @@ function OutcomeText({ outcome }: { outcome: Outcome }): ReactElement {
   }
   return (
     <>
-      {outcome.count > 0 && <p>{doneMessage(t, outcome.action, outcome.count)}</p>}
+      {outcome.count > 0 && <p>{doneMessage(t, accountName, outcome.action, outcome.count)}</p>}
       {outcome.failures.length > 0 && (
         <>
           <p className="font-medium">{t('triage.partial')}</p>
@@ -302,11 +304,11 @@ function OutcomeText({ outcome }: { outcome: Outcome }): ReactElement {
             {outcome.failures.map((failure) => (
               <li key={failureKey(failure)}>
                 {t('list.failedFolder', {
-                  account: failure.account,
+                  account: accountName(failure.account),
                   folder: nameOf(failure.account, failure.folder),
                   reason:
                     failure.inBoth !== undefined && outcome.action.kind === 'moveToAccount'
-                      ? t('triage.inBoth', { count: failure.inBoth, account: outcome.action.account })
+                      ? t('triage.inBoth', { count: failure.inBoth, account: accountName(outcome.action.account) })
                       : mailCodeMessage(t, failure.code, GONE),
                 })}
               </li>

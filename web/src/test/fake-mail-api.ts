@@ -1,6 +1,6 @@
 import { vi, type Mock } from 'vitest'
 
-import type { Identity } from '@/api/accounts.ts'
+import type { AccountColour, Identity } from '@/api/accounts.ts'
 import type {
   Draft,
   DraftFields,
@@ -40,6 +40,8 @@ export interface FakeMailState {
   hold?: (request: string, body: unknown) => Promise<void> | undefined
   /** Each account's send mode; `drafts` unless it says otherwise. */
   sendModes?: Record<string, string>
+  /** Each account's name and colour; unnamed (shown by its id) and without a colour unless it says otherwise. */
+  names?: Record<string, { name: string; colour: AccountColour | null }>
   identities?: Record<string, Identity[]>
   attachmentMaxMb?: number
   /** The user's limit on To, Cc and Bcc together; 10 unless it says otherwise. */
@@ -587,6 +589,9 @@ export function stubMailApi(state: FakeMailState): Mock {
           const endpoint = { host: `imap.${id}.example`, port: 993, tls: 'implicit' }
           return {
             id,
+            name: state.names?.[id]?.name ?? null,
+            display_name: state.names?.[id]?.name ?? id,
+            colour: state.names?.[id]?.colour ?? null,
             login: `me@${id}.example`,
             send_mode: state.sendModes?.[id] ?? 'drafts',
             imap: endpoint,

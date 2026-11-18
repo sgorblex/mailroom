@@ -2,8 +2,9 @@ import { useCallback, useMemo, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useSearch } from '@tanstack/react-router'
 
+import { AccountsContext } from '@/accounts/accounts-context.ts'
 import { accountErrorMessage } from '@/accounts/messages.ts'
-import { listAccounts } from '@/api/accounts.ts'
+import { listAccounts, type Account } from '@/api/accounts.ts'
 import { listMessages, searchMessages, type SearchQuery } from '@/api/mail.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { useLoad } from '@/lib/use-load.ts'
@@ -78,12 +79,14 @@ export function MailScreen(): ReactElement {
   const requested = search.sub ?? storedSubfolders(accountId, folder)
   const accountIds = accounts.value.map((account) => account.id)
   return (
-    <TriageProvider sourceKey={sourceKey(accountId, folder, requested, search.q)} accounts={accountIds}>
-      <ComposeProvider accounts={accounts.value} accountId={accountId}>
-        <MailShortcuts accountId={accountId} />
-        <MailPanes accounts={accountIds} accountId={accountId} folder={folder} requested={requested} />
-      </ComposeProvider>
-    </TriageProvider>
+    <AccountsContext value={accounts.value}>
+      <TriageProvider sourceKey={sourceKey(accountId, folder, requested, search.q)} accounts={accountIds}>
+        <ComposeProvider accounts={accounts.value} accountId={accountId}>
+          <MailShortcuts accountId={accountId} />
+          <MailPanes accounts={accounts.value} accountId={accountId} folder={folder} requested={requested} />
+        </ComposeProvider>
+      </TriageProvider>
+    </AccountsContext>
   )
 }
 
@@ -94,7 +97,7 @@ function MailPanes({
   folder,
   requested,
 }: {
-  accounts: string[]
+  accounts: Account[]
   accountId: string
   folder: string
   /** The folder is to be listed with its subfolders (the URL's `sub`, else this browser's choice). */

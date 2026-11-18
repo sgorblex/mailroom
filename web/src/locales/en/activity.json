@@ -49,6 +49,9 @@
   "fields": {
     "folder": "Folder",
     "destination": "To folder",
+    "destination_account": "To account",
+    "source_account": "From account",
+    "source_folder": "From folder",
     "from": "From",
     "to": "To",
     "cc": "Cc",

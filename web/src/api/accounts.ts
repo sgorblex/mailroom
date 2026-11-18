@@ -3,6 +3,8 @@ import { apiDelete, apiGetJson, apiPostJson, apiPutJson } from './http.ts'
 
 export const TLS_MODES = ['implicit', 'starttls'] as const
 export const SEND_MODES = ['off', 'drafts', 'approval', 'direct'] as const
+export const ACCOUNT_COLOURS = ['slate', 'red', 'orange', 'amber', 'green', 'teal', 'sky', 'blue', 'violet', 'pink'] as const
+export type AccountColour = (typeof ACCOUNT_COLOURS)[number]
 
 const endpointSchema = z.object({
   host: z.string(),
@@ -21,6 +23,11 @@ export type Identity = z.infer<typeof identitySchema>
 /** An account as the API lists it: never its password, only whether one is stored. */
 export const accountSchema = z.object({
   id: z.string(),
+  /** The account's own name, as stored: `null` when it has none. What an edit sends back. */
+  name: z.string().nullable(),
+  /** What to call the account: its name, else its id. Read-only: never sent back. */
+  display_name: z.string(),
+  colour: z.enum(ACCOUNT_COLOURS).nullable(),
   login: z.string(),
   send_mode: z.enum(SEND_MODES),
   imap: endpointSchema,
@@ -39,6 +46,8 @@ export type Account = z.infer<typeof accountSchema>
 
 /** What an edit sends: everything but the id; no password keeps the stored one. */
 export interface AccountFields {
+  name: string | null
+  colour: AccountColour | null
   login: string
   send_mode: (typeof SEND_MODES)[number]
   imap: Endpoint
