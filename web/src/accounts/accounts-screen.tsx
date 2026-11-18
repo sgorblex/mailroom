@@ -6,6 +6,7 @@ import { setRunFilters } from '@/api/filters.ts'
 import { apiErrorMessage } from '@/api/http.ts'
 import { AccountForm } from '@/accounts/account-form.tsx'
 import { AccountName } from '@/accounts/account-name.tsx'
+import { AccountQuotaBars } from '@/accounts/account-quota.tsx'
 import { accountErrorMessage, loginTestMessage } from '@/accounts/messages.ts'
 import { useFeature } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
@@ -240,6 +241,7 @@ function AccountRow({ account, onChange }: { account: Account; onChange: () => v
           </span>
         )}
       </div>
+      <AccountQuotaBars account={account} />
       {filters && (
         <div className="flex items-center gap-3">
           <Switch

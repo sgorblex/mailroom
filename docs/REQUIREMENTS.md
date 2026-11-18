@@ -68,8 +68,9 @@ through the Vite proxy. Engineering baseline:
   settings can always be entered by hand
   ([`requirements/mail-client.md`](requirements/mail-client.md) — *Account autoconfiguration*).
   The API gives each account's storage and message quota as its server reports it (IMAP `QUOTA`),
-  apart from the listing ([`requirements/mail-client.md`](requirements/mail-client.md) — *Mailbox
-  quota*).
+  apart from the listing; the *Accounts* page shows it as a bar per account, warning from 90% and
+  saying *Over quota* past the limit
+  ([`requirements/mail-client.md`](requirements/mail-client.md) — *Mailbox quota*).
   How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md)
   — *Mail accounts*.
 - Where the instance reads and sends mail (mail or MCP), each user sets their own **mail limits**

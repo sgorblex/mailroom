@@ -79,12 +79,21 @@ type Autoconfig = (address: string) => Response | Promise<Response>
 const NOTHING_FOUND: Autoconfig = (address) =>
   json(200, { domain: address.slice(address.indexOf('@') + 1), suggestion: null })
 
+/** What the fake quota route answers for an account; by default, that the server reports none. */
+type QuotaAnswer = (account: StoredAccount) => Response
+
+const NO_QUOTA: QuotaAnswer = (account) => json(200, { account_id: account.id, storage: null, messages: null })
+
 /**
  * A fake accounts API holding `initial`: it numbers a new account itself, never reusing an id,
  * refuses a login without an `@` as a duplicate, as mailroom-core refuses one, and refuses a name
  * another account has, as the API does.
  */
-function stubApi(initial: StoredAccount[] = [WORK], autoconfig: Autoconfig = NOTHING_FOUND): ReturnType<typeof vi.fn> {
+function stubApi(
+  initial: StoredAccount[] = [WORK],
+  autoconfig: Autoconfig = NOTHING_FOUND,
+  quota: QuotaAnswer = NO_QUOTA,
+): ReturnType<typeof vi.fn> {
   let accounts = [...initial]
   let lastId = Math.max(0, ...initial.map((account) => account.id))
   const fetchMock = vi.fn((path: string, init?: RequestInit) => {
@@ -144,6 +153,9 @@ function stubApi(initial: StoredAccount[] = [WORK], autoconfig: Autoconfig = NOT
               }
             : { ok: true, code: null, message: null }),
       )
+    }
+    if (rest === '/quota' && method === 'GET') {
+      return Promise.resolve(quota(account))
     }
     if (rest === '/filter-settings' && method === 'PUT') {
       account.run_filters = body['run_filters'] as boolean
@@ -711,5 +723,85 @@ describe('AccountsScreen', () => {
     await userEvent.click(within(form).getByRole('button', { name: 'Save' }))
     await screen.findByRole('button', { name: 'Edit work' })
     expect(sent(fetchMock, 'PUT', '/api/v1/accounts/1')).toMatchObject({ send_mode: 'approval' })
+  })
+  it("shows each account's usage, warning from 90% on", async () => {
+    const GiB = 1024 ** 3
+    stubApi([WORK, { ...WORK, id: 2, name: 'full', login: 'full@example.org' }], undefined, (account) =>
+      json(200, {
+        account_id: account.id,
+        storage: account.id === 1 ? { used: GiB / 2, limit: 2 * GiB } : { used: 0.9 * GiB, limit: GiB },
+        messages: account.id === 1 ? { used: 1200, limit: 10000 } : null,
+      }),
+    )
+    renderSignedIn(<AccountsScreen />, ALICE)
+
+    const storage = await screen.findByRole('meter', { name: 'Storage used by work' })
+    expect(storage).toHaveAttribute('aria-valuetext', '512 MB of 2 GB (25%)')
+    expect(storage).not.toHaveAttribute('data-warning')
+    expect(storage).toHaveAttribute('aria-valuenow', '25')
+    expect(storage).toHaveAttribute('aria-valuemax', '100')
+    expect(screen.getByRole('meter', { name: 'Messages kept by work' })).toHaveAttribute(
+      'aria-valuetext',
+      '1,200 of 10,000 (12%)',
+    )
+
+    const full = await screen.findByRole('meter', { name: 'Storage used by full' })
+    expect(full).toHaveAttribute('data-warning', 'nearly-full')
+    expect(full).toHaveAttribute('aria-valuetext', 'Nearly full: 921.6 MB of 1 GB (90%)')
+    expect(screen.queryByRole('meter', { name: 'Messages kept by full' })).not.toBeInTheDocument()
+  })
+
+  it('shows the real share past the limit, and a limit of 0, as over quota with the bar full', async () => {
+    stubApi([WORK, { ...WORK, id: 2, name: 'none', login: 'none@example.org' }], undefined, (account) =>
+      json(200, {
+        account_id: account.id,
+        storage: account.id === 1 ? { used: 1.1 * 1024 ** 3, limit: 1024 ** 3 } : { used: 5 * 1024 ** 3, limit: 0 },
+        messages: account.id === 1 ? { used: 0, limit: 0 } : null,
+      }),
+    )
+    renderSignedIn(<AccountsScreen />, ALICE)
+
+    const over = await screen.findByRole('meter', { name: 'Storage used by work' })
+    expect(over).toHaveAttribute('aria-valuetext', 'Over quota: 1.1 GB of 1 GB (110%)')
+    expect(over).toHaveAttribute('aria-valuenow', '100')
+    expect(over).toHaveAttribute('data-warning', 'over')
+    expect(over.firstElementChild).toHaveStyle({ width: '100%' })
+    expect(screen.getByText('Over quota: 1.1 GB of 1 GB (110%)')).toBeInTheDocument()
+
+    const empty = screen.getByRole('meter', { name: 'Messages kept by work' })
+    expect(empty).toHaveAttribute('aria-valuetext', 'Over quota: 0 of 0')
+    expect(empty).toHaveAttribute('aria-valuenow', '100')
+
+    const zero = await screen.findByRole('meter', { name: 'Storage used by none' })
+    expect(zero).toHaveAttribute('aria-valuetext', 'Over quota: 5 GB of 0 byte')
+    expect(zero).toHaveAttribute('data-warning', 'over')
+  })
+
+  it('says the usage is unknown where the server reports none', async () => {
+    stubApi()
+    renderSignedIn(<AccountsScreen />, ALICE)
+    expect(await screen.findByText('Usage unknown: the mail server does not report it.')).toBeInTheDocument()
+    expect(screen.queryByRole('meter')).not.toBeInTheDocument()
+  })
+
+  it('shows a usage that failed quietly, the other accounts unaffected, and asks again', async () => {
+    let down = true
+    stubApi([WORK, { ...WORK, id: 2, name: 'down', login: 'down@example.org' }], undefined, (account) =>
+      account.id === 2 && down
+        ? json(502, { detail: { code: 'unreachable', message: 'The mail server for this account could not be reached.' } })
+        : json(200, { account_id: account.id, storage: { used: 1024, limit: 2048 }, messages: null }),
+    )
+    renderSignedIn(<AccountsScreen />, ALICE)
+
+    const list = await screen.findByRole('list', { name: 'Mail accounts' })
+    expect(
+      await within(list).findByText(/^Usage not available: The mail server for this account could not be reached\./),
+    ).toBeInTheDocument()
+    expect(await screen.findByRole('meter', { name: 'Storage used by work' })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+    down = false
+    await userEvent.click(within(list).getByRole('button', { name: 'Check again' }))
+    expect(await screen.findByRole('meter', { name: 'Storage used by down' })).toBeInTheDocument()
   })
 })
