@@ -1,14 +1,12 @@
 import contextlib
+import imaplib
 import logging
 import socket
 import threading
 from typing import TYPE_CHECKING
 
 import pytest
-from imapclient import IMAPClient
-from imapclient.exceptions import IMAPClientAbortError, IMAPClientError
-from imapclient.imapclient import MailboxQuotaRoots
-from imapclient.imapclient import Quota as RawQuota
+from imapclient.exceptions import IMAPClientError
 
 from mailroom_core.mail import (
     Capabilities,
@@ -160,68 +158,88 @@ def test_reads_the_quota_capability(raw: tuple[bytes, ...], offered: bool) -> No
     assert _capabilities(raw).quota is offered
 
 
-class _QuotaClient:
-    def __init__(
-        self, roots: list[str], quotas: list[RawQuota], *, error: Exception | None = None
-    ) -> None:
-        self.answer = (MailboxQuotaRoots("INBOX", roots), quotas)
-        self.error = error
+class _Imaplib:
+    """imaplib's side of a GETQUOTAROOT: the answer's type and its QUOTAROOT and QUOTA lines."""
 
-    def get_quota_root(self, mailbox: str) -> tuple[MailboxQuotaRoots, list[RawQuota]]:
-        assert mailbox == "INBOX"
-        if self.error is not None:
-            raise self.error
+    def __init__(self, typ: str, roots: list[bytes | None], quotas: list[bytes | None]) -> None:
+        self.answer = (typ, [roots, quotas])
+        self.asked: list[str] = []
+
+    def getquotaroot(self, mailbox: str) -> tuple[str, list[list[bytes | None]]]:
+        self.asked.append(mailbox)
         return self.answer
 
 
-def _answered(typ: str, text: bytes) -> IMAPClientError:
-    """The error imapclient raises for GETQUOTAROOT answered `typ` (NO, say) with `text`."""
-    try:
-        # imapclient's own wording, so a change to it fails here.
-        IMAPClient._check_resp(None, "OK", "GETQUOTAROOT", typ, [text])  # type: ignore[arg-type]  # noqa: SLF001
-    except IMAPClientError as error:
-        return error
-    raise AssertionError(typ)
+class _QuotaClient:
+    def __init__(
+        self, roots: list[bytes | None], quotas: list[bytes | None], typ: str = "OK"
+    ) -> None:
+        self._imap = _Imaplib(typ, roots, quotas)
+
+
+def _refused(text: bytes) -> _QuotaClient:
+    """A NO: imaplib gives the tagged answer's text in place of both lists."""
+    return _QuotaClient([text], [text], typ="NO")
 
 
 def test_reads_inboxs_quota_in_bytes_from_its_own_roots() -> None:
     client = _QuotaClient(
-        ["User quota", "Shared"],
+        [b'INBOX "User quota" Shared'],
         [
-            RawQuota("Elsewhere", "STORAGE", 1, 2),
-            RawQuota("User quota", "storage", 10, 1024),
-            RawQuota("User quota", "MESSAGE", 3, 100),
-            RawQuota("Shared", "STORAGE", 99, 99),
+            b"Elsewhere (STORAGE 1 2)",
+            b'"User quota" (storage 10 1024 MESSAGE 3 100)',
+            b"Shared (STORAGE 99 99)",
         ],
     )
     assert _quota(client) == Quota(  # type: ignore[arg-type]
         storage=QuotaUsage(used=10 * 1024, limit=1024 * 1024),
         messages=QuotaUsage(used=3, limit=100),
     )
+    assert client._imap.asked == ["INBOX"]  # noqa: SLF001
+
+
+def test_an_answer_without_a_quotaroot_line_counts_every_quota_line() -> None:
+    # Mailu's Dovecot answers GETQUOTAROOT with no QUOTAROOT line; imaplib then gives [None].
+    assert _quota(_QuotaClient([None], [None])) is None  # type: ignore[arg-type]
+    client = _QuotaClient([None], [b'"User quota" (STORAGE 10 1024)'])
+    assert _quota(client) == Quota(  # type: ignore[arg-type]
+        storage=QuotaUsage(used=10 * 1024, limit=1024 * 1024), messages=None
+    )
 
 
 def test_a_quota_root_without_storage_or_message_limits_is_none() -> None:
-    assert _quota(_QuotaClient([], [])) is None  # type: ignore[arg-type]
-    unlimited = _QuotaClient(["User quota"], [RawQuota("User quota", "MAILBOX", 1, 5)])
+    assert _quota(_QuotaClient([b"INBOX"], [None])) is None  # type: ignore[arg-type]
+    unlimited = _QuotaClient([b'INBOX "User quota"'], [b'"User quota" (MAILBOX 1 5)'])
     assert _quota(unlimited) is None  # type: ignore[arg-type]
 
 
 def test_a_no_to_getquotaroot_is_no_quota() -> None:
-    refused = _QuotaClient([], [], error=_answered("NO", b"[NONEXISTENT] No quota root"))
-    assert _quota(refused) is None  # type: ignore[arg-type]
+    assert _quota(_refused(b"[NONEXISTENT] No quota root")) is None  # type: ignore[arg-type]
+
+
+def test_a_temporary_no_to_getquotaroot_is_raised() -> None:
+    with pytest.raises(
+        IMAPClientError, match=r"GETQUOTAROOT failed: \[UNAVAILABLE\] Quota backend down"
+    ):
+        _quota(_refused(b"[UNAVAILABLE] Quota backend down"))  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(
     "error",
     [
-        _answered("NO", b"[UNAVAILABLE] Quota backend down"),
-        IMAPClientError("GETQUOTAROOT command error: BAD [b'Unknown command']"),
-        IMAPClientAbortError("socket error: EOF"),
+        imaplib.IMAP4.error("GETQUOTAROOT command error: BAD [b'Unknown command']"),
+        imaplib.IMAP4.abort("socket error: EOF"),
     ],
 )
 def test_other_getquotaroot_errors_are_raised(error: Exception) -> None:
+    client = _QuotaClient([], [])
+
+    def fail(_mailbox: str) -> None:
+        raise error
+
+    client._imap.getquotaroot = fail  # type: ignore[method-assign,assignment]  # noqa: SLF001
     with pytest.raises(type(error)):
-        _quota(_QuotaClient([], [], error=error))  # type: ignore[arg-type]
+        _quota(client)  # type: ignore[arg-type]
 
 
 @pytest.mark.integration

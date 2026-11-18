@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Final, Literal, get_args
 
 from imapclient import IMAPClient, SocketTimeout
 from imapclient.exceptions import IMAPClientAbortError, IMAPClientError
+from imapclient.response_parser import parse_response
 
 from mailroom_core.config import ConfigError, CoreSettings, core_settings_or_issues, issues_text
 from mailroom_core.mail.errors import (
@@ -350,7 +351,7 @@ class MailConnections:
     def quota(self, account_id: int) -> Quota | None:
         """The quota INBOX falls under (GETQUOTAROOT); None when the server has no QUOTA, answers
         NO to GETQUOTAROOT (a temporary refusal aside) or puts no limit on storage or message
-        count."""
+        count. An answer that names no quota root counts every QUOTA line it carries."""
         if not self.capabilities(account_id).quota:
             return None
         return self._on_connection(account_id, _quota)
@@ -844,22 +845,25 @@ def _capabilities(raw: tuple[bytes, ...]) -> Capabilities:
 
 
 def _quota(client: IMAPClient) -> Quota | None:
-    try:
-        roots, quotas = client.get_quota_root("INBOX")
-    except IMAPClientAbortError:
-        raise
-    except IMAPClientError as error:
-        # imapclient words a NO as "<command> failed: ..." (a BAD is imaplib's "command error"):
-        # a server that offers QUOTA but keeps none for INBOX, as no QUOTA at all. A temporary
-        # refusal ([UNAVAILABLE]) is a failure, and so not kept.
-        if str(error).startswith("GETQUOTAROOT failed:") and not is_temporary(str(error)):
+    # Sent through imaplib, not imapclient's get_quota_root: that one fails with an IndexError on
+    # an answer without a QUOTAROOT line (Mailu's Dovecot gives one), and drops the QUOTA lines.
+    # A BAD raises imaplib's error, which is imapclient's IMAPClientError.
+    typ, (root_lines, quota_lines) = client._imap.getquotaroot("INBOX")  # noqa: SLF001
+    if typ != "OK":
+        # On a NO, imaplib gives the tagged answer's text in place of each list.
+        text = " ".join(_text(line) for line in root_lines if line is not None)
+        # A NO: a server that offers QUOTA but keeps none for INBOX, as no QUOTA at all. A
+        # temporary refusal ([UNAVAILABLE]) is a failure, and so not kept.
+        if not is_temporary(text):
             return None
-        raise
+        raise IMAPClientError(f"GETQUOTAROOT failed: {text}")
+    roots = _quota_roots(root_lines)
     found: dict[str, QuotaUsage] = {}
-    for entry in quotas:
-        resource = entry.resource.upper()
-        if entry.quota_root in roots.quota_roots and resource not in found:
-            found[resource] = QuotaUsage(used=int(entry.usage), limit=int(entry.limit))
+    for root, resources in _quota_lines(quota_lines):
+        if roots is not None and root not in roots:
+            continue
+        for resource, used, limit in resources:
+            found.setdefault(resource, QuotaUsage(used=used, limit=limit))
     storage = found.get("STORAGE")
     if storage is not None:
         storage = QuotaUsage(used=storage.used * 1024, limit=storage.limit * 1024)
@@ -867,6 +871,36 @@ def _quota(client: IMAPClient) -> Quota | None:
     if storage is None and messages is None:
         return None
     return Quota(storage=storage, messages=messages)
+
+
+def _quota_roots(lines: list[bytes | None]) -> set[str] | None:
+    """INBOX's quota roots from the QUOTAROOT lines; None when the server sent none, and then
+    every QUOTA line it sent counts."""
+    roots: set[str] | None = None
+    for line in lines:
+        if line is None:
+            continue
+        parsed = parse_response([line])
+        roots = (roots or set()) | {_text(root) for root in parsed[1:]}
+    return roots
+
+
+def _quota_lines(lines: list[bytes | None]) -> list[tuple[str, list[tuple[str, int, int]]]]:
+    """Each QUOTA line as its root and its (resource, usage, limit) triples."""
+    found: list[tuple[str, list[tuple[str, int, int]]]] = []
+    for line in lines:
+        if line is None:
+            continue
+        parsed = parse_response([line])
+        if len(parsed) < 2 or not isinstance(parsed[1], tuple):
+            continue
+        items = parsed[1]
+        triples = [
+            (_text(items[i]).upper(), int(items[i + 1]), int(items[i + 2]))
+            for i in range(0, len(items) - 2, 3)
+        ]
+        found.append((_text(parsed[0]), triples))
+    return found
 
 
 # Folder roles, as imapflow assigns them (`commands/list.js`, `special-use.js`): the special-use

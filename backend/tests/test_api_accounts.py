@@ -9,7 +9,6 @@ from functools import partial
 from typing import TYPE_CHECKING, Any
 
 import pytest
-from imapclient.exceptions import IMAPClientError
 from sqlalchemy import text
 
 from mailroom.accounts import service as accounts_service
@@ -639,10 +638,14 @@ def test_a_server_that_answers_no_has_no_quota_for_ten_minutes(
     monkeypatch.setattr(application.state, "quotas", Quotas(clock))
     asked: list[str] = []
 
-    class Refusing:
-        def get_quota_root(self, mailbox: str) -> None:
+    class Imaplib:
+        def getquotaroot(self, mailbox: str) -> tuple[str, list[list[bytes]]]:
             asked.append(mailbox)
-            raise IMAPClientError("GETQUOTAROOT failed: [NONEXISTENT] No quota root")
+            refusal = [b"[NONEXISTENT] No quota root"]
+            return "NO", [refusal, refusal]
+
+    class Refusing:
+        _imap = Imaplib()
 
     offered = Capabilities(
         gmail=False,
