@@ -172,7 +172,9 @@ originals, the other deletes them for good, and says so as `folder_delete` does.
 ### Tool contract
 
 - **Inputs** are strict (unknown fields refused, no type coercion) with the REST API's bounds; a
-  filter `spec` is checked as the API checks it.
+  filter `spec` is checked as the API checks it. One exception: an `account_id` (published as an
+  integer) is also taken as a string of up to 16 ASCII digits, for a client still holding the
+  schema from when account ids were strings.
 - **Errors:** a refusal returns a tool error with its message (enveloped when it can name a
   server's folder, as the organize tools' do); anything unexpected returns "Internal error", the
   details only in the log.

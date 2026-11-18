@@ -8,8 +8,7 @@ from pydantic import Field
 
 from mailroom.audit import listing
 from mailroom.mcp.envelope import untrusted
-from mailroom.mcp.tool import READ, Arguments, JsonObject, Tool
-from mailroom_core.config import MAX_SAFE_INTEGER
+from mailroom.mcp.tool import READ, AccountId, Arguments, JsonObject, Tool
 
 if TYPE_CHECKING:
     from mailroom.audit.listing import ListedRecord
@@ -26,7 +25,7 @@ class AuditListArguments(Arguments):
     limit: int = Field(
         default=listing.PAGE_SIZE, ge=1, le=listing.MAX_PAGE_SIZE, description="Records a page."
     )
-    account_id: int | None = Field(default=None, ge=1, le=MAX_SAFE_INTEGER)
+    account_id: AccountId | None = None
     action: str | None = Field(
         default=None,
         min_length=1,

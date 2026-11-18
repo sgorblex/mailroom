@@ -14,9 +14,9 @@ from typing import TYPE_CHECKING, Annotated, Final
 from pydantic import Field
 
 from mailroom.errors import mail_refusal
+from mailroom.mcp.tool import AccountId as BareAccountId
 from mailroom.mcp.tool import Arguments
 from mailroom.mcp.tools.mail_read import RefText  # noqa: TC001 -- Pydantic reads it at runtime
-from mailroom_core.config import MAX_SAFE_INTEGER
 from mailroom_core.mail import (
     MAX_ADDRESSES,
     MAX_SUBJECT_CHARS,
@@ -34,10 +34,8 @@ if TYPE_CHECKING:
     from mailroom_core.mail import Mailbox
 
 AccountId = Annotated[
-    int,
+    BareAccountId,
     Field(
-        ge=1,
-        le=MAX_SAFE_INTEGER,
         description=(
             "An account id, from accounts_list (optional with a single account, or with a ref)."
         ),

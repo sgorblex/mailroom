@@ -18,8 +18,14 @@ from pydantic import AfterValidator, AnyUrl, Field, StrictBool
 
 from mailroom.errors import Refusal
 from mailroom.mail import service
-from mailroom.mcp.tool import MAILBOX_READ, Arguments, Tool, content_result, text_result
-from mailroom_core.config import MAX_SAFE_INTEGER
+from mailroom.mcp.tool import (
+    MAILBOX_READ,
+    AccountId,
+    Arguments,
+    Tool,
+    content_result,
+    text_result,
+)
 from mailroom_core.mail import (
     ATTACHMENT_FILE_NOTE,
     DISPLAYED_IMAGES,
@@ -48,8 +54,6 @@ TOOL_NAMES: Final = ToolNames(
 NO_ACCOUNT: Final = "No mail account yet: the user adds one in Mailroom (Accounts)."
 
 _ACCOUNT_ID = Field(
-    ge=1,
-    le=MAX_SAFE_INTEGER,
     description="An account id, from accounts_list (optional with a single account).",
 )
 Limit = Annotated[int, Field(ge=1, le=50, description="Messages per page (default 20, max 50).")]
@@ -93,7 +97,7 @@ IsoDate = Annotated[
 
 
 class MessagesListArguments(Arguments):
-    account_id: Annotated[int, _ACCOUNT_ID] | None = None
+    account_id: Annotated[AccountId, _ACCOUNT_ID] | None = None
     folder: FolderPath = Field(
         default="INBOX",
         description="Folder path, as folders_list gives it in `path` (default INBOX).",
@@ -104,7 +108,7 @@ class MessagesListArguments(Arguments):
 
 
 class MessagesSearchArguments(Arguments):
-    account_id: Annotated[int, _ACCOUNT_ID] | service.AllAccounts | None = Field(
+    account_id: Annotated[AccountId, _ACCOUNT_ID] | service.AllAccounts | None = Field(
         default=None,
         description='An account id, or "*" for every account (optional with a single account).',
     )

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, cast
 import anyio
 import pytest
 from mcp.server.auth.provider import AccessToken
+from pydantic import ValidationError
 
 from mailroom.config.features import ALL_FEATURES, Features
 from mailroom.config.public_url import parse_public_url
@@ -23,6 +24,7 @@ from mailroom.mcp.settings import mcp_settings_from_env
 from mailroom.mcp.tool import BUSY_MESSAGE, READ, Arguments, Tool, ToolCall, UserSlots, call_tool
 from mailroom.mcp.tools import TOOLS, mail_read
 from mailroom.mcp.verifier import RefusingVerifier, token_verifier, user_id_of
+from mailroom_core.config import MAX_SAFE_INTEGER
 from mailroom_core.mail import Folder, MessageSummary, Page
 
 if TYPE_CHECKING:
@@ -550,3 +552,67 @@ def test_messages_search_refuses_subfolders_with_every_folder() -> None:
         anyio.run(tool.run, args, ToolCall(cast("AppContext", object()), 1))
     assert refused.value.code == "invalid_argument"
     assert 'subfolders cannot go with folder "*"' in str(refused.value)
+
+
+def _account_id_tools() -> list[Tool[Any]]:
+    return [tool for tool in TOOLS if "account_id" in tool.arguments.model_fields]
+
+
+def _account_id_errors(tool: Tool[Any], account_id: object) -> list[Any]:
+    try:
+        tool.arguments.model_validate({"account_id": account_id})
+    except ValidationError as exc:
+        return [error for error in exc.errors() if error["loc"][0] == "account_id"]
+    return []
+
+
+def test_every_account_id_is_published_as_an_integer() -> None:
+    tools = _account_id_tools()
+    assert len(tools) > 10
+    for tool in tools:
+        schema = tool.arguments.model_json_schema()["properties"]["account_id"]
+        branches = schema.get("anyOf", [schema])
+        assert {"type": "integer", "minimum": 1, "maximum": MAX_SAFE_INTEGER}.items() <= next(
+            branch for branch in branches if branch.get("type") == "integer"
+        ).items(), tool.name
+        strings = [branch for branch in branches if branch.get("type") == "string"]
+        assert all(branch.get("const") == "*" for branch in strings), tool.name
+
+
+@pytest.mark.parametrize("text", ["3", "03", str(MAX_SAFE_INTEGER)])
+def test_an_account_id_sent_as_its_digits_is_taken(text: str) -> None:
+    for tool in _account_id_tools():
+        assert _account_id_errors(tool, text) == [], tool.name
+    args = mail_read.MessagesListArguments.model_validate({"account_id": text})
+    assert args.account_id == int(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "",
+        "0",
+        "x",
+        "3x",
+        "+3",
+        "-3",
+        " 3",
+        "3 ",
+        "3.0",
+        "1e3",
+        "٣",
+        "0x3",
+        "1" * 17,
+        str(MAX_SAFE_INTEGER + 1),
+    ],
+)
+def test_any_other_account_id_text_is_refused(text: str) -> None:
+    for tool in _account_id_tools():
+        assert _account_id_errors(tool, text), tool.name
+
+
+def test_every_account_still_reaches_the_search() -> None:
+    every = mail_read.MessagesSearchArguments.model_validate({"account_id": "*"})
+    assert every.account_id == "*"
+    one = mail_read.MessagesSearchArguments.model_validate({"account_id": "3"})
+    assert one.account_id == 3
