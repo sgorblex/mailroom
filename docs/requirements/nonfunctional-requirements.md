@@ -96,9 +96,9 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   no key), and one whose delivery is uncertain is `unknown`, never retried by itself. Header values built from user input or mail have CR and LF
   stripped, and Bcc never goes in a transmitted header.
 - **Learning never acts** ([`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Filter suggestions*).
-- **Outbound HTTP to a host from input** (an email address's domain, a URL a document names)
-  goes through `mailroom.net.safe_fetch`, against SSRF: a GET to `https://` on the default port
-  with no credentials in the URL; every address the host resolves to must be public (a private,
+- **Outbound HTTP to a host from input** (an email address's domain, a URL a document names, a
+  client ID metadata document's URL) goes through `mailroom.net.safe_fetch`, against SSRF: a GET
+  to `https://` on the default port with no credentials in the URL; every address the host resolves to must be public (a private,
   loopback, link-local, multicast, reserved or unspecified IPv4 or IPv6 address, an IPv4 one
   mapped or 6to4-embedded in IPv6 included, refuses the fetch), and the connection goes to that
   vetted address with the hostname kept for SNI, the certificate check and `Host`. No redirect
@@ -203,7 +203,11 @@ bounded to one minor because the server relies on its handlers.
   that fails in transit (timeout, transport error, a status other than 200) keeps the cached copy
   serving for up to 7 days after its last good fetch; a document that is fetched and invalid is
   not served. A failed fetch is remembered per process for 5 minutes and not repeated meanwhile.
-  The host allowlist is what keeps this fetch from being an SSRF.
+  Against SSRF, the host allowlist is checked first, then the fetch goes through `safe_fetch`
+  (*Outbound HTTP to a host from input* above), so an allowed host that resolves to a private
+  address is never fetched: that, like a URL `safe_fetch` refuses or a document over the cap,
+  counts as invalid; no answer in time, a host that does not resolve, a redirect or a transport
+  error count as failing in transit.
 - **Consent:** `/oauth/authorize` stores the request (10 minutes) and redirects to
   `/connect?request=<id>`. The first user to open it claims it; nobody else can see or decide it.
   In `oidc` mode it redirects to the SSO start instead, and the SSO callback claims the request

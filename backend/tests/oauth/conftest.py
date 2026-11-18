@@ -6,7 +6,6 @@ from __future__ import annotations
 import secrets
 from typing import TYPE_CHECKING, Any
 
-import httpx
 import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
@@ -20,6 +19,7 @@ from tests.oauth.helpers import (
     exchange_code,
     register_client,
 )
+from tests.support.http import streamed
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -47,7 +47,8 @@ def server(
         settings,
         lambda: sessions,
         client_key=lambda request: "client",
-        cimd_transport=httpx.MockTransport(documents.handle),
+        cimd_transport=streamed(documents.handle),
+        cimd_resolver=documents.resolve,
     )
 
 
