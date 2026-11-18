@@ -22,9 +22,9 @@ describe('fetchSession', () => {
   })
 
   it('keeps the features it knows and drops the others', async () => {
-    stubMe({ user: { username: 'alice', is_admin: false }, features: ['mcp', 'calendar'] })
+    stubMe({ user: { username: 'alice', is_admin: false, time_zone: 'Europe/Rome' }, features: ['mcp', 'calendar'] })
     const session = await fetchSession()
-    expect(session.user).toEqual({ username: 'alice', is_admin: false })
+    expect(session.user).toEqual({ username: 'alice', is_admin: false, time_zone: 'Europe/Rome' })
     expect([...session.features]).toEqual(['mcp'])
   })
 

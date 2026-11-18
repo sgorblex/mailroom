@@ -9,6 +9,7 @@ import {
   type ConnectedApp,
   type ToolGroup,
 } from '@/api/oauth.ts'
+import { useTimeZone } from '@/auth/auth-context.ts'
 import { ConfirmRemoval } from '@/components/confirm-removal.tsx'
 import { Button } from '@/components/ui/button.tsx'
 import { formatDateTime } from '@/lib/format.ts'
@@ -23,6 +24,7 @@ import { GroupChoices } from '@/oauth/group-choices.tsx'
  */
 export function ConnectedApps(): ReactElement | null {
   const { t, i18n } = useTranslation()
+  const timeZone = useTimeZone()
   const [reloadKey, setReloadKey] = useState(0)
   const [failure, setFailure] = useState<string | null>(null)
   const [pending, setPending] = useState<number | null>(null)
@@ -105,13 +107,13 @@ export function ConnectedApps(): ReactElement | null {
                     )}
                     <p className="text-xs text-muted-foreground">
                       {t('connectedApps.connected', {
-                        when: formatDateTime(i18n.language, app.created_at),
+                        when: formatDateTime(i18n.language, app.created_at, timeZone),
                       })}
                       {' · '}
                       {app.last_used_at === null
                         ? t('connectedApps.neverUsed')
                         : t('connectedApps.lastUsed', {
-                            when: formatDateTime(i18n.language, app.last_used_at),
+                            when: formatDateTime(i18n.language, app.last_used_at, timeZone),
                           })}
                     </p>
                   </div>

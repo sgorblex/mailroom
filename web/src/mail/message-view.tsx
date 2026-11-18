@@ -4,6 +4,7 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
 
 import { readMessage, type MailAddress, type MessageView as MessageData } from '@/api/mail.ts'
+import { useTimeZone } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { formatDateTime } from '@/lib/format.ts'
 import { useLoad } from '@/lib/use-load.ts'
@@ -138,6 +139,7 @@ function LoadedMessage({
   onShowRemote: () => void
 }): ReactElement {
   const { t, i18n } = useTranslation(MAIL_NS)
+  const timeZone = useTimeZone()
   // The text is the default; a message whose text body is empty opens on its HTML.
   const [html, setHtml] = useState(view.has_html && view.text.content === '')
 
@@ -156,7 +158,7 @@ function LoadedMessage({
             <>
               <dt className="text-muted-foreground">{t('message.date')}</dt>
               <dd>
-                <time dateTime={view.date}>{formatDateTime(i18n.language, view.date)}</time>
+                <time dateTime={view.date}>{formatDateTime(i18n.language, view.date, timeZone)}</time>
               </dd>
             </>
           )}

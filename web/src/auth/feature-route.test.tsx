@@ -24,7 +24,7 @@ vi.mock('@/filters/rule-set-screen.tsx', () => {
   return { RuleSetRoute: () => <p>Rule set screen</p> }
 })
 
-const ALICE = { username: 'alice', is_admin: false }
+const ALICE = { username: 'alice', is_admin: false, time_zone: null }
 
 function stubFetch(): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn(() => Promise.resolve(new Response('{"detail":"Not Found"}', { status: 404 })))

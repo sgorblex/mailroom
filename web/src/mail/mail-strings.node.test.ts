@@ -59,9 +59,16 @@ describe('format', () => {
   it('shows the time for today and the date otherwise', () => {
     // Local times: "today" is the runner's calendar day, whatever its time zone.
     const now = new Date(2026, 9, 30, 12, 0)
-    expect(formatListDate('en', new Date(2026, 9, 30, 9, 12).toISOString(), now)).toMatch(/\d:\d\d/)
-    expect(formatListDate('en', new Date(2026, 0, 2, 9, 12).toISOString(), now)).toContain('2026')
-    expect(formatListDate('en', null, now)).toBe('')
-    expect(formatListDate('en', 'not a date', now)).toBe('not a date')
+    expect(formatListDate('en', new Date(2026, 9, 30, 9, 12).toISOString(), undefined, now)).toMatch(/\d:\d\d/)
+    expect(formatListDate('en', new Date(2026, 0, 2, 9, 12).toISOString(), undefined, now)).toContain('2026')
+    expect(formatListDate('en', null, undefined, now)).toBe('')
+    expect(formatListDate('en', 'not a date', undefined, now)).toBe('not a date')
+  })
+
+  it('counts today and writes the time in the given zone', () => {
+    const now = new Date('2026-10-31T01:00:00Z')
+    const lateYesterday = '2026-10-30T23:30:00Z'
+    expect(formatListDate('en', lateYesterday, 'Asia/Tokyo', now)).toBe('8:30 AM')
+    expect(formatListDate('en', lateYesterday, 'UTC', now)).toBe('Oct 30, 2026')
   })
 })

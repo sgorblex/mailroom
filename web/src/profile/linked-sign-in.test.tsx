@@ -7,7 +7,7 @@ import { renderSignedIn } from '@/test/signed-in.tsx'
 
 import { LinkedSignIn } from './linked-sign-in.tsx'
 
-const ALICE = { username: 'alice', is_admin: false }
+const ALICE = { username: 'alice', is_admin: false, time_zone: null }
 
 function identity(id: number, name: string | null, issuer = 'https://id.example.test'): Identity {
   return {

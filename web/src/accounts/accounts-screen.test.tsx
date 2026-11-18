@@ -6,7 +6,7 @@ import { renderSignedIn } from '@/test/signed-in.tsx'
 
 import { AccountsScreen } from './accounts-screen.tsx'
 
-const ALICE = { username: 'alice', is_admin: false }
+const ALICE = { username: 'alice', is_admin: false, time_zone: null }
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status })

@@ -1,6 +1,7 @@
-import { createContext, useContext } from 'react'
+import { createContext, useContext, useMemo } from 'react'
 
 import type { Feature, User } from '@/api/auth.ts'
+import { writableTimeZone } from '@/lib/time-zone.ts'
 
 export type AuthState =
   | { status: 'checking' }
@@ -15,6 +16,8 @@ export type AuthContextValue = AuthState & {
   /** Resolves once signed in; rejects with the API error otherwise. */
   signIn: (username: string, password: string) => Promise<void>
   signOut: () => Promise<void>
+  /** Saves the signed-in user's time zone (`null` unsets it); rejects with the API error. */
+  changeTimeZone: (timeZone: string | null) => Promise<void>
   /** Ask the API again, after it could not be reached. */
   recheck: () => void
 }
@@ -38,4 +41,14 @@ export function useFeature(feature: Feature): boolean {
 export function useMailLayer(): boolean {
   const { features } = useAuth()
   return features.has('mail') || features.has('mcp')
+}
+
+/**
+ * The zone dates are written in: the signed-in user's, else (none saved, or one this browser does
+ * not know) `undefined`, which `Intl` reads as the browser's. Outside an `AuthProvider` too.
+ */
+export function useTimeZone(): string | undefined {
+  const auth = useContext(AuthContext)
+  const saved = auth?.status === 'signed-in' ? auth.user.time_zone : null
+  return useMemo(() => writableTimeZone(saved), [saved])
 }
