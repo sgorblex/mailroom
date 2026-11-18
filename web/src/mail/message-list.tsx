@@ -18,6 +18,7 @@ import { useCompose } from './compose-context.ts'
 import { addressLabel, formatListDate } from './format.ts'
 import { MAIL_NS } from './i18n.ts'
 import { ACCOUNT_NOT_FOUND, mailCodeMessage, mailErrorMessage } from './messages.ts'
+import { TOAST_RETURN_ID } from './toast.tsx'
 import { useTriageActions } from './triage-actions.ts'
 import { useTriage, type Target } from './triage-context.ts'
 
@@ -119,7 +120,7 @@ export function MessageList({
       ) : (
         <>
           <SelectAll messages={messages} />
-          <ul aria-label={searching ? t('list.results') : t('list.messages')} className="flex flex-col divide-y rounded-lg border">
+          <ul id={TOAST_RETURN_ID} aria-label={searching ? t('list.results') : t('list.messages')} className="flex flex-col divide-y rounded-lg border">
             {messages.map((message) => (
               // The row's link is what takes focus: its menu key and a right-click reach it from here.
               // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions

@@ -192,7 +192,8 @@ MCP `message_read` still never set `\Seen`.
   opening it: filled when starred, else an outline shown on hover and keyboard focus (always on a
   touch screen) and always there for screen readers, a toggle button named *Star* whose pressed
   state says whether the message is starred (its tooltip says *Star* or *Unstar*). While another
-  action runs it is disabled and looks it, and a click sends nothing. Its result and any failure show in the toolbar's notice.
+  action runs it is disabled and looks it, and a click sends nothing. Its result shows as any
+  action's (below).
 - **A To sort mark on each row**, next to the star, marks that one message To sort or sorted the
   same way: a toggle named *To sort*, filled when marked (its tooltip says *Mark To sort* or
   *Mark sorted*).
@@ -203,6 +204,19 @@ MCP `message_read` still never set `\Seen`.
 - Results update the list in place: moved or trashed rows disappear, flags change on the row, and
   failed groups are shown with the mail error wording; a group of a move to another account
   whose copies were made but whose originals stayed says they are in both.
+- **Undo:** an action that went through in full says so in a toast at the foot of the screen,
+  which stays across a change of folder or search and closes after 8 s, the clock paused while
+  the pointer is on it or focus is in it; a live region announces it. An action's failure stays a
+  notice under the toolbar, without Undo, and a new action closes the toast. For a move, archive or
+  trash the toast offers **Undo**, which moves each source folder's messages back from the
+  `new_refs` the action answered (50 refs a request) and reads the list again; when a group
+  answered no `new_refs` (or fewer than it moved) the toast says it cannot be undone instead.
+  For a flag change (star, To sort, read) Undo sets back the flags it changed on each message,
+  the refs being the same. A move to another account offers no Undo. Undo sends its own requests,
+  audited as any action of the user's: undoing a move out of Junk is a move into it, which trains
+  the account as that move would ([Junk training](#junk-training)). Undo's own failure shows in
+  the toast, which says it did not take back every change. Closing the toast puts focus back
+  where it was before the toast took it.
 - A selection over 50 refs is sent 50 at a time; a refused batch is shown as failed groups and the
   rest are still sent; only when every batch is refused is the outcome worded as that refusal.
 - **Keyboard shortcuts** on `/mail`, the screen's own keys and the action registry's:

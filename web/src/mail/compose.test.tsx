@@ -38,9 +38,9 @@ const compose = async (user: ReturnType<typeof userEvent.setup>) => {
 const sentNotice = (text: string | RegExp = 'Sent.') => screen.findByText(text, { selector: 'p' }, { timeout: 6_000 })
 const field = (form: HTMLElement, name: string) => within(form).getByRole('textbox', { name })
 
-/** The compose live regions: the second of each kind, after the toolbar's. */
+/** The compose live regions: the last of each kind, after the toast's and the toolbar's. */
 function live(kind: 'polite' | 'assertive'): HTMLElement | undefined {
-  return [...document.querySelectorAll<HTMLElement>(`[aria-live="${kind}"]`)][1]
+  return [...document.querySelectorAll<HTMLElement>(`[aria-live="${kind}"]`)].at(-1)
 }
 
 /** A `hold` for the first `target` request, and what lets it go. */

@@ -43,9 +43,9 @@ const messagesList = (): Promise<HTMLElement> => screen.findByRole('list', { nam
 const FLAG = '/api/v1/mail/messages/flag'
 const TRASH = '/api/v1/mail/messages/trash'
 
-/** The toolbar's live region: `polite` (role status) for a result, `assertive` (role alert) for a failure. */
+/** Where an outcome is announced: the toast's `polite` region for a result, the toolbar's `assertive` one for a failure. */
 function report(live: 'polite' | 'assertive'): HTMLElement {
-  const region = document.querySelector<HTMLElement>(`[aria-live="${live}"]`)
+  const region = document.getElementById(live === 'polite' ? 'toast-status' : 'triage-outcome-alert')
   if (region === null) {
     throw new Error(`no ${live} live region`)
   }
@@ -612,8 +612,9 @@ describe('marking read on open', () => {
     const list = await messagesList()
     expect(await screen.findByRole('button', { name: 'Mark as read' })).toBeInTheDocument()
     expect(within(list).getByRole('link', { name: /Unread:\s*Message 10Preview/ })).toBeInTheDocument()
-    expect(screen.getAllByRole('alert')).toEqual([report('assertive')])
-    expect(report('assertive')).toBeEmptyDOMElement()
+    for (const alert of screen.getAllByRole('alert')) {
+      expect(alert).toBeEmptyDOMElement()
+    }
   })
 
   it('sends the next action on that message only once the mark-read has answered', async () => {

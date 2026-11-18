@@ -109,7 +109,7 @@ released and checked in production before the next one starts. Batch 15 is the r
 - [x] **Shared action registry and context menu** — one list of message actions behind the
       toolbar, the shortcuts and a right-click menu on messages and folders.
 - [x] **Shortcut sheet** — `?` lists the keyboard shortcuts, read from the action registry.
-- [ ] **Undo** — a toast with Undo for a few seconds after a move, archive or trash.
+- [x] **Undo** — a toast with Undo for a few seconds after a move, archive or trash.
 - [ ] **Drag and drop** — messages onto a folder, of the same account or another one.
 - [ ] **Select all matching** — after selecting all, act on every message the list or search
       matches, not only those loaded, with the count to confirm.

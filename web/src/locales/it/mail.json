@@ -225,6 +225,15 @@
     "failed": "Impossibile modificare i messaggi.",
     "gone": "Non tutti i messaggi sono ancora in quella cartella. Ricarica l'elenco."
   },
+  "undo": {
+    "undo": "Annulla",
+    "done": "Annullato.",
+    "failed": "Non è stato possibile annullare ogni modifica.",
+    "impossible": "Non si può annullare: il server di posta non ha detto dove sono finiti i messaggi."
+  },
+  "toast": {
+    "dismiss": "Chiudi"
+  },
   "compose": {
     "compose": "Scrivi",
     "newMessage": "Nuovo messaggio",
