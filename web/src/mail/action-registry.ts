@@ -232,22 +232,27 @@ export function unavailableReason(action: MailAction, context: ActionContext): s
   return action.unavailable?.(context) ?? null
 }
 
-/** The action `key` runs, when it can run now: available, not greyed out, not waiting on `busy` or an open composer. */
+/** Whether `action` can run now: available, not greyed out, not waiting on `busy` (triage) or an open composer (the others). */
+export function runnable(
+  action: MailAction,
+  context: ActionContext,
+  { busy, composing }: { busy: boolean; composing: boolean },
+): boolean {
+  return (
+    !(action.group === 'triage' ? busy : composing) &&
+    action.available(context) &&
+    unavailableReason(action, context) === null
+  )
+}
+
+/** The action `key` runs, when it can run now. */
 export function shortcutAction(
   key: string,
   context: ActionContext,
-  { busy, composing }: { busy: boolean; composing: boolean },
+  state: { busy: boolean; composing: boolean },
 ): MailAction | undefined {
   const action = MAIL_ACTIONS.find((each) => each.shortcut === key)
-  if (
-    action === undefined ||
-    (action.group === 'triage' ? busy : composing) ||
-    !action.available(context) ||
-    unavailableReason(action, context) !== null
-  ) {
-    return undefined
-  }
-  return action
+  return action !== undefined && runnable(action, context, state) ? action : undefined
 }
 
 /**

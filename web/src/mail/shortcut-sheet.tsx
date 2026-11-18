@@ -22,7 +22,7 @@ export function ShortcutSheet({ onClose }: { onClose: () => void }): ReactElemen
               <div key={entry.key} className="contents">
                 <dt>
                   <kbd className="rounded border bg-muted px-1.5 font-mono text-xs">
-                    {entry.key === 'Escape' ? t('shortcuts.escapeKey') : entry.key}
+                    {entry.keyName === undefined ? entry.key : t(entry.keyName)}
                   </kbd>
                 </dt>
                 <dd>{t(entry.label)}</dd>

@@ -366,6 +366,20 @@
     "sheet": "Show these shortcuts",
     "star": "Star or unstar",
     "toSort": "Mark To sort or sorted",
+    "palette": "Open the command palette",
+    "paletteKey": "Ctrl/⌘ K",
     "close": "Close"
+  },
+  "palette": {
+    "title": "Command palette",
+    "input": "Go to or run",
+    "placeholder": "A folder, an account, a page or an action…",
+    "results": "Results",
+    "none": "Nothing matches.",
+    "recent": "Recent",
+    "actions": "Actions",
+    "folders": "Folders",
+    "accounts": "Accounts",
+    "pages": "Pages"
   }
 }

@@ -4,9 +4,9 @@ import { useNavigate, useSearch } from '@tanstack/react-router'
 import type { AccountId } from '@/api/accounts.ts'
 
 import { MAIL_ACTIONS, shortcutAction, type ActionContext, type MailAction } from './action-registry.ts'
-import { useCompose } from './compose-context.ts'
-import { NO_TRIAGE_ACTIONS, useTriageActions } from './triage-actions.ts'
-import { useTriage } from './triage-context.ts'
+import { useCompose, type Compose } from './compose-context.ts'
+import { NO_TRIAGE_ACTIONS, useTriageActions, type TriageActions } from './triage-actions.ts'
+import { useTriage, type Triage } from './triage-context.ts'
 
 /** Inputs whose keys are not text: a checkbox just ticked still lets `e` archive. */
 const KEYLESS_INPUTS = new Set(['checkbox', 'radio', 'button', 'submit', 'reset'])
@@ -31,6 +31,8 @@ const REPEATING = new Set(['j', 'k'])
 interface SheetEntry {
   key: string
   label: string
+  /** How the sheet writes the key, where not as `key` (a key in the `mail` namespace). */
+  keyName?: string
 }
 
 /** The keys the mail screen handles itself, beside the registry's, with their names in the shortcut sheet. */
@@ -38,8 +40,9 @@ const NAVIGATION_KEYS: readonly SheetEntry[] = [
   { key: 'j', label: 'shortcuts.next' },
   { key: 'k', label: 'shortcuts.previous' },
   { key: 'x', label: 'shortcuts.select' },
-  { key: 'Escape', label: 'shortcuts.escape' },
+  { key: 'Escape', label: 'shortcuts.escape', keyName: 'shortcuts.escapeKey' },
   { key: '?', label: 'shortcuts.sheet' },
+  { key: 'Control+K', label: 'shortcuts.palette', keyName: 'shortcuts.paletteKey' },
 ]
 
 /** No targets: the names an action gives itself whatever it acts on. */
@@ -65,6 +68,60 @@ export const SHEET_GROUPS: readonly { title: string; entries: SheetEntry[] }[] =
   { title: 'shortcuts.writing', entries: registryKeys(['reply', 'compose']) },
   { title: 'shortcuts.acting', entries: registryKeys(['triage']) },
 ]
+
+/**
+ * What the screen's keys and its command palette run an action with: the selection, else the open
+ * message; a reply on the open one, a new message on `account`; a picker opens.
+ */
+export function screenContext(triage: Triage, actions: TriageActions, compose: Compose, account: AccountId): ActionContext {
+  return {
+    actions,
+    message: triage.open,
+    account,
+    compose,
+    openPicker: (picker) => {
+      if (picker === 'move') {
+        triage.setPicker(true)
+      } else {
+        triage.setAccountPicker(true)
+      }
+    },
+  }
+}
+
+/**
+ * Ctrl+K, or ⌘+K, calls `onToggle` (the command palette): a key of its own, as the others take
+ * none with Ctrl or Meta. Not while typing in the composer, nor over another dialog.
+ */
+export function usePaletteShortcut(onToggle: () => void): void {
+  const latest = useRef(onToggle)
+  useEffect(() => {
+    latest.current = onToggle
+  })
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
+      const dialog = document.querySelector('dialog[open]')
+      if (
+        !(event.ctrlKey || event.metaKey) ||
+        event.altKey ||
+        event.shiftKey ||
+        event.key.toLowerCase() !== 'k' ||
+        event.repeat ||
+        event.defaultPrevented ||
+        (isTyping(event.target) && event.target instanceof Element && event.target.closest('[data-composer]') !== null) ||
+        (dialog !== null && dialog.querySelector('[data-palette]') === null)
+      ) {
+        return
+      }
+      event.preventDefault()
+      latest.current()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [])
+}
 
 /**
  * The mail screen's keyboard shortcuts (`docs/requirements/mail-client.md`): j/k move through
@@ -131,19 +188,7 @@ export function useMailShortcuts(accountId: AccountId, onHelp: () => void): void
           }
           return false
       }
-      const context: ActionContext = {
-        actions: offered,
-        message: state.open,
-        account: current.accountId,
-        compose: writer,
-        openPicker: (picker) => {
-          if (picker === 'move') {
-            state.setPicker(true)
-          } else {
-            state.setAccountPicker(true)
-          }
-        },
-      }
+      const context = screenContext(state, offered, writer, current.accountId)
       const action = shortcutAction(key, context, { busy: state.busy, composing: writer.session !== null })
       if (action === undefined) {
         return false

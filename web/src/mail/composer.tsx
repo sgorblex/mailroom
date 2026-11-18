@@ -495,6 +495,7 @@ function Editor({ session, start }: { session: ComposeSession; start: ComposeSta
   return (
     <form
       aria-labelledby={titleId}
+      data-composer
       className="flex flex-1 flex-col gap-3"
       onSubmit={(event) => {
         // Enter in a field never sends: only the Send button does.

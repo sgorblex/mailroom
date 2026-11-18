@@ -255,6 +255,7 @@ MCP `message_read` still never set `\Seen`.
 | `x` | Toggle selection of the current message |
 | `Escape` | Close the picker, else clear the selection |
 | `?` | Show the shortcut sheet |
+| Ctrl+K / ⌘+K | Open the command palette |
 | `r` / `a` / `f` | Reply / reply all / forward ([below](#keyboard-shortcuts)) |
 | `c` | Compose a new message ([below](#keyboard-shortcuts)) |
 | `e` | Archive |
@@ -274,6 +275,17 @@ MCP `message_read` still never set `\Seen`.
 - **The shortcut sheet** (`?`, or the keyboard button beside *Compose*) is a dialog listing every
   key of this table in three groups (moving around, writing, acting on messages), read from the
   action registry and the screen's own keys, so it cannot drift from what the keys do.
+- **The command palette** (Ctrl+K, ⌘+K on a Mac; again to close) is a dialog with a combobox over
+  a list (the ARIA combobox and listbox pattern: ↑ and ↓ move, wrapping, Page Up and Page Down go
+  to the first and the last, Enter or a click chooses, Escape closes). It offers, in groups: the
+  registry's actions that can run now on the selection or the open message (as the toolbar lists
+  them, with their keys), every folder that can hold mail of every account (its account beside
+  it), the accounts, and the app's pages as the nav lists them. Each word typed must start a word
+  of an entry (a folder path's levels are words) or occur in it, or have its letters in order in
+  one of its words, case and accents aside; the best matches come first. With nothing typed, the
+  last five choices come first (kept in this browser only; none when storage is refused), those
+  that can still be chosen. It has its own key, as the shortcuts take none with Ctrl or Meta: it
+  works in the search fields, but not while typing in the composer nor over another dialog.
 
 ### REST routes
 

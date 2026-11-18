@@ -22,7 +22,10 @@ describe('the shortcut sheet', () => {
     ['en', en],
     ['it', it_],
   ])('is named in %s', (_language, locale) => {
-    const labels = [...SHEET_GROUPS.map((group) => group.title), ...entries.map((entry) => entry.label)]
+    const labels = [
+      ...SHEET_GROUPS.map((group) => group.title),
+      ...entries.flatMap((entry) => (entry.keyName === undefined ? [entry.label] : [entry.label, entry.keyName])),
+    ]
     expect(keys(locale)).toEqual(expect.arrayContaining(labels))
   })
 })

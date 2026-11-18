@@ -366,6 +366,20 @@
     "sheet": "Mostra queste scorciatoie",
     "star": "Aggiungi a Speciali o rimuovi",
     "toSort": "Segna da smistare o smistato",
+    "palette": "Apri la palette dei comandi",
+    "paletteKey": "Ctrl/⌘ K",
     "close": "Chiudi"
+  },
+  "palette": {
+    "title": "Palette dei comandi",
+    "input": "Vai a o esegui",
+    "placeholder": "Una cartella, un account, una pagina o un'azione…",
+    "results": "Risultati",
+    "none": "Nessun risultato.",
+    "recent": "Recenti",
+    "actions": "Azioni",
+    "folders": "Cartelle",
+    "accounts": "Account",
+    "pages": "Pagine"
   }
 }
