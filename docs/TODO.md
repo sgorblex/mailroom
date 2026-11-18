@@ -96,10 +96,9 @@ released and checked in production before the next one starts. Batch 15 is the r
       as their name, unless another of the user's accounts already has that name.
 - [x] **Account colours** — so the accounts stay apart in unified lists: a dot beside the
       account's name in the web.
-- [ ] **Account autoconfiguration** — on setup, look the address up in the provider's
+- [x] **Account autoconfiguration** — on setup, look the address up in the provider's
       autoconfig, Thunderbird's ISPDB and DNS SRV records (RFC 6186); when nothing answers,
-      offer presets (Gmail with an app password, iCloud, Fastmail, Yahoo). Backend done
-      (`GET /accounts/autoconfig`); the web's *Accounts* form still to fill from it.
+      offer presets (Gmail with an app password, iCloud, Fastmail, Yahoo).
 - [ ] **Mailbox quota** — each account's usage, from the server's IMAP `QUOTA`.
 
 ### Milestone B: Acting on mail, reading it, filtering from it

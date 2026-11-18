@@ -62,7 +62,10 @@ through the Vite proxy. Engineering baseline:
   The API suggests an address's IMAP and SMTP servers (the domain's own autoconfig, DNS SRV, its
   MX against known providers, Thunderbird's ISPDB, then presets; Microsoft marked unsupported until
   OAuth2), storing nothing, and flags a host the domain's autoconfig or SRV names outside the
-  domain; the *Accounts* form does not use it yet
+  domain. Adding an account on the *Accounts* page starts from the address:
+  *Find settings* fills the servers and login from it and says where they came from, asking first
+  when a server is outside the domain; when nothing is found it offers the presets, and the
+  settings can always be entered by hand
   ([`requirements/mail-client.md`](requirements/mail-client.md) — *Account autoconfiguration*).
   How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md)
   — *Mail accounts*.

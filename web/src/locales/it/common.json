@@ -138,6 +138,33 @@
       "pink": "Rosa"
     },
     "address": "Indirizzo email",
+    "autoconfig": {
+      "find": "Trova impostazioni",
+      "hint": "Trova impostazioni chiede al dominio stesso, al suo DNS e al database dei provider di Thunderbird, inviando loro solo il dominio.",
+      "looking": "Ricerca delle impostazioni…",
+      "sources": {
+        "autoconfig": "Impostazioni pubblicate dal dominio ({{origin}}).",
+        "srv": "Impostazioni dai record DNS del dominio ({{origin}}).",
+        "mx": "Impostazioni di {{provider}}, dove arriva la posta del dominio ({{origin}}).",
+        "ispdb": "Impostazioni dal database dei provider di Thunderbird ({{origin}}).",
+        "preset": "Impostazioni di Mailroom per {{provider}}."
+      },
+      "appPassword": "{{provider}} richiede una password per app, da creare nelle impostazioni di sicurezza del tuo account {{provider}}, non la tua solita password.",
+      "check": "Controllale prima di aggiungere l'account.",
+      "outsideDomain_one": "Queste impostazioni inviano la tua password a un server fuori da {{domain}}: {{hosts}}. Usale solo se sai che la tua posta è ospitata lì.",
+      "outsideDomain_other": "Queste impostazioni inviano la tua password a server fuori da {{domain}}: {{hosts}}. Usale solo se sai che la tua posta è ospitata lì.",
+      "useOutside": "Usa",
+      "declineOutside": "Non usare",
+      "declined": "Impostazioni non usate. Scegli il tuo provider o inserisci le impostazioni a mano.",
+      "none": "Nessuna impostazione trovata per {{domain}}. Scegli il tuo provider o inserisci le impostazioni a mano.",
+      "unsupported": "Gli account {{provider}} non sono ancora supportati: richiedono un accesso che Mailroom non sa ancora fare.",
+      "invalidAddress": "Inserisci un indirizzo email completo, come te@example.org.",
+      "busy": "Troppe ricerche: riprova tra un minuto.",
+      "failed": "Impossibile cercare le impostazioni. Scegli il tuo provider o inserisci le impostazioni a mano.",
+      "presets": "Il tuo provider",
+      "usePreset": "Usa {{provider}}",
+      "manual": "Inserisci le impostazioni a mano"
+    },
     "name": "Il tuo nome",
     "nameHint": "Facoltativo: lo vedono le persone a cui scrivi.",
     "otherAddress": "Altro indirizzo {{n}}",
