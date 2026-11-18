@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.12.0](https://github.com/sgorblex/mailroom/compare/v0.11.1...v0.12.0) (2026-11-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* number account ids instead of user-chosen slugs ([#67](https://github.com/sgorblex/mailroom/issues/67))
+
+### Features
+
+* an MCP grant records the tool groups its user approved, and its client uses only those ([#54](https://github.com/sgorblex/mailroom/issues/54)) ([7b02bd9](https://github.com/sgorblex/mailroom/commit/7b02bd98c8693fa63c19ad9a02fb794392ea34ce))
+* give each account an optional name and colour ([#65](https://github.com/sgorblex/mailroom/issues/65)) ([2572f4c](https://github.com/sgorblex/mailroom/commit/2572f4c6260e43993349408345e375f614d2c08e))
+* keep a time zone per user and write their dates in it ([#63](https://github.com/sgorblex/mailroom/issues/63)) ([9f8030f](https://github.com/sgorblex/mailroom/commit/9f8030fa6cee465e6638865491984ac8e707df11))
+* list and search a folder with its subfolders over REST and MCP ([#61](https://github.com/sgorblex/mailroom/issues/61)) ([43a6465](https://github.com/sgorblex/mailroom/commit/43a646580ab74dbd93a677bf085d0864c367133a))
+* show each account's mailbox quota ([#71](https://github.com/sgorblex/mailroom/issues/71)) ([5793286](https://github.com/sgorblex/mailroom/commit/57932867f18162e6813ea2a3466dbd12e5199666))
+* suggest an account's servers from its address ([#69](https://github.com/sgorblex/mailroom/issues/69)) ([bc33655](https://github.com/sgorblex/mailroom/commit/bc3365594cf2e55eedf87f74805a2b5a8fda82f2))
+* **web:** choose an app's tool groups on the consent screen and change them under Connected apps ([#55](https://github.com/sgorblex/mailroom/issues/55)) ([aabaffc](https://github.com/sgorblex/mailroom/commit/aabaffc13ed019e4595838bce2ed3ce7874dedb1))
+* **web:** find an account's settings from its address ([#70](https://github.com/sgorblex/mailroom/issues/70)) ([d84f833](https://github.com/sgorblex/mailroom/commit/d84f83379f4bbf7885b49a20504f05936bc99fc0))
+* **web:** list a folder with its subfolders from the folder tree ([#62](https://github.com/sgorblex/mailroom/issues/62)) ([9e0d707](https://github.com/sgorblex/mailroom/commit/9e0d7074a57ec7ce3b9c9e3bfb9ca8ec890f762a))
+* **web:** pick a time zone on Profile and write dates in it ([#64](https://github.com/sgorblex/mailroom/issues/64)) ([fb8b15e](https://github.com/sgorblex/mailroom/commit/fb8b15ece1634cc1367f95cb371c6a72d40f94e3))
+* **web:** show each account by its name and colour ([#66](https://github.com/sgorblex/mailroom/issues/66)) ([c058364](https://github.com/sgorblex/mailroom/commit/c058364d18a42e57c343ab28d43d501f71421a17))
+* **web:** show each account's mailbox usage ([#72](https://github.com/sgorblex/mailroom/issues/72)) ([70ed3c1](https://github.com/sgorblex/mailroom/commit/70ed3c1b8b60ea0539562664e8c2470f95144e64))
+* **web:** star a message from its row in the list ([#75](https://github.com/sgorblex/mailroom/issues/75)) ([44da350](https://github.com/sgorblex/mailroom/commit/44da3504592c2cef144d9f7086a19042fd897e83))
+
+
+### Bug Fixes
+
+* **core:** check exact address criteria on the fetched message ([#59](https://github.com/sgorblex/mailroom/issues/59)) ([91df7b6](https://github.com/sgorblex/mailroom/commit/91df7b6c8250fad79096fb0a46035b7a6fb8ac26))
+* **core:** drop a failing folder from the page cursor ([#60](https://github.com/sgorblex/mailroom/issues/60)) ([24b3f0e](https://github.com/sgorblex/mailroom/commit/24b3f0e538df2a702dbbc29bdb978bf87b43f6b6))
+* fetch client metadata documents through the SSRF-safe fetch ([#76](https://github.com/sgorblex/mailroom/issues/76)) ([e591fb0](https://github.com/sgorblex/mailroom/commit/e591fb0417e3a3374b6c0d0e3a2c174dc5b75145))
+
+
+### Code Refactoring
+
+* number account ids instead of user-chosen slugs ([#67](https://github.com/sgorblex/mailroom/issues/67)) ([25b248d](https://github.com/sgorblex/mailroom/commit/25b248dc8ce55c16494bef6090cff9b7e7287dde))
+
 ## [0.11.1](https://github.com/sgorblex/mailroom/compare/v0.11.0...v0.11.1) (2026-11-14)
 
 
