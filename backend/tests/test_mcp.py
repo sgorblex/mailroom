@@ -856,6 +856,11 @@ def test_a_nested_folders_path_is_what_messages_list_takes(
     ]
     assert found["path"] == nested
     assert "Filed away" in mcp.text(token, "messages_list", folder=found["path"])
+    merged = mcp.text(token, "messages_list", folder="Archive", subfolders=True)
+    assert f" · {nested} · " in merged
+    assert "Each line: ref · folder · date" in merged
+    refused = mcp.error(token, "messages_search", folder="*", subfolders=True)
+    assert 'subfolders cannot go with folder "*"' in refused
 
 
 def test_counts_the_server_would_not_give_are_null(

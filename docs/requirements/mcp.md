@@ -17,7 +17,9 @@ server*.
 Tool names are noun_verb (`accounts_list`, `folders_list`, `rule_sets_list`), unlike mailroom-mcp's
 bare verbs. The `mail_read` tools take mailroom-mcp's `list`, `search`, `read`, `thread` and
 `attachment` inputs (an account is `account_id`; with one account it may be left out, and
-`messages_search` takes `"*"` for every account) and return mailroom-core's text, its hints
+`messages_search` takes `"*"` for every account; both take `subfolders`, the folder's subfolders
+merged in as the REST list's `subfolders` reads them, refused with `folder="*"`, each line then
+naming its folder after the ref) and return mailroom-core's text, its hints
 naming the app's tools (`message_read`, `thread_read`, `attachment_read`): one line per message,
 dates in UTC (the app keeps no time zone yet), a collapsed quote as a marker line naming
 `include_quoted`, everything mail-derived inside the envelope. An attachment comes back as text,

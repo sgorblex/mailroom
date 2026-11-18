@@ -62,6 +62,7 @@ from mailroom_core.mail.errors import (
 from mailroom_core.mail.folders import (
     MAX_FOLDER_DEPTH,
     MAX_FOLDER_NAME,
+    MAX_LISTED_FOLDERS,
     FolderChange,
     FolderChangedError,
     check_folder_name,
@@ -69,6 +70,7 @@ from mailroom_core.mail.folders import (
     delete_folder,
     rename_folder,
     subfolders_of,
+    with_subfolders,
 )
 from mailroom_core.mail.identity import Addressed, from_identity
 from mailroom_core.mail.idle import IdleChange, IdleWatch
@@ -155,7 +157,9 @@ from mailroom_core.mail.reply import (
 from mailroom_core.mail.search import (
     ALL_FOLDERS,
     SearchQuery,
+    check_subfolders,
     list_messages,
+    read_folders,
     search_messages,
     searchable_folders,
     thread_page,
@@ -213,6 +217,7 @@ __all__ = [
     "MAX_DRAFT_BYTES",
     "MAX_FOLDER_DEPTH",
     "MAX_FOLDER_NAME",
+    "MAX_LISTED_FOLDERS",
     "MAX_ORIGINAL_BYTES",
     "MAX_REFS",
     "MAX_SUBJECT_CHARS",
@@ -300,6 +305,7 @@ __all__ = [
     "check_recipient_count",
     "check_removable",
     "check_sendable",
+    "check_subfolders",
     "check_uploads",
     "compose",
     "connections_from",
@@ -352,6 +358,7 @@ __all__ = [
     "quoted_original",
     "read_attachment",
     "read_draft",
+    "read_folders",
     "read_message",
     "read_page",
     "read_text",
@@ -376,5 +383,6 @@ __all__ = [
     "threading",
     "trash_messages",
     "try_remove_draft",
+    "with_subfolders",
     "without_headers",
 ]

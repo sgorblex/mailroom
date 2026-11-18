@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -20,9 +21,9 @@ from mailroom.mcp.envelope import untrusted, wrapped_result
 from mailroom.mcp.groups import GroupName, ToolGroup, selected_groups
 from mailroom.mcp.settings import mcp_settings_from_env
 from mailroom.mcp.tool import BUSY_MESSAGE, READ, Arguments, Tool, ToolCall, UserSlots, call_tool
-from mailroom.mcp.tools import TOOLS
+from mailroom.mcp.tools import TOOLS, mail_read
 from mailroom.mcp.verifier import RefusingVerifier, token_verifier, user_id_of
-from mailroom_core.mail import Folder
+from mailroom_core.mail import Folder, MessageSummary, Page
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -483,3 +484,61 @@ def test_a_call_to_a_tool_the_grant_did_not_approve_is_refused(
     assert not ran
     logged = next(r for r in caplog.records if r.getMessage() == "mcp_tool_called")
     assert (logged.__dict__["outcome"], logged.__dict__["code"]) == ("refused", "not_approved")
+
+
+def _summary(folder: str, uid: int) -> MessageSummary:
+    return MessageSummary(
+        ref=f"ref{uid}",
+        account="work",
+        folder=folder,
+        uid=uid,
+        uid_validity=1,
+        date=datetime(2026, 10, uid, 9, tzinfo=UTC),
+        received=None,
+        sender=(),
+        subject=f"Message {uid}",
+        flags=frozenset({"\\Seen"}),
+        has_attachments=False,
+        preview=None,
+        size=1,
+    )
+
+
+def test_messages_list_with_subfolders_names_each_lines_folder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asked: dict[str, Any] = {}
+
+    def list_messages(_ctx: Any, _user_id: int, account: str, folder: str, **kwargs: Any) -> Page:
+        asked.update(account=account, folder=folder, subfolders=kwargs["subfolders"])
+        return Page((_summary("INBOX/Lists", 2), _summary("INBOX", 1)), None)
+
+    monkeypatch.setattr(mail_read.service, "list_messages", list_messages)
+    tool = next(tool for tool in TOOLS if tool.name == "messages_list")
+    call = ToolCall(cast("AppContext", object()), 1)
+
+    def text(**arguments: Any) -> str:
+        args = mail_read.MessagesListArguments.model_validate({"account_id": "work", **arguments})
+        result = anyio.run(tool.run, args, call)
+        return cast("Any", result.content[0]).text
+
+    listed = text(subfolders=True)
+    assert asked == {"account": "work", "folder": "INBOX", "subfolders": True}
+    assert "ref2 · INBOX/Lists · 2026-10-02 09:00 · " in listed
+    assert "ref1 · INBOX · 2026-10-01 09:00 · " in listed
+    assert "Each line: ref · folder · date · from" in listed
+    plain = text()
+    assert asked["subfolders"] is False
+    assert "ref2 · 2026-10-02 09:00 · " in plain
+    assert "Each line: ref · date · from" in plain
+
+
+def test_messages_search_refuses_subfolders_with_every_folder() -> None:
+    tool = next(tool for tool in TOOLS if tool.name == "messages_search")
+    args = mail_read.MessagesSearchArguments.model_validate(
+        {"account_id": "work", "folder": "*", "subfolders": True}
+    )
+    with pytest.raises(Refusal) as refused:
+        anyio.run(tool.run, args, ToolCall(cast("AppContext", object()), 1))
+    assert refused.value.code == "invalid_argument"
+    assert 'subfolders cannot go with folder "*"' in str(refused.value)

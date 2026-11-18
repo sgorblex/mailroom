@@ -1,6 +1,10 @@
 """Newest-first pages of messages over one or more folders (`src/mail/pages.ts`): the list,
 search and thread results, with the TypeScript's merge, cursor format and previews.
 
+Over several sources, each one's candidates are fetched with INTERNALDATE only, to merge them;
+then the rows shown, and those only, are fetched whole (`_complete`). One source is fetched whole
+at once.
+
 The cursor holds, per source, the UID below which the walk continues, so mail arriving between
 pages never shifts them; a source whose UIDVALIDITY changed fails the cursor rather than skipping
 or repeating. A source that fails is not read again: the cursor carries it as failed, every
@@ -57,6 +61,8 @@ PREVIEW_LENGTH: Final = 200
 """A preview's length at most, in UTF-16 units."""
 
 _FETCH: Final = ["ENVELOPE", "FLAGS", "BODYSTRUCTURE", "INTERNALDATE", "RFC822.SIZE"]
+_MERGE_FETCH: Final = ["INTERNALDATE"]
+"""What a source's candidates need to be merged with the other sources' ones."""
 _SPACE: Final = f"[{re.escape(WHITESPACE)}]"
 _LINK: Final = re.compile(
     # JavaScript's `.` (any but a line terminator) after the backslash, and its `\s`.
@@ -204,8 +210,9 @@ class MessageSummary:
         """The summary's message ref."""
         return MessageRef(self.account, self.folder, self.uid_validity, self.uid)
 
-    def list_item(self) -> ListItem:
-        """The summary as the item its list line is made from."""
+    def list_item(self, *, folder: bool = False) -> ListItem:
+        """The summary as the item its list line is made from, naming its folder with
+        `folder`."""
         return ListItem(
             ref=self.ref,
             date=self.date,
@@ -214,11 +221,13 @@ class MessageSummary:
             flags=self.flags,
             has_attachments=self.has_attachments,
             preview=self.preview,
+            folder=self.folder if folder else None,
         )
 
-    def list_line(self, time_zone: str) -> str:
-        """The TypeScript's line: `ref · date · from · subject · flags · preview`."""
-        return list_line(self.list_item(), time_zone)
+    def list_line(self, time_zone: str, *, folder: bool = False) -> str:
+        """The TypeScript's line: `ref · date · from · subject · flags · preview`, with `folder`
+        the folder after the ref."""
+        return list_line(self.list_item(folder=folder), time_zone)
 
 
 @dataclass(frozen=True, slots=True)
@@ -262,9 +271,10 @@ class Page:
     """Set when more messages follow: pass it back, with the same query, as `cursor`."""
     failures: tuple[PageFailure, ...] = field(default=())
 
-    def lines(self, time_zone: str) -> list[str]:
-        """The messages as list lines, with dates in ``time_zone``."""
-        return [message.list_line(time_zone) for message in self.messages]
+    def lines(self, time_zone: str, *, folders: bool = False) -> list[str]:
+        """The messages as list lines, with dates in ``time_zone``, each naming its folder with
+        ``folders``."""
+        return [message.list_line(time_zone, folder=folders) for message in self.messages]
 
 
 @dataclass(eq=False, slots=True)
@@ -325,12 +335,13 @@ def _summary(source: Source, candidate: _Candidate, preview: str | None) -> Mess
 
 
 def _fetch_candidates(
-    context: MailboxContext, uids: Sequence[int], index: int = 0
+    context: MailboxContext, uids: Sequence[int], index: int = 0, items: Sequence[str] = _FETCH
 ) -> list[_Candidate]:
-    """What a page shows of `uids`, highest UID first; UIDs gone meanwhile are left out."""
+    """`uids` with `items` fetched (by default what a page shows), highest UID first; UIDs gone
+    meanwhile are left out."""
     if not uids:
         return []
-    fetched = context.client.fetch(list(uids), _FETCH)
+    fetched = context.client.fetch(list(uids), list(items))
     candidates = []
     for uid, data in fetched.items():
         body = data.get(b"BODYSTRUCTURE")
@@ -429,6 +440,8 @@ def read_page(
         )
 
     exhausted: set[int] = set()
+    merged = len(sources) > 1
+    items = _MERGE_FETCH if merged else _FETCH
 
     def read(index: int) -> list[_Candidate]:
         source = sources[index]
@@ -460,7 +473,7 @@ def read_page(
             uids = sorted(search_uids(context, scoped or ["ALL"]), reverse=True)[:limit]
             if len(uids) < limit:
                 exhausted.add(index)
-            return _fetch_candidates(context, uids, index)
+            return _fetch_candidates(context, uids, index, items)
 
         return connections.with_mailbox(source.account, source.folder, True, run)
 
@@ -499,8 +512,15 @@ def read_page(
         taken.append(per_source[best][heads[best]])
         heads[best] += 1
 
-    shown_previews = _previews(connections, sources, taken) if previews else {}
-    messages = tuple(_summary(sources[c.index], c, shown_previews.get(id(c))) for c in taken)
+    shown = taken
+    if merged:
+        shown, broken = _complete(connections, sources, taken)
+        for index, error in broken.items():
+            source = sources[index]
+            failures.append(PageFailure.of(source.account, source.folder, error))
+            failed.add(index)
+    shown_previews = _previews(connections, sources, shown) if previews else {}
+    messages = tuple(_summary(sources[c.index], c, shown_previews.get(id(c))) for c in shown)
 
     # Next positions: below the lowest UID shown per source; a source with nothing shown keeps
     # its place, and one that failed has none (a retry that fails again would never end paging):
@@ -510,7 +530,7 @@ def read_page(
     for index, source in enumerate(sources):
         if index in failed:
             continue
-        shown = [c for c in taken if c.index == index]
+        own = [c for c in taken if c.index == index]
         previous = position_of(source)
         fetched = per_source[index]
         if fetched:
@@ -519,11 +539,11 @@ def read_page(
             uid_validity = None if previous is None else previous.uid_validity
         if uid_validity is None:
             continue
-        if shown:
-            before = min(c.uid for c in shown)
+        if own:
+            before = min(c.uid for c in own)
         else:
             before = _FROM_NEWEST if previous is None else previous.before_uid
-        if len(fetched) > len(shown) or index not in exhausted:
+        if len(fetched) > len(own) or index not in exhausted:
             more = True
             following.append(Position(source.account, source.folder, uid_validity, before))
     return Page(
@@ -531,6 +551,49 @@ def read_page(
         next_cursor=encode_cursor(following, failures) if more else None,
         failures=tuple(failures),
     )
+
+
+def _complete(
+    connections: MailConnections, sources: Sequence[Source], taken: Sequence[_Candidate]
+) -> tuple[list[_Candidate], dict[int, MailError]]:
+    """`taken`, merged with INTERNALDATE only, fetched whole, in the same order (one FETCH per
+    source), and the sources that failed meanwhile, their UIDVALIDITY changed included; a
+    message gone meanwhile is left out."""
+    wanted: dict[int, list[_Candidate]] = {}
+    for candidate in taken:
+        wanted.setdefault(candidate.index, []).append(candidate)
+    indexes = sorted(wanted)
+
+    def fetch(position: int) -> dict[int, _Candidate]:
+        index = indexes[position]
+        mine = wanted[index]
+
+        def run(context: MailboxContext) -> dict[int, _Candidate]:
+            if context.uid_validity != mine[0].uid_validity:
+                raise MailError(
+                    "stale_reference", "The folder changed while the page was read; try again."
+                )
+            whole = _fetch_candidates(context, [c.uid for c in mine], index)
+            return {c.uid: c for c in whole}
+
+        source = sources[index]
+        return connections.with_mailbox(source.account, source.folder, True, run)
+
+    results = _by_account([sources[index] for index in indexes], fetch)
+    complete: dict[int, dict[int, _Candidate]] = {}
+    broken: dict[int, MailError] = {}
+    for position, index in enumerate(indexes):
+        result = results[position]
+        if isinstance(result, BaseException):
+            broken[index] = result if isinstance(result, MailError) else MailError("server_error")
+        else:
+            complete[index] = result
+    shown = [
+        complete[c.index][c.uid]
+        for c in taken
+        if c.index in complete and c.uid in complete[c.index]
+    ]
+    return shown, broken
 
 
 def _previews(

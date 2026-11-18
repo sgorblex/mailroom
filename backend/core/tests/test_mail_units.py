@@ -27,12 +27,14 @@ from mailroom_core.mail import (
     decode_cursor,
     encode_cursor,
     format_ref,
+    list_messages,
     parse_ref,
     preview_of,
     read_page,
     search_messages,
 )
 from mailroom_core.mail._mime import TransferDecoder, decode_words, parameters, unflow
+from mailroom_core.mail.imap import folders_from
 from mailroom_core.render import PartInfo
 
 if TYPE_CHECKING:
@@ -501,6 +503,121 @@ def test_a_failing_source_is_reported_on_every_page_and_never_read_again() -> No
 
     only_broken = read_page(connections, sources[1:], ["ALL"], limit=2, previews=False)
     assert (only_broken.messages, only_broken.next_cursor) == ((), None)
+
+
+class _Folders:
+    """Folders of one account whose messages arrived at the given hours, recording each FETCH:
+    the folder, the UIDs and the items."""
+
+    def __init__(self, arrivals: dict[str, dict[int, int]], listing: tuple[str, ...] = ()) -> None:
+        self.arrivals = arrivals
+        self.listing = listing
+        self.fetched: list[tuple[str, list[int], list[str]]] = []
+
+    def folders(self, account: str) -> list[object]:
+        return folders_from([((), b"/", path) for path in self.listing])
+
+    def with_mailbox(
+        self, account: str, path: str, read_only: bool, fn: Callable[[MailboxContext], object]
+    ) -> object:
+        arrivals = self.arrivals[path]
+        fetched = self.fetched
+
+        class Client:
+            def _raw_command_untagged(self, command: bytes, arguments: list[object]) -> list[bytes]:
+                top = max(arrivals) + 1
+                if b"UID" in arguments:
+                    top = int(cast("bytes", arguments[arguments.index(b"UID") + 1]).split(b":")[1])
+                return [" ".join(str(uid) for uid in arrivals if uid <= top).encode()]
+
+            def fetch(self, uids: list[int], items: list[str]) -> dict[int, dict[bytes, object]]:
+                fetched.append((path, sorted(uids), items))
+                start = datetime(2026, 9, 1, tzinfo=UTC)
+                return {
+                    uid: {b"INTERNALDATE": start + timedelta(hours=arrivals[uid])}
+                    for uid in uids
+                    if uid in arrivals
+                }
+
+        return fn(MailboxContext(Client(), path, read_only, 7, len(arrivals), None, account))  # type: ignore[arg-type]
+
+
+def test_several_sources_merge_by_arrival_then_fetch_only_the_rows_shown() -> None:
+    """Over several folders each one's candidates are fetched with INTERNALDATE only and merged
+    by it; then only the rows shown are fetched whole, one FETCH per folder. One folder is
+    fetched whole at once."""
+    fake = _Folders({"A": {1: 1, 2: 5, 3: 6}, "B": {1: 2, 2: 3, 3: 7}, "C": {1: 0}})
+    connections = cast("MailConnections", fake)
+    sources = [Source("acc", "A"), Source("acc", "B"), Source("acc", "C")]
+    page = read_page(connections, sources, ["ALL"], limit=3, previews=False)
+    assert [(m.folder, m.uid) for m in page.messages] == [("B", 3), ("A", 3), ("A", 2)]
+    merge = [(path, uids) for path, uids, items in fake.fetched if items == ["INTERNALDATE"]]
+    whole = [(path, uids) for path, uids, items in fake.fetched if items != ["INTERNALDATE"]]
+    assert merge == [("A", [1, 2, 3]), ("B", [1, 2, 3]), ("C", [1])]
+    assert whole == [("A", [2, 3]), ("B", [3])]
+    assert [(p.folder, p.before_uid) for p in decode_cursor(page.next_cursor or "")] == [
+        ("A", 2),
+        ("B", 3),
+        ("C", 0),
+    ]
+
+    fake.fetched.clear()
+    following = read_page(
+        connections, sources, ["ALL"], limit=3, cursor=page.next_cursor, previews=False
+    )
+    assert [(m.folder, m.uid) for m in following.messages] == [("B", 2), ("B", 1), ("A", 1)]
+
+    fake.fetched.clear()
+    alone = read_page(connections, sources[:1], ["ALL"], limit=2, previews=False)
+    assert [m.uid for m in alone.messages] == [3, 2]
+    assert [items for _path, _uids, items in fake.fetched] == [
+        ["ENVELOPE", "FLAGS", "BODYSTRUCTURE", "INTERNALDATE", "RFC822.SIZE"]
+    ]
+
+
+def test_a_source_failing_after_the_merge_is_a_failure_of_the_page() -> None:
+    """A folder that fails when its rows are fetched whole is reported, its rows left out, and
+    left out of the cursor; the other folders' rows stay."""
+    fake = _Folders({"A": {1: 1, 2: 4}, "B": {1: 2, 2: 3}})
+
+    class Failing:
+        def __init__(self) -> None:
+            self.reads = 0
+
+        def with_mailbox(
+            self, account: str, path: str, read_only: bool, fn: Callable[[MailboxContext], object]
+        ) -> object:
+            if path == "B":
+                self.reads += 1
+                if self.reads > 1:
+                    raise MailError("unreachable")
+            return fake.with_mailbox(account, path, read_only, fn)
+
+    connections = cast("MailConnections", Failing())
+    sources = [Source("acc", "A"), Source("acc", "B")]
+    page = read_page(connections, sources, ["ALL"], limit=3, previews=False)
+    assert [(m.folder, m.uid) for m in page.messages] == [("A", 2)]
+    assert [(f.folder, f.code) for f in page.failures] == [("B", "unreachable")]
+    assert [(p.folder, p.before_uid) for p in decode_cursor(page.next_cursor or "")] == [("A", 2)]
+
+
+def test_a_list_with_subfolders_reads_the_folder_and_its_subfolders() -> None:
+    fake = _Folders(
+        {"INBOX": {1: 1}, "INBOX/Lists": {1: 3}, "INBOX/Lists/Old": {1: 2}},
+        ("INBOX", "INBOX/Lists", "INBOX/Lists/Old", "INBOX/Trash", "Other"),
+    )
+    connections = cast("MailConnections", fake)
+    page = list_messages(connections, "acc", "inbox", subfolders=True, previews=False)
+    assert [m.folder for m in page.messages] == ["INBOX/Lists", "INBOX/Lists/Old", "INBOX"]
+    assert page.lines("UTC", folders=True)[0].split(" · ")[1] == "INBOX/Lists"
+
+    for call in (
+        lambda: list_messages(connections, "acc", "*", subfolders=True),
+        lambda: search_messages(connections, ["acc"], "*", SearchQuery(), subfolders=True),
+    ):
+        with pytest.raises(MailError, match='subfolders cannot go with folder "\\*"') as raised:
+            call()
+        assert raised.value.code == "invalid_argument"
 
 
 def test_thread_ids_leave_out_what_cannot_be_searched_for() -> None:

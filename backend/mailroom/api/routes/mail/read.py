@@ -218,8 +218,11 @@ def messages(
     folder: Annotated[str, Query(min_length=1, max_length=service.MAX_FOLDER)] = "INBOX",
     limit: Limit = PAGE_SIZE,
     cursor: Cursor = None,
+    subfolders: bool = False,
 ) -> MessagePage:
-    page = service.list_messages(ctx, user.id, account_id, folder, limit=limit, cursor=cursor)
+    page = service.list_messages(
+        ctx, user.id, account_id, folder, limit=limit, cursor=cursor, subfolders=subfolders
+    )
     return MessagePage.of(page)
 
 
@@ -243,6 +246,7 @@ class SearchRequest(BaseModel):
     gmail_query: Annotated[str | None, Field(max_length=service.MAX_TERM)] = None
     limit: Annotated[int, Field(ge=1, le=MAX_PAGE_SIZE)] = PAGE_SIZE
     cursor: Annotated[str | None, Field(max_length=service.MAX_CURSOR)] = None
+    subfolders: bool = False
 
     def query(self) -> SearchQuery:
         return SearchQuery(
@@ -269,6 +273,7 @@ def search(request: SearchRequest, ctx: Context, user: CurrentUser) -> MessagePa
         request.query(),
         limit=request.limit,
         cursor=request.cursor,
+        subfolders=request.subfolders,
     )
     return MessagePage.of(page)
 

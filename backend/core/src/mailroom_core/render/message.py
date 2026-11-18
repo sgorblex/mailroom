@@ -127,14 +127,18 @@ class ListItem:
     flags: AbstractSet[str] | None
     has_attachments: bool
     preview: str | None = None
+    folder: str | None = None
+    """Shown after the ref when set: a page over a folder and its subfolders names each one's."""
 
 
 def list_line(item: ListItem, time_zone: str) -> str:
-    """One line per message: `ref · date · from · subject · flags · preview`."""
+    """One line per message: `ref · date · from · subject · flags · preview`, with the folder
+    after the ref when the item names one."""
     subject = clean_header(item.subject or "", 120) or "(no subject)"
     preview = "" if item.preview is None else clean_header(item.preview, 100)
     fields = [
         item.ref,
+        "" if item.folder is None else clean_header(item.folder, 200),
         format_date(item.date, time_zone),
         _format_addresses(item.sender) or "(unknown sender)",
         subject,

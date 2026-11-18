@@ -28,10 +28,12 @@ class ToolNames:
     attachment: str
 
 
-def page_text(page: Page, empty: str, time_zone: str, *, tools: ToolNames) -> str:
+def page_text(
+    page: Page, empty: str, time_zone: str, *, tools: ToolNames, folders: bool = False
+) -> str:
     """A list or search result. `empty` is shown when nothing matched (`No messages in INBOX.`,
-    `No matching messages.`)."""
-    lines = page.lines(time_zone)
+    `No matching messages.`). With `folders` each line names its message's folder."""
+    lines = page.lines(time_zone, folders=folders)
     parts = [empty if not lines else untrusted("\n".join(lines))]
     if page.failures:
         parts.append(f"Could not read: {'; '.join(f.text for f in page.failures)}")
@@ -39,16 +41,18 @@ def page_text(page: Page, empty: str, time_zone: str, *, tools: ToolNames) -> st
         parts.append(f"{len(lines)} message(s); no more.")
     else:
         parts.append(f'{len(lines)} message(s). More: call again with cursor="{page.next_cursor}".')
+    folder = "folder · " if folders else ""
     parts.append(
-        "Each line: ref · date · from · subject · flags · preview. "
+        f"Each line: ref · {folder}date · from · subject · flags · preview. "
         f"Pass a ref to {tools.read}, {tools.thread} or {tools.attachment}."
     )
     return "\n".join(parts)
 
 
-def empty_folder_text(folder: str) -> str:
-    """The line shown for a folder with no messages."""
-    return f"No messages in {clean_header(folder, 200)}."
+def empty_folder_text(folder: str, *, subfolders: bool = False) -> str:
+    """The line shown for a folder with no messages (with `subfolders`, nor its subfolders)."""
+    also = " or its subfolders" if subfolders else ""
+    return f"No messages in {clean_header(folder, 200)}{also}."
 
 
 def read_text(view: MessageView, *, offset: int, time_zone: str, tools: ToolNames) -> str:
