@@ -13,6 +13,7 @@ import { ComposeBar } from './compose-bar.tsx'
 import { useCompose } from './compose-context.ts'
 import { ComposeProvider } from './compose-provider.tsx'
 import { Composer } from './composer.tsx'
+import { findNode, folderTree, hasListedSubfolders } from './folder-tree.ts'
 import { MAIL_NS } from './i18n.ts'
 import { MailSidebar } from './mail-sidebar.tsx'
 import { MessageList } from './message-list.tsx'
@@ -20,6 +21,7 @@ import { MessageView } from './message-view.tsx'
 import { SearchForm } from './search-form.tsx'
 import { ComposeAnnouncer } from './send-status.tsx'
 import { useMailShortcuts } from './shortcuts.ts'
+import { storedSubfolders } from './subfolder-view.ts'
 import { OutcomeAnnouncer, Toolbar } from './toolbar.tsx'
 import { isSameFolder, loadedFolders, useTriage } from './triage-context.ts'
 import { TriageProvider } from './triage-provider.tsx'
@@ -73,12 +75,13 @@ export function MailScreen(): ReactElement {
 
   const accountId = search.account ?? first.id
   const folder = search.folder ?? DEFAULT_FOLDER
+  const requested = search.sub ?? storedSubfolders(accountId, folder)
   const accountIds = accounts.value.map((account) => account.id)
   return (
-    <TriageProvider sourceKey={sourceKey(accountId, folder, search.q)} accounts={accountIds}>
+    <TriageProvider sourceKey={sourceKey(accountId, folder, requested, search.q)} accounts={accountIds}>
       <ComposeProvider accounts={accounts.value} accountId={accountId}>
         <MailShortcuts accountId={accountId} />
-        <MailPanes accounts={accountIds} accountId={accountId} folder={folder} />
+        <MailPanes accounts={accountIds} accountId={accountId} folder={folder} requested={requested} />
       </ComposeProvider>
     </TriageProvider>
   )
@@ -89,13 +92,17 @@ function MailPanes({
   accounts,
   accountId,
   folder,
+  requested,
 }: {
   accounts: string[]
   accountId: string
   folder: string
+  /** The folder is to be listed with its subfolders (the URL's `sub`, else this browser's choice). */
+  requested: boolean
 }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const search = useSearch({ from: '/mail' })
+  const subfolders = useListedSubfolders(accountId, folder, requested)
   const { session, shown } = useCompose()
   const open = search.message
   const covered = open !== undefined || shown
@@ -106,6 +113,7 @@ function MailPanes({
         accounts={accounts}
         accountId={accountId}
         folder={search.q === undefined ? folder : null}
+        subfolders={subfolders}
         className={cn(covered && 'hidden lg:flex')}
       />
       {/* On a phone the open message hides the list, but not the toolbar acting on it. */}
@@ -123,12 +131,13 @@ function MailPanes({
             accounts={accounts}
             accountId={accountId}
             folder={folder}
+            subfolders={subfolders}
             query={search.q}
           />
         </div>
         <Toolbar />
         <div className={cn('flex flex-col gap-3', covered && 'hidden lg:flex')}>
-          <Listing accountId={accountId} folder={folder} />
+          <Listing accountId={accountId} folder={folder} subfolders={subfolders} />
         </div>
       </section>
       <section
@@ -162,26 +171,63 @@ function MailShortcuts({ accountId }: { accountId: string }): null {
   return null
 }
 
+/**
+ * Whether the folder is listed with its subfolders: as `requested`, while the account's folders
+ * load; then only if it still has subfolders the list can read, so a choice the tree no longer
+ * offers to undo (the subfolders gone, or too many) does not hold.
+ */
+function useListedSubfolders(accountId: string, folder: string, requested: boolean): boolean {
+  const folders = loadedFolders(useTriage().folders[accountId])
+  return useMemo(() => {
+    if (!requested || folders === undefined) {
+      return requested
+    }
+    const node = findNode(folderTree(folders), folder)
+    return node !== undefined && hasListedSubfolders(node)
+  }, [requested, folders, folder])
+}
+
+/**
+ * Whether the search reads the folder shown with its subfolders: when they are listed with it and
+ * the search is in that folder of that account.
+ */
+function searchesSubfolders(accountId: string, folder: string, subfolders: boolean, q: SearchQuery): boolean {
+  return subfolders && q.account === accountId && q.folder !== undefined && isSameFolder(q.folder, folder)
+}
+
 /** Names the list shown: a folder, or a search (`q` is a new object on every navigation). */
-function sourceKey(accountId: string, folder: string, q: SearchQuery | undefined): string {
-  return q === undefined ? `folder:${accountId}:${folder}` : `search:${JSON.stringify(q)}`
+function sourceKey(accountId: string, folder: string, subfolders: boolean, q: SearchQuery | undefined): string {
+  if (q === undefined) {
+    return `folder:${accountId}:${subfolders ? '1' : '0'}:${folder}`
+  }
+  return `search:${searchesSubfolders(accountId, folder, subfolders, q) ? '1' : '0'}:${JSON.stringify(q)}`
 }
 
 /** The folder's messages, or the search's when there is one; a new source starts over. */
-function Listing({ accountId, folder }: { accountId: string; folder: string }): ReactElement {
+function Listing({ accountId, folder, subfolders }: { accountId: string; folder: string; subfolders: boolean }): ReactElement {
   const { q } = useSearch({ from: '/mail' })
-  const key = sourceKey(accountId, folder, q)
-  const query = useMemo(() => (key.startsWith('search:') ? (JSON.parse(key.slice(7)) as SearchQuery) : null), [key])
+  const key = sourceKey(accountId, folder, subfolders, q)
+  const searchKey = q === undefined ? null : JSON.stringify(q)
+  const query = useMemo(() => (searchKey === null ? null : (JSON.parse(searchKey) as SearchQuery)), [searchKey])
+  const merged = query === null ? subfolders : searchesSubfolders(accountId, folder, subfolders, query)
   const loadPage = useCallback(
     (cursor: string | null, signal: AbortSignal) =>
       query === null
-        ? listMessages(accountId, { folder, cursor }, signal)
-        : searchMessages(query, { cursor }, signal),
-    [accountId, folder, query],
+        ? listMessages(accountId, { folder, subfolders: merged, cursor }, signal)
+        : searchMessages(query, { subfolders: merged, cursor }, signal),
+    [accountId, folder, query, merged],
   )
   // What the composer does changes these two folders' lists under the user's eyes.
   const { revision } = useCompose()
   const shownFolder = loadedFolders(useTriage().folders[accountId])?.find((each) => isSameFolder(each.path, folder))
   const live = q === undefined && (shownFolder?.role === 'drafts' || shownFolder?.role === 'sent')
-  return <MessageList key={key} loadPage={loadPage} searching={q !== undefined} reloadKey={live ? revision : undefined} />
+  return (
+    <MessageList
+      key={key}
+      loadPage={loadPage}
+      searching={q !== undefined}
+      subfolders={merged}
+      reloadKey={live ? revision : undefined}
+    />
+  )
 }

@@ -35,9 +35,15 @@ left out, as they count it again). The move picker and the role actions (Archive
 Sent) use selectable folders only. Each listed folder has a menu (its ⋯ button, or Shift+F10 on
 it) to make a subfolder, rename or move it and delete it, and each account a button for a new
 top-level folder: see [*Folder management*](#folder-management) for what the web asks before
-each. The text body is the default; a message whose text body is empty opens on the HTML view.
-The HTML view is an
-`<iframe src="/api/v1/mail/messages/{ref}/html">` with `sandbox="allow-popups
+each. A folder with subfolders the list would read (not those with a role kept apart, below;
+at most 50 folders with itself) is listed with them or without by its menu's "Include
+subfolders" or the button on its row; this browser remembers the choice per account and folder
+(a rename carries it over, a delete forgets it), the URL carries it (`sub`), each row then names
+its folder, the folder's unread count becomes that of what the list reads, and a search in that
+folder reads its subfolders too. A folder that no longer has such subfolders is listed alone,
+whatever was chosen.
+The text body is the default; a message whose text body is empty opens on the HTML view. The
+HTML view is an `<iframe src="/api/v1/mail/messages/{ref}/html">` with `sandbox="allow-popups
 allow-popups-to-escape-sandbox"`, never `allow-scripts` or `allow-same-origin`. Links open
 top-level with `noopener noreferrer`. Security:
 [`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *HTML mail*.

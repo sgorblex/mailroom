@@ -72,11 +72,14 @@ export function SearchForm({
   accounts,
   accountId,
   folder,
+  subfolders,
   query,
 }: {
   accounts: string[]
   accountId: string
   folder: string
+  /** The folder shown is listed with its subfolders: a search in it reads them too. */
+  subfolders: boolean
   query: SearchQuery | undefined
 }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
@@ -95,14 +98,17 @@ export function SearchForm({
     event.preventDefault()
     void navigate({
       to: '/mail',
-      search: (previous) => ({ account: previous.account, folder: previous.folder, q: queryOf(draft) }),
+      search: (previous) => ({ account: previous.account, folder: previous.folder, sub: previous.sub, q: queryOf(draft) }),
     })
   }
 
-  // The folder shown is offered, next to the inbox and every folder.
+  // The folder shown is offered, next to the inbox and every folder; in the account shown, it
+  // takes its subfolders along.
+  const shownLabel = folder.toUpperCase() === 'INBOX' ? t('search.folderInbox') : folder
+  const withSubfolders = subfolders && draft.account === accountId
   const folderOptions = [
-    ['INBOX', t('search.folderInbox')],
-    ...(folder !== 'INBOX' && folder !== ALL ? [[folder, folder]] : []),
+    ...(folder.toUpperCase() === 'INBOX' ? [] : [['INBOX', t('search.folderInbox')]]),
+    ...(folder !== ALL ? [[folder, withSubfolders ? t('search.withSubfolders', { folder: shownLabel }) : shownLabel]] : []),
     [ALL, t('search.folderAll')],
   ]
   if (!folderOptions.some(([value]) => value === draft.folder)) {
@@ -147,7 +153,7 @@ export function SearchForm({
             size="xs"
             className="ml-auto"
             onClick={() => {
-              void navigate({ to: '/mail', search: { account: accountId, folder } })
+              void navigate({ to: '/mail', search: (previous) => ({ account: accountId, folder, sub: previous.sub }) })
             }}
           >
             {t('search.clear')}

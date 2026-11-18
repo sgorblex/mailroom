@@ -241,6 +241,95 @@ describe('MailScreen', () => {
     expect(within(again).getByRole('treeitem', { name: 'Rust, 7 unread' })).toHaveAttribute('aria-expanded', 'false')
   })
 
+  it('lists a folder with its subfolders when asked, each row naming its folder, and remembers it', async () => {
+    const folders = {
+      work: [
+        { path: 'INBOX', role: 'inbox' as const, unread: 1, total: 1 },
+        { path: 'INBOX/Lists', role: null, unread: 2, total: 1 },
+        { path: 'INBOX/Trash', role: 'trash' as const, unread: 4, total: 0 },
+        { path: 'Projects', role: null, unread: 0, total: 0 },
+      ],
+      home: [{ path: 'INBOX', role: 'inbox' as const, unread: 0, total: 1 }],
+    }
+    const messages = {
+      'work/INBOX': [messageItem('work', 'INBOX', 1, { subject: 'Hello' })],
+      'work/INBOX/Lists': [messageItem('work', 'INBOX/Lists', 2, { subject: 'Release notes' })],
+      'work/Projects': [],
+    }
+    const fetchMock = stubMailApi(state({ folders, messages }))
+    const history = renderMailApp('/mail')
+
+    const tree = await screen.findByRole('tree', { name: 'Folders of work' })
+    const inbox = within(tree).getByRole('treeitem', { name: 'Inbox, 1 unread' })
+    inbox.focus()
+    await userEvent.keyboard('{Shift>}{F10}{/Shift}')
+    const include = within(screen.getByRole('menu')).getByRole('menuitemcheckbox', { name: 'Include subfolders' })
+    expect(include).toHaveAttribute('aria-checked', 'false')
+    await userEvent.click(include)
+
+    const list = await screen.findByRole('list', { name: 'Messages' })
+    expect(await within(list).findByRole('link', { name: /Release notes/ })).toHaveTextContent('INBOX/Lists')
+    expect(within(list).getByRole('link', { name: /Hello/ })).toHaveTextContent(/INBOX$/)
+    expect(history.location.search).toContain('sub=true')
+    expect(queriesTo(fetchMock, '/api/v1/mail/accounts/work/messages').map((query) => query.get('subfolders'))).toEqual([null, 'true'])
+    // Its count is what the list reads: Trash under it is left out.
+    expect(within(tree).getByRole('treeitem', { name: 'Inbox, with subfolders, 3 unread' })).toBeInTheDocument()
+
+    // A search in the folder reads its subfolders too; one in every folder does not.
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Words' }), 'notes')
+    await userEvent.click(screen.getByRole('button', { name: 'More options' }))
+    expect(screen.getByLabelText('Folder')).toHaveDisplayValue('Inbox and its subfolders')
+    await userEvent.click(screen.getByRole('button', { name: 'Search' }))
+    await waitFor(() => {
+      expect(bodiesTo(fetchMock, '/api/v1/mail/search')).toEqual([{ account: 'work', folder: 'INBOX', text: 'notes', subfolders: true }])
+    })
+    await userEvent.click(screen.getByRole('button', { name: 'Clear search' }))
+
+    // A folder without subfolders to read offers no such choice.
+    within(tree).getByRole('treeitem', { name: 'Projects' }).focus()
+    await userEvent.keyboard('{Shift>}{F10}{/Shift}')
+    expect(within(screen.getByRole('menu')).queryByRole('menuitemcheckbox')).not.toBeInTheDocument()
+    await userEvent.keyboard('{Escape}')
+
+    // Another visit lists it as it was left, until it is turned off.
+    cleanup()
+    const again = stubMailApi(state({ folders, messages }))
+    renderMailApp('/mail')
+    const tree2 = await screen.findByRole('tree', { name: 'Folders of work' })
+    expect(await within(tree2).findByRole('treeitem', { name: 'Inbox, with subfolders, 3 unread' })).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: /Release notes/ })).toBeInTheDocument()
+    expect(queriesTo(again, '/api/v1/mail/accounts/work/messages').map((query) => query.get('subfolders'))).toEqual(['true'])
+    within(tree2).getByRole('treeitem', { name: /^Inbox/ }).focus()
+    await userEvent.keyboard('{Shift>}{F10}{/Shift}')
+    const checked = within(screen.getByRole('menu')).getByRole('menuitemcheckbox', { name: 'Include subfolders' })
+    expect(checked).toHaveAttribute('aria-checked', 'true')
+    await userEvent.click(checked)
+    expect(await within(tree2).findByRole('treeitem', { name: 'Inbox, 1 unread' })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByRole('link', { name: /Release notes/ })).not.toBeInTheDocument()
+    })
+  })
+
+  it('lists a folder alone once it has no subfolders to read, whatever the URL asks', async () => {
+    const folders = {
+      work: [
+        { path: 'INBOX', role: 'inbox' as const, unread: 0, total: 0 },
+        { path: 'Projects', role: null, unread: 0, total: 1 },
+      ],
+      home: [{ path: 'INBOX', role: 'inbox' as const, unread: 0, total: 0 }],
+    }
+    const messages = { 'work/Projects': [messageItem('work', 'Projects', 1, { subject: 'Plan' })] }
+    const fetchMock = stubMailApi(state({ folders, messages }))
+    renderMailApp('/mail?account=work&folder=Projects&sub=true')
+
+    const tree = await screen.findByRole('tree', { name: 'Folders of work' })
+    await waitFor(() => {
+      expect(queriesTo(fetchMock, '/api/v1/mail/accounts/work/messages').at(-1)?.get('subfolders')).toBeNull()
+    })
+    expect(within(tree).getByRole('treeitem', { name: 'Projects' })).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: /Plan/ })).not.toHaveTextContent('Projects')
+  })
+
   it('shows a text message as text, with its attachments, and no iframe', async () => {
     const fetchMock = stubMailApi(state())
     renderMailApp('/mail')

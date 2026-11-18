@@ -1,5 +1,7 @@
 import { FOLDER_ROLES, type MailFolder } from '@/api/mail.ts'
 
+import { isSameFolder } from './triage-context.ts'
+
 /** A level of an account's folder tree: a listed folder, or one the server did not list (`folder: null`). */
 export interface FolderNode {
   /** The path as the server names it; an unlisted level's is its segments joined by the delimiter. */
@@ -73,10 +75,59 @@ export function folderTree(folders: readonly MailFolder[]): FolderNode[] {
 /** Folders that show mail kept elsewhere too (Gmail's All Mail and Starred): their unread counts it again. */
 const VIRTUAL_ROLES: ReadonlySet<string> = new Set(['all', 'flagged'])
 
+function ownUnread(node: FolderNode): number {
+  return node.folder === null || VIRTUAL_ROLES.has(node.folder.role ?? '') ? 0 : node.folder.unread
+}
+
 /** The unread messages of `node` and every folder under it, each counted once. */
 export function subtreeUnread(node: FolderNode): number {
-  const own = node.folder === null || VIRTUAL_ROLES.has(node.folder.role ?? '') ? 0 : node.folder.unread
-  return node.children.reduce((sum, child) => sum + subtreeUnread(child), own)
+  return node.children.reduce((sum, child) => sum + subtreeUnread(child), ownUnread(node))
+}
+
+/** Roles whose folders a folder's subfolders leave out, unless it has the same role. */
+const APART_ROLES: ReadonlySet<string> = new Set(['sent', 'drafts', 'all', 'archive', 'junk', 'trash'])
+
+/**
+ * The subfolders a list of `node` with its subfolders reads besides itself, as mailroom-core's
+ * `with_subfolders` picks them: selectable, at any depth, none with a role kept apart (Sent,
+ * Drafts, All Mail, Archive, Junk, Trash) or under one, unless `node` has that role.
+ */
+export function listedSubfolders(node: FolderNode): FolderNode[] {
+  const role = node.folder?.role ?? null
+  const walk = (level: readonly FolderNode[]): FolderNode[] =>
+    level.flatMap((child) => {
+      const apart = child.folder?.role != null && APART_ROLES.has(child.folder.role) && child.folder.role !== role
+      return apart ? [] : [...(child.folder?.selectable === true ? [child] : []), ...walk(child.children)]
+    })
+  return walk(node.children)
+}
+
+/** Of a folder listed with its subfolders, the folders at most, itself included: mailroom-core's `MAX_LISTED_FOLDERS`. */
+export const MAX_LISTED_FOLDERS = 50
+
+/** A folder that can be listed with subfolders of its own, within the server's cap. */
+export function hasListedSubfolders(node: FolderNode): boolean {
+  const count = node.folder?.selectable === true ? listedSubfolders(node).length : 0
+  return count > 0 && count + 1 <= MAX_LISTED_FOLDERS
+}
+
+/** The node of the folder at `path`, if `roots` has it. */
+export function findNode(roots: readonly FolderNode[], path: string): FolderNode | undefined {
+  for (const node of roots) {
+    if (node.folder !== null && isSameFolder(node.folder.path, path)) {
+      return node
+    }
+    const found = findNode(node.children, path)
+    if (found !== undefined) {
+      return found
+    }
+  }
+  return undefined
+}
+
+/** The unread messages of `node` with its subfolders, as that list reads them, each counted once. */
+export function listedUnread(node: FolderNode): number {
+  return listedSubfolders(node).reduce((sum, child) => sum + ownUnread(child), ownUnread(node))
 }
 
 /** The nodes shown when the levels in `expanded` are open, top to bottom. */

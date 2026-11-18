@@ -1,7 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactElement } from 'react'
 import { createPortal } from 'react-dom'
+import { Check } from 'lucide-react'
 
 import { cn } from '@/lib/utils.ts'
+
+const ITEMS = '[role="menuitem"], [role="menuitemcheckbox"]'
 
 export interface MenuItem {
   label: string
@@ -9,6 +12,8 @@ export interface MenuItem {
   /** Why it cannot be chosen: shown under it, and the item is disabled. */
   disabledReason?: string | null
   destructive?: boolean
+  /** A choice that is on or off: a check mark shows it on. */
+  checked?: boolean
 }
 
 /**
@@ -40,7 +45,7 @@ export function Menu({
 
   useLayoutEffect(() => {
     const first = items.findIndex((item) => item.disabledReason == null)
-    menu.current?.querySelectorAll<HTMLElement>('[role="menuitem"]')[Math.max(first, 0)]?.focus()
+    menu.current?.querySelectorAll<HTMLElement>(ITEMS)[Math.max(first, 0)]?.focus()
     // Focused once, when it opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -71,7 +76,7 @@ export function Menu({
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
-    const entries = [...(menu.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])]
+    const entries = [...(menu.current?.querySelectorAll<HTMLElement>(ITEMS) ?? [])]
     const at = entries.findIndex((entry) => entry === document.activeElement)
     const move = (index: number): void => {
       entries[(index + entries.length) % entries.length]?.focus()
@@ -118,8 +123,9 @@ export function Menu({
           <button
             key={item.label}
             type="button"
-            role="menuitem"
+            role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
             tabIndex={-1}
+            aria-checked={item.checked}
             aria-disabled={disabled || undefined}
             onClick={() => {
               if (!disabled) {
@@ -134,7 +140,10 @@ export function Menu({
               item.destructive === true && !disabled && 'text-destructive',
             )}
           >
-            <span>{item.label}</span>
+            <span className="flex items-center gap-2">
+              {item.label}
+              {item.checked === true && <Check aria-hidden="true" className="size-3.5" />}
+            </span>
             {disabled && <span className="text-xs">{item.disabledReason}</span>}
           </button>
         )

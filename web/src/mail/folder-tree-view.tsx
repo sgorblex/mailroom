@@ -1,7 +1,7 @@
 import { useCallback, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactElement, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import {
   Archive,
   ChevronRight,
@@ -9,6 +9,7 @@ import {
   Folder,
   FolderClosed,
   Inbox,
+  ListTree,
   Mails,
   MoreHorizontal,
   Send,
@@ -28,13 +29,17 @@ import {
   ancestorPaths,
   folderRefusals,
   folderTree,
+  hasListedSubfolders,
   initiallyExpanded,
+  listedUnread,
   subtreeUnread,
   visibleNodes,
   type FolderNode,
   type FolderRefusal,
 } from './folder-tree.ts'
 import { MAIL_NS } from './i18n.ts'
+import { storedPaths, storePaths } from './stored-paths.ts'
+import { storedSubfolders, storeSubfolders } from './subfolder-view.ts'
 import { isSameFolder } from './triage-context.ts'
 
 const ROLE_ICONS: Record<FolderRole, LucideIcon> = {
@@ -48,26 +53,8 @@ const ROLE_ICONS: Record<FolderRole, LucideIcon> = {
   flagged: Star,
 }
 
-const STORAGE_PREFIX = 'mailroom.mail.expandedFolders.'
-
-/** The levels the user left open on this account, if this browser kept them. */
-function storedExpanded(account: string): string[] | null {
-  try {
-    const raw = window.localStorage.getItem(STORAGE_PREFIX + account)
-    const parsed: unknown = raw === null ? null : JSON.parse(raw)
-    return Array.isArray(parsed) && parsed.every((path) => typeof path === 'string') ? parsed : null
-  } catch {
-    return null
-  }
-}
-
-function storeExpanded(account: string, paths: ReadonlySet<string>): void {
-  try {
-    window.localStorage.setItem(STORAGE_PREFIX + account, JSON.stringify([...paths]))
-  } catch {
-    // Storage refused (a private window): the tree forgets on reload, nothing else.
-  }
-}
+/** The levels the user left open on each account, if this browser kept them. */
+const EXPANDED_PREFIX = 'mailroom.mail.expandedFolders.'
 
 /**
  * The open levels of `account`'s tree: as this browser kept them, else those above the role
@@ -83,7 +70,7 @@ function useExpanded(
   const delimiter = accountDelimiter(folders)
   const above = (path: string | null): string[] => (path === null ? [] : ancestorPaths(path, delimiter))
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(
-    () => new Set([...(storedExpanded(account) ?? initiallyExpanded(folders)), ...above(current), ...above(reveal)]),
+    () => new Set([...(storedPaths(EXPANDED_PREFIX, account) ?? initiallyExpanded(folders)), ...above(current), ...above(reveal)]),
   )
   const [shownFor, setShownFor] = useState([current, reveal])
   if (shownFor[0] !== current || shownFor[1] !== reveal) {
@@ -97,7 +84,7 @@ function useExpanded(
     } else {
       next.delete(path)
     }
-    storeExpanded(account, next)
+    storePaths(EXPANDED_PREFIX, account, [...next])
     setExpanded(next)
   }
   return [expanded, setOpen]
@@ -112,6 +99,10 @@ interface TreeState {
   setFocused: (path: string) => void
   /** Opens the actions menu of the folder at `path`; absent where there are none. */
   openMenu: ((path: string) => void) | null
+  /** Whether the folder at `path` is listed with its subfolders. */
+  subfoldersOf: (path: string) => boolean
+  /** Lists the folder at `path` with its subfolders or without, remembering the choice. */
+  setSubfolders: (path: string, on: boolean) => void
 }
 
 /**
@@ -119,12 +110,15 @@ interface TreeState {
  * move, → and ← open and close, Enter opens the folder. A level that holds only folders is not a
  * link, and a closed one shows the unread count of everything under it. With `onAction`, each
  * listed folder has a menu (its ⋯ button, or Shift+F10 / the context-menu key): a new subfolder,
- * rename or move, delete, each disabled with the reason where the server would refuse it.
+ * rename or move, delete, each disabled with the reason where the server would refuse it. A
+ * folder with subfolders to list is listed with them or without (its menu's "Include subfolders",
+ * or the button on its row), as this browser last chose for it; its count is then theirs too.
  */
 export function FolderTree({
   accountId,
   folders,
   current,
+  subfolders = false,
   reveal = null,
   label,
   onAction,
@@ -132,11 +126,14 @@ export function FolderTree({
   accountId: string
   folders: readonly MailFolder[]
   current: string | null
+  /** The folder shown is listed with its subfolders. */
+  subfolders?: boolean
   reveal?: string | null
   label: string
   onAction?: (dialog: FolderDialog) => void
 }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
+  const navigate = useNavigate()
   const roots = useMemo(() => folderTree(folders), [folders])
   const [expanded, setOpen] = useExpanded(accountId, folders, current, reveal)
   const [focused, setFocused] = useState<string | null>(null)
@@ -233,7 +230,13 @@ export function FolderTree({
     event.preventDefault()
   }
 
-  const tree: TreeState = { accountId, current, expanded, setOpen, tabStop, setFocused, openMenu }
+  const subfoldersOf = (path: string): boolean =>
+    current !== null && isSameFolder(path, current) ? subfolders : storedSubfolders(accountId, path)
+  const setSubfolders = (path: string, on: boolean): void => {
+    storeSubfolders(accountId, path, on)
+    void navigate({ to: '/mail', search: { account: accountId, folder: path, sub: on } })
+  }
+  const tree: TreeState = { accountId, current, expanded, setOpen, tabStop, setFocused, openMenu, subfoldersOf, setSubfolders }
   return (
     <>
       {/* The keys belong to the treeitems inside; the tree handles them in one place. */}
@@ -246,7 +249,7 @@ export function FolderTree({
         <Menu
           label={t('folderActions.menu', { name: menuFor.node.folder.role === null ? menuFor.node.name : t(`roles.${menuFor.node.folder.role}`) })}
           anchor={menuFor.anchor}
-          items={actionItems(t, menuFor.node, accountDelimiter(folders) !== null, onAction)}
+          items={actionItems(t, menuFor.node, accountDelimiter(folders) !== null, subfoldersOf(menuFor.node.path), setSubfolders, onAction)}
           onClose={closeMenu}
         />
       )}
@@ -264,6 +267,8 @@ function actionItems(
   t: TFunction,
   node: FolderNode & { folder: MailFolder },
   hierarchy: boolean,
+  merged: boolean,
+  setSubfolders: (path: string, on: boolean) => void,
   onAction: (dialog: FolderDialog) => void,
 ): MenuItem[] {
   const refused = folderRefusals(node)
@@ -274,7 +279,15 @@ function actionItems(
       onAction({ kind: 'create', parent: node.folder.path })
     },
   }
+  const include: MenuItem = {
+    label: t('folders.includeSubfolders'),
+    checked: merged,
+    onSelect: () => {
+      setSubfolders(node.path, !merged)
+    },
+  }
   return [
+    ...(hasListedSubfolders(node) ? [include] : []),
     // A server without a hierarchy has no subfolders.
     ...(hierarchy ? [subfolder] : []),
     {
@@ -302,16 +315,19 @@ function TreeItem({ node, level, tree }: { node: FolderNode; level: number; tree
   const branch = node.children.length > 0
   const open = branch && tree.expanded.has(node.path)
   const current = folder !== null && tree.current !== null && isSameFolder(folder.path, tree.current)
-  const unread = branch && !open ? subtreeUnread(node) : (folder?.unread ?? 0)
+  const viewable = hasListedSubfolders(node)
+  const merged = viewable && tree.subfoldersOf(node.path)
+  const unread = merged ? listedUnread(node) : branch && !open ? subtreeUnread(node) : (folder?.unread ?? 0)
   const Icon = !folder?.selectable ? FolderClosed : folder.role === null ? Folder : ROLE_ICONS[folder.role]
   const role = folder?.role ?? null
-  const name = role === null ? node.name : t(`roles.${role}`)
+  const shownName = role === null ? node.name : t(`roles.${role}`)
+  const name = merged ? t('folders.withSubfolders', { name: shownName }) : shownName
   const menu = folder !== null && tree.openMenu !== null
 
   const content: ReactNode = (
     <>
       <Icon aria-hidden="true" className="size-4 shrink-0" />
-      <span className="min-w-0 flex-1 truncate">{name}</span>
+      <span className="min-w-0 flex-1 truncate">{shownName}</span>
       {unread > 0 && (
         <span aria-hidden="true" className="text-xs font-medium tabular-nums text-foreground">
           {unread}
@@ -399,6 +415,28 @@ function TreeItem({ node, level, tree }: { node: FolderNode; level: number; tree
           >
             {content}
           </span>
+        )}
+        {viewable && (
+          // Pointer only: from the keyboard, the folder's menu has the same choice.
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-hidden="true"
+            title={t(merged ? 'folders.onlyThisFolder' : 'folders.includeSubfolders')}
+            onMouseDown={(event) => {
+              event.preventDefault()
+            }}
+            onClick={() => {
+              tree.setSubfolders(node.path, !merged)
+            }}
+            className={cn(
+              'flex size-6 shrink-0 items-center justify-center rounded-sm hover:bg-accent hover:text-foreground',
+              merged ? 'text-foreground' : 'opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100',
+              !menu && 'mr-0.5',
+            )}
+          >
+            <ListTree aria-hidden="true" className="size-4" />
+          </button>
         )}
         {menu && (
           // Pointer only: from the keyboard, Shift+F10 on the folder opens the same menu.
