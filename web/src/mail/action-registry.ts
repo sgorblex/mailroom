@@ -48,6 +48,8 @@ export interface MailAction {
   label: (context: ActionContext) => string
   icon: (context: ActionContext) => LucideIcon
   shortcut?: string
+  /** Its name in the shortcut sheet, where `label` depends on the targets. */
+  sheetLabel?: string
   /** Whether it can be run on these targets. */
   available: (context: ActionContext) => boolean
   /** Whether the toolbar and the menus list it, when available; the key works either way. */
@@ -144,6 +146,7 @@ export const MAIL_ACTIONS: readonly MailAction[] = [
     label: ({ actions }) => (actions.star?.flagged === false ? 'triage.unstar' : 'triage.star'),
     icon: ({ actions }) => (actions.star?.flagged === false ? StarOff : Star),
     shortcut: 's',
+    sheetLabel: 'shortcuts.star',
     available: ({ actions }) => actions.star !== null,
     run: ({ actions }) => actions.star?.run(),
   },
@@ -153,6 +156,7 @@ export const MAIL_ACTIONS: readonly MailAction[] = [
     label: ({ actions }) => (actions.toSort?.toSort === false ? 'triage.sorted' : 'triage.toSort'),
     icon: ({ actions }) => (actions.toSort?.toSort === false ? BookmarkCheck : BookmarkPlus),
     shortcut: 't',
+    sheetLabel: 'shortcuts.toSort',
     available: ({ actions }) => actions.toSort !== null,
     unavailable: ({ actions }) => (actions.toSort?.unsupported === true ? 'triage.toSortUnsupported' : null),
     run: ({ actions }) => actions.toSort?.run(),

@@ -1,4 +1,4 @@
-import { cleanup, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -546,6 +546,30 @@ describe('MailScreen', () => {
     const alert = await within(view).findByRole('alert')
     expect(alert).toHaveTextContent('This message is out of date')
     expect(alert).not.toHaveTextContent('Server text')
+  })
+
+  it('lists the keyboard shortcuts on ? and from its button', async () => {
+    stubMailApi(state())
+    const history = renderMailApp('/mail')
+    await messagesList()
+
+    await userEvent.keyboard('?')
+    const sheet = screen.getByRole('dialog', { name: 'Keyboard shortcuts' })
+    expect(within(sheet).getByRole('heading', { name: 'Acting on messages' })).toBeInTheDocument()
+    expect(within(sheet).getByText('Move to Trash').previousSibling).toHaveTextContent('#')
+    expect(within(sheet).getByText('Star or unstar').previousSibling).toHaveTextContent('s')
+    expect(within(sheet).getByText('Next message').previousSibling).toHaveTextContent('j')
+    expect(within(sheet).getByText('Reply all').previousSibling).toHaveTextContent('a')
+    // The sheet takes the keys: `j` opens no message behind it.
+    await userEvent.keyboard('j')
+    expect(history.location.search).not.toContain('message')
+    // What a browser's dialog fires on Escape, which jsdom's does not.
+    fireEvent(sheet, new Event('cancel', { cancelable: true }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Keyboard shortcuts' }))
+    await userEvent.click(within(screen.getByRole('dialog', { name: 'Keyboard shortcuts' })).getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('points to Accounts when there is no account', async () => {

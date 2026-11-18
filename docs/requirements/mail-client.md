@@ -205,19 +205,22 @@ MCP `message_read` still never set `\Seen`.
   whose copies were made but whose originals stayed says they are in both.
 - A selection over 50 refs is sent 50 at a time; a refused batch is shown as failed groups and the
   rest are still sent; only when every batch is refused is the outcome worded as that refusal.
-- **Keyboard shortcuts** on `/mail`:
+- **Keyboard shortcuts** on `/mail`, the screen's own keys and the action registry's:
 
 | Key | Action |
 | --- | --- |
 | `j` / `k` | Next / previous message |
 | `x` | Toggle selection of the current message |
+| `Escape` | Close the picker, else clear the selection |
+| `?` | Show the shortcut sheet |
+| `r` / `a` / `f` | Reply / reply all / forward ([below](#keyboard-shortcuts)) |
+| `c` | Compose a new message ([below](#keyboard-shortcuts)) |
 | `e` | Archive |
 | `#` | Trash |
+| `v` | Open the move picker |
 | `s` | Star or unstar |
 | `t` | Mark To sort or sorted |
 | `u` | Mark unread |
-| `v` | Open the move picker |
-| `Escape` | Close the picker, else clear the selection |
 
   Shortcuts are ignored while focus is in a text field (an input that takes text, a textarea, a
   select or a contenteditable element), with Ctrl or Meta held (AltGr aside), and with Alt on a
@@ -225,6 +228,10 @@ MCP `message_read` still never set `\Seen`.
   key repeats only `j` / `k`. They do not reach the page while focus is inside the HTML view's
   frame. Every control has an accessible label; strings are in the `mail` namespace in English
   and Italian.
+
+- **The shortcut sheet** (`?`, or the keyboard button beside *Compose*) is a dialog listing every
+  key of this table in three groups (moving around, writing, acting on messages), read from the
+  action registry and the screen's own keys, so it cannot drift from what the keys do.
 
 ### REST routes
 
@@ -596,9 +603,9 @@ In meaning (the strings are in the `mail` namespace, English and Italian, the sa
 
 ### Keyboard shortcuts
 
-Added to the table under [Web client](#web-client): `r` reply, `a` reply all and `f` forward
-(on the open message), `c` compose a new message (from any `/mail` screen; the account is the
-current one). They follow the same rules as the others (ignored in text fields and with
+`r` reply, `a` reply all and `f` forward (on the open message), `c` compose a new message (from
+any `/mail` screen; the account is the current one), in the table under [Web client](#web-client).
+They follow the same rules as the others (ignored in text fields and with
 Ctrl or Meta held) and **do not fire while the composer is open**, wherever focus is. They are
 disabled for an account whose send mode is `off`.
 
