@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input.tsx'
 import { ConnectedApps } from '@/profile/connected-apps.tsx'
 import { LimitsForm } from '@/profile/limits-form.tsx'
 import { LinkedSignIn } from '@/profile/linked-sign-in.tsx'
+import { MarkReadForm } from '@/profile/mark-read-form.tsx'
 import { TimeZoneForm } from '@/profile/time-zone-form.tsx'
 import { userErrorMessage } from '@/users/messages.ts'
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@/users/password.ts'
@@ -22,12 +23,14 @@ type Outcome =
   | { kind: 'failed'; message: string; field: Field }
 
 /**
- * The signed-in user's own page: their password, time zone, linked sign-ins, their mail limits
- * where the instance sends (mail or MCP) and, with MCP, connected apps.
+ * The signed-in user's own page: their password, time zone, what "Mark all as read" does first
+ * on a folder with subfolders (with the mail client), linked sign-ins, their mail limits where the
+ * instance sends (mail or MCP) and, with MCP, connected apps.
  */
 export function ProfileScreen(): ReactElement {
   const { t } = useTranslation()
   const mcp = useFeature('mcp')
+  const mail = useFeature('mail')
   const sends = useMailLayer()
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
@@ -137,6 +140,7 @@ export function ProfileScreen(): ReactElement {
         </Button>
       </form>
       <TimeZoneForm />
+      {mail && <MarkReadForm />}
       <LinkedSignIn />
       {sends && <LimitsForm />}
       {mcp && <ConnectedApps />}

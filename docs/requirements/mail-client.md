@@ -33,12 +33,13 @@ folder shown). A level that holds only folders (`\Noselect`, or not listed at al
 link, and a closed level shows the unread count of everything under it (All Mail and Starred
 left out, as they count it again). The move picker and the role actions (Archive, Trash, Drafts,
 Sent) use selectable folders only. Each listed folder has a menu (its ⋯ button, a right-click,
-or Shift+F10 on it) to make a subfolder, rename or move it and delete it, and each account a
-button for a new top-level folder: see [*Folder management*](#folder-management) for what the
-web asks before each. A folder with subfolders the list would read (not those with a role kept
-apart, below; at most 50 folders with itself) is listed with them or without by its menu's "Include
-subfolders" or the button on its row; this browser remembers the choice per account and folder
-(a rename carries it over, a delete forgets it), the URL carries it (`sub`), each row then names
+or Shift+F10 on it) to mark all its mail read, make a subfolder, rename or move it and delete
+it, and each account a button for a new top-level folder: see
+[*Folder management*](#folder-management) for what the web asks before each. A folder with
+subfolders the list would read (not those with a role kept apart, below; at most 50 folders with
+itself) is listed with them or without by its menu's "Include subfolders" or the button on its
+row; this browser remembers the choice per account and folder (a rename carries it over, a
+delete forgets it), the URL carries it (`sub`), each row then names
 its folder, the folder's unread count becomes that of what the list reads, and a search in that
 folder reads its subfolders too. A folder that no longer has such subfolders is listed alone,
 whatever was chosen.
@@ -344,7 +345,19 @@ its new path. **The delete is a confirmation:** the dialog counts the folder's m
 and asks "Delete “X” and its N messages for good? They do not go to Trash and cannot be
 recovered." (Cancel focused; the Gmail note on an account with All Mail). On `folder_changed` it
 shows the new count and asks again; on `folder_in_use` it lists the rule sets, each a link to
-its page. A deleted folder on screen gives way to the Inbox.
+its page. A deleted folder on screen gives way to the Inbox. **Mark all as read** is enabled
+while the folder has unread mail and its listing gave its UIDs (else it says to list it again);
+a second click while one is under way sends nothing more. A folder with subfolders a list of it
+would read (`with_subfolders`'s: none with a role kept apart, nor under one) offers it twice,
+"with subfolders" and "this folder only", the user's default first: the whole subtree unless they
+chose the folder alone on their *Profile* page (`mark_read_subfolders`); a level holding only
+folders offers the subtree alone. With subfolders, each folder the listing counted unread mail in
+is marked by a call of its own with its own `uid_validity` and `uid_next`, one after the other,
+and one refused leaves the others to go on. Above 50 unread in all it asks first, stating the
+count (and, with subfolders, each folder and its count) of the listing it sends the values of.
+Then the folder counts and the list are read again, and a status line says how many were marked;
+a folder refused is named with the reason, and on `stale_reference` the folders are listed again
+and the user starts over from the menu.
 
 Names: 1 to 255 characters, no control characters, no delimiter, `*` or `%`, no leading or
 trailing space, not `INBOX` at the top level; at most 32 levels and 1,000 characters, for every

@@ -248,6 +248,15 @@
     "saved": "Time zone saved.",
     "saveFailed": "Could not save the time zone."
   },
+  "markRead": {
+    "title": "Mark all as read",
+    "intro": "On a folder with subfolders, what “Mark all as read” in its menu does first. The menu offers the other one too.",
+    "subtree": "The folder and its subfolders",
+    "folderOnly": "The folder only",
+    "save": "Save",
+    "saved": "Saved.",
+    "saveFailed": "Could not save this choice."
+  },
   "limits": {
     "title": "Mail limits",
     "intro": "They hold for your mail here and through connected apps, across all your accounts. Only you change them, here: a connected app cannot.",

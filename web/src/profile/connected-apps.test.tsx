@@ -7,7 +7,7 @@ import { renderSignedIn } from '@/test/signed-in.tsx'
 
 import { ConnectedApps } from './connected-apps.tsx'
 
-const ALICE = { username: 'alice', is_admin: false, time_zone: null }
+const ALICE = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true }
 
 const SERVED: Listing['groups'] = [
   { name: 'mail_read', description: 'list, search and read mail', requires: [], default: true },

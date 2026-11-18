@@ -81,8 +81,10 @@ export interface Triage {
   busy: boolean
   outcome: Outcome | null
   dismissOutcome: () => void
-  /** Counts the lists read again after an undo: the list shown reads itself again when it changes. */
+  /** Counts the lists read again after an undo or a folder marked read: the list shown reads itself again when it changes. */
   reloads: number
+  /** Folders were marked read: their rows drop what this screen marked unread, and the list is read again. */
+  folderMarkedRead: (account: AccountId, folders: readonly string[]) => void
   /** Runs an action on `targets`; `silent` (marking read on open) neither waits for nor reports anything. */
   run: (action: Action, targets: Target[], options?: { silent?: boolean }) => Promise<void>
   picker: boolean

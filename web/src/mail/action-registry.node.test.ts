@@ -108,7 +108,7 @@ describe('the action registry', () => {
 })
 
 describe('dropAction', () => {
-  const projects: MailFolder = { path: 'Projects', role: null, unread: 0, total: 0, delimiter: '/', selectable: true }
+  const projects: MailFolder = { path: 'Projects', role: null, unread: 0, total: 0, delimiter: '/', selectable: true, uid_validity: 1, uid_next: 1 }
   const sent: MailFolder = { ...projects, path: 'Sent', role: 'sent' }
   const drop = (actions: Partial<TriageActions>, account: number, folder: MailFolder): string | undefined =>
     dropAction({ ...context({ ...offered, ...actions }), into: { account, folder } })?.id

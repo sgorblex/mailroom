@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { bodiesTo, type FakeMailState, messageItem, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
+import { bodiesTo, type FakeMailState, messageItem, refusal, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
 import { renderMailApp } from '@/test/mail-app.tsx'
 
 function state(overrides: Partial<FakeMailState> = {}): FakeMailState {
@@ -50,12 +50,18 @@ describe('folder actions', () => {
     const menu = await menuOf('Projects')
     expect(menu).toHaveAccessibleName('Actions for Projects')
     const items = within(menu).getAllByRole('menuitem')
-    expect(items.map((item) => item.textContent)).toEqual(['New subfolder…', 'Rename or move…', 'Delete…'])
-    expect(items[0]).toHaveFocus()
-    await userEvent.keyboard('{ArrowDown}')
+    expect(items.map((item) => item.textContent)).toEqual([
+      'Mark all as readNo unread messages.',
+      'New subfolder…',
+      'Rename or move…',
+      'Delete…',
+    ])
+    expect(items[0]).toHaveAttribute('aria-disabled', 'true')
     expect(items[1]).toHaveFocus()
-    await userEvent.keyboard('{ArrowUp}{ArrowUp}')
+    await userEvent.keyboard('{ArrowDown}')
     expect(items[2]).toHaveFocus()
+    await userEvent.keyboard('{ArrowUp}{ArrowUp}{ArrowUp}')
+    expect(items[3]).toHaveFocus()
     await userEvent.keyboard('{Escape}')
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
     expect(projects).toHaveFocus()
@@ -71,6 +77,7 @@ describe('folder actions', () => {
     expect(fireEvent.contextMenu(projects, { clientX: 30, clientY: 50 })).toBe(false)
     const menu = screen.getByRole('menu', { name: 'Actions for Projects' })
     expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'Mark all as readNo unread messages.',
       'New subfolder…',
       'Rename or move…',
       'Delete…',
@@ -251,5 +258,232 @@ describe('folder actions', () => {
     expect(alert).toHaveTextContent('Rule sets use this folder or one inside it.')
     expect(within(alert).getByRole('link', { name: 'Newsletters' })).toHaveAttribute('href', '/filters/7')
     expect(within(dialog).queryByRole('button', { name: 'Delete for good' })).not.toBeInTheDocument()
+  })
+
+  describe('mark all as read', () => {
+    const unseen = { flags: { seen: false, flagged: false, answered: false, draft: false, to_sort: false } }
+    /** News: `unread` as listed, its three messages unread, UIDNEXT 3 when listed (so 3 came after). */
+    function news(unread: number): FakeMailState {
+      const fake = state()
+      fake.folders[WORK]?.push({ path: 'News', role: null, unread, total: 3, uid_validity: 7, uid_next: 3 })
+      fake.messages['1/News'] = [3, 2, 1].map((uid) => messageItem(WORK, 'News', uid, unseen))
+      return fake
+    }
+
+    it('marks the folder read up to the UIDNEXT listed, then reads its counts and list again', async () => {
+      const fetchMock = stubMailApi(news(3))
+      renderMailApp('/mail?account=1&folder=News')
+
+      const list = await screen.findByRole('list', { name: 'Messages' })
+      expect(await within(list).findAllByRole('link', { name: /Unread:/ })).toHaveLength(3)
+      await userEvent.click(within(await menuOf('News, 3 unread')).getByRole('menuitem', { name: 'Mark all as read' }))
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(await screen.findByText('Marked 2 messages read in News.')).toHaveAttribute('role', 'status')
+      expect(bodiesTo(fetchMock, '/api/v1/mail/accounts/1/folders/mark-read')).toEqual([{ folder: 'News', uid_validity: 7, uid_next: 3 }])
+      expect(await within(await tree()).findByRole('treeitem', { name: 'News, 1 unread' })).toBeInTheDocument()
+      await waitFor(() => {
+        expect(within(list).getAllByRole('link', { name: /Unread:/ })).toHaveLength(1)
+      })
+      expect(within(list).getByRole('link', { name: /Unread:\s*Message 3/ })).toBeInTheDocument()
+    })
+
+    it('asks first above 50 unread, stating the count', async () => {
+      const fetchMock = stubMailApi(news(51))
+      renderMailApp('/mail')
+
+      await userEvent.click(within(await menuOf('News, 51 unread')).getByRole('menuitem', { name: 'Mark all as read' }))
+      let dialog = screen.getByRole('dialog', { name: 'Mark “News” as read' })
+      expect(dialog).toHaveTextContent('Mark the 51 unread messages in “News” as read? Mail that arrives meanwhile stays unread.')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+      expect(bodiesTo(fetchMock, '/api/v1/mail/accounts/1/folders/mark-read')).toEqual([])
+
+      await userEvent.click(within(await menuOf('News, 51 unread')).getByRole('menuitem', { name: 'Mark all as read' }))
+      dialog = screen.getByRole('dialog', { name: 'Mark “News” as read' })
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Mark as read' }))
+      expect(await screen.findByText('Marked 2 messages read in News.')).toBeInTheDocument()
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(bodiesTo(fetchMock, '/api/v1/mail/accounts/1/folders/mark-read')).toEqual([{ folder: 'News', uid_validity: 7, uid_next: 3 }])
+    })
+
+    it('says when the folder changed since it was listed, and lists it again', async () => {
+      const fetchMock = stubMailApi({
+        ...news(51),
+        refuse: { 'POST /api/v1/mail/accounts/1/folders/mark-read': refusal(409, 'stale_reference') },
+      })
+      renderMailApp('/mail')
+
+      await userEvent.click(within(await menuOf('News, 51 unread')).getByRole('menuitem', { name: 'Mark all as read' }))
+      const dialog = screen.getByRole('dialog')
+      const listings = fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/folders?all=true')).length
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Mark as read' }))
+      expect(await within(dialog).findByRole('alert')).toHaveTextContent('The folder changed since it was listed')
+      expect(within(dialog).queryByRole('button', { name: 'Mark as read' })).not.toBeInTheDocument()
+      await waitFor(() => {
+        expect(fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/folders?all=true')).length).toBe(listings + 1)
+      })
+    })
+
+    it('says so under the tree when a mark-read without a question is refused, and lists the folders again', async () => {
+      const fetchMock = stubMailApi({
+        ...news(3),
+        refuse: { 'POST /api/v1/mail/accounts/1/folders/mark-read': refusal(409, 'stale_reference') },
+      })
+      renderMailApp('/mail')
+
+      const listings = (): number => fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/folders?all=true')).length
+      const menu = await menuOf('News, 3 unread')
+      const before = listings()
+      await userEvent.click(within(menu).getByRole('menuitem', { name: 'Mark all as read' }))
+      const alert = (await screen.findByText(/^The folder changed since it was listed/)).closest('[role="alert"]')
+      if (!(alert instanceof HTMLElement)) {
+        throw new Error('no alert')
+      }
+      expect(within(alert).getByRole('button', { name: 'Dismiss' })).toBeInTheDocument()
+      await waitFor(() => {
+        expect(listings()).toBe(before + 1)
+      })
+    })
+
+    it('sends one mark-read for a second click while the first is under way', async () => {
+      let release = (): void => undefined
+      const held = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const fetchMock = stubMailApi({
+        ...news(3),
+        hold: (request) => (request === 'POST /api/v1/mail/accounts/1/folders/mark-read' ? held : undefined),
+      })
+      renderMailApp('/mail')
+
+      await userEvent.click(within(await menuOf('News, 3 unread')).getByRole('menuitem', { name: 'Mark all as read' }))
+      await userEvent.click(within(await menuOf('News, 3 unread')).getByRole('menuitem', { name: 'Mark all as read' }))
+      release()
+      expect(await screen.findByText('Marked 2 messages read in News.')).toBeInTheDocument()
+      expect(bodiesTo(fetchMock, '/api/v1/mail/accounts/1/folders/mark-read')).toHaveLength(1)
+    })
+
+    /** Lists (2 unread) with Lists/Rust (1), Lists/Quiet (none) and Lists/Junk (a role kept apart, 5). */
+    function lists(listsUnread = 2): FakeMailState {
+      const fake = state()
+      fake.folders[WORK] = [
+        { path: 'INBOX', role: 'inbox', unread: 0, total: 1 },
+        { path: 'Lists', role: null, unread: listsUnread, total: 2, uid_validity: 7, uid_next: 3 },
+        { path: 'Lists/Rust', role: null, unread: 1, total: 1, uid_validity: 8, uid_next: 2 },
+        { path: 'Lists/Quiet', role: null, unread: 0, total: 1, uid_validity: 9, uid_next: 2 },
+        { path: 'Lists/Junk', role: 'junk', unread: 5, total: 5, uid_validity: 10, uid_next: 6 },
+      ]
+      fake.messages['1/Lists'] = [2, 1].map((uid) => messageItem(WORK, 'Lists', uid, unseen))
+      fake.messages['1/Lists/Rust'] = [messageItem(WORK, 'Lists/Rust', 1, unseen)]
+      fake.messages['1/Lists/Junk'] = [5, 4, 3, 2, 1].map((uid) => messageItem(WORK, 'Lists/Junk', uid, unseen))
+      return fake
+    }
+    const ALICE = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true }
+    const markReads = (fetchMock: ReturnType<typeof stubMailApi>): unknown[] => bodiesTo(fetchMock, '/api/v1/mail/accounts/1/folders/mark-read')
+
+    it('offers a folder with subfolders both ways, with them first, and marks each listed one up to its own UIDNEXT', async () => {
+      const fetchMock = stubMailApi(lists())
+      renderMailApp('/mail')
+
+      const menu = await menuOf(/^Lists/)
+      expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent).slice(0, 2)).toEqual([
+        'Mark all as read, with subfolders',
+        'Mark all as read, this folder only',
+      ])
+      await userEvent.click(within(menu).getByRole('menuitem', { name: 'Mark all as read, with subfolders' }))
+
+      expect(await screen.findByText('Marked 3 messages read in Lists and its subfolders.')).toHaveAttribute('role', 'status')
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      // Not Lists/Quiet, listed with none unread, nor Lists/Junk, a role kept apart.
+      expect(markReads(fetchMock)).toEqual([
+        { folder: 'Lists', uid_validity: 7, uid_next: 3 },
+        { folder: 'Lists/Rust', uid_validity: 8, uid_next: 2 },
+      ])
+    })
+
+    it('marks the folder alone from its second item', async () => {
+      const fetchMock = stubMailApi(lists())
+      renderMailApp('/mail')
+
+      await userEvent.click(within(await menuOf(/^Lists/)).getByRole('menuitem', { name: 'Mark all as read, this folder only' }))
+      expect(await screen.findByText('Marked 2 messages read in Lists.')).toBeInTheDocument()
+      expect(markReads(fetchMock)).toEqual([{ folder: 'Lists', uid_validity: 7, uid_next: 3 }])
+    })
+
+    it('offers the folder alone first when the user chose so', async () => {
+      stubMailApi(lists())
+      renderMailApp('/mail', { user: { ...ALICE, mark_read_subfolders: false } })
+
+      const items = within(await menuOf(/^Lists/)).getAllByRole('menuitem')
+      expect(items.map((item) => item.textContent).slice(0, 2)).toEqual([
+        'Mark all as read, this folder only',
+        'Mark all as read, with subfolders',
+      ])
+    })
+
+    it('asks first above 50 unread in all, naming each folder and the sum', async () => {
+      const fetchMock = stubMailApi(lists(50))
+      renderMailApp('/mail', { user: ALICE })
+
+      await userEvent.click(within(await menuOf(/^Lists/)).getByRole('menuitem', { name: 'Mark all as read, with subfolders' }))
+      const dialog = screen.getByRole('dialog', { name: 'Mark “Lists” and its subfolders as read' })
+      expect(dialog).toHaveTextContent('Mark the 51 unread messages in these folders as read? Mail that arrives meanwhile stays unread.')
+      expect(within(within(dialog).getByRole('list', { name: 'Folders to mark read' })).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+        'Lists: 50 unread',
+        'Lists/Rust: 1 unread',
+      ])
+      expect(markReads(fetchMock)).toEqual([])
+
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Mark as read' }))
+      expect(await screen.findByText('Marked 3 messages read in Lists and its subfolders.')).toBeInTheDocument()
+      expect(markReads(fetchMock)).toHaveLength(2)
+    })
+
+    it('marks the other folders when one changed since it was listed, saying which was not', async () => {
+      const fake = lists()
+      const fetchMock = stubMailApi(fake)
+      renderMailApp('/mail')
+
+      const menu = await menuOf(/^Lists/)
+      const rust = fake.folders[WORK]?.find((folder) => folder.path === 'Lists/Rust')
+      if (rust === undefined) {
+        throw new Error('no Lists/Rust')
+      }
+      rust.uid_validity = 80
+      await userEvent.click(within(menu).getByRole('menuitem', { name: 'Mark all as read, with subfolders' }))
+
+      expect(await screen.findByText(/^Marked 2 messages read, but not in Lists\/Rust: The folder changed since it was listed/)).toBeInTheDocument()
+      expect(markReads(fetchMock)).toHaveLength(2)
+    })
+
+    it('offers a level holding only folders its subfolders', async () => {
+      const fake = lists()
+      fake.folders[WORK]?.push(
+        { path: 'Box', role: null, unread: 0, total: 0, selectable: false, uid_validity: null, uid_next: null },
+        { path: 'Box/Leaf', role: null, unread: 1, total: 1, uid_validity: 11, uid_next: 2 },
+      )
+      fake.messages['1/Box/Leaf'] = [messageItem(WORK, 'Box/Leaf', 1, unseen)]
+      const fetchMock = stubMailApi(fake)
+      renderMailApp('/mail')
+
+      const menu = await menuOf(/^Box/)
+      expect(within(menu).getAllByRole('menuitem', { name: /Mark all as read/ }).map((item) => item.textContent)).toEqual([
+        'Mark all as read, with subfolders',
+      ])
+      await userEvent.click(within(menu).getByRole('menuitem', { name: 'Mark all as read, with subfolders' }))
+      expect(await screen.findByText('Marked 1 message read in Box and its subfolders.')).toBeInTheDocument()
+      expect(markReads(fetchMock)).toEqual([{ folder: 'Box/Leaf', uid_validity: 11, uid_next: 2 }])
+    })
+
+    it('says to list the folder again when its listing gave no UIDs', async () => {
+      const fake = state()
+      fake.folders[WORK]?.push({ path: 'News', role: null, unread: 3, total: 3, uid_validity: null, uid_next: null })
+      stubMailApi(fake)
+      renderMailApp('/mail')
+
+      expect(within(await menuOf('News, 3 unread')).getByRole('menuitem', { name: /Mark all as read/ })).toHaveTextContent(
+        "Mark all as readThe server didn't give this folder's UIDs; list it again.",
+      )
+    })
   })
 })

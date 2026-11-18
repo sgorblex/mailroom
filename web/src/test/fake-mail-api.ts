@@ -13,11 +13,12 @@ import type {
   SendResult,
 } from '@/api/mail.ts'
 
-export type FakeFolder = Omit<MailFolder, 'delimiter' | 'selectable'> & Partial<Pick<MailFolder, 'delimiter' | 'selectable'>>
+type Defaulted = 'delimiter' | 'selectable' | 'uid_validity' | 'uid_next'
+export type FakeFolder = Omit<MailFolder, Defaulted> & Partial<Pick<MailFolder, Defaulted>>
 
-/** A fake folder as the API lists it. */
+/** A fake folder as the API lists it: UIDVALIDITY 1 and UIDNEXT 1000 unless it says otherwise. */
 export function listedFolder(folder: FakeFolder): MailFolder {
-  return { delimiter: '/', selectable: true, ...folder }
+  return { delimiter: '/', selectable: true, uid_validity: 1, uid_next: 1000, ...folder }
 }
 
 /** The accounts the tests use, and the names the fake lists them under. */
@@ -27,7 +28,7 @@ const ACCOUNT_NAMES: Record<AccountId, string> = { [WORK]: 'work', [HOME]: 'home
 
 export interface FakeMailState {
   accounts: AccountId[]
-  /** Each account's folders; `delimiter` is `/` and `selectable` true unless they say otherwise. */
+  /** Each account's folders; `delimiter` is `/` and `selectable` true unless they say otherwise (`listedFolder`). */
   folders: Record<string, FakeFolder[]>
   /** `"<account>/<folder path>"` → its messages, newest (highest uid) first. */
   messages: Record<string, MessageItem[]>
@@ -566,7 +567,7 @@ function composeRoutes(state: FakeMailState, url: URL, init?: RequestInit): Resp
 
 /** The folder writes over `state.folders` (`/` the delimiter), or `null` for another route. */
 function folderRoutes(state: FakeMailState, url: URL, init?: RequestInit): Response | null {
-  const match = /^\/api\/v1\/mail\/accounts\/([^/]+)\/folders(?:\/(rename|delete))?$/.exec(url.pathname)
+  const match = /^\/api\/v1\/mail\/accounts\/([^/]+)\/folders(?:\/(rename|delete|mark-read))?$/.exec(url.pathname)
   if (match === null || init?.method !== 'POST') {
     return null
   }
@@ -577,6 +578,8 @@ function folderRoutes(state: FakeMailState, url: URL, init?: RequestInit): Respo
     name?: string
     folder?: string
     messages?: number
+    uid_validity?: number
+    uid_next?: number
   }
   const target = (): string => (body.parent == null ? String(body.name) : `${body.parent}/${String(body.name)}`)
   if (match[2] === undefined) {
@@ -591,6 +594,20 @@ function folderRoutes(state: FakeMailState, url: URL, init?: RequestInit): Respo
   const folder = folders.find((each) => each.path === from)
   if (folder === undefined) {
     return refuse(404, 'mailbox_missing')
+  }
+  if (match[2] === 'mark-read') {
+    if (body.uid_validity !== listedFolder(folder).uid_validity) {
+      return refuse(409, 'stale_reference')
+    }
+    let marked = 0
+    for (const item of state.messages[`${String(account)}/${from}`] ?? []) {
+      if (!item.flags.seen && uidOf(item) < Number(body.uid_next)) {
+        item.flags = { ...item.flags, seen: true }
+        marked += 1
+      }
+    }
+    folder.unread = Math.max(0, folder.unread - marked)
+    return json(200, { account_id: account, folder: from, marked })
   }
   if (match[2] === 'rename') {
     const to = target()

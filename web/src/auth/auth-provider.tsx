@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react'
 
-import { changeTimeZone as saveTimeZone, fetchSession, login, logout, type Feature, type User } from '@/api/auth.ts'
+import {
+  changeMarkReadSubfolders as saveMarkReadSubfolders,
+  changeTimeZone as saveTimeZone,
+  fetchSession,
+  login,
+  logout,
+  type Feature,
+  type User,
+} from '@/api/auth.ts'
 import { onSessionEnded } from '@/api/http.ts'
 import { AuthContext, type AuthContextValue, type AuthState } from '@/auth/auth-context.ts'
 import { setRouteFeatures } from '@/auth/feature-route.tsx'
@@ -80,6 +88,13 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
     [updateUser],
   )
 
+  const changeMarkReadSubfolders = useCallback(
+    async (subfolders: boolean) => {
+      updateUser(await saveMarkReadSubfolders(subfolders))
+    },
+    [updateUser],
+  )
+
   const signIn = useCallback(async (username: string, password: string) => {
     const user = await login(username, password)
     setState({ status: 'signed-in', user })
@@ -96,8 +111,8 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
   }, [])
 
   const value = useMemo<AuthContextValue>(
-    () => ({ ...state, features, signIn, signOut, changeTimeZone, recheck }),
-    [state, features, signIn, signOut, changeTimeZone, recheck],
+    () => ({ ...state, features, signIn, signOut, changeTimeZone, changeMarkReadSubfolders, recheck }),
+    [state, features, signIn, signOut, changeTimeZone, changeMarkReadSubfolders, recheck],
   )
   return <AuthContext value={value}>{children}</AuthContext>
 }

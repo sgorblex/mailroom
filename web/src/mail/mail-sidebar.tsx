@@ -1,4 +1,4 @@
-import { useState, type ReactElement } from 'react'
+import { useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { FolderPlus } from 'lucide-react'
@@ -12,13 +12,14 @@ import { FolderDialogs, type FolderDialog, type FolderDone } from './folder-dial
 import { accountDelimiter, isWithin, renamedPath } from './folder-tree.ts'
 import { FolderTree } from './folder-tree-view.tsx'
 import { MAIL_NS } from './i18n.ts'
+import { MARK_READ_CONFIRM_ABOVE, markReadError, markScopeRead, type MarkReadOutcome, type MarkReadScope } from './mark-folder-read.ts'
 import { ACCOUNT_NOT_FOUND, mailErrorMessage } from './messages.ts'
 import { forgetStoredSubfolders, renameStoredSubfolders } from './subfolder-view.ts'
-import { isSameFolder, useAccountFolders } from './triage-context.ts'
+import { isSameFolder, useAccountFolders, useTriage } from './triage-context.ts'
 
 /**
  * The user's accounts; the one shown lists its folders with their unread counts, and creates,
- * renames and deletes them. `folder` is the folder shown, `null` while a search is;
+ * renames, deletes and marks them read. `folder` is the folder shown, `null` while a search is;
  * `subfolders`, whether it is listed with its subfolders.
  */
 export function MailSidebar({
@@ -80,9 +81,12 @@ function FolderList({
   const accountId = account.id
   // Shared with the toolbar, whose actions change the counts in place; read again on mount.
   const { state, retry } = useAccountFolders(accountId, true)
+  const { folderMarkedRead } = useTriage()
   const [dialog, setDialog] = useState<FolderDialog | null>(null)
   const [notice, setNotice] = useState<Notice | null>(null)
   const [reveal, setReveal] = useState<string | null>(null)
+  // The folders with a mark-read under way, which a second click leaves alone.
+  const marking = useRef(new Set<string>())
   const folders = state.kind === 'loaded' ? state.value : []
   const delimiter = accountDelimiter(folders)
 
@@ -127,7 +131,54 @@ function FolderList({
         }
         setNotice({ text: t('folderActions.deleted', { path: result.path }), alert: false })
         break
+      case 'markedRead':
+        folderMarkedRead(accountId, result.outcome.done)
+        setNotice(markedReadNotice(result.scope, result.outcome))
+        break
     }
+  }
+
+  function markedReadNotice(scope: MarkReadScope, outcome: MarkReadOutcome): Notice {
+    const path = scope.folder.path
+    const [first] = outcome.failed
+    if (first === undefined) {
+      const key = scope.subfolders ? 'folderActions.markedReadSubtree' : 'folderActions.markedRead'
+      return { text: t(key, { path, count: outcome.marked }), alert: false }
+    }
+    if (outcome.done.length === 0) {
+      return { text: markReadError(t, first.error), alert: true }
+    }
+    const folders = outcome.failed.map(({ folder: failed }) => failed.path).join(', ')
+    return {
+      text: t('folderActions.markedReadPartly', { count: outcome.marked, folders, reason: markReadError(t, first.error) }),
+      alert: true,
+    }
+  }
+
+  function act(next: FolderDialog): void {
+    setNotice(null)
+    if (next.kind !== 'markRead' || next.scope.unread > MARK_READ_CONFIRM_ABOVE) {
+      setDialog(next)
+      return
+    }
+    const { scope } = next
+    const paths = scope.folders.map((each) => each.path)
+    if (paths.some((path) => marking.current.has(path))) {
+      return
+    }
+    for (const path of paths) {
+      marking.current.add(path)
+    }
+    void markScopeRead(accountId, scope)
+      .then((outcome) => {
+        // Lists the folders again, after a refusal too: one may have changed since.
+        done({ kind: 'markedRead', scope, outcome })
+      })
+      .finally(() => {
+        for (const path of paths) {
+          marking.current.delete(path)
+        }
+      })
   }
 
   const header = (
@@ -189,10 +240,7 @@ function FolderList({
         subfolders={subfolders}
         reveal={reveal}
         label={t('folders.of', { account: account.display_name })}
-        onAction={(next) => {
-          setNotice(null)
-          setDialog(next)
-        }}
+        onAction={act}
       />
       <div role="status" className="px-2 text-xs text-muted-foreground empty:hidden">
         {notice !== null && !notice.alert ? notice.text : null}
@@ -221,6 +269,7 @@ function FolderList({
             setDialog(null)
           }}
           onDone={done}
+          onStale={retry}
         />
       )}
     </>

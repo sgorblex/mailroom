@@ -293,7 +293,7 @@ bounded to one minor because the server relies on its handlers.
   `{"mark_read_subfolders": false}`, a JSON boolean): whether marking a folder with subfolders
   read takes them too unless the user picks the other item
   ([`mail-client.md`](mail-client.md) — *Folder management*). `auth/me`'s `user` carries it;
-  logged as `mark_read_subfolders_changed`.
+  logged as `mark_read_subfolders_changed`. The web sets it on *Profile*.
 - **A session ending under the user:** any 401 from the API but a refused sign-in signs the web
   app out (`onSessionEnded` in `web/src/api/http.ts`), and the sign-in screen says the session
   has ended.

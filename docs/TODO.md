@@ -113,7 +113,7 @@ released and checked in production before the next one starts. Batch 15 is the r
 - [x] **Drag and drop** — messages onto a folder, of the same account or another one.
 - [ ] **Select all matching** — after selecting all, act on every message the list or search
       matches, not only those loaded, with the count to confirm.
-- [ ] **Mark folder as read** — every message in a folder at once, with the count to confirm.
+- [x] **Mark folder as read** — every message in a folder at once, with the count to confirm.
 - [ ] **Command palette** — Ctrl/⌘+K: go to an account, a folder or a settings page, and run the
       registry's actions on the open or selected messages; recents on an empty query.
 

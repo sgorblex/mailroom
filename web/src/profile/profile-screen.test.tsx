@@ -6,7 +6,7 @@ import { renderSignedIn } from '@/test/signed-in.tsx'
 
 import { ProfileScreen } from './profile-screen.tsx'
 
-const ALICE = { username: 'alice', is_admin: false, time_zone: null }
+const ALICE = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true }
 const CURRENT = 'correct horse battery staple'
 const NEXT = 'a brand new passphrase'
 
