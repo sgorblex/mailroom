@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import ipaddress
 from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qs, urlsplit
 
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
     from starlette.testclient import TestClient
 
     from mailroom.models import User
+    from mailroom.net.safe_fetch import IpAddress
     from mailroom.oauth.config import OAuthSettings
     from mailroom.oauth.server import OAuthServer
 
@@ -36,14 +38,20 @@ def challenge(verifier: str) -> str:
 
 
 class Documents:
-    """What the MockTransport serves for client metadata documents, and what it was asked."""
+    """What the MockTransport serves for client metadata documents, and what it was asked. Every
+    host resolves to a public address, unless it is in ``private``."""
 
     def __init__(self) -> None:
         self.replies: dict[str, httpx.Response | Exception] = {}
         self.fetched: list[str] = []
+        self.private: set[str] = set()
+
+    async def resolve(self, host: str) -> list[IpAddress]:
+        return [ipaddress.ip_address("10.0.0.7" if host in self.private else "93.184.215.14")]
 
     def handle(self, request: httpx.Request) -> httpx.Response:
-        url = str(request.url)
+        # ``safe_fetch`` connects to the vetted address: the host is in ``Host``.
+        url = f"https://{request.headers['Host']}{request.url.raw_path.decode()}"
         self.fetched.append(url)
         reply = self.replies.get(url, httpx.Response(404))
         if isinstance(reply, Exception):

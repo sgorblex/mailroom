@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from mailroom.net.safe_fetch import resolve
 from mailroom.oauth.provider import Provider
 from mailroom.oauth.routes import oauth_routes
 from mailroom.oauth.throttle import Throttles, ipv6_network_key
@@ -17,6 +18,7 @@ if TYPE_CHECKING:
     from starlette.requests import Request
     from starlette.routing import Route
 
+    from mailroom.net.safe_fetch import Resolver
     from mailroom.oauth.config import OAuthSettings
 
 
@@ -32,6 +34,7 @@ class OAuthServer:
         client_key: Callable[[Request], str],
         network_key: Callable[[Request], str | None] = ipv6_network_key,
         cimd_transport: httpx.AsyncBaseTransport | None = None,
+        cimd_resolver: Resolver = resolve,
         throttles: Throttles | None = None,
     ) -> None:
         """``client_key`` names the client a request counts against; ``network_key`` the wider
@@ -39,7 +42,11 @@ class OAuthServer:
         self.settings = settings
         self._throttles = throttles or Throttles()
         self.provider = Provider(
-            settings, sessions, cimd_transport=cimd_transport, throttles=self._throttles
+            settings,
+            sessions,
+            cimd_transport=cimd_transport,
+            cimd_resolver=cimd_resolver,
+            throttles=self._throttles,
         )
         self._client_key = client_key
         self._network_key = network_key

@@ -221,8 +221,9 @@ interface, not on the app's routes), so it can move to a shared package later.
 - **Registration:** dynamic (DCR) at `/oauth/register`, throttled per client and per IPv6 /48,
   with a cap on the number of clients (a full register evicts its oldest never-used client; a
   client never used is forgotten after a day), or a **client ID metadata document** (CIMD) whose
-  URL is the `client_id`: its host must be in `MAILROOM_OAUTH_CIMD_HOSTS`, the fetch follows no
-  redirects, times out after 5 s and reads at most 64 KB, the document's `client_id` must equal
+  URL is the `client_id`: its host must be in `MAILROOM_OAUTH_CIMD_HOSTS` and resolve only to
+  public addresses (the fetch goes through `safe_fetch`), the fetch follows no redirects, times
+  out after 5 s and reads at most 64 KB, the document's `client_id` must equal
   its URL, and it is cached for 24 hours. When fetching it again fails in transit (timeout, error,
   a status other than 200), the cached copy keeps serving for up to 7 days after its last good
   fetch; a document fetched and found invalid stops the client at once. A failed fetch is not

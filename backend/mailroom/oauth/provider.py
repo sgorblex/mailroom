@@ -21,6 +21,7 @@ from mcp.server.auth.provider import (
 from mcp.shared.auth import OAuthToken
 from pydantic import AnyUrl
 
+from mailroom.net.safe_fetch import resolve
 from mailroom.oauth import clients, consent, tokens
 from mailroom.oauth.config import SCOPE, TOOL_GROUPS_CLAIM
 from mailroom.oauth.throttle import Throttles
@@ -33,6 +34,7 @@ if TYPE_CHECKING:
     from mcp.shared.auth import OAuthClientInformationFull
     from sqlalchemy.orm import Session, sessionmaker
 
+    from mailroom.net.safe_fetch import Resolver
     from mailroom.oauth.config import OAuthSettings
 
 logger = logging.getLogger(__name__)
@@ -75,12 +77,14 @@ class Provider:
         sessions: Callable[[], sessionmaker[Session] | None],
         *,
         cimd_transport: httpx.AsyncBaseTransport | None = None,
+        cimd_resolver: Resolver = resolve,
         throttles: Throttles | None = None,
         cimd_failures: clients.RecentFailures | None = None,
     ) -> None:
         self.settings = settings
         self._sessions = sessions
         self._cimd_transport = cimd_transport
+        self._cimd_resolver = cimd_resolver
         self._cimd_fetches = (throttles or Throttles()).cimd_fetch
         self._cimd_failures = cimd_failures or clients.RecentFailures()
 
@@ -136,7 +140,9 @@ class Provider:
             self._cimd_refused(client_id, "fetch throttled")
             return "unreachable"
         try:
-            document = await clients.fetch_client_document(client_id, self._cimd_transport)
+            document = await clients.fetch_client_document(
+                client_id, self._cimd_transport, self._cimd_resolver
+            )
             info = clients.cimd_client(self.settings, client_id, document)
         except clients.CimdUnreachable as exc:
             self._cimd_refused(client_id, str(exc))

@@ -12,13 +12,13 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import urlsplit
 
-import anyio
 import httpx
 from mcp.shared.auth import OAuthClientInformationFull, OAuthClientMetadata
 from pydantic import ValidationError
 from sqlalchemy import delete, exists, func, select
 from sqlalchemy.dialects.postgresql import insert
 
+from mailroom.net.safe_fetch import FetchError, resolve, safe_fetch
 from mailroom.oauth.config import (
     CIMD_CACHE_TTL,
     CIMD_FAILURE_TTL,
@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     from sqlalchemy import ColumnElement
     from sqlalchemy.orm import Session
 
+    from mailroom.net.safe_fetch import Resolver
     from mailroom.oauth.config import OAuthSettings
 
 logger = logging.getLogger(__name__)
@@ -66,8 +67,9 @@ class CimdRefused(Exception):  # noqa: N818 -- reads as the case it is
 
 
 class CimdUnreachable(CimdRefused):
-    """The document could not be fetched (timeout, transport error, a status other than 200), as
-    opposed to fetched and found wrong: a cached copy may still serve."""
+    """The document could not be fetched (timeout, a host that does not resolve, a redirect, a
+    transport error, a status other than 200), as opposed to refused or fetched and found wrong:
+    a cached copy may still serve."""
 
 
 def public_client(info: OAuthClientMetadata, client_id: str) -> OAuthClientInformationFull:
@@ -220,36 +222,32 @@ def cimd_url_problem(settings: OAuthSettings, client_id: str) -> str | None:
 
 
 async def fetch_client_document(
-    client_id: str, transport: httpx.AsyncBaseTransport | None = None
+    client_id: str,
+    transport: httpx.AsyncBaseTransport | None = None,
+    resolver: Resolver = resolve,
 ) -> dict[str, Any]:
-    """The JSON object at ``client_id``: no redirects, ``CIMD_TIMEOUT_SECONDS`` in all, at most
-    ``CIMD_MAX_BYTES``. Raises ``CimdUnreachable`` when it cannot be fetched, ``CimdRefused`` when
-    what came back is no JSON object."""
-    body = bytearray()
+    """The JSON object at ``client_id``, fetched through ``safe_fetch`` (so never from a private
+    address, whatever the allowed host resolves to): no redirects, ``CIMD_TIMEOUT_SECONDS`` in
+    all, at most ``CIMD_MAX_BYTES``. Raises ``CimdUnreachable`` when it cannot be fetched,
+    ``CimdRefused`` when it may not be or what came back is no JSON object."""
     try:
-        with anyio.fail_after(CIMD_TIMEOUT_SECONDS):
-            async with (
-                httpx.AsyncClient(
-                    transport=transport, follow_redirects=False, timeout=CIMD_TIMEOUT_SECONDS
-                ) as client,
-                client.stream("GET", client_id, headers={"Accept": "application/json"}) as reply,
-            ):
-                if reply.status_code != httpx.codes.OK:
-                    msg = f"status {reply.status_code}"
-                    raise CimdUnreachable(msg)
-                async for chunk in reply.aiter_bytes():
-                    body.extend(chunk)
-                    if len(body) > CIMD_MAX_BYTES:
-                        msg = "document too large"
-                        raise CimdRefused(msg)
-    except TimeoutError as exc:
-        msg = "timed out"
-        raise CimdUnreachable(msg) from exc
-    except httpx.HTTPError as exc:
-        msg = f"fetch failed: {type(exc).__name__}"
-        raise CimdUnreachable(msg) from exc
+        fetched = await safe_fetch(
+            client_id,
+            max_bytes=CIMD_MAX_BYTES,
+            headers={"Accept": "application/json"},
+            connect_timeout=CIMD_TIMEOUT_SECONDS,
+            read_timeout=CIMD_TIMEOUT_SECONDS,
+            deadline=CIMD_TIMEOUT_SECONDS,
+            resolver=resolver,
+            transport=transport,
+        )
+    except FetchError as exc:
+        raise _fetch_failure(exc) from exc
+    if fetched.status_code != httpx.codes.OK:
+        msg = f"status {fetched.status_code}"
+        raise CimdUnreachable(msg)
     try:
-        document = json.loads(body)
+        document = json.loads(fetched.content)
     except ValueError as exc:
         msg = "not JSON"
         raise CimdRefused(msg) from exc
@@ -257,6 +255,22 @@ async def fetch_client_document(
         msg = "not a JSON object"
         raise CimdRefused(msg)
     return document
+
+
+def _fetch_failure(error: FetchError) -> CimdRefused:
+    """``error`` as a CIMD outcome: a URL ``safe_fetch`` will not fetch, a host resolving to a
+    private address and a document over the cap are refused; the rest (no answer in time, no
+    address, a redirect, a transport error) leave the document unreachable, as a status other
+    than 200 does."""
+    match error.problem:
+        case "timeout":
+            return CimdUnreachable("timed out")
+        case "too_large":
+            return CimdRefused("document too large")
+        case "url" | "address":
+            return CimdRefused(f"fetch refused: {error}")
+        case "unresolved" | "redirect" | "failed":
+            return CimdUnreachable(f"fetch failed: {error}")
 
 
 def cimd_client(

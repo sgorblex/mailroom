@@ -32,11 +32,15 @@ from tests.oauth.helpers import (
     exchange_code,
     verify,
 )
+from tests.support.http import streamed
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from sqlalchemy.orm import Session, sessionmaker
 
     from mailroom.models import User
+    from mailroom.net.safe_fetch import IpAddress
 
 
 def _document(**fields: Any) -> dict[str, Any]:
@@ -153,7 +157,8 @@ def test_document_fetches_are_throttled_per_client(
         settings,
         lambda: sessions,
         client_key=lambda request: request.headers.get("x-client", ""),
-        cimd_transport=httpx.MockTransport(documents.handle),
+        cimd_transport=streamed(documents.handle),
+        cimd_resolver=documents.resolve,
         throttles=Throttles(cimd_fetch=Throttle(1, 600)),
     )
     first, second = f"{CIMD_URL}/one", f"{CIMD_URL}/two"
@@ -246,7 +251,16 @@ def test_documents_are_fetched_only_from_the_configured_hosts(
     assert clients.cimd_url_problem(settings, "https://example.org/client") is None
 
 
-def test_a_slow_document_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
+def _fetch_document(documents: Documents) -> dict[str, Any]:
+    async def fetch() -> dict[str, Any]:
+        return await clients.fetch_client_document(
+            CIMD_URL, streamed(documents.handle), documents.resolve
+        )
+
+    return anyio.run(fetch)
+
+
+def test_a_slow_document_times_out(monkeypatch: pytest.MonkeyPatch, documents: Documents) -> None:
     monkeypatch.setattr(clients, "CIMD_TIMEOUT_SECONDS", 0.05)
 
     async def slow(request: httpx.Request) -> httpx.Response:
@@ -255,7 +269,98 @@ def test_a_slow_document_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
         return httpx.Response(200, json=_document())
 
     async def fetch() -> None:
-        await clients.fetch_client_document(CIMD_URL, httpx.MockTransport(slow))
+        await clients.fetch_client_document(CIMD_URL, streamed(slow), documents.resolve)
 
-    with pytest.raises(clients.CimdRefused, match="timed out"):
+    with pytest.raises(clients.CimdUnreachable, match="timed out"):
         anyio.run(fetch)
+
+
+def test_an_allowed_host_on_a_private_address_is_never_fetched(
+    client: TestClient, documents: Documents, db_session: Session
+) -> None:
+    documents.serve(CIMD_URL, _document())
+    documents.private.add("claude.ai")
+    assert authorize(client, CIMD_URL, "v" * 50).status_code == 400
+    assert documents.fetched == []
+    assert db_session.get(OAuthClient, CIMD_URL) is None
+
+
+def test_a_private_address_ends_the_stale_cache(
+    client: TestClient, documents: Documents, db_session: Session
+) -> None:
+    documents.serve(CIMD_URL, _document())
+    _cache_document_fetched(client, db_session, timedelta(days=2))
+    documents.private.add("claude.ai")
+    assert authorize(client, CIMD_URL, "v" * 50).status_code == 400
+    assert documents.fetched == [CIMD_URL]
+
+
+@pytest.mark.parametrize(
+    ("setup", "outcome", "reason"),
+    [
+        (lambda d: d.private.add("claude.ai"), clients.CimdRefused, "non-public address"),
+        (
+            lambda d: d.replies.update({CIMD_URL: httpx.Response(200, content=b"x" * 70_000)}),
+            clients.CimdRefused,
+            "document too large",
+        ),
+        (
+            lambda d: d.replies.update(
+                {CIMD_URL: httpx.Response(302, headers={"location": "https://claude.ai/x"})}
+            ),
+            clients.CimdUnreachable,
+            "redirects",
+        ),
+        (
+            lambda d: d.replies.update({CIMD_URL: httpx.ConnectError("refused")}),
+            clients.CimdUnreachable,
+            "ConnectError",
+        ),
+        (
+            lambda d: d.replies.update({CIMD_URL: httpx.Response(503)}),
+            clients.CimdUnreachable,
+            "status 503",
+        ),
+    ],
+    ids=["private-address", "too-large", "redirect", "transport-error", "status"],
+)
+def test_each_fetch_failure_has_its_outcome(
+    documents: Documents,
+    setup: Callable[[Documents], object],
+    outcome: type[clients.CimdRefused],
+    reason: str,
+) -> None:
+    setup(documents)
+    with pytest.raises(clients.CimdRefused, match=reason) as caught:
+        _fetch_document(documents)
+    assert type(caught.value) is outcome
+
+
+def test_a_host_that_does_not_resolve_is_unreachable(documents: Documents) -> None:
+    async def unresolved(host: str) -> list[IpAddress]:
+        raise OSError(host)
+
+    async def fetch() -> None:
+        await clients.fetch_client_document(CIMD_URL, streamed(documents.handle), unresolved)
+
+    with pytest.raises(clients.CimdUnreachable, match="does not resolve"):
+        anyio.run(fetch)
+    assert documents.fetched == []
+
+
+def test_a_url_safe_fetch_refuses_is_refused(documents: Documents) -> None:
+    async def fetch() -> None:
+        await clients.fetch_client_document(
+            "http://claude.ai/oauth/metadata", streamed(documents.handle), documents.resolve
+        )
+
+    with pytest.raises(clients.CimdRefused, match="not https") as caught:
+        anyio.run(fetch)
+    assert type(caught.value) is clients.CimdRefused
+    assert documents.fetched == []
+
+
+def test_a_good_document_is_fetched(documents: Documents) -> None:
+    documents.serve(CIMD_URL, _document())
+    assert _fetch_document(documents) == _document()
+    assert documents.fetched == [CIMD_URL]
