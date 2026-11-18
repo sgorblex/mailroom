@@ -20,7 +20,7 @@ from mailroom_core.mail import (
     Timeouts,
     retriable,
 )
-from mailroom_core.mail.imap import _capabilities, _quota, folders_from
+from mailroom_core.mail.imap import _capabilities, _keywords, _quota, folders_from
 from mailroom_core.testing import (
     ImapTestServer,
     connections_for,
@@ -148,6 +148,42 @@ def test_opens_lazily_and_reports_capabilities(imap_server, connections) -> None
         special_use=True,
         quota=True,
     )
+
+
+class _CapableClient:
+    def __init__(self, *capabilities: str) -> None:
+        self.offered = capabilities
+
+    def has_capability(self, name: str) -> bool:
+        return name in self.offered
+
+
+@pytest.mark.parametrize(
+    ("selected", "capabilities", "kept"),
+    [
+        ({b"PERMANENTFLAGS": (b"\\Seen", b"\\*")}, (), True),
+        ({b"PERMANENTFLAGS": (b"\\Seen", b"\\Flagged")}, (), False),
+        ({b"PERMANENTFLAGS": ()}, (), False),
+        ({}, (), False),
+        ({b"PERMANENTFLAGS": (b"\\*",)}, ("X-GM-EXT-1",), False),
+    ],
+)
+def test_keywords_need_a_star_in_permanentflags_and_no_gmail(
+    selected: dict[bytes, object], capabilities: tuple[str, ...], kept: bool
+) -> None:
+    assert _keywords(_CapableClient(*capabilities), selected) is kept  # type: ignore[arg-type]
+
+
+@pytest.mark.integration
+def test_reads_keyword_support_once_from_a_read_write_inbox(imap_server, connections) -> None:
+    mail = connections(test_account(1, imap_server.unique_user("keywords"), imap_server))
+    assert mail.with_mailbox(1, "INBOX", False, lambda context: context.keywords) is True
+    assert mail.with_mailbox(1, "INBOX", True, lambda context: context.keywords) is False
+    assert mail.keywords(1) is True
+    selects: list[str] = []
+    mail.with_mailbox = lambda *args: selects.append("again")  # type: ignore[method-assign]
+    assert mail.keywords(1) is True
+    assert selects == []
 
 
 @pytest.mark.parametrize(

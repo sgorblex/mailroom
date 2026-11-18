@@ -85,7 +85,9 @@
                 "is_starred",
                 "is_unstarred",
                 "is_answered",
-                "is_unanswered"
+                "is_unanswered",
+                "is_to_sort",
+                "is_not_to_sort"
               ]
             },
             "args": {
@@ -407,8 +409,10 @@
                 "mark_as_read",
                 "mark_as_unanswered",
                 "mark_as_unread",
+                "mark_to_sort",
                 "no_op",
                 "star",
+                "unmark_to_sort",
                 "unstar"
               ]
             },
@@ -492,7 +496,8 @@
       "enum": [
         "SEEN",
         "FLAGGED",
-        "ANSWERED"
+        "ANSWERED",
+        "TO_SORT"
       ]
     }
   }

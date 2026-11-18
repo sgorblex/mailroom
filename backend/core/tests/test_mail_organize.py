@@ -281,3 +281,7 @@ def test_marks_messages_read_unread_and_flagged_idempotently(imap_server, harnes
 
     with pytest.raises(MailError, match="Give `seen`"):
         set_flags(mail, [ref])
+
+    marked = set_flags(mail, [ref], to_sort=True)
+    assert organize_text(marked) == f"1/INBOX: updated 1: {ref} unread, flagged, to sort"
+    assert contents(imap_server, user, "INBOX") == [("flag me", {"\\Flagged", "$MailroomSort"})]

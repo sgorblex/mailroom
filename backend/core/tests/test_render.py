@@ -283,6 +283,19 @@ class TestMessageFormatting:
             "unread,flagged,attachments · Shall we meet?"
         )
 
+    def test_shows_to_sort_whatever_the_keywords_case(self):
+        item = ListItem(
+            ref="REF",
+            date=datetime(2026, 10, 3, 12, 12, tzinfo=UTC),
+            sender=[Address(address="maria@example.org")],
+            subject="Sort me",
+            flags={"\\SEEN", "$mailroomsort"},
+            has_attachments=False,
+        )
+        assert list_line(item, "UTC") == (
+            "REF · 2026-10-03 12:12 · maria@example.org · Sort me · to sort"
+        )
+
     def test_renders_the_header_block_with_attachments_and_an_invite_note(self):
         view = HeaderView(
             sender=[Address(address="a@x.org")],

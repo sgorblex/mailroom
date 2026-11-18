@@ -28,8 +28,10 @@ from mailroom_core.filters.criteria.criterion import Anything, Criterion
 from mailroom_core.filters.criteria.date import OlderThan, OlderThanDays
 from mailroom_core.filters.criteria.flags import (
     IsAnswered,
+    IsNotToSort,
     IsRead,
     IsStarred,
+    IsToSort,
     IsUnanswered,
     IsUnread,
     IsUnstarred,
@@ -416,6 +418,17 @@ class TestFlagCriteria:
         criterion = IsUnstarred()
         assert isinstance(criterion, Criterion)
         assert criterion.imap_query.criteria() == ["UNFLAGGED"]
+
+    def test_to_sort_searches_its_keyword_and_ignores_case(self) -> None:
+        from mailroom_core.filters.message import Message
+
+        assert IsToSort().imap_query.criteria() == ["KEYWORD", "$MailroomSort"]
+        assert IsNotToSort().imap_query.criteria() == ["UNKEYWORD", "$MailroomSort"]
+        marked = Message(0, _parsed(), [b"\\SEEN", b"$mailroomsort"])
+        assert IsToSort().func(marked) is True
+        assert IsNotToSort().func(marked) is False
+        assert IsRead().func(marked) is True
+        assert IsToSort().func(Message(1, _parsed(), [b"\\Seen"])) is False
 
     def test_is_answered_creation(self) -> None:
         """Test IsAnswered criterion creation."""

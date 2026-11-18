@@ -8,6 +8,7 @@ import pytest
 from imapclient.imapclient import _literal
 
 from mailroom_core.mail import (
+    TO_SORT,
     CopiedNotRemovedError,
     Folder,
     MailboxContext,
@@ -66,7 +67,7 @@ class FakeClient:
         self._record("uid_expunge", uids)
 
 
-def selected(client: FakeClient) -> MailboxContext:
+def selected(client: FakeClient, *, keywords: bool = False) -> MailboxContext:
     return MailboxContext(
         cast("Any", client),
         "INBOX",
@@ -75,6 +76,7 @@ def selected(client: FakeClient) -> MailboxContext:
         exists=3,
         uid_next=None,
         account=1,
+        keywords=keywords,
     )
 
 
@@ -144,7 +146,21 @@ def test_copyuid() -> None:
     assert _copy_uids([b"nonsense"], 1) is None
 
 
-def test_store_flags_sets_only_the_three_it_may() -> None:
+def test_store_flags_sets_to_sort_only_where_the_folder_keeps_keywords() -> None:
+    client = FakeClient(set())
+    store_flags(selected(client, keywords=True), [5], add=[TO_SORT], remove=["\\Seen"])
+    assert client.calls == [
+        ("add_flags", [5], [b"$MailroomSort"]),
+        ("remove_flags", [5], [b"\\Seen"]),
+    ]
+    client.calls.clear()
+    refused(lambda: store_flags(selected(client), [5], add=[TO_SORT]), "unsupported")
+    refused(lambda: store_flags(selected(client), [5], remove=[TO_SORT, "\\Seen"]), "unsupported")
+    refused(lambda: store_flags(selected(client), [5], add=["$Other"]))
+    assert client.calls == []
+
+
+def test_store_flags_sets_only_the_flags_it_may() -> None:
     client = FakeClient(set())
     store_flags(selected(client), [5, 7], add=["\\Answered", "\\Seen"], remove=["\\Flagged"])
     assert client.calls == [

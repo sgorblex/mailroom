@@ -45,6 +45,7 @@ class StubClient:
         self.uids = uids
         self.copyuid = copyuid
         self.calls: list[tuple[object, ...]] = []
+        self.flags: tuple[bytes, ...] = (b"\\Seen",)
         self._imap = SimpleNamespace(untagged_responses={})
 
     def has_capability(self, name: str) -> bool:
@@ -52,9 +53,7 @@ class StubClient:
 
     def fetch(self, uids: list[int], items: list[str]) -> dict[int, dict[bytes, object]]:
         return {
-            uid: {b"ENVELOPE": envelope(), b"FLAGS": (b"\\Seen",)}
-            for uid in uids
-            if uid in self.uids
+            uid: {b"ENVELOPE": envelope(), b"FLAGS": self.flags} for uid in uids if uid in self.uids
         }
 
     def _copied(self, name: str, uids: list[int], folder: str) -> None:
@@ -97,6 +96,7 @@ class StubConnections:
         self.client = client
         self._folders = folders
         self.selected: list[tuple[str, bool]] = []
+        self.keywords = True
 
     def serves(self, account_id: str) -> bool:
         return account_id == 1
@@ -117,6 +117,7 @@ class StubConnections:
                 exists=len(self.client.uids),
                 uid_next=None,
                 account=account_id,
+                keywords=self.keywords,
             )
         )
 
@@ -306,7 +307,7 @@ class TestWholeCallRefusals:
 
     def test_flags_need_a_change(self) -> None:
         connections, _client = stubbed({"MOVE"})
-        with pytest.raises(MailError, match=r"Give `seen`, `flagged` or both\."):
+        with pytest.raises(MailError, match=r"Give `seen`, `flagged`, `to_sort` or several\."):
             set_flags(connections, [ref()])
 
 
@@ -342,7 +343,7 @@ def test_set_flags_stores_and_reads_back() -> None:
         ("remove_flags", [5], [b"\\Flagged"]),
     ]
     [group] = result.groups
-    assert group.flags == (FlagState(ref(), seen=True, flagged=False),)
+    assert group.flags == (FlagState(ref(), seen=True, flagged=False, to_sort=False),)
     assert (group.count, group.new_refs, group.destination) == (1, (), None)
     assert [(i.seen, i.flagged, i.result) for i in result.items] == [(True, False, "ok")]
 
@@ -356,7 +357,7 @@ def test_set_flags_stores_and_reads_back() -> None:
     client.shutdown = lambda: shut.append(True)  # type: ignore[attr-defined]
     [unread_back] = set_flags(connections, [ref()], flagged=True).groups
     assert unread_back.ok
-    assert unread_back.flags == (FlagState(ref(), None, None),)
+    assert unread_back.flags == (FlagState(ref(), None, None, None),)
     assert shut == [True]  # the connection's state is unknown after a lost read
 
     def refuse_shutdown() -> None:
@@ -365,6 +366,25 @@ def test_set_flags_stores_and_reads_back() -> None:
     client.shutdown = refuse_shutdown  # type: ignore[attr-defined]
     [still_ok] = set_flags(connections, [ref()], flagged=True).groups
     assert still_ok.ok  # a failing shutdown does not undo the change
+
+
+def test_set_flags_marks_to_sort_where_the_folder_keeps_keywords() -> None:
+    connections, client = stubbed(set())
+    client.flags = (b"\\Seen", b"$mailroomsort")
+    result = set_flags(connections, [ref()], to_sort=True)
+    assert client.calls == [("add_flags", [5], [b"$MailroomSort"])]
+    [group] = result.groups
+    assert group.flags == (FlagState(ref(), seen=True, flagged=False, to_sort=True),)
+    assert [(i.to_sort, i.result) for i in result.items] == [(True, "ok")]
+
+    client.calls.clear()
+    cast("StubConnections", connections).keywords = False
+    refused = set_flags(connections, [ref()], seen=False, to_sort=False)
+    [group] = refused.groups
+    assert group.error is not None
+    assert group.error.code == "unsupported"
+    assert client.calls == []
+    assert [(i.to_sort, i.result) for i in refused.items] == [(False, "unsupported")]
 
 
 def test_audit_outcome() -> None:
@@ -387,9 +407,11 @@ def test_organize_text() -> None:
                 "Sent",
                 count=2,
                 new_refs=(),
-                flags=(FlagState("r1", True, True), FlagState("r2", None, None)),
+                flags=(FlagState("r1", True, True, True), FlagState("r2", None, None, None)),
             ),
-            GroupResult(1, "Lists", count=1, new_refs=(), flags=(FlagState("r3", False, False),)),
+            GroupResult(
+                1, "Lists", count=1, new_refs=(), flags=(FlagState("r3", False, False, False),)
+            ),
         ),
         (),
     )
@@ -400,6 +422,6 @@ def test_organize_text() -> None:
             "The spam filter learns them as not spam."
         ),
         "1/Projects: No such message or part. 1 of these …",
-        "1/Sent: updated 2: r1 read, flagged; r2 (flags not read back)",
+        "1/Sent: updated 2: r1 read, flagged, to sort; r2 (flags not read back)",
         "1/Lists: updated 1: r3 unread",
     ]

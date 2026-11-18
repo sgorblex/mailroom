@@ -13,8 +13,10 @@ from mailroom_core.filters.actions.flags import (
     MarkAsRead,
     MarkAsUnanswered,
     MarkAsUnread,
+    MarkToSort,
     RemoveFlag,
     Star,
+    UnmarkToSort,
     Unstar,
 )
 from mailroom_core.filters.actions.move import MoveTo, Trash
@@ -134,7 +136,9 @@ class TestActionChaining:
         assert call_order == [("action1", on, [1, 2, 3]), ("action2", on, [1, 2, 3])]
 
 
-def selected(path: str = "INBOX", delimiter: str | None = ".", *listed: Folder) -> Selected:
+def selected(
+    path: str = "INBOX", delimiter: str | None = ".", *listed: Folder, keywords: bool = False
+) -> Selected:
     """A Selected on a MagicMock client whose LIST answers `listed`."""
     client = MagicMock()
     client.list_folders.return_value = [
@@ -153,6 +157,7 @@ def selected(path: str = "INBOX", delimiter: str | None = ".", *listed: Folder) 
         exists=3,
         uid_next=None,
         account=1,
+        keywords=keywords,
     )
     return Selected(context, delimiter)
 
@@ -252,6 +257,23 @@ class TestActionExecution:
         on = selected()
         action.execute(on, [1, 2, 3])
         getattr(on.context.client, method).assert_called_once_with([1, 2, 3], [flag], silent=True)
+
+    @pytest.mark.parametrize(
+        ("action", "method"), [(MarkToSort(), "add_flags"), (UnmarkToSort(), "remove_flags")]
+    )
+    def test_to_sort_actions_need_a_folder_that_keeps_keywords(
+        self, action: Action, method: str
+    ) -> None:
+        on = selected(keywords=True)
+        action.execute(on, [1, 2])
+        getattr(on.context.client, method).assert_called_once_with(
+            [1, 2], [b"$MailroomSort"], silent=True
+        )
+        without = selected()
+        with pytest.raises(MailError) as raised:
+            action.execute(without, [1])
+        assert raised.value.code == "unsupported"
+        getattr(without.context.client, method).assert_not_called()
 
     def test_delete_expunges_exactly_those_uids(self) -> None:
         on = selected()

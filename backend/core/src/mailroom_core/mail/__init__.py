@@ -169,6 +169,7 @@ from mailroom_core.mail.search import (
 )
 from mailroom_core.mail.selected import (
     SETTABLE_FLAGS,
+    TO_SORT,
     CopiedNotRemovedError,
     Criteria,
     FetchedMessage,
@@ -230,6 +231,7 @@ __all__ = [
     "PREVIEW_LENGTH",
     "REFUSALS",
     "SETTABLE_FLAGS",
+    "TO_SORT",
     "Addressed",
     "Attachment",
     "AttachmentSource",

@@ -21,6 +21,7 @@ from mailroom_core.mail.audit import (
 from mailroom_core.mail.errors import MailError, mail_error
 from mailroom_core.mail.ref import MessageRef, check_fresh, format_ref, parse_ref
 from mailroom_core.mail.selected import (
+    TO_SORT,
     CopiedNotRemovedError,
     abandon_read_back,
     check_movable,
@@ -52,6 +53,7 @@ class FlagState:
     ref: str
     seen: bool | None
     flagged: bool | None
+    to_sort: bool | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,14 +176,17 @@ def set_flags(
     *,
     seen: bool | None = None,
     flagged: bool | None = None,
+    to_sort: bool | None = None,
 ) -> OrganizeResult:
-    """Sets (True) or clears (False) \\Seen and \\Flagged; None leaves that flag as it is. Refs
-    stay valid."""
-    if seen is None and flagged is None:
-        raise MailError("invalid_argument", "Give `seen`, `flagged` or both.")
+    """Sets (True) or clears (False) \\Seen, \\Flagged and the `TO_SORT` keyword; None leaves
+    that flag as it is. To sort is `unsupported` in a folder that keeps no keywords. Refs stay
+    valid."""
+    if seen is None and flagged is None and to_sort is None:
+        raise MailError("invalid_argument", "Give `seen`, `flagged`, `to_sort` or several.")
     groups = _groups(connections, refs)
-    add = [flag for flag, wanted in ((_SEEN, seen), (_FLAGGED, flagged)) if wanted is True]
-    remove = [flag for flag, wanted in ((_SEEN, seen), (_FLAGGED, flagged)) if wanted is False]
+    wanted = ((_SEEN, seen), (_FLAGGED, flagged), (TO_SORT, to_sort))
+    add = [flag for flag, change in wanted if change is True]
+    remove = [flag for flag, change in wanted if change is False]
 
     def act(group: _Group, note: Note) -> GroupResult:
         def run(context: MailboxContext) -> GroupResult:
@@ -202,6 +207,7 @@ def set_flags(
                             result,
                             seen=seen,
                             flagged=flagged,
+                            to_sort=to_sort,
                         )
                     )
 
@@ -221,15 +227,22 @@ def set_flags(
             try:
                 after = client.fetch(uids, ["FLAGS"])
                 read_back = {
-                    uid: tuple(after[uid].get(b"FLAGS", ())) for uid in uids if uid in after
+                    uid: {bytes(flag).lower() for flag in after[uid].get(b"FLAGS", ())}
+                    for uid in uids
+                    if uid in after
                 }
                 states = tuple(
-                    FlagState(ref_of(uid), _SEEN.encode() in flags, _FLAGGED.encode() in flags)
+                    FlagState(
+                        ref_of(uid),
+                        _SEEN.lower().encode() in flags,
+                        _FLAGGED.lower().encode() in flags,
+                        TO_SORT.lower().encode() in flags,
+                    )
                     for uid, flags in read_back.items()
                 )
             except Exception as error:
                 abandon_read_back(context, error)  # logged; the change stands
-                states = tuple(FlagState(ref_of(uid), None, None) for uid in uids)
+                states = tuple(FlagState(ref_of(uid), None, None, None) for uid in uids)
             return GroupResult(
                 group.account, group.folder, count=len(uids), new_refs=(), flags=states
             )

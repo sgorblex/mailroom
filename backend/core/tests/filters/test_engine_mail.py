@@ -15,8 +15,11 @@ from mailroom_core.filters import (
     Delete,
     Filter,
     FromIs,
+    IsNotToSort,
+    IsToSort,
     IsUnread,
     MarkAsRead,
+    MarkToSort,
     MatchTimeoutError,
     MoveTo,
     Path,
@@ -24,6 +27,7 @@ from mailroom_core.filters import (
     SubjectContains,
     SubjectMatches,
     Trash,
+    UnmarkToSort,
     get_match_timeout,
     monitor,
     run_rules,
@@ -131,6 +135,20 @@ def test_a_run_moves_trashes_deletes_and_flags(imap_server: ImapTestServer, mail
     assert subjects(imap_server, user, nested.as_string(account.delimiter() or ".")) == ["Sale"]
     # The delete expunged exactly its message: the one already marked in Trash stays.
     assert subjects(imap_server, user, "Trash") == ["Already gone", "You won"]
+
+
+def test_marks_finds_and_clears_to_sort(imap_server: ImapTestServer, mail) -> None:
+    user = imap_server.unique_user("tosort")
+    seed(imap_server, user, "INBOX", mime("Sale", sender=SHOP))
+    seed(imap_server, user, "INBOX", mime("Lunch?", sender=FRIEND))
+    account = mail(user)
+
+    account.inbox.run([Filter(FromIs("news@shop.example") & IsNotToSort(), MarkToSort())])
+    assert flags(imap_server, user, "INBOX") == {"Sale": {"$MailroomSort"}, "Lunch?": set()}
+
+    report = account.inbox.run([Filter(IsToSort(), UnmarkToSort())])
+    assert [m["subject"] for m in report["filters"][0]["matched"]] == ["Sale"]
+    assert flags(imap_server, user, "INBOX") == {"Sale": set(), "Lunch?": set()}
 
 
 def test_starred_only_moves_starred_mail_and_unstars_it(imap_server: ImapTestServer, mail) -> None:

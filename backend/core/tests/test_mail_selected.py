@@ -8,10 +8,12 @@ from typing import TYPE_CHECKING
 import pytest
 
 from mailroom_core.mail import (
+    TO_SORT,
     MailboxContext,
     MailConnections,
     MailError,
     Moved,
+    SearchQuery,
     append_raw,
     delete_uids,
     fetch_envelopes,
@@ -192,6 +194,32 @@ def test_sets_and_clears_answered_and_refuses_deleted(imap_server, mail) -> None
             store(**change)
         assert refused.value.code == "invalid_argument"
     assert flags_of(imap_server, user) == {"answer me": {"\\Seen"}}
+
+
+def test_sets_searches_and_clears_the_to_sort_keyword(imap_server, mail) -> None:
+    user = imap_server.unique_user("tosort")
+    marked = seed(imap_server, user, "INBOX", mime("sort me"))
+    other = seed(imap_server, user, "INBOX", mime("leave me"))
+    connections = mail(user)
+
+    def search(context: MailboxContext, to_sort: bool) -> list[int]:
+        return sorted(search_uids(context, SearchQuery(to_sort=to_sort).criteria()))
+
+    def mark(context: MailboxContext) -> tuple[list[int], list[int]]:
+        store_flags(context, [marked], add=[TO_SORT])
+        return search(context, True), search(context, False)
+
+    assert connections.with_mailbox(1, "INBOX", False, mark) == ([marked], [other])
+    assert flags_of(imap_server, user) == {"sort me": {"$MailroomSort"}, "leave me": set()}
+    connections.with_mailbox(
+        1, "INBOX", False, lambda context: store_flags(context, [marked], remove=[TO_SORT])
+    )
+    assert flags_of(imap_server, user) == {"sort me": set(), "leave me": set()}
+    with pytest.raises(MailError) as refused:
+        connections.with_mailbox(
+            1, "INBOX", True, lambda context: store_flags(context, [marked], add=[TO_SORT])
+        )
+    assert refused.value.code == "unsupported"
 
 
 def test_delete_expunges_only_those_uids(imap_server, mail) -> None:

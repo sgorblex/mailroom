@@ -197,6 +197,8 @@
     "is_unstarred": "Is not starred",
     "is_answered": "Is answered",
     "is_unanswered": "Is not answered",
+    "is_to_sort": "Is to sort",
+    "is_not_to_sort": "Is not to sort",
     "from_contains": "From contains",
     "from_is": "From is",
     "from_matches": "From matches (regex)",
@@ -226,6 +228,8 @@
     "mark_as_unanswered": "Mark as not answered",
     "star": "Star",
     "unstar": "Unstar",
+    "mark_to_sort": "Mark to sort",
+    "unmark_to_sort": "Clear to sort",
     "move_to": "Move to",
     "trash": "Move to the trash",
     "no_op": "Do nothing"
@@ -245,7 +249,8 @@
   "filterChoices": {
     "SEEN": "Read",
     "FLAGGED": "Starred",
-    "ANSWERED": "Answered"
+    "ANSWERED": "Answered",
+    "TO_SORT": "To sort"
   },
   "filterErrors": {
     "invalidSpec": "The filter is not valid: {{message}}",
@@ -272,6 +277,8 @@
     "is_unstarred": "not starred",
     "is_answered": "answered",
     "is_unanswered": "not answered",
+    "is_to_sort": "to sort",
+    "is_not_to_sort": "not to sort",
     "from_contains": "the sender contains “{{addr}}”",
     "from_is": "the sender is “{{addr}}”",
     "from_matches": "the sender matches “{{pattern}}”",
@@ -302,6 +309,8 @@
     "mark_as_unanswered": "mark as not answered",
     "star": "star",
     "unstar": "unstar",
+    "mark_to_sort": "mark to sort",
+    "unmark_to_sort": "clear to sort",
     "move_to": "move to {{folder}}",
     "trash": "move to the trash",
     "trash_to": "move to the trash ({{folder}})",
@@ -310,7 +319,8 @@
   "filterPhraseChoices": {
     "SEEN": "read",
     "FLAGGED": "starred",
-    "ANSWERED": "answered"
+    "ANSWERED": "answered",
+    "TO_SORT": "to sort"
   },
   "filterPhraseParts": {
     "quoted": "“{{value}}”",

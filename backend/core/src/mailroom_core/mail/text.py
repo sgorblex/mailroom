@@ -186,4 +186,5 @@ def _flag_text(state: FlagState) -> str:
     if state.seen is None:
         return f"{state.ref} (flags not read back)"
     flagged = ", flagged" if state.flagged else ""
-    return f"{state.ref} {'read' if state.seen else 'unread'}{flagged}"
+    to_sort = ", to sort" if state.to_sort else ""
+    return f"{state.ref} {'read' if state.seen else 'unread'}{flagged}{to_sort}"
