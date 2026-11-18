@@ -140,7 +140,11 @@ past libxml2's 2048 levels) the text can differ. Deliberate differences, all str
 `mailroom_core.mail.text` writes the tools' text from them. Refs and cursors are the TypeScript
 server's bytes: a ref (`mailroom_core.mail.ref`) is base64url of `[1, account, folder,
 uidValidity, uid]`, and one whose folder's UIDVALIDITY has changed fails with `stale_reference`,
-never naming another message. Refs are not signed: the host checks the account is the caller's. Header text comes decoded and flattened. RFC 2047 words, RFC 2231 parameters,
+never naming another message. Refs are not signed: the host checks the account is the caller's. A
+folder that fails is never read again by the following pages: their cursor carries it as failed
+(a third element, so a cursor with no failure stays the TypeScript's bytes), and each page reports
+it in `failures` with its code until paging ends; a carried failure's message is the code's own,
+never the cursor's text (`cursor_failures`). Header text comes decoded and flattened. RFC 2047 words, RFC 2231 parameters,
 transfer encodings (fetched in windows with `BODY.PEEK[part]<offset.n>` up to the cap), charsets
 and `format=flowed` are decoded. Pages read the sources of different accounts in threads of their
 own, and fetch previews in one FETCH per body part number rather than one per message. Outside

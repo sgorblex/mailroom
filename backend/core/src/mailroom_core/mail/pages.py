@@ -3,18 +3,24 @@ search and thread results, with the TypeScript's merge, cursor format and previe
 
 The cursor holds, per source, the UID below which the walk continues, so mail arriving between
 pages never shifts them; a source whose UIDVALIDITY changed fails the cursor rather than skipping
-or repeating. A source that fails is reported and keeps its place for the next page.
+or repeating. A source that fails is not read again: the cursor carries it as failed, every
+later page reports it with the code it failed with, and paging ends once the others are done.
 """
 
 import re
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Final, Literal
+from typing import TYPE_CHECKING, Final, Literal, cast
 
 from mailroom_core.mail._mime import addresses, aware_date, header_text, text_value
 from mailroom_core.mail.download import body_text, part_contents
-from mailroom_core.mail.errors import MailError, MailErrorCode
+from mailroom_core.mail.errors import (
+    CERTIFICATE_DETAIL,
+    MAIL_ERROR_CODES,
+    MailError,
+    MailErrorCode,
+)
 from mailroom_core.mail.ref import (
     MessageRef,
     b64url_encode,
@@ -70,8 +76,8 @@ class Source:
 
 @dataclass(frozen=True, slots=True)
 class Position:
-    """Per source: the UIDVALIDITY the walk started under (`""` for a source that failed before
-    it was ever read) and the UID below which it continues (0: from the newest)."""
+    """Per source: the UIDVALIDITY the walk started under (`""`: not known) and the UID below
+    which it continues (0: from the newest)."""
 
     account: str
     folder: str
@@ -83,40 +89,86 @@ class Position:
         return [self.account, self.folder, self.uid_validity, self.before_uid]
 
 
-def encode_cursor(positions: Sequence[Position]) -> str:
-    """The cursor for the next page: ``positions`` as base64url-encoded, versioned JSON."""
-    return b64url_encode(js_json([_CURSOR_VERSION, [p.json() for p in positions]]))
+def encode_cursor(positions: Sequence[Position], failed: Sequence[PageFailure] = ()) -> str:
+    """The cursor for the next page: ``positions`` as base64url-encoded, versioned JSON, then
+    the sources that ``failed`` (folder failures only), each as account, folder and code.
+
+    With nothing failed it is the TypeScript's `[1, positions]`, byte for byte.
+    """
+    value: list[object] = [_CURSOR_VERSION, [p.json() for p in positions]]
+    carried = [f for f in failed if f.folder is not None]
+    if carried:
+        value.append([[f.account, f.folder, f.code, f.certificate] for f in carried])
+    return b64url_encode(js_json(value))
 
 
 def decode_cursor(text: str) -> list[Position]:
     """`invalid_argument` unless `text` is a cursor `encode_cursor` (or the TypeScript) made."""
+    return _read_cursor(text)[0]
+
+
+def cursor_failures(text: str) -> list[PageFailure]:
+    """The failed sources `text` carries (see `encode_cursor`); `invalid_argument` as
+    `decode_cursor`."""
+    return _read_cursor(text)[1]
+
+
+def _read_cursor(text: str) -> tuple[list[Position], list[PageFailure]]:
     try:
         value = b64url_json(text)
     except ValueError:
         value = None
     if (
         isinstance(value, list)
-        and len(value) >= 2
+        and len(value) in (2, 3)
         and js_integer(value[0]) == _CURSOR_VERSION
         and isinstance(value[1], list)
     ):
-        positions: list[Position] = []
-        for p in value[1]:
-            if not (
-                isinstance(p, list)
-                and len(p) == 4
-                and isinstance(p[0], str)
-                and isinstance(p[1], str)
-                and isinstance(p[2], str)
-            ):
-                break
-            before = js_integer(p[3])
-            if before is None or not 0 <= before <= _MAX_UID:
-                break
-            positions.append(Position(p[0], p[1], p[2], before))
-        else:
-            return positions
+        positions = _positions(value[1])
+        failed = [] if len(value) == 2 else _failed(value[2])
+        if positions is not None and failed is not None:
+            return positions, failed
     raise MailError("invalid_argument", "Not a cursor; use the one from the previous page.")
+
+
+def _positions(value: list[object]) -> list[Position] | None:
+    positions: list[Position] = []
+    for p in value:
+        if not (
+            isinstance(p, list)
+            and len(p) == 4
+            and isinstance(p[0], str)
+            and isinstance(p[1], str)
+            and isinstance(p[2], str)
+        ):
+            return None
+        before = js_integer(p[3])
+        if before is None or not 0 <= before <= _MAX_UID:
+            return None
+        positions.append(Position(p[0], p[1], p[2], before))
+    return positions
+
+
+def _failed(value: object) -> list[PageFailure] | None:
+    """The failures a cursor carries; their message is the code's own, never the cursor's
+    text."""
+    if not isinstance(value, list):
+        return None
+    failed: list[PageFailure] = []
+    for f in value:
+        if not (
+            isinstance(f, list)
+            and len(f) == 4
+            and isinstance(f[0], str)
+            and isinstance(f[1], str)
+            and f[2] in MAIL_ERROR_CODES
+            and isinstance(f[3], bool)
+        ):
+            return None
+        code = cast("MailErrorCode", f[2])
+        error = MailError(code, CERTIFICATE_DETAIL if f[3] else None)
+        failed.append(PageFailure.of(f[0], f[1], error))
+    return failed
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,6 +236,11 @@ class PageFailure:
     def of(cls, account: str, folder: str | None, error: MailError) -> PageFailure:
         """The failure of one source, from the error that stopped it."""
         return cls(account, folder, error.code, error.message)
+
+    @property
+    def certificate(self) -> bool:
+        """An `unreachable` whose cause is a TLS certificate that did not verify."""
+        return self.message.endswith(f" {CERTIFICATE_DETAIL}")
 
     @property
     def text(self) -> str:
@@ -358,7 +415,10 @@ def read_page(
     by_source = {source: given.get(source, given.get(source.account, ())) for source in sources}
     for each in by_source.values():
         search_arguments(each)  # refused here, not as a failure of each source
-    positions = None if cursor is None else decode_cursor(cursor)
+    positions, carried = (None, []) if cursor is None else _read_cursor(cursor)
+    # A source that failed on an earlier page is not read again (it is in no position): it is
+    # reported again, as it failed, until paging ends.
+    failed_before = {(f.account, f.folder): f for f in carried}
 
     def position_of(source: Source) -> Position | None:
         if positions is None:
@@ -410,7 +470,12 @@ def read_page(
     failed: set[int] = set()
     for index, source in enumerate(sources):
         result = results[index]
-        if isinstance(result, BaseException):
+        earlier = failed_before.get((source.account, source.folder))
+        if earlier is not None:
+            failures.append(earlier)
+            failed.add(index)
+            per_source.append([])
+        elif isinstance(result, BaseException):
             if isinstance(result, MailError) and result.code == "stale_reference":
                 raise result
             error = result if isinstance(result, MailError) else MailError("server_error")
@@ -438,16 +503,15 @@ def read_page(
     messages = tuple(_summary(sources[c.index], c, shown_previews.get(id(c))) for c in taken)
 
     # Next positions: below the lowest UID shown per source; a source with nothing shown keeps
-    # its place.
+    # its place, and one that failed has none (a retry that fails again would never end paging):
+    # the cursor carries its failure instead, for the following pages to report.
     following: list[Position] = []
     more = False
     for index, source in enumerate(sources):
+        if index in failed:
+            continue
         shown = [c for c in taken if c.index == index]
         previous = position_of(source)
-        if index in failed:
-            more = True
-            following.append(previous or Position(source.account, source.folder, "", _FROM_NEWEST))
-            continue
         fetched = per_source[index]
         if fetched:
             uid_validity: str | None = str(fetched[0].uid_validity)
@@ -464,7 +528,7 @@ def read_page(
             following.append(Position(source.account, source.folder, uid_validity, before))
     return Page(
         messages=messages,
-        next_cursor=encode_cursor(following) if more else None,
+        next_cursor=encode_cursor(following, failures) if more else None,
         failures=tuple(failures),
     )
 

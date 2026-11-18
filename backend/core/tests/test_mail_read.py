@@ -586,12 +586,12 @@ def test_reports_a_failing_account_without_hiding_the_others(imap_server, harnes
     assert "Could not read: bad: The mail server rejected the login" in page_text(
         found, "No matching messages.", "UTC", tools=TOOL_NAMES
     )
-    # One folder of a failing account: reported in the page, keeping its place.
+    # One folder of a failing account: reported in the page, with no next page.
     listed = list_messages(mail, "bad")
     assert [(f.account, f.folder, f.code) for f in listed.failures] == [
         ("bad", "INBOX", "auth_failed")
     ]
-    assert listed.next_cursor is not None
+    assert listed.next_cursor is None
 
 
 def test_html_view_inlines_cid_images_and_holds_remote_ones_back(imap_server, harness) -> None:
