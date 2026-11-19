@@ -13,7 +13,7 @@ import { useUnmountSignal } from '@/lib/use-unmount-signal.ts'
 import { Attachments } from './attachments.tsx'
 import { useCompose } from './compose-context.ts'
 import { addressFull } from './format.ts'
-import { HtmlBody } from './html-body.tsx'
+import { HtmlBody, type RemoteChoice } from './html-body.tsx'
 import { MAIL_NS } from './i18n.ts'
 import { mailErrorMessage } from './messages.ts'
 import { ReplyActions } from './reply-actions.tsx'
@@ -25,7 +25,7 @@ export function MessageView({ messageRef }: { messageRef: string }): ReactElemen
   const { t } = useTranslation(MAIL_NS)
   const [includeQuoted, setIncludeQuoted] = useState(false)
   // The remote images choice lives as long as this message's view, whatever is shown in it.
-  const [remote, setRemote] = useState(false)
+  const [remote, setRemote] = useState<RemoteChoice>('blocked')
   // Each view says which choice it was read with: until the new one answers, the old one stays,
   // and nothing may page it with the new choice.
   const load = useCallback(
@@ -120,10 +120,8 @@ export function MessageView({ messageRef }: { messageRef: string }): ReactElemen
           onToggleQuoted={() => {
             setIncludeQuoted(!state.value.includeQuoted)
           }}
-          remote={remote}
-          onShowRemote={() => {
-            setRemote(true)
-          }}
+          remote={state.value.view.remote_trusted ? 'sender' : remote}
+          onChooseRemote={setRemote}
         />
       )}
     </article>
@@ -137,7 +135,7 @@ function LoadedMessage({
   pending,
   onToggleQuoted,
   remote,
-  onShowRemote,
+  onChooseRemote,
 }: {
   view: MessageData
   /** It is in the account's Sent or Drafts folder: it has no authentication to show. */
@@ -147,8 +145,8 @@ function LoadedMessage({
   /** A reload with the other choice is on its way. */
   pending: boolean
   onToggleQuoted: () => void
-  remote: boolean
-  onShowRemote: () => void
+  remote: RemoteChoice
+  onChooseRemote: (choice: RemoteChoice) => void
 }): ReactElement {
   const { t, i18n } = useTranslation(MAIL_NS)
   const timeZone = useTimeZone()
@@ -227,8 +225,9 @@ function LoadedMessage({
           subject={view.subject}
           remoteImages={view.remote_images}
           loadableRemoteImages={view.loadable_remote_images}
-          remote={remote}
-          onShowRemote={onShowRemote}
+          choice={remote}
+          canTrustSender={view.authentication.dmarc_pass}
+          onChoose={onChooseRemote}
         />
       ) : (
         <TextBody

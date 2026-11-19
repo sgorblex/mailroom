@@ -195,6 +195,11 @@
     "showRemote": "Show remote images",
     "remoteShown_one": "{{count}} remote image is shown for this message.",
     "remoteShown_other": "{{count}} remote images are shown for this message.",
+    "remoteShownSender_one": "{{count}} remote image is shown: you always show this sender's.",
+    "remoteShownSender_other": "{{count}} remote images are shown: you always show this sender's.",
+    "trustSender": "Always for this sender",
+    "trustSenderFailed": "Could not remember this sender.",
+    "senderNotVerified": "This sender could not be verified, so it cannot be remembered.",
     "htmlTitle": "HTML version of {{subject}}",
     "htmlLoading": "Loading the HTML version…",
     "htmlFailed": "Could not load the HTML version."

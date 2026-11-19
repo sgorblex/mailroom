@@ -1,7 +1,8 @@
-import { useCallback, type ReactElement } from 'react'
+import { useCallback, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { checkMessageHtml, messageHtmlUrl } from '@/api/mail.ts'
+import { ApiRequestError } from '@/api/http.ts'
+import { addRemoteSender, checkMessageHtml, messageHtmlUrl } from '@/api/mail.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { useLoad } from '@/lib/use-load.ts'
 
@@ -15,27 +16,39 @@ import { mailErrorMessage } from './messages.ts'
 export const HTML_SANDBOX = 'allow-popups allow-popups-to-escape-sandbox'
 
 /**
+ * Whether remote images are shown: `blocked`, for this `message` only (the choice dies with the
+ * message view), or for its `sender`, whom the user remembers.
+ */
+export type RemoteChoice = 'blocked' | 'message' | 'sender'
+
+/**
  * The API's standalone, sanitised HTML document in a sandboxed iframe, framed once a request for
  * it answered: a refusal is worded here, never shown inside the frame. Remote images stay
- * blocked until the reader asks, for this message only: the choice dies with the message view.
+ * blocked until the reader asks, for this message or, when `canTrustSender` (DMARC passed for its
+ * one From), always for its sender; the server checks that again before it remembers one.
  */
 export function HtmlBody({
   messageRef,
   subject,
   remoteImages,
   loadableRemoteImages,
-  remote,
-  onShowRemote,
+  choice,
+  canTrustSender,
+  onChoose,
 }: {
   messageRef: string
   subject: string
   remoteImages: number
   /** Of those, the ones `remote` shows: no button to show them when there are none. */
   loadableRemoteImages: number
-  remote: boolean
-  onShowRemote: () => void
+  choice: RemoteChoice
+  canTrustSender: boolean
+  onChoose: (choice: RemoteChoice) => void
 }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
+  const remote = choice !== 'blocked'
+  const [trusting, setTrusting] = useState(false)
+  const [trustFailure, setTrustFailure] = useState<string | null>(null)
   const check = useCallback(
     async (signal: AbortSignal) => {
       await checkMessageHtml(messageRef, remote, signal)
@@ -44,20 +57,68 @@ export function HtmlBody({
     [messageRef, remote],
   )
   const { state, retry } = useLoad(check, (error) => mailErrorMessage(t, error, t('message.htmlFailed')))
+
+  async function trustSender(): Promise<void> {
+    setTrusting(true)
+    setTrustFailure(null)
+    try {
+      await addRemoteSender(messageRef)
+      onChoose('sender')
+    } catch (error) {
+      setTrustFailure(
+        error instanceof ApiRequestError && error.code === 'sender_not_verified'
+          ? t('message.senderNotVerified')
+          : mailErrorMessage(t, error, t('message.trustSenderFailed')),
+      )
+    } finally {
+      setTrusting(false)
+    }
+  }
+
   return (
     <section aria-label={t('message.body')} className="flex flex-1 flex-col gap-2">
       {remoteImages > 0 && !remote && (
         <div className="flex flex-wrap items-center gap-2 rounded-md border p-2 text-sm">
           <p className="mr-auto text-muted-foreground">{t('message.remoteBlocked', { count: remoteImages })}</p>
           {loadableRemoteImages > 0 && (
-            <Button variant="outline" size="sm" onClick={onShowRemote}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                onChoose('message')
+              }}
+            >
               {t('message.showRemote')}
             </Button>
+          )}
+          {loadableRemoteImages > 0 && canTrustSender && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="aria-disabled:opacity-50"
+              aria-disabled={trusting}
+              onClick={() => {
+                if (!trusting) {
+                  void trustSender()
+                }
+              }}
+            >
+              {t('message.trustSender')}
+            </Button>
+          )}
+          {trustFailure !== null && (
+            <p role="alert" className="basis-full text-destructive">
+              {trustFailure}
+            </p>
           )}
         </div>
       )}
       {remote && loadableRemoteImages > 0 && (
-        <p className="text-xs text-muted-foreground">{t('message.remoteShown', { count: loadableRemoteImages })}</p>
+        <p className="text-xs text-muted-foreground">
+          {t(choice === 'sender' ? 'message.remoteShownSender' : 'message.remoteShown', {
+            count: loadableRemoteImages,
+          })}
+        </p>
       )}
       {state.kind === 'loading' && (
         <p role="status" className="text-sm text-muted-foreground">

@@ -144,6 +144,8 @@ const messageViewSchema = z.object({
     dmarc_pass: z.boolean(),
     from_domain: z.string().nullable(),
   }),
+  /** The user shows this sender's remote images without asking, and DMARC passed for its one From. */
+  remote_trusted: z.boolean(),
 })
 export type MessageView = z.infer<typeof messageViewSchema>
 
@@ -338,6 +340,30 @@ export async function checkMessageHtml(ref: string, remote: boolean, signal?: Ab
     // Not the API's JSON (a proxy's page): the status alone words it.
   }
   throw new ApiRequestError(response.status, body, `HTTP ${String(response.status)}`)
+}
+
+const remoteSenderSchema = z.object({ address: z.string(), created_at: z.string() })
+export type RemoteSender = z.infer<typeof remoteSenderSchema>
+
+/** The senders whose remote images the user shows without asking, by address. */
+export async function listRemoteSenders(signal?: AbortSignal): Promise<RemoteSender[]> {
+  const answer = await apiGetJson(`${base}/remote-senders`, {
+    init: { signal },
+    schema: z.object({ senders: z.array(remoteSenderSchema) }),
+  })
+  return answer.senders
+}
+
+/**
+ * Remembers the From of the message `ref` names: the server reads it and refuses
+ * (`sender_not_verified`) unless DMARC passed for that one From.
+ */
+export function addRemoteSender(ref: string): Promise<RemoteSender> {
+  return apiPostJson(`${base}/remote-senders`, { ref }, { schema: remoteSenderSchema })
+}
+
+export async function removeRemoteSender(address: string): Promise<void> {
+  await apiPostJson(`${base}/remote-senders/remove`, { address })
 }
 
 /** A download of one attachment (or the calendar part). */

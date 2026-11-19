@@ -259,6 +259,16 @@
     "saved": "Salvato.",
     "saveFailed": "Impossibile salvare questa scelta."
   },
+  "remoteSenders": {
+    "title": "Immagini remote",
+    "intro": "I mittenti di cui mostri sempre le immagini remote. Un mittente conta solo se il suo messaggio ha superato DMARC sul server di autenticazione dell'account.",
+    "none": "Ancora nessun mittente: scegli “Sempre per questo mittente” accanto alle immagini remote di un messaggio.",
+    "loadFailed": "Impossibile caricare questi mittenti.",
+    "remembered": "Dal {{when}}",
+    "remove": "Rimuovi",
+    "removeSender": "Rimuovi {{address}}",
+    "removeFailed": "Impossibile rimuovere questo mittente."
+  },
   "limits": {
     "title": "Limiti della posta",
     "intro": "Valgono per la tua posta qui e dalle app collegate, su tutti i tuoi account. Solo tu li cambi, qui: un'app collegata non può.",

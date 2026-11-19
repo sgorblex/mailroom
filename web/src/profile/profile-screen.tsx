@@ -10,6 +10,7 @@ import { ConnectedApps } from '@/profile/connected-apps.tsx'
 import { LimitsForm } from '@/profile/limits-form.tsx'
 import { LinkedSignIn } from '@/profile/linked-sign-in.tsx'
 import { MarkReadForm } from '@/profile/mark-read-form.tsx'
+import { RemoteSenders } from '@/profile/remote-senders.tsx'
 import { TimeZoneForm } from '@/profile/time-zone-form.tsx'
 import { userErrorMessage } from '@/users/messages.ts'
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@/users/password.ts'
@@ -24,7 +25,8 @@ type Outcome =
 
 /**
  * The signed-in user's own page: their password, time zone, what "Mark all as read" does first
- * on a folder with subfolders (with the mail client), linked sign-ins, their mail limits where the
+ * on a folder with subfolders and the senders whose remote images they show (with the mail
+ * client), linked sign-ins, their mail limits where the
  * instance sends (mail or MCP) and, with MCP, connected apps.
  */
 export function ProfileScreen(): ReactElement {
@@ -141,6 +143,7 @@ export function ProfileScreen(): ReactElement {
       </form>
       <TimeZoneForm />
       {mail && <MarkReadForm />}
+      {mail && <RemoteSenders />}
       <LinkedSignIn />
       {sends && <LimitsForm />}
       {mcp && <ConnectedApps />}

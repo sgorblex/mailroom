@@ -581,6 +581,81 @@ describe('MailScreen', () => {
     expect(screen.queryByRole('button', { name: 'Show remote images' })).not.toBeInTheDocument()
   })
 
+  it('offers to always show a sender only when DMARC passed for it', async () => {
+    stubMailApi(state())
+    renderMailApp(`/mail?message=${html.ref}`)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'HTML' }))
+    expect(screen.getByRole('button', { name: 'Show remote images' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Always for this sender' })).not.toBeInTheDocument()
+  })
+
+  it('remembers a verified sender and then shows its remote images at once', async () => {
+    const verified = { ...messageView(html).authentication, verified: true, dmarc: 'pass', dmarc_pass: true, from_domain: 'example.org' }
+    const fetchMock = stubMailApi(
+      state({
+        views: {
+          [html.ref]: messageView(html, { has_html: true, remote_images: 3, loadable_remote_images: 3, authentication: verified }),
+          [plain.ref]: messageView(plain),
+        },
+      }),
+    )
+    renderMailApp(`/mail?message=${html.ref}`)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'HTML' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Always for this sender' }))
+    await waitFor(() => {
+      expect(screen.getByTitle(`HTML version of ${html.subject}`)).toHaveAttribute(
+        'src',
+        `/api/v1/mail/messages/${html.ref}/html?remote=1`,
+      )
+    })
+    expect(bodiesTo(fetchMock, '/api/v1/mail/remote-senders')).toEqual([{ ref: html.ref }])
+    expect(screen.getByText("3 remote images are shown: you always show this sender's.")).toBeInTheDocument()
+
+    // Another message, then back: the server now says the sender is trusted.
+    await userEvent.click(within(await messagesList()).getByRole('link', { name: /Message 99/ }))
+    expect(await screen.findByText(`Body of ${plain.subject}`)).toBeInTheDocument()
+    await userEvent.click(within(await messagesList()).getByRole('link', { name: /Message 98/ }))
+    await userEvent.click(await screen.findByRole('button', { name: 'HTML' }))
+    expect(await screen.findByTitle(`HTML version of ${html.subject}`)).toHaveAttribute(
+      'src',
+      `/api/v1/mail/messages/${html.ref}/html?remote=1`,
+    )
+    expect(screen.queryByRole('button', { name: 'Show remote images' })).not.toBeInTheDocument()
+  })
+
+  it('loads remote images at once for a trusted sender', async () => {
+    const fetchMock = stubMailApi(
+      state({ views: { [htmlOnly.ref]: messageView(htmlOnly, { has_html: true, remote_images: 1, loadable_remote_images: 1, remote_trusted: true, text: { content: '', removed_chars: 0, incomplete: false, next_offset: null, quoted_omitted: false } }) } }),
+    )
+    renderMailApp(`/mail?message=${htmlOnly.ref}`)
+
+    expect(await screen.findByTitle(`HTML version of ${htmlOnly.subject}`)).toHaveAttribute(
+      'src',
+      `/api/v1/mail/messages/${htmlOnly.ref}/html?remote=1`,
+    )
+    expect(queriesTo(fetchMock, `/api/v1/mail/messages/${htmlOnly.ref}/html`).map((query) => query.get('remote'))).toEqual(['1'])
+    expect(screen.getByText("1 remote image is shown: you always show this sender's.")).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Show remote images' })).not.toBeInTheDocument()
+  })
+
+  it('says when the server would not remember the sender', async () => {
+    const verified = { ...messageView(html).authentication, verified: true, dmarc: 'pass', dmarc_pass: true, from_domain: 'example.org' }
+    stubMailApi(
+      state({
+        views: { [html.ref]: messageView(html, { has_html: true, remote_images: 2, loadable_remote_images: 2, authentication: verified }) },
+        refuse: { 'POST /api/v1/mail/remote-senders': refusal(400, 'sender_not_verified') },
+      }),
+    )
+    renderMailApp(`/mail?message=${html.ref}`)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'HTML' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Always for this sender' }))
+    expect(await screen.findByText('This sender could not be verified, so it cannot be remembered.')).toHaveAttribute('role', 'alert')
+    expect(screen.getByTitle(`HTML version of ${html.subject}`)).toHaveAttribute('src', `/api/v1/mail/messages/${html.ref}/html`)
+  })
+
   it('opens a message with no text on its HTML, with no remote prompt when there is no remote content', async () => {
     stubMailApi(state())
     renderMailApp(`/mail?message=${htmlOnly.ref}`)
