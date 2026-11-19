@@ -171,13 +171,18 @@ def test_a_recorded_run_and_its_report_take_core_s_codes(db_session: Session, us
     error = "login_failed: [AUTHENTICATIONFAILED] no"
     run = FilterRun(
         rule_set_id=rule_set.id,
+        account_id=1,
         trigger="manual",
         dry_run=False,
         error=error,
         result={"filters": [], "error": error},
     )
     plain = FilterRun(
-        rule_set_id=rule_set.id, trigger="manual", dry_run=True, result={"filters": []}
+        rule_set_id=rule_set.id,
+        account_id=1,
+        trigger="manual",
+        dry_run=True,
+        result={"filters": []},
     )
     db_session.add_all([run, plain])
     db_session.flush()

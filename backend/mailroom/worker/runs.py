@@ -3,9 +3,11 @@ report or the error recorded in its ``app.filter_run`` row.
 
 The rule set is checked again when the run starts: one whose account's Run filters was turned off,
 or which was disabled, since it was queued records that as its error and touches no mail. A run
-whose job is gone (a worker stopped during it) is closed as ``interrupted`` when the next worker
-starts (``close_interrupted_runs``). A run whose move copied messages it then could not remove
-turns its rule set off (``COPIED_NOT_REMOVED``), so no trigger copies them again.
+acts on one account, the one its row names: an all-accounts rule set has a run per account, each
+failing on its own (a move to a folder that account lacks fails ``mailbox_missing``, nothing being
+created). A run whose job is gone (a worker stopped during it) is closed as ``interrupted`` when
+the next worker starts (``close_interrupted_runs``). A run whose move copied messages it then
+could not remove turns its rule set off (``COPIED_NOT_REMOVED``), so no trigger copies them again.
 """
 
 from __future__ import annotations
@@ -84,13 +86,13 @@ def execute_run(db: Session, run_id: int, mailboxes: Mailboxes) -> None:
         db.rollback()
         return
     trigger, user_id, rule_set_id = run.trigger, rule_set.user_id, rule_set.id
-    account_id = rule_set.account_id
+    account_id = run.account_id
     started_at = datetime.now(UTC)
     result: dict[str, Any] | None = None
     names: dict[int, str] = {}
     joins: ThreadJoins | None = None
     try:
-        if not run_filters_on(db, user_id, rule_set.account_id):
+        if not run_filters_on(db, user_id, account_id):
             msg = "Run filters is off for this account."
             raise RunRefused("run_filters_off", msg)
         if not rule_set.enabled:
@@ -103,7 +105,7 @@ def execute_run(db: Session, run_id: int, mailboxes: Mailboxes) -> None:
         db.execute(update(FilterRun).where(FilterRun.id == run_id).values(started_at=started_at))
         # Not idle in a transaction while the mailbox works.
         db.commit()
-        result, error = _run(rule_set, filters, mailboxes, zone, joins)
+        result, error = _run(rule_set, account_id, filters, mailboxes, zone, joins)
     except RunRefused as refused:
         error = refused.error
     except Exception as exc:
@@ -126,6 +128,7 @@ def execute_run(db: Session, run_id: int, mailboxes: Mailboxes) -> None:
             "event": "rule_set_run",
             "user_id": user_id,
             "rule_set_id": rule_set_id,
+            "account_id": account_id,
             "run_id": run_id,
             "trigger": trigger,
             "outcome": outcome if recorded else "gone",
@@ -322,23 +325,25 @@ def close_interrupted_runs(db: Session) -> list[int]:
 
 def _run(
     rule_set: RuleSet,
+    account_id: int,
     filters: Sequence[Filter],
     mailboxes: Mailboxes,
     time_zone: TimeZoneName,
     joins: ThreadJoins | None = None,
 ) -> tuple[dict[str, Any] | None, str | None]:
-    """The run's ``result`` and ``error``: the rule set's filters on its folder, on the user's
-    connections from the worker's pool, today being ``time_zone``'s; a mute rule set's with its
-    ``joins``. Raises ``RunRefused`` when it cannot start."""
+    """The run's ``result`` and ``error``: the rule set's filters on its folder of ``account_id``,
+    on the user's connections from the worker's pool, today being ``time_zone``'s; a mute rule
+    set's with its ``joins``. Raises ``RunRefused`` when it cannot start: ``account_not_found``
+    for an account that is not the user's."""
     store = user_store(mailboxes.engine, rule_set.user_id)
     try:
-        refused = unusable(store, mailboxes.subkey, rule_set.account_id)
+        refused = unusable(store, mailboxes.subkey, account_id)
     except AccountNotFound:
         raise RunRefused("account_not_found", "No such account") from None
     if refused is not None:
         raise RunRefused(*refused)
     with mailboxes.lease(rule_set.user_id, load_accounts(store).revision) as connections:
-        folder = rule_set_folder(connections, rule_set)
+        folder = rule_set_folder(connections, rule_set, account_id)
         try:
             threads = None if joins is None else joins.members
             loaded = engine_filters(rule_set, folder, filters, threads=threads)

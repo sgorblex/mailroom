@@ -93,7 +93,7 @@ def instructions(groups: Sequence[ToolGroup]) -> str:
     if filters:
         opening = (
             "mailroom-app manages the user's Mailroom filters: rule sets of filters, each acting "
-            "on one folder of a mail account."
+            "on one folder of a mail account, or on INBOX of every account (account_id all)."
         )
         if mail is not None:
             opening += f" It also {mail} the user's mail."

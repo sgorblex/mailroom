@@ -59,7 +59,9 @@ the same checks and audit records. They name folders by path (as `folders_list` 
 `path`) and a parent by path or `null` for the top level, so they need no refs and no `mail_read`.
 Their answers are the routes' JSON. `folder_rename` points every rule set and filter action naming
 the folder at its new path (below, *Safety rules*) and lists their ids; when that fails the folder
-is renamed all the same, `rule_sets_updated` is `false` and a `note` says to fix them.
+is renamed all the same, `rule_sets_updated` is `false` and a `note` says to fix them. Rule sets
+for all accounts naming it are left as they are and listed in `all_accounts_rule_sets`, with a
+`note` ([`filters.md`](filters.md#folders-renamed-or-deleted)).
 `folder_delete` deletes the folder's mail **for good**: its `messages` is the `total` from
 `folders_list(counts=true)` the user confirmed, and a changed count is refused, deleting nothing,
 with the new count and the instruction to confirm it with the user before calling again. A
@@ -124,12 +126,12 @@ not OAuth scope.
 | --- | --- | --- |
 | `filters_read` or any `mail_*` group (whichever is on) | `accounts_list` (`id`, a number, `name` (the account's own, null when unnamed), `display_name` (its name, else its login), login, `has_password`, `run_filters` where the instance runs filters, `send_mode`, `identities`, `keywords`: whether the server keeps keywords, so To sort can be used, null when it did not answer within 5 s) | readOnly, idempotent, openWorld |
 | | `folders_list` (`path` as the mail tools take it, `delimiter`, `segments`, `role`; `counts=true` adds unread and total) | readOnly, idempotent, openWorld |
-| `filters_read` (stable, on) | `filter_schema`, `rule_sets_list`, `rule_set_get` (with its filters, each with `matches_30d` and `updated_at`, [`filters.md`](filters.md)), `runs_list` | readOnly, idempotent |
-| `filters_write` (stable, on) | `rule_set_create`, `rule_set_update` (both take `marker`: `none`, `star` or `to_sort`, the last refused as `to_sort_unsupported` where the account keeps no keywords; their descriptions tell the agent to pick To sort for "only marked" where it does, else the star), `filter_add`, `filter_update` (each refusing the To sort actions the same way, a sender criterion on a public mail provider's whole domain as `public_provider_domain`, and `in_thread` as `hidden_criterion`, [`filters.md`](filters.md#filter-drafts)), `filters_reorder` | none |
+| `filters_read` (stable, on) | `filter_schema`, `rule_sets_list` (`account_id` an id or `all`, the rule sets for all accounts), `rule_set_get` (with its filters, each with `matches_30d` and `updated_at`, [`filters.md`](filters.md)), `runs_list` (each run with the `account_id` it ran on) | readOnly, idempotent |
+| `filters_write` (stable, on) | `rule_set_create` (`account_id` `all`: a [rule set for all accounts](filters.md), on INBOX only), `rule_set_update` (both take `marker`: `none`, `star` or `to_sort`, the last refused as `to_sort_unsupported` where the account keeps no keywords; their descriptions tell the agent to pick To sort for "only marked" where it does, else the star), `filter_add`, `filter_update` (each refusing the To sort actions the same way, a sender criterion on a public mail provider's whole domain as `public_provider_domain`, and `in_thread` as `hidden_criterion`, [`filters.md`](filters.md#filter-drafts)), `filters_reorder` | none |
 | | `rule_set_disable` | idempotent |
 | | `rule_set_delete`, `filter_delete` | destructive |
-| `filters_run` (stable, on) | `dry_run` | readOnly, openWorld |
-| | `rule_set_enable`, `run_now`, `account_run_filters(account_id, on)` | destructive |
+| `filters_run` (stable, on) | `dry_run` (`account_id` for a rule set for all accounts) | readOnly, openWorld |
+| | `rule_set_enable`, `run_now` (answers the queued run; for a rule set for all accounts, an optional `account_id`, and `{"runs": [...]}`, a run per account without one), `account_run_filters(account_id, on)` | destructive |
 | `mail_read` (stable, on) | `messages_list`, `messages_search`, `message_read`, `thread_read`, `attachment_read` | readOnly, idempotent, openWorld |
 | `mail_organize` (stable, on) | `messages_move(refs, folder)`, `messages_flag(refs, seen?, flagged?, to_sort?)` | openWorld (flag also idempotent) |
 | | `messages_trash(refs)` | destructive, openWorld |
@@ -164,7 +166,7 @@ originals, the other deletes them for good, and says so as `folder_delete` does.
   `folder_rename`**, which points enabled rule sets at the folder's new path too: they keep acting
   on the same folder, and nothing else about them changes.
 - **Turning things on is a separate, destructive call**: `rule_set_enable` (which says so when the
-  account's *Run filters* is off), `run_now` (with the same guards as *Run now* in the web app) and
+  account's *Run filters* is off, or every account's for a rule set for all accounts), `run_now` (with the same guards as *Run now* in the web app) and
   `account_run_filters`, the account's [Run filters](../GLOSSARY.md) switch.
 - `dry_run` changes nothing and shares the user's one-dry-run-at-a-time slot with the web app.
 - **A filter may delete for good:** the filter tools accept the filter engine's `delete` action, as the

@@ -6,7 +6,9 @@ the mail service.
 A rule set names a folder by its own ``folder``; a filter by the ``folder`` of a ``move_to`` or a
 ``trash`` action anywhere in its spec (in a ``seq`` at any depth: the spec has no other path).
 Either counts when it names the folder or one under it. Segments compare exactly, but for a
-leading ``INBOX``, in any case, as IMAP names it. Specification:
+leading ``INBOX``, in any case, as IMAP names it. A rule set for all accounts names the folder on
+each account: it holds a delete back, but a rename on one account does not rewrite it, and is
+reported instead. Specification:
 ``docs/requirements/filters.md``, *Folders renamed or deleted*.
 """
 
@@ -15,7 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, cast
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from mailroom.models import Filter, RuleSet
 
@@ -42,6 +44,9 @@ class Rewritten:
     """Every rule set changed: its own folder, or a filter of it."""
     filters: list[int]
     """The filters whose spec changed."""
+    all_accounts: list[int]
+    """The rule sets for all accounts that name the folder, left as they are: their other
+    accounts may still have it."""
 
 
 def _same(index: int, segment: str, other: str) -> bool:
@@ -102,10 +107,19 @@ def rewritten_spec(node: object, old: Sequence[str], new: Sequence[str]) -> obje
     return node
 
 
-def _rule_sets(db: Session, user_id: int, account_id: int, *, lock: bool) -> list[RuleSet]:
+def _rule_sets(
+    db: Session, user_id: int, account_id: int | None, *, lock: bool, all_accounts: bool = False
+) -> list[RuleSet]:
+    """The account's rule sets (None: the all-accounts ones), with the all-accounts ones too when
+    ``all_accounts``."""
+    of_account = (
+        RuleSet.account_id.is_(None) if account_id is None else RuleSet.account_id == account_id
+    )
+    if all_accounts:
+        of_account = or_(of_account, RuleSet.account_id.is_(None))
     statement = (
         select(RuleSet)
-        .where(RuleSet.user_id == user_id, RuleSet.account_id == account_id, RuleSet.kind == "user")
+        .where(RuleSet.user_id == user_id, of_account, RuleSet.kind == "user")
         .order_by(RuleSet.id)
     )
     if lock:
@@ -126,19 +140,26 @@ def _filters(db: Session, rule_sets: Sequence[RuleSet], *, lock: bool) -> list[F
     return list(db.scalars(statement))
 
 
-def naming_rule_sets(
-    db: Session, user_id: int, account_id: int, segments: Sequence[str]
-) -> list[RuleSetRef]:
-    """The user's rule sets of the account that name the folder ``segments`` or one under it,
-    by their own folder or by a filter's action, enabled or not, in id order."""
-    rule_sets = _rule_sets(db, user_id, account_id, lock=False)
+def _naming(db: Session, rule_sets: Sequence[RuleSet], segments: Sequence[str]) -> list[RuleSet]:
+    """Those of ``rule_sets`` that name the folder ``segments`` or one under it, by their own
+    folder or by a filter's action, in their order."""
     naming = {rule_set.id for rule_set in rule_sets if under(rule_set.folder, segments)}
     for row in _filters(db, rule_sets, lock=False):
         if row.rule_set_id not in naming and any(
             under(path, segments) for path in spec_folders(row.spec)
         ):
             naming.add(row.rule_set_id)
-    return [RuleSetRef(r.id, r.name) for r in rule_sets if r.id in naming]
+    return [rule_set for rule_set in rule_sets if rule_set.id in naming]
+
+
+def naming_rule_sets(
+    db: Session, user_id: int, account_id: int, segments: Sequence[str]
+) -> list[RuleSetRef]:
+    """The user's rule sets of the account, and for all accounts, that name the folder
+    ``segments`` or one under it, by their own folder or by a filter's action, enabled or not,
+    in id order."""
+    rule_sets = _rule_sets(db, user_id, account_id, lock=False, all_accounts=True)
+    return [RuleSetRef(r.id, r.name) for r in _naming(db, rule_sets, segments)]
 
 
 def rewrite_folder(
@@ -147,7 +168,9 @@ def rewrite_folder(
     """Points the user's rule sets of the account, and their filters' actions, from the folder
     ``old`` (and every folder under it) to ``new``, in one transaction, committed. Enabled rule
     sets too: they keep acting on the same folder, under its new name. The account's rule sets
-    are locked first, then their filters, as every change of a filter locks its rule set."""
+    are locked first, then their filters, as every change of a filter locks its rule set. The
+    rule sets for all accounts are not changed: those naming ``old`` are reported."""
+    shared = _naming(db, _rule_sets(db, user_id, None, lock=False), old)
     rule_sets = _rule_sets(db, user_id, account_id, lock=True)
     filters = _filters(db, rule_sets, lock=True)
     changed: set[int] = set()
@@ -167,4 +190,5 @@ def rewrite_folder(
     return Rewritten(
         rule_sets=[rule_set.id for rule_set in rule_sets if rule_set.id in changed],
         filters=rewritten_filters,
+        all_accounts=[rule_set.id for rule_set in shared],
     )

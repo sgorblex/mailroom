@@ -201,9 +201,14 @@ export function dryRun(ruleSetId: number): Promise<Run> {
   return apiPostJson(`${ruleSet(ruleSetId)}/dry-run`, undefined, { schema: runSchema })
 }
 
-/** Queues a run for the worker. */
-export function runNow(ruleSetId: number): Promise<Run> {
-  return apiPostJson(`${ruleSet(ruleSetId)}/run`, undefined, { schema: runSchema })
+/**
+ * Queues a run for the worker: the runs queued. A rule set of one account answers its run, one for
+ * all accounts the list of them (one per account).
+ */
+export function runNow(ruleSetId: number): Promise<Run[]> {
+  return apiPostJson(`${ruleSet(ruleSetId)}/run`, undefined, {
+    schema: z.union([z.array(runSchema), runSchema.transform((run) => [run])]),
+  })
 }
 
 /** The rule set's runs, newest first. */

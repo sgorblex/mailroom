@@ -117,6 +117,9 @@ class FolderRenamedAnswer(BaseModel):
     rule_sets: list[int]
     filters: list[int]
     rule_sets_updated: bool
+    all_accounts_rule_sets: list[int]
+    """Rule sets for all accounts naming the old path: left as they are, so they fail on this
+    account until the user points them elsewhere."""
 
 
 class FolderDeleted(BaseModel):
@@ -154,6 +157,7 @@ def rename_folder(
         rule_sets=list(renamed.rule_sets),
         filters=list(renamed.filters),
         rule_sets_updated=renamed.rule_sets_updated,
+        all_accounts_rule_sets=list(renamed.all_accounts_rule_sets),
     )
 
 

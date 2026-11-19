@@ -25,6 +25,22 @@ in the browser, tried with a dry run, and run by the worker. Product scope:
   (there they match nothing). Ticking *Only marked* in the web picks To sort where the account keeps keywords, else
   the star; the API and MCP always take the marker as given. Rule sets from before markers keep
   the star.
+- A **rule set for all accounts** (`account_id` `all`) belongs to no one account: it runs on
+  **INBOX only** (another folder is refused, `all_accounts_inbox_only`) of **each account whose
+  *Run filters* is on**, as that account's own rule sets do, with no exemption: a run per account,
+  each recorded with its `account_id`, held by that account's one-run-at-a-time lock, kept in its
+  own history (100 runs per rule set and account) and, when scheduled, on its own schedule; a
+  `new_mail` one watches each such account's INBOX. Each account's run stands alone: one that
+  fails leaves the others to run. Actions by **role** work on every account (`trash` without a
+  folder, `junk`); a `move_to` or `trash` naming a folder fails `mailbox_missing` on an account
+  without that folder, recorded in that account's run and its audit trail, and no folder is ever
+  created. To sort, being per account, is refused for it as marker and as action
+  (`to_sort_unsupported`; the star works everywhere). Listed apart from every account's own
+  (`GET /accounts/all/rule-sets`). A dry run and *Run now* take an account (`account_id`): a dry
+  run of one needs it (`account_required`); *Run now* without it queues a run on each account
+  whose *Run filters* is on, and is refused when none is; it answers the list of runs it
+  queued, where a rule set of one account's *Run now* answers its one run. Naming another
+  account than a rule set's own is refused (`wrong_account`).
 - A rule set holds **ordered filters**, each a filter spec (criteria plus actions), stored as
   the [filter engine](../GLOSSARY.md) serialises it and validated with its `load_filter`, its JSON
   Schema, and every `pattern` compiled as a regular expression (with `regex`, which the engine
@@ -154,8 +170,11 @@ folder under it. Segments compare exactly, but for a leading `INBOX`, in any cas
   (30 s). A run going on meanwhile may fail `mailbox_missing`. When the database step fails, the
   folder is renamed and the rule sets still name the old path: the answer says so
   (`rule_sets_updated: false`) and the user points them again.
-- **A delete** is refused while any rule set or filter action of the account names the folder
-  or one under it (`folder_in_use`, naming them), so that no rule set is left on a folder that
+- **A rule set for all accounts** is not rewritten by a rename on one account, whose others may
+  keep the old path: the answer lists those naming it (`all_accounts_rule_sets`, also in the audit
+  record), and their moves there fail on that account until the user changes them.
+- **A delete** is refused while any rule set or filter action of the account, or of a rule set
+  for all accounts, names the folder or one under it (`folder_in_use`, naming them), so that no rule set is left on a folder that
   is gone. A rule set created between that check and the delete, or a folder deleted by another
   mail client, leaves a rule set naming a missing folder: its runs fail `mailbox_missing`.
 
@@ -218,10 +237,10 @@ Schema `app`; every row belongs to the user who owns the account.
 
 | Table | Columns |
 | --- | --- |
-| `rule_set` | `id`, `user_id`, `account_id`, `folder` (`text[]`, path segments), `name`, `trigger` (`new_mail` \| `scheduled` \| `manual`), `interval_minutes` (`scheduled` only), `marker` (`none` \| `star` \| `to_sort`), `enabled`, `kind` (`user` \| `mute`, one `mute` per account at most), timestamps |
+| `rule_set` | `id`, `user_id`, `account_id` (null: all accounts, a `user` rule set only), `folder` (`text[]`, path segments), `name`, `trigger` (`new_mail` \| `scheduled` \| `manual`), `interval_minutes` (`scheduled` only), `marker` (`none` \| `star` \| `to_sort`), `enabled`, `kind` (`user` \| `mute`, one `mute` per account at most), timestamps |
 | `filter` | `id`, `rule_set_id`, `position`, `name`, `enabled`, `spec` (`jsonb`, a filter spec), timestamps |
 | `muted_thread` | `id`, `user_id`, `account_id`, `message_ids` (`jsonb`, at most 200), `gm_thrid` (Gmail's thread id, or null), `created_at` |
-| `filter_run` | `id`, `rule_set_id`, `trigger`, `created_at`, `started_at` (null while queued), `finished_at`, `dry_run`, `result` (`jsonb`, the filter engine's run report), `error` |
+| `filter_run` | `id`, `rule_set_id`, `account_id` (the account it ran on), `trigger`, `created_at`, `started_at` (null while queued), `finished_at`, `dry_run`, `result` (`jsonb`, the filter engine's run report), `error` |
 
 The per-account toggle is `account_filter_settings(user_id, account_id, run_filters bool default
 false)`.
@@ -236,14 +255,14 @@ Under `/api/v1`, signed-in user's own data only (another user's id is a 404).
 | `GET`, `PUT /accounts/{id}/filter-settings` | Read, set *Run filters* (`{"run_filters": bool}`) |
 | `GET /filters/schema` | The filter spec's JSON Schema (`json_schema()`), without `in_thread` |
 | `POST /filters/draft-from-search` | A [draft](#filter-drafts) from a search's body: `{"spec", "dropped"}` |
-| `GET`, `POST /accounts/{id}/rule-sets` | List, create an account's rule sets |
+| `GET`, `POST /accounts/{id}/rule-sets` | List, create an account's rule sets; `{id}` `all`: the rule sets for all accounts (`account_id` `"all"` in the answer) |
 | `GET`, `PATCH`, `DELETE /rule-sets/{id}` | Read (with its filters), edit, remove a rule set |
 | `POST /rule-sets/{id}/filters` | Add a filter (at the end) |
 | `PATCH`, `DELETE /filters/{id}` | Edit, remove a filter |
 | `PUT /rule-sets/{id}/order` | Reorder: the rule set's filter ids, in the new order |
-| `POST /rule-sets/{id}/dry-run` | Dry run, synchronous and bounded; returns the run, with its report |
-| `POST /rule-sets/{id}/run` | Run now: enqueues a run, `202` with the queued run |
-| `GET /rule-sets/{id}/runs` | Run history, newest first |
+| `POST /rule-sets/{id}/dry-run` | Dry run, synchronous and bounded; returns the run, with its report; `?account_id=` for a rule set for all accounts |
+| `POST /rule-sets/{id}/run` | Run now: enqueues a run, `202` with the queued run; for a rule set for all accounts, `202` with the list of runs queued (one per account without `?account_id=`) |
+| `GET /rule-sets/{id}/runs` | Run history, newest first, each run with its `account_id` |
 
 An unknown or foreign id is a `404` with a plain `detail` (`"No such rule set"`). Refusals answer
 `{"detail": {"code": …, "message": …}}`:
@@ -251,14 +270,20 @@ An unknown or foreign id is a `404` with a plain `detail` (`"No such rule set"`)
 - `400` `invalid_spec`, carrying the filter engine's `SpecError` text, the schema's or the regular
   expression's complaint; `400` `hidden_criterion` for a spec naming `in_thread`;
 - `400` `invalid_rule_set` (an `interval_minutes` exactly when `scheduled`), `invalid_order`;
+- a rule set for all accounts on another folder than INBOX: `400` `all_accounts_inbox_only`;
+  with To sort, as marker or action: `400` `to_sort_unsupported`;
 - creating a rule set with the `to_sort` marker, or changing one to it: `400`
   `to_sort_unsupported` where the account's server keeps no keywords, and the mailbox failures
   of the account's folder listing when it cannot be asked;
 - adding a filter or changing its spec: `400` `public_provider_domain` for a `from_domain` on a
   [public mail provider](#filter-drafts);
 - adding a filter: `400` `too_many_filters` when the rule set already holds 100;
-- *Run now*: `400` `run_filters_off` while the account's *Run filters* is off, `400`
-  `rule_set_disabled`, `409` `run_pending` while a run of that rule set is still waiting;
+- *Run now*: `400` `run_filters_off` while the account's *Run filters* is off (every account's,
+  for a rule set for all accounts), `400` `rule_set_disabled`, `409` `run_pending` while a run of
+  that rule set is still waiting on each account;
+- dry run and *Run now*: `400` `wrong_account` for an account other than the rule set's own,
+  `400` `account_required` for a dry run of a rule set for all accounts without one, `404` for
+  an account that is not the user's;
 - dry run: `404` `account_not_found`, `400` `invalid_spec` for a stored spec the filter engine no
   longer loads, `400` `match_timeout` when a pattern takes too long on a message, `504`
   `dry_run_timeout`, `429` `dry_run_busy` while another dry run of the user's is still going (not

@@ -90,7 +90,7 @@ def add_rule_set(
     user: User,
     folder: list[str],
     *filters: dict[str, Any],
-    account_id: int = 1,
+    account_id: int | None = 1,
     enabled: bool = False,
     name: str = "rules",
 ) -> RuleSet:
@@ -120,12 +120,17 @@ def test_naming_rule_sets_finds_a_rule_set_by_its_folder_or_a_filter_s(
     )
     add_rule_set(db_session, user, ["INBOX"], spec(move_to("Projects2")), name="other folder")
     add_rule_set(db_session, user, ["Projects"], account_id=2, name="other account")
+    every = add_rule_set(
+        db_session, user, ["INBOX"], spec(move_to("Projects")), account_id=None, name="every"
+    )
     bob = create_user(db_session, "bob", PASSWORD)
     add_rule_set(db_session, bob, ["Projects"], name="bob's")
+    # A rule set for all accounts names the folder on each of them.
     assert naming_rule_sets(db_session, user.id, 1, ["Projects"]) == [
         RuleSetRef(on_it.id, "on it"),
         RuleSetRef(below.id, "below"),
         RuleSetRef(moving.id, "moving"),
+        RuleSetRef(every.id, "every"),
     ]
     assert naming_rule_sets(db_session, user.id, 1, ["Projects", "2026"]) == [
         RuleSetRef(below.id, "below")
@@ -143,12 +148,13 @@ def test_rewrite_folder_rewrites_this_account_s_rule_sets_and_filters_only(
     )
     untouched = add_rule_set(db_session, user, ["Older"], spec(move_to("Older")))
     home = add_rule_set(db_session, user, ["Old"], spec(move_to("Old")), account_id=2)
+    every = add_rule_set(db_session, user, ["INBOX"], spec(move_to("Old")), account_id=None)
     bob = create_user(db_session, "bob", PASSWORD)
     bobs = add_rule_set(db_session, bob, ["Old"], spec(move_to("Old")))
     [keep, moving] = db_session.query(Filter).filter_by(rule_set_id=mover.id).order_by(Filter.id)
 
     assert rewrite_folder(db_session, user.id, 1, ["Old"], ["Archive", "New"]) == Rewritten(
-        rule_sets=[enabled.id, below.id, mover.id], filters=[moving.id]
+        rule_sets=[enabled.id, below.id, mover.id], filters=[moving.id], all_accounts=[every.id]
     )
     db_session.expire_all()
     assert enabled.folder == ["Archive", "New"]
@@ -160,4 +166,7 @@ def test_rewrite_folder_rewrites_this_account_s_rule_sets_and_filters_only(
     assert (home.folder, bobs.folder) == (["Old"], ["Old"])
     home_filter = db_session.query(Filter).filter_by(rule_set_id=home.id).one()
     assert home_filter.spec == spec(move_to("Old"))
-    assert rewrite_folder(db_session, user.id, 1, ["Gone"], ["New"]) == Rewritten([], [])
+    # Reported, not rewritten: the other accounts may keep their Old.
+    every_filter = db_session.query(Filter).filter_by(rule_set_id=every.id).one()
+    assert every_filter.spec == spec(move_to("Old"))
+    assert rewrite_folder(db_session, user.id, 1, ["Gone"], ["New"]) == Rewritten([], [], [])

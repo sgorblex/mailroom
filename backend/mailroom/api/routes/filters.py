@@ -7,7 +7,7 @@ Specification: ``docs/requirements/filters.md``.
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Path, Query
 from pydantic import BaseModel, Field
@@ -27,10 +27,19 @@ from mailroom.filters.service import (
     RunOut,
 )
 from mailroom.filters.spec import offered_schema
+from mailroom_core.config import MAX_SAFE_INTEGER
 
 filters_router = APIRouter()
 
 RowId = Annotated[int, Path(ge=1)]
+Accounts = Annotated[
+    Annotated[int, Field(ge=1, le=MAX_SAFE_INTEGER)] | Literal["all"],
+    Path(description="An account id, or all: the rule sets run on INBOX of every account."),
+]
+RunAccount = Annotated[
+    int | None,
+    Query(ge=1, le=MAX_SAFE_INTEGER, description="For a rule set for all accounts: which one."),
+]
 
 
 class Folder(BaseModel):
@@ -82,15 +91,17 @@ def change_filter_settings(
 
 @filters_router.get("/accounts/{account_id}/rule-sets")
 def rule_sets(
-    account_id: AccountId, ctx: Context, db: DbSession, user: CurrentUser
+    account_id: Accounts, ctx: Context, db: DbSession, user: CurrentUser
 ) -> list[RuleSetOut]:
+    """The account's rule sets; ``all``: the rule sets for all accounts."""
     return service.rule_sets(ctx, db, user.id, account_id)
 
 
 @filters_router.post("/accounts/{account_id}/rule-sets", status_code=201)
 def add_rule_set(
-    account_id: AccountId, body: RuleSetFields, ctx: Context, db: DbSession, user: CurrentUser
+    account_id: Accounts, body: RuleSetFields, ctx: Context, db: DbSession, user: CurrentUser
 ) -> RuleSetDetail:
+    """``all``: a rule set on INBOX of every account whose Run filters is on."""
     return service.add_rule_set(ctx, db, user.id, account_id, body)
 
 
@@ -138,18 +149,32 @@ def reorder_filters(
 
 
 @filters_router.post("/rule-sets/{rule_set_id}/dry-run")
-def dry_run_rule_set(rule_set_id: RowId, ctx: Context, db: DbSession, user: CurrentUser) -> RunOut:
+def dry_run_rule_set(
+    rule_set_id: RowId,
+    ctx: Context,
+    db: DbSession,
+    user: CurrentUser,
+    account_id: RunAccount = None,
+) -> RunOut:
     """Run the enabled filters without acting, on the folder's newest messages, briefly; the run
-    joins the history. Mailbox failures answer as a folder listing does, 504 on time out; one
-    dry run per user at a time (429 ``dry_run_busy``, not recorded)."""
-    return service.dry_run(ctx, db, user.id, rule_set_id)
+    joins the history. A rule set for all accounts needs ``account_id``. Mailbox failures answer
+    as a folder listing does, 504 on time out; one dry run per user at a time (429
+    ``dry_run_busy``, not recorded)."""
+    return service.dry_run(ctx, db, user.id, rule_set_id, account_id)
 
 
 @filters_router.post("/rule-sets/{rule_set_id}/run", status_code=202)
-def run_rule_set_now(rule_set_id: RowId, db: DbSession, user: CurrentUser) -> RunOut:
-    """Queue a run for the worker. Refused while the account's Run filters is off, for a
-    disabled rule set, and while a run of it is already waiting."""
-    return service.run_now(db, user.id, rule_set_id)
+def run_rule_set_now(
+    rule_set_id: RowId,
+    ctx: Context,
+    db: DbSession,
+    user: CurrentUser,
+    account_id: RunAccount = None,
+) -> RunOut | list[RunOut]:
+    """Queue a run for the worker: the run queued; for a rule set for all accounts the list of
+    the runs queued, one per account without ``account_id``. Refused while the account's Run
+    filters is off, for a disabled rule set, and while a run of it is already waiting."""
+    return service.run_now(ctx, db, user.id, rule_set_id, account_id)
 
 
 @filters_router.get("/rule-sets/{rule_set_id}/runs")

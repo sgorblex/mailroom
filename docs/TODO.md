@@ -147,7 +147,8 @@ released and checked in production before the next one starts. Batch 15 is the r
 - [x] **Mute a thread** — later replies arrive read
       ([`filters.md`](requirements/filters.md#muted-threads)).
 - [x] **Match counts per filter** — how often each filter matched lately, so dead ones stand out.
-- [ ] **Rules for all accounts** — one rule set applied to every account of the user.
+- [ ] **Rules for all accounts** — one rule set applied to every account of the user. API and
+      MCP done ([`filters.md`](requirements/filters.md)); the web's editor still to come.
 - [ ] **Filters that move to another account** — a `mailroom_core.filters` action naming the
       target account, resolved by the host at load time (the user's own only, checked on save
       and at run), with an account and folder picker in the filter editor. Needs a guard against loops (A to B and

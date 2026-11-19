@@ -466,8 +466,10 @@ def test_run_now_and_the_run_filters_switch(
     assert mcp.error(token, "run_now", rule_set_id=rule_set_id) == "Enable the rule set to run it."
 
     assert "note" not in mcp.call(token, "rule_set_enable", rule_set_id=rule_set_id)
+    # A rule set of one account answers its run, not a list.
     queued = mcp.call(token, "run_now", rule_set_id=rule_set_id)
     assert (queued["trigger"], queued["dry_run"], queued["started_at"]) == ("manual", False, None)
+    assert queued["account_id"] == account
     pending = mcp.error(token, "run_now", rule_set_id=rule_set_id)
     assert pending == "A run of this rule set is already waiting."
     runs = mcp.call(token, "runs_list", rule_set_id=rule_set_id)["runs"]
@@ -476,6 +478,35 @@ def test_run_now_and_the_run_filters_switch(
     off = mcp.call(token, "account_run_filters", account_id=account, on=False)
     assert off["run_filters"] is False
     assert "Invalid arguments" in mcp.error(token, "account_run_filters", account_id=account, on=1)
+
+
+def test_a_rule_set_for_all_accounts_over_mcp(mcp: Mcp, token: str, account: int) -> None:
+    created = mcp.call(
+        token,
+        "rule_set_create",
+        account_id="all",
+        name="Everywhere",
+        folder=["INBOX"],
+        trigger="manual",
+    )
+    rule_set_id = created["id"]
+    assert (created["account_id"], created["enabled"]) == ("all", False)
+    listed = mcp.call(token, "rule_sets_list", account_id="all")["rule_sets"]
+    assert [row["id"] for row in listed] == [rule_set_id]
+    assert mcp.call(token, "rule_sets_list", account_id=account)["rule_sets"] == []
+    refused = mcp.error(token, "rule_set_update", rule_set_id=rule_set_id, folder=["Archive"])
+    assert refused == "A rule set for all accounts runs on INBOX only."
+    assert "Name the account" in mcp.error(token, "dry_run", rule_set_id=rule_set_id)
+
+    enabled = mcp.call(token, "rule_set_enable", rule_set_id=rule_set_id)
+    assert "every account" in enabled["note"]
+    assert mcp.error(token, "run_now", rule_set_id=rule_set_id).startswith("Run filters is off")
+    mcp.call(token, "account_run_filters", account_id=account, on=True)
+    assert "note" not in mcp.call(token, "rule_set_enable", rule_set_id=rule_set_id)
+    [queued] = mcp.call(token, "run_now", rule_set_id=rule_set_id)["runs"]
+    assert queued["account_id"] == account
+    [run] = mcp.call(token, "runs_list", rule_set_id=rule_set_id)["runs"]
+    assert (run["id"], run["account_id"]) == (queued["id"], account)
 
 
 def test_the_audit_trail_lists_what_was_done_with_the_mail_in_the_envelope(
@@ -1689,6 +1720,7 @@ def test_folders_are_created_renamed_with_their_rule_sets_and_deleted(
         "rule_sets": [enabled.id, mover.id],
         "filters": [moves.id],
         "rule_sets_updated": True,
+        "all_accounts_rule_sets": [],
     }
     assert {"Work", f"Work{delimiter}2025"} <= listed_paths(mcp, token)
     db_session.expire_all()
@@ -1728,6 +1760,19 @@ def test_a_rename_whose_rule_sets_cannot_follow_says_so(
     assert renamed["rule_sets_updated"] is False
     assert "still name the old path" in renamed["note"]
     assert "New" in listed_paths(mcp, token)
+
+
+def test_a_rename_names_the_rule_sets_for_all_accounts_it_left(
+    mcp: Mcp, token: str, mail: MailAccounts, db_session: Session, user: User
+) -> None:
+    login = mail.add()
+    create_folders(mail.server, login, "Old")
+    every = add_rule_set(db_session, user.id, ["INBOX"], moving_to("Old"), account_id=None)
+    renamed = mcp.call(token, "folder_rename", account_id=1, folder="Old", parent=None, name="New")
+    assert (renamed["rule_sets_updated"], renamed["all_accounts_rule_sets"]) == (True, [every.id])
+    assert "still name the old path" in renamed["note"]
+    db_session.expire_all()
+    assert db_session.query(Filter).filter_by(rule_set_id=every.id).one().spec == moving_to("Old")
 
 
 def test_a_delete_is_refused_with_what_to_do_next_and_deletes_nothing(
