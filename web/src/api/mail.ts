@@ -218,6 +218,8 @@ const folderRenamedSchema = z.object({
   filters: z.array(z.number()),
   /** `false`: the folder was renamed but its rule sets still name the old path. */
   rule_sets_updated: z.boolean(),
+  /** The rule sets for all accounts naming the old path, which a rename leaves as they are. */
+  all_accounts_rule_sets: z.array(z.number()),
 })
 export type FolderRenamed = z.infer<typeof folderRenamedSchema>
 

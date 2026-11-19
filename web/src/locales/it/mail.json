@@ -80,6 +80,8 @@
     "renamedRuleSets_one": "Rinominata in {{path}}; {{count}} regola la segue.",
     "renamedRuleSets_other": "Rinominata in {{path}}; {{count}} regole la seguono.",
     "ruleSetsNotUpdated": "Rinominata in {{path}}, ma non è stato possibile aggiornare le sue regole: indicano ancora la vecchia cartella. Correggile in Filtri.",
+    "allAccountsRuleSets_one": "{{count}} regola per tutti gli account indica ancora il vecchio percorso: i suoi spostamenti lì non riescono su questo account finché non la modifichi in Filtri.",
+    "allAccountsRuleSets_other": "{{count}} regole per tutti gli account indicano ancora il vecchio percorso: i loro spostamenti lì non riescono su questo account finché non le modifichi in Filtri.",
     "deleted": "Eliminata {{path}}.",
     "markedRead_one": "Segnato come letto {{count}} messaggio in {{path}}.",
     "markedRead_other": "Segnati come letti {{count}} messaggi in {{path}}.",

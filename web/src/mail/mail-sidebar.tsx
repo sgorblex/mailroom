@@ -111,15 +111,18 @@ function FolderList({
         if (folder !== null && isWithin(folder, answer.folder, delimiter)) {
           show(renamedPath(folder, answer.folder, answer.path, delimiter))
         }
+        const everyAccount = answer.all_accounts_rule_sets.length
+        // Rule sets for all accounts keep the old path, which other accounts may still have.
+        const stale = everyAccount > 0 ? ` ${t('folderActions.allAccountsRuleSets', { count: everyAccount })}` : ''
         setNotice(
           !answer.rule_sets_updated
-            ? { text: t('folderActions.ruleSetsNotUpdated', { path: answer.path }), alert: true }
+            ? { text: t('folderActions.ruleSetsNotUpdated', { path: answer.path }) + stale, alert: true }
             : {
                 text:
-                  answer.rule_sets.length > 0
+                  (answer.rule_sets.length > 0
                     ? t('folderActions.renamedRuleSets', { path: answer.path, count: answer.rule_sets.length })
-                    : t('folderActions.renamed', { path: answer.path }),
-                alert: false,
+                    : t('folderActions.renamed', { path: answer.path })) + stale,
+                alert: everyAccount > 0,
               },
         )
         break

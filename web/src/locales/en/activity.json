@@ -89,7 +89,8 @@
     "messages": "Messages",
     "rule_sets": "Rule sets",
     "filters": "Filters",
-    "rule_sets_error": "Rule sets not updated"
+    "rule_sets_error": "Rule sets not updated",
+    "all_accounts_rule_sets": "Rule sets for all accounts left on the old path"
   },
   "values": {
     "yes": "Yes",

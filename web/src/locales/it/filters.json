@@ -6,6 +6,27 @@
     "goToAccounts": "Vai agli account",
     "runFiltersOn": "Esegui filtri è attivo: le regole abilitate girano.",
     "runFiltersOff": "Esegui filtri è spento: su questo account non gira nulla finché non lo attivi.",
+    "allAccounts": {
+      "title": "Tutti gli account",
+      "intro": "Queste regole smistano la posta in arrivo di ogni account con Esegui filtri attivo, ciascun account per conto suo.",
+      "noneRunning": "Queste regole smistano la posta in arrivo di ogni account con Esegui filtri attivo, che è spento per tutti: non gira nulla finché non lo attivi per uno.",
+      "list": "Regole per tutti gli account",
+      "add": "Aggiungi una regola per tutti gli account",
+      "inboxOnly": "Una regola per tutti gli account smista la posta in arrivo di ciascuno.",
+      "toSortUnsupported": "Da smistare vale per un account solo: una regola per tutti gli account usa la stella.",
+      "toSortUnavailable": "{{label}} (vale per un account solo, non per tutti)",
+      "byRole": "Il cestino di ciascun account",
+      "byPath": "Una cartella indicata dal percorso",
+      "path": "Percorso della cartella",
+      "pathWarning": "Ogni account deve avere una cartella con questo percorso: dove manca lo spostamento non riesce, come riporta la sua esecuzione, e nessuna cartella viene creata. Sposta nel cestino e Sposta nella posta indesiderata funzionano su ogni account.",
+      "tryOn": "Simula su",
+      "dryRunOn": "Simulazione su {{account}}",
+      "runHint_one": "Esegue ora i filtri attivi sulla posta in arrivo di {{count}} account, l'unico con Esegui filtri attivo, spostando e segnando la posta davvero.",
+      "runHint_other": "Esegue ora i filtri attivi sulla posta in arrivo dei {{count}} account con Esegui filtri attivo, spostando e segnando la posta davvero.",
+      "runBlocked": "Esegui filtri è spento per tutti gli account: attivalo per uno negli account per eseguire questa regola.",
+      "queued_one": "Esecuzione in coda su {{count}} account: seguila nella cronologia.",
+      "queued_other": "Esecuzioni in coda su {{count}} account: seguile nella cronologia."
+    },
     "muted": {
       "title": "Conversazioni silenziate",
       "intro": "I loro nuovi messaggi nella posta in arrivo arrivano già letti. Silenzia una conversazione da uno dei suoi messaggi in Posta.",
@@ -338,7 +359,10 @@
     "accountNotFound": "L'account di questa regola non c'è più.",
     "interrupted": "L'esecuzione è stata interrotta e non si è conclusa.",
     "runFailed": "L'esecuzione si è fermata per un errore imprevisto ({{message}}).",
-    "copiedNotRemoved": "Uno spostamento ha copiato alcuni messaggi ma potrebbe non averli rimossi da questa cartella, quindi la regola è stata disattivata: controlla entrambe le cartelle prima di riattivarla."
+    "copiedNotRemoved": "Uno spostamento ha copiato alcuni messaggi ma potrebbe non averli rimossi da questa cartella, quindi la regola è stata disattivata: controlla entrambe le cartelle prima di riattivarla.",
+    "allAccountsInboxOnly": "Una regola per tutti gli account smista solo la posta in arrivo.",
+    "accountRequired": "Scegli l'account su cui simulare questa regola.",
+    "wrongAccount": "Questa regola appartiene a un altro account."
   },
   "filterPhrases": {
     "anything": "qualsiasi messaggio",

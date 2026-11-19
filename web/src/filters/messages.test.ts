@@ -70,4 +70,17 @@ describe('filterErrorMessage', () => {
     expect(filterErrorMessage(t, refusal(429, 'dry_run_busy'), 'fallback')).toBe(busy)
     expect(filterErrorMessage(t, refusal(400, 'too_many_filters'), 'fallback')).toBe(full)
   })
+
+  it('words the refusals about rule sets for all accounts', () => {
+    const t = i18n.getFixedT('en', FILTERS_NS)
+    expect(filterErrorMessage(t, refusal(400, 'all_accounts_inbox_only'), 'fallback')).toBe(
+      'A rule set for all accounts sorts the inbox only.',
+    )
+    expect(filterErrorMessage(t, refusal(400, 'account_required'), 'fallback')).toBe(
+      'Choose the account to dry run this rule set on.',
+    )
+    expect(filterErrorMessage(t, refusal(400, 'wrong_account'), 'fallback')).toBe(
+      'This rule set belongs to another account.',
+    )
+  })
 })

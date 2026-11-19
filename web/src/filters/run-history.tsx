@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronRight } from 'lucide-react'
 
+import { AccountName } from '@/accounts/account-name.tsx'
+import type { Account } from '@/api/accounts.ts'
 import { listRuns, type Filter, type Run } from '@/api/filters.ts'
 import { useTimeZone } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
@@ -35,17 +37,20 @@ function runStatus(t: TFunction, run: Run): string {
 const POLL_MS = 2000
 
 /**
- * A rule set's runs, newest first; each opens to its report. `version` changing reloads it, and it
- * follows queued and running runs until they finish.
+ * A rule set's runs, newest first; each opens to its report, and names the account it ran on when
+ * `accounts` are given (a rule set for all accounts). `version` changing reloads it, and it follows
+ * queued and running runs until they finish.
  */
 export function RunHistory({
   ruleSetId,
+  accounts,
   filters,
   vocabulary,
   version,
   onRefresh,
 }: {
   ruleSetId: number
+  accounts?: Account[]
   filters: Filter[]
   vocabulary: Vocabulary
   version: number
@@ -61,6 +66,11 @@ export function RunHistory({
     `${String(version)}-${String(poll)}`,
   )
   const pending = state.kind === 'loaded' && state.value.some((run) => run.finished_at === null)
+  const accountOf = (run: Run): Pick<Account, 'display_name' | 'colour'> =>
+    accounts?.find((account) => account.id === run.account_id) ?? {
+      display_name: t('accounts.unknown', { ns: 'common' }),
+      colour: null,
+    }
 
   useEffect(() => {
     if (!pending) {
@@ -115,6 +125,9 @@ export function RunHistory({
                       ? t('filters.history.dryRun')
                       : t(`filters.history.triggers.${run.trigger}`, { defaultValue: run.trigger })}
                   </span>
+                  {accounts !== undefined && (
+                    <AccountName account={accountOf(run)} className="text-muted-foreground" />
+                  )}
                   <span className={`ml-auto ${run.error === null ? '' : 'text-destructive'}`}>{runStatus(t, run)}</span>
                 </summary>
                 <div className="flex flex-col gap-3 px-3 pb-3">

@@ -5,6 +5,7 @@ import { TRIGGERS, type Marker, type RuleSet, type RuleSetFields, type Trigger }
 import { Button } from '@/components/ui/button.tsx'
 import { Input } from '@/components/ui/input.tsx'
 
+import { folderLabel } from './describe.ts'
 import { FolderPicker } from './folder-picker.tsx'
 import type { FoldersState } from './folders.ts'
 import { filterErrorMessage } from './messages.ts'
@@ -18,11 +19,15 @@ const DEFAULT_INTERVAL_MINUTES = 60
 type Mark = Exclude<Marker, 'none'>
 const MARKS: readonly Mark[] = ['star', 'to_sort']
 
+/** The one folder a rule set for all accounts sorts. */
+const INBOX: readonly string[] = ['INBOX']
+
 /**
  * Makes a rule set (no `ruleSet`) or edits one: its name, folder, trigger, the mark it is limited
  * to and enabled, the folder picked from the account's. "Only marked" picks To sort where the
  * account's server keeps keywords, else the star; where it keeps none, To sort is greyed out unless
- * the rule set already has it. `save` sends it; a refusal shows above the buttons.
+ * the rule set already has it. A rule set for all accounts sorts INBOX, and takes the star only.
+ * `save` sends it; a refusal shows above the buttons.
  */
 export function RuleSetForm({
   folders,
@@ -42,15 +47,20 @@ export function RuleSetForm({
   const { t } = useTranslation(FILTERS_NS)
   const prefix = useId()
   const editing = ruleSet !== undefined
+  const allAccounts = folders.kind === 'all-accounts'
   const [name, setName] = useState(ruleSet?.name ?? '')
-  const [folder, setFolder] = useState<string[] | null>(ruleSet?.folder ?? null)
+  const [folder, setFolder] = useState<string[] | null>(ruleSet?.folder ?? (allAccounts ? [...INBOX] : null))
   const [trigger, setTrigger] = useState<Trigger>(ruleSet?.trigger ?? 'new_mail')
   const [interval, setIntervalMinutes] = useState(String(ruleSet?.interval_minutes ?? DEFAULT_INTERVAL_MINUTES))
   const [markedOnly, setMarkedOnly] = useState(ruleSet !== undefined && ruleSet.marker !== 'none')
   const [mark, setMark] = useState<Mark>(
-    ruleSet !== undefined && ruleSet.marker !== 'none' ? ruleSet.marker : keywords === true ? 'to_sort' : 'star',
+    ruleSet !== undefined && ruleSet.marker !== 'none'
+      ? ruleSet.marker
+      : keywords === true && !allAccounts
+        ? 'to_sort'
+        : 'star',
   )
-  const toSortUnsupported = keywords === false && ruleSet?.marker !== 'to_sort'
+  const toSortUnsupported = (allAccounts || keywords === false) && ruleSet?.marker !== 'to_sort'
   const [enabled, setEnabled] = useState(ruleSet?.enabled ?? false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -111,17 +121,26 @@ export function RuleSetForm({
           <label htmlFor={id('folder')} className="text-sm font-medium">
             {t('filters.ruleSet.folder')}
           </label>
-          <FolderPicker
-            id={id('folder')}
-            folders={folders}
-            value={folder}
-            invalid={folderMissing}
-            describedBy={folders.kind === 'failed' ? id('folder-hint') : undefined}
-            onChange={(path) => {
-              setFolder(path)
-              setFolderMissing(false)
-            }}
-          />
+          {allAccounts ? (
+            <>
+              <Input id={id('folder')} readOnly value={folderLabel(INBOX)} aria-describedby={id('folder-hint')} />
+              <p id={id('folder-hint')} className="text-sm text-muted-foreground">
+                {t('filters.allAccounts.inboxOnly')}
+              </p>
+            </>
+          ) : (
+            <FolderPicker
+              id={id('folder')}
+              folders={folders}
+              value={folder}
+              invalid={folderMissing}
+              describedBy={folders.kind === 'failed' ? id('folder-hint') : undefined}
+              onChange={(path) => {
+                setFolder(path)
+                setFolderMissing(false)
+              }}
+            />
+          )}
           {folders.kind === 'failed' && (
             <p id={id('folder-hint')} className="text-sm text-muted-foreground">
               {t('filters.foldersUnavailable', { message: folders.message })}
@@ -215,7 +234,9 @@ export function RuleSetForm({
                   <div className={unavailable ? 'flex flex-col opacity-60' : 'flex flex-col'}>
                     <label htmlFor={id(`marker-${option}`)}>{t(`filters.ruleSet.markers.${option}`)}</label>
                     <span id={id(`marker-${option}-hint`)} className="text-muted-foreground">
-                      {unavailable ? t('filters.ruleSet.toSortUnsupported') : t(`filters.ruleSet.markerHints.${option}`)}
+                      {unavailable
+                        ? t(allAccounts ? 'filters.allAccounts.toSortUnsupported' : 'filters.ruleSet.toSortUnsupported')
+                        : t(`filters.ruleSet.markerHints.${option}`)}
                     </span>
                   </div>
                 </div>

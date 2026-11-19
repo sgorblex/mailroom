@@ -680,7 +680,7 @@ function folderRoutes(state: FakeMailState, url: URL, init?: RequestInit): Respo
     state.messages = Object.fromEntries(
       Object.entries(state.messages).map(([key, items]) => [key.startsWith(`${String(account)}/`) ? `${String(account)}/${moved(key.slice(String(account).length + 1))}` : key, items]),
     )
-    return json(200, { account_id: account, folder: from, path: to, rule_sets: [], filters: [], rule_sets_updated: true })
+    return json(200, { account_id: account, folder: from, path: to, rule_sets: [], filters: [], rule_sets_updated: true, all_accounts_rule_sets: [] })
   }
   if (body.messages !== folder.total) {
     return json(409, {

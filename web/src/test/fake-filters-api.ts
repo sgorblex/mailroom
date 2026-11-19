@@ -16,7 +16,8 @@ export interface FakeAccount {
 
 export interface FakeRuleSet {
   id: number
-  account_id: number
+  /** `all` for a rule set for all accounts. */
+  account_id: number | 'all'
   folder: string[]
   name: string
   trigger: 'new_mail' | 'scheduled' | 'manual'
@@ -48,6 +49,8 @@ function filterOut(filter: FakeFilter): Body {
 export interface FakeRun {
   id: number
   rule_set_id: number
+  /** Its rule set's account unless it says otherwise. */
+  account_id?: number
   trigger: string
   dry_run: boolean
   created_at: string
@@ -56,6 +59,11 @@ export interface FakeRun {
   result: Body | null
   error: string | null
 }
+
+/** A run as the API answers it: on its rule set's account unless it names one. */
+const runOut =
+  (ruleSet: FakeRuleSet) =>
+  (run: FakeRun): Body => ({ account_id: ruleSet.account_id === 'all' ? 0 : ruleSet.account_id, ...run })
 
 export interface FakeState {
   accounts: FakeAccount[]
@@ -117,11 +125,14 @@ const invalidSpecResponse = (): Response =>
 /**
  * A fake filters API over `state`, as `docs/requirements/filters.md` specifies it. A spec whose
  * criterion type is `bogus` is refused as the filter engine would; Run now is refused while the
- * account's Run filters is off, and queues a run the worker never starts.
+ * account's Run filters is off, and queues a run the worker never starts (one per running account
+ * for a rule set for all accounts, whose dry run needs `?account_id=`).
  */
 export function stubFiltersApi(state: FakeState): Mock {
   let nextId = 1000
-  const respond = (path: string, init?: RequestInit): Promise<Response> => {
+  const respond = (url: string, init?: RequestInit): Promise<Response> => {
+    const [path = url, query = ''] = url.split('?')
+    const queryAccount = new URLSearchParams(query).get('account_id')
     const method = init?.method ?? 'GET'
     const body: unknown = init?.body == null ? undefined : JSON.parse(init.body as string)
     const fields = (body ?? {}) as Body
@@ -161,7 +172,7 @@ export function stubFiltersApi(state: FakeState): Mock {
     match = /^\/api\/v1\/accounts\/([^/]+)\/(folders|rule-sets)$/.exec(path)
     if (match !== null) {
       const [, id, what] = match
-      const accountId = Number(id)
+      const accountId: FakeRuleSet['account_id'] = id === 'all' ? 'all' : Number(id)
       if (what === 'folders') {
         return Promise.resolve(json(200, state.folders.map((folder) => ({ path: folder }))))
       }
@@ -209,6 +220,12 @@ export function stubFiltersApi(state: FakeState): Mock {
         return Promise.resolve(json(200, withFilters(ruleSet)['filters']))
       }
       if (rest === '/dry-run' && method === 'POST') {
+        const runAccount = ruleSet.account_id === 'all' ? Number(queryAccount) : ruleSet.account_id
+        if (ruleSet.account_id === 'all' && queryAccount === null) {
+          return Promise.resolve(
+            json(400, { detail: { code: 'account_required', message: 'Name the account.' } }),
+          )
+        }
         const report = {
           account: ruleSet.account_id,
           folder: ruleSet.folder,
@@ -228,6 +245,7 @@ export function stubFiltersApi(state: FakeState): Mock {
         const run: FakeRun = {
           id: (nextId += 1),
           rule_set_id: ruleSet.id,
+          account_id: runAccount,
           trigger: 'manual',
           dry_run: true,
           created_at: '2026-10-20T10:00:00Z',
@@ -237,30 +255,40 @@ export function stubFiltersApi(state: FakeState): Mock {
           error: null,
         }
         state.runs.unshift(run)
-        return Promise.resolve(json(200, run))
+        return Promise.resolve(json(200, runOut(ruleSet)(run)))
       }
       if (rest === '/run' && method === 'POST') {
-        if (state.accounts.find((item) => item.id === ruleSet.account_id)?.run_filters !== true) {
+        const running = state.accounts
+          .filter((item) => item.run_filters && (ruleSet.account_id === 'all' || item.id === ruleSet.account_id))
+          .map((item) => item.id)
+        if (running.length === 0) {
           return Promise.resolve(
             json(400, { detail: { code: 'run_filters_off', message: 'Run filters is off for this account.' } }),
           )
         }
-        const run: FakeRun = {
-          id: (nextId += 1),
-          rule_set_id: ruleSet.id,
-          trigger: 'manual',
-          dry_run: false,
-          created_at: '2026-10-20T11:00:00Z',
-          started_at: null,
-          finished_at: null,
-          result: null,
-          error: null,
-        }
-        state.runs.unshift(run)
-        return Promise.resolve(json(202, run))
+        const queued = running.map(
+          (accountId): FakeRun => ({
+            id: (nextId += 1),
+            rule_set_id: ruleSet.id,
+            account_id: accountId,
+            trigger: 'manual',
+            dry_run: false,
+            created_at: '2026-10-20T11:00:00Z',
+            started_at: null,
+            finished_at: null,
+            result: null,
+            error: null,
+          }),
+        )
+        state.runs.unshift(...queued)
+        const answered = queued.map(runOut(ruleSet))
+        // Only a rule set for all accounts answers a list; one account's answers its run.
+        return Promise.resolve(json(202, ruleSet.account_id === 'all' ? answered : answered[0]))
       }
       if (rest === '/runs' && method === 'GET') {
-        return Promise.resolve(json(200, state.runs.filter((run) => run.rule_set_id === ruleSet.id)))
+        return Promise.resolve(
+          json(200, state.runs.filter((run) => run.rule_set_id === ruleSet.id).map(runOut(ruleSet))),
+        )
       }
       return Promise.resolve(notFound())
     }

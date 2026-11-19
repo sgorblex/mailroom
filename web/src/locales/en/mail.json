@@ -80,6 +80,8 @@
     "renamedRuleSets_one": "Renamed to {{path}}; {{count}} rule set follows it.",
     "renamedRuleSets_other": "Renamed to {{path}}; {{count}} rule sets follow it.",
     "ruleSetsNotUpdated": "Renamed to {{path}}, but its rule sets could not be updated: they still name the old folder. Fix them in Filters.",
+    "allAccountsRuleSets_one": "{{count}} rule set for all accounts still names the old path: its moves there fail on this account until you change it in Filters.",
+    "allAccountsRuleSets_other": "{{count}} rule sets for all accounts still name the old path: their moves there fail on this account until you change them in Filters.",
     "deleted": "Deleted {{path}}.",
     "markedRead_one": "Marked {{count}} message read in {{path}}.",
     "markedRead_other": "Marked {{count}} messages read in {{path}}.",
