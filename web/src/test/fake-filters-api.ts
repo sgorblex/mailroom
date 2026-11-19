@@ -68,6 +68,8 @@ const runOut =
 export interface FakeState {
   accounts: FakeAccount[]
   folders: string[][]
+  /** An account's own folders, where they are not `folders`. */
+  accountFolders?: Record<number, string[][]>
   ruleSets: FakeRuleSet[]
   filters: FakeFilter[]
   runs: FakeRun[]
@@ -174,7 +176,11 @@ export function stubFiltersApi(state: FakeState): Mock {
       const [, id, what] = match
       const accountId: FakeRuleSet['account_id'] = id === 'all' ? 'all' : Number(id)
       if (what === 'folders') {
-        return Promise.resolve(json(200, state.folders.map((folder) => ({ path: folder }))))
+        if (accountId !== 'all' && !state.accounts.some((account) => account.id === accountId)) {
+          return Promise.resolve(notFound())
+        }
+        const folders = (accountId === 'all' ? undefined : state.accountFolders?.[accountId]) ?? state.folders
+        return Promise.resolve(json(200, folders.map((folder) => ({ path: folder }))))
       }
       if (method === 'GET') {
         return Promise.resolve(json(200, state.ruleSets.filter((item) => item.account_id === accountId)))

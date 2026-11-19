@@ -1,6 +1,7 @@
 import { useId, useRef, useState, type KeyboardEvent, type ReactElement, type ReactNode, type SubmitEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import type { Account } from '@/api/accounts.ts'
 import type { Filter, FilterFields } from '@/api/filters.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Input } from '@/components/ui/input.tsx'
@@ -10,6 +11,7 @@ import type { FoldersState } from './folders.ts'
 import { filterErrorMessage } from './messages.ts'
 import { missingArgs, newSpecModel, readSpec, SpecShapeError, writeSpec, type SpecModel } from './spec.ts'
 import { SpecTree } from './spec-tree.tsx'
+import { TargetAccountsContext } from './targets.ts'
 import type { Vocabulary } from './vocabulary.ts'
 import { FILTERS_NS } from './i18n.ts'
 
@@ -59,6 +61,7 @@ export function FilterEditor({
   vocabulary,
   folders,
   keywords,
+  targets = [],
   save,
   onCancel,
 }: {
@@ -71,6 +74,8 @@ export function FilterEditor({
   folders: FoldersState
   /** Whether the account's server keeps keywords: where not, the To sort actions are greyed out. */
   keywords?: boolean | null
+  /** The accounts a filter can move mail to: the user's others. */
+  targets?: readonly Account[]
   save: (fields: FilterFields) => Promise<unknown>
   onCancel: () => void
 }): ReactElement {
@@ -266,13 +271,15 @@ export function FilterEditor({
         )}
         <div id={panelId} role="tabpanel" aria-labelledby={tabId(mode)}>
           {mode === 'tree' && model !== null ? (
-            <SpecTree
-              model={model}
-              vocabulary={vocabulary}
-              folders={folders}
-              keywords={keywords}
-              onChange={setModel}
-            />
+            <TargetAccountsContext value={targets}>
+              <SpecTree
+                model={model}
+                vocabulary={vocabulary}
+                folders={folders}
+                keywords={keywords}
+                onChange={setModel}
+              />
+            </TargetAccountsContext>
           ) : (
             <div className="flex flex-col gap-1">
               <label htmlFor={`${prefix}-json`} className="text-sm font-medium">

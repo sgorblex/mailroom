@@ -11,19 +11,25 @@ export type FoldersState =
   | { kind: 'loaded'; paths: string[][] }
   /** A rule set for all accounts: no one account's folders, so a path is typed. */
   | { kind: 'all-accounts' }
+  /** A folder of an account still to be chosen (`move_to_account`'s). */
+  | { kind: 'no-account' }
 
 const ALL: FoldersState = { kind: 'all-accounts' }
+const NONE: FoldersState = { kind: 'no-account' }
 
-/** The account's folders, as path segments, for the folder pickers; none listed for all accounts. */
-export function useFolders(accountId: RuleSetAccount): FoldersState {
+/**
+ * The account's folders, as path segments, for the folder pickers; none listed for all accounts,
+ * nor when no account is chosen yet (`null`).
+ */
+export function useFolders(accountId: RuleSetAccount | null): FoldersState {
   const { t } = useTranslation(FILTERS_NS)
-  const [state, setState] = useState<{ accountId: RuleSetAccount; folders: FoldersState }>({
+  const [state, setState] = useState<{ accountId: RuleSetAccount | null; folders: FoldersState }>({
     accountId,
     folders: { kind: 'loading' },
   })
 
   useEffect(() => {
-    if (accountId === ALL_ACCOUNTS) {
+    if (accountId === ALL_ACCOUNTS || accountId === null) {
       return
     }
     const controller = new AbortController()
@@ -45,6 +51,9 @@ export function useFolders(accountId: RuleSetAccount): FoldersState {
 
   if (accountId === ALL_ACCOUNTS) {
     return ALL
+  }
+  if (accountId === null) {
+    return NONE
   }
   return state.accountId === accountId ? state.folders : { kind: 'loading' }
 }

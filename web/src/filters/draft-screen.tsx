@@ -245,6 +245,7 @@ function DraftEditor({ draft, accounts, vocabulary, source }: Loaded & { source:
       )}
       <DraftTarget
         account={account}
+        targets={accounts.filter((each) => each.id !== account.id)}
         start={start}
         criterion={draft.kind === 'message' ? draft.criteria[criterionIndex] : undefined}
         vocabulary={vocabulary}
@@ -264,12 +265,14 @@ function isInbox(folder: readonly string[]): boolean {
  */
 function DraftTarget({
   account,
+  targets,
   start,
   criterion,
   vocabulary,
   source,
 }: {
   account: Account
+  targets: readonly Account[]
   start: FilterStart
   criterion: Record<string, unknown> | undefined
   vocabulary: Vocabulary
@@ -333,6 +336,7 @@ function DraftTarget({
       vocabulary={vocabulary}
       folders={folders}
       keywords={account.keywords}
+      targets={targets}
       save={save}
       onCancel={() => {
         void navigate({ to: '/mail', search: mailSearch(source) })

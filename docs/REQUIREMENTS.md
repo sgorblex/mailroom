@@ -146,6 +146,8 @@ the index and live updates; tier 3 items arrive one at a time.
   for marked mail only (the star or To sort).
 - **Rule sets for all accounts**, on INBOX of each account whose Run filters is on; a move to a
   folder an account lacks fails there and is reported in its run.
+- A filter can **move mail to a folder of another of the user's accounts**, picked in the editor;
+  the target account's own filters leave those copies alone.
 - **Dry run** against real mail before enabling: which messages each filter would match and what it
   would do.
 - **Filters drafted** from a message (its list or sender) or from a search, in the mail client.

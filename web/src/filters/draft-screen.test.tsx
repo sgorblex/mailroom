@@ -132,6 +132,19 @@ describe('a filter drafted from a message', () => {
     })
   })
 
+  it("offers the user's other accounts, not this one, to move to", async () => {
+    stubFiltersApi(state())
+    renderFiltersApp(fromMessage())
+
+    const action = within(await editor()).getByRole('group', { name: 'Action 1' })
+    await userEvent.selectOptions(within(action).getByLabelText('Type of Action 1'), 'Move to another account')
+    const account = within(action).getByLabelText('Account')
+    expect(within(account).getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'Choose an account',
+      'home',
+    ])
+  })
+
   it('makes a new inbox rule set, disabled, where the account has none', async () => {
     const fake = state()
     const fetchMock = stubFiltersApi(fake)

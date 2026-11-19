@@ -45,6 +45,10 @@ function codedMessage(t: TFunction, code: string | undefined, message: string): 
       return t('filterErrors.interrupted')
     case 'run_failed':
       return t('filterErrors.runFailed', { message })
+    case 'move_target_not_found':
+      return t('filterErrors.moveTargetNotFound')
+    case 'move_target_same_account':
+      return t('filterErrors.moveTargetSameAccount')
     case 'copied_not_removed':
       return t('filterErrors.copiedNotRemoved')
     case 'secrets_key_missing':

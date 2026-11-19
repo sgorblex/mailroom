@@ -15,6 +15,7 @@
       "inboxOnly": "A rule set for all accounts sorts each account's inbox.",
       "toSortUnsupported": "To sort is kept per account: a rule set for all accounts takes the star.",
       "toSortUnavailable": "{{label}} (kept per account, not for all accounts)",
+      "moveToAccountUnavailable": "{{label}} (a rule set for all accounts also runs on the other account: put the move in a rule set of each account)",
       "byRole": "Each account's own trash",
       "byPath": "A folder by its path",
       "path": "Folder path",
@@ -57,6 +58,8 @@
     "foldersLoading": "Loading folders…",
     "foldersUnavailable": "The folders could not be listed ({{message}}). Type the path, its parts separated by /.",
     "chooseFolder": "Choose a folder",
+    "chooseAccount": "Choose an account",
+    "chooseAccountFirst": "Choose the account first",
     "folderTyped": "e.g. Archive/2026",
     "folderDefault": "The account's default",
     "triggers": {
@@ -146,6 +149,7 @@
       "condition": "Condition {{n}}",
       "typeOf": "Type of {{name}}",
       "toSortUnavailable": "{{label}} (this account's mail server cannot keep the To sort mark)",
+      "noOtherAccount": "{{label}} (add another account first)",
       "groups": "Groups",
       "and": "All of these",
       "or": "Any of these",
@@ -364,7 +368,9 @@
     "copiedNotRemoved": "A move copied some messages but may not have removed them from this folder, so the rule set was turned off: check both folders before you enable it again.",
     "allAccountsInboxOnly": "A rule set for all accounts sorts the inbox only.",
     "accountRequired": "Choose the account to dry run this rule set on.",
-    "wrongAccount": "This rule set belongs to another account."
+    "wrongAccount": "This rule set belongs to another account.",
+    "moveTargetNotFound": "A filter moves mail to an account that is not one of yours any more: choose another account, or change the filter.",
+    "moveTargetSameAccount": "A filter cannot move mail to the account its rule set runs on (use Move to), nor from a rule set for all accounts."
   },
   "filterPhrases": {
     "anything": "any message",

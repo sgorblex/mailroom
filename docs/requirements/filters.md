@@ -42,9 +42,9 @@ in the browser, tried with a dry run, and run by the worker. Product scope:
   queued, where a rule set of one account's *Run now* answers its one run. Naming another
   account than a rule set's own is refused (`wrong_account`). The web's Filters page lists them in
   an *All accounts* section after the accounts'; their editor keeps the folder at INBOX, greys out
-  To sort, and takes a `move_to` folder as a typed path, and a `trash` folder either by role (each
-  account's own) or as a typed path, a path saying that an account without it fails the move and
-  that no folder is created. Its dry run asks which account to try on; *Run now* runs on each
+  To sort and *Move to another account*, and takes a `move_to` folder as a typed path, and a
+  `trash` folder either by role (each account's own) or as a typed path, a path saying that an
+  account without it fails the move and that no folder is created. Its dry run asks which account to try on; *Run now* runs on each
   account whose *Run filters* is on; the run history names each run's account.
 - A rule set holds **ordered filters**, each a filter spec (criteria plus actions), stored as
   the [filter engine](../GLOSSARY.md) serialises it and validated with its `load_filter`, its JSON
@@ -206,6 +206,11 @@ A filter's `move_to_account` moves mail to a folder of **another of the user's a
   UIDVALIDITY changes, follow its rename, and go with its account and user; a leading INBOX is one
   folder in any case. A ledger the database cannot write leaves that chunk's originals where they
   were (in both accounts, so the rule set is turned off) and stops the moves left (`unsupported`).
+- **In the web**, the filter editor's *Move to another account* picks the account among the
+  user's others (greyed out with none, and in a rule set for all accounts), then a folder of
+  that account, listed once it is chosen; choosing another account clears the folder, and a
+  `move_to` folder is not carried over to it. A target no longer the user's shows as a removed
+  account. The filter's summary names the account.
 - **Removing the target account** turns off every rule set of the user's with a filter moving
   to it, with `disabled_reason` `move_target_removed`; turning it on is refused
   (`move_target_not_found`) until that filter is changed, disabled or removed.

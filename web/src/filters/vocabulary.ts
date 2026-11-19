@@ -5,8 +5,10 @@
  */
 
 /**
- * How an argument is edited. A folder is a path of segments; `optional` allows none (`null`). An
- * argument of a shape the editor does not know is `unknown`: only the JSON editor sets it.
+ * How an argument is edited. A folder is a path of segments; `optional` allows none (`null`); in
+ * a leaf with an `account`, it is a folder of that account. An `account` is another of the
+ * user's accounts, by its id. An argument of a shape the editor does not know is `unknown`: only
+ * the JSON editor sets it.
  */
 export type ArgField =
   | { kind: 'text' }
@@ -15,10 +17,14 @@ export type ArgField =
   | { kind: 'integer'; minimum: number | undefined; maximum: number | undefined }
   | { kind: 'choice'; options: string[] }
   | { kind: 'folder'; optional: boolean }
+  | { kind: 'account' }
   | { kind: 'unknown' }
 
 /** The filter engine's folder path, by the name its schema defines it under. */
 const FOLDER_REF = '#/$defs/path'
+
+/** The name of the integer argument the filter engine names another account by (`move_to_account`). */
+const ACCOUNT_ARG = 'account'
 
 /** The strings an `enum` or a `const` allows; `undefined` when it has neither. */
 function allowedStrings(node: JsonObject): string[] | undefined {
@@ -102,11 +108,14 @@ export function readVocabulary(schema: unknown): Vocabulary {
       return []
     }
     const required = Array.isArray(resolved['required']) ? resolved['required'] : []
-    return Object.entries(resolved['properties']).map(([name, property]) => ({
-      name,
-      required: required.includes(name),
-      field: readField(property),
-    }))
+    return Object.entries(resolved['properties']).map(([name, property]) => {
+      const field = readField(property)
+      return {
+        name,
+        required: required.includes(name),
+        field: name === ACCOUNT_ARG && field.kind === 'integer' ? { kind: 'account' } : field,
+      }
+    })
   }
 
   function readField(node: unknown): ArgField {
@@ -167,7 +176,13 @@ export function initialArg(arg: ArgDef, today: string): unknown {
     case 'folder':
       // An empty path is "not chosen yet": the folder picker asks for one.
       return arg.field.optional ? undefined : []
+    case 'account':
     case 'unknown':
       return undefined
   }
+}
+
+/** Whether a leaf takes an account, so that its folders are that account's. */
+export function takesAccount(def: LeafDef | undefined): boolean {
+  return def?.args.some((arg) => arg.field.kind === 'account') ?? false
 }

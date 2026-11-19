@@ -41,6 +41,13 @@ describe('readVocabulary', () => {
     })
   })
 
+  it('reads the account a move to another account names, beside its folder', () => {
+    expect(action('move_to_account')?.args).toEqual([
+      { name: 'account', required: true, field: { kind: 'account' } },
+      { name: 'folder', required: true, field: { kind: 'folder', optional: false } },
+    ])
+  })
+
   it('refuses a schema without criteria or actions', () => {
     expect(() => readVocabulary({ $defs: {} })).toThrow(VocabularyError)
     expect(() => readVocabulary('nope')).toThrow(VocabularyError)
@@ -55,6 +62,7 @@ describe('initialArg', () => {
     expect(initialArg({ name: 'cutoff_date', required: true, field: { kind: 'date' } }, today)).toBe(today)
     const folder = { name: 'folder', required: true, field: { kind: 'folder', optional: false } } as const
     expect(initialArg(folder, today)).toEqual([])
+    expect(initialArg({ name: 'account', required: true, field: { kind: 'account' } }, today)).toBeUndefined()
   })
 })
 

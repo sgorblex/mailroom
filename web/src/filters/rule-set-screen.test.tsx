@@ -2,7 +2,7 @@ import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { FILTER_EDITED, type FakeState, sentBody, stubFiltersApi, WORK } from '@/test/fake-filters-api.ts'
+import { FILTER_EDITED, type FakeState, HOME, sentBody, stubFiltersApi, WORK } from '@/test/fake-filters-api.ts'
 import { formatDay } from '@/lib/format.ts'
 import { renderFiltersApp } from '@/test/filters-app.tsx'
 
@@ -437,6 +437,138 @@ describe('RuleSetScreen', () => {
 
     expect(await screen.findByText('work · INBOX · on new mail · starred only · enabled')).toBeInTheDocument()
     expect(sentBody(fetchMock, 'PATCH', '/api/v1/rule-sets/1')).toMatchObject({ marker: 'star' })
+  })
+
+  it('moves to a folder of another account, picked once the account is', async () => {
+    const fetchMock = stubFiltersApi(
+      state({
+        accounts: [
+          { id: WORK, run_filters: true },
+          { id: HOME, run_filters: true },
+        ],
+        accountFolders: { [HOME]: [['INBOX'], ['Family']] },
+        filters: [],
+      }),
+    )
+    renderFiltersApp('/filters/1')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add a filter' }))
+    const form = screen.getByRole('form', { name: 'Add a filter' })
+    await userEvent.type(within(form).getByLabelText('Name'), 'Family')
+    await userEvent.type(within(form).getByLabelText('Address'), 'mum@')
+    const action = within(form).getByRole('group', { name: 'Action 1' })
+    await vi.waitFor(() => {
+      expect(within(action).getByLabelText('Folder')).toBeEnabled()
+    })
+    await userEvent.selectOptions(within(action).getByLabelText('Folder'), 'Archive')
+    await userEvent.selectOptions(within(action).getByLabelText('Type of Action 1'), 'Move to another account')
+
+    // Only the other accounts; the folder waits for one, and the work account's is not kept.
+    const account = within(action).getByLabelText('Account')
+    expect(within(account).getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'Choose an account',
+      'home',
+    ])
+    expect(within(action).getByLabelText('Folder')).toBeDisabled()
+    expect(within(action).getByLabelText('Folder')).toHaveDisplayValue('Choose the account first')
+    expect(account).toBeRequired()
+
+    await userEvent.selectOptions(account, 'home')
+    const folder = within(action).getByLabelText('Folder')
+    await vi.waitFor(() => {
+      expect(folder).toBeEnabled()
+    })
+    expect(within(folder).getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'Choose a folder',
+      'INBOX',
+      'Family',
+    ])
+    await userEvent.selectOptions(folder, 'Family')
+    await userEvent.click(within(form).getByRole('button', { name: 'Add filter' }))
+
+    const list = await filterList()
+    expect(within(list).getByText('If the sender contains “mum@”, move to Family in account home')).toBeInTheDocument()
+    expect(sentBody(fetchMock, 'POST', '/api/v1/rule-sets/1/filters')).toEqual({
+      name: 'Family',
+      enabled: true,
+      spec: {
+        criterion: { type: 'from_contains', args: { addr: 'mum@' } },
+        action: { type: 'move_to_account', args: { account: HOME, folder: ['Family'] } },
+      },
+    })
+  })
+
+  it('greys out a move to another account when the user has no other one', async () => {
+    stubFiltersApi(state())
+    renderFiltersApp('/filters/1')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add a filter' }))
+    const form = screen.getByRole('form', { name: 'Add a filter' })
+    const type = within(within(form).getByRole('group', { name: 'Action 1' })).getByLabelText('Type of Action 1')
+    expect(
+      within(type).getByRole('option', { name: 'Move to another account (add another account first)' }),
+    ).toBeDisabled()
+  })
+
+  it('words the refusal of a move to an account that is gone', async () => {
+    const spec = {
+      criterion: { type: 'from_contains', args: { addr: 'mum@' } },
+      action: { type: 'move_to_account', args: { account: 9, folder: ['Family'] } },
+    }
+    const fetchMock = stubFiltersApi(
+      state({
+        filters: [{ id: 10, rule_set_id: 1, position: 0, name: 'Family', enabled: true, spec }],
+        refuse: {
+          'PATCH /api/v1/filters/10': {
+            status: 400,
+            body: { detail: { code: 'move_target_not_found', message: 'A filter can move mail only to another of your accounts.' } },
+          },
+        },
+      }),
+    )
+    renderFiltersApp('/filters/1')
+
+    const list = await filterList()
+    expect(list).toHaveTextContent('move to Family in account Removed account')
+    await userEvent.click(within(list).getByRole('button', { name: 'Edit Family' }))
+    const form = screen.getByRole('form', { name: 'Edit Family' })
+    expect(within(form).getByLabelText('Account')).toHaveDisplayValue('Removed account')
+    // Its folders are not asked for: the stored one stays, with nothing else to pick.
+    const folder = within(within(form).getByRole('group', { name: 'Action 1' })).getByLabelText('Folder')
+    expect(folder).toBeDisabled()
+    expect(folder).toHaveDisplayValue('Family')
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).not.toContain('/api/v1/accounts/9/folders')
+    await userEvent.click(within(form).getByRole('button', { name: 'Save' }))
+    expect(await within(form).findByRole('alert')).toHaveTextContent(
+      'A filter moves mail to an account that is not one of yours any more',
+    )
+  })
+
+  it('words the refusal of a move to the account the rule set runs on', async () => {
+    const spec = {
+      criterion: { type: 'from_contains', args: { addr: 'mum@' } },
+      action: { type: 'move_to_account', args: { account: HOME, folder: ['Family'] } },
+    }
+    stubFiltersApi(
+      state({
+        filters: [{ id: 10, rule_set_id: 1, position: 0, name: 'Family', enabled: true, spec }],
+        refuse: {
+          'PATCH /api/v1/filters/10': {
+            status: 400,
+            body: { detail: { code: 'move_target_same_account', message: 'Not to its own account.' } },
+          },
+        },
+      }),
+    )
+    renderFiltersApp('/filters/1')
+
+    const list = await filterList()
+    await userEvent.click(within(list).getByRole('button', { name: 'Edit Family' }))
+    const form = screen.getByRole('form', { name: 'Edit Family' })
+    await userEvent.click(within(form).getByRole('button', { name: 'Save' }))
+    expect(await within(form).findByRole('alert')).toHaveTextContent(
+      'A filter cannot move mail to the account its rule set runs on (use Move to), nor from a rule set for all accounts.',
+    )
   })
 
   it('greys out the To sort actions where the server keeps no keywords', async () => {
