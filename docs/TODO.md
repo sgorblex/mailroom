@@ -142,8 +142,8 @@ released and checked in production before the next one starts. Batch 15 is the r
 - [x] **A filter from a message** — the filter editor pre-filled from a message (its list, its
       sender, the sender's domain unless a public provider's; never the subject).
 - [x] **A filter from a search** — the current search turned into a filter's conditions.
-- [ ] **Report spam** — the message to Junk and, if the user wants, a filter that keeps
-      trashing its sender.
+- [x] **Report spam** — the message to Junk and, if the user wants, a filter that keeps
+      sending its sender's mail to Junk.
 - [ ] **Mute a thread** — later replies skip the inbox and arrive read.
 - [ ] **Match counts per filter** — how often each filter matched lately, so dead ones stand out.
 - [ ] **Rules for all accounts** — one rule set applied to every account of the user.

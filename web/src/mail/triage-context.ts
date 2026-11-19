@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect } from 'react'
 
 import type { AccountId } from '@/api/accounts.ts'
-import type { FlagChange, FolderRole, MailFolder, MatchScope, MessageItem, MoveRemoval } from '@/api/mail.ts'
+import type { FlagChange, FolderRole, MailAddress, MailFolder, MatchScope, MessageItem, MoveRemoval } from '@/api/mail.ts'
 
 export interface Flags {
   seen: boolean
@@ -9,11 +9,15 @@ export interface Flags {
   to_sort: boolean
 }
 
-/** What an action needs of a message: where it is, and its flags as the list or view read them. */
-export type Target = Pick<MessageItem, 'ref' | 'account_id' | 'folder'> & { flags: Flags }
+/**
+ * What an action needs of a message: where it is, and its flags as the list or view read them;
+ * its sender, where known, for the filter Report spam offers.
+ */
+export type Target = Pick<MessageItem, 'ref' | 'account_id' | 'folder'> & { flags: Flags; from?: MailAddress | null }
 
 export type Action =
   | { kind: 'archive' }
+  | { kind: 'junk' }
   | { kind: 'trash' }
   | { kind: 'move'; folder: MailFolder }
   | { kind: 'moveToAccount'; account: AccountId; folder: MailFolder; removal: MoveRemoval }
@@ -54,6 +58,12 @@ export function failureKey(failure: Failure): string {
 export type Undo =
   | { kind: 'move'; groups: { account: AccountId; folder: string; refs: string[] }[] }
   | { kind: 'flag'; accounts: AccountId[]; restores: { change: FlagChange; refs: string[] }[]; before: [string, Flags][] }
+
+/** A sender just reported as spam: the mail screen offers a filter sending their mail to Junk. */
+export interface SpamOffer {
+  account: AccountId
+  address: string
+}
 
 /** What the last action did, for the toolbar to word. */
 export type Outcome =
@@ -103,6 +113,9 @@ export interface Triage {
   reloads: number
   /** Folders were marked read: their rows drop what this screen marked unread, and the list is read again. */
   folderMarkedRead: (account: AccountId, folders: readonly string[]) => void
+  /** The filter offered after a report of spam, until dismissed, undone or another report replaces it. */
+  spamOffer: SpamOffer | null
+  dismissSpamOffer: () => void
   /** Runs an action on `targets`; `silent` (marking read on open) neither waits for nor reports anything. */
   run: (action: Action, targets: Target[], options?: { silent?: boolean }) => Promise<void>
   picker: boolean

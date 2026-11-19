@@ -250,6 +250,8 @@ function doneMessage(t: TFunction, accountName: (id: AccountId) => string, actio
   switch (action.kind) {
     case 'archive':
       return t('triage.archived', { count })
+    case 'junk':
+      return t('triage.reported', { count })
     case 'trash':
       return t('triage.trashed', { count })
     case 'move':

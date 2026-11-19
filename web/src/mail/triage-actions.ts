@@ -15,6 +15,8 @@ export interface TriageActions {
    */
   matching: number | null
   archive: (() => void) | null
+  /** Report spam: to the Junk folder, where every target's account has one. */
+  junk: (() => void) | null
   trash: (() => void) | null
   /** Star, or unstar when every target is starred: `flagged` is what it sets. */
   star: { flagged: boolean; run: () => void } | null
@@ -45,6 +47,7 @@ export const NO_TRIAGE_ACTIONS: TriageActions = {
   targets: [],
   matching: null,
   archive: null,
+  junk: null,
   trash: null,
   star: null,
   toSort: null,
@@ -90,7 +93,7 @@ export function useTriageActions(of?: Target[]): TriageActions {
   }, [accountsKey, loadFolders])
 
   const foldersOf = (account: AccountId): MailFolder[] | undefined => loadedFolders(triage.folders[account])
-  const outside = (role: 'archive' | 'trash'): Target[] =>
+  const outside = (role: 'archive' | 'junk' | 'trash'): Target[] =>
     targets.filter((target) => {
       const where = roleFolder(foldersOf(target.account_id), role)?.path
       return where === undefined || !isSameFolder(target.folder, where)
@@ -100,8 +103,8 @@ export function useTriageActions(of?: Target[]): TriageActions {
     return NO_TRIAGE_ACTIONS
   }
 
-  const canArchive =
-    accounts.every((account) => roleFolder(foldersOf(account), 'archive') !== undefined) && outside('archive').length > 0
+  const canMoveTo = (role: 'archive' | 'junk'): boolean =>
+    accounts.every((account) => roleFolder(foldersOf(account), role) !== undefined) && outside(role).length > 0
   const both = matching !== null
   const flagged = both || !targets.every((target) => flagsOf(target).flagged)
   const toSort = both || !targets.every((target) => flagsOf(target).to_sort)
@@ -115,7 +118,8 @@ export function useTriageActions(of?: Target[]): TriageActions {
   return {
     targets,
     matching: matching?.total ?? null,
-    archive: canArchive ? () => void run({ kind: 'archive' }, targets) : null,
+    archive: canMoveTo('archive') ? () => void run({ kind: 'archive' }, targets) : null,
+    junk: canMoveTo('junk') ? () => void run({ kind: 'junk' }, targets) : null,
     trash: outside('trash').length > 0 ? () => void run({ kind: 'trash' }, targets) : null,
     star: { flagged, run: () => void run({ kind: 'flag', change: { flagged } }, targets) },
     toSort: {

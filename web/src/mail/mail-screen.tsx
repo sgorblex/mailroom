@@ -27,6 +27,7 @@ import { ComposeAnnouncer } from './send-status.tsx'
 import { useMailShortcuts, usePaletteShortcut } from './shortcuts.ts'
 import { storedSubfolders } from './subfolder-view.ts'
 import { ToastHost } from './toast.tsx'
+import { SpamFilterOffer } from './spam-filter-offer.tsx'
 import { OutcomeAnnouncer, Toolbar } from './toolbar.tsx'
 import { isSameFolder, loadedFolders, useTriage } from './triage-context.ts'
 import { TriageProvider } from './triage-provider.tsx'
@@ -186,6 +187,7 @@ function MailPanes({
           />
         </div>
         <Toolbar />
+        <SpamFilterOffer />
         <div className={cn('flex flex-col gap-3', covered && 'hidden lg:flex')}>
           <Listing accountId={accountId} folder={folder} subfolders={subfolders} />
         </div>

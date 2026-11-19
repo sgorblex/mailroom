@@ -59,7 +59,7 @@ export function MessageView({ messageRef }: { messageRef: string }): ReactElemen
     if (view === null) {
       return
     }
-    const target = { ref: view.ref, account_id: view.account_id, folder: view.folder, flags: view.flags }
+    const target = { ref: view.ref, account_id: view.account_id, folder: view.folder, flags: view.flags, from: view.from }
     setOpen(target)
     loadFolders(view.account_id, false)
     if (accountFolders === undefined || accountFolders.kind === 'loading' || marked.current) {

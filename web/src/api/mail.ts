@@ -464,6 +464,11 @@ export function archiveMessages(refs: string[], signal?: AbortSignal): Promise<O
   return organize('archive', { refs }, signal)
 }
 
+/** Reports them as spam: moved to the account's Junk folder, which teaches its spam filter. */
+export function junkMessages(refs: string[], signal?: AbortSignal): Promise<OrganizeGroup[]> {
+  return organize('junk', { refs }, signal)
+}
+
 /** Moves them to Trash, never deleting them. */
 export function trashMessages(refs: string[], signal?: AbortSignal): Promise<OrganizeGroup[]> {
   return organize('trash', { refs }, signal)

@@ -163,6 +163,9 @@ picks what it does.
   enabled, an enabled one acting on new mail at once) or a new one, made `new_mail` and disabled
   as any new rule set; a search over all accounts asks which. Adding the filter opens its rule
   set; a rule set made when adding the filter then failed is the one the next try adds to.
+- **After a report of spam** the mail screen offers a `from_is` → `junk` filter on the sender
+  ([mail client](mail-client.md#web-client)), added only on the user's word, and turns its rule set
+  or Run filters on only by a button of their own.
 
 ## Data model
 

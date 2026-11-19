@@ -1,6 +1,7 @@
 import { vi, type Mock } from 'vitest'
 
 import type { AccountId, AccountColour, Identity } from '@/api/accounts.ts'
+import type { Filter, RuleSet } from '@/api/filters.ts'
 import type {
   Draft,
   DraftFields,
@@ -90,6 +91,11 @@ export interface FakeMailState {
    */
   /** `changing`: with a flag change as the action, how many it would change (else `total`). */
   matching?: { total: number; changing?: number; folder?: string; failures?: SourceFailure[] }
+  /** Each account's Run filters; off unless it says otherwise. */
+  runFilters?: Record<string, boolean>
+  /** The rule sets and filters the filter routes keep, for what the mail screen offers to add. */
+  ruleSets?: RuleSet[]
+  filters?: Filter[]
 }
 
 /** The statuses of the mail codes the organize routes answer (`docs/requirements/mail-client.md`). */
@@ -288,7 +294,7 @@ function organize(
         })),
       }
     }
-    const role = route === 'archive' ? 'archive' : route === 'trash' ? 'trash' : null
+    const role = route === 'archive' || route === 'junk' || route === 'trash' ? route : null
     const destination = role === null ? body.folder : state.folders[account]?.find((each) => each.role === role)?.path
     if (destination === undefined) {
       return failed('unsupported')
@@ -719,6 +725,39 @@ function matchingRoutes(state: FakeMailState, bulk: boolean, body: { expected?: 
   return json(200, { done: group.count, remaining: matching.total - group.count, results: [group], failures })
 }
 
+/** The rule set, filter and Run filters routes, as far as the mail screen calls them; `null` for another path. */
+function filterRoutes(state: FakeMailState, path: string, init?: RequestInit): Response | null {
+  const body = typeof init?.body === 'string' ? (JSON.parse(init.body) as Record<string, unknown>) : {}
+  const ruleSets = (state.ruleSets ??= [])
+  let match = /^\/api\/v1\/accounts\/(\d+)\/(rule-sets|filter-settings)$/.exec(path)
+  if (match !== null) {
+    const account = Number(match[1])
+    if (match[2] === 'filter-settings') {
+      state.runFilters = { ...state.runFilters, [account]: body['run_filters'] === true }
+      return json(200, { run_filters: body['run_filters'] === true })
+    }
+    if (init?.method === 'POST') {
+      const made = { ...(body as Omit<RuleSet, 'id' | 'account_id'>), id: 1000 + ruleSets.length, account_id: account }
+      ruleSets.push(made)
+      return json(201, made)
+    }
+    return json(200, ruleSets.filter((ruleSet) => ruleSet.account_id === account))
+  }
+  match = /^\/api\/v1\/rule-sets\/(\d+)(\/filters)?$/.exec(path)
+  const ruleSet = ruleSets.find((each) => each.id === Number(match?.[1]))
+  if (match === null || ruleSet === undefined) {
+    return null
+  }
+  if (match[2] !== undefined) {
+    const filters = (state.filters ??= [])
+    const filter = { ...(body as Omit<Filter, 'id' | 'rule_set_id' | 'position'>), id: filters.length + 1, rule_set_id: ruleSet.id, position: 0 }
+    filters.push(filter)
+    return json(201, filter)
+  }
+  Object.assign(ruleSet, body)
+  return json(200, ruleSet)
+}
+
 /**
  * A fake mail API over `state`: `/api/v1/accounts` and the `/api/v1/mail` routes. A cursor is
  * `"before:<uid>"`, the uid of the last item shown, as opaque to the client as the real ones and,
@@ -746,7 +785,7 @@ export function stubMailApi(state: FakeMailState): Mock {
             identities: state.identities?.[id] ?? [],
             auto_approve: [],
             has_password: true,
-            run_filters: false,
+            run_filters: state.runFilters?.[id] ?? false,
             attachment_max_mb: state.attachmentMaxMb ?? 10,
             max_recipients: state.maxRecipients ?? 10,
             keywords: state.keywords?.[id] ?? null,
@@ -796,7 +835,11 @@ export function stubMailApi(state: FakeMailState): Mock {
         failures: [],
       })
     }
-    match = /^\/api\/v1\/mail\/messages\/(move|move-to-account|archive|trash|flag)$/.exec(path)
+    const filtersAnswer = filterRoutes(state, path, init)
+    if (filtersAnswer !== null) {
+      return filtersAnswer
+    }
+    match = /^\/api\/v1\/mail\/messages\/(move|move-to-account|archive|junk|trash|flag)$/.exec(path)
     if (match !== null && init?.method === 'POST' && typeof init.body === 'string') {
       return organize(state, match[1] ?? '', JSON.parse(init.body) as Parameters<typeof organize>[2])
     }

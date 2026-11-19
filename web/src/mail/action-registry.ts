@@ -13,6 +13,7 @@ import {
   Printer,
   Reply,
   ReplyAll,
+  ShieldAlert,
   Star,
   StarOff,
   Trash2,
@@ -158,6 +159,15 @@ export const MAIL_ACTIONS: readonly MailAction[] = [
     shortcut: 'e',
     available: ({ actions }) => actions.archive !== null,
     run: ({ actions }) => actions.archive?.(),
+  },
+  {
+    id: 'reportSpam',
+    group: 'triage',
+    label: () => 'triage.reportSpam',
+    icon: () => ShieldAlert,
+    shortcut: '!',
+    available: ({ actions }) => actions.junk !== null,
+    run: ({ actions }) => actions.junk?.(),
   },
   {
     id: 'trash',
