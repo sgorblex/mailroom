@@ -1074,7 +1074,24 @@ a failure too, with the app's code `password_missing`.
   "has_html": true,
   "has_remote_content": true,
   "attachments": [ { "part": "2", "name": "notes.pdf", "type": "application/pdf", "size": 40211 } ],
-  "calendar": null
+  "calendar": null,
+  "headers": {
+    "mailing_list": {                                                       // null without List-* fields
+      "id": "engine.example.org", "name": "Engine notes",
+      "archive": null, "post": null, "help": null,
+      "unsubscribe_https": "https://example.org/u/abc", "unsubscribe_mailto": null,
+      "one_click": true, "unsubscribe_fields": 1, "unsubscribe_post_fields": 1
+    },
+    "authentication": [
+      { "authserv_id": "mx.example.net",
+        "results": [ { "method": "dkim", "result": "pass", "header_d": "example.org",
+                       "header_b": "AbCd1234", "header_from": null } ] }
+    ],
+    "dkim_signatures": [ { "d": "example.org", "b": "AbCd1234…", "h": ["from", "list-unsubscribe"] } ],
+    "from_fields": 1,
+    "delivered_to": ["charles@example.org"],
+    "truncated": false
+  }
 }
 ```
 
@@ -1098,6 +1115,13 @@ a failure too, with the app's code `password_missing`.
   may differ a little from the download's.
 - `calendar` is `null` or one `{part, name, type, size}` of the `text/calendar` part (an invite;
   downloadable, not parsed yet).
+- `headers` is what mailroom-core parsed from From, the List-* fields, Authentication-Results,
+  DKIM-Signature, Delivered-To and X-Original-To (*Read* in [`core.md`](../core.md)), from at most
+  64 KiB of them (`truncated` when cut). **None of it is verified:** any field may be forged, and
+  only the topmost `authentication` entry of the account's own authentication server can be
+  believed. List links are `https:` or `mailto:` only, the topmost of each field;
+  `authentication` and `delivered_to` (X-Original-To's addresses, then Delivered-To's) are topmost
+  first. The client shows none of it yet.
 - Reading **does not set `\Seen`.** Errors: 400, 404, 409 (stale), 502, 504.
 
 ### `GET /messages/{ref}/html?remote=0`

@@ -184,8 +184,28 @@ a server's full-text index may leave those headers out (Mailu), and a reply whos
 changed is then missed. A page item
 carries the arrival time as well as the Date header, and the size; a view carries `has_html` and,
 when the read asks for `remote_check` (off by default, as it costs the HTML's download and a
-sanitising pass), `has_remote_content`. A ref's error names no tool. Deliberate choices:
+sanitising pass), `has_remote_content`. A ref's error names no tool. A view also carries `headers`
+(`mail.message_headers`), parsed from one `BODY.PEEK[HEADER.FIELDS (…)]<0.65536>` fetched with
+it: From, the List-* fields, Authentication-Results, DKIM-Signature, Delivered-To and
+X-Original-To. Deliberate choices:
 
+- **Every header parse is capped:** a block that reaches the 64 KiB cap is `truncated` and loses
+  its last, possibly partial, field; each kind of field, each value and each list is capped too,
+  and what cannot be read is left out, never raised.
+- **List links** are the topmost of each field, `https:` (no userinfo) or `mailto:` only, at most
+  2048 characters. `one_click` is the topmost List-Unsubscribe-Post being exactly
+  `List-Unsubscribe=One-Click`; the List-Unsubscribe and List-Unsubscribe-Post fields are counted,
+  as RFC 8058 wants exactly one of each.
+- **Authentication-Results, an RFC 8601 subset:** each field, topmost first, gives its authserv-id
+  and its `spf`, `dkim` and `dmarc` results with `header.d`, `header.b` and `header.from`; comments
+  (nested) and quoted strings are honoured, other methods and properties outside the
+  `ptype.property` form skipped. A field that cannot be read keeps its place with no results, under
+  the authserv-id before its first semicolon when that much reads; `trusted_results` (the topmost
+  field of the account's own authserv-id, which only a host knows) stops at a field whose
+  authserv-id cannot be read, so it never falls through to a forged field below it. Nothing in
+  `headers` is verified on its own.
+- **DKIM-Signature** gives `d=`, the start of `b=` and the `h=` list of a well-formed signature;
+  one with a duplicate or missing tag is left out.
 - **Inline parts are not attachments:** a part of a multipart/related with a Content-ID and no
   attachment disposition is in `inline_parts` (what `html_view` inlines), not in `attachments`, and
   does not set `has_attachments`. An attachment call still returns it.

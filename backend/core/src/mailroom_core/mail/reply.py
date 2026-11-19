@@ -6,9 +6,10 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final
 
-from mailroom_core.mail._mime import aware_date, header_text, header_values
+from mailroom_core.mail._mime import aware_date, header_fields, header_text, header_values
 from mailroom_core.mail.download import body_text, part_content
 from mailroom_core.mail.identity import Addressed
+from mailroom_core.mail.message_headers import delivery_addresses
 from mailroom_core.mail.read import fetch_structure, fetched_headers
 from mailroom_core.mail.recipients import envelope_mailboxes, mailbox_text
 from mailroom_core.mail.ref import MessageRef, check_fresh
@@ -31,7 +32,6 @@ _MAX_REFERENCES: Final = 20
 _MAX_QUOTED_CHARS: Final = 20_000
 _HEADERS: Final = ("REFERENCES", "X-ORIGINAL-TO", "DELIVERED-TO")
 _MESSAGE_ID: Final = re.compile(r"<[^<>\s]+@[^<>\s]+>")
-_ADDRESS: Final = re.compile(r"[^\s<>,]+@[^\s<>,]+")
 _ANSWER_PREFIX: Final = re.compile(r"\s*(?:re|r|aw|sv)\s*:", re.IGNORECASE)
 _FORWARD_PREFIX: Final = re.compile(r"\s*(?:fwd?|i|wg|tr)\s*:", re.IGNORECASE)
 
@@ -102,10 +102,6 @@ def original_message(connections: MailConnections, ref: MessageRef) -> Original:
         to = envelope_mailboxes(getattr(envelope, "to", None))
         cc = envelope_mailboxes(getattr(envelope, "cc", None))
         own = getattr(envelope, "message_id", None)
-        delivered = (
-            *header_values(headers, "x-original-to"),
-            *header_values(headers, "delivered-to"),
-        )
         return Original(
             ref=ref,
             message_id=None if own is None else header_text(own) or None,
@@ -119,7 +115,7 @@ def original_message(connections: MailConnections, ref: MessageRef) -> Original:
             addressed=Addressed(
                 to=tuple(m.address for m in to),
                 cc=tuple(m.address for m in cc),
-                delivered=_found(_ADDRESS, delivered),
+                delivered=delivery_addresses(header_fields(headers)),
             ),
             text=text,
             attachments=structure.attachments,
