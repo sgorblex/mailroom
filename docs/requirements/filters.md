@@ -41,7 +41,21 @@ in the browser, tried with a dry run, and run by the worker. Product scope:
   The `*_is` address criteria compare the whole address, ignoring case; the `*_contains` criteria
   ignore case too. `body_contains` alone is the server's search of the whole body; combined with
   a criterion that needs the message fetched (a pattern, `subject_is`, an `*_is` address, or a
-  negated one), it reads it as above.
+  negated one), it reads it as above. `from_domain` matches a From address at that domain, in any
+  case and with a Unicode domain matching its `xn--` form; its subdomains only with
+  `incl_subdomains`. A plain ASCII domain is narrowed by the server's search for `@domain`, so a
+  From that writes it in look-alike Unicode characters (fullwidth letters) is not matched.
+  `list_is` matches the List-Id's identifier, in any case. `in_thread` names a thread the app
+  keeps (a muted one, say): it matches a message whose Message-ID, In-Reply-To or References
+  holds one of the thread's Message-IDs, or on Gmail one of its Gmail thread; never by subject.
+  Its spec holds only the app's name for the thread, whose ids are looked up when the filter is
+  loaded: a thread the app does not know matches nothing. It is the app's own, for its hidden
+  mute rule sets: left out of the schema the editor and agents are offered (`GET /filters/schema`,
+  `filter_schema`), and a filter a user writes that names it anywhere is refused. These three read every candidate
+  message, as a pattern does. Every header criterion reads only the first 256 KiB of the header
+  block, cut at a whole field: a From, Subject, Date or any other field beyond it reads as absent.
+  The Message-ID, In-Reply-To, References and List-Id read are the first of each field there,
+  malformed ids left out, at most 100 References ids (the first and the newest).
   **Moves are the mail client's moves**: `move_to` and `trash` need a folder of the account
   (`mailbox_missing` otherwise), never move into Drafts or Sent (`invalid_argument`), and without
   MOVE copy then expunge exactly the copied messages; a move into the folder the rule set runs on
@@ -49,7 +63,9 @@ in the browser, tried with a dry run, and run by the worker. Product scope:
   a move copied but could not remove is not copied again; and a run whose move copied messages
   it could not remove turns its rule set off, with the error `copied_not_removed` in its history,
   until the user has checked both folders and enables it again. `trash` without a folder needs
-  the account's special-use Trash (`unsupported` without one). Filters run in order; a disabled filter is skipped, by dry runs too. A disabled rule set never runs (no
+  the account's special-use Trash (`unsupported` without one); `junk` moves to the account's
+  Junk folder, found by its role (special-use `\Junk`, else a well-known name; `unsupported`
+  without one). Filters run in order; a disabled filter is skipped, by dry runs too. A disabled rule set never runs (no
   trigger fires, *Run now* is refused) but can still be dry-run; a new rule set starts disabled.
 - **Dry run** evaluates the rule set against the folder's real mail and reports, per filter, the
   messages it matches (uid, from, subject, date) and what it would do, changing nothing (the folder
@@ -119,7 +135,7 @@ Under `/api/v1`, signed-in user's own data only (another user's id is a 404).
 | --- | --- |
 | `GET /accounts/{id}/folders` | An account's folders, for the folder picker (`[{"path": [segments]}]`) |
 | `GET`, `PUT /accounts/{id}/filter-settings` | Read, set *Run filters* (`{"run_filters": bool}`) |
-| `GET /filters/schema` | The filter spec's JSON Schema (`json_schema()`) |
+| `GET /filters/schema` | The filter spec's JSON Schema (`json_schema()`), without `in_thread` |
 | `GET`, `POST /accounts/{id}/rule-sets` | List, create an account's rule sets |
 | `GET`, `PATCH`, `DELETE /rule-sets/{id}` | Read (with its filters), edit, remove a rule set |
 | `POST /rule-sets/{id}/filters` | Add a filter (at the end) |
@@ -133,7 +149,7 @@ An unknown or foreign id is a `404` with a plain `detail` (`"No such rule set"`)
 `{"detail": {"code": …, "message": …}}`:
 
 - `400` `invalid_spec`, carrying the filter engine's `SpecError` text, the schema's or the regular
-  expression's complaint;
+  expression's complaint; `400` `hidden_criterion` for a spec naming `in_thread`;
 - `400` `invalid_rule_set` (an `interval_minutes` exactly when `scheduled`), `invalid_order`;
 - creating a rule set with the `to_sort` marker, or changing one to it: `400`
   `to_sort_unsupported` where the account's server keeps no keywords, and the mailbox failures

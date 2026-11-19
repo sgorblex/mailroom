@@ -277,7 +277,9 @@ class Folder:
                 except Exception as error:
                     self.log.debug("uid %s: parse error: %s", uid, type(error).__name__)
                     continue
-                fetched[uid] = Message(uid, parsed, [flag.encode() for flag in message.flags])
+                fetched[uid] = Message(
+                    uid, parsed, [flag.encode() for flag in message.flags], message.gmail_thread
+                )
         candidates = {uid: fetched[uid] for uid in uids if uid in fetched}
         if len(candidates) < len(uids):
             skipped = [uid for uid in uids if uid not in candidates]

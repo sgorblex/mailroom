@@ -19,7 +19,7 @@ from mailroom_core.filters.actions.flags import (
     UnmarkToSort,
     Unstar,
 )
-from mailroom_core.filters.actions.move import MoveTo, Trash
+from mailroom_core.filters.actions.move import Junk, MoveTo, Trash
 from mailroom_core.filters.actions.noop import NoOp
 from mailroom_core.filters.flags import Flag
 from mailroom_core.filters.path import Path
@@ -241,6 +241,22 @@ class TestActionExecution:
         with pytest.raises(MailError) as raised:
             Trash().execute(on, [1])
         assert raised.value.code == "unsupported"
+
+    def test_junk_finds_the_junk_folder_by_its_role(self) -> None:
+        on = selected("INBOX", ".", *FOLDERS, listed("Spam", "\\Junk"))
+        with patch("mailroom_core.filters.actions.move.move_uids") as move:
+            Junk().execute(on, [1, 2])
+        move.assert_called_once_with(on.context, [1, 2], "Spam")
+
+    def test_junk_without_a_junk_folder_is_unsupported(self) -> None:
+        on = selected("INBOX", ".", *FOLDERS)
+        with (
+            patch("mailroom_core.filters.actions.move.move_uids") as move,
+            pytest.raises(MailError) as raised,
+        ):
+            Junk().execute(on, [1])
+        assert raised.value.code == "unsupported"
+        move.assert_not_called()
 
     @pytest.mark.parametrize(
         ("action", "method", "flag"),

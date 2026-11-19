@@ -24,7 +24,7 @@ from mailroom.filters.service import (
     RuleSetPatch,
     RunOut,
 )
-from mailroom_core.filters import json_schema
+from mailroom.filters.spec import offered_schema
 
 filters_router = APIRouter()
 
@@ -47,8 +47,8 @@ class FilterOrder(BaseModel):
 
 @filters_router.get("/filters/schema")
 def filter_schema() -> dict[str, Any]:
-    """The filter engine's JSON Schema (draft 2020-12) of a filter spec."""
-    return json_schema()
+    """The JSON Schema (draft 2020-12) of a filter spec a user writes (``offered_schema``)."""
+    return offered_schema()
 
 
 @filters_router.get("/accounts/{account_id}/folders")

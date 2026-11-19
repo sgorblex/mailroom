@@ -2,6 +2,7 @@
 envelope calls are patched where the engine makes them. Runs on real mail: `test_engine_mail`."""
 
 import json
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, patch
@@ -20,6 +21,7 @@ from mailroom_core.filters.criteria.criterion import Anything
 from mailroom_core.filters.criteria.date import OlderThanDays
 from mailroom_core.filters.criteria.flags import IsRead
 from mailroom_core.filters.criteria.subject import SubjectIs, SubjectMatches
+from mailroom_core.filters.criteria.thread import InThread, ThreadMembers
 from mailroom_core.filters.filter import Filter
 from mailroom_core.filters.path import Path
 from mailroom_core.filters.pattern import MatchTimeoutError
@@ -341,6 +343,22 @@ class TestFolderRun:
         action, done = recording()
         (account / "INBOX").run(Filter(IsRead() & SubjectMatches("a"), action))
         assert done == [[1]]
+
+    def test_a_thread_is_matched_by_its_ids_and_gmails_thread(
+        self, account: Account, calls: Calls
+    ) -> None:
+        calls.searches = [[1, 2, 3, 4]]
+        calls.sources = {
+            1: fetched(1, "Message-ID: <other@x.org>\r\nReferences: <root@x.org>\r\n\r\n"),
+            2: fetched(2, "Message-ID: <new@x.org>\r\n\r\n"),
+            3: replace(fetched(3, "Subject: s\r\n\r\n"), gmail_thread=77),
+            4: fetched(4, "In-Reply-To: <stranger@x.org>\r\n\r\n"),
+        }
+        members = ThreadMembers(frozenset({"<root@x.org>"}), frozenset({77}))
+        action, done = recording()
+        (account / "INBOX").run(Filter(InThread("t", threads=lambda _: members), action))
+        assert calls.searched == [["UNDELETED", "ALL"]]
+        assert done == [[1, 3]]
 
 
 _ENVELOPE_DATE = datetime(2026, 5, 4, 12, 30, tzinfo=UTC)

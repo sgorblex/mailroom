@@ -12,6 +12,9 @@ functions rebuild an equal object from it. The format, described by :func:`json_
 - **action sequence**: ``{"seq": [a, ...]}``.
 - **filter**: ``{"criterion": c, "action": a}``.
 
+What a spec names but does not hold, the members of an ``in_thread`` criterion's thread, the host
+supplies as it loads it (``threads``).
+
 Chains of the same combinator are flattened: ``a & b & c`` gives one ``and`` with three items.
 """
 
@@ -30,6 +33,8 @@ from mailroom_core.filters.spec.nodes import NotSerializableError, SpecNode, Spe
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from mailroom_core.filters.criteria.thread import ThreadResolver
 
 __all__ = [
     "NotSerializableError",
@@ -59,7 +64,11 @@ def _check_items(node: Mapping[str, Any], key: str) -> list[Any]:
     return items
 
 
-def _load_leaf(node: Mapping[str, Any], base: type[SpecSerializable]) -> Any:  # noqa: ANN401
+def _load_leaf(
+    node: Mapping[str, Any],
+    base: type[SpecSerializable],
+    host: Mapping[str, Any],
+) -> Any:  # noqa: ANN401
     kind = base.__name__.lower()
     if set(node) - {"type", "args"}:
         raise SpecError(f"unexpected keys in {kind} leaf: {sorted(set(node) - {'type', 'args'})}")
@@ -69,7 +78,7 @@ def _load_leaf(node: Mapping[str, Any], base: type[SpecSerializable]) -> Any:  #
         raise SpecError(f"unknown {kind} type {name!r}")
     args = _check_mapping(node.get("args", {}), f"{name} args")
     try:
-        result = cls._from_spec_args(args)
+        result = cls._from_spec_args(args, host)
     except (TypeError, ValueError) as e:
         raise SpecError(f"invalid args for {name!r}: {e}") from e
     if result._spec is None:  # noqa: SLF001
@@ -84,25 +93,33 @@ def _only_key(node: Mapping[str, Any], keys: tuple[str, ...], what: str) -> str:
     return present[0]
 
 
-def load_criterion(spec: Mapping[str, Any]) -> Criterion:
-    """Build a criterion from its spec node.
+def load_criterion(spec: Mapping[str, Any], *, threads: ThreadResolver | None = None) -> Criterion:
+    """Build a criterion from its spec node; ``threads`` gives each ``in_thread`` its thread's
+    members (none without it, so it matches nothing).
 
     Raises:
         SpecError: The spec is malformed or names an unknown type or argument.
 
     """
+    host = {} if threads is None else {"threads": threads}
+    return _load_criterion(spec, host)
+
+
+def _load_criterion(spec: Mapping[str, Any], host: Mapping[str, Any]) -> Criterion:
     node = _check_mapping(spec, "criterion")
+
+    def load(item: Mapping[str, Any]) -> Criterion:
+        return _load_criterion(item, host)
+
     match _only_key(node, ("type", "and", "or", "not"), "criterion"):
         case "type":
-            return cast("Criterion", _load_leaf(node, Criterion))
+            return cast("Criterion", _load_leaf(node, Criterion, host))
         case "not":
-            return ~load_criterion(node["not"])
+            return ~load(node["not"])
         case "and":
-            return functools.reduce(
-                Criterion.__and__, map(load_criterion, _check_items(node, "and"))
-            )
+            return functools.reduce(Criterion.__and__, map(load, _check_items(node, "and")))
         case _:
-            return functools.reduce(Criterion.__or__, map(load_criterion, _check_items(node, "or")))
+            return functools.reduce(Criterion.__or__, map(load, _check_items(node, "or")))
 
 
 def load_action(spec: Mapping[str, Any]) -> Action:
@@ -114,13 +131,14 @@ def load_action(spec: Mapping[str, Any]) -> Action:
     """
     node = _check_mapping(spec, "action")
     if _only_key(node, ("type", "seq"), "action") == "type":
-        return cast("Action", _load_leaf(node, Action))
+        return cast("Action", _load_leaf(node, Action, {}))
     combine: Callable[[Action, Action], Action] = Action.__add__
     return functools.reduce(combine, map(load_action, _check_items(node, "seq")))
 
 
-def load_filter(spec: Mapping[str, Any]) -> Filter:
-    """Build a filter from ``{"criterion": ..., "action": ...}``.
+def load_filter(spec: Mapping[str, Any], *, threads: ThreadResolver | None = None) -> Filter:
+    """Build a filter from ``{"criterion": ..., "action": ...}`` (``threads`` as
+    `load_criterion` takes it).
 
     Raises:
         SpecError: The spec is malformed or names an unknown type or argument.
@@ -129,7 +147,7 @@ def load_filter(spec: Mapping[str, Any]) -> Filter:
     node = _check_mapping(spec, "filter")
     if set(node) != {"criterion", "action"}:
         raise SpecError(f'a filter spec has exactly "criterion" and "action", got {sorted(node)}')
-    return Filter(load_criterion(node["criterion"]), load_action(node["action"]))
+    return Filter(load_criterion(node["criterion"], threads=threads), load_action(node["action"]))
 
 
 @functools.cache

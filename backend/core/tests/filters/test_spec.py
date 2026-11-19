@@ -21,7 +21,7 @@ from mailroom_core.filters.actions.flags import (
     UnmarkToSort,
     Unstar,
 )
-from mailroom_core.filters.actions.move import MoveTo, Trash
+from mailroom_core.filters.actions.move import Junk, MoveTo, Trash
 from mailroom_core.filters.actions.noop import NoOp
 from mailroom_core.filters.criteria.address import (
     BccContains,
@@ -31,6 +31,7 @@ from mailroom_core.filters.criteria.address import (
     CcIs,
     CcMatches,
     FromContains,
+    FromDomain,
     FromIs,
     FromMatches,
     FromMatchesName,
@@ -53,7 +54,9 @@ from mailroom_core.filters.criteria.flags import (
     IsUnstarred,
     LacksFlag,
 )
+from mailroom_core.filters.criteria.lists import ListIs
 from mailroom_core.filters.criteria.subject import SubjectContains, SubjectIs, SubjectMatches
+from mailroom_core.filters.criteria.thread import InThread, ThreadMembers
 from mailroom_core.filters.filter import Filter, If
 from mailroom_core.filters.flags import Flag
 from mailroom_core.filters.message import Message
@@ -81,11 +84,14 @@ CRITERIA: list[Criterion] = [
     CcIs("boss@example.com"),
     CcMatches(r"boss@.*"),
     FromContains("noreply"),
+    FromDomain("example.com"),
+    FromDomain("bücher.de", incl_subdomains=True),
     FromIs("news@example.com"),
     FromMatches(r".*@example\.(com|org)"),
     FromMatchesName(r"Example .*"),
     HasFlag(Flag.FLAGGED),
     HasFlag(Flag.TO_SORT),
+    InThread("muted-1"),
     IsAnswered(),
     IsNotToSort(),
     IsRead(),
@@ -95,6 +101,7 @@ CRITERIA: list[Criterion] = [
     IsUnread(),
     IsUnstarred(),
     LacksFlag(Flag.SEEN),
+    ListIs("news.example.com"),
     OlderThan(date(2025, 1, 31)),
     OlderThanDays(30),
     SubjectContains("Invoice"),
@@ -110,6 +117,7 @@ CRITERIA: list[Criterion] = [
 
 ACTIONS: list[Action] = [
     Delete(),
+    Junk(),
     MarkAsAnswered(),
     MarkAsRead(),
     MarkAsUnanswered(),
@@ -160,6 +168,7 @@ def _msg(**fields: Any) -> Message:
         subject=fields.get("subject", ""),
         date=sent.replace(tzinfo=UTC) if sent is not None else None,
         text=fields.get("text", ""),
+        list_id=fields.get("list_id"),
     )
     return Message(0, parsed, flags)
 
@@ -170,6 +179,7 @@ MESSAGES = [
         from_=[("Example News", "news@example.com")],
         to=[("", "me@example.com")],
         subject="Weekly digest",
+        list_id="News.Example.com",
         text="order #12 unsubscribe",
         date=datetime(2024, 5, 1),  # noqa: DTZ001
         flags=[b"\\Seen", b"\\Answered"],
@@ -343,6 +353,36 @@ class TestSpecFormat:
 
     def test_schema_is_shipped(self) -> None:
         assert json_schema()["$defs"]["filter"]["required"] == ["criterion", "action"]
+
+
+class TestHostArguments:
+    MEMBERS = ThreadMembers(frozenset({"<a@x.org>"}))
+
+    def test_the_thread_members_are_not_in_the_spec(self) -> None:
+        criterion = InThread("t1", threads=lambda _: self.MEMBERS)
+        assert criterion.to_spec() == {"type": "in_thread", "args": {"thread": "t1"}}
+        assert criterion == InThread("t1")
+
+    def test_the_loader_supplies_them(self) -> None:
+        asked: list[str] = []
+
+        def threads(name: str) -> ThreadMembers:
+            asked.append(name)
+            return self.MEMBERS
+
+        spec = {
+            "criterion": {"and": [{"not": {"type": "in_thread", "args": {"thread": "t1"}}}]},
+            "action": {"type": "mark_as_read"},
+        }
+        loaded = load_filter(spec, threads=threads)
+        member = Message(0, ParsedMessage((), (), (), (), "", None, "", message_id="<a@x.org>"), [])
+        assert asked == ["t1"]
+        assert loaded.criterion.func(member) is False
+        assert load_filter(spec).criterion.func(member) is True
+
+    def test_a_spec_cannot_carry_them(self) -> None:
+        with pytest.raises(SpecError, match="threads"):
+            load_criterion({"type": "in_thread", "args": {"thread": "t1", "threads": "x"}})
 
 
 class TestEqualityAndRepr:

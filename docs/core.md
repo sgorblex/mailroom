@@ -310,7 +310,7 @@ into labels.
 They are built on `mailroom_core.mail.selected`, as `reply.mark_answered`, `reply.mark_forwarded`
 and the drafts are:
 operations by UID on the folder a `with_mailbox` session holds (`search_uids` and `message_id_uids`,
-`fetch_sources` with `BODY.PEEK[]`, `fetch_source` capped at a size with flags and INTERNALDATE,
+`fetch_sources` with `BODY.PEEK[]` (and `X-GM-THRID` on Gmail), `fetch_source` capped at a size with flags and INTERNALDATE,
 `fetch_envelopes`, `append_raw` with flags and an arrival date, `move_uids`, `store_flags`,
 `store_forwarded`, `delete_uids`, `listed_folders`), with the refusals of a move (`move_target`) and
 `abandon_read_back` for a read-back failing after a write. Whatever acts inside a session of its own
@@ -533,10 +533,20 @@ or loaded from their data form. Its tests are in `tests/filters`.
   pattern criteria search wider. The `*_contains` and exact-address predicates ignore case, as
   the server's search does. A negated prefilter searches `ALL`; when it is a filter's whole
   criterion, the engine searches twice instead: outside the prefilter it matches unfetched,
-  inside it the predicate decides. The predicate reads a `ParsedMessage`: the first of each
-  address field, decoded, the subject as the view shows it, the UTC date, and as the body every
-  inline plain-text part outside attached messages, else the HTML parts' visible text (so a
-  body pattern matches across tags and never inside them). `&`, `|` and `~` combine both halves,
+  inside it the predicate decides. The predicate reads a `ParsedMessage`, whose headers all
+  come from the header block's first `MAX_HEADER_BYTES` (256 KiB, cut at a whole field; a field
+  beyond it reads as absent): the first of each address field, decoded, the subject as the view
+  shows it, the UTC date, and as the body every inline plain-text part outside attached
+  messages, else the HTML parts' visible text (so a body pattern matches across tags and never
+  inside them), and the first Message-ID, In-Reply-To and References ids (each
+  `<local@domain>` of printable ASCII, matched bracket by bracket so the sender's field is read
+  in one pass; References kept to its first id and the newest, 100 in all) and List-Id
+  identifier (`message_headers.list_id`). The `Message` adds, on Gmail, the
+  thread id (`gmail_thread`, `X-GM-THRID`, which `fetch_sources` asks for where the server has
+  `X-GM-EXT-1`). `from_domain` compares the From addresses' domains in `ascii_host` form,
+  prefiltered by `FROM @domain` only for a plain ASCII one, since the server folds no Unicode;
+  `list_is` and `in_thread` search `ALL`, a header search being unreliable (Gmail ignores it, a
+  full-text index may leave the field out). `&`, `|` and `~` combine both halves,
   efficient only if every operand is. `IMAPQuery.Deferred` builds its query at search time, for
   criteria relative to the run (`OlderThanDays`), whose today is in the zone the host passes
   `Folder.run` as `time_zone` (a checked `TimeZoneName`; the machine's without one).
@@ -549,7 +559,7 @@ or loaded from their data form. Its tests are in `tests/filters`.
   `move_uids`, with its COPY and `UID EXPUNGE` fallback under UIDPLUS), so a folder that is not
   there is `mailbox_missing` and Drafts or Sent are refused, while a move into the folder being
   filtered (Trash from Trash too) is skipped; `trash` without a folder takes the special-use
-  Trash (`unsupported` without one). Flag actions are `store_flags`: `star`, `mark_as_read` and
+  Trash (`unsupported` without one), and `junk` the folder with the Junk role (likewise). Flag actions are `store_flags`: `star`, `mark_as_read` and
   the like, and `mark_to_sort` / `unmark_to_sort` for the To sort keyword, `unsupported` where the
   folder keeps no keywords; the criteria `is_to_sort` / `is_not_to_sort` (and `has_flag` with
   `TO_SORT`) search `KEYWORD` / `UNKEYWORD $MailroomSort`, and every flag predicate ignores case.
@@ -561,7 +571,12 @@ or loaded from their data form. Its tests are in `tests/filters`.
   `json_schema()` describes the format. A new criterion or action needs its `spec_type`, an entry
   in `spec/schema.json`, its name in the facade's `__all__` and a case in
   `tests/filters/test_spec.py` (whose coverage test, over that `__all__`, fails otherwise). **A change to an existing spec ships with a migration of the stored filters**, in
-  the same pull request.
+  the same pull request. Some arguments are the host's, not the spec's: a class lists them in
+  `spec_host_args`, `to_spec()` leaves them out, a spec may not set them, and `load_*` passes
+  them as it builds the leaf. `in_thread` is one: its
+  `thread` is the host's opaque name, and `load_criterion(spec, threads=...)` (or
+  `load_filter`) looks its `ThreadMembers` (Message-IDs, Gmail thread ids) up once, as the
+  criterion is built; without a resolver, or for a name it does not know, it matches nothing.
 - **A run** (`Folder.run`, `run_into`) is one `with_mailbox` session for all the filters given,
   in order, each seeing what the earlier ones did: search, fetch only what the query cannot decide
   (`fetch_sources`, which never sets `\Seen`, parsed by `parsed_message`; cached for the run,

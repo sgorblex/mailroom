@@ -136,7 +136,7 @@ _FIELD_START: Final = re.compile(rb"\n(?=[^ \t])")
 _ADDRESS: Final = re.compile(r"[^\s<>,;:\"()]+@[^\s<>,;:\"()]+")
 
 
-def _complete(block: bytes) -> bytes:
+def complete_fields(block: bytes) -> bytes:
     """A cut block without its last, possibly partial, field."""
     starts = [match.end() for match in _FIELD_START.finditer(block)]
     return block[: starts[-1]] if starts else b""
@@ -146,7 +146,7 @@ def parse_headers(block: bytes, *, cap: int = MAX_BYTES) -> MessageHeaders:
     """The `FIELDS` of a header block (`FETCH_ITEM`'s answer), a block of `cap` bytes or more
     being cut. Never raises: what cannot be read is left out."""
     truncated = len(block) >= cap
-    fields = header_fields(_complete(block[:cap]) if truncated else block)
+    fields = header_fields(complete_fields(block[:cap]) if truncated else block)
     authentication = fields.get("authentication-results", [])[:MAX_AUTH_FIELDS]
     return MessageHeaders(
         mailing_list=_list_info(fields),
@@ -380,20 +380,26 @@ def _first_link(fields: dict[str, list[str]], name: str) -> str | None:
 _LIST_ID: Final = re.compile(r"(.*?)<([^<>\s]+)>\s*", re.DOTALL)
 
 
+def list_id(value: str) -> tuple[str, str | None] | None:
+    """A List-Id field's identifier, without its angle brackets, and its decoded phrase; None
+    when it has no readable identifier (at most `MAX_LIST_ID` printable characters)."""
+    match = _LIST_ID.fullmatch(value)
+    if match is None or len(match.group(2)) > MAX_LIST_ID or not _printable(match.group(2)):
+        return None
+    name = header_text(match.group(1)).strip().strip('"').strip()[:MAX_LIST_NAME] or None
+    return match.group(2), name
+
+
 def _list_info(fields: dict[str, list[str]]) -> ListInfo | None:
     if not any(name.startswith("list-") for name in fields):
         return None
-    list_id = name = None
-    if ids := fields.get("list-id"):
-        match = _LIST_ID.fullmatch(ids[0])
-        if match is not None and len(match.group(2)) <= MAX_LIST_ID and _printable(match.group(2)):
-            list_id = match.group(2)
-            name = header_text(match.group(1)).strip().strip('"').strip()[:MAX_LIST_NAME] or None
+    found = list_id(ids[0]) if (ids := fields.get("list-id")) else None
+    identifier, name = found if found is not None else (None, None)
     unsubscribe = fields.get("list-unsubscribe", [])
     links = _links(unsubscribe[0]) if unsubscribe else []
     post = fields.get("list-unsubscribe-post", [])
     return ListInfo(
-        id=list_id,
+        id=identifier,
         name=name,
         archive=_first_link(fields, "list-archive"),
         post=_first_link(fields, "list-post"),

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import time
 from datetime import UTC, datetime
 
 from mailroom_core.mail import parsed_message
+from mailroom_core.mail.parsed import MAX_HEADER_BYTES, MAX_IN_REPLY_TO, MAX_REFERENCES
 from mailroom_core.render import Address
 
 
@@ -165,3 +167,86 @@ def test_line_breaks_are_newlines_and_flowed_text_is_joined() -> None:
         message("Content-Type: text/plain; format=flowed\n", b"soft \r\nbreak\r\n")
     )
     assert flowed.text.startswith("soft break")
+
+
+def test_threading_and_list_headers() -> None:
+    parsed = parsed_message(
+        message(
+            "Message-ID: <own@example.org>\n"
+            "In-Reply-To: <parent@example.org> (comment) <other@example.org>\n"
+            "References: <root@example.org>\n <parent@example.org>\n"
+            'List-Id: "News" <News.Example.ORG>\n'
+        )
+    )
+    assert parsed.message_id == "<own@example.org>"
+    assert parsed.in_reply_to == ("<parent@example.org>", "<other@example.org>")
+    assert parsed.references == ("<root@example.org>", "<parent@example.org>")
+    assert parsed.list_id == "News.Example.ORG"
+
+
+def test_threading_headers_absent_are_empty() -> None:
+    parsed = parsed_message(message("Subject: hi\n"))
+    assert (parsed.message_id, parsed.references, parsed.in_reply_to, parsed.list_id) == (
+        None,
+        (),
+        (),
+        None,
+    )
+
+
+def test_malformed_message_ids_are_left_out() -> None:
+    long = "x" * 900
+    parsed = parsed_message(
+        message(
+            "Message-ID: no-brackets@example.org\n"
+            f"References: <@example.org> <a@> <a b@c> <ok@example.org> <{long}@x> <né@x.org> <<a@b>\n"
+            "In-Reply-To: <a@b\n"
+            "List-Id: no brackets\n"
+        )
+    )
+    assert parsed.message_id is None
+    assert parsed.references == ("<ok@example.org>", "<a@b>")
+    assert parsed.in_reply_to == ()
+    assert parsed.list_id is None
+
+
+def test_only_the_first_threading_fields_count() -> None:
+    parsed = parsed_message(
+        message(
+            "Message-ID: <first@x.org>\nMessage-ID: <second@x.org>\n"
+            "List-Id: <one.x.org>\nList-Id: <two.x.org>\n"
+        )
+    )
+    assert (parsed.message_id, parsed.list_id) == ("<first@x.org>", "one.x.org")
+
+
+def test_references_keep_the_root_and_the_newest() -> None:
+    ids = " ".join(f"<{n}@x.org>" for n in range(500))
+    parsed = parsed_message(message(f"References: {ids}\n"))
+    assert len(parsed.references) == MAX_REFERENCES
+    assert parsed.references[0] == "<0@x.org>"
+    assert parsed.references[1] == f"<{500 - MAX_REFERENCES + 1}@x.org>"
+    assert parsed.references[-1] == "<499@x.org>"
+    replies = " ".join(f"<{n}@x.org>" for n in range(100))
+    assert len(parsed_message(message(f"In-Reply-To: {replies}\n")).in_reply_to) == MAX_IN_REPLY_TO
+
+
+def test_an_adversarial_references_field_is_read_in_one_pass() -> None:
+    """Runs of `@` and of brackets that a backtracking pattern would take quadratic time over."""
+    for value in ("<" + "@" * 200_000, "<a" * 100_000, "<" + "a@" * 100_000 + "<"):
+        started = time.monotonic()
+        parsed = parsed_message(message(f"References: {value}\nMessage-ID: {value}\n"))
+        assert time.monotonic() - started < 2
+        assert parsed.references == ()
+
+
+def test_a_header_block_past_the_cap_is_cut_at_a_whole_field() -> None:
+    padding = "X-Pad: " + "a" * 1000 + "\n"
+    count = MAX_HEADER_BYTES // len(padding)
+    head = "Message-ID: <first@x.org>\n" + padding * count + "List-Id: <late.x.org>\n"
+    parsed = parsed_message(message(head))
+    assert parsed.message_id == "<first@x.org>"
+    assert parsed.list_id is None
+    # Without a blank line at all, the cap holds as well.
+    unended = ("Message-ID: <a@x.org>\n" + padding * (count + 10)).replace("\n", "\r\n").encode()
+    assert parsed_message(unended).message_id == "<a@x.org>"

@@ -91,6 +91,17 @@ function fallbackLeaf(wording: Wording, def: LeafDef | undefined, leaf: Leaf): s
   return values.length === 0 ? label : `${label}: ${values.join(', ')}`
 }
 
+/** The phrase a leaf reads with: the trash action names its folder only when it has one. */
+function phraseKey(leaf: Leaf, values: Record<string, unknown>): string {
+  if (leaf.type === 'trash' && values['folder'] !== undefined) {
+    return 'trash_to'
+  }
+  if (leaf.type === 'from_domain' && leaf.args['incl_subdomains'] === true) {
+    return 'from_domain_subdomains'
+  }
+  return leaf.type
+}
+
 function describeLeaf(wording: Wording, defs: LeafDef[], leaf: Leaf): string {
   const { t } = wording
   const def = leafDef(defs, leaf.type)
@@ -99,8 +110,7 @@ function describeLeaf(wording: Wording, defs: LeafDef[], leaf: Leaf): string {
     values[name] = argValue(wording, def?.args.find((arg) => arg.name === name)?.field, value)
   }
   const count = Object.values(leaf.args).find((value) => typeof value === 'number')
-  // The trash action names its folder only when it has one.
-  const key = leaf.type === 'trash' && values['folder'] !== undefined ? 'trash_to' : leaf.type
+  const key = phraseKey(leaf, values)
   const phrase = t(`filterPhrases.${key}`, {
     ...values,
     also: alsoHeaders(t, leaf.args),

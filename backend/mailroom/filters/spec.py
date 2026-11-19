@@ -4,7 +4,7 @@ they are kept."""
 from __future__ import annotations
 
 import functools
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 import regex
 from jsonschema import Draft202012Validator
@@ -16,6 +16,11 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from mailroom_core.filters import Filter
+
+
+HIDDEN_CRITERIA: Final = frozenset({"in_thread"})
+"""Criteria the app keeps for its own rule sets (a muted thread's): not in the schema it offers,
+refused in a spec a user writes (``hidden_criterion``)."""
 
 
 class InvalidSpecError(ValueError):
@@ -76,3 +81,29 @@ def _check_patterns(node: object) -> None:
             raise InvalidSpecError(msg) from None
     for value in node.values():
         _check_patterns(value)
+
+
+def offered_schema() -> dict[str, Any]:
+    """The engine's JSON Schema without ``HIDDEN_CRITERIA``: the spec the web editor and agents
+    are offered."""
+    schema = json_schema()
+    leaves = []
+    for leaf in schema["$defs"]["criterion_leaf"]["oneOf"]:
+        names = leaf["properties"]["type"]["enum"]
+        kept = [name for name in names if name not in HIDDEN_CRITERIA]
+        if kept:
+            leaf["properties"]["type"]["enum"] = kept
+            leaves.append(leaf)
+    schema["$defs"]["criterion_leaf"]["oneOf"] = leaves
+    return schema
+
+
+def hidden_criterion(node: object) -> str | None:
+    """The first of ``HIDDEN_CRITERIA`` anywhere in ``node``, a criterion, or None."""
+    if isinstance(node, list):
+        return next(filter(None, map(hidden_criterion, node)), None)
+    if not isinstance(node, dict):
+        return None
+    if node.get("type") in HIDDEN_CRITERIA:
+        return str(node["type"])
+    return next(filter(None, map(hidden_criterion, node.values())), None)

@@ -291,6 +291,65 @@
           "properties": {
             "type": {
               "enum": [
+                "from_domain"
+              ]
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "domain": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "incl_subdomains": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "domain"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "list_is"
+              ]
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "list_id": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "list_id"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
                 "has_flag",
                 "lacks_flag"
               ]
@@ -405,6 +464,7 @@
             "type": {
               "enum": [
                 "delete",
+                "junk",
                 "mark_as_answered",
                 "mark_as_read",
                 "mark_as_unanswered",

@@ -127,6 +127,9 @@ class SpecSerializable:
 
     spec_type: ClassVar[str]
     spec_codecs: ClassVar[Mapping[str, Codec]] = MappingProxyType({})
+    spec_host_args: ClassVar[frozenset[str]] = frozenset()
+    """Keyword arguments the host supplies when it loads a spec (`load_criterion`'s), never
+    part of the data form."""
     _spec_registry: ClassVar[dict[str, type[Any]]]
     _spec: SpecNode | None = None
 
@@ -154,6 +157,8 @@ class SpecSerializable:
     @classmethod
     def _leaf(cls, arguments: dict[str, Any]) -> SpecNode | None:
         arguments.pop(next(iter(arguments)))  # self
+        for name in cls.spec_host_args:
+            arguments.pop(name, None)
         try:
             args = {
                 name: cls.spec_codecs[name].encode(value)
@@ -169,12 +174,16 @@ class SpecSerializable:
         return node
 
     @classmethod
-    def _from_spec_args(cls, args: Mapping[str, Any]) -> Self:
-        """Build an instance from a leaf node's (JSON) ``args``."""
+    def _from_spec_args(cls, args: Mapping[str, Any], host: Mapping[str, Any]) -> Self:
+        """Build an instance from a leaf node's (JSON) ``args`` and what the host supplies of
+        ``spec_host_args``."""
+        if supplied := sorted(cls.spec_host_args & set(args)):
+            raise TypeError(f"unexpected arguments {supplied}")
         kwargs = {
             name: cls.spec_codecs[name].decode(value) if name in cls.spec_codecs else value
             for name, value in args.items()
         }
+        kwargs.update({name: host[name] for name in cls.spec_host_args if name in host})
         return cls(**kwargs)
 
     def to_spec(self) -> SpecNode:

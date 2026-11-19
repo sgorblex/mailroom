@@ -28,7 +28,7 @@ from mailroom.filters.runs import (
     run_filters_on,
     runs_of,
 )
-from mailroom.filters.spec import InvalidSpecError, normalized_spec
+from mailroom.filters.spec import InvalidSpecError, hidden_criterion, normalized_spec
 from mailroom.mail import service as mail_service
 from mailroom.models import Filter, FilterRun, RuleSet
 from mailroom.worker.tasks import queue_run
@@ -252,11 +252,17 @@ def _check_to_sort_actions(
 
 
 def checked_spec(spec: Spec) -> Spec:
-    """``spec`` as the filter engine serialises it, or ``invalid_spec``."""
+    """``spec`` as the filter engine serialises it, or ``invalid_spec``; ``hidden_criterion`` for
+    a criterion the app keeps for its own rule sets (``mailroom.filters.spec.HIDDEN_CRITERIA``)."""
     try:
-        return normalized_spec(spec)
+        normalized = normalized_spec(spec)
     except InvalidSpecError as exc:
         raise Refusal("invalid", "invalid_spec", str(exc)) from None
+    hidden = hidden_criterion(normalized.get("criterion"))
+    if hidden is not None:
+        msg = f"{hidden} is kept for the app's own rule sets: a filter cannot use it."
+        raise Refusal("invalid", "hidden_criterion", msg)
+    return normalized
 
 
 def account_folders(ctx: AppContext, user_id: int, account_id: int) -> list[list[str]]:

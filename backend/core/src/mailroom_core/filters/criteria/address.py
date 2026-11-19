@@ -4,7 +4,8 @@ from typing import TYPE_CHECKING
 
 from mailroom_core.filters.criteria.criterion import Criterion
 from mailroom_core.filters.pattern import Pattern
-from mailroom_core.filters.query import Q
+from mailroom_core.filters.query import All, Q
+from mailroom_core.render import ascii_host
 
 if TYPE_CHECKING:
     from mailroom_core.filters.message import Message
@@ -77,6 +78,57 @@ class FromIs(Criterion):
             return _has_address(msg.parsed, "sender", addr)
 
         super().__init__(func, imap_query=Q(("FROM", addr)))
+
+
+def _domain(address: str) -> str | None:
+    """An address's domain, as `ascii_host` gives it; None without a local part or a host."""
+    local, at, domain = address.rpartition("@")
+    return ascii_host(domain) if at and local and domain else None
+
+
+class FromDomain(Criterion):
+    """Matches messages from an address at the given domain, compared in IDNA form
+    (`render.hosts.ascii_host`: in any case, a Unicode name matching its `xn--` one). A
+    subdomain matches only with `incl_subdomains`.
+
+    A plain ASCII domain is prefiltered by the server's FROM search for ``@domain`` (``domain``
+    with subdomains), which does not fold Unicode forms: an address that writes it in other
+    characters (fullwidth letters, say) is not found. A domain in Unicode or `xn--` form has no
+    prefilter, every candidate fetched.
+    """
+
+    spec_type = "from_domain"
+
+    def __init__(self, domain: str, incl_subdomains: bool = False) -> None:
+        """Initialize a FromDomain criterion.
+
+        Args:
+            domain: The domain, without the ``@``.
+            incl_subdomains: Whether its subdomains match too (default: False).
+
+        Raises:
+            TypeError: domain is not a string.
+            ValueError: domain is no host name.
+
+        """
+        if not isinstance(domain, str):
+            raise TypeError(f"domain must be a string, got {type(domain).__name__}")
+        wanted = ascii_host(domain.strip())
+        if wanted is None or ":" in wanted or "." not in wanted:
+            raise ValueError(f"not a domain: {domain!r}")
+
+        def func(msg: Message) -> bool:
+            for _, email in _extract_emails(msg.parsed, "sender"):
+                host = _domain(email)
+                if host == wanted or (
+                    incl_subdomains and host is not None and host.endswith(f".{wanted}")
+                ):
+                    return True
+            return False
+
+        plain = domain.isascii() and "xn--" not in wanted
+        query = Q(("FROM", wanted if incl_subdomains else f"@{wanted}")) if plain else All
+        super().__init__(func, imap_query=query)
 
 
 class FromMatches(Criterion):
