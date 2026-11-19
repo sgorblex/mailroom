@@ -58,6 +58,19 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   public-suffix list and reads text the sender may hide with styles: it warns, the title is
   what to trust.
 - Plain-text rendering is the fallback and the default for the index.
+- **No request on mail's behalf, but one.** Nothing a message names is fetched, with one
+  exception: a **one-click unsubscribe** (RFC 8058) the user asks for on one message (`POST
+  /mail/messages/{ref}/unsubscribe`; never automatic, no MCP tool). The server reads the message
+  itself and posts only when it has exactly one List-Unsubscribe, with an `https:` link, and one
+  List-Unsubscribe-Post of `List-Unsubscribe=One-Click`, and a DKIM signature that signs both is
+  the one the topmost Authentication-Results field of the account's own `authserv_id` passed
+  (named by `header.d` and `header.b`); a header block cut at its cap is refused. The app sends
+  it, never mailroom-core, through `safe_fetch` as a POST (*Outbound HTTP to a host from input*
+  below): no cookies, no `Referer`, no redirect. Each attempt, refused ones included, is an
+  audit record (`unsubscribe`), and the log line `mail_unsubscribed` carries `user_id`,
+  `account_id` and the outcome, never the URL or the list (the message's read before it logs as
+  `mail_unsubscribe_checked`). A `mailto:` unsubscribe is only a draft
+  ([`mail-client.md`](mail-client.md), *Compose*) the user sends through the send gate.
 
 ### The app
 
@@ -109,17 +122,18 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   stripped, and Bcc never goes in a transmitted header.
 - **Learning never acts** ([`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Filter suggestions*).
 - **Outbound HTTP to a host from input** (an email address's domain, a URL a document names, a
-  client ID metadata document's URL) goes through `mailroom.net.safe_fetch`, against SSRF: a GET, or
-  a POST of a urlencoded form of at most 1 KiB, to `https://` on the default port with no
-  credentials in the URL; every address the host resolves to must be public (a private, loopback,
-  link-local, multicast, reserved or unspecified IPv4 or IPv6 address, an IPv4 one mapped or
-  6to4-embedded in IPv6 included, refuses the fetch), and the connection goes to that vetted address
-  with the hostname kept for SNI, the certificate check and `Host`. No redirect unless the caller
-  allows a few for a GET (a POST never follows one), each vetted again, and one to another host
-  drops the caller's `Authorization` and `Cookie`; no environment proxy, no cookies, no `Referer`;
-  connect and read timeouts, a deadline for the whole fetch and a cap on the body, which is asked
-  for (`Accept-Encoding: identity`) and taken only unencoded, so no compressed answer grows past the
-  cap. The caller judges the status and the content type. Tested on a mock transport and resolver.
+  client ID metadata document's URL, a one-click unsubscribe URL) goes through
+  `mailroom.net.safe_fetch`, against SSRF: a GET, or a POST of a urlencoded form of at most 1 KiB,
+  to `https://` on the default port with no credentials in the URL; every address the host resolves
+  to must be public (a private, loopback, link-local, multicast, reserved or unspecified IPv4 or
+  IPv6 address, an IPv4 one mapped or 6to4-embedded in IPv6 included, refuses the fetch), and the
+  connection goes to that vetted address with the hostname kept for SNI, the certificate check and
+  `Host`. No redirect unless the caller allows a few for a GET (a POST never follows one), each
+  vetted again, and one to another host drops the caller's `Authorization` and `Cookie`; no
+  environment proxy, no cookies, no `Referer`; connect and read timeouts, a deadline for the whole
+  fetch and a cap on the body, which is asked for (`Accept-Encoding: identity`) and taken only
+  unencoded, so no compressed answer grows past the cap. The caller judges the status and the
+  content type. Tested on a mock transport and resolver.
 
 ### Editions
 
@@ -553,6 +567,7 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   real run, with its `rule_set_id` and `run_id`), the action (`move`, `move_to_account`,
   `archive`, `trash`, `flag`, `draft_save`, `draft_remove`, `send`, `folder_create`,
   `folder_rename`, `folder_delete`, `mark_folder_read`, `bulk_flag`, `bulk_move`, `bulk_trash`,
+  `unsubscribe` (the list's id, the URL's host and the status it answered, never the URL),
   or the filter's action as its report names it) and the result. A move to another account is
   recorded in both: the original's record names the `destination_account`, the copy's (in the
   target account) its `source_account` and `source_folder`. A run records each message its report

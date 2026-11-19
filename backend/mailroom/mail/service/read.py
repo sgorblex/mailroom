@@ -32,6 +32,7 @@ if TYPE_CHECKING:
 
     from mailroom.accounts.service import Via
     from mailroom.context import AppContext
+    from mailroom_core.config import AccountConfig
     from mailroom_core.mail import (
         Attachment,
         Criteria,
@@ -393,6 +394,26 @@ def _search_accounts(
         )
     finally:
         timer.cancel()
+
+
+def read_headers(
+    ctx: AppContext, user_id: int, ref: str, *, event: str, via: Via = "web"
+) -> tuple[MessageView, AccountConfig]:
+    """The message ``ref`` names for its headers (a one-character body window), and its
+    account's config, for a call that acts on what the headers say; logged as ``event``."""
+    accounts = _accounts(ctx, user_id)
+    message = _message_ref(ctx, user_id, accounts, ref)
+    account = accounts.config(message.account)
+    view = _call(
+        ctx,
+        user_id,
+        accounts,
+        event,
+        via,
+        message.account,
+        lambda connections: core.read_message(connections, message, body_chars=1, account=account),
+    )
+    return view, account
 
 
 def read_message(

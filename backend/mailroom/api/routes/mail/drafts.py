@@ -1,5 +1,6 @@
-"""Drafts and sends: a reply's or a forward's prefill, saving a draft with its uploads (multipart,
-bounded before it is read), finding, reading and deleting one, sending it and reading the send."""
+"""Drafts and sends: the prefill of a reply, a forward or an unsubscribe by mail, saving a draft
+with its uploads (multipart, bounded before it is read), finding, reading and deleting one,
+sending it and reading the send."""
 
 from __future__ import annotations
 
@@ -51,7 +52,7 @@ class PrefillRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     ref: BatchRef
-    mode: Literal["reply", "reply_all", "forward"]
+    mode: Literal["reply", "reply_all", "forward", "unsubscribe"]
 
 
 class KeptPart(MessagePart):

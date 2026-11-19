@@ -8,8 +8,12 @@ from mailroom_core.mail import (
     AuthResults,
     DkimSignature,
     ListInfo,
+    Mailto,
     MessageHeaders,
+    OneClick,
     authentication,
+    mailto_fields,
+    one_click_unsubscribe,
     parse_headers,
     trusted_results,
 )
@@ -456,3 +460,81 @@ def test_huge_and_hostile_blocks_parse_quickly_to_little() -> None:
     binary = b"List-Id: \xff\xfe <\xff.example>\r\nList-Unsubscribe: <https://\xc3.example/>\r\n"
     info = parse_headers(binary).mailing_list
     assert info == ListInfo(unsubscribe_fields=1)
+
+
+SIGNED = (
+    "DKIM-Signature: v=1; d=news.example; s=s1; h=from:list-unsubscribe:list-unsubscribe-post;"
+    " bh=x=; b=AbCd1234efgh"
+)
+LIST = (
+    "List-Id: <weekly.news.example>",
+    "List-Unsubscribe: <mailto:leave@news.example>, <https://news.example/u?t=secret>",
+    "List-Unsubscribe-Post: List-Unsubscribe=One-Click",
+)
+PASSED = "Authentication-Results: mx.example; dkim=pass header.d=news.example header.b=AbCd1234"
+
+
+def one_click(*fields: str, authserv_id: str | None = "mx.example") -> OneClick:
+    return one_click_unsubscribe(parse_headers(block(*fields)), authserv_id)
+
+
+def test_one_click_needs_a_trusted_signature_over_both_fields() -> None:
+    assert one_click(PASSED, SIGNED, *LIST) == OneClick("https://news.example/u?t=secret")
+
+
+def test_one_click_is_refused_without_the_fields_it_needs() -> None:
+    assert one_click(PASSED, SIGNED) == OneClick(None, "unavailable")
+    without_post = one_click(PASSED, SIGNED, *LIST[:2])
+    assert without_post == OneClick(None, "unavailable")
+    mailto_only = one_click(
+        PASSED, SIGNED, LIST[0], "List-Unsubscribe: <mailto:leave@news.example>", LIST[2]
+    )
+    assert mailto_only == OneClick(None, "not_https")
+
+
+def test_one_click_is_refused_with_a_second_field_or_a_cut_block() -> None:
+    second = "List-Unsubscribe: <https://evil.example/u>"
+    assert one_click(PASSED, SIGNED, *LIST, second) == OneClick(None, "repeated")
+    assert one_click(PASSED, SIGNED, *LIST, LIST[2]) == OneClick(None, "repeated")
+    blob = block(PASSED, SIGNED, *LIST, f"X-Original-To: {'a' * mh.MAX_BYTES}")
+    assert one_click_unsubscribe(parse_headers(blob), "mx.example") == OneClick(None, "repeated")
+
+
+def test_one_click_is_refused_without_the_accounts_server() -> None:
+    assert one_click(PASSED, SIGNED, *LIST, authserv_id=None) == OneClick(None, "unverified")
+    assert one_click(PASSED, SIGNED, *LIST, authserv_id="mx.other") == OneClick(None, "not_signed")
+
+
+def test_one_click_needs_the_passing_signature_to_sign_both_fields() -> None:
+    partial = SIGNED.replace(":list-unsubscribe-post", "")
+    assert one_click(PASSED, partial, *LIST) == OneClick(None, "not_signed")
+    failed = PASSED.replace("dkim=pass", "dkim=fail")
+    assert one_click(failed, SIGNED, *LIST) == OneClick(None, "not_signed")
+    other_domain = PASSED.replace("header.d=news.example", "header.d=evil.example")
+    assert one_click(other_domain, SIGNED, *LIST) == OneClick(None, "not_signed")
+    short_b = PASSED.replace("header.b=AbCd1234", "header.b=AbC")
+    assert one_click(short_b, SIGNED, *LIST) == OneClick(None, "not_signed")
+    # A forged field above the account server's own is passed over.
+    forged = "Authentication-Results: mx.evil; dkim=pass header.d=news.example header.b=AbCd1234"
+    assert one_click(forged, SIGNED.replace("AbCd", "ZZZZ"), *LIST) == OneClick(None, "not_signed")
+
+
+def test_one_click_refuses_a_signature_it_cannot_tell_from_another() -> None:
+    twin = SIGNED.replace(":list-unsubscribe-post", "").replace("b=AbCd1234efgh", "b=AbCd1234zz")
+    assert one_click(PASSED, SIGNED, twin, *LIST) == OneClick(None, "not_signed")
+
+
+def test_a_mailto_keeps_one_address_a_subject_and_a_body() -> None:
+    assert mailto_fields(
+        "mailto:leave%2Bme@news.example,other@evil.example"
+        "?cc=spy@evil.example&Subject=Unsubscribe%20me&body=list%3Dweekly&to=x@evil.example"
+        "&subject=second"
+    ) == Mailto("leave+me@news.example", "Unsubscribe me", "list=weekly")
+    assert mailto_fields("mailto:leave@news.example") == Mailto("leave@news.example")
+
+
+def test_a_mailto_without_an_address_gives_nothing() -> None:
+    assert mailto_fields("mailto:?to=leave@news.example") is None
+    assert mailto_fields("mailto:not an address@x") is None
+    assert mailto_fields("https://news.example/u") is None
+    assert mailto_fields(f"mailto:a@{'b' * mh.MAX_URL}.example") is None

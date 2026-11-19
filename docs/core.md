@@ -215,6 +215,13 @@ X-Original-To. Deliberate choices:
   `headers` is verified on its own.
 - **DKIM-Signature** gives `d=`, the start of `b=` and the `h=` list of a well-formed signature;
   one with a duplicate or missing tag is left out.
+- **Unsubscribing, judged, never done:** `one_click_unsubscribe` (pure) gives the `https:`
+  List-Unsubscribe URL only for exactly one List-Unsubscribe and one List-Unsubscribe-Post of
+  `List-Unsubscribe=One-Click`, in a block not cut, and a DKIM signature signing both that the
+  `trusted_results` of the account's `authserv_id` passed, named by `header.d` and a `header.b` of
+  at least 8 characters that no other signature shares; else it says why (`OneClickRefusal`). The
+  app sends the POST; core makes no request. `mailto_fields` reads a `mailto:` link's first
+  address, `subject` and `body` (RFC 6068), dropping every other field.
 - **Checks a read makes, given the message's `AccountConfig`** (`read_message(account=…)`):
   `authentication` (`message_headers.authentication`) reads `trusted_results` only, and is
   `NOT_VERIFIED` without an `authserv_id` or a field of it; its DMARC counts (`dmarc_pass`) only for
