@@ -306,16 +306,19 @@ it once of INBOX, read-write, and caches it next to the capabilities until `clos
 account (`X-GM-EXT-1`) counts as keeping none, whatever it answers, since Gmail turns keywords
 into labels.
 
-They are built on `mailroom_core.mail.selected`, as `reply.mark_answered` and the drafts are:
-operations by UID on the folder a `with_mailbox` session holds (`search_uids` and
-`message_id_uids`, `fetch_sources` with `BODY.PEEK[]`, `fetch_source` capped at a size with
-flags and INTERNALDATE, `fetch_envelopes`, `append_raw` with flags and an arrival date,
-`move_uids`, `store_flags`, `delete_uids`, `listed_folders`), with the refusals of a move
-(`move_target`) and `abandon_read_back` for a read-back failing after a write. Whatever acts
-inside a session of its own uses them, folders included, since a second connection of the
-account would wait for the one it holds. `store_flags` sets only `\Seen`, `\Flagged`,
-`\Answered` and the To sort keyword `TO_SORT` (`$MailroomSort`), which is `unsupported` in a
-folder that keeps no keywords; `delete_uids` needs UIDPLUS and serves only a draft Mailroom wrote
+They are built on `mailroom_core.mail.selected`, as `reply.mark_answered`, `reply.mark_forwarded`
+and the drafts are:
+operations by UID on the folder a `with_mailbox` session holds (`search_uids` and `message_id_uids`,
+`fetch_sources` with `BODY.PEEK[]`, `fetch_source` capped at a size with flags and INTERNALDATE,
+`fetch_envelopes`, `append_raw` with flags and an arrival date, `move_uids`, `store_flags`,
+`store_forwarded`, `delete_uids`, `listed_folders`), with the refusals of a move (`move_target`) and
+`abandon_read_back` for a read-back failing after a write. Whatever acts inside a session of its own
+uses them, folders included, since a second connection of the account would wait for the one it
+holds. `store_flags` sets only `\Seen`, `\Flagged`, `\Answered` and the To sort keyword `TO_SORT`
+(`$MailroomSort`), which is `unsupported` in a folder that keeps no keywords. The forward keyword
+`FORWARDED` (`$Forwarded`, RFC 5788) is not among them: only `store_forwarded` sets it, for
+`mark_forwarded` after a forward was sent, and only where the folder keeps keywords, so no agent
+sets it through `set_flags`. `delete_uids` needs UIDPLUS and serves only a draft Mailroom wrote
 (*Safety*), a filter's `delete` and a move to another account for good. The filter engine runs on
 them too (*Filters*).
 
@@ -404,8 +407,10 @@ only the MIME body: its header classes parse their input, which would decode an 
 subject or a name back into the header, CR/LF included, and would turn a long Message-ID into an
 encoded word, so the message's own headers are written by hand. Deliberate choices:
 
-- `X-Mailroom-Draft` is `1`, or `1; answers=<ref>` when sending the draft is to set `\Answered` on
-  the message it answers. Only those two forms count as Mailroom's mark.
+- `X-Mailroom-Draft` is `1`, `1; answers=<ref>` when sending the draft is to set `\Answered` on
+  the message it answers, or `1; forwards=<ref>` when it is to set `$Forwarded` on the message it
+  forwards (`draft_answers`, `draft_forwards`); a draft never carries both. Only those forms count
+  as Mailroom's mark.
 - The `wire` copy never carries that header, and `compose` checks every recipient with
   `deliverable_address`, so a draft addressed to an address from IMAP that no send would accept is
   refused when saved, not when sent.
@@ -476,11 +481,12 @@ sending, and `settle_draft` and `mark_original` do what follows a sent draft or 
   classified is `unknown` as well.
 - **After delivery, nothing is a failure.** Filing in Sent, capabilities included, can only end in
   `filed = false`, and the `sent` item is audited either way; removing the draft and setting
-  `\Answered` can only add a note, a `SendNote` with a stable `code` beside its English `text`, so a
-  host can word it itself. If the store cannot be reached to record the outcome, the row stays
+  `\Answered` or `$Forwarded` can only add a note (`original_not_marked`,
+  `original_not_marked_forwarded`), a `SendNote` with a stable `code` beside its English `text`,
+  so a host can word it itself. If the store cannot be reached to record the outcome, the row stays
   `sending` and reads `unknown` past the ceiling, and the send's result stands.
 - **A draft that was not filed stays.** It is then the only copy in the account, so `settle_draft`
-  takes `filed`, still sets `\Answered`, and notes `draft_kept`. The send's key keeps a retry from
+  takes `filed`, still marks the original, and notes `draft_kept`. The send's key keeps a retry from
   delivering it again while its row is kept, at least 30 days.
 - **One write after delivery.** `deliver` writes the row, and what followed goes in once, by
   `send_through_gate` or by the host, when all of it is over; `file_sent` only answers. A host that

@@ -23,7 +23,7 @@ from mailroom.api.routes.mail._shared import (
 )
 from mailroom.mail import remote_senders, service, unsubscribe
 from mailroom_core.config import MAX_SAFE_INTEGER
-from mailroom_core.mail import DISPLAYED_IMAGES, TO_SORT, SearchQuery
+from mailroom_core.mail import DISPLAYED_IMAGES, FORWARDED, TO_SORT, SearchQuery
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -75,6 +75,7 @@ class Flags(BaseModel):
     seen: bool
     flagged: bool
     answered: bool
+    forwarded: bool
     draft: bool
     to_sort: bool
 
@@ -85,6 +86,7 @@ class Flags(BaseModel):
             seen="\\seen" in lowered,
             flagged="\\flagged" in lowered,
             answered="\\answered" in lowered,
+            forwarded=FORWARDED.lower() in lowered,
             draft="\\draft" in lowered,
             to_sort=TO_SORT.lower() in lowered,
         )

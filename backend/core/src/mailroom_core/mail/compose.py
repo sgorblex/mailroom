@@ -27,8 +27,8 @@ if TYPE_CHECKING:
 
 DRAFT_HEADER: Final = "X-Mailroom-Draft"
 """Marks a draft mailroom wrote, so only those are ever expunged when replaced (docs/core.md,
-*Safety*). Its value is `1`, or `1; answers=<ref>` when sending the draft is to set
-\\Answered on that message."""
+*Safety*). Its value is `1`, `1; answers=<ref>` when sending the draft is to set \\Answered on
+that message, or `1; forwards=<ref>` when it is to set `FORWARDED` on it."""
 
 _POLICY: Final = policy.SMTP.clone(max_line_length=76)
 _MAX_LINE: Final = 78
@@ -38,7 +38,7 @@ _MAX_ID: Final = 900
 _ID_CHAR: Final = "[!-;=?-~]"
 _ID: Final = re.compile(f"<{_ID_CHAR}+@{_ID_CHAR}+>")
 """What a Message-ID looks like: no spaces, angle brackets, controls or anything but ASCII."""
-_DRAFT_VALUE: Final = re.compile(r"1(?:;[ \t]*answers=([A-Za-z0-9_-]+))?")
+_DRAFT_VALUE: Final = re.compile(r"1(?:;[ \t]*(answers|forwards)=([A-Za-z0-9_-]+))?")
 _PART_TYPE: Final = re.compile(r"[a-z0-9][\w.+-]*/[\w.+-]+", re.ASCII)
 _NOT_BASE64: Final = ("multipart/", "message/")
 """A multipart needs a boundary and a message/* may not be base64 (RFC 2046, 5.2.1): as
@@ -81,6 +81,8 @@ class MessageInput:
     draft: bool = False
     answers: str | None = None
     """On a draft: the ref of the message it answers."""
+    forwards: str | None = None
+    """On a draft: the ref of the message it forwards; never with `answers`."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -200,16 +202,19 @@ def _body(message: MessageInput) -> bytes:
 def _draft_mark(message: MessageInput) -> bytes:
     if not message.draft:
         return b""
-    if message.answers is None:
-        return _words(DRAFT_HEADER, ["1"])
-    return _words(DRAFT_HEADER, ["1;", f"answers={format_ref(parse_ref(message.answers))}"])
+    if message.answers is not None and message.forwards is not None:
+        raise MailError("invalid_argument", "A draft answers or forwards a message, not both.")
+    for kind, ref in (("answers", message.answers), ("forwards", message.forwards)):
+        if ref is not None:
+            return _words(DRAFT_HEADER, ["1;", f"{kind}={format_ref(parse_ref(ref))}"])
+    return _words(DRAFT_HEADER, ["1"])
 
 
 def compose(message: MessageInput, message_id: str | None = None) -> Composed:
     """The message under `message_id`, a new one when None. Every header value is cleaned, so no
     CR/LF can start a new header; threading ids that do not look like Message-IDs are dropped;
     `invalid_argument` on a recipient that is not deliverable, wherever it came from, or a
-    malformed `message_id` or `answers`."""
+    malformed `message_id`, `answers` or `forwards`, or both of the last two."""
     chosen = new_message_id(message.sender.address) if message_id is None else message_id
     if not _is_id(chosen):
         raise MailError("invalid_argument", "Not a Message-ID.")
@@ -254,16 +259,25 @@ def is_own_draft(headers: bytes | str) -> bool:
     return _draft_match(headers) is not None
 
 
+def _draft_original(headers: bytes | str, kind: str) -> MessageRef | None:
+    match = _draft_match(headers)
+    if match is None or match.group(1) != kind:
+        return None
+    try:
+        return parse_ref(match.group(2))
+    except MailError:
+        return None
+
+
 def draft_answers(headers: bytes | str) -> MessageRef | None:
     """The message a draft answers, from its header block: None when it says none, or says
     something that is no ref."""
-    match = _draft_match(headers)
-    if match is None or match.group(1) is None:
-        return None
-    try:
-        return parse_ref(match.group(1))
-    except MailError:
-        return None
+    return _draft_original(headers, "answers")
+
+
+def draft_forwards(headers: bytes | str) -> MessageRef | None:
+    """The message a draft forwards, as `draft_answers` reads the one it answers."""
+    return _draft_original(headers, "forwards")
 
 
 def _crlf(breaks: re.Match[bytes]) -> bytes:

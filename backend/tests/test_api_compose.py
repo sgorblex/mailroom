@@ -317,8 +317,25 @@ def test_a_forward_offers_the_attachments(composer: Composer) -> None:
     assert offered["ref"] == ref
     assert offered["name"] == "notes.pdf"
 
-    saved = composer.save(to=[address(stranger())], keep=[{"ref": ref, "part": offered["part"]}])
+    assert started["forwards"] == ref
+    to = stranger()
+    saved = composer.save(
+        to=[address(to)], forwards=ref, keep=[{"ref": ref, "part": offered["part"]}]
+    )
     assert [part["name"] for part in saved["parts"]] == ["notes.pdf"]
+    assert composer.read(saved["ref"])["forwards"] == ref
+
+    result = composer.sent(saved["ref"])
+    assert (result["state"], result["note_codes"]) == ("sent", [])
+    flags = composer.client.get(f"{MAIL}/messages/{ref}").json()["flags"]
+    assert (flags["forwarded"], flags["answered"]) == (True, False)
+
+
+def test_a_draft_cannot_both_answer_and_forward(composer: Composer) -> None:
+    ref = composer.seed(mime("Notes", text="Hello"))
+    response = composer.post_draft(answers=ref, forwards=ref, to=[address(stranger())])
+    assert response.status_code == 400, response.text
+    assert composer.contents("Drafts") == []
 
 
 def test_an_unsubscribe_by_mail_starts_a_draft_to_the_lists_one_address(

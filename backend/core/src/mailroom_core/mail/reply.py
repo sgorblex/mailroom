@@ -13,7 +13,7 @@ from mailroom_core.mail.message_headers import delivery_addresses
 from mailroom_core.mail.read import fetch_structure, fetched_headers
 from mailroom_core.mail.recipients import envelope_mailboxes, mailbox_text
 from mailroom_core.mail.ref import MessageRef, check_fresh
-from mailroom_core.mail.selected import store_flags
+from mailroom_core.mail.selected import store_flags, store_forwarded
 from mailroom_core.render import clean_header, format_date, render_body
 
 if TYPE_CHECKING:
@@ -130,6 +130,17 @@ def mark_answered(connections: MailConnections, ref: MessageRef) -> None:
     def run(context: MailboxContext) -> None:
         check_fresh(ref, context.uid_validity)
         store_flags(context, [ref.uid], add=["\\Answered"])
+
+    connections.with_mailbox(ref.account, ref.folder, False, run)
+
+
+def mark_forwarded(connections: MailConnections, ref: MessageRef) -> None:
+    """Sets `FORWARDED` on the original once a forward of it has gone out, where the folder keeps
+    keywords (`MailboxContext.keywords`); elsewhere, Gmail included, nothing is set."""
+
+    def run(context: MailboxContext) -> None:
+        check_fresh(ref, context.uid_validity)
+        store_forwarded(context, [ref.uid])
 
     connections.with_mailbox(ref.account, ref.folder, False, run)
 

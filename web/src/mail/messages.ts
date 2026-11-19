@@ -55,6 +55,7 @@ const NOTE_CODES: Record<string, string> = {
   draft_not_removed: 'compose.noteDraftNotRemoved',
   draft_kept: 'compose.noteDraftKept',
   original_not_marked: 'compose.noteOriginalNotMarked',
+  original_not_marked_forwarded: 'compose.noteOriginalNotMarkedForwarded',
 }
 
 /** How a delivered send went, in one sentence or a few. */

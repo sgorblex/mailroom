@@ -39,6 +39,9 @@ type Criteria = Sequence[object]
 
 TO_SORT: Final = "$MailroomSort"
 """The keyword that marks a message "To sort"; servers compare keywords ignoring case."""
+FORWARDED: Final = "$Forwarded"
+"""The keyword (RFC 5788) a sent forward sets on its original; only `store_forwarded` sets it,
+so it is not among `SETTABLE_FLAGS`."""
 SETTABLE_FLAGS: Final = ("\\Seen", "\\Flagged", "\\Answered", TO_SORT)
 """The flags `store_flags` sets and clears; `\\Deleted` is only ever set by a removal."""
 _DELETED: Final = b"\\Deleted"
@@ -423,6 +426,13 @@ def store_flags(
         client.add_flags(wanted, [flag.encode() for flag in dict.fromkeys(add)], silent=True)
     if remove:
         client.remove_flags(wanted, [flag.encode() for flag in dict.fromkeys(remove)], silent=True)
+
+
+def store_forwarded(context: MailboxContext, uids: Sequence[int]) -> None:
+    """Sets `FORWARDED` on `uids` where the folder keeps keywords (`MailboxContext.keywords`);
+    elsewhere, Gmail included, nothing is set. Silent: nothing is read back."""
+    if context.keywords and uids:
+        context.client.add_flags(list(uids), [FORWARDED.encode()], silent=True)
 
 
 def delete_uids(context: MailboxContext, uids: Sequence[int]) -> None:

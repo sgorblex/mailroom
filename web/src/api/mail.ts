@@ -16,6 +16,8 @@ const flagsSchema = z.object({
   seen: z.boolean(),
   flagged: z.boolean(),
   answered: z.boolean(),
+  /** `$Forwarded`, set when a forward of the message is sent. */
+  forwarded: z.boolean(),
   draft: z.boolean(),
   /** The To sort mark (`$MailroomSort`). */
   to_sort: z.boolean(),
@@ -515,6 +517,7 @@ const composeFieldsSchema = z.object({
   subject: z.string(),
   text: z.string(),
   answers: z.string().nullable(),
+  forwards: z.string().nullable(),
 })
 
 const prefillSchema = composeFieldsSchema.extend({ attachments: z.array(keepPartSchema) })
@@ -572,6 +575,7 @@ export interface DraftFields {
   compose_id: string
   ref: string | null
   answers: string | null
+  forwards: string | null
   from: string | null
   to: MailAddress[]
   cc: MailAddress[]

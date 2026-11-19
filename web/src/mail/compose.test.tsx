@@ -403,6 +403,7 @@ describe('replying and forwarding', () => {
     await user.click(within(form).getByRole('button', { name: 'Send' }))
     await sentNotice()
     expect(savesOf(fetchMock)[0]?.fields.answers).toBe(firstRef)
+    expect(savesOf(fetchMock)[0]?.fields.forwards).toBeNull()
   })
 
   it('offers a forward\'s attachments as keep entries the user can drop', async () => {
@@ -422,6 +423,7 @@ describe('replying and forwarding', () => {
     await sentNotice()
     expect(savesOf(fetchMock)[0]?.fields.keep).toEqual([{ ref: firstRef, part: '3' }])
     expect(savesOf(fetchMock)[0]?.fields.answers).toBeNull()
+    expect(savesOf(fetchMock)[0]?.fields.forwards).toBe(firstRef)
   })
 
   it('has shortcuts for each, none while a composer is open', async () => {
@@ -540,7 +542,7 @@ describe('drafts', () => {
     subject: 'Half written',
     text: 'So far',
   })
-  const item = messageItem(WORK, 'Drafts', 40, { ref: draft.ref, subject: draft.subject, flags: { seen: false, flagged: false, answered: false, draft: true, to_sort: false } })
+  const item = messageItem(WORK, 'Drafts', 40, { ref: draft.ref, subject: draft.subject, flags: { seen: false, flagged: false, answered: false, forwarded: false, draft: true, to_sort: false } })
   const withDraft = (fields: Partial<typeof draft> = {}): FakeMailState =>
     state({
       messages: { '1/INBOX': inbox, '1/Sent': [], '1/Drafts': [item], '2/INBOX': [] },

@@ -261,7 +261,7 @@ describe('folder actions', () => {
   })
 
   describe('mark all as read', () => {
-    const unseen = { flags: { seen: false, flagged: false, answered: false, draft: false, to_sort: false } }
+    const unseen = { flags: { seen: false, flagged: false, answered: false, forwarded: false, draft: false, to_sort: false } }
     /** News: `unread` as listed, its three messages unread, UIDNEXT 3 when listed (so 3 came after). */
     function news(unread: number): FakeMailState {
       const fake = state()

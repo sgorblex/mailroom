@@ -20,6 +20,7 @@ from mailroom_core.mail import (
     archive_messages,
     audit_outcome,
     format_ref,
+    mark_forwarded,
     move_messages,
     organize_text,
     parse_ref,
@@ -425,3 +426,15 @@ def test_organize_text() -> None:
         "1/Sent: updated 2: r1 read, flagged, to sort; r2 (flags not read back)",
         "1/Lists: updated 1: r3 unread",
     ]
+
+
+def test_marks_a_forwarded_original_only_where_the_folder_keeps_keywords() -> None:
+    connections, client = stubbed(set())
+    mark_forwarded(connections, MessageRef(1, "INBOX", 1, 5))
+    assert client.calls == [("add_flags", [5], [b"$Forwarded"])]
+    client.calls.clear()
+    cast("StubConnections", connections).keywords = False
+    mark_forwarded(connections, MessageRef(1, "INBOX", 1, 5))
+    assert client.calls == []
+    with pytest.raises(MailError, match="out of date"):
+        mark_forwarded(connections, MessageRef(1, "INBOX", 2, 5))

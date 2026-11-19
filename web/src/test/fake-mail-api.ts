@@ -133,7 +133,7 @@ export function messageItem(account: AccountId, folder: string, uid: number, fie
     date: '2026-10-30T09:12:00+00:00',
     from: { name: `Sender ${String(uid)}`, address: `sender${String(uid)}@example.org` },
     subject: `Message ${String(uid)}`,
-    flags: { seen: true, flagged: false, answered: false, draft: false, to_sort: false },
+    flags: { seen: true, flagged: false, answered: false, forwarded: false, draft: false, to_sort: false },
     has_attachments: false,
     preview: `Preview of ${String(uid)}`,
     size: 1000,
@@ -433,6 +433,7 @@ function saveDraftAnswer(state: FakeMailState, form: FormData): Response {
     subject: fields.subject,
     text: fields.text,
     answers: fields.answers,
+    forwards: fields.forwards,
     lossy: false,
     parts,
     send: null,
@@ -474,6 +475,7 @@ function prefillAnswer(state: FakeMailState, body: { ref: string; mode: string }
       subject: url.searchParams.get('subject') ?? 'unsubscribe',
       text: url.searchParams.get('body') ?? '',
       answers: null,
+      forwards: null,
       attachments: [],
     })
   }
@@ -488,6 +490,7 @@ function prefillAnswer(state: FakeMailState, body: { ref: string; mode: string }
     subject: `${forward ? 'Fwd' : 'Re'}: ${view.subject}`,
     text: `\n\n> ${view.text.content}`,
     answers: forward ? null : view.ref,
+    forwards: forward ? view.ref : null,
     attachments: forward ? view.attachments.map((part) => ({ ...part, ref: view.ref })) : [],
   })
 }
@@ -888,6 +891,7 @@ export function fakeDraft(account: AccountId, uid: number, fields: Partial<Draft
     subject: `Draft ${String(uid)}`,
     text: `Text of draft ${String(uid)}`,
     answers: null,
+    forwards: null,
     lossy: false,
     parts: [],
     send: null,

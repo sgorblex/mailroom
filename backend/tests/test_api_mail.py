@@ -203,6 +203,7 @@ def test_a_folder_pages_newest_first(mailbox: Mailbox) -> None:
         "seen": False,
         "flagged": False,
         "answered": False,
+        "forwarded": False,
         "draft": False,
         "to_sort": False,
     }
