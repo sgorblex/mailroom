@@ -291,3 +291,73 @@ def test_a_connection_failure_is_reported() -> None:
         raise httpx.ConnectError("refused", request=request)
 
     assert refused(handler, "https://example.org/").problem == "failed"
+
+
+def test_a_form_is_posted_to_the_vetted_address() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(204)
+
+    form = {"List-Unsubscribe": "One-Click"}
+    headers = {"Referer": "https://mail.example.net/", "Content-Type": "text/plain"}
+    fetched = fetch(handler, "https://example.org/u?id=7", form=form, headers=headers)
+    assert fetched.status_code == 204
+    (request,) = seen
+    assert request.method == "POST"
+    assert str(request.url) == f"https://{PUBLIC_V4}/u?id=7"
+    assert request.headers["Host"] == "example.org"
+    assert request.extensions["sni_hostname"] == "example.org"
+    assert request.headers["Content-Type"] == "application/x-www-form-urlencoded"
+    assert request.content == b"List-Unsubscribe=One-Click"
+    assert "Referer" not in request.headers
+    assert "Cookie" not in request.headers
+
+
+def test_a_get_sends_no_referrer_and_no_body() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return ok(request)
+
+    fetch(handler, "https://example.org/", headers={"referer": "https://mail.example.net/"})
+    assert (seen[0].method, seen[0].content) == ("GET", b"")
+    assert "Referer" not in seen[0].headers
+
+
+@pytest.mark.parametrize(
+    ("url", "problem"),
+    [("http://example.org/", "url"), ("https://inside.example.org/", "address")],
+)
+def test_a_post_is_refused_by_the_same_rules(url: str, problem: str) -> None:
+    assert refused(unreachable, url, form={"a": "b"}).problem == problem
+
+
+def test_a_post_follows_no_redirect() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(303, headers={"Location": "https://example.org/done"})
+
+    assert refused(handler, "https://example.org/", form={"a": "b"}).problem == "redirect"
+    with pytest.raises(ValueError, match="no redirect"):
+        fetch(unreachable, "https://example.org/", form={"a": "b"}, max_redirects=1)
+
+
+def test_a_large_form_is_refused_before_any_request() -> None:
+    with pytest.raises(ValueError, match="1024 bytes"):
+        fetch(unreachable, "https://example.org/", form={"a": "x" * 1024})
+
+
+def test_a_post_answer_keeps_the_size_cap_and_deadline() -> None:
+    def big(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"x" * 1001)
+
+    assert refused(big, "https://example.org/", form={"a": "b"}).problem == "too_large"
+
+    async def slow(request: httpx.Request) -> httpx.Response:
+        await anyio.sleep(1)
+        return ok(request)
+
+    error = refused(slow, "https://example.org/", form={"a": "b"}, deadline=0.05)
+    assert error.problem == "timeout"

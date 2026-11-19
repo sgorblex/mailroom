@@ -109,16 +109,17 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   stripped, and Bcc never goes in a transmitted header.
 - **Learning never acts** ([`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Filter suggestions*).
 - **Outbound HTTP to a host from input** (an email address's domain, a URL a document names, a
-  client ID metadata document's URL) goes through `mailroom.net.safe_fetch`, against SSRF: a GET
-  to `https://` on the default port with no credentials in the URL; every address the host resolves to must be public (a private,
-  loopback, link-local, multicast, reserved or unspecified IPv4 or IPv6 address, an IPv4 one
-  mapped or 6to4-embedded in IPv6 included, refuses the fetch), and the connection goes to that
-  vetted address with the hostname kept for SNI, the certificate check and `Host`. No redirect
-  unless the caller allows a few, each vetted again, and one to another host drops the caller's
-  `Authorization` and `Cookie`; no environment proxy, no cookies; connect and read timeouts, a
-  deadline for the whole fetch and a cap on the body, which is asked for (`Accept-Encoding:
-  identity`) and taken only unencoded, so no compressed answer grows past the cap. The caller
-  judges the status and the content type. Tested on a mock transport and resolver.
+  client ID metadata document's URL) goes through `mailroom.net.safe_fetch`, against SSRF: a GET, or
+  a POST of a urlencoded form of at most 1 KiB, to `https://` on the default port with no
+  credentials in the URL; every address the host resolves to must be public (a private, loopback,
+  link-local, multicast, reserved or unspecified IPv4 or IPv6 address, an IPv4 one mapped or
+  6to4-embedded in IPv6 included, refuses the fetch), and the connection goes to that vetted address
+  with the hostname kept for SNI, the certificate check and `Host`. No redirect unless the caller
+  allows a few for a GET (a POST never follows one), each vetted again, and one to another host
+  drops the caller's `Authorization` and `Cookie`; no environment proxy, no cookies, no `Referer`;
+  connect and read timeouts, a deadline for the whole fetch and a cap on the body, which is asked
+  for (`Accept-Encoding: identity`) and taken only unencoded, so no compressed answer grows past the
+  cap. The caller judges the status and the content type. Tested on a mock transport and resolver.
 
 ### Editions
 
