@@ -114,6 +114,47 @@ folder under it. Segments compare exactly, but for a leading `INBOX`, in any cas
   is gone. A rule set created between that check and the delete, or a folder deleted by another
   mail client, leaves a rule set naming a missing folder: its runs fail `mailbox_missing`.
 
+### Filter drafts
+
+A **draft** is a filter spec the filter editor starts from; drafting saves nothing, and the spec
+is checked as any other when the user adds the filter. A draft's action is `no_op`: the user
+picks what it does.
+
+- **From a message** (`GET /api/v1/mail/messages/{ref}/filter-draft`, read as the message view
+  reads it, never marking it read): `criteria`, narrowest first, are the List-Id's `list_is` when
+  the message has one, the sender's exact address (`from_is`), and the sender's domain
+  (`from_domain`) unless it is a public mail provider's; `spec` uses the first, and `name` is the
+  list's name or identifier, else the sender's name or address, on one line (200 characters at
+  most). Never the subject. A message with neither a List-Id nor a From address is refused, `400`
+  `nothing_to_filter`. A stale ref and the mailbox failures answer as `GET /messages/{ref}`
+  ([`mail-client.md`](mail-client.md)).
+- **From a search** (`POST /api/v1/filters/draft-from-search`, the body `POST /mail/search`
+  takes): `from` gives `from_contains`, `to` `to_contains`, `subject` `subject_contains`,
+  `unread` and `flagged` `is_unread`/`is_read` and `is_starred`/`is_unstarred`, all of them under
+  one `and`. The filter criteria compare the address, where the search compares the display name
+  too. `dropped` names the fields set that no criterion matches as the search does: `text`
+  (headers or body), `since` and `before` (the search's arrival date, the filter's date criteria
+  the Date header), `has_attachment` and `gmail_query`. The search's `account`, `folder` and
+  `subfolders` are its scope, not criteria: the rule set gives the filter its folder. A `from`
+  naming a public mail provider's whole domain (below) is dropped too, as `from`. A search
+  with no field a criterion matches is refused, `400` `nothing_to_filter` with `dropped`.
+- **Public mail providers.** A filter on a whole domain anyone can sign up at would catch
+  strangers and friends alike, so drafts never offer one and saving one is refused, `400`
+  `public_provider_domain`, by the REST routes and MCP's `filter_add` and `filter_update` alike,
+  anywhere in the criterion (under `not`, `and` or `or` too): a `from_domain` on it, and a
+  `from_contains` or `from_matches` whose value is the domain or one under it, with or without a
+  leading `@` (a pattern read as plain text: anchors, a leading `.*` and the backslashes before
+  `.`, `@` and `-` left out). An address at the provider (`maria@gmail.com`) is no domain and is
+  kept. An edit whose spec is the filter's stored one (both normalised) is not checked, so a
+  filter saved before the rule keeps being renamed and switched; a changed spec is. The list is the app's own
+  (`mailroom.filters.providers`), compared in IDNA form with subdomains: single-domain providers
+  (`gmail.com`, `googlemail.com`, `icloud.com`, `me.com`, `mac.com`, `proton.me`,
+  `protonmail.com`, `web.de`, `libero.it`, `virgilio.it`, `aol.com`, `mail.ru`, `fastmail.com`,
+  `zoho.com` and the like) and the per-country families `hotmail`, `live`, `outlook`, `yahoo`,
+  `gmx` and `yandex` under any one- or two-label suffix (`hotmail.it`, `yahoo.co.uk`). With
+  `incl_subdomains`, a country's shared second level that holds them (`co.uk`, `com.br`) is
+  refused too.
+
 ## Data model
 
 Schema `app`; every row belongs to the user who owns the account.
@@ -136,6 +177,7 @@ Under `/api/v1`, signed-in user's own data only (another user's id is a 404).
 | `GET /accounts/{id}/folders` | An account's folders, for the folder picker (`[{"path": [segments]}]`) |
 | `GET`, `PUT /accounts/{id}/filter-settings` | Read, set *Run filters* (`{"run_filters": bool}`) |
 | `GET /filters/schema` | The filter spec's JSON Schema (`json_schema()`), without `in_thread` |
+| `POST /filters/draft-from-search` | A [draft](#filter-drafts) from a search's body: `{"spec", "dropped"}` |
 | `GET`, `POST /accounts/{id}/rule-sets` | List, create an account's rule sets |
 | `GET`, `PATCH`, `DELETE /rule-sets/{id}` | Read (with its filters), edit, remove a rule set |
 | `POST /rule-sets/{id}/filters` | Add a filter (at the end) |
@@ -154,6 +196,8 @@ An unknown or foreign id is a `404` with a plain `detail` (`"No such rule set"`)
 - creating a rule set with the `to_sort` marker, or changing one to it: `400`
   `to_sort_unsupported` where the account's server keeps no keywords, and the mailbox failures
   of the account's folder listing when it cannot be asked;
+- adding a filter or changing its spec: `400` `public_provider_domain` for a `from_domain` on a
+  [public mail provider](#filter-drafts);
 - adding a filter: `400` `too_many_filters` when the rule set already holds 100;
 - *Run now*: `400` `run_filters_off` while the account's *Run filters* is off, `400`
   `rule_set_disabled`, `409` `run_pending` while a run of that rule set is still waiting;

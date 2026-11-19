@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 from mailroom.accounts import app_data
 from mailroom.accounts.service import Via, require_account
 from mailroom.errors import Refusal, mail_refusal
+from mailroom.filters.providers import covers_public_provider, names_public_provider
 from mailroom.filters.runs import (
     DryRunBusy,
     RunRefused,
@@ -251,9 +252,53 @@ def _check_to_sort_actions(
     check_marker(ctx, user_id, account_id, via)
 
 
-def checked_spec(spec: Spec) -> Spec:
+PUBLIC_PROVIDER_TEXT: Final = (
+    "A sender filter cannot name a public mail provider's whole domain, whose addresses are "
+    "anyone's: use from_is with the address."
+)
+
+
+def _provider_leaf(criterion: Spec) -> bool:
+    """Whether ``criterion``, a leaf, catches a public mail provider's whole domain: a
+    ``from_domain`` on one, a ``from_contains`` or ``from_matches`` naming one
+    (``mailroom.filters.providers``)."""
+    args = criterion.get("args")
+    if not isinstance(args, dict):
+        return False
+    match criterion.get("type"), args.get("domain"), args.get("addr"), args.get("pattern"):
+        case "from_domain", str(domain), _, _:
+            subdomains = args.get("incl_subdomains") is True
+            return covers_public_provider(domain, subdomains=subdomains)
+        case "from_contains", _, str(text), _:
+            return names_public_provider(text, pattern=False)
+        case "from_matches", _, _, str(pattern):
+            return names_public_provider(pattern, pattern=True)
+    return False
+
+
+def _provider_domains(node: object) -> bool:
+    """Whether a leaf anywhere in ``node`` catches a public mail provider (``_provider_leaf``)."""
+    if isinstance(node, list):
+        return any(_provider_domains(item) for item in node)
+    if not isinstance(node, dict):
+        return False
+    return _provider_leaf(node) or any(_provider_domains(value) for value in node.values())
+
+
+def _same_spec(normalized: Spec, stored: Spec | None) -> bool:
+    if stored is None:
+        return False
+    try:
+        return normalized == normalized_spec(stored)
+    except InvalidSpecError:
+        return False
+
+
+def checked_spec(spec: Spec, *, stored: Spec | None = None) -> Spec:
     """``spec`` as the filter engine serialises it, or ``invalid_spec``; ``hidden_criterion`` for
-    a criterion the app keeps for its own rule sets (``mailroom.filters.spec.HIDDEN_CRITERIA``)."""
+    a criterion the app keeps for its own rule sets (``mailroom.filters.spec.HIDDEN_CRITERIA``);
+    ``public_provider_domain`` for a sender criterion on a public mail provider's whole domain
+    (``_provider_leaf``), unless ``spec`` is ``stored``, the filter's own spec an edit keeps."""
     try:
         normalized = normalized_spec(spec)
     except InvalidSpecError as exc:
@@ -262,6 +307,8 @@ def checked_spec(spec: Spec) -> Spec:
     if hidden is not None:
         msg = f"{hidden} is kept for the app's own rule sets: a filter cannot use it."
         raise Refusal("invalid", "hidden_criterion", msg)
+    if _provider_domains(normalized.get("criterion")) and not _same_spec(normalized, stored):
+        raise Refusal("invalid", "public_provider_domain", PUBLIC_PROVIDER_TEXT)
     return normalized
 
 
@@ -443,7 +490,7 @@ def change_filter(
     row, rule_set = owned_filter(db, user_id, filter_id)
     if disabled_only:
         refuse_enabled(rule_set)
-    spec = None if patch.spec is None else checked_spec(patch.spec)
+    spec = None if patch.spec is None else checked_spec(patch.spec, stored=row.spec)
     if spec is not None and marks_to_sort(spec) and not marks_to_sort(row.spec):
         _check_to_sort_actions(ctx, db, user_id, rule_set.account_id, via)
         row, rule_set = owned_filter(db, user_id, filter_id)

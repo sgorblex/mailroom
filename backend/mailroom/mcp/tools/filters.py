@@ -260,6 +260,10 @@ async def _run_now(args: RuleSetArguments, call: ToolCall) -> JsonObject:
 
 
 _DISABLED_ONLY = " Only on a disabled rule set: rule_set_disable it first."
+_PUBLIC_PROVIDERS = (
+    " A public mail provider's whole domain (gmail.com, outlook.com…) is refused in from_domain, "
+    "from_contains and from_matches: filter its sender with from_is."
+)
 
 FILTER_TOOLS: Final[tuple[Tool[Any], ...]] = (
     Tool(
@@ -354,7 +358,7 @@ FILTER_TOOLS: Final[tuple[Tool[Any], ...]] = (
         title="Add a filter",
         description=(
             f"Add a filter after the rule set's last one ({MAX_FILTERS} at most). The spec is "
-            "checked as filter_schema describes it." + _DISABLED_ONLY
+            "checked as filter_schema describes it." + _PUBLIC_PROVIDERS + _DISABLED_ONLY
         ),
         group="filters_write",
         arguments=FilterAddArguments,
@@ -364,7 +368,7 @@ FILTER_TOOLS: Final[tuple[Tool[Any], ...]] = (
     Tool(
         name="filter_update",
         title="Update a filter",
-        description="Change a filter's name, enabled or spec." + _DISABLED_ONLY,
+        description="Change a filter's name, enabled or spec." + _PUBLIC_PROVIDERS + _DISABLED_ONLY,
         group="filters_write",
         arguments=FilterUpdateArguments,
         hints=Hints(),

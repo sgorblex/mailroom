@@ -1,10 +1,11 @@
 """Reading mail, which changes nothing: message pages, search, one message, its HTML as a
-standalone document, part downloads, its source as a download and its printable page."""
+standalone document, part downloads, its source as a download, its printable page and a filter
+drafted from it."""
 
 from __future__ import annotations
 
 import unicodedata
-from datetime import date, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING, Annotated, Final
 from urllib.parse import quote
 
@@ -17,14 +18,15 @@ from mailroom.api.routes.mail._shared import (
     _NO_STORE,
     _PART,
     MailAddress,
+    MatchRequest,
     MessagePart,
     Ref,
     mail_router,
 )
+from mailroom.filters.drafts import MessageDraft, message_draft
 from mailroom.mail import remote_senders, service, unsubscribe
 from mailroom.mail.print_page import printable_page
-from mailroom_core.config import MAX_SAFE_INTEGER
-from mailroom_core.mail import DISPLAYED_IMAGES, FORWARDED, TO_SORT, SearchQuery
+from mailroom_core.mail import DISPLAYED_IMAGES, FORWARDED, TO_SORT
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -312,11 +314,6 @@ class MessageDetail(BaseModel):
         )
 
 
-def _term(value: str | None) -> str | None:
-    """An empty search field is no criterion."""
-    return value if value else None
-
-
 @mail_router.get("/accounts/{account_id}/messages")
 def messages(
     account_id: AccountId,
@@ -331,43 +328,6 @@ def messages(
         ctx, user.id, account_id, folder, limit=limit, cursor=cursor, subfolders=subfolders
     )
     return MessagePage.of(page)
-
-
-class MatchRequest(BaseModel):
-    """A search's scope and criteria, in a body rather than the query string so that they stay
-    out of access logs: a search's, and a count's and bulk action's over what it matches."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    account: Annotated[int, Field(ge=1, le=MAX_SAFE_INTEGER)] | service.AllAccounts = (
-        service.ALL_ACCOUNTS
-    )
-    folder: Annotated[str, Field(min_length=1, max_length=service.MAX_FOLDER)] = "INBOX"
-    sender: Annotated[str | None, Field(alias="from", max_length=service.MAX_TERM)] = None
-    to: Annotated[str | None, Field(max_length=service.MAX_TERM)] = None
-    subject: Annotated[str | None, Field(max_length=service.MAX_TERM)] = None
-    text: Annotated[str | None, Field(max_length=service.MAX_TERM)] = None
-    since: date | None = None
-    before: date | None = None
-    unread: bool | None = None
-    flagged: bool | None = None
-    has_attachment: bool | None = None
-    gmail_query: Annotated[str | None, Field(max_length=service.MAX_TERM)] = None
-    subfolders: bool = False
-
-    def query(self) -> SearchQuery:
-        return SearchQuery(
-            sender=_term(self.sender),
-            to=_term(self.to),
-            subject=_term(self.subject),
-            text=_term(self.text),
-            since=self.since,
-            before=self.before,
-            unread=self.unread,
-            flagged=self.flagged,
-            has_attachment=self.has_attachment,
-            gmail_query=_term(self.gmail_query),
-        )
 
 
 class SearchRequest(MatchRequest):
@@ -517,3 +477,10 @@ def message_print(ref: Ref, ctx: Context, user: CurrentUser) -> Response:
             **_PRIVATE,
         },
     )
+
+
+@mail_router.get("/messages/{ref}/filter-draft")
+def filter_draft(ref: Ref, ctx: Context, user: CurrentUser) -> MessageDraft:
+    """A filter the editor starts from, made from the message's List-Id and sender."""
+    view, _ = service.read_headers(ctx, user.id, ref, event="mail_filter_draft_read")
+    return message_draft(view)

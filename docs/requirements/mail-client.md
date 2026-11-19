@@ -1282,6 +1282,14 @@ Cache-Control: private, no-store
 
 Nothing from the message is in a response header. Errors as for `GET /messages/{ref}`.
 
+### `GET /messages/{ref}/filter-draft`
+
+A filter the filter editor starts from, made from the message's List-Id and sender, never its
+subject: `{"spec", "criteria", "name"}`, the spec's action `no_op`
+([`filters.md`](filters.md#filter-drafts), which also has the search's counterpart). The message is
+read for its headers, never marked read; `400` `nothing_to_filter` without a List-Id or a From
+address. Errors as for `GET /messages/{ref}`.
+
 ### Remote content senders
 
 The senders whose remote content the user shows without asking, by From address (lowercase), one
