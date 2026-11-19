@@ -24,6 +24,35 @@ MessageSummary = TypedDict(
 """A matched message: its UID, decoded ``From`` and ``Subject``, and ``Date`` in ISO 8601 UTC."""
 
 
+class TransferredMessage(TypedDict):
+    """One message a move to another account took, or failed to."""
+
+    uid: int
+    """Its UID in the folder the run filtered."""
+    result: str
+    """``ok``, or the error code that stopped it (``mailroom_core.mail.AuditResult``)."""
+    removed: NotRequired[str]
+    """How it left the folder once copied (``trashed``), or ``failed``: it is in both."""
+    copied: NotRequired[bool]
+    """True when it failed after its copy was made."""
+    reason: NotRequired[str]
+    """Why it was refused on its own, the others moving: no Message-ID, or over the size cap."""
+
+
+class TransferReport(TypedDict):
+    """A move to another account, made once the run's session closed: per message how it went."""
+
+    account: int
+    """The account moved to."""
+    folder: list[str]
+    """Its folder's path segments."""
+    messages: list[TransferredMessage]
+    new_refs: list[str]
+    """The copies' refs in that folder, where the server said."""
+    error: str | None
+    """``<code>: <message>`` of the first error, None when every message moved."""
+
+
 class FilterReport(TypedDict):
     """One filter's outcome in a folder run."""
 
@@ -34,7 +63,10 @@ class FilterReport(TypedDict):
     matched: list[MessageSummary]
     """The messages the criterion selected, in search order."""
     executed: bool
-    """True when the action was applied to every matched message (never in a dry run)."""
+    """True when the action was applied to every matched message (never in a dry run); a move
+    to another account that failed for any of them leaves it False."""
+    transfers: NotRequired[list[TransferReport]]
+    """The action's moves to another account, made after the session (`MoveToAccount`)."""
 
 
 class FolderReport(TypedDict):

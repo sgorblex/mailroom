@@ -29,10 +29,15 @@ from mailroom_core.mail import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable
 
     from mailroom_core.config import TimeZoneName
-    from mailroom_core.filters.report import FilterReport, FolderReport, MessageSummary
+    from mailroom_core.filters.report import (
+        FilterReport,
+        FolderReport,
+        MessageSummary,
+        TransferReport,
+    )
     from mailroom_core.filters.spec.nodes import SpecNode
     from mailroom_core.mail import MailboxContext, MailConnections
 
@@ -59,6 +64,16 @@ def _is_mail_error(error: Exception) -> bool:
     if isinstance(error, MatchTimeoutError):
         return False
     return isinstance(error, MailError | imaplib.IMAP4.error | OSError | EOFError)
+
+
+def _finish(deferred: list[tuple[FilterReport, Callable[[], TransferReport]]]) -> None:
+    """Run what actions left for after the session, each outcome in its filter's report; a
+    failure there means the action was not applied to every message."""
+    for result, finish in deferred:
+        transfer = finish()
+        result.setdefault("transfers", []).append(transfer)
+        if transfer["error"] is not None:
+            result["executed"] = False
 
 
 class Folder:
@@ -100,7 +115,9 @@ class Folder:
         the server's SEARCH alone. The others fetch the candidates' source (`BODY.PEEK[]`,
         which never sets ``\\Seen``), parse it with ``mailroom_core.mail.parsed_message`` and
         match it here; a message is fetched once per run, and fetched again only after an action
-        of the run acted on it.
+        of the run acted on it. A move to another account (`MoveToAccount`) only records its
+        messages, which later filters then do not match; the move is made once the session has
+        closed, a failed run's too, its outcome in its filter's report (``transfers``).
 
         Every search skips messages marked ``\\Deleted``. ``newest`` (at least 1, else a
         ValueError) bounds every search to the folder's newest ``newest`` messages as it was when
@@ -160,12 +177,17 @@ class Folder:
         path = self.path.as_string(delimiter or ".")
         start = len(report["filters"])
 
+        # What actions left for after the session, with the report of the filter each is for.
+        deferred: list[tuple[FilterReport, Callable[[], TransferReport]]] = []
+
         def session(context: MailboxContext) -> None:
             # A read-only attempt that lost its connection is run again from the start.
             del report["filters"][start:]
             report.pop("limited_to_newest", None)
+            deferred.clear()
             try:
-                self._run_all(report, filters, Selected(context, delimiter), dry_run, newest)
+                selected = Selected(context, delimiter)
+                self._run_all(report, filters, selected, dry_run, newest, deferred)
             except Exception as error:
                 if _is_mail_error(error):
                     raise
@@ -178,7 +200,12 @@ class Folder:
                     self.account.account_id, path, dry_run, session
                 )
         except _Escaped as escaped:
+            _finish(deferred)
             raise escaped.error from None
+        except Exception:
+            _finish(deferred)
+            raise
+        _finish(deferred)
 
     def _run_all(
         self,
@@ -187,6 +214,7 @@ class Folder:
         selected: Selected,
         dry_run: bool,
         newest: int | None,
+        deferred: list[tuple[FilterReport, Callable[[], TransferReport]]],
     ) -> None:
         context = selected.context
         exists = context.exists
@@ -202,7 +230,10 @@ class Folder:
             report["limited_to_newest"] = newest
         fetched: dict[int, Message] = {}
         for f in filters:
-            report["filters"].append(self._run_one(f, selected, dry_run, window, fetched))
+            before = len(selected.deferred)
+            result = self._run_one(f, selected, dry_run, window, fetched)
+            report["filters"].append(result)
+            deferred.extend((result, finish) for finish in selected.deferred[before:])
 
     def _run_one(
         self,
@@ -225,6 +256,7 @@ class Folder:
         }
         context = selected.context
         uids = self._matching(f, context, [*window, _UNDELETED], fetched)
+        uids = [uid for uid in uids if uid not in selected.left]
         if not uids:
             self.log.debug("no messages matched for action %s", f.action)
             return result

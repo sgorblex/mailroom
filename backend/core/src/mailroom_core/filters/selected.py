@@ -7,7 +7,10 @@ from typing import TYPE_CHECKING
 from mailroom_core.mail import listed_folders
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
     from mailroom_core.filters.path import Path
+    from mailroom_core.filters.report import TransferReport
     from mailroom_core.mail import Folder, MailboxContext
 
 
@@ -16,7 +19,8 @@ class Selected:
     (`context`, a `mailroom_core.mail.MailboxContext`) and the account's hierarchy delimiter.
 
     An action runs inside the run's one session, which cannot take a second connection of the
-    account: it lists the folders on the connection it holds (`folders`).
+    account: it lists the folders on the connection it holds (`folders`), and leaves what needs
+    other sessions to run after it (`defer`).
     """
 
     def __init__(self, context: MailboxContext, delimiter: str | None) -> None:
@@ -25,6 +29,10 @@ class Selected:
         self.context = context
         self.delimiter = delimiter
         self._folders: list[Folder] | None = None
+        self.deferred: list[Callable[[], TransferReport]] = []
+        """What actions left to run once the session has closed, in order."""
+        self.left: set[int] = set()
+        """The UIDs given to `deferred`: later filters of the run do not see them."""
 
     def path(self, path: Path) -> str:
         """`path` as the server names it: its segments joined with the delimiter."""
@@ -35,3 +43,9 @@ class Selected:
         if self._folders is None:
             self._folders = listed_folders(self.context)
         return self._folders
+
+    def defer(self, uids: Sequence[int], finish: Callable[[], TransferReport]) -> None:
+        """`finish` runs once the run's session has closed, for `uids`, which later filters of
+        the run no longer match, as if moved."""
+        self.deferred.append(finish)
+        self.left.update(uids)

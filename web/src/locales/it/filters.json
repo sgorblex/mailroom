@@ -319,6 +319,7 @@
     "move_to": "Sposta in",
     "trash": "Sposta nel cestino",
     "junk": "Sposta nella posta indesiderata",
+    "move_to_account": "Sposta in un altro account",
     "no_op": "Non fare nulla"
   },
   "filterArgs": {
@@ -334,7 +335,8 @@
     "flag": "Flag",
     "cutoff_date": "Prima del",
     "days": "Giorni",
-    "folder": "Cartella"
+    "folder": "Cartella",
+    "account": "Account"
   },
   "filterChoices": {
     "SEEN": "Letto",
@@ -413,6 +415,7 @@
     "trash": "sposta nel cestino",
     "trash_to": "sposta nel cestino ({{folder}})",
     "junk": "sposta nella posta indesiderata",
+    "move_to_account": "sposta in {{folder}} nell'account {{account}}",
     "no_op": "non fare nulla"
   },
   "filterPhraseChoices": {

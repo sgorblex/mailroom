@@ -4,7 +4,7 @@ envelope calls are patched where the engine makes them. Runs on real mail: `test
 import json
 from dataclasses import replace
 from datetime import UTC, date, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -16,6 +16,7 @@ from mailroom_core.filters.account import Account, Folder
 from mailroom_core.filters.actions.action import Action
 from mailroom_core.filters.actions.flags import MarkAsRead
 from mailroom_core.filters.actions.move import MoveTo
+from mailroom_core.filters.actions.transfer import AccountTarget, MoveToAccount
 from mailroom_core.filters.criteria.address import FromContains, FromIs
 from mailroom_core.filters.criteria.criterion import Anything
 from mailroom_core.filters.criteria.date import OlderThanDays
@@ -26,13 +27,24 @@ from mailroom_core.filters.filter import Filter
 from mailroom_core.filters.path import Path
 from mailroom_core.filters.pattern import MatchTimeoutError
 from mailroom_core.filters.report import summaries
-from mailroom_core.mail import FetchedMessage, MailError
+from mailroom_core.filters.spec import load_action
+from mailroom_core.mail import (
+    MAX_REFS,
+    AuditItem,
+    FetchedMessage,
+    GroupResult,
+    MailError,
+    MessageRef,
+    OrganizeResult,
+    parse_ref,
+)
 from mailroom_core.mail import Folder as ListedFolder
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
     from mailroom_core.filters.selected import Selected
+    from mailroom_core.mail import MailConnections
 
 ENGINE = "mailroom_core.filters.account"
 
@@ -495,3 +507,276 @@ def test_summaries_decode_encoded_words_and_keep_missing() -> None:
         },
         {"uid": 8, "from": None, "subject": None, "date": None},
     ]
+
+
+TRANSFER = "mailroom_core.filters.actions.transfer.move_to_account"
+
+
+class Target:
+    """An `AccountResolver` that records the accounts it is asked for and hands out a stand-in
+    for the target's connections, whose delimiter is ``/``."""
+
+    def __init__(self, refusal: MailError | None = None) -> None:
+        self.asked: list[int] = []
+        self.connections = MagicMock()
+        self.connections.delimiter.return_value = "/"
+        self.refusal = refusal
+
+    def __call__(self, account: int) -> AccountTarget:
+        self.asked.append(account)
+        if self.refusal is not None:
+            raise self.refusal
+        return AccountTarget(self.connections, 1000)
+
+
+def moved(refs: Sequence[str], *, error: MailError | None = None) -> OrganizeResult:
+    """What `move_to_account` answers for `refs` of account 1's INBOX: each moved to Trash, or
+    each failed with `error`."""
+    uids = [parse_ref(ref).uid for ref in refs]
+    items = tuple(
+        AuditItem(
+            account=1,
+            folder="INBOX",
+            uid=uid,
+            destination="Lists/Nerds",
+            destination_account=2,
+            removed=None if error else "trashed",
+            result=error.code if error else "ok",
+        )
+        for uid in uids
+    ) + tuple(
+        AuditItem(account=2, folder="Lists/Nerds", uid=100 + uid, source_account=1, result="ok")
+        for uid in ([] if error else uids)
+    )
+    group = GroupResult(
+        1,
+        "INBOX",
+        count=0 if error else len(uids),
+        new_refs=None if error else tuple(f"copy-{uid}" for uid in uids),
+        error=error,
+        destination_account=2,
+    )
+    return OrganizeResult((group,), items)
+
+
+class TestMoveToAccount:
+    """A move to another account: recorded in the session, made after it, reported per message."""
+
+    @pytest.fixture
+    def mine(self, connections: Any) -> Account:
+        return Account(cast("MailConnections", connections), 1)
+
+    def test_recorded_in_the_run_and_moved_once_the_session_closed(
+        self, mine: Account, connections: Any, calls: Calls
+    ) -> None:
+        calls.searches = [[1, 2], [1, 2, 3]]
+        later, done = recording()
+        target = Target()
+        action = load_action(
+            {"type": "move_to_account", "args": {"account": 2, "folder": ["Lists", "Nerds"]}},
+            accounts=target,
+        )
+        sessions_at_move: list[int] = []
+
+        def move(conns: object, refs: Sequence[str], *args: object, **kwargs: object) -> Any:
+            sessions_at_move.append(len(connections.sessions))
+            assert conns is target.connections
+            assert args == (2, "Lists/Nerds")
+            assert kwargs == {"removal": "trash", "max_bytes": 1000, "refuse_each": True}
+            assert [parse_ref(ref) for ref in refs] == [
+                MessageRef(1, "INBOX", 1, 1),
+                MessageRef(1, "INBOX", 1, 2),
+            ]
+            return moved(refs)
+
+        with patch(TRANSFER, side_effect=move):
+            report = (mine / "INBOX").run([Filter(Anything(), action), Filter(Anything(), later)])
+        # The later filter no longer sees what the move took, as after a move.
+        assert done == [[3]]
+        assert sessions_at_move == [1]
+        assert target.asked == [2]
+        first = report["filters"][0]
+        assert first["executed"] is True
+        assert first["action"] == "MoveToAccount(account=2, folder=['Lists', 'Nerds'])"
+        assert first["transfers"] == [
+            {
+                "account": 2,
+                "folder": ["Lists", "Nerds"],
+                "messages": [
+                    {"uid": 1, "result": "ok", "removed": "trashed"},
+                    {"uid": 2, "result": "ok", "removed": "trashed"},
+                ],
+                "new_refs": ["copy-1", "copy-2"],
+                "error": None,
+            }
+        ]
+        assert "transfers" not in report["filters"][1]
+        assert json.loads(json.dumps(report)) == report
+
+    def test_a_message_refused_on_its_own_is_reported_with_why(
+        self, mine: Account, calls: Calls
+    ) -> None:
+        calls.searches = [[1, 2]]
+        target = Target()
+        action = MoveToAccount(2, Path("X"), accounts=target)
+        refusal = MailError("too_large", "It is over the 1 KB a moved message may have.")
+
+        def move(_conns: object, refs: Sequence[str], *_args: object, **_kwargs: object) -> Any:
+            ok = moved(refs[:1])
+            [group] = ok.groups
+            refused = AuditItem(
+                account=1,
+                folder="INBOX",
+                uid=parse_ref(refs[1]).uid,
+                destination="X",
+                destination_account=2,
+                result="too_large",
+            )
+            return OrganizeResult(
+                (replace(group, refused=((parse_ref(refs[1]).uid, refusal),)),),
+                (*ok.items, refused),
+            )
+
+        with patch(TRANSFER, side_effect=move):
+            report = (mine / "INBOX").run(Filter(Anything(), action))
+        [entry] = report["filters"]
+        assert entry["executed"] is False
+        [transfer] = entry["transfers"]
+        assert transfer["messages"] == [
+            {"uid": 1, "result": "ok", "removed": "trashed"},
+            {
+                "uid": 2,
+                "result": "too_large",
+                "reason": "It is over the 1 KB a moved message may have.",
+            },
+        ]
+        assert transfer["new_refs"] == ["copy-1"]
+        assert transfer["error"] == f"too_large: {refusal.message}"
+
+    def test_without_a_resolver_every_message_fails_unsupported(
+        self, mine: Account, calls: Calls
+    ) -> None:
+        calls.searches = [[4, 5]]
+        with patch(TRANSFER) as move:
+            report = (mine / "INBOX").run(Filter(Anything(), MoveToAccount(2, Path("X"))))
+        move.assert_not_called()
+        [entry] = report["filters"]
+        assert entry["executed"] is False
+        [transfer] = entry["transfers"]
+        assert transfer["messages"] == [
+            {"uid": 4, "result": "unsupported"},
+            {"uid": 5, "result": "unsupported"},
+        ]
+        assert transfer["error"] is not None
+        assert transfer["error"].startswith("unsupported: ")
+
+    def test_a_refused_account_fails_each_message_with_its_code(
+        self, mine: Account, calls: Calls
+    ) -> None:
+        calls.searches = [[4]]
+        refusal = MailError("invalid_argument", "Unknown account 2.")
+        target = Target(refusal)
+        action = MoveToAccount(2, Path("X"), accounts=target)
+        with patch(TRANSFER) as move:
+            report = (mine / "INBOX").run(Filter(Anything(), action))
+        move.assert_not_called()
+        [transfer] = report["filters"][0]["transfers"]
+        assert transfer["messages"] == [{"uid": 4, "result": "invalid_argument"}]
+        assert transfer["error"] == f"invalid_argument: {refusal.message}"
+
+    def test_a_resolver_that_fails_otherwise_fails_each_message_and_the_next_transfer_runs(
+        self, mine: Account, calls: Calls
+    ) -> None:
+        calls.searches = [[4], [5]]
+
+        def broken(account: int) -> AccountTarget:
+            raise KeyError(account)
+
+        first = MoveToAccount(2, Path("X"), accounts=broken)
+        second = MoveToAccount(3, Path("X"), accounts=Target())
+        with patch(TRANSFER, side_effect=lambda _c, refs, *_a, **_k: moved(refs)):
+            report = (mine / "INBOX").run([Filter(Anything(), first), Filter(Anything(), second)])
+        [failed] = report["filters"][0]["transfers"]
+        assert failed["messages"] == [{"uid": 4, "result": "server_error"}]
+        assert failed["error"] is not None
+        assert failed["error"].startswith("server_error: ")
+        assert "KeyError" not in failed["error"]
+        [done] = report["filters"][1]["transfers"]
+        assert [m["result"] for m in done["messages"]] == ["ok"]
+
+    def test_a_folder_that_failed_is_reported_per_message(
+        self, mine: Account, calls: Calls
+    ) -> None:
+        calls.searches = [[7]]
+        failure = MailError("too_large", "1 of these are over the cap.")
+        action = MoveToAccount(2, Path("X"), accounts=Target())
+        with patch(TRANSFER, side_effect=lambda _c, refs, *_a, **_k: moved(refs, error=failure)):
+            report = (mine / "INBOX").run(Filter(Anything(), action))
+        [entry] = report["filters"]
+        assert entry["executed"] is False
+        [transfer] = entry["transfers"]
+        assert transfer["messages"] == [{"uid": 7, "result": "too_large"}]
+        assert transfer["new_refs"] == []
+        assert transfer["error"] == f"too_large: {failure.message}"
+
+    def test_moves_in_batches_of_max_refs(self, mine: Account, calls: Calls) -> None:
+        uids = list(range(1, MAX_REFS + 3))
+        calls.searches = [uids]
+        action = MoveToAccount(2, Path("X"), accounts=Target())
+        with patch(TRANSFER, side_effect=lambda _c, refs, *_a, **_k: moved(refs)) as move:
+            report = (mine / "INBOX").run(Filter(Anything(), action))
+        assert [len(c.args[1]) for c in move.call_args_list] == [MAX_REFS, 2]
+        [transfer] = report["filters"][0]["transfers"]
+        assert [m["uid"] for m in transfer["messages"]] == uids
+
+    def test_a_refusal_in_a_later_batch_leaves_the_earlier_one_moved(
+        self, mine: Account, calls: Calls
+    ) -> None:
+        calls.searches = [list(range(1, MAX_REFS + 2))]
+        answers = iter([None, MailError("unreachable")])
+
+        def move(_c: object, refs: Sequence[str], *_a: object, **_k: object) -> OrganizeResult:
+            refusal = next(answers)
+            if refusal is not None:
+                raise refusal
+            return moved(refs)
+
+        action = MoveToAccount(2, Path("X"), accounts=Target())
+        with patch(TRANSFER, side_effect=move):
+            report = (mine / "INBOX").run(Filter(Anything(), action))
+        [transfer] = report["filters"][0]["transfers"]
+        results = [m["result"] for m in transfer["messages"]]
+        assert results == ["ok"] * MAX_REFS + ["unreachable"]
+        assert transfer["error"] is not None
+        assert transfer["error"].startswith("unreachable: ")
+
+    def test_a_dry_run_moves_nothing(self, mine: Account, calls: Calls) -> None:
+        calls.searches = [[1]]
+        action = MoveToAccount(2, Path("X"), accounts=Target())
+        with patch(TRANSFER) as move:
+            report = (mine / "INBOX").run(Filter(Anything(), action), dry_run=True)
+        move.assert_not_called()
+        assert "transfers" not in report["filters"][0]
+
+    def test_a_run_that_failed_later_still_moves_what_it_took(
+        self, mine: Account, calls: Calls
+    ) -> None:
+        calls.searches = [[1], [2]]
+
+        def fail(_selected: Selected, _uids: Sequence[int]) -> None:
+            raise MailError("server_error")
+
+        action = MoveToAccount(2, Path("X"), accounts=Target())
+        folder = mine / "INBOX"
+        report = folder.new_report(dry_run=False)
+        with (
+            patch(TRANSFER, side_effect=lambda _c, refs, *_a, **_k: moved(refs)) as move,
+            pytest.raises(MailError),
+        ):
+            folder.run_into(
+                report,
+                [Filter(Anything(), action), Filter(Anything(), Action(fail))],
+                dry_run=False,
+            )
+        move.assert_called_once()
+        assert report["filters"][0]["transfers"][0]["messages"][0]["result"] == "ok"

@@ -391,6 +391,15 @@ def test_agents_are_not_offered_in_thread(mcp: Mcp, token: str, rule_set_id: int
     assert "in_thread is kept for the app's own rule sets" in refused
 
 
+def test_nothing_may_move_after_a_move_to_another_account(
+    mcp: Mcp, token: str, rule_set_id: int
+) -> None:
+    to_account = {"type": "move_to_account", "args": {"account": 2, "folder": ["X"]}}
+    spec = {"criterion": {"type": "anything"}, "action": {"seq": [to_account, {"type": "junk"}]}}
+    refused = mcp.error(token, "filter_add", rule_set_id=rule_set_id, name="Two", spec=spec)
+    assert "a seq cannot have junk after move_to_account" in refused
+
+
 def test_edits_wait_for_a_disabled_rule_set(mcp: Mcp, token: str, rule_set_id: int) -> None:
     added = mcp.call(token, "filter_add", rule_set_id=rule_set_id, name="Shop", spec=SHOP_SPEC)
     second = mcp.call(token, "filter_add", rule_set_id=rule_set_id, name="Two", spec=SHOP_SPEC)

@@ -542,6 +542,39 @@
             "type"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "move_to_account"
+              ]
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "account": {
+                  "description": "The id of another account of the user's, moved to once the run's session closed.",
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "folder": {
+                  "$ref": "#/$defs/path"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "account",
+                "folder"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "args"
+          ],
+          "additionalProperties": false
         }
       ]
     },

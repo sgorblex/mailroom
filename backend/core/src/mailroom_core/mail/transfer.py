@@ -7,6 +7,9 @@ never overlap: reading the chunk from the source, writing it to the target, then
 arrived. Holding one account's session while opening another's could deadlock against a move
 the other way round.
 
+A message with no Message-ID, or over the size cap, refuses its whole folder before anything is
+written, or with `refuse_each` only itself, the others moving.
+
 A message already in the target folder (the same Message-ID, checked on its ENVELOPE) is not
 copied again, so a move cut off after its copy can be repeated without copying twice. Nothing is
 removed from the source before its copy is confirmed; a removal that fails leaves the message in
@@ -81,6 +84,7 @@ class _Plan:
     gmail_source: bool
     gmail_target: bool
     max_bytes: int
+    refuse_each: bool
 
 
 @dataclass(slots=True)
@@ -103,14 +107,16 @@ def move_to_account(
     *,
     removal: TransferRemoval,
     max_bytes: int,
+    refuse_each: bool = False,
 ) -> OrganizeResult:
     """Moves to `folder` of `account`, another account than any ref's, the target rules of
     `move_messages` applying (never Drafts or Sent). Each message is copied with its flags and
     arrival date, confirmed by Message-ID, then removed per `removal`. Refused before anything
     is written: a message with no Message-ID (`unsupported`: its copy could not be confirmed) or
-    over `max_bytes` (`too_large`) refuses its folder's group; `delete` needs UIDPLUS on the
-    source, `trash` its Trash and MOVE or UIDPLUS. Each moved message gives two audit items, the
-    source's and the copy's."""
+    over `max_bytes` (`too_large`) refuses its folder's group, or with `refuse_each` itself only
+    (its audit item carries the code, its group's `refused` the error), the others moving;
+    `delete` needs UIDPLUS on the source, `trash` its Trash and MOVE or UIDPLUS. Each moved
+    message gives two audit items, the source's and the copy's."""
     groups = _groups(connections, refs)
     if not connections.serves(account):
         raise MailError("invalid_argument", f"Unknown account {account}.")
@@ -145,6 +151,7 @@ def move_to_account(
             gmail_source=capabilities.gmail,
             gmail_target=gmail_target,
             max_bytes=max_bytes,
+            refuse_each=refuse_each,
         )
 
     # The target's messages taken as a copy so far, whatever the chunk or source folder: two
@@ -162,7 +169,7 @@ def _transfer(
 ) -> GroupResult:
     """One source folder's messages, chunk by chunk; stops at the first error, noting what it
     did not reach as failed with that error."""
-    planned = connections.with_mailbox(
+    planned, refused = connections.with_mailbox(
         group.account, group.folder, True, lambda context: _planned(context, group, plan)
     )
     moved = 0
@@ -195,6 +202,8 @@ def _transfer(
             )
         )
 
+    for item, refusal in refused:
+        note_source(item, refusal.code)
     for chunk in _chunks(planned, plan.max_bytes):
         try:
             sources = connections.with_mailbox(
@@ -252,6 +261,7 @@ def _transfer(
             for uid in sorted(copies)
         )
     )
+    refusals = tuple((item.uid, refusal) for item, refusal in refused)
     result = GroupResult(
         group.account,
         group.folder,
@@ -259,6 +269,7 @@ def _transfer(
         new_refs=new_refs,
         destination=plan.folder,
         destination_account=plan.account,
+        refused=refusals,
     )
     if failure is None:
         return result
@@ -275,6 +286,7 @@ def _transfer(
             error=stopped,
             destination=plan.folder,
             destination_account=plan.account,
+            refused=refusals,
         ),
     )
 
@@ -314,15 +326,19 @@ def _failure(
     return MailError(failure.code, " ".join(part for part in parts if part))
 
 
-def _planned(context: MailboxContext, group: _Group, plan: _Plan) -> list[_Planned]:
-    """The group's messages with their Message-IDs and sizes; refuses the group before
-    anything is written when one is gone, has no Message-ID or is over the cap."""
+def _planned(
+    context: MailboxContext, group: _Group, plan: _Plan
+) -> tuple[list[_Planned], list[tuple[_Planned, MailError]]]:
+    """The group's messages to move, with their Message-IDs and sizes, and those refused on
+    their own (`refuse_each`) with why; refuses the group before anything is written when one
+    is gone, or without `refuse_each` when one has no Message-ID or is over the cap."""
     for ref in group.refs:
         check_fresh(ref, context.uid_validity)
     envelopes = _envelopes(context, group)
     uids = sorted(envelopes)
     fetched = context.client.fetch(uids, ["RFC822.SIZE"])
     planned: list[_Planned] = []
+    refused: list[tuple[_Planned, MailError]] = []
     unnamed = over = 0
     for uid in uids:
         message_id = text_value(getattr(envelopes[uid], "message_id", None)).strip()
@@ -330,7 +346,14 @@ def _planned(context: MailboxContext, group: _Group, plan: _Plan) -> list[_Plann
         size = size if isinstance(size, int) else 0
         unnamed += not message_id
         over += size > plan.max_bytes
-        planned.append(_Planned(uid, envelopes[uid], message_id, size))
+        item = _Planned(uid, envelopes[uid], message_id, size)
+        refusal = _refusal(item, plan.max_bytes) if plan.refuse_each else None
+        if refusal is None:
+            planned.append(item)
+        else:
+            refused.append((item, refusal))
+    if plan.refuse_each:
+        return planned, refused
     if unnamed:
         raise MailError(
             "unsupported",
@@ -341,7 +364,18 @@ def _planned(context: MailboxContext, group: _Group, plan: _Plan) -> list[_Plann
             "too_large",
             f"{over} of these are over the {format_size(plan.max_bytes)} a moved message may have.",
         )
-    return planned
+    return planned, refused
+
+
+def _refusal(item: _Planned, max_bytes: int) -> MailError | None:
+    """Why `item` cannot be moved on its own: no Message-ID, or over `max_bytes`."""
+    if not item.message_id:
+        return MailError("unsupported", "It has no Message-ID, so its copy could not be confirmed.")
+    if item.size > max_bytes:
+        return MailError(
+            "too_large", f"It is over the {format_size(max_bytes)} a moved message may have."
+        )
+    return None
 
 
 def _chunks(planned: Sequence[_Planned], max_bytes: int) -> Iterator[list[_Planned]]:

@@ -12,6 +12,8 @@ import pytest
 
 from mailroom_core.filters import (
     Account,
+    AccountTarget,
+    Anything,
     Delete,
     Filter,
     Flag,
@@ -30,6 +32,7 @@ from mailroom_core.filters import (
     Trash,
     UnmarkToSort,
     get_match_timeout,
+    load_action,
     marked_only,
     monitor,
     run_rules,
@@ -37,10 +40,12 @@ from mailroom_core.filters import (
 )
 from mailroom_core.mail import MailError, connections_from
 from mailroom_core.testing import (
+    connections_for,
     create_folders,
     folder_contents,
     mime,
     seed,
+    test_account,
     unverified_context,
 )
 
@@ -273,6 +278,40 @@ def test_a_move_to_a_missing_folder_is_mailbox_missing(imap_server: ImapTestServ
         mail(user).inbox.run(Filter(FromIs("news@shop.example"), MoveTo(Path("Nowhere"))))
     assert raised.value.code == "mailbox_missing"
     assert subjects(imap_server, user, "INBOX") == ["Sale"]
+
+
+def test_a_move_to_another_account_is_made_after_the_run(imap_server: ImapTestServer) -> None:
+    """Two users stand for two accounts of one user: the matched message is copied to the other
+    account's folder and its original goes to Trash, while a later filter no longer sees it."""
+    source, target = imap_server.unique_user("from"), imap_server.unique_user("to")
+    create_folders(imap_server, target, "Shop")
+    seed(imap_server, source, "INBOX", mime("Sale", sender=SHOP))
+    seed(imap_server, source, "INBOX", mime("Lunch?", sender=FRIEND))
+    connections = connections_for(
+        imap_server,
+        [test_account(1, source, imap_server), test_account(2, target, imap_server)],
+    )
+    try:
+        move = load_action(
+            {"type": "move_to_account", "args": {"account": 2, "folder": ["Shop"]}},
+            accounts=lambda _account: AccountTarget(connections, 10 * 1024 * 1024),
+        )
+        report = Account(connections, 1).inbox.run(
+            [Filter(FromIs("news@shop.example"), move), Filter(Anything(), Star())]
+        )
+    finally:
+        connections.close_all()
+
+    [transfer] = report["filters"][0]["transfers"]
+    assert transfer["error"] is None
+    assert [m["result"] for m in transfer["messages"]] == ["ok"]
+    assert len(transfer["new_refs"]) == 1
+    assert report["filters"][0]["executed"] is True
+    assert [m["subject"] for m in report["filters"][1]["matched"]] == ["Lunch?"]
+    assert subjects(imap_server, target, "Shop") == ["Sale"]
+    assert "\\Flagged" not in flags(imap_server, target, "Shop")["Sale"]
+    assert subjects(imap_server, source, "INBOX") == ["Lunch?"]
+    assert subjects(imap_server, source, "Trash") == ["Sale"]
 
 
 @pytest.fixture

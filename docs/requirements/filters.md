@@ -86,7 +86,18 @@ in the browser, tried with a dry run, and run by the worker. Product scope:
   until the user has checked both folders and enables it again. `trash` without a folder needs
   the account's special-use Trash (`unsupported` without one); `junk` moves to the account's
   Junk folder, found by its role (special-use `\Junk`, else a well-known name; `unsupported`
-  without one). Filters run in order; a disabled filter is skipped, by dry runs too. A disabled rule set never runs (no
+  without one). `move_to_account` names another account's id and a folder there: in the run it
+  only takes the matched messages, which later filters of the run then no longer match, and once
+  the run is done with its folder it moves them as the mail client's *Move to another account*
+  does, each copied, confirmed by its Message-ID, then moved to its own account's Trash; the
+  run's report says per message whether it moved or the error that stopped it, and the filter
+  counts as not executed when any failed. A message without a Message-ID (its copy could not be
+  confirmed) or over the size cap is refused on its own, its reason in the report, while the
+  others move. In a `seq`, nothing that moves or deletes (`delete`, `trash`, `junk`, `move_to`,
+  another `move_to_account`) may follow a `move_to_account`: such a spec is refused when the
+  filter is saved (`invalid_spec`) or loaded. The app does not resolve the target account yet, so
+  for now every message of such a filter fails `unsupported` and stays where it is. Filters run
+  in order; a disabled filter is skipped, by dry runs too. A disabled rule set never runs (no
   trigger fires, *Run now* is refused) but can still be dry-run; a new rule set starts disabled.
 - **Dry run** evaluates the rule set against the folder's real mail and reports, per filter, the
   messages it matches (uid, from, subject, date) and what it would do, changing nothing (the folder

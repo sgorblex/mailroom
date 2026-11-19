@@ -336,7 +336,7 @@ names the new refs, so a host raising it alone still shows them; its audit items
 ### Moving to another account
 
 `mailroom_core.mail.transfer.move_to_account(connections, refs, account, folder, removal=,
-max_bytes=)` moves messages to a folder of another account the connections serve, into an
+max_bytes=, refuse_each=False)` moves messages to a folder of another account the connections serve, into an
 `OrganizeResult` whose groups name `destination_account` and give the new refs there:
 
 - **Refused before anything is written:** a target account that is a source's own (that is a
@@ -344,7 +344,9 @@ max_bytes=)` moves messages to a folder of another account the connections serve
   All Mail are allowed); `removal="delete"` without UIDPLUS on a source, `"trash"` without its
   Trash or a way to move; and, per folder, a message with no Message-ID (`unsupported`: its copy
   could not be confirmed) or over `max_bytes` (`too_large`; the host passes `move_cap`, from
-  `Limits.move_max_mb`, 25 MB by default).
+  `Limits.move_max_mb`, 25 MB by default). With `refuse_each`, such a message is refused on its
+  own instead (its audit item carries the code, its group's `refused` the UID and the error)
+  and the rest of its folder moves; the mail client's moves keep the whole-folder refusal.
 - **Per folder, in chunks of at most `max_bytes`,** in three sessions that never overlap (one
   account's held while opening another's could deadlock against a move the other way): read the
   chunk (`fetch_source`: bytes, flags, INTERNALDATE), write it to the target, remove what
@@ -569,6 +571,20 @@ or loaded from their data form. Its tests are in `tests/filters`.
   `TO_SORT`) search `KEYWORD` / `UNKEYWORD $MailroomSort`, and every flag predicate ignores case.
   `delete` removes for good (`delete_uids`, UIDPLUS only), which a filter may do because the user
   wrote it, saw its dry run and enabled it ([`requirements/filters.md`](requirements/filters.md)).
+  `move_to_account` (an account id and a folder) cannot act inside the session, which holds one
+  account's connection: it records the matched UIDs (`Selected.defer`), which later filters of
+  the run then skip as if moved, and once the session has closed, a failed run's too, they are
+  moved by `move_to_account` (*Moving to another account*) with `removal="trash"`, in batches of
+  `MAX_REFS`, the folder joined with the target's delimiter, and `refuse_each`: a message with
+  no Message-ID or over the cap is refused alone. Each filter's report lists the
+  outcome per message in `transfers` (`TransferReport`: the target, per UID `ok` or the error
+  code, with `removed` and `copied` as the audit items have them and a refused message's
+  `reason`, the copies' new refs and the first error); any failure, such a refusal included,
+  leaves the filter's `executed` False. A `seq` with `delete`, `trash`, `junk`, `move_to` or
+  another `move_to_account` after a `move_to_account` (at any depth) is a `SpecError`: the
+  messages are taken by then. A failure that is no
+  `MailError` (the host's resolver raising, a bug) goes through `mail_error` too, so the
+  transfers after it still run.
 - **Specs** are the rules as data, the form the app stores (`spec`): leaves
   `{"type", "args"}`, the combinators `and`, `or`, `not`, `seq` for actions, and a filter
   `{"criterion", "action"}`. `load_filter` rebuilds an equal filter, `to_spec()` gives it back and
@@ -581,6 +597,11 @@ or loaded from their data form. Its tests are in `tests/filters`.
   `thread` is the host's opaque name, and `load_criterion(spec, threads=...)` (or
   `load_filter`) looks its `ThreadMembers` (Message-IDs, Gmail thread ids) up once, as the
   criterion is built; without a resolver, or for a name it does not know, it matches nothing.
+  `move_to_account` is another: `load_action(spec, accounts=...)` (or `load_filter`) gives it the
+  host's `AccountResolver`, which maps the target account id to an `AccountTarget` (connections
+  serving it and the run's account, and the `max_bytes` cap) when the move is made, and raises
+  `MailError` for an account the run may not move to; without one, every message fails
+  `unsupported`.
 - **A run** (`Folder.run`, `run_into`) is one `with_mailbox` session for all the filters given,
   in order, each seeing what the earlier ones did: search, fetch only what the query cannot decide
   (`fetch_sources`, which never sets `\Seen`, parsed by `parsed_message`; cached for the run,
