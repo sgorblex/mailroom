@@ -27,6 +27,8 @@ function codedMessage(t: TFunction, code: string | undefined, message: string): 
       return t('filterErrors.dryRunBusy')
     case 'match_timeout':
       return t('filterErrors.matchTimeout')
+    case 'public_provider_domain':
+      return t('filterErrors.publicProviderDomain')
     case 'too_many_filters':
       return t('filterErrors.tooManyFilters', { max: MAX_FILTERS })
     case 'invalid_order':

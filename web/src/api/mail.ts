@@ -297,7 +297,7 @@ export interface MatchScope {
  * A search's scope and criteria as a body, not a query string: search terms stay out of access
  * logs. The URL keeps the account as text; the API takes its number, or `*`.
  */
-function matchBody({ query, subfolders }: MatchScope): object {
+export function matchBody({ query, subfolders }: MatchScope): object {
   const { account, ...terms } = query
   return {
     ...terms,

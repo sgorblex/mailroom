@@ -146,6 +146,7 @@ the index and live updates; tier 3 items arrive one at a time.
   for marked mail only (the star or To sort).
 - **Dry run** against real mail before enabling: which messages each filter would match and what it
   would do.
+- **Filters drafted** from a message (its list or sender) or from a search, in the mail client.
 - The worker runs them through the filter engine's runner, only for accounts whose user turned
   **Run filters** on (off by default), one run at a time per account; each run is kept in
   the rule set's history.

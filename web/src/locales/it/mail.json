@@ -130,6 +130,7 @@
     "moreOptions": "Altre opzioni",
     "fewerOptions": "Meno opzioni",
     "clear": "Annulla la ricerca",
+    "createFilter": "Crea un filtro da questa ricerca",
     "account": "Account",
     "accountAll": "Tutti gli account",
     "folder": "Cartella",
@@ -206,7 +207,8 @@
     "htmlLoading": "Caricamento della versione HTML…",
     "htmlFailed": "Impossibile caricare la versione HTML.",
     "print": "Stampa",
-    "downloadSource": "Scarica .eml"
+    "downloadSource": "Scarica .eml",
+    "filterLike": "Filtra i messaggi come questo"
   },
   "mailingList": {
     "label": "Mailing list",

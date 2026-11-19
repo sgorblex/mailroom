@@ -128,9 +128,8 @@ released and checked in production before the next one starts. Batch 15 is the r
 - [x] **"Sent to" address** — which of the user's addresses or aliases a message arrived at.
 - [x] **Recipient summary** — "to you and 12 others", expanded on click.
 - [x] **Mailing list badge** — the list's name, with its archive and unsubscribe at hand.
-- [ ] **Unsubscribe** — `List-Unsubscribe` one-click (RFC 8058) where the list supports it, else
-      its link or address; never automatic, and with the offer of a filter instead. Done but for
-      the filter: *Filter instead* opens Filters, not yet an editor filled from the list.
+- [x] **Unsubscribe** — `List-Unsubscribe` one-click (RFC 8058) where the list supports it, else
+      its link or address; never automatic, and with the offer of a filter instead.
 - [x] **Replied indicator** — a mark on the rows the user answered or forwarded.
 - [x] **Remote content per sender** — the remote-content gate remembers the senders the user
       trusts.
@@ -140,10 +139,9 @@ released and checked in production before the next one starts. Batch 15 is the r
 
 #### 5. Filters from the client
 
-- [ ] **A filter from a message** — the filter editor pre-filled from a message (sender, list,
-      subject); which fields, and how to keep it from making overly broad rules, to settle
-      first.
-- [ ] **A filter from a search** — the current search turned into a filter's conditions.
+- [x] **A filter from a message** — the filter editor pre-filled from a message (its list, its
+      sender, the sender's domain unless a public provider's; never the subject).
+- [x] **A filter from a search** — the current search turned into a filter's conditions.
 - [ ] **Report spam** — the message to Junk and, if the user wants, a filter that keeps
       trashing its sender.
 - [ ] **Mute a thread** — later replies skip the inbox and arrive read.

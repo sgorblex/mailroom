@@ -17,7 +17,7 @@ export interface MailSearch {
   compose?: string
 }
 
-function text(value: unknown): string | undefined {
+export function text(value: unknown): string | undefined {
   // The router parses `?folder=2026` as a number: a folder name it is all the same.
   if (typeof value === 'number') {
     return String(value)
@@ -25,12 +25,12 @@ function text(value: unknown): string | undefined {
   return typeof value === 'string' && value !== '' ? value : undefined
 }
 
-function accountId(value: unknown): AccountId | undefined {
+export function accountId(value: unknown): AccountId | undefined {
   const number = typeof value === 'string' && /^[1-9][0-9]*$/.test(value) ? Number(value) : value
   return typeof number === 'number' && Number.isSafeInteger(number) && number > 0 ? number : undefined
 }
 
-function searchQuery(value: unknown): SearchQuery | undefined {
+export function searchQuery(value: unknown): SearchQuery | undefined {
   if (typeof value !== 'object' || value === null) {
     return undefined
   }

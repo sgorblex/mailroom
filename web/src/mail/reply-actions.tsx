@@ -6,16 +6,18 @@ import { Button } from '@/components/ui/button.tsx'
 
 import { listedActions, unavailableReason, type ActionContext } from './action-registry.ts'
 import { useCompose } from './compose-context.ts'
+import { useDraftFilter } from './filter-draft.ts'
 import { MAIL_NS } from './i18n.ts'
 import { NO_TRIAGE_ACTIONS } from './triage-actions.ts'
 
 /**
  * Reply, reply all and forward of the open message, each opening the composer with its fields;
- * then print and download, which the composer's state does not hold back.
+ * then print, download and a filter drafted from it, which the composer's state does not hold back.
  */
 export function ReplyActions({ account, messageRef }: { account: AccountId; messageRef: string }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const compose = useCompose()
+  const draftFilter = useDraftFilter()
   const hintId = useId()
   const context: ActionContext = {
     actions: NO_TRIAGE_ACTIONS,
@@ -23,6 +25,7 @@ export function ReplyActions({ account, messageRef }: { account: AccountId; mess
     account,
     compose,
     openPicker: () => undefined,
+    draftFilter,
   }
   const actions = listedActions('reply', context)
   const allowed = actions.every((action) => unavailableReason(action, context) === null)

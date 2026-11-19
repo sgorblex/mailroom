@@ -56,6 +56,10 @@ export interface FakeState {
   messages: { uid: number; from: string | null; subject: string | null; date: string | null }[]
   /** A dry run looks at this many newest messages only. */
   limitedToNewest?: number
+  /** What `GET /mail/messages/{ref}/filter-draft` answers, by ref. */
+  messageDrafts?: Record<string, Body>
+  /** What `POST /filters/draft-from-search` answers. */
+  searchDraft?: Body
   /** Requests (`"<METHOD> <path>"`) answered with this status and body instead. */
   refuse?: Record<string, { status: number; body: unknown }>
   /** Requests (`"<METHOD> <path>"`) answered only once this settles. */
@@ -121,7 +125,15 @@ export function stubFiltersApi(state: FakeState): Mock {
     if (path === '/api/v1/filters/schema') {
       return Promise.resolve(json(200, filterSchema))
     }
-    let match = /^\/api\/v1\/accounts\/([^/]+)\/(folders|rule-sets)$/.exec(path)
+    if (path === '/api/v1/filters/draft-from-search' && method === 'POST' && state.searchDraft !== undefined) {
+      return Promise.resolve(json(200, state.searchDraft))
+    }
+    let match = /^\/api\/v1\/mail\/messages\/([^/]+)\/filter-draft$/.exec(path)
+    if (match !== null) {
+      const draft = state.messageDrafts?.[decodeURIComponent(match[1] ?? '')]
+      return Promise.resolve(draft === undefined ? notFound() : json(200, draft))
+    }
+    match = /^\/api\/v1\/accounts\/([^/]+)\/(folders|rule-sets)$/.exec(path)
     if (match !== null) {
       const [, id, what] = match
       const accountId = Number(id)

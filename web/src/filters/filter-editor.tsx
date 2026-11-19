@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type KeyboardEvent, type ReactElement, type SubmitEvent } from 'react'
+import { useId, useRef, useState, type KeyboardEvent, type ReactElement, type ReactNode, type SubmitEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { Filter, FilterFields } from '@/api/filters.ts'
@@ -15,12 +15,18 @@ import { FILTERS_NS } from './i18n.ts'
 
 type Mode = 'tree' | 'json'
 
-function initialModel(filter: Filter | undefined, vocabulary: Vocabulary): SpecModel | null {
-  if (filter === undefined) {
+/** What a new filter starts from: a filter drafted from a message or a search. */
+export interface FilterStart {
+  name: string
+  spec: Record<string, unknown>
+}
+
+function initialModel(spec: Record<string, unknown> | undefined, vocabulary: Vocabulary): SpecModel | null {
+  if (spec === undefined) {
     return newSpecModel(vocabulary)
   }
   try {
-    return readSpec(filter.spec)
+    return readSpec(spec)
   } catch {
     return null
   }
@@ -40,12 +46,16 @@ function parseJson(text: string): { spec: Record<string, unknown> } | { problem:
 }
 
 /**
- * Adds a filter (no `filter`) or edits one: its name, whether it runs, and its spec, either as a
- * tree of criteria and a list of actions or as the raw JSON the filter engine stores. The server
- * checks the spec; its refusal shows above the buttons.
+ * Adds a filter (no `filter`), from `start` when given, or edits one: its name, whether it runs,
+ * and its spec, either as a tree of criteria and a list of actions or as the raw JSON the filter
+ * engine stores; `children` show above the name, inside the form. The server checks the spec; its
+ * refusal shows above the buttons.
  */
 export function FilterEditor({
   filter,
+  start,
+  criterion,
+  children,
   vocabulary,
   folders,
   keywords,
@@ -53,6 +63,10 @@ export function FilterEditor({
   onCancel,
 }: {
   filter?: Filter
+  start?: FilterStart
+  /** A draft's criterion to match on: choosing another replaces the spec's criterion, nothing else. */
+  criterion?: Record<string, unknown>
+  children?: ReactNode
   vocabulary: Vocabulary
   folders: FoldersState
   /** Whether the account's server keeps keywords: where not, the To sort actions are greyed out. */
@@ -63,17 +77,41 @@ export function FilterEditor({
   const { t } = useTranslation(FILTERS_NS)
   const prefix = useId()
   const editing = filter !== undefined
-  const [name, setName] = useState(filter?.name ?? '')
+  const initial = filter ?? start
+  const [name, setName] = useState(initial?.name ?? '')
   const [enabled, setEnabled] = useState(filter?.enabled ?? true)
-  const [model, setModel] = useState<SpecModel | null>(() => initialModel(filter, vocabulary))
+  const [model, setModel] = useState<SpecModel | null>(() => initialModel(initial?.spec, vocabulary))
   // A stored spec the tree cannot show opens as JSON.
   const [mode, setMode] = useState<Mode>(() => (model === null ? 'json' : 'tree'))
-  const [jsonText, setJsonText] = useState(() => JSON.stringify(filter?.spec ?? {}, null, 2))
+  const [jsonText, setJsonText] = useState(() => JSON.stringify(initial?.spec ?? {}, null, 2))
   const [tabProblem, setTabProblem] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const treeTab = useRef<HTMLButtonElement>(null)
   const jsonTab = useRef<HTMLButtonElement>(null)
+  const [shownCriterion, setShownCriterion] = useState(criterion)
+  if (criterion !== shownCriterion) {
+    setShownCriterion(criterion)
+    if (criterion !== undefined) {
+      replaceCriterion(criterion)
+    }
+  }
+
+  function replaceCriterion(next: Record<string, unknown>): void {
+    if (mode === 'json') {
+      const parsed = parseJson(jsonText)
+      if (!('problem' in parsed)) {
+        setJsonText(JSON.stringify({ ...parsed.spec, criterion: next }, null, 2))
+      }
+      return
+    }
+    try {
+      const node = readSpec({ criterion: next, action: { type: 'no_op' } }).criterion
+      setModel((current) => (current === null ? current : { ...current, criterion: node }))
+    } catch {
+      // A criterion the tree cannot show leaves the spec as it is.
+    }
+  }
 
   function jsonProblem(problem: string): string {
     return problem === 'notObject'
@@ -168,6 +206,7 @@ export function FilterEditor({
       <h3 id={titleId} className="font-medium">
         {editing ? t('filters.editor.editTitle', { name: filter.name }) : t('filters.editor.add')}
       </h3>
+      {children}
       <div className="flex flex-wrap items-end gap-4">
         <div className="flex min-w-60 flex-1 flex-col gap-1">
           <label htmlFor={`${prefix}-name`} className="text-sm font-medium">

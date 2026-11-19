@@ -3,6 +3,7 @@ import { createRootRoute, createRoute, createRouter, lazyRouteComponent } from '
 import { AccountsScreen } from '@/accounts/accounts-screen.tsx'
 import { featureRoute, WRITES_MAIL } from '@/auth/feature-route.tsx'
 import { RootLayout } from '@/auth/root-layout.tsx'
+import { validateFilterDraftSearch } from '@/filters/draft-search.ts'
 import { HealthScreen } from '@/health/health-screen.tsx'
 import { validateMailSearch } from '@/mail/route-search.ts'
 import { ConnectRoute } from '@/oauth/connect-screen.tsx'
@@ -36,6 +37,17 @@ const filtersRoute = createRoute({
   component: featureRoute(
     'filters',
     lazyRouteComponent(() => import('@/filters/filters-screen.tsx'), 'FiltersScreen'),
+  ),
+})
+
+// A filter drafted from a message or a search: the static `/filters/new` outranks `/filters/$ruleSetId`.
+const filterDraftRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/filters/new',
+  validateSearch: validateFilterDraftSearch,
+  component: featureRoute(
+    'filters',
+    lazyRouteComponent(() => import('@/filters/draft-screen.tsx'), 'FilterDraftRoute'),
   ),
 })
 
@@ -87,6 +99,7 @@ export const routeTree = rootRoute.addChildren([
   accountsRoute,
   mailRoute,
   filtersRoute,
+  filterDraftRoute,
   ruleSetRoute,
   activityRoute,
   usersRoute,
