@@ -74,6 +74,7 @@ function account({ id, run_filters: runFilters, name, colour, keywords }: FakeAc
     name: name ?? ACCOUNT_NAMES[id] ?? null,
     display_name: name ?? ACCOUNT_NAMES[id] ?? `me@${String(id)}.example`,
     colour: colour ?? null,
+    authserv_id: null,
     login: `me@${String(id)}.example`,
     send_mode: 'drafts',
     imap: endpoint,

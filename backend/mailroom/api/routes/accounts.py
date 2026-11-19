@@ -41,6 +41,7 @@ class AccountFields(StoredAccount):
     """An account as the user sends it: the same, bounded; mailroom-core's models check it."""
 
     name: str | None = Field(default=None, max_length=64)
+    authserv_id: str | None = Field(default=None, max_length=253)
     login: str = Field(max_length=320)
     imap: EndpointBody
     smtp: EndpointBody

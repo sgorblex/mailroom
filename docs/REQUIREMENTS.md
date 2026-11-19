@@ -55,7 +55,8 @@ through the Vite proxy. Engineering baseline:
   mailroom-core seals them (byte-compatible with mailroom-mcp, so its data imports unchanged).
 - Each user manages their own accounts on the *Accounts* page: add (the instance numbers the
   account: no id to choose), edit (an empty password keeps the stored one; every [identity](GLOSSARY.md), with which one is the default;
-  the account's name and colour),
+  the account's name and colour; its **authentication server**, whose sender checks alone are
+  believed: [sender authentication](GLOSSARY.md)),
   test the IMAP login, remove (after a confirmation; the mail on the server stays), and, where
   the instance runs filters, a per-account **Run filters** switch, off until turned on. mailroom-core's config models check every change, so a refusal names the
   field. Removing a user removes their accounts, stored passwords and send log with them.

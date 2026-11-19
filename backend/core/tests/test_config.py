@@ -141,6 +141,23 @@ def test_refuses_a_malformed_name_or_colour(line: str, path: str) -> None:
     assert f"at account[0].{path}" in error
 
 
+def test_an_account_may_name_its_authentication_server() -> None:
+    assert parse_core(EXAMPLE).account[0].authserv_id is None
+    text = EXAMPLE.replace("id         = 1", 'id         = 1\nauthserv_id = "mx.google.com"', 1)
+    assert parse_core(text).account[0].authserv_id == "mx.google.com"
+
+
+@pytest.mark.parametrize(
+    "value",
+    ['""', '"mx.example.org; spf=pass"', '"mx example"', '" mx.example.org"', '"mx.é.org"', "3"],
+)
+def test_refuses_a_malformed_authentication_server(value: str) -> None:
+    error = config_error(
+        EXAMPLE.replace("id         = 1", f"id         = 1\nauthserv_id = {value}", 1)
+    )
+    assert "at account[0].authserv_id" in error
+
+
 def test_refuses_malformed_auto_approve_rules() -> None:
     assert "auto_approve" in config_error(
         EXAMPLE.replace('auto_approve = ["@team.example"]', 'auto_approve = ["team.example"]', 1)

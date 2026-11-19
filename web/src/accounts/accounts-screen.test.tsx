@@ -17,6 +17,7 @@ interface StoredAccount {
   /** The account's own, as stored; `null` when it has none (then listed by its login). */
   name: string | null
   colour: string | null
+  authserv_id: string | null
   login: string
   send_mode: string
   imap: { host: string; port: number; tls: string }
@@ -31,6 +32,7 @@ const WORK: StoredAccount = {
   id: 1,
   name: null,
   colour: null,
+  authserv_id: null,
   login: 'work',
   send_mode: 'drafts',
   imap: { host: 'imap.example.org', port: 993, tls: 'implicit' },
@@ -193,6 +195,7 @@ const SUGGESTION = {
   login: 'local_part',
   imap: { host: 'mail.home.example', port: 143, tls: 'starttls', outside_domain: false },
   smtp: { host: 'mail.home.example', port: 587, tls: 'starttls', outside_domain: false },
+  authserv_id: null,
 }
 
 afterEach(() => {
@@ -240,6 +243,7 @@ describe('AccountsScreen', () => {
     expect(sent(fetchMock, 'POST', '/api/v1/accounts')).toEqual({
       name: null,
       colour: null,
+      authserv_id: null,
       login: 'me@home.example',
       password: 'mailbox secret',
       send_mode: 'drafts',
@@ -408,6 +412,8 @@ describe('AccountsScreen', () => {
     expect(sent(fetchMock, 'POST', '/api/v1/accounts')).toMatchObject({
       imap: { host: 'imap.gmail.com', port: 993, tls: 'implicit' },
       smtp: { host: 'smtp.gmail.com', port: 465, tls: 'implicit' },
+      // Gmail's authentication server comes with its preset.
+      authserv_id: 'mx.google.com',
     })
   })
 
@@ -421,6 +427,7 @@ describe('AccountsScreen', () => {
       login: 'address',
       imap: { host: 'outlook.office365.com', port: 993, tls: 'implicit', outside_domain: false },
       smtp: { host: 'smtp.office365.com', port: 587, tls: 'starttls', outside_domain: false },
+      authserv_id: null,
     }
     stubApi([], () => json(200, { domain: 'outlook.com', suggestion }))
     renderSignedIn(<AccountsScreen />, ALICE)
@@ -511,6 +518,29 @@ describe('AccountsScreen', () => {
 
     expect(await screen.findByRole('button', { name: 'Edit work' })).toBeInTheDocument()
     expect(sent(fetchMock, 'PUT', '/api/v1/accounts/1')).toMatchObject({ name: null, colour: null })
+  })
+
+  it('edits the authentication server, keeping it through other changes and clearing it when emptied', async () => {
+    const fetchMock = stubApi([{ ...WORK, authserv_id: 'mx.example.org' }])
+    renderSignedIn(<AccountsScreen />, ALICE)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit work' }))
+    const form = screen.getByRole('form', { name: 'Edit work' })
+    const server = within(form).getByLabelText('Authentication server')
+    expect(server).toHaveValue('mx.example.org')
+    expect(server).toHaveAccessibleDescription(expect.stringContaining('Authentication-Results') as string)
+    await userEvent.selectOptions(within(form).getByLabelText('Sending'), 'Off')
+    await userEvent.click(within(form).getByRole('button', { name: 'Save' }))
+    expect(await screen.findByRole('button', { name: 'Edit work' })).toHaveFocus()
+    expect(sent(fetchMock, 'PUT', '/api/v1/accounts/1')).toMatchObject({ authserv_id: 'mx.example.org' })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Edit work' }))
+    const again = screen.getByRole('form', { name: 'Edit work' })
+    await userEvent.clear(within(again).getByLabelText('Authentication server'))
+    await userEvent.type(within(again).getByLabelText('Authentication server'), '   ')
+    await userEvent.click(within(again).getByRole('button', { name: 'Save' }))
+    expect(await screen.findByRole('button', { name: 'Edit work' })).toHaveFocus()
+    expect(sent(fetchMock, 'PUT', '/api/v1/accounts/1')).toMatchObject({ authserv_id: null })
   })
 
   it('keeps the name and colour through every save, even a name that is the login', async () => {

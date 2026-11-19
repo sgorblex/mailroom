@@ -74,6 +74,9 @@ class Suggestion(BaseModel):
     login: LoginForm
     imap: SuggestedEndpoint
     smtp: SuggestedEndpoint
+    authserv_id: str | None = None
+    """The provider's authentication server (RFC 8601 authserv-id), where it has one it
+    publishes: the account's ``authserv_id``."""
 
 
 class AutoconfigAnswer(BaseModel):
@@ -97,6 +100,9 @@ class Provider:
     mx_suffixes: tuple[str, ...] = ()
     """MX hosts that say a domain's mail is with it."""
     supported: bool = True
+    authserv_id: str | None = None
+    """The authserv-id its Authentication-Results carry, when it is one fixed name: None where
+    each receiving host writes its own, or it is not known."""
 
 
 def _endpoint(host: str, port: int, tls: TlsMode) -> SuggestedEndpoint:
@@ -113,6 +119,7 @@ PROVIDERS: tuple[Provider, ...] = (
         frozenset({"imap.gmail.com", "imap.googlemail.com"}),
         frozenset({"smtp.gmail.com", "smtp.googlemail.com"}),
         ("google.com", "googlemail.com"),
+        authserv_id="mx.google.com",
     ),
     Provider(
         "iCloud",
@@ -449,6 +456,7 @@ def _from_provider(provider: Provider, source: Source, origin: str | None) -> Su
         login="address",
         imap=provider.imap,
         smtp=provider.smtp,
+        authserv_id=provider.authserv_id,
     )
 
 
@@ -475,6 +483,7 @@ def _recognised(suggestion: Suggestion) -> Suggestion:
                     "provider": provider.name,
                     "supported": provider.supported,
                     "note": provider.note,
+                    "authserv_id": provider.authserv_id,
                     "imap": _known(suggestion.imap, known),
                     "smtp": _known(suggestion.smtp, known),
                 }

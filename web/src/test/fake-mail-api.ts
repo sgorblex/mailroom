@@ -702,6 +702,7 @@ export function stubMailApi(state: FakeMailState): Mock {
             name: state.names?.[id]?.name ?? ACCOUNT_NAMES[id] ?? null,
             display_name: state.names?.[id]?.name ?? ACCOUNT_NAMES[id] ?? `me@${String(id)}.example`,
             colour: state.names?.[id]?.colour ?? null,
+            authserv_id: null,
             login: `me@${String(id)}.example`,
             send_mode: state.sendModes?.[id] ?? 'drafts',
             imap: endpoint,

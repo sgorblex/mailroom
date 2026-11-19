@@ -32,6 +32,8 @@ export const accountSchema = z.object({
   /** What to call the account: its name, else its login. Read-only: never sent back. */
   display_name: z.string(),
   colour: z.enum(ACCOUNT_COLOURS).nullable(),
+  /** The authentication server whose Authentication-Results are believed; `null` when unset (none are). */
+  authserv_id: z.string().nullable(),
   login: z.string(),
   send_mode: z.enum(SEND_MODES),
   imap: endpointSchema,
@@ -54,6 +56,7 @@ export type Account = z.infer<typeof accountSchema>
 export interface AccountFields {
   name: string | null
   colour: AccountColour | null
+  authserv_id: string | null
   login: string
   send_mode: (typeof SEND_MODES)[number]
   imap: Endpoint
@@ -86,6 +89,8 @@ const suggestionSchema = z.object({
   login: z.enum(['address', 'local_part']),
   imap: suggestedEndpointSchema,
   smtp: suggestedEndpointSchema,
+  /** The provider's authentication server, where it publishes one fixed name. */
+  authserv_id: z.string().nullable(),
 })
 export type Suggestion = z.infer<typeof suggestionSchema>
 

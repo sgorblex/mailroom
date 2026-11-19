@@ -42,6 +42,7 @@ function stubApi(
           ...account,
           display_name: account.name ?? `me@${String(account.id)}.example`,
           login: `me@${String(account.id)}.example`,
+          authserv_id: null,
           send_mode: 'drafts',
           imap: { host: 'imap.example', port: 993, tls: 'implicit' },
           smtp: { host: 'smtp.example', port: 465, tls: 'implicit' },
