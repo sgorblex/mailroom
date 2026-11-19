@@ -7,9 +7,11 @@ import {
   listedActions,
   MAIL_ACTIONS,
   mailAction,
+  runnable,
   shortcutAction,
   unavailableReason,
   type ActionContext,
+  type MailAction,
 } from './action-registry.ts'
 import { NO_TRIAGE_ACTIONS, type TriageActions } from './triage-actions.ts'
 import type { Target } from './triage-context.ts'
@@ -40,7 +42,7 @@ const offered: Partial<TriageActions> = {
   otherAccounts: [2],
 }
 
-const ids = (group: 'reply' | 'compose' | 'triage', each: ActionContext): string[] =>
+const ids = (group: MailAction['group'], each: ActionContext): string[] =>
   listedActions(group, each).map((action) => action.id)
 
 describe('the action registry', () => {
@@ -111,6 +113,39 @@ describe('the action registry', () => {
     expect(ids('reply', context({}, { message: target }))).toEqual(['reply', 'replyAll', 'forward'])
     expect(ids('compose', context())).toEqual([])
     expect(ids('compose', context({}, { account: 1 }))).toEqual(['compose'])
+  })
+
+  it('prints and downloads only a message, even while composing', () => {
+    expect(ids('message', context())).toEqual([])
+    const open = context({}, { message: target })
+    expect(ids('message', open)).toEqual(['print', 'downloadSource'])
+    for (const action of listedActions('message', open)) {
+      expect(runnable(action, open, { busy: true, composing: true })).toBe(true)
+    }
+  })
+
+  it('opens the printable page in a new tab and saves the source', () => {
+    const links: Record<string, string>[] = []
+    vi.stubGlobal('document', {
+      createElement: () => {
+        const link: Record<string, string> & { click?: () => void } = {}
+        link.click = () => {
+          links.push({ ...link })
+        }
+        return link
+      },
+    })
+    try {
+      const open = context({}, { message: target })
+      mailAction('print').run(open)
+      mailAction('downloadSource').run(open)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+    expect(links).toEqual([
+      expect.objectContaining({ href: expect.stringMatching(/\/messages\/r1\/print$/) as unknown, target: '_blank', rel: 'noopener noreferrer' }),
+      expect.objectContaining({ href: expect.stringMatching(/\/messages\/r1\/source$/) as unknown, download: '' }),
+    ])
   })
 
   it('runs a key only when its action can run now', () => {

@@ -1,5 +1,6 @@
 """Reading a user's mail: folders, pages of messages (a list, a search), one message, its thread,
-its HTML and its attachments, an account's quota and whether its server keeps keywords."""
+its HTML, its attachments, its source and its printable form, an account's quota and whether its
+server keeps keywords."""
 
 from __future__ import annotations
 
@@ -42,6 +43,7 @@ if TYPE_CHECKING:
         MailErrorCode,
         MessageView,
         Quota,
+        RawMessage,
     )
     from mailroom_core.render import Marker, SafeHtml
 
@@ -649,6 +651,61 @@ def attachment(
         message.account,
         lambda connections: core.read_attachment(connections, message, part, max_bytes=max_bytes),
     )
+
+
+def message_source(ctx: AppContext, user_id: int, ref: str, *, via: Via = "web") -> RawMessage:
+    """The message's whole source, at most the user's ``attachment_max_mb`` (``too_large``
+    beyond)."""
+    accounts = _accounts(ctx, user_id)
+    message = _message_ref(ctx, user_id, accounts, ref)
+    max_bytes = int(accounts.limits.attachment_max_mb * 1024 * 1024)
+    return _call(
+        ctx,
+        user_id,
+        accounts,
+        "mail_source_read",
+        via,
+        message.account,
+        lambda connections: core.read_source(connections, message, max_bytes=max_bytes),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class Printable:
+    """A message as its printable page shows it, with the zone its date is written in."""
+
+    view: MessageView
+    """Its whole text body, quotes included."""
+    html: SafeHtml | None
+    """Its HTML body sanitised, without remote images; None without one."""
+    time_zone: str
+
+
+def printable(ctx: AppContext, user_id: int, ref: str, *, via: Via = "web") -> Printable:
+    """The message's headers and its whole body for printing: the HTML body sanitised as
+    ``message_html`` does without ``remote``, else the text body."""
+    accounts = _accounts(ctx, user_id)
+    message = _message_ref(ctx, user_id, accounts, ref)
+    account = accounts.config(message.account)
+
+    def work(connections: MailConnections) -> tuple[MessageView, SafeHtml | None]:
+        view = core.read_message(
+            connections,
+            message,
+            include_quoted=True,
+            body_chars=core.MAX_BODY_BYTES,
+            marker=None,
+            account=account,
+        )
+        html = (
+            core.html_view(connections, message, remote=False, max_inline_bytes=INLINE_IMAGE_BYTES)
+            if view.has_html
+            else None
+        )
+        return view, html
+
+    view, html = _call(ctx, user_id, accounts, "mail_print_read", via, message.account, work)
+    return Printable(view=view, html=html, time_zone=ctx.time_zone(user_id))
 
 
 def message_html(

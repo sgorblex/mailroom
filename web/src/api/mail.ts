@@ -387,6 +387,16 @@ export function messagePartUrl(ref: string, part: string): string {
   return `${getApiBaseUrl()}${messagePath(ref)}/parts/${encodeURIComponent(part)}`
 }
 
+/** A download of the whole message as stored, a `.eml` file named after its subject. */
+export function messageSourceUrl(ref: string): string {
+  return `${getApiBaseUrl()}${messagePath(ref)}/source`
+}
+
+/** The message as a page of its own for the browser's print: it runs nothing and loads nothing remote. */
+export function messagePrintUrl(ref: string): string {
+  return `${getApiBaseUrl()}${messagePath(ref)}/print`
+}
+
 const organizeGroupSchema = z.object({
   account: accountIdSchema,
   folder: z.string(),

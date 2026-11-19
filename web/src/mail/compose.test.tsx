@@ -166,6 +166,26 @@ describe('composing', () => {
     expect(screen.queryByRole('form')).not.toBeInTheDocument()
   })
 
+  it('prints and downloads the open message whatever the send mode', async () => {
+    const user = userEvent.setup()
+    stubMailApi(state({ sendModes: { [WORK]: 'off' } }))
+    renderMailApp(`/mail?message=${firstRef}`)
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
+    try {
+      const print = await screen.findByRole('button', { name: 'Print' })
+      expect(print).not.toHaveAttribute('aria-disabled')
+      await user.click(print)
+      await user.click(screen.getByRole('button', { name: 'Download .eml' }))
+      const [printed, saved] = click.mock.instances as unknown as HTMLAnchorElement[]
+      expect(printed?.href).toMatch(/\/print$/)
+      expect(printed?.target).toBe('_blank')
+      expect(saved?.href).toMatch(/\/source$/)
+      expect(saved?.hasAttribute('download')).toBe(true)
+    } finally {
+      click.mockRestore()
+    }
+  })
+
   it('flushes unsaved text on closing, and leaves no draft of nothing', async () => {
     const user = userEvent.setup()
     const fetchMock = stubMailApi(state())

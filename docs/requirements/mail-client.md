@@ -49,6 +49,10 @@ live updates yet.
   `mailto:` address in the composer ([prefill](#compose) `unsubscribe`), when the account can
   write mail; else the `https:` link in a new tab. *Filter instead* beside it leads to Filters,
   when the instance runs them.
+- **Print and download:** beside Reply, Reply all and Forward, *Print* opens the message's
+  [printable page](#get-messagesrefprint) in a new tab, for the browser's own print, and
+  *Download .eml* saves [its source](#get-messagesrefsource); the row's context menu and the
+  command palette offer both too, the composer open or not.
 - **Link safety:** in the HTML view each link's tooltip is the host it really goes to (IDNA form,
   never the sender's own title), and a link whose text names another host (not the link's, nor a
   parent or child of it) is followed by a red *⚠ host* marker naming the real one; no
@@ -232,7 +236,8 @@ MCP `message_read` still never set `\Seen`.
   deleting for good asks first, naming how many and from which account to which),
   Star/Unstar, Mark To sort/Mark sorted ([To sort](../GLOSSARY.md)), Mark read/unread.
 - **A context menu on each row** (a right-click, or Shift+F10 or the context-menu key on it)
-  offers the toolbar's actions, with Reply, Reply all and Forward when it acts on one message,
+  offers the toolbar's actions, with Reply, Reply all, Forward, Print and Download .eml when it
+  acts on one message,
   each naming its key. On a selected row it acts on the selection; on any other row, on that row
   alone, the selection left as it was, but for Move to… and Move to another account…, whose picker
   makes the row the selection. Shift+right-click keeps the browser's own menu. The toolbar, the
@@ -1249,6 +1254,33 @@ nosniff`, `Content-Security-Policy: default-src 'none'; sandbox`, `Cache-Control
 no-store`. Capped at the user's `attachment_max_mb` (mailroom-core settings, default 10): over
 it, 413 `too_large`. A part that is not an attachment, an inline part or the calendar part of that
 message: 404 `not_found`.
+
+### `GET /messages/{ref}/source`
+
+The whole message as stored, a download: `Content-Type: message/rfc822`, `Content-Disposition:
+attachment; filename*=UTF-8''…` (the subject cleaned as a part's file name is, else `message`,
+then `.eml`), `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none';
+sandbox`, `Cache-Control: private, no-store`. Read under EXAMINE, never setting `\Seen`, and
+capped at the user's `attachment_max_mb`: over it, 413 `too_large`, never cut. Errors as for
+`GET /messages/{ref}`.
+
+### `GET /messages/{ref}/print`
+
+A **standalone HTML page** for the browser's own print, opened in a tab of its own: the subject
+as its title and heading, From, To, Cc, Date (the user's time zone) and each attachment's name
+and size, all escaped, then the body: the HTML body as the [HTML view](#get-messagesrefhtmlremote0)
+sanitises it without `remote` (its `cid:` images inlined, remote ones removed), else the whole
+text body, quotes included, escaped. It runs no script. Headers:
+
+```
+Content-Type: text/html; charset=utf-8
+Content-Security-Policy: sandbox allow-popups allow-popups-to-escape-sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+X-Content-Type-Options: nosniff
+Referrer-Policy: no-referrer
+Cache-Control: private, no-store
+```
+
+Nothing from the message is in a response header. Errors as for `GET /messages/{ref}`.
 
 ### Remote content senders
 

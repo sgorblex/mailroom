@@ -1,5 +1,5 @@
 """Reading mail, which changes nothing: message pages, search, one message, its HTML as a
-standalone document and part downloads."""
+standalone document, part downloads, its source as a download and its printable page."""
 
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ from mailroom.api.routes.mail._shared import (
     mail_router,
 )
 from mailroom.mail import remote_senders, service, unsubscribe
+from mailroom.mail.print_page import printable_page
 from mailroom_core.config import MAX_SAFE_INTEGER
 from mailroom_core.mail import DISPLAYED_IMAGES, FORWARDED, TO_SORT, SearchQuery
 
@@ -42,6 +43,13 @@ HTML_CSP: Final = (
 inlined images (``data:``), plus remote images (``http:`` and ``https:``, the ones
 mailroom-core keeps) once the reader reveals remote content; never remote CSS or fonts."""
 PART_CSP: Final = "default-src 'none'; sandbox"
+PRINT_CSP: Final = (
+    "sandbox allow-popups allow-popups-to-escape-sandbox; default-src 'none'; "
+    "style-src 'unsafe-inline'; img-src data:; frame-ancestors 'none'; base-uri 'none'; "
+    "form-action 'none'"
+)
+"""The printable page's policy: a tab of its own, never framed, running nothing and loading
+only its inlined images; its links open apart from it."""
 _PRIVATE: Final = {
     "X-Content-Type-Options": "nosniff",
     "Cache-Control": _NO_STORE,
@@ -445,16 +453,16 @@ def served_type(kind: str) -> str:
     return "application/octet-stream"
 
 
-def download_name(name: str | None, part: str) -> str:
-    """The sender's file name without control or invisible characters and path separators,
-    bounded; ``attachment-<part>`` when nothing is left."""
+def download_name(name: str | None, fallback: str) -> str:
+    """The sender's file name (or a subject) without control or invisible characters and path
+    separators, bounded; ``fallback`` when nothing is left."""
     cleaned = "".join(
         "_" if ch in "/\\" else ch
         for ch in unicodedata.normalize("NFC", name or "")
         if not unicodedata.category(ch).startswith("C")
     )
     cleaned = cleaned.strip(" .")[:_MAX_FILENAME].strip()
-    return cleaned or f"attachment-{part}"
+    return cleaned or fallback
 
 
 @mail_router.get("/messages/{ref}/parts/{part}", response_class=Response)
@@ -467,13 +475,45 @@ def message_part(
     """One attachment, inline part or the calendar part, transfer encoding decoded, as a
     download."""
     attachment = service.attachment(ctx, user.id, ref, part)
-    filename = quote(download_name(attachment.name, part), safe="")
+    filename = quote(download_name(attachment.name, f"attachment-{part}"), safe="")
     return Response(
         content=attachment.data,
         media_type=served_type(attachment.type),
         headers={
             "Content-Disposition": f"attachment; filename*=UTF-8''{filename}",
             "Content-Security-Policy": PART_CSP,
+            **_PRIVATE,
+        },
+    )
+
+
+@mail_router.get("/messages/{ref}/source", response_class=Response)
+def message_source(ref: Ref, ctx: Context, user: CurrentUser) -> Response:
+    """The whole message as stored, as a ``.eml`` download named after its subject."""
+    raw = service.message_source(ctx, user.id, ref)
+    filename = quote(f"{download_name(raw.subject, 'message')}.eml", safe="")
+    return Response(
+        content=raw.source,
+        media_type="message/rfc822",
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{filename}",
+            "Content-Security-Policy": PART_CSP,
+            **_PRIVATE,
+        },
+    )
+
+
+@mail_router.get("/messages/{ref}/print", response_class=Response)
+def message_print(ref: Ref, ctx: Context, user: CurrentUser) -> Response:
+    """A standalone page of the message for the browser's own print, opened in a tab of its
+    own: it runs nothing and loads nothing remote."""
+    page = printable_page(service.printable(ctx, user.id, ref))
+    return Response(
+        content=page,
+        media_type="text/html; charset=utf-8",
+        headers={
+            "Content-Security-Policy": PRINT_CSP,
+            "Referrer-Policy": "no-referrer",
             **_PRIVATE,
         },
     )

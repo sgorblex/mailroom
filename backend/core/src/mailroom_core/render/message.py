@@ -75,7 +75,8 @@ def _format_address(address: Address) -> str:
     return addr if name in ("", addr) else f"{name} <{addr}>"
 
 
-def _format_addresses(addresses: Sequence[Address] | None) -> str:
+def format_addresses(addresses: Sequence[Address] | None) -> str:
+    """`Name <address>, …`, each part cleaned (`clean_header`) and bounded."""
     return ", ".join(_format_address(address) for address in addresses or ())
 
 
@@ -146,7 +147,7 @@ def list_line(item: ListItem, time_zone: str) -> str:
         item.ref,
         "" if item.folder is None else clean_header(item.folder, 200),
         format_date(item.date, time_zone),
-        _format_addresses(item.sender) or "(unknown sender)",
+        format_addresses(item.sender) or "(unknown sender)",
         subject,
         _format_flags(item.flags, item.has_attachments),
         preview,
@@ -176,9 +177,9 @@ def _part_line(info: PartInfo) -> str:
 def header_block(view: HeaderView, time_zone: str) -> str:
     """The headers `read` shows; everything else only with `raw_headers`."""
     lines = [
-        f"From: {_format_addresses(view.sender) or '(unknown)'}",
-        f"To: {_format_addresses(view.to) or '(none)'}",
-        *([f"Cc: {_format_addresses(view.cc)}"] if view.cc else []),
+        f"From: {format_addresses(view.sender) or '(unknown)'}",
+        f"To: {format_addresses(view.to) or '(none)'}",
+        *([f"Cc: {format_addresses(view.cc)}"] if view.cc else []),
         f"Date: {format_date(view.date, time_zone)}",
         f"Subject: {clean_header(view.subject or '') or '(no subject)'}",
     ]

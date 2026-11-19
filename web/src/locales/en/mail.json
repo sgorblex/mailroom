@@ -204,7 +204,9 @@
     "senderNotVerified": "This sender could not be verified, so it cannot be remembered.",
     "htmlTitle": "HTML version of {{subject}}",
     "htmlLoading": "Loading the HTML version…",
-    "htmlFailed": "Could not load the HTML version."
+    "htmlFailed": "Could not load the HTML version.",
+    "print": "Print",
+    "downloadSource": "Download .eml"
   },
   "mailingList": {
     "label": "Mailing list",
@@ -348,7 +350,7 @@
     "forward": "Forward",
     "unsubscribe": "Unsubscribe",
     "draft": "Draft",
-    "replyActions": "Reply and forward",
+    "replyActions": "Reply, forward, print and download",
     "backToDraft": "Back to draft",
     "offHint": "Sending is off for this account, so it can't write mail. Change that in Accounts.",
     "loading": "Opening the composer…",

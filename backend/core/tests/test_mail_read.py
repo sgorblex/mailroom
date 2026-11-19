@@ -22,6 +22,7 @@ from mailroom_core.mail import (
     parse_ref,
     read_attachment,
     read_message,
+    read_source,
     read_text,
     search_messages,
     thread_page,
@@ -594,6 +595,21 @@ def test_refuses_an_attachment_over_the_cap_before_downloading_it(
     assert raised.value.code == "too_large"
     assert fetched
     assert not [item for item in fetched if "BODY" in item and "BODYSTRUCTURE" not in item]
+
+
+def test_reads_the_whole_source_capped_without_marking_read(imap_server, harness) -> None:
+    user = imap_server.unique_user("source")
+    message = mime("Minutes =?utf-8?q?caf=C3=A9?=", text="the minutes")
+    seed(imap_server, user, "INBOX", message)
+    mail = harness((1, user))
+    ref = list_messages(mail, 1).messages[0].ref
+    raw = read_source(mail, ref, max_bytes=len(message))
+    assert raw.source == message.encode()
+    assert raw.subject == "Minutes café"
+    with pytest.raises(MailError) as raised:
+        read_source(mail, ref, max_bytes=len(message) - 1)
+    assert raised.value.code == "too_large"
+    assert ["\\Seen" in m.flags for m in folder_contents(imap_server, user, "INBOX")] == [False]
 
 
 def test_refuses_a_garbage_cursor_and_one_from_a_recreated_folder(imap_server, harness) -> None:
