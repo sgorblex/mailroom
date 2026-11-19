@@ -40,11 +40,16 @@ and may try to run script, track the reader, phish, or — through the MCP — i
 - The iframe document carries its **own strict CSP** (`default-src 'none'`; images only from
   `data:` (the inlined `cid:` parts), unless the user reveals remote content; no scripts, no
   forms, no frames, `base-uri 'none'`), in addition to server-side sanitisation of the HTML.
-- **No remote content by default.** Remote images are removed from the document and refused by
-  its CSP until the user reveals them for that message (`?remote=1`, per message, never
-  remembered); tracking pixels therefore never fire on open. What is removed whatever the user
-  chooses: [`mail-client.md`](mail-client.md), the HTML route. Links open in a new top-level
-  context with `noopener` and `noreferrer`.
+- **No remote content by default.** Remote images are removed from the document and refused by its
+  CSP until the user reveals them for that message (`?remote=1`); tracking pixels therefore never
+  fire on open. The only thing remembered is a **sender** the user chose
+  (`app.remote_content_sender(user_id, address, created_at)`, one row per user and address), and
+  only from a message whose DMARC passed at the account's own authentication server for its one
+  From, which the server checks itself; it counts again only for such a message (`remote_trusted` in
+  [`mail-client.md`](mail-client.md)), never for a From anyone could write. Logged as
+  `remote_sender_added` / `remote_sender_removed` with `user_id`, never the address. What is removed
+  whatever the user chooses: [`mail-client.md`](mail-client.md), the HTML route. Links open in a new
+  top-level context with `noopener` and `noreferrer`.
 - **Links show where they go.** A link's `title` is always the host it goes to (IDNA as a browser
   computes it, UTS #46, so a lookalike in another script shows as `xn--…`), or none when no
   browser would take it for a host; the sender's is dropped. A link whose text names
@@ -437,10 +442,10 @@ bounded to one minor because the server relies on its handlers.
   `outcome`), each with `user_id` and `account_id`, and the changes with `via` (`web`, or `mcp`
   for the MCP server); `account_autoconfig` with `user_id` and `outcome` (the source, or
   `none`); never a login, a host or a password.
-- **Removing a user** removes, in the same transaction, the app's rows about their accounts and
-  mailroom-core's (`forget_user`: settings with their history, sealed passwords, send log). While
-  a save of their accounts holds them past mailroom-core's lock timeout, nothing is removed: 503
-  `user_accounts_busy`.
+- **Removing a user** removes, in the same transaction, the app's rows about their accounts (and the
+  senders whose remote content they show) and mailroom-core's (`forget_user`: settings with their
+  history, sealed passwords, send log). While a save of their accounts holds them past
+  mailroom-core's lock timeout, nothing is removed: 503 `user_accounts_busy`.
 - **Known risk — outbound connections:** a login test or a folder listing connects to whatever
   host and port the user entered, so any signed-in user can make the server open a connection
   from its network to any `host:port` (internal services included) and learn from the failure kind

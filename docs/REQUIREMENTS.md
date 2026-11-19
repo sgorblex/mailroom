@@ -59,7 +59,8 @@ through the Vite proxy. Engineering baseline:
   believed: [sender authentication](GLOSSARY.md)),
   test the IMAP login, remove (after a confirmation; the mail on the server stays), and, where
   the instance runs filters, a per-account **Run filters** switch, off until turned on. mailroom-core's config models check every change, so a refusal names the
-  field. Removing a user removes their accounts, stored passwords and send log with them.
+  field. Removing a user removes their accounts, stored passwords and send log with them, and the
+  senders whose remote content they show.
   The web names an account by its display name (its name, else its login) with a dot of its
   colour, never by its id; the API and MCP name it by that id, a number. An account that is gone
   (named by a rule set or an audit record) shows as *Removed account*. A name another of the
@@ -128,7 +129,7 @@ the index and live updates; tier 3 items arrive one at a time.
 
 | Tier | Scope |
 | --- | --- |
-| **1 — Read** | Accounts and folders with unread counts; message list (threaded or flat) with paging; read a message: headers, text and **sandboxed HTML** body, attachments (download), remote content blocked with a per-message reveal. Search. |
+| **1 — Read** | Accounts and folders with unread counts; message list (threaded or flat) with paging; read a message: headers, text and **sandboxed HTML** body, attachments (download), remote content blocked with a per-message reveal, or shown at once for a sender the user chose whose DMARC passed. Search. |
 | **2 — Triage and compose** | *Triage (slice B, in):* flag/unflag (a row's star too), mark To sort or sorted (a row's mark too), read/unread, move (to another of the user's accounts too, its originals to Trash or, on request, deleted for good once copied), archive, trash (never expunge), multi-select, keyboard shortcuts for triage. *Compose (slice C, in):* compose new, reply, reply-all, forward in plain text, with identity (`From`) choice, attachments and drafts always kept in the server's `\Drafts`. The **send mode** (mailroom-core's send gate) limits what agents may send; the user's own *Send* works unless the mode is `off`; the hourly limit and recipient cap bind both. No automatic retry delivers a send twice (only the user's *Send anyway*, after an unconfirmed delivery, can), and one whose delivery cannot be confirmed says so instead of retrying. |
 | **2+ — Index and live updates** | A **local index** of every account and folder (metadata plus rendered text) for fast cross-account search and lists; kept fresh by the worker over **IMAP IDLE** (and periodic resync), pushed to the browser (SSE or WebSocket). |
 | **3 — Later** | Rich-text compose, signatures, snooze and send-later, contacts and autocomplete from history, calendar invites, offline reading, PGP/S/MIME, unified inbox views, saved searches. |

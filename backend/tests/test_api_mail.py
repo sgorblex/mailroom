@@ -423,6 +423,65 @@ def test_a_message_says_who_it_was_sent_to_and_what_the_accounts_server_found(
     assert forged["authentication"]["verified"] is False
 
 
+def test_remote_content_is_remembered_only_for_a_verified_sender(
+    mailbox: Mailbox, caplog: pytest.LogCaptureFixture
+) -> None:
+    trusted = (
+        "Authentication-Results: mx.google.com; dkim=pass header.d=shop.example;\r\n"
+        " dmarc=pass header.from=shop.example\r\n"
+    )
+    mailbox.seed(f"{trusted}From: Shop <News@Shop.example>\r\nSubject: Sale\r\n\r\nhi\r\n")
+    mailbox.seed(
+        "Authentication-Results: mx.evil.example; dmarc=pass header.from=shop.example\r\n"
+        "From: news@shop.example\r\nSubject: Forged\r\n\r\nhi\r\n"
+    )
+    mailbox.seed(
+        f"{trusted}From: news@shop.example, other@shop.example\r\nSubject: Two\r\n\r\nhi\r\n"
+    )
+    account = new_account(login=mailbox.login, imap=endpoint(mailbox.server))
+    account = {key: value for key, value in account.items() if key != "password"}
+    changed = mailbox.client.put(
+        "/api/v1/accounts/1", json=account | {"authserv_id": "mx.google.com"}
+    )
+    assert changed.status_code == 200, changed.text
+    two, forged, real = mailbox.refs()
+    senders = f"{MAIL}/remote-senders"
+
+    def trusted_view(ref: str) -> bool:
+        return cast("bool", mailbox.get(f"/messages/{ref}")["remote_trusted"])
+
+    assert not trusted_view(real)
+    # The server reads the message itself: a From nobody verified is not remembered.
+    for ref in (forged, two):
+        refused = mailbox.client.post(senders, json={"ref": ref})
+        assert detail(refused) == (400, "sender_not_verified")
+    assert mailbox.client.get(senders).json() == {"senders": []}
+
+    with caplog.at_level(logging.INFO, logger="mailroom"):
+        added = mailbox.client.post(senders, json={"ref": real})
+        again = mailbox.client.post(senders, json={"ref": real})
+    assert (added.status_code, added.json()["address"]) == (201, "news@shop.example")
+    assert again.json() == added.json()
+    assert "shop.example" not in caplog.text
+    assert [s["address"] for s in mailbox.client.get(senders).json()["senders"]] == [
+        "news@shop.example"
+    ]
+    # Remembered, it counts only where DMARC passed for the message's one From.
+    assert (trusted_view(real), trusted_view(forged), trusted_view(two)) == (True, False, False)
+
+    removed = mailbox.client.post(f"{senders}/remove", json={"address": "NEWS@shop.example"})
+    assert removed.status_code == 204
+    assert (
+        mailbox.client.post(f"{senders}/remove", json={"address": "news@shop.example"}).status_code
+        == 404
+    )
+    assert not trusted_view(real)
+    cross_site = mailbox.client.post(
+        senders, json={"ref": real}, headers={"Sec-Fetch-Site": "cross-site"}
+    )
+    assert cross_site.status_code == 403
+
+
 def test_a_message_reads_without_marking_it_seen(
     mailbox: Mailbox, caplog: pytest.LogCaptureFixture
 ) -> None:
