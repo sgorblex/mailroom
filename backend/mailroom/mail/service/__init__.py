@@ -51,7 +51,15 @@ from mailroom.mail.service.folder_writes import (
     mark_folder_read,
     rename_folder,
 )
-from mailroom.mail.service.organize import MAX_REFS, archive, flag, move, move_to_account, trash
+from mailroom.mail.service.organize import (
+    MAX_REFS,
+    archive,
+    flag,
+    junk,
+    move,
+    move_to_account,
+    trash,
+)
 from mailroom.mail.service.read import (
     ALL_ACCOUNTS,
     AllAccounts,
@@ -121,6 +129,7 @@ __all__ = [
     "flag",
     "folder_segments",
     "folders",
+    "junk",
     "keywords",
     "list_messages",
     "mark_folder_read",

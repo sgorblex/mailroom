@@ -1,6 +1,6 @@
 """The mail client (``docs/requirements/mail-client.md``, *REST contract*): folders, message
 pages, search, one message, its HTML as a standalone document and part downloads, which change
-nothing; the organize routes (move, archive, trash, flag), which change folders and flags, and
+nothing; the organize routes (move, archive, junk, trash, flag), which change folders and flags, and
 the bulk ones, which count and act on every message a search matches; creating, renaming and
 deleting folders; drafts and sends; the senders whose remote content is shown without
 asking; and one-click unsubscribing. Only the signed-in user's accounts.

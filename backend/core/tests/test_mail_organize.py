@@ -13,6 +13,7 @@ from mailroom_core.mail import (
     MailConnections,
     MailError,
     archive_messages,
+    junk_messages,
     list_messages,
     mark_folder_read,
     move_messages,
@@ -263,6 +264,19 @@ def test_archives_to_the_archive_folder(imap_server, harness) -> None:
     archived = archive_messages(mail, [ref])
     assert organize_text(archived).startswith("1/INBOX: moved 1 to Archive. New refs: ")
     assert [s for s, _ in contents(imap_server, user, "Archive")] == ["file me"]
+
+
+def test_reports_spam_to_the_junk_folder(imap_server, harness) -> None:
+    user = imap_server.unique_user("junk")
+    seed(imap_server, user, "INBOX", mime("buy now"))
+    mail = harness((1, user))
+    [ref] = refs_in(mail)
+    junked = junk_messages(mail, [ref])
+    [group] = junked.groups
+    assert (group.destination, group.junk, group.count) == ("Junk", "spam", 1)
+    assert [(i.destination, i.junk, i.result) for i in junked.items] == [("Junk", "spam", "ok")]
+    assert [s for s, _ in contents(imap_server, user, "Junk")] == ["buy now"]
+    assert contents(imap_server, user, "INBOX") == []
 
 
 def test_marks_messages_read_unread_and_flagged_idempotently(imap_server, harness) -> None:
