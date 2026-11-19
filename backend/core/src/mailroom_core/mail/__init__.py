@@ -85,7 +85,7 @@ from mailroom_core.mail.folders import (
     subfolders_of,
     with_subfolders,
 )
-from mailroom_core.mail.identity import Addressed, from_identity
+from mailroom_core.mail.identity import Addressed, from_identity, sent_to
 from mailroom_core.mail.idle import IdleChange, IdleWatch
 from mailroom_core.mail.imap import (
     FOLDER_ROLES,
@@ -102,11 +102,14 @@ from mailroom_core.mail.imap import (
     retriable,
 )
 from mailroom_core.mail.message_headers import (
+    NOT_VERIFIED,
+    Authentication,
     AuthResult,
     AuthResults,
     DkimSignature,
     ListInfo,
     MessageHeaders,
+    authentication,
     parse_headers,
     trusted_results,
 )
@@ -254,6 +257,7 @@ __all__ = [
     "MAX_TEXT_CHARS",
     "MAX_UPLOADS",
     "MESSAGES",
+    "NOT_VERIFIED",
     "PREVIEW_LENGTH",
     "REFUSALS",
     "SETTABLE_FLAGS",
@@ -267,6 +271,7 @@ __all__ = [
     "AuditResult",
     "AuthResult",
     "AuthResults",
+    "Authentication",
     "Authoriser",
     "BulkAction",
     "BulkFlag",
@@ -342,6 +347,7 @@ __all__ = [
     "attachments_too_large",
     "audit_outcome",
     "audit_result",
+    "authentication",
     "body_text",
     "check_fields",
     "check_folder_name",
@@ -424,6 +430,7 @@ __all__ = [
     "search_sources",
     "search_uids",
     "searchable_folders",
+    "sent_to",
     "set_flags",
     "special_folder_in",
     "store_flags",

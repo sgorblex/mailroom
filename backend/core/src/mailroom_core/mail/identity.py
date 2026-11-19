@@ -25,6 +25,20 @@ def _mailbox(identity: Identity) -> Mailbox:
     return Mailbox(identity.address.lower(), identity.name)
 
 
+def sent_to(account: AccountConfig, original: Addressed) -> Identity | None:
+    """The account's identity a message arrived at: the first of its To, then Cc, then delivery
+    addresses that is one; None when none is (a Bcc, a list, a forward from elsewhere)."""
+    identities = {identity.address.lower(): identity for identity in account.identities}
+    return next(
+        (
+            identities[address.lower()]
+            for address in (*original.to, *original.cc, *original.delivered)
+            if address.lower() in identities
+        ),
+        None,
+    )
+
+
 def from_identity(
     account: AccountConfig, explicit: str | None = None, original: Addressed | None = None
 ) -> Mailbox:
@@ -42,9 +56,6 @@ def from_identity(
                 f"{', '.join(i.address for i in account.identities)}.",
             )
         return _mailbox(identity)
-    if original is not None:
-        for address in (*original.to, *original.cc, *original.delivered):
-            identity = identities.get(address.lower())
-            if identity is not None:
-                return _mailbox(identity)
+    if original is not None and (identity := sent_to(account, original)) is not None:
+        return _mailbox(identity)
     return _mailbox(next((i for i in account.identities if i.default), account.identities[0]))

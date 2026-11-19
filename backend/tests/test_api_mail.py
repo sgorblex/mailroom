@@ -384,6 +384,45 @@ def test_a_slow_account_is_a_timeout_failure_of_an_all_accounts_search(
     assert page["failures"] == [{"account_id": 2, "folder": None, "code": "timeout"}]
 
 
+def test_a_message_says_who_it_was_sent_to_and_what_the_accounts_server_found(
+    mailbox: Mailbox,
+) -> None:
+    mailbox.seed(
+        "Authentication-Results: mx.evil.example; dmarc=pass header.from=bank.example\r\n"
+        "Authentication-Results: mx.google.com; spf=pass smtp.mailfrom=bank.example;\r\n"
+        " dkim=pass header.d=bank.example header.b=AAAA; dmarc=pass header.from=bank.example\r\n"
+        "From: Bank Support <alerts@bank.example>\r\n"
+        "To: list@lists.example\r\nCc: Work@Example.org\r\nSubject: Statement\r\n"
+        "\r\nhello\r\n"
+    )
+    mailbox.seed(
+        "Authentication-Results: mx.evil.example; dmarc=pass header.from=bank.example\r\n"
+        'From: "support@bank.example" <x@evil.example>\r\nTo: work@example.org\r\n'
+        "Subject: Forged\r\n\r\nhello\r\n"
+    )
+    account = new_account(login=mailbox.login, imap=endpoint(mailbox.server))
+    account = {key: value for key, value in account.items() if key != "password"}
+    changed = mailbox.client.put(
+        "/api/v1/accounts/1", json=account | {"authserv_id": "mx.google.com"}
+    )
+    assert changed.status_code == 200, changed.text
+    real, forged = (mailbox.get(f"/messages/{ref}") for ref in mailbox.refs()[::-1])
+    assert (real["sent_to"], real["sender_mismatch"]) == ("work@example.org", False)
+    assert real["authentication"] == {
+        "verified": True,
+        "spf": "pass",
+        "spf_domain": "bank.example",
+        "dkim": "pass",
+        "dkim_domain": "bank.example",
+        "dmarc": "pass",
+        "dmarc_pass": True,
+        "from_domain": "bank.example",
+    }
+    # Only the forged field, written above where the account's server would: not believed.
+    assert (forged["sent_to"], forged["sender_mismatch"]) == ("work@example.org", True)
+    assert forged["authentication"]["verified"] is False
+
+
 def test_a_message_reads_without_marking_it_seen(
     mailbox: Mailbox, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -425,6 +464,18 @@ def test_a_message_reads_without_marking_it_seen(
         "from_fields": 1,
         "delivered_to": [],
         "truncated": False,
+    }
+    assert (view["sender_mismatch"], view["sent_to"]) == (False, None)
+    # The account names no authentication server: nothing is believed.
+    assert view["authentication"] == {
+        "verified": False,
+        "spf": None,
+        "spf_domain": None,
+        "dkim": None,
+        "dkim_domain": None,
+        "dmarc": None,
+        "dmarc_pass": False,
+        "from_domain": None,
     }
     assert view["attachments"] == [
         {

@@ -28,6 +28,7 @@ from mailroom_core.render.quotes import (
 )
 from mailroom_core.render.safe_html import SafeHtml, safe_html
 from mailroom_core.render.sanitize import CleanText, clean_header, clean_text, safe_cut
+from mailroom_core.render.sender import sender_mismatch
 
 __all__ = [
     "CUT_MARK",
@@ -60,5 +61,6 @@ __all__ = [
     "render_body",
     "safe_cut",
     "safe_html",
+    "sender_mismatch",
     "untrusted",
 ]

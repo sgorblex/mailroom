@@ -206,6 +206,19 @@ X-Original-To. Deliberate choices:
   `headers` is verified on its own.
 - **DKIM-Signature** gives `d=`, the start of `b=` and the `h=` list of a well-formed signature;
   one with a duplicate or missing tag is left out.
+- **Checks a read makes, given the message's `AccountConfig`** (`read_message(account=…)`):
+  `authentication` (`message_headers.authentication`) reads `trusted_results` only, and is
+  `NOT_VERIFIED` without an `authserv_id` or a field of it; its DMARC counts (`dmarc_pass`) only for
+  exactly one From, in one field of a block not cut, whose domain is `header.from`; `spf_domain`
+  (`smtp.mailfrom`'s) and `dkim_domain` (the `header.d` of the result `dkim` is) are ASCII host
+  names, None when the text is none. `sent_to` (`identity.sent_to`, which `from_identity` answers
+  with too) is the identity in To, Cc, then the delivery addresses. `sender_mismatch`
+  (`render.sender_mismatch`, pure) compares each From display name's address-like and domain-like
+  tokens with its real address after NFKC and case folding, a dotted word being a domain only when
+  it ends in a top-level domain of the root zone (`render.tlds.TLDS`, kept by hand); cross-script
+  lookalikes are not folded. `read_text` writes the three after the envelope (`checks_text`), in
+  Mailroom's own words: fixed result words, those host names and the identity, nothing else of the
+  message.
 - **Inline parts are not attachments:** a part of a multipart/related with a Content-ID and no
   attachment disposition is in `inline_parts` (what `html_view` inlines), not in `attachments`, and
   does not set `has_attachments`. An attachment call still returns it.

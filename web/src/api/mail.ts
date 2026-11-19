@@ -126,6 +126,21 @@ const messageViewSchema = z.object({
   attachments: z.array(partSchema),
   calendar: partSchema.nullable(),
   headers: headerInfoSchema,
+  /** The From display name names another address or domain than `from.address`. */
+  sender_mismatch: z.boolean(),
+  /** The account's identity the message arrived at. */
+  sent_to: z.string().nullable(),
+  /** The account's own authentication server's verdict: all null unless `verified`. */
+  authentication: z.object({
+    verified: z.boolean(),
+    spf: z.string().nullable(),
+    spf_domain: z.string().nullable(),
+    dkim: z.string().nullable(),
+    dkim_domain: z.string().nullable(),
+    dmarc: z.string().nullable(),
+    dmarc_pass: z.boolean(),
+    from_domain: z.string().nullable(),
+  }),
 })
 export type MessageView = z.infer<typeof messageViewSchema>
 

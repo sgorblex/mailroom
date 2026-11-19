@@ -52,6 +52,7 @@ from mailroom_core.mail import (
     recipient_list,
     reply_recipients,
     reply_subject,
+    sent_to,
     threading,
     without_headers,
 )
@@ -194,6 +195,18 @@ class TestFromIdentity:
             "me@example.test", "Me"
         )
         assert from_identity(ACCOUNT) == Mailbox("me@example.test", "Me")
+
+    def test_sent_to_is_the_identity_in_to_then_cc_then_delivery_else_none(self) -> None:
+        both = Addressed(to=("ALIAS@example.test",), cc=("me@example.test",))
+        assert sent_to(ACCOUNT, both) == ACCOUNT.identities[1]
+        cc = Addressed(
+            to=("list@x.org",), cc=("me@example.test",), delivered=("alias@example.test",)
+        )
+        assert sent_to(ACCOUNT, cc) == ACCOUNT.identities[0]
+        delivered = Addressed(to=("list@x.org",), delivered=("x@y.org", "alias@example.test"))
+        assert sent_to(ACCOUNT, delivered) == ACCOUNT.identities[1]
+        assert sent_to(ACCOUNT, Addressed(to=("list@x.org",))) is None
+        assert sent_to(ACCOUNT, Addressed()) is None
 
 
 BASE = MessageInput(

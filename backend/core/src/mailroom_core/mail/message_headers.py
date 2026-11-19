@@ -88,6 +88,8 @@ class AuthResult:
     """A prefix of the signature it checked, case kept."""
     header_from: str | None = None
     """Lowercase."""
+    smtp_mailfrom: str | None = None
+    """The domain of `smtp.mailfrom` (what follows its last `@`, if any), lowercase."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,6 +187,86 @@ def trusted_results(headers: MessageHeaders, authserv_id: str | None) -> AuthRes
         if results.authserv_id == wanted:
             return results
     return None
+
+
+@dataclass(frozen=True, slots=True)
+class Authentication:
+    """The verdict of the account's own authentication server on a message (`authentication`).
+    Not `verified`, every result is None: nothing the message says about itself is believed."""
+
+    verified: bool
+    """The account names its authserv-id and the message has a field of it."""
+    spf: str | None = None
+    spf_domain: str | None = None
+    """The domain SPF checked (`smtp.mailfrom`'s), as an ASCII host name; None when it is none."""
+    dkim: str | None = None
+    """`pass` when any signature passed, else the first result."""
+    dkim_domain: str | None = None
+    """The signing domain (`header.d`) of the result `dkim` is, likewise."""
+    dmarc: str | None = None
+    """As written: a `pass` counts only as `dmarc_pass` says."""
+    dmarc_pass: bool = False
+    """DMARC passed for this message's one From: `header.from` is its domain."""
+    from_domain: str | None = None
+    """That From's domain, when `dmarc_pass`."""
+
+
+NOT_VERIFIED: Final = Authentication(verified=False)
+
+
+_HOST: Final = re.compile(r"[a-z0-9_-]+(?:\.[a-z0-9_-]+)*")
+
+
+def _host(domain: str | None) -> str | None:
+    """A domain's IDNA form (`xn--…`), lowercase, so that a U-label and its A-label compare
+    equal; None when it is no host name."""
+    if not domain:
+        return None
+    try:
+        host = domain.strip(".").encode("idna").decode("ascii").lower()
+    except UnicodeError:
+        return None
+    return host if _HOST.fullmatch(host) else None
+
+
+def authentication(
+    headers: MessageHeaders, senders: tuple[str, ...], authserv_id: str | None
+) -> Authentication:
+    """The `trusted_results` of `authserv_id`, read for `senders`, the From addresses. DMARC
+    passes only for exactly one From (one field, one address, and a block not cut short) whose
+    domain is the result's `header.from`: a second From is what a reader may be shown instead."""
+    trusted = trusted_results(headers, authserv_id)
+    if trusted is None:
+        return NOT_VERIFIED
+
+    def first(method: Method) -> AuthResult | None:
+        return next((r for r in trusted.results if r.method == method), None)
+
+    spf, dmarc = first("spf"), first("dmarc")
+    dkim = next(
+        (r for r in trusted.results if r.method == "dkim" and r.result == "pass"), first("dkim")
+    )
+    domain = (
+        senders[0].rpartition("@")[2].strip().lower()
+        if len(senders) == 1 and headers.from_fields == 1 and not headers.truncated
+        else None
+    )
+    dmarc_pass = bool(
+        dmarc is not None
+        and dmarc.result == "pass"
+        and (from_host := _host(domain)) is not None
+        and _host(dmarc.header_from) == from_host
+    )
+    return Authentication(
+        verified=True,
+        spf=None if spf is None else spf.result,
+        spf_domain=None if spf is None else _host(spf.smtp_mailfrom),
+        dkim=None if dkim is None else dkim.result,
+        dkim_domain=None if dkim is None else _host(dkim.header_d),
+        dmarc=None if dmarc is None else dmarc.result,
+        dmarc_pass=dmarc_pass,
+        from_domain=domain if dmarc_pass else None,
+    )
 
 
 # Mailing lists
@@ -363,9 +445,8 @@ def _result(segment: str) -> AuthResult | Literal[False] | None:
     if name not in _METHODS:
         return None
 
-    def domain(key: str) -> str | None:
-        value = properties.get(key)
-        if value is None or not value or len(value) > MAX_DOMAIN or not _printable(value):
+    def domain(value: str | None) -> str | None:
+        if not value or len(value) > MAX_DOMAIN or not _printable(value):
             return None
         return value.lower()
 
@@ -373,9 +454,10 @@ def _result(segment: str) -> AuthResult | Literal[False] | None:
     return AuthResult(
         method=name,  # type: ignore[arg-type]
         result=method.group(2).lower(),
-        header_d=domain("header.d"),
+        header_d=domain(properties.get("header.d")),
         header_b=b[:MAX_SIGNATURE_PREFIX] if b and _printable(b) else None,
-        header_from=domain("header.from"),
+        header_from=domain(properties.get("header.from")),
+        smtp_mailfrom=domain(properties.get("smtp.mailfrom", "").rpartition("@")[2]),
     )
 
 

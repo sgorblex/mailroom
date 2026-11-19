@@ -1091,6 +1091,12 @@ a failure too, with the app's code `password_missing`.
     "from_fields": 1,
     "delivered_to": ["charles@example.org"],
     "truncated": false
+  },
+  "sender_mismatch": false,
+  "sent_to": "charles@example.org",                                       // null when none matches
+  "authentication": {
+    "verified": true, "spf": "pass", "spf_domain": "example.org", "dkim": "pass",
+    "dkim_domain": "example.org", "dmarc": "pass", "dmarc_pass": true, "from_domain": "example.org"
   }
 }
 ```
@@ -1123,6 +1129,28 @@ a failure too, with the app's code `password_missing`.
   `mailto:` only, the topmost of each field;
   `authentication` and `delivered_to` (X-Original-To's addresses, then Delivered-To's) are topmost
   first. The client shows none of it yet.
+- `sender_mismatch` is true when any From display name holds an address-like or domain-like token
+  (after NFKC and case folding) other than its real address, or a domain neither the real
+  address's domain nor a parent or child of it: `service@paypal.com <x@evil.example>`. A dotted
+  word is a domain only when its last label is a top-level domain of the root zone, so `Node.js
+  Weekly` or `Mr.Robot` names none. With no public-suffix list, `Amazon.co.uk` from `amazon.com`
+  warns: another registrable domain. A warning shows `from.address`, never the name. Lookalikes
+  across scripts are not folded: a name naming one still warns, but a lookalike real address under
+  a plain name does not.
+- `sent_to` is the account's identity the message arrived at: the first of To, Cc, then the
+  delivery addresses (X-Original-To, Delivered-To, topmost first) that is one; `null` when none is
+  (a Bcc, a list).
+- `authentication` is the verdict of the account's own authentication server: the topmost
+  Authentication-Results field whose authserv-id is the account's `authserv_id`, never another
+  (one above it may be forged). `verified` is false, and every result `null`, when the account has
+  no `authserv_id` or no field carries it: *not verified*. `spf`, `dkim` (`pass` when any
+  signature passed, else the first result) and `dmarc` are as written, `null` when absent.
+  `spf_domain` is the domain SPF checked (`smtp.mailfrom`'s) and `dkim_domain` the signing domain
+  (`header.d`) of the result `dkim` is, each an ASCII host name (IDNA), `null` when absent or not a
+  valid host name.
+  `dmarc_pass` is true only when `dmarc` is `pass` for a message with exactly one From (one field,
+  one address, and the header block not cut) whose domain is the result's `header.from`, that
+  domain then being `from_domain`.
 - Reading **does not set `\Seen`.** Errors: 400, 404, 409 (stale), 502, 504.
 
 ### `GET /messages/{ref}/html?remote=0`
