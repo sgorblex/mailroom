@@ -25,6 +25,7 @@ from mailroom_core.mail import (
     read_source,
     read_text,
     search_messages,
+    thread_key,
     thread_page,
     thread_text,
 )
@@ -284,6 +285,7 @@ def test_refuses_a_ref_whose_folder_was_recreated(imap_server, harness) -> None:
         lambda: read_message(mail, ref),
         lambda: read_attachment(mail, ref, "1", max_bytes=100),
         lambda: thread_page(mail, ref),
+        lambda: thread_key(mail, ref),
         lambda: html_view(mail, ref, remote=False, max_inline_bytes=0),
     ):
         with pytest.raises(MailError, match="out of date") as raised:
@@ -446,6 +448,36 @@ def test_follows_a_conversation_into_sent(imap_server, harness) -> None:
 
     for folder in ("INBOX", "Sent"):
         assert not any("\\Seen" in m.flags for m in folder_contents(imap_server, user, folder))
+
+
+def test_a_thread_key_reads_the_ids_that_tie_a_message_to_its_conversation(
+    imap_server, harness
+) -> None:
+    user = imap_server.unique_user("key")
+    seed(
+        imap_server,
+        user,
+        "INBOX",
+        mime(
+            "Re: Dinner?",
+            message_id="<q2@example.org>",
+            in_reply_to="<r1@example.test> junk <bad id>",
+            references="<q1@example.org> <r1@example.test>",
+        ),
+    )
+    seed(imap_server, user, "INBOX", mime("alone", message_id="<solo@example.org>"))
+    # A References field past the cap is cut at a whole field: the ids after it are never read.
+    long = " ".join(f"<x{i}@example.org>" for i in range(30_000))
+    seed(imap_server, user, "INBOX", mime("long", message_id="<l@example.org>", references=long))
+    mail = harness((1, user))
+    refs = {m.subject: m.ref for m in search_messages(mail, [1], "INBOX", SearchQuery()).messages}
+
+    key = thread_key(mail, refs["Re: Dinner?"])
+    assert key.message_ids == ("<q1@example.org>", "<r1@example.test>", "<q2@example.org>")
+    assert key.gmail_thread is None
+    assert thread_key(mail, refs["alone"]).message_ids == ("<solo@example.org>",)
+    assert thread_key(mail, refs["long"]).message_ids == ("<l@example.org>",)
+    assert not any("\\Seen" in m.flags for m in folder_contents(imap_server, user, "INBOX"))
 
 
 CENA = "=?UTF-8?Q?Cena_perch=C3=A9?="

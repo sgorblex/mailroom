@@ -1309,6 +1309,23 @@ subject: `{"spec", "criteria", "name"}`, the spec's action `no_op`
 read for its headers, never marked read; `400` `nothing_to_filter` without a List-Id or a From
 address. Errors as for `GET /messages/{ref}`.
 
+### Muted threads
+
+A muted thread's new messages in INBOX arrive marked read, by the account's filter runs, so only
+while its *Run filters* is on ([`filters.md`](filters.md#muted-threads)).
+
+- `POST /messages/{ref}/mute` (no body): mutes the message's conversation on its account, by the
+  ids its headers carry (References, In-Reply-To, Message-ID) and on Gmail its thread; read
+  without marking it read. 201 `{"id", "account_id", "ids", "gmail", "run_filters",
+  "created_at"}`: `ids` counts the Message-IDs it is known by, `gmail` whether its Gmail thread
+  too, `run_filters` the account's switch. A thread already muted that shares one of them is the
+  one answered, with the others added. `400` `nothing_to_mute` for a message with none; the
+  read's errors as for `GET /messages/{ref}`.
+- `GET /muted`: `{"threads": [...]}`, each as above, oldest first.
+- `DELETE /muted/{id}`: 204, or 404 (`"No such muted thread"`).
+
+Nothing from the message is answered but those counts: no subject, no id.
+
 ### Remote content senders
 
 The senders whose remote content the user shows without asking, by From address (lowercase), one

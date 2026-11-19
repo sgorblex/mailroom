@@ -6,7 +6,7 @@ import mailroom.oauth.models  # noqa: F401
 from mailroom.models.account import AccountFilterSettings
 from mailroom.models.audit import AuditRecord
 from mailroom.models.base import Base
-from mailroom.models.filters import Filter, FilterMatchDay, FilterRun, RuleSet
+from mailroom.models.filters import Filter, FilterMatchDay, FilterRun, MutedThread, RuleSet
 from mailroom.models.remote_content import RemoteContentSender
 from mailroom.models.sso import ExternalIdentity, Intent, SsoLoginState
 from mailroom.models.user import User, UserSession
@@ -20,6 +20,7 @@ __all__ = [
     "FilterMatchDay",
     "FilterRun",
     "Intent",
+    "MutedThread",
     "RemoteContentSender",
     "RuleSet",
     "SsoLoginState",

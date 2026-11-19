@@ -144,7 +144,8 @@ released and checked in production before the next one starts. Batch 15 is the r
 - [x] **A filter from a search** — the current search turned into a filter's conditions.
 - [x] **Report spam** — the message to Junk and, if the user wants, a filter that keeps
       sending its sender's mail to Junk.
-- [ ] **Mute a thread** — later replies skip the inbox and arrive read.
+- [ ] **Mute a thread** — later replies arrive read. The API and the hidden mute rule set are in
+  ([`filters.md`](requirements/filters.md#muted-threads)); the web's button and list are not.
 - [x] **Match counts per filter** — how often each filter matched lately, so dead ones stand out.
 - [ ] **Rules for all accounts** — one rule set applied to every account of the user.
 - [ ] **Filters that move to another account** — a `mailroom_core.filters` action naming the

@@ -178,9 +178,11 @@ def _log(event: str, user_id: int, via: Via, **extra: object) -> None:
 
 
 def owned_rule_set(db: Session, user_id: int, rule_set_id: int, *, lock: bool = False) -> RuleSet:
-    """The user's rule set, or ``not_found``. ``lock``: hold its row until commit (any change to
-    it or its filters)."""
-    statement = select(RuleSet).where(RuleSet.id == rule_set_id, RuleSet.user_id == user_id)
+    """The user's rule set, or ``not_found``; their hidden ones (``mailroom.filters.mute``) are
+    not found either. ``lock``: hold its row until commit (any change to it or its filters)."""
+    statement = select(RuleSet).where(
+        RuleSet.id == rule_set_id, RuleSet.user_id == user_id, RuleSet.kind == "user"
+    )
     if lock:
         statement = statement.with_for_update()
     rule_set = db.scalar(statement)
@@ -194,7 +196,7 @@ def owned_filter(db: Session, user_id: int, filter_id: int) -> tuple[Filter, Rul
     rule_set_id = db.scalar(
         select(Filter.rule_set_id)
         .join(RuleSet, RuleSet.id == Filter.rule_set_id)
-        .where(Filter.id == filter_id, RuleSet.user_id == user_id)
+        .where(Filter.id == filter_id, RuleSet.user_id == user_id, RuleSet.kind == "user")
     )
     if rule_set_id is None:
         raise _filter_not_found()
@@ -365,11 +367,11 @@ def set_run_filters(
 
 
 def rule_sets(ctx: AppContext, db: Session, user_id: int, account_id: int) -> list[RuleSetOut]:
-    """The account's rule sets, oldest first, without their filters."""
+    """The account's rule sets, oldest first, without their filters; never the hidden ones."""
     require_account(ctx.store(user_id), account_id)
     rows = db.scalars(
         select(RuleSet)
-        .where(RuleSet.user_id == user_id, RuleSet.account_id == account_id)
+        .where(RuleSet.user_id == user_id, RuleSet.account_id == account_id, RuleSet.kind == "user")
         .order_by(RuleSet.id)
     )
     return [_rule_set_out(row) for row in rows]

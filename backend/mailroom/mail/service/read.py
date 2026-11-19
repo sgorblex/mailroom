@@ -41,6 +41,7 @@ if TYPE_CHECKING:
         MailboxContext,
         MailConnections,
         MailErrorCode,
+        MessageRef,
         MessageView,
         Quota,
         RawMessage,
@@ -472,6 +473,25 @@ def thread(ctx: AppContext, user_id: int, ref: str, *, limit: int = 30, via: Via
         message.account,
         lambda connections: core.thread_page(connections, message, limit=limit),
     )
+
+
+def thread_key(
+    ctx: AppContext, user_id: int, ref: str, *, via: Via = "web"
+) -> tuple[MessageRef, core.ThreadKey]:
+    """What ties the message ``ref`` names to its conversation (mailroom-core's ``thread_key``),
+    with the ref parsed; reading it changes nothing."""
+    accounts = _accounts(ctx, user_id)
+    message = _message_ref(ctx, user_id, accounts, ref)
+    key = _call(
+        ctx,
+        user_id,
+        accounts,
+        "mail_thread_key_read",
+        via,
+        message.account,
+        lambda connections: core.thread_key(connections, message),
+    )
+    return message, key
 
 
 QUOTA_SECONDS: Final = 600.0

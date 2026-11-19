@@ -11,18 +11,26 @@ import pytest
 from sqlalchemy import select
 
 from mailroom.accounts.store import load_accounts, user_store
-from mailroom.models import AuditRecord
+from mailroom.models import AuditRecord, FilterRun, MutedThread
 from mailroom.worker.idle import FolderWatch, WatchedFolder
 from mailroom.worker.runs import execute_run
 from mailroom.worker.tasks import queue_new_mail_runs
 from mailroom_core.mail import TO_SORT, subject_sha256
+from mailroom_core.testing import mime
 from tests.support.mail import mail_servers_ssl_context
 from tests.test_api_accounts import added, new_account
 from tests.test_api_filters import SHOP_SPEC, add_filter
-from tests.test_filter_runner import add_rule_set, queued_run, run_out, set_run_filters
+from tests.test_filter_runner import (
+    add_rule_set,
+    queued_run,
+    run_out,
+    set_run_filters,
+)
 from tests.test_filters_dry_run import BANK, SHOP, Mailbox, message
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from fastapi import FastAPI
     from sqlalchemy.orm import Session
     from starlette.testclient import TestClient
@@ -146,6 +154,70 @@ def test_a_to_sort_run_handles_mail_marked_to_sort_only(
         assert conn.search(["KEYWORD", TO_SORT]) == []
     finally:
         conn.logout()
+
+
+def unread_subjects(mailbox: Mailbox) -> list[str]:
+    conn = mailbox.client()
+    try:
+        conn.select_folder("INBOX", readonly=True)
+        fetched = conn.fetch(conn.search("UNSEEN"), ["ENVELOPE"])
+        return sorted(data[b"ENVELOPE"].subject.decode() for data in fetched.values())
+    finally:
+        conn.logout()
+
+
+def test_a_muted_threads_new_mail_arrives_read_once_run_filters_is_on(
+    user_client: TestClient,
+    db_session: Session,
+    user: User,
+    mailbox: Mailbox,
+    account: int,
+    mailboxes: Mailboxes,
+    application: FastAPI,
+    monkeypatch: pytest.MonkeyPatch,
+    audited: Callable[[int], list[AuditRecord]],
+) -> None:
+    monkeypatch.setattr(application.state, "mail_ssl_context", mail_servers_ssl_context())
+    mailbox.append_raw("INBOX", mime("Plans", message_id="<root@example.org>").encode())
+    mail = f"/api/v1/mail/accounts/{account}/messages"
+    [listed] = user_client.get(mail, params={"folder": "INBOX"}).json()["messages"]
+    muted = user_client.post(f"/api/v1/mail/messages/{listed['ref']}/mute")
+    assert muted.status_code == 201, muted.text
+    replies = (
+        ("Re: Plans", "<r1@example.org>", "<root@example.org>"),
+        ("Re: Re: Plans", "<r2@example.org>", "<r1@example.org>"),
+        ("Other", "<o@example.org>", "<elsewhere@example.org>"),
+    )
+    for subject, own, cited in replies:
+        raw = mime(subject, message_id=own, in_reply_to=cited, references=cited)
+        mailbox.append_raw("INBOX", raw.encode())
+
+    # Muting rides on the account's runs: with Run filters off, nothing runs.
+    assert queue_new_mail_runs(db_session, user.id, account, ["INBOX"]) == []
+    set_run_filters(user_client, account, on=True)
+    [run_id] = queue_new_mail_runs(db_session, user.id, account, ["INBOX"])
+    db_session.commit()
+    execute_run(db_session, run_id, mailboxes)
+
+    # Marked read, never moved; the second reply cites only the first, which joined before it.
+    assert unread_subjects(mailbox) == ["Other"]
+    assert len(mailbox.subjects("INBOX")) == 4
+    run = db_session.get_one(FilterRun, run_id)
+    db_session.refresh(run)
+    assert run.error is None
+    assert run.result is not None
+    assert [m["subject"] for m in run.result["filters"][0]["matched"]] == [
+        "Plans",
+        "Re: Plans",
+        "Re: Re: Plans",
+    ]
+    [thread] = db_session.scalars(select(MutedThread)).all()
+    db_session.refresh(thread)
+    assert thread.message_ids == ["<root@example.org>", "<r1@example.org>", "<r2@example.org>"]
+    records = db_session.scalars(
+        select(AuditRecord).where(AuditRecord.run_id == run_id).order_by(AuditRecord.id)
+    ).all()
+    assert [(r.actor, r.detail["filter"]) for r in records] == [("filter", "Muted threads")] * 3
 
 
 def test_a_watched_folder_queues_runs_that_move_new_mail(

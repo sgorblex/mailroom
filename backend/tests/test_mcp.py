@@ -302,6 +302,9 @@ ANNOTATIONS = {
     "messages_move": (False, False, False, True),
     "messages_trash": (False, True, False, True),
     "messages_flag": (False, False, True, True),
+    "thread_mute": (False, False, True, True),
+    "muted_threads_list": (True, False, True, False),
+    "thread_unmute": (False, False, False, False),
     "folder_create": (False, False, False, True),
     "folder_rename": (False, False, False, True),
     "folder_delete": (False, True, False, True),
@@ -1410,7 +1413,14 @@ def test_the_organize_group_can_be_left_out() -> None:
     assert "these tools never delete mail permanently" in instructions(selected_groups(None))
     alone = [tool.name for tool in tools_for(selected_groups("mail_organize"))]
     assert alone[:2] == ["accounts_list", "folders_list"]
-    assert alone[2:] == ["messages_move", "messages_trash", "messages_flag"]
+    assert alone[2:] == [
+        "messages_move",
+        "messages_trash",
+        "messages_flag",
+        "thread_mute",
+        "muted_threads_list",
+        "thread_unmute",
+    ]
 
 
 def test_a_server_without_the_organize_group_refuses_its_tools() -> None:
@@ -1561,6 +1571,27 @@ def test_trash_never_deletes_and_refuses_what_is_already_in_trash(
     assert [(r.actor, r.action, r.result, r.client_id) for r in records] == [
         ("agent", "trash", "ok", "client"),
         ("agent", "trash", "invalid_argument", "client"),
+    ]
+
+
+def test_an_agent_mutes_and_unmutes_a_thread(
+    mcp: Mcp, token: str, mail: MailAccounts, db_session: Session, user: User
+) -> None:
+    login = mail.add()
+    mail.seed(login, mime("Plans", message_id="<root@example.org>"))
+    muted = mcp.call(token, "thread_mute", ref=inbox_ref(mcp, token))
+    assert (muted["account_id"], muted["ids"], muted["run_filters"]) == (1, 1, False)
+    assert mcp.call(token, "muted_threads_list", account_id=1) == {"threads": [muted]}
+    assert mcp.call(token, "muted_threads_list", account_id=2) == {"threads": []}
+    assert mcp.call(token, "thread_unmute", id=muted["id"]) == {"unmuted": True}
+    assert mcp.error(token, "thread_unmute", id=muted["id"]) == "No such muted thread"
+    assert mcp.call(token, "muted_threads_list") == {"threads": []}
+    records = db_session.scalars(
+        select(AuditRecord).where(AuditRecord.user_id == user.id).order_by(AuditRecord.id)
+    ).all()
+    assert [(r.actor, r.action, r.result, r.client_id) for r in records] == [
+        ("agent", "mute", "ok", "client"),
+        ("agent", "unmute", "ok", "client"),
     ]
 
 

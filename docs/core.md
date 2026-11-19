@@ -191,7 +191,10 @@ is `subfolders` with `ALL_FOLDERS`. A list line can name the message's folder af
 Gmail, `thread_page` finds a conversation's candidates by a search on Message-ID, References and
 In-Reply-To and one on the subject without its `Re:`/`Fwd:` prefixes, then reads their headers:
 a server's full-text index may leave those headers out (Mailu), and a reply whose subject
-changed is then missed. A page item
+changed is then missed. `thread_key` gives what a host keeps a conversation by (a muted
+thread): the message's References, In-Reply-To and Message-ID ids, read as `parsed_message`
+reads them from one `BODY.PEEK[HEADER.FIELDS (…)]` of those fields cut past 256 KiB, and on
+Gmail its `X-GM-THRID`; it never sets `\Seen`. A page item
 carries the arrival time as well as the Date header, and the size; a view carries `has_html` and,
 when the read asks for `remote_check` (off by default, as it costs the HTML's download and a
 sanitising pass), `remote_images` and `loadable_remote_images`. A ref's error names no tool. A view also carries `headers`

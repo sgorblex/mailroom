@@ -102,6 +102,40 @@ in the browser, tried with a dry run, and run by the worker. Product scope:
   first 200 matches per filter, with the total. A run cut short by the worker stopping is closed
   as `interrupted` when the worker starts again.
 
+### Muted threads
+
+A **muted thread**'s new messages in INBOX arrive marked read; nothing is moved
+(`mailroom.filters.mute`). Muting rides on the account's filter runs, with no exemption: it acts
+only while the account's *Run filters* is on, and the mute's answer says whether it is
+(`run_filters`), so the web can say that muting does nothing until it is turned on.
+
+- **Muting** (`POST /api/v1/mail/messages/{ref}/mute`, [`mail-client.md`](mail-client.md)) reads
+  the message's References, In-Reply-To and Message-ID (the first of each field, in the first
+  256 KiB of those fields) and on Gmail its thread id (`X-GM-THRID`, where the server has
+  `X-GM-EXT-1`); never the subject, and never marking it read. A message with none of them is
+  refused, `400` `nothing_to_mute`. A thread already muted on the account that shares one of
+  them, or the Gmail thread, takes the others instead of a new one; muted threads the message
+  bridges become the oldest of them. Unmuting removes it. Agents do the same with MCP's
+  `thread_mute`, `muted_threads_list` and `thread_unmute` (`mail_organize`,
+  [`mcp.md`](mcp.md)), over the same service. Both are audit records (`mute`, `unmute`, with the
+  `muted_thread_id`; a mute's the message's folder and UID, and the ids of the threads it
+  `merged`), by the agent and its app when over MCP.
+- **The system rule set.** The account's first muted thread makes its one hidden rule set of
+  kind `mute`: on `INBOX`, `new_mail`, enabled, with one filter, `in_thread` `muted` and
+  `is_unread` → `mark_as_read`. Its last muted thread removes it. A run resolves `muted` to the
+  account's muted threads (their Message-IDs and Gmail threads), and each message it matched
+  then joins the thread it cites one of or shares the Gmail thread of, by its Message-ID, so a
+  later reply citing only that message is found: by the same run when it comes after it (an
+  unread message citing one the run matched), else by the next. A run reads INBOX's newest 500
+  messages only, as each new mail starts one. A thread keeps 200 ids at most: the first, then the
+  newest. The run is a run as any other: its history, its audit
+  records (the filter named *Muted threads*) and the worker's checks; Run filters off, nothing
+  runs.
+- **Hidden.** User rule sets are of kind `user`. A `mute` one is left out of every listing, and
+  every route and MCP tool that names a rule set or filter answers it as one that does not exist
+  (`404`): it is changed only by muting and unmuting. Removing the account or the user removes
+  its muted threads and the rule set.
+
 ### Folders renamed or deleted
 
 A rule set names a folder by its own `folder`, a filter by the `folder` of a `move_to` or
@@ -181,8 +215,9 @@ Schema `app`; every row belongs to the user who owns the account.
 
 | Table | Columns |
 | --- | --- |
-| `rule_set` | `id`, `user_id`, `account_id`, `folder` (`text[]`, path segments), `name`, `trigger` (`new_mail` \| `scheduled` \| `manual`), `interval_minutes` (`scheduled` only), `marker` (`none` \| `star` \| `to_sort`), `enabled`, timestamps |
+| `rule_set` | `id`, `user_id`, `account_id`, `folder` (`text[]`, path segments), `name`, `trigger` (`new_mail` \| `scheduled` \| `manual`), `interval_minutes` (`scheduled` only), `marker` (`none` \| `star` \| `to_sort`), `enabled`, `kind` (`user` \| `mute`, one `mute` per account at most), timestamps |
 | `filter` | `id`, `rule_set_id`, `position`, `name`, `enabled`, `spec` (`jsonb`, a filter spec), timestamps |
+| `muted_thread` | `id`, `user_id`, `account_id`, `message_ids` (`jsonb`, at most 200), `gm_thrid` (Gmail's thread id, or null), `created_at` |
 | `filter_run` | `id`, `rule_set_id`, `trigger`, `created_at`, `started_at` (null while queued), `finished_at`, `dry_run`, `result` (`jsonb`, the filter engine's run report), `error` |
 
 The per-account toggle is `account_filter_settings(user_id, account_id, run_filters bool default

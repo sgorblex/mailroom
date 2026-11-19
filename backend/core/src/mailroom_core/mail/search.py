@@ -10,6 +10,7 @@ from mailroom_core.mail._mime import header_text, text_value
 from mailroom_core.mail.errors import MailError
 from mailroom_core.mail.folders import with_subfolders
 from mailroom_core.mail.pages import Page, PageFailure, Source, failed_accounts, read_page
+from mailroom_core.mail.parsed import MAX_HEADER_BYTES, parsed_message
 from mailroom_core.mail.ref import MessageRef, check_fresh, parse_ref
 from mailroom_core.mail.selected import TO_SORT, search_uids
 
@@ -29,6 +30,8 @@ _MESSAGE_ID: Final = re.compile(r"<[!-;=?-~]+>")
 _HEADERS: Final = ("Message-ID", "References", "In-Reply-To")
 """The headers that tie a conversation together."""
 _THREAD_FIELDS: Final = f"BODY.PEEK[HEADER.FIELDS ({' '.join(h.upper() for h in _HEADERS)})]"
+_THREAD_KEY_FIELDS: Final = f"{_THREAD_FIELDS}<0.{MAX_HEADER_BYTES + 1}>"
+"""The fields, cut past `MAX_HEADER_BYTES`: `parsed_message` then drops the field the cut split."""
 _THREAD_CANDIDATES: Final = 500
 """Per folder, of the messages a conversation's search finds, how many of the newest are read to
 check they belong to it."""
@@ -36,6 +39,17 @@ _REPLY_PREFIX: Final = re.compile(
     r"^(?:\s*(?:re|r|fwd?|fw|i|aw|wg|sv|vs|tr|rif)(?:\[\d+\])?\s*:)+", re.IGNORECASE
 )
 """Reply and forward prefixes, in the languages mail clients write them in."""
+
+
+@dataclass(frozen=True, slots=True)
+class ThreadKey:
+    """What ties a message to its conversation, as a host keeps it (a muted thread)."""
+
+    message_ids: tuple[str, ...]
+    """Its References ids (the first, the thread's root, then the newest), its In-Reply-To ids
+    and its own Message-ID, each once, as `parsed_message` reads them: oldest first."""
+    gmail_thread: int | None
+    """Gmail's thread id (`X-GM-THRID`), on a server with `X-GM-EXT-1`."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -339,3 +353,31 @@ def thread_page(connections: MailConnections, ref: str | MessageRef, *, limit: i
             criteria[Source(message.account, path)] = ["UID", uids]
     page = read_page(connections, list(criteria), criteria, limit=limit, previews=True)
     return Page(page.messages, page.next_cursor, (*failures, *page.failures))
+
+
+def thread_key(connections: MailConnections, ref: str | MessageRef) -> ThreadKey:
+    """The ids that tie the message `ref` names to its conversation: its Message-ID,
+    In-Reply-To and References read from their header fields' first `MAX_HEADER_BYTES` (never
+    `\\Seen`), and on Gmail its thread id. A message with none of them has an empty key."""
+    message = parse_ref(ref) if isinstance(ref, str) else ref
+    gmail = connections.capabilities(message.account).gmail
+
+    def find(context: MailboxContext) -> ThreadKey:
+        check_fresh(message, context.uid_validity)
+        items = [_THREAD_KEY_FIELDS, *(["X-GM-THRID"] if gmail else [])]
+        data = context.client.fetch([message.uid], items).get(message.uid)
+        if data is None:
+            raise MailError("not_found")
+        block = next(
+            (v for k, v in data.items() if isinstance(k, bytes) and k.startswith(b"BODY[HEADER")),
+            b"",
+        )
+        parsed = parsed_message(block if isinstance(block, bytes) else b"")
+        own = () if parsed.message_id is None else (parsed.message_id,)
+        ids = (*parsed.references, *parsed.in_reply_to, *own)
+        thread_id = data.get(b"X-GM-THRID")
+        return ThreadKey(
+            tuple(dict.fromkeys(ids)), thread_id if isinstance(thread_id, int) else None
+        )
+
+    return connections.with_mailbox(message.account, message.folder, True, find)

@@ -43,6 +43,8 @@
     "bulk_flag": "Flags changed (all matching)",
     "bulk_move": "Moved (all matching)",
     "bulk_trash": "Moved to Trash (all matching)",
+    "mute": "Thread muted",
+    "unmute": "Thread unmuted",
     "run_failed": "Filter run failed"
   },
   "results": {
@@ -78,6 +80,7 @@
     "by": "Asked by",
     "copied": "Copied",
     "filter": "Filter",
+    "muted_thread_id": "Muted thread",
     "matched": "Matched",
     "error": "Error",
     "date": "Date",

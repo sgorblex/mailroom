@@ -133,6 +133,9 @@ not OAuth scope.
 | `mail_read` (stable, on) | `messages_list`, `messages_search`, `message_read`, `thread_read`, `attachment_read` | readOnly, idempotent, openWorld |
 | `mail_organize` (stable, on) | `messages_move(refs, folder)`, `messages_flag(refs, seen?, flagged?, to_sort?)` | openWorld (flag also idempotent) |
 | | `messages_trash(refs)` | destructive, openWorld |
+| | `thread_mute(ref)`, muting the message's conversation ([`filters.md`](filters.md#muted-threads)); the answer is the muted thread, with `run_filters` | idempotent, openWorld |
+| | `muted_threads_list(account_id?)` | readOnly, idempotent |
+| | `thread_unmute(id)` | none |
 | `mail_transfer` (preview, off) | `messages_move_to_account(refs, account_id, folder)`, `messages_move_to_account_for_good(refs, account_id, folder)` | destructive, openWorld |
 | `mail_draft` (stable, on) | `draft_create` | openWorld |
 | | `draft_update`, `draft_delete` | destructive, openWorld |
