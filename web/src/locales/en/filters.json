@@ -90,7 +90,11 @@
       "edit": "Edit {{name}}",
       "remove": "Remove {{name}}",
       "confirmRemoval": "Remove {{name}}?",
-      "unreadable": "Open it to see the spec."
+      "unreadable": "Open it to see the spec.",
+      "matches_one": "{{count}} match in 30 days",
+      "matches_other": "{{count}} matches in 30 days",
+      "noMatches": "No matches in 30 days",
+      "edited": "edited {{date}}"
     },
     "summary": {
       "and": "and",

@@ -2,7 +2,8 @@ import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { type FakeState, sentBody, stubFiltersApi, WORK } from '@/test/fake-filters-api.ts'
+import { FILTER_EDITED, type FakeState, sentBody, stubFiltersApi, WORK } from '@/test/fake-filters-api.ts'
+import { formatDay } from '@/lib/format.ts'
 import { renderFiltersApp } from '@/test/filters-app.tsx'
 
 const NEWS_SPEC = {
@@ -64,6 +65,22 @@ describe('RuleSetScreen', () => {
       'If the sender contains “news@”, move to Archive',
       'If older than 30 days and not starred, move to the trash',
     ])
+  })
+
+  it('shows each filter’s matches over 30 days beside the date of its last edit, kept by an edit', async () => {
+    const filters = state().filters.map((filter) => (filter.id === 11 ? { ...filter, matches_30d: 12 } : filter))
+    stubFiltersApi(state({ filters, editedAt: '2026-11-18T12:00:00Z' }))
+    renderFiltersApp('/filters/1')
+
+    const edited = `edited ${formatDay('en', FILTER_EDITED, undefined)}`
+    const [news, old] = within(await filterList()).getAllByRole('listitem')
+    expect(news).toHaveTextContent(`No matches in 30 days · ${edited}`)
+    expect(old).toHaveTextContent(`12 matches in 30 days · ${edited}`)
+
+    await userEvent.click(screen.getByRole('switch', { name: 'Enable Old mail' }))
+    await vi.waitFor(() => {
+      expect(old).toHaveTextContent('12 matches in 30 days · edited Nov 18, 2026')
+    })
   })
 
   it('moves a filter down, keeping focus on it, and saves the order', async () => {

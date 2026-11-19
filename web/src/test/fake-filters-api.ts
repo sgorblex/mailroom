@@ -32,6 +32,17 @@ export interface FakeFilter {
   name: string
   enabled: boolean
   spec: Body
+  /** The last edit; a fixed date unless it says otherwise, and the time of an edit through the fake. */
+  updated_at?: string
+  /** None unless it says otherwise. */
+  matches_30d?: number
+}
+
+/** When the fake's filters were last edited, unless they say otherwise. */
+export const FILTER_EDITED = '2026-11-12T12:00:00Z'
+
+function filterOut(filter: FakeFilter): Body {
+  return { updated_at: FILTER_EDITED, matches_30d: 0, ...filter }
 }
 
 export interface FakeRun {
@@ -64,6 +75,8 @@ export interface FakeState {
   refuse?: Record<string, { status: number; body: unknown }>
   /** Requests (`"<METHOD> <path>"`) answered only once this settles. */
   gates?: Record<string, Promise<unknown>>
+  /** When an edit through the fake happens: now unless it says otherwise. */
+  editedAt?: string
 }
 
 /** The accounts the tests use, and the names the fake lists them under. */
@@ -114,7 +127,8 @@ export function stubFiltersApi(state: FakeState): Mock {
       ...ruleSet,
       filters: state.filters
         .filter((filter) => filter.rule_set_id === ruleSet.id)
-        .sort((a, b) => a.position - b.position),
+        .sort((a, b) => a.position - b.position)
+        .map(filterOut),
     })
     const invalidSpec = (spec: unknown): boolean =>
       JSON.stringify(spec).includes('"bogus"')
@@ -172,7 +186,7 @@ export function stubFiltersApi(state: FakeState): Mock {
         const position = state.filters.filter((item) => item.rule_set_id === ruleSet.id).length
         const created = { ...(fields as unknown as FakeFilter), id: (nextId += 1), rule_set_id: ruleSet.id, position }
         state.filters.push(created)
-        return Promise.resolve(json(201, created))
+        return Promise.resolve(json(201, filterOut(created)))
       }
       if (rest === '/order' && method === 'PUT') {
         ;(fields['filter_ids'] as number[]).forEach((id, position) => {
@@ -250,8 +264,12 @@ export function stubFiltersApi(state: FakeState): Mock {
         if ('spec' in fields && invalidSpec(fields['spec'])) {
           return Promise.resolve(invalidSpecResponse())
         }
-        Object.assign(filter, fields)
-        return Promise.resolve(json(200, filter))
+        // As the API: an edit that changes nothing leaves the date of the last one.
+        const changed = Object.entries(fields).some(
+          ([key, value]) => JSON.stringify(filter[key as keyof FakeFilter]) !== JSON.stringify(value),
+        )
+        Object.assign(filter, fields, changed ? { updated_at: state.editedAt ?? new Date().toISOString() } : {})
+        return Promise.resolve(json(200, filterOut(filter)))
       }
       if (method === 'DELETE') {
         state.filters = state.filters.filter((item) => item !== filter)

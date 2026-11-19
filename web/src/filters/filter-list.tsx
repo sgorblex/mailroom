@@ -3,9 +3,11 @@ import { useTranslation } from 'react-i18next'
 import { ArrowDown, ArrowUp } from 'lucide-react'
 
 import { addFilter, changeFilter, removeFilter, reorderFilters, type Filter, type RuleSet } from '@/api/filters.ts'
+import { useTimeZone } from '@/auth/auth-context.ts'
 import { ConfirmRemoval } from '@/components/confirm-removal.tsx'
 import { Button } from '@/components/ui/button.tsx'
 import { Switch } from '@/components/ui/switch.tsx'
+import { formatDay } from '@/lib/format.ts'
 
 import { describeSpec, type Wording } from './describe.ts'
 import { FilterEditor } from './filter-editor.tsx'
@@ -205,7 +207,8 @@ function FilterRow({
   onChanged: (filter: Filter) => void
   onRemoved: () => void
 }): ReactElement {
-  const { t } = useTranslation(FILTERS_NS)
+  const { t, i18n } = useTranslation(FILTERS_NS)
+  const timeZone = useTimeZone()
   const [mode, setMode] = useState<'idle' | 'editing' | 'confirming-removal'>('idle')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -280,6 +283,13 @@ function FilterRow({
         <div className={`flex min-w-0 flex-1 flex-col ${filter.enabled ? '' : 'opacity-60'}`}>
           <span className="font-medium">{filter.name}</span>
           <span className="text-sm break-words text-muted-foreground">{summary}</span>
+          <span className="text-xs text-muted-foreground">
+            {filter.matches_30d === 0
+              ? t('filters.filter.noMatches')
+              : t('filters.filter.matches', { count: filter.matches_30d })}
+            {' · '}
+            {t('filters.filter.edited', { date: formatDay(i18n.language, filter.updated_at, timeZone) })}
+          </span>
         </div>
         <span className="flex items-center gap-1">
           <Switch

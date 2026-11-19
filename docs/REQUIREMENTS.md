@@ -147,6 +147,7 @@ the index and live updates; tier 3 items arrive one at a time.
 - **Dry run** against real mail before enabling: which messages each filter would match and what it
   would do.
 - **Filters drafted** from a message (its list or sender) or from a search, in the mail client.
+- Each filter shows how many messages it acted on in the last 30 days, and when it was last edited.
 - **Report spam** moves a message to Junk and offers, never adds unasked, a filter sending its
   sender's mail there; its rule set and Run filters are turned on only on the user's word.
 - The worker runs them through the filter engine's runner, only for accounts whose user turned
