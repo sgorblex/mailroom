@@ -193,7 +193,8 @@
     "remoteBlocked_one": "{{count}} immagine remota è bloccata, così il mittente non sa che l'hai aperto.",
     "remoteBlocked_other": "{{count}} immagini remote sono bloccate, così il mittente non sa che l'hai aperto.",
     "showRemote": "Mostra le immagini remote",
-    "remoteShown": "Le immagini remote sono mostrate per questo messaggio.",
+    "remoteShown_one": "{{count}} immagine remota è mostrata per questo messaggio.",
+    "remoteShown_other": "{{count}} immagini remote sono mostrate per questo messaggio.",
     "htmlTitle": "Versione HTML di {{subject}}",
     "htmlLoading": "Caricamento della versione HTML…",
     "htmlFailed": "Impossibile caricare la versione HTML."
