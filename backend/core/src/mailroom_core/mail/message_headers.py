@@ -10,6 +10,7 @@ from typing import Final, Literal
 from urllib.parse import urlsplit
 
 from mailroom_core.mail._mime import header_fields, header_text
+from mailroom_core.render.hosts import ascii_host
 
 FIELDS: Final = (
     "FROM",
@@ -214,21 +215,6 @@ class Authentication:
 NOT_VERIFIED: Final = Authentication(verified=False)
 
 
-_HOST: Final = re.compile(r"[a-z0-9_-]+(?:\.[a-z0-9_-]+)*")
-
-
-def _host(domain: str | None) -> str | None:
-    """A domain's IDNA form (`xn--…`), lowercase, so that a U-label and its A-label compare
-    equal; None when it is no host name."""
-    if not domain:
-        return None
-    try:
-        host = domain.strip(".").encode("idna").decode("ascii").lower()
-    except UnicodeError:
-        return None
-    return host if _HOST.fullmatch(host) else None
-
-
 def authentication(
     headers: MessageHeaders, senders: tuple[str, ...], authserv_id: str | None
 ) -> Authentication:
@@ -254,15 +240,16 @@ def authentication(
     dmarc_pass = bool(
         dmarc is not None
         and dmarc.result == "pass"
-        and (from_host := _host(domain)) is not None
-        and _host(dmarc.header_from) == from_host
+        and dmarc.header_from is not None
+        and (from_host := ascii_host(domain or "")) is not None
+        and ascii_host(dmarc.header_from) == from_host
     )
     return Authentication(
         verified=True,
         spf=None if spf is None else spf.result,
-        spf_domain=None if spf is None else _host(spf.smtp_mailfrom),
+        spf_domain=None if spf is None else ascii_host(spf.smtp_mailfrom or ""),
         dkim=None if dkim is None else dkim.result,
-        dkim_domain=None if dkim is None else _host(dkim.header_d),
+        dkim_domain=None if dkim is None else ascii_host(dkim.header_d or ""),
         dmarc=None if dmarc is None else dmarc.result,
         dmarc_pass=dmarc_pass,
         from_domain=domain if dmarc_pass else None,

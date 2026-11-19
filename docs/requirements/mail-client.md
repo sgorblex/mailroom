@@ -32,8 +32,13 @@ live updates yet.
   together are summed up as *You and N others* (or *N recipients* when the identity is not among
   them), shown in full on request.
 - **Remote content** (remote images, `http` or `https`) is blocked and revealed per message
-  ([Glossary](../GLOSSARY.md)), never remembered; what is removed either way is in the HTML
-  route below.
+  ([Glossary](../GLOSSARY.md)), never remembered; the notice says how many remote images the
+  message asks for (`remote_images`), and offers to show them only when some can be
+  (`loadable_remote_images`). What is removed either way is in the HTML route below.
+- **Link safety:** in the HTML view each link's tooltip is the host it really goes to (IDNA form,
+  never the sender's own title), and a link whose text names another host (not the link's, nor a
+  parent or child of it) is followed by a red *⚠ host* marker naming the real one; no
+  interstitial page. The text body marks such a link `[text](url) (⚠ host)`, MCP's too.
 
 The screens live under `/mail`: account and folder sidebar with counts, message list, message view
 (three panes on desktop, stacked on a phone). The sidebar shows an account's folders as a tree
@@ -1083,7 +1088,8 @@ a failure too, with the app's code `password_missing`.
     "quoted_omitted": true
   },
   "has_html": true,
-  "has_remote_content": true,
+  "remote_images": 2,
+  "loadable_remote_images": 1,
   "attachments": [ { "part": "2", "name": "notes.pdf", "type": "application/pdf", "size": 40211 } ],
   "calendar": null,
   "headers": {
@@ -1123,8 +1129,10 @@ a failure too, with the app's code `password_missing`.
   so); `incomplete` is true when part of the body was too large or too deeply nested to render.
   `content` is `""` for an empty body or a message with no text body.
 - `has_html` is true when the message has an HTML body: the client then offers the HTML view.
-- `has_remote_content` is true when that HTML has remote images (`http` or `https`: what
-  `remote=1` would load); false when `has_html` is false.
+- `remote_images` counts the remote images (`http` or `https`) that HTML asks for: `<img>`
+  sources (what `remote=1` would load), `srcset` candidates, `background` attributes and CSS
+  `url()`s (removed either way); 0 when `has_html` is false. `loadable_remote_images` counts the
+  `<img>` sources alone: the client offers to show remote images only when it is above 0.
 - `attachments` lists parts to download (`part` like `"2"` or `"1.2"`); an attached message
   (`message/rfc822`) is one attachment. Inline parts (images the HTML shows in place, by
   `Content-ID`) are not attachments. `type` is the declared type, `name` is `""` when unnamed.
@@ -1173,7 +1181,9 @@ it an image loses its `src` and keeps its alt text, with no placeholder. Remote 
 sources are removed unless `remote=1`. Whatever `remote` says, nothing else remote is kept: every
 `<style>` element is dropped with its content (remote stylesheets and fonts with it), only
 allowlisted properties of inline `style` attributes survive, and `url()` and `srcset` are
-removed. A message with no HTML body is 404 `not_found`. The API sets these response headers:
+removed. Each link's `title` is the host it goes to, in IDNA form, and a link whose text names
+another host is followed by a `<span>` marker, `⚠` and the real host, styled in full so that the
+sender's styles around it cannot hide it. A message with no HTML body is 404 `not_found`. The API sets these response headers:
 
 ```
 Content-Type: text/html; charset=utf-8

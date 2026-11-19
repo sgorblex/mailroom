@@ -122,7 +122,10 @@ const messageViewSchema = z.object({
     quoted_omitted: z.boolean(),
   }),
   has_html: z.boolean(),
-  has_remote_content: z.boolean(),
+  /** Remote images the HTML asks for, blocked until the reader shows them. */
+  remote_images: z.number().int().nonnegative(),
+  /** Of those, the ones `remote=1` shows: the others stay blocked. */
+  loadable_remote_images: z.number().int().nonnegative(),
   attachments: z.array(partSchema),
   calendar: partSchema.nullable(),
   headers: headerInfoSchema,

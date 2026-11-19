@@ -22,13 +22,16 @@ export const HTML_SANDBOX = 'allow-popups allow-popups-to-escape-sandbox'
 export function HtmlBody({
   messageRef,
   subject,
-  hasRemoteContent,
+  remoteImages,
+  loadableRemoteImages,
   remote,
   onShowRemote,
 }: {
   messageRef: string
   subject: string
-  hasRemoteContent: boolean
+  remoteImages: number
+  /** Of those, the ones `remote` shows: no button to show them when there are none. */
+  loadableRemoteImages: number
   remote: boolean
   onShowRemote: () => void
 }): ReactElement {
@@ -43,12 +46,14 @@ export function HtmlBody({
   const { state, retry } = useLoad(check, (error) => mailErrorMessage(t, error, t('message.htmlFailed')))
   return (
     <section aria-label={t('message.body')} className="flex flex-1 flex-col gap-2">
-      {hasRemoteContent && !remote && (
+      {remoteImages > 0 && !remote && (
         <div className="flex flex-wrap items-center gap-2 rounded-md border p-2 text-sm">
-          <p className="mr-auto text-muted-foreground">{t('message.remoteBlocked')}</p>
-          <Button variant="outline" size="sm" onClick={onShowRemote}>
-            {t('message.showRemote')}
-          </Button>
+          <p className="mr-auto text-muted-foreground">{t('message.remoteBlocked', { count: remoteImages })}</p>
+          {loadableRemoteImages > 0 && (
+            <Button variant="outline" size="sm" onClick={onShowRemote}>
+              {t('message.showRemote')}
+            </Button>
+          )}
         </div>
       )}
       {remote && <p className="text-xs text-muted-foreground">{t('message.remoteShown')}</p>}

@@ -40,7 +40,8 @@ mailroom-mcp              standalone MCP server for mail (repo mailroom-mcp, ret
   user interface, no app routes), so it may move to a shared package later.
 - **mailroom-core** ([`core.md`](core.md)) is the mail layer: `render`, `mail` (connections in
   `mail.imap`, read, organize, folders, compose, drafts) and `send` (SMTP and the send gate), which the mail
-  client and the MCP mail tools are built on. It lived in mailroom-mcp until 0.1.3, its last PyPI
+  client and the MCP mail tools are built on; it reads a link's or an address's host as a browser
+  does (`idna`, UTS #46). It lived in mailroom-mcp until 0.1.3, its last PyPI
   release, and is now a workspace package in `backend/core`, with its history, released only as
   part of the app. It never imports `mailroom`. The app keeps the accounts (`AccountStore`) in
   mailroom-core's schema `core` in the app's database, under mailroom-core's own Alembic history

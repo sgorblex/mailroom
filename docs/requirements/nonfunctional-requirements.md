@@ -12,7 +12,7 @@ Engineering baseline for Mailroom. Product scope: [`../REQUIREMENTS.md`](../REQU
 | Database | PostgreSQL 18 |
 | Tests | pytest (+ xdist, one database per worker cloned from the migrated `mailroom_test`), Vitest (`node` and `jsdom` projects) |
 | Containers | Podman, `mailroom-api` and `mailroom-web` images; Quadlet for deploy |
-| Component family | mailroom-core, the mail layer, as a uv workspace member in `backend/core` (its own tests run from there: `mise run test-core`); the filter engine inside it (`mailroom_core.filters`, imap-thingy until 2026-11-11); mailroom-mcp, retired, never was a dependency ([`../CONTEXT.md`](../CONTEXT.md)) |
+| Component family | mailroom-core, the mail layer, as a uv workspace member in `backend/core` (its own tests run from there: `mise run test-core`), which reads hosts with `idna` (UTS #46, as browsers do); the filter engine inside it (`mailroom_core.filters`, imap-thingy until 2026-11-11); mailroom-mcp, retired, never was a dependency ([`../CONTEXT.md`](../CONTEXT.md)) |
 | MCP server | the `mcp` SDK's low-level server, Streamable HTTP session manager and bearer-auth middleware, bounded to one minor because the app uses them directly ([`mcp.md`](mcp.md)) |
 
 Tool pins: `mise.toml` (dev), the digest-pinned `.woodpecker/*.yaml` step images (CI), the
@@ -45,6 +45,13 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   remembered); tracking pixels therefore never fire on open. What is removed whatever the user
   chooses: [`mail-client.md`](mail-client.md), the HTML route. Links open in a new top-level
   context with `noopener` and `noreferrer`.
+- **Links show where they go.** A link's `title` is always the host it goes to (IDNA as a browser
+  computes it, UTS #46, so a lookalike in another script shows as `xn--…`), or none when no
+  browser would take it for a host; the sender's is dropped. A link whose text names
+  another host is marked, in the HTML and in the text body alike; `http(s)` URLs are read as a
+  browser reads them (backslashes as slashes) before the host is taken. The check has no
+  public-suffix list and reads text the sender may hide with styles: it warns, the title is
+  what to trust.
 - Plain-text rendering is the fallback and the default for the index.
 
 ### The app

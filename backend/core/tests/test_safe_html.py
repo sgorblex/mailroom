@@ -41,7 +41,8 @@ def test_drops_javascript_and_relative_links_but_keeps_web_and_mail_links():
     assert "cid:" not in out
     assert "data:" not in out
     assert (
-        '<a href="https://example.org/x" target="_blank" rel="noopener noreferrer nofollow">web</a>'
+        '<a href="https://example.org/x" title="example.org" target="_blank" '
+        'rel="noopener noreferrer nofollow">web</a>'
     ) in out
     assert 'href="mailto:a@example.org"' in out
     assert "_self" not in out
@@ -88,7 +89,7 @@ def test_drops_links_and_images_of_svg_and_math_and_treats_an_img_there_as_any_o
     # image after it, inlined or removed by the usual rules.
     data = base64.b64encode(PNG).decode()
     assert out.html == f'<img><img src="data:image/png;base64,{data}">kept'
-    assert out.has_remote
+    assert out.remote_images == 1
 
 
 def test_drops_url_expression_and_escapes_in_styles_but_keeps_layout():
@@ -123,12 +124,29 @@ def test_never_keeps_srcset_background_or_poster():
 def test_removes_remote_images_unless_asked_and_says_there_were_some():
     html = '<p>hi</p><img src="https://t.example/open.gif" alt="pixel">'
     blocked = clean(html)
-    assert blocked.has_remote
+    assert blocked.remote_images == 1
     assert "t.example" not in blocked.html
     shown = clean(html, remote=True)
-    assert shown.has_remote
+    assert shown.remote_images == 1
     assert 'src="https://t.example/open.gif"' in shown.html
-    assert not clean("<p>plain</p>").has_remote
+    assert clean("<p>plain</p>").remote_images == 0
+
+
+def test_counts_every_remote_image_it_blocks():
+    out = clean(
+        '<img src=" https://t.example/a.gif" srcset="https://t.example/1x.gif 1x,'
+        'HTTP://t.example/2x.gif 2x, /local.gif 3x">'
+        '<table background="https://t.example/bg.gif"><tr><td background="cid:x">c</td></tr></table>'
+        "<p style=\"background: url( 'https://t.example/p.gif'); color: red\">p</p>"
+        "<div style='background-image:URL(http://t.example/d.gif), url(cid:y)'>d</div>"
+        '<style>body{background:url(https://t.example/s.gif)} p{background:url("https://t.example/q.gif")}</style>'
+        '<img src="cid:z"><img src="data:image/png;base64,iVBORw0KGgo="><img src="//t.example/r.gif">'
+    )
+    # src, two srcset candidates, the table's background, one url() in each style attribute, two
+    # in the <style> element. Scheme-relative and local sources never load, so they are not counted.
+    assert out.remote_images == 8
+    assert out.loadable_remote_images == 1
+    assert "t.example" not in out.html
 
 
 def test_remote_means_web_images_only():
@@ -147,7 +165,7 @@ def test_inlines_cid_images_as_data_uris():
     )
     uri = f"data:image/png;base64,{base64.b64encode(PNG).decode()}"
     assert out.html == f'<img src="{uri}" alt="logo"><img src="{uri}">'
-    assert not out.has_remote
+    assert out.remote_images == 0
 
 
 def test_inlines_only_raster_images_and_only_up_to_the_cap():
@@ -238,3 +256,146 @@ def test_stays_fast_on_a_wide_flat_body():
 def test_empty_input():
     assert clean("").html == ""
     assert clean("   ").html == ""
+
+
+def link(html: str) -> str:
+    return clean(html).html
+
+
+def test_a_link_s_title_is_the_host_it_goes_to_never_the_sender_s():
+    out = link(
+        '<a href="https://www.Example.org/path?q=1" title="Your bank">Example</a>'
+        '<a href="mailto:Someone@Example.org?subject=hi" title="x">write</a>'
+        '<a href="https://user:pw@example.net:8443/">port</a>'
+        '<a href="javascript:x()" title="kept?">js</a><a title="no href">plain</a>'
+        '<p title="paragraphs keep theirs">p</p>'
+    )
+    assert 'title="www.example.org"' in out
+    assert 'title="example.org"' in out
+    assert 'title="example.net"' in out
+    assert "Your bank" not in out
+    assert "kept?" not in out
+    assert "no href" not in out
+    assert 'title="paragraphs keep theirs"' in out
+
+
+def test_a_link_s_title_is_its_host_in_idna():
+    out = link(
+        '<a href="https://bücher.example/">books</a><a href="https://xn--pypal-4ve.com/">p</a>'
+    )
+    assert 'title="xn--bcher-kva.example"' in out
+    assert 'title="xn--pypal-4ve.com"' in out
+
+
+def test_a_backslash_ends_the_host_as_in_a_browser():
+    out = link('<a href="https://evil.example\\@paypal.com/">paypal.com</a>')
+    assert 'href="https://evil.example/@paypal.com/"' in out
+    assert 'title="evil.example"' in out
+    assert "⚠ evil.example" in out
+
+
+def test_marks_a_link_whose_text_names_another_host():
+    out = link(
+        '<p>Log in at <a href="https://evil.example/login">https://www.paypal.com/login</a> now</p>'
+    )
+    assert out.startswith(
+        '<p>Log in at <a href="https://evil.example/login" title="evil.example" target="_blank" '
+        'rel="noopener noreferrer nofollow">https://www.paypal.com/login</a><span style="'
+    )
+    assert out.endswith('">⚠ evil.example</span> now</p>')
+
+
+def test_does_not_mark_the_same_host_a_parent_or_a_child():
+    out = link(
+        '<a href="https://www.paypal.com/x">paypal.com</a>'
+        '<a href="https://paypal.com/">www.PayPal.com</a>'
+        '<a href="https://example.org/">Read more</a>'
+        '<a href="mailto:help@example.org">help@example.org</a>'
+        '<a href="https://xn--bcher-kva.example/">bücher.example</a>'
+        '<a href="https://example.org/"><img src="cid:x" alt="evil.example"></a>'
+    )
+    assert "⚠" not in out
+
+
+def test_marks_what_hides_another_host_in_the_text():
+    for text in (
+        "\uff50\uff41\uff59\uff50\uff41\uff4c.\uff43\uff4f\uff4d",  # fullwidth, folded by NFKC
+        "PAYPAL.COM",
+        "pay\u200bpal.com",  # a zero-width space, removed before looking
+        "<b>pay</b>pal.com",
+        "support@paypal.com",
+        "evil.example.paypal.com",  # a child of the text's host, not of the link's
+    ):
+        out = link(f'<a href="https://evil.example/">{text}</a>')
+        assert "⚠ evil.example</span>" in out, text
+
+
+def test_marks_a_link_with_no_host_that_names_one():
+    out = link('<a href="https:///nowhere">paypal.com</a>')
+    assert ">⚠</span>" in out
+
+
+def test_a_marker_cannot_be_hidden_by_the_link_s_own_style():
+    out = link(
+        '<div style="font-size:0;color:#fff;letter-spacing:-20px;font-family:Wingdings" dir="rtl">'
+        '<a href="https://evil.example/" style="font-size:0">paypal.com</a></div>'
+    )
+    for declaration in (
+        "font-size:12px",
+        "color:#b00020",
+        "letter-spacing:normal",
+        "font-family:sans-serif",
+        "direction:ltr",
+    ):
+        assert declaration in out
+    assert 'dir="ltr">⚠ evil.example</span>' in out
+
+
+def test_a_host_is_read_as_a_browser_reads_it():
+    # UTS #46, non-transitional: sharp s and final sigma stay, so these hosts are not folded.
+    out = link('<a href="https://busineß.com/">business.com</a>')
+    assert 'title="xn--busine-gta.com"' in out
+    assert "⚠ xn--busine-gta.com" in out
+    assert 'title="xn--3xab.example"' in link('<a href="https://σς.example/">x</a>')
+    # A joiner out of place, or text no browser takes as a host: no title, a bare marker.
+    joined = link('<a href="https://pay\u200dpal.example/">paypal.com</a>')
+    assert "title=" not in joined
+    assert ">⚠</span>" in joined
+
+
+def test_a_mailto_link_s_host_is_never_text_the_sender_wrote():
+    out = link(
+        '<a href="mailto:x@evil.example%3E%20(verified%20paypal.com)">support@paypal.com</a>'
+    )
+    assert "title=" not in out
+    assert "verified" not in out.split("</a>")[1]
+    assert ">⚠</span>" in out
+
+
+def test_a_title_cannot_come_through_markup_lxml_reads_as_text():
+    # lxml writes <style> and <script> content out raw: in a foreign element, html5ever would
+    # read it as markup, and a <p> there would break out of the <svg> with the link after it.
+    out = link(
+        '<svg><style><p><a href="https://evil.example/" title="paypal.com">paypal.com</a>'
+        "</p></style></svg>"
+        '<math><script><p><a href="https://evil.example/" title="paypal.com">x</a></p></script></math>'
+    )
+    assert 'title="paypal.com"' not in out
+    from mailroom_core.render.safe_html import _Filter
+
+    title = _Filter({}, remote=False, max_inline_bytes=0)
+    assert title("a", "title", "paypal.com") is None
+    assert title("a", "title", f"{title.title_prefix}evil.example") == "evil.example"
+
+
+def test_marks_links_on_a_wide_body_quickly():
+    html = '<a href="https://evil.example/">paypal.com</a> ' * 50_000
+    started = time.perf_counter()
+    out = link(html)
+    assert time.perf_counter() - started < 10.0
+    assert out.count("⚠ evil.example") == 50_000
+
+
+def test_reads_only_the_start_of_a_link_s_text():
+    out = link(f'<a href="https://example.org/">{"word " * 400_000}paypal.com</a>')
+    assert "⚠" not in out

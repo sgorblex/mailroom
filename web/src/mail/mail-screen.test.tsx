@@ -46,7 +46,7 @@ function state(overrides: Partial<FakeMailState> = {}): FakeMailState {
           quoted_omitted: false,
         },
       },
-      [html.ref]: messageView(html, { has_html: true, has_remote_content: true }),
+      [html.ref]: messageView(html, { has_html: true, remote_images: 3, loadable_remote_images: 2 }),
       [htmlOnly.ref]: messageView(htmlOnly, {
         has_html: true,
         text: { content: '', removed_chars: 0, incomplete: false, next_offset: null, quoted_omitted: false },
@@ -538,7 +538,7 @@ describe('MailScreen', () => {
     renderMailApp(`/mail?message=${html.ref}`)
 
     await userEvent.click(await screen.findByRole('button', { name: 'HTML' }))
-    expect(screen.getByText('Remote images are blocked, so the sender cannot tell you opened it.')).toBeInTheDocument()
+    expect(screen.getByText('3 remote images are blocked, so the sender cannot tell you opened it.')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Show remote images' }))
     await waitFor(() => {
       expect(screen.getByTitle(`HTML version of ${html.subject}`)).toHaveAttribute(
@@ -567,6 +567,17 @@ describe('MailScreen', () => {
       `/api/v1/mail/messages/${html.ref}/html`,
     )
     expect(screen.getByRole('button', { name: 'Show remote images' })).toBeInTheDocument()
+  })
+
+  it('offers no reveal when none of the blocked remote images can be shown', async () => {
+    const fake = state()
+    fake.views[html.ref] = messageView(html, { has_html: true, remote_images: 1, loadable_remote_images: 0 })
+    stubMailApi(fake)
+    renderMailApp(`/mail?message=${html.ref}`)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'HTML' }))
+    expect(screen.getByText('1 remote image is blocked, so the sender cannot tell you opened it.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Show remote images' })).not.toBeInTheDocument()
   })
 
   it('opens a message with no text on its HTML, with no remote prompt when there is no remote content', async () => {

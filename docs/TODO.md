@@ -123,7 +123,7 @@ released and checked in production before the next one starts. Batch 15 is the r
       than the one it sends from, show the real one and flag it.
 - [x] **Sender authentication** — a badge for the SPF, DKIM and DMARC results, and a warning when
       they fail.
-- [ ] **Link safety** — a link's real address on hover, and a warning when its text names
+- [x] **Link safety** — a link's real address on hover, and a warning when its text names
       another site.
 - [x] **"Sent to" address** — which of the user's addresses or aliases a message arrived at.
 - [x] **Recipient summary** — "to you and 12 others", expanded on click.
@@ -133,7 +133,7 @@ released and checked in production before the next one starts. Batch 15 is the r
 - [ ] **Replied indicator** — a mark on the rows the user answered or forwarded.
 - [ ] **Remote content per sender** — the remote-content gate remembers the senders the user
       trusts.
-- [ ] **Tracker count** — how many trackers the remote-content gate blocked, beside it.
+- [x] **Tracker count** — how many trackers the remote-content gate blocked, beside it.
 - [ ] **Print and download** — a message printed as shown, or saved as its `.eml`.
 
 #### 5. Filters from the client
