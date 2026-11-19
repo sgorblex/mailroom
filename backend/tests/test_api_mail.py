@@ -537,7 +537,11 @@ def test_one_click_unsubscribe_posts_only_where_the_accounts_server_vouches(
     def post(ref: str, **kwargs: Any) -> Any:
         return mailbox.client.post(f"{MAIL}/messages/{ref}/unsubscribe", **kwargs)
 
+    def offered(ref: str) -> bool:
+        return cast("bool", mailbox.get(f"/messages/{ref}")["one_click_unsubscribe"])
+
     # Without the account's authentication server nothing is believed.
+    assert not offered(good)
     assert detail(post(good)) == (400, "unsubscribe_unverified")
     account = new_account(login=mailbox.login, imap=endpoint(mailbox.server))
     account = {key: value for key, value in account.items() if key != "password"}
@@ -550,6 +554,8 @@ def test_one_click_unsubscribe_posts_only_where_the_accounts_server_vouches(
     assert detail(post(mailto)) == (400, "unsubscribe_not_https")
     assert detail(post(plain)) == (400, "unsubscribe_unavailable")
     assert asked == []
+    assert offered(good)
+    assert not any(map(offered, (unsigned, repeated, mailto, plain)))
 
     with caplog.at_level(logging.INFO, logger="mailroom"):
         done = post(good)

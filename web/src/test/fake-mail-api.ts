@@ -188,6 +188,7 @@ export function messageView(item: MessageItem, fields: Partial<MessageView> = {}
       from_domain: null,
     },
     remote_trusted: false,
+    one_click_unsubscribe: false,
     ...fields,
   }
 }
@@ -457,6 +458,24 @@ function prefillAnswer(state: FakeMailState, body: { ref: string; mode: string }
   }
   if (isOff(state, view.account_id)) {
     return refuse(409, 'send_disabled')
+  }
+  if (body.mode === 'unsubscribe') {
+    const mailto = view.headers.mailing_list?.unsubscribe_mailto
+    if (mailto === null || mailto === undefined) {
+      return refuse(400, 'no_unsubscribe_address')
+    }
+    const url = new URL(mailto)
+    return json(200, {
+      account: view.account_id,
+      from: view.sent_to ?? defaultIdentity(state, view.account_id),
+      to: [{ name: '', address: url.pathname }],
+      cc: [],
+      bcc: [],
+      subject: url.searchParams.get('subject') ?? 'unsubscribe',
+      text: url.searchParams.get('body') ?? '',
+      answers: null,
+      attachments: [],
+    })
   }
   const forward = body.mode === 'forward'
   const sender = view.reply_to[0] ?? view.from
@@ -798,6 +817,18 @@ export function stubMailApi(state: FakeMailState): Mock {
         }
       }
       return json(201, { address, created_at: '2026-11-19T10:00:00+00:00' })
+    }
+    match = /^\/api\/v1\/mail\/messages\/([^/]+)\/unsubscribe$/.exec(path)
+    if (match !== null && init?.method === 'POST') {
+      // Posted when the read said it would be, as the server checks it again.
+      const view = state.views[decodeURIComponent(match[1] ?? '')]
+      if (view === undefined) {
+        return notFound()
+      }
+      if (!view.one_click_unsubscribe) {
+        return refuse(400, 'unsubscribe_not_signed')
+      }
+      return json(200, { outcome: 'ok', status: 200, list_id: view.headers.mailing_list?.id ?? null })
     }
     if (path === '/api/v1/mail/search') {
       return json(200, state.searchResult ?? { messages: [], next_cursor: null, failures: [] })

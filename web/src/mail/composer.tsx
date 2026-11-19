@@ -45,6 +45,7 @@ const TITLES: Record<ComposeSource['kind'], string> = {
   reply: 'compose.reply',
   reply_all: 'compose.replyAll',
   forward: 'compose.forward',
+  unsubscribe: 'compose.unsubscribe',
   draft: 'compose.draft',
   recover: 'compose.draft',
 }

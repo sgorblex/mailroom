@@ -146,6 +146,8 @@ const messageViewSchema = z.object({
   }),
   /** The user shows this sender's remote images without asking, and DMARC passed for its one From. */
   remote_trusted: z.boolean(),
+  /** `unsubscribe` would post: the account's own authentication server vouches for the list's one-click fields. */
+  one_click_unsubscribe: z.boolean(),
 })
 export type MessageView = z.infer<typeof messageViewSchema>
 
@@ -366,6 +368,18 @@ export async function removeRemoteSender(address: string): Promise<void> {
   await apiPostJson(`${base}/remote-senders/remove`, { address })
 }
 
+const unsubscribedSchema = z.object({
+  outcome: z.enum(['ok', 'rejected', 'refused', 'failed']),
+  status: z.number().nullable(),
+  list_id: z.string().nullable(),
+})
+export type Unsubscribed = z.infer<typeof unsubscribedSchema>
+
+/** Unsubscribes in one click (RFC 8058) from the list the message `ref` names came from; the server checks it first. */
+export function unsubscribe(ref: string): Promise<Unsubscribed> {
+  return apiPostJson(`${messagePath(ref)}/unsubscribe`, undefined, { schema: unsubscribedSchema })
+}
+
 /** A download of one attachment (or the calendar part). */
 export function messagePartUrl(ref: string, part: string): string {
   return `${getApiBaseUrl()}${messagePath(ref)}/parts/${encodeURIComponent(part)}`
@@ -505,7 +519,7 @@ const composeFieldsSchema = z.object({
 
 const prefillSchema = composeFieldsSchema.extend({ attachments: z.array(keepPartSchema) })
 export type Prefill = z.infer<typeof prefillSchema>
-export type PrefillMode = 'reply' | 'reply_all' | 'forward'
+export type PrefillMode = 'reply' | 'reply_all' | 'forward' | 'unsubscribe'
 
 export const SEND_STATES = ['sending', 'sent', 'failed', 'unknown'] as const
 

@@ -41,6 +41,14 @@ live updates yet.
   remote images are blocked (`remote_images`) or shown (`loadable_remote_images`, and whether for
   the message or its sender), and the gate offers to show them only when some can be. What is
   removed either way is in the HTML route below.
+- **Mailing list** row in the message view's headers, from `headers.mailing_list`: the list's name
+  (else its id) as plain text, its archive as a link only when `https:` (new tab, `noopener
+  noreferrer`), and an Unsubscribe button that acts only when the reader asks. It takes the first
+  way the message allows: [one click](#one-click-unsubscribe) when `one_click_unsubscribe`, behind
+  a confirm dialog that names the host and then says how the list answered; else a draft to the
+  `mailto:` address in the composer ([prefill](#compose) `unsubscribe`), when the account can
+  write mail; else the `https:` link in a new tab. *Filter instead* beside it leads to Filters,
+  when the instance runs them.
 - **Link safety:** in the HTML view each link's tooltip is the host it really goes to (IDNA form,
   never the sender's own title), and a link whose text names another host (not the link's, nor a
   parent or child of it) is followed by a red *⚠ host* marker naming the real one; no
@@ -1129,7 +1137,8 @@ a failure too, with the app's code `password_missing`.
     "verified": true, "spf": "pass", "spf_domain": "example.org", "dkim": "pass",
     "dkim_domain": "example.org", "dmarc": "pass", "dmarc_pass": true, "from_domain": "example.org"
   },
-  "remote_trusted": false
+  "remote_trusted": false,
+  "one_click_unsubscribe": true
 }
 ```
 
@@ -1162,7 +1171,7 @@ a failure too, with the app's code `password_missing`.
   `authserv_id`, *Account autoconfiguration*) can be believed. List links are `https:` or
   `mailto:` only, the topmost of each field;
   `authentication` and `delivered_to` (X-Original-To's addresses, then Delivered-To's) are topmost
-  first. The client shows none of it yet.
+  first. The client shows `mailing_list` alone, as the *Mailing list* row above.
 - `sender_mismatch` is true when any From display name holds an address-like or domain-like token
   (after NFKC and case folding) other than its real address, or a domain neither the real
   address's domain nor a parent or child of it: `service@paypal.com <x@evil.example>`. A dotted
@@ -1188,6 +1197,8 @@ a failure too, with the app's code `password_missing`.
 - `remote_trusted` is true when `dmarc_pass` is and the user remembers `from.address`
   ([remote content senders](#remote-content-senders)): the client then asks for the HTML view
   with `remote=1` at once. The HTML route itself is unchanged: `remote` alone decides.
+- `one_click_unsubscribe` is true when [`POST /messages/{ref}/unsubscribe`](#one-click-unsubscribe)
+  would post rather than refuse: the client then offers one click. The route checks again.
 - Reading **does not set `\Seen`.** Errors: 400, 404, 409 (stale), 502, 504.
 
 ### `GET /messages/{ref}/html?remote=0`
