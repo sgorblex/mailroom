@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -13,10 +13,18 @@ from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
 from mailroom.auth.users import create_user
 from mailroom.filters import runs as filter_runs
 from mailroom.filters import service as filters_service
-from mailroom.filters.runs import RunRefused, dry_run_slot, labelled_report, prune_runs
+from mailroom.filters.runs import (
+    MATCH_DAYS,
+    RunRefused,
+    count_matches,
+    dry_run_slot,
+    labelled_report,
+    matches_counted,
+    prune_runs,
+)
 from mailroom.filters.service import MAX_FILTERS
 from mailroom.filters.spec import offered_schema
-from mailroom.models import Filter, FilterRun, RuleSet
+from mailroom.models import Filter, FilterMatchDay, FilterRun, RuleSet
 from mailroom.worker.app import PROCRASTINATE_SCHEMA
 from mailroom_core.filters import MatchTimeoutError, json_schema, load_filter
 from mailroom_core.mail import CERTIFICATE_DETAIL, MESSAGES
@@ -833,6 +841,31 @@ def test_old_finished_runs_are_pruned(db_session: Session, user: User) -> None:
     prune_runs(db_session, rule_set_row.id, keep=2)
     kept = db_session.scalars(select(FilterRun.id).order_by(FilterRun.id)).all()
     assert kept == [runs[1].id, runs[3].id, runs[4].id]
+
+
+def test_match_counts_skip_dry_runs_and_old_days(db_session: Session, user: User) -> None:
+    rule_set_row = RuleSet(user_id=user.id, account_id=1, folder=["INBOX"], name="x")
+    rule_set_row.trigger = "manual"
+    db_session.add(rule_set_row)
+    db_session.flush()
+    row = Filter(rule_set_id=rule_set_row.id, position=0, name="x", spec=SHOP_SPEC)
+    db_session.add(row)
+    db_session.flush()
+    entry = {"filter_id": row.id, "matched": [{"uid": 1}]}
+    count_matches(db_session, {"dry_run": True, "filters": [entry]})
+    # A filter removed while it ran is not counted.
+    count_matches(db_session, {"dry_run": False, "filters": [entry, {**entry, "filter_id": 999}]})
+    count_matches(db_session, {"dry_run": False, "filters": [{**entry, "matched_total": 250}]})
+    assert matches_counted(db_session, [row.id, 999]) == {row.id: 251}
+
+    today = datetime.now(UTC).date()
+    for age in (MATCH_DAYS - 1, MATCH_DAYS):
+        db_session.add(FilterMatchDay(filter_id=row.id, day=today - timedelta(days=age), count=7))
+    db_session.flush()
+    assert matches_counted(db_session, [row.id]) == {row.id: 258}
+    prune_runs(db_session, rule_set_row.id)
+    days = db_session.scalars(select(FilterMatchDay.day).order_by(FilterMatchDay.day)).all()
+    assert days == [today - timedelta(days=MATCH_DAYS - 1), today]
 
 
 def test_a_report_carries_no_nul() -> None:

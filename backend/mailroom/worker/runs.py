@@ -25,6 +25,7 @@ from mailroom.auth.users import time_zone_of
 from mailroom.filters.runs import (
     MATCH_TIMEOUT_MESSAGE,
     RunRefused,
+    count_matches,
     enabled_filters,
     engine_filters,
     labelled_report,
@@ -109,6 +110,7 @@ def execute_run(db: Session, run_id: int, mailboxes: Mailboxes) -> None:
     if recorded and error is not None and error.startswith(f"{COPIED_NOT_REMOVED}: "):
         _turn_off(db, user_id, rule_set_id)
     if recorded and result is not None:
+        _count_matches(db, user_id, result)
         _record_run(db, user_id, result, names, account_id, rule_set_id, run_id, error)
     outcome = "ok" if error is None else error.split(":", 1)[0]
     logger.info(
@@ -137,6 +139,20 @@ def _turn_off(db: Session, user_id: int, rule_set_id: int) -> None:
             "reason": COPIED_NOT_REMOVED,
         },
     )
+
+
+def _count_matches(db: Session, user_id: int, result: dict[str, Any]) -> None:
+    """Add the run's matches to its filters' counts. Commits ``db``; a failure is logged, never
+    fails the run."""
+    try:
+        count_matches(db, result)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.warning(
+            "match_count_failed",
+            extra={"event": "match_count_failed", "user_id": user_id, "error": type(exc).__name__},
+        )
 
 
 def _record_run(

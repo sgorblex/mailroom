@@ -11,7 +11,7 @@ from sqlalchemy import select, text
 
 from mailroom.auth.users import set_time_zone
 from mailroom.mail.connections import mail_ssl_context
-from mailroom.models import FilterRun, RuleSet
+from mailroom.models import AuditRecord, FilterRun, RuleSet
 from mailroom.worker import tasks
 from mailroom.worker.app import PROCRASTINATE_SCHEMA
 from mailroom.worker.context import Mailboxes, WorkerContext
@@ -309,6 +309,87 @@ def test_a_run_failing_part_way_keeps_the_finished_filters_report(
     assert run["error"] == "run_failed: RuntimeError"
     assert [entry["filter_id"] for entry in run["result"]["filters"]] == [first]
     assert run["result"]["error"] == run["error"]
+
+
+def test_a_real_run_counts_each_filters_matches(
+    user_client: TestClient,
+    db_session: Session,
+    mailboxes: Mailboxes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each run adds to the filter's count, which an edit keeps; the edit's date is shown beside
+    it, which a reorder leaves."""
+    work = add_account(user_client)
+    rule_set_id = add_rule_set(user_client, work)
+    shop = add_filter(user_client, rule_set_id, "Shop", SHOP_SPEC)
+    quiet = add_filter(user_client, rule_set_id, "Quiet", SHOP_SPEC)
+    # Each filter's matches, in the rule set's order.
+    matches = [[{"uid": uid} for uid in range(3)], []]
+
+    def match(_self: object, report: Any, *_args: object, **_kwargs: object) -> None:
+        for matched in matches:
+            report["filters"].append({"spec": None, "action": "Move", "matched": matched})
+
+    monkeypatch.setattr(Folder, "run_into", match)
+    path = f"/api/v1/rule-sets/{rule_set_id}"
+
+    def counts() -> dict[int, int]:
+        filters = user_client.get(path).json()["filters"]
+        return {entry["id"]: entry["matches_30d"] for entry in filters}
+
+    assert counts() == {shop: 0, quiet: 0}
+    execute_run(db_session, queued_run(user_client, rule_set_id), mailboxes)
+    assert counts() == {shop: 3, quiet: 0}
+
+    before = user_client.get(path).json()["filters"][0]["updated_at"]
+    order = user_client.put(f"{path}/order", json={"filter_ids": [quiet, shop]})
+    assert [entry["updated_at"] for entry in order.json()][1] == before
+    edited = user_client.patch(f"/api/v1/filters/{shop}", json={"name": "Shop news"}).json()
+    assert (edited["matches_30d"], edited["updated_at"] > before) == (3, True)
+    unchanged = user_client.patch(f"/api/v1/filters/{shop}", json={"name": "Shop news"}).json()
+    assert unchanged["updated_at"] == edited["updated_at"]
+
+    # Past the report's bound, the total counts.
+    matches = [[], [{"uid": uid} for uid in range(MATCHED_KEPT + 5)]]
+    finish_jobs(db_session)
+    execute_run(db_session, queued_run(user_client, rule_set_id), mailboxes)
+    assert counts() == {shop: 3 + MATCHED_KEPT + 5, quiet: 0}
+
+
+def test_a_failed_count_keeps_the_run_and_its_audit_records(
+    user_client: TestClient,
+    db_session: Session,
+    mailboxes: Mailboxes,
+    user: User,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from mailroom.worker import runs as worker_runs
+
+    work = add_account(user_client)
+    rule_set_id = add_rule_set(user_client, work)
+    add_filter(user_client, rule_set_id, "Shop", SHOP_SPEC)
+
+    def match(_self: object, report: Any, *_args: object, **_kwargs: object) -> None:
+        report["filters"].append({"spec": None, "action": "Move", "matched": [{"uid": 7}]})
+
+    def broken(*_args: object) -> None:
+        msg = "Subject: a secret"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(Folder, "run_into", match)
+    monkeypatch.setattr(worker_runs, "count_matches", broken)
+    run_id = queued_run(user_client, rule_set_id)
+    with caplog.at_level(logging.WARNING):
+        execute_run(db_session, run_id, mailboxes)
+    run = run_out(user_client, rule_set_id, run_id)
+    assert run["error"] is None
+    assert [len(entry["matched"]) for entry in run["result"]["filters"]] == [1]
+    records = db_session.scalars(select(AuditRecord).where(AuditRecord.user_id == user.id))
+    assert [(r.actor, r.run_id, r.detail["uid"]) for r in records] == [("filter", run_id, 7)]
+    [logged] = [r for r in caplog.records if r.getMessage() == "match_count_failed"]
+    assert logged.__dict__["error"] == "RuntimeError"
+    assert "a secret" not in caplog.text
 
 
 def test_a_run_counts_days_from_the_users_time_zone(

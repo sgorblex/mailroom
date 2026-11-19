@@ -83,6 +83,12 @@ in the browser, tried with a dry run, and run by the worker. Product scope:
   did) and any error. A real run also writes to the user's audit trail: a record per message a
   filter acted on, as the report lists it, the subject only as its hash
   ([`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *Audit trail*).
+- **Match counts**: each filter carries `matches_30d`, the messages it acted on in real runs over
+  the last 30 days (UTC days, today included; a report's total, not only the 200 it lists), and
+  `updated_at`, the date of the user's last edit of its name, spec or switch (a reorder or a
+  folder rename leaves it). An edit keeps the count, which then may predate the filter as it
+  reads now: the date of the edit is shown beside it. Dry runs never count. Storage:
+  [`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *Storage*.
 - **One run at a time per account.** The worker never runs two runs on the same account at once;
   a run waits for the one in progress. Dry runs, which change nothing, are not held back.
 - **The worker** checks *Run filters* and the rule set's *enabled* again when a run starts; a run

@@ -391,6 +391,8 @@ def test_agents_are_not_offered_in_thread(mcp: Mcp, token: str, rule_set_id: int
 def test_edits_wait_for_a_disabled_rule_set(mcp: Mcp, token: str, rule_set_id: int) -> None:
     added = mcp.call(token, "filter_add", rule_set_id=rule_set_id, name="Shop", spec=SHOP_SPEC)
     second = mcp.call(token, "filter_add", rule_set_id=rule_set_id, name="Two", spec=SHOP_SPEC)
+    [shown, _] = mcp.call(token, "rule_set_get", rule_set_id=rule_set_id)["filters"]
+    assert (shown["matches_30d"], shown["updated_at"]) == (0, added["updated_at"])
 
     enabled = mcp.call(token, "rule_set_enable", rule_set_id=rule_set_id)
     assert enabled["rule_set"]["enabled"] is True
