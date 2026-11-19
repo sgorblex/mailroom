@@ -135,6 +135,9 @@ only while the account's *Run filters* is on, and the mute's answer says whether
   every route and MCP tool that names a rule set or filter answers it as one that does not exist
   (`404`): it is changed only by muting and unmuting. Removing the account or the user removes
   its muted threads and the rule set.
+- **In the web** ([mail client](mail-client.md#slice-a-read)): *Mute conversation* on a message,
+  and the Filters page's list of each account's muted conversations to unmute, each saying when
+  Run filters is off that muting has no effect until it is on.
 
 ### Folders renamed or deleted
 

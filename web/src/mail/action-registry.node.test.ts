@@ -128,6 +128,26 @@ describe('the action registry', () => {
     }
   })
 
+  it('offers to mute the conversation of a message where it can, and to unmute it once muted here', () => {
+    const thread = { id: 3, account_id: 1, ids: 2, gmail: false, run_filters: true, created_at: '2026-11-19T10:00:00Z' }
+    const mute = vi.fn()
+    const unmute = vi.fn()
+    const muting = (muted: boolean): ActionContext['muting'] => ({
+      mutedAs: () => (muted ? thread : undefined),
+      mute,
+      unmute,
+    })
+    expect(ids('message', context({}, { muting: muting(false) }))).toEqual([])
+    const open = context({}, { message: target, muting: muting(false) })
+    expect(ids('message', open)).toEqual(['print', 'downloadSource', 'mute'])
+    mailAction('mute').run(open)
+    expect(mute).toHaveBeenCalledWith(target)
+    const muted = context({}, { message: target, muting: muting(true) })
+    expect(ids('message', muted)).toEqual(['print', 'downloadSource', 'unmute'])
+    mailAction('unmute').run(muted)
+    expect(unmute).toHaveBeenCalledWith(target)
+  })
+
   it('opens the printable page in a new tab and saves the source', () => {
     const links: Record<string, string>[] = []
     vi.stubGlobal('document', {

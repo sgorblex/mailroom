@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type ReactElement } from 'react'
+import { useCallback, useContext, useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from '@tanstack/react-router'
 
@@ -13,6 +13,8 @@ import {
   type RuleSetFields,
 } from '@/api/filters.ts'
 import { apiErrorMessage } from '@/api/http.ts'
+import { listMutedThreads, type MutedThread } from '@/api/mail.ts'
+import { AuthContext } from '@/auth/auth-context.ts'
 import { ConfirmRemoval } from '@/components/confirm-removal.tsx'
 import { Button } from '@/components/ui/button.tsx'
 import { Switch } from '@/components/ui/switch.tsx'
@@ -21,14 +23,28 @@ import { useLoad } from '@/lib/use-load.ts'
 import { folderLabel, triggerSummary } from './describe.ts'
 import { useFolders } from './folders.ts'
 import { filterErrorMessage } from './messages.ts'
+import { MutedThreads } from './muted-threads.tsx'
 import { RuleSetForm } from './rule-set-form.tsx'
 import { FILTERS_NS } from './i18n.ts'
 
-/** The signed-in user's rule sets, account by account; each opens in its own editor. */
+const NOTHING_MUTED: MutedThread[] = []
+
+/**
+ * The signed-in user's rule sets, account by account; each opens in its own editor. Where the
+ * instance runs the mail client too, each account's muted conversations follow its rule sets.
+ */
 export function FiltersScreen(): ReactElement {
   const { t } = useTranslation(FILTERS_NS)
   const { state: accounts, retry } = useLoad(listAccounts, (error) =>
     apiErrorMessage(error, t('accounts.loadFailed')),
+  )
+  const mail = useContext(AuthContext)?.features.has('mail') === true
+  const loadMuted = useCallback(
+    (signal: AbortSignal) => (mail ? listMutedThreads(signal) : Promise.resolve(NOTHING_MUTED)),
+    [mail],
+  )
+  const { state: muted, retry: reloadMuted } = useLoad(loadMuted, (error) =>
+    apiErrorMessage(error, t('filters.muted.loadFailed')),
   )
 
   return (
@@ -58,13 +74,36 @@ export function FiltersScreen(): ReactElement {
           </Link>
         </p>
       )}
+      {muted.kind === 'failed' && (
+        <div className="flex flex-col items-start gap-3">
+          <p role="alert">{muted.message}</p>
+          <Button variant="outline" size="sm" onClick={reloadMuted}>
+            {t('auth.retry')}
+          </Button>
+        </div>
+      )}
       {accounts.kind === 'loaded' &&
-        accounts.value.map((account) => <AccountRuleSets key={account.id} account={account} />)}
+        accounts.value.map((account) => (
+          <AccountRuleSets
+            key={account.id}
+            account={account}
+            muted={muted.kind === 'loaded' ? muted.value.filter((thread) => thread.account_id === account.id) : NOTHING_MUTED}
+            onUnmuted={reloadMuted}
+          />
+        ))}
     </main>
   )
 }
 
-function AccountRuleSets({ account }: { account: Account }): ReactElement {
+function AccountRuleSets({
+  account,
+  muted,
+  onUnmuted,
+}: {
+  account: Account
+  muted: MutedThread[]
+  onUnmuted: () => void
+}): ReactElement {
   const { t } = useTranslation(FILTERS_NS)
   const navigate = useNavigate()
   const load = useCallback((signal: AbortSignal) => listRuleSets(account.id, signal), [account.id])
@@ -151,6 +190,17 @@ function AccountRuleSets({ account }: { account: Account }): ReactElement {
         >
           {t('filters.ruleSet.add')}
         </Button>
+      )}
+      {muted.length > 0 && (
+        <MutedThreads
+          account={account}
+          threads={muted}
+          onChanged={() => {
+            onUnmuted()
+            // The row goes, the whole list with the last one: focus stays in this account's section.
+            requestAnimationFrame(() => addTrigger.current?.focus())
+          }}
+        />
       )}
     </section>
   )

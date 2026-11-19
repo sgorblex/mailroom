@@ -10,6 +10,7 @@ import type {
   MessagePage,
   MessagePart,
   MessageView,
+  MutedThread,
   OrganizeGroup,
   SendResult,
   SourceFailure,
@@ -96,6 +97,12 @@ export interface FakeMailState {
   /** The rule sets and filters the filter routes keep, for what the mail screen offers to add. */
   ruleSets?: RuleSet[]
   filters?: Filter[]
+  /** The muted threads the mute routes keep, one per muted message but for `conversations`. */
+  muted?: MutedThread[]
+  /** Refs of one conversation each, whose mutes answer the one muted thread. */
+  conversations?: string[][]
+  /** The muted thread each muted message's mute answered, by ref. */
+  mutedBy?: Record<string, number>
 }
 
 /** The statuses of the mail codes the organize routes answer (`docs/requirements/mail-client.md`). */
@@ -870,6 +877,41 @@ export function stubMailApi(state: FakeMailState): Mock {
         }
       }
       return json(201, { address, created_at: '2026-11-19T10:00:00+00:00' })
+    }
+    match = /^\/api\/v1\/mail\/messages\/([^/]+)\/mute$/.exec(path)
+    if (match !== null && init?.method === 'POST') {
+      const view = state.views[decodeURIComponent(match[1] ?? '')]
+      if (view === undefined) {
+        return notFound()
+      }
+      const muted = (state.muted ??= [])
+      const ref = view.ref
+      const mutedBy = (state.mutedBy ??= {})
+      const conversation = state.conversations?.find((refs) => refs.includes(ref)) ?? [ref]
+      const joined = muted.find((each) => conversation.some((other) => mutedBy[other] === each.id))
+      if (joined !== undefined) {
+        mutedBy[ref] = joined.id
+        return json(201, joined)
+      }
+      const thread: MutedThread = {
+        id: Math.max(0, ...muted.map((each) => each.id)) + 1,
+        account_id: view.account_id,
+        ids: 1,
+        gmail: false,
+        run_filters: state.runFilters?.[view.account_id] ?? false,
+        created_at: '2026-11-19T10:00:00+00:00',
+      }
+      muted.push(thread)
+      mutedBy[ref] = thread.id
+      return json(201, thread)
+    }
+    match = /^\/api\/v1\/mail\/muted\/(\d+)$/.exec(path)
+    if (match !== null && init?.method === 'DELETE') {
+      const before = state.muted ?? []
+      state.muted = before.filter((thread) => thread.id !== Number(match?.[1]))
+      return state.muted.length === before.length
+        ? json(404, { detail: { code: 'not_found', message: 'No such muted thread' } })
+        : new Response(null, { status: 204 })
     }
     match = /^\/api\/v1\/mail\/messages\/([^/]+)\/unsubscribe$/.exec(path)
     if (match !== null && init?.method === 'POST') {

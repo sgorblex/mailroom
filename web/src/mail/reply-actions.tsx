@@ -1,6 +1,7 @@
 import { createElement, useId, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { useAccountName } from '@/accounts/accounts-context.ts'
 import type { AccountId } from '@/api/accounts.ts'
 import { Button } from '@/components/ui/button.tsx'
 
@@ -8,16 +9,21 @@ import { listedActions, unavailableReason, type ActionContext } from './action-r
 import { useCompose } from './compose-context.ts'
 import { useDraftFilter } from './filter-draft.ts'
 import { MAIL_NS } from './i18n.ts'
+import { useMuting } from './mute-context.ts'
 import { NO_TRIAGE_ACTIONS } from './triage-actions.ts'
 
 /**
  * Reply, reply all and forward of the open message, each opening the composer with its fields;
- * then print, download and a filter drafted from it, which the composer's state does not hold back.
+ * then print, download, a filter drafted from it and muting its conversation, which the
+ * composer's state does not hold back. Once muted, says so, and when the account's Run filters is
+ * off, that muting has no effect until it is on.
  */
 export function ReplyActions({ account, messageRef }: { account: AccountId; messageRef: string }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const compose = useCompose()
   const draftFilter = useDraftFilter()
+  const muting = useMuting()
+  const accountName = useAccountName()
   const hintId = useId()
   const context: ActionContext = {
     actions: NO_TRIAGE_ACTIONS,
@@ -26,7 +32,9 @@ export function ReplyActions({ account, messageRef }: { account: AccountId; mess
     compose,
     openPicker: () => undefined,
     draftFilter,
+    muting,
   }
+  const muted = muting?.mutedAs(messageRef)
   const actions = listedActions('reply', context)
   const allowed = actions.every((action) => unavailableReason(action, context) === null)
   const forms = listedActions('message', context)
@@ -71,6 +79,12 @@ export function ReplyActions({ account, messageRef }: { account: AccountId; mess
       {!allowed && (
         <p id={hintId} className="text-xs text-muted-foreground">
           {t('compose.offHint')}
+        </p>
+      )}
+      {muted !== undefined && (
+        <p className="text-xs text-muted-foreground">
+          {t('mute.isMuted')}
+          {!muted.run_filters && ` ${t('mute.runFiltersOff', { account: accountName(account) })}`}
         </p>
       )}
     </div>

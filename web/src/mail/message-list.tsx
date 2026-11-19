@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils.ts'
 import { listedActions, unavailableReason, type ActionContext } from './action-registry.ts'
 import { useCompose } from './compose-context.ts'
 import { useDraftFilter } from './filter-draft.ts'
+import { useMuting } from './mute-context.ts'
 import { addressLabel, formatListDate } from './format.ts'
 import { MAIL_NS } from './i18n.ts'
 import { endMessageDrag, startMessageDrag } from './message-drag.ts'
@@ -235,6 +236,7 @@ function MessageMenu({
   const triage = useTriage()
   const compose = useCompose()
   const draftFilter = useDraftFilter()
+  const muting = useMuting()
   // Every row is selected, as its checkbox shows, while every matching message is.
   const selected = triage.matching !== null || triage.selection.has(row.ref)
   const targets = selected ? [...triage.selection.values()] : [row]
@@ -258,6 +260,7 @@ function MessageMenu({
       }
     },
     draftFilter,
+    muting,
   }
   const items: MenuItem[] = [
     ...listedActions('reply', context),

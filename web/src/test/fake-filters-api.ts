@@ -71,6 +71,8 @@ export interface FakeState {
   messageDrafts?: Record<string, Body>
   /** What `POST /filters/draft-from-search` answers. */
   searchDraft?: Body
+  /** What `GET /mail/muted` lists, each as the API answers it. */
+  muted?: Body[]
   /** Requests (`"<METHOD> <path>"`) answered with this status and body instead. */
   refuse?: Record<string, { status: number; body: unknown }>
   /** Requests (`"<METHOD> <path>"`) answered only once this settles. */
@@ -142,7 +144,16 @@ export function stubFiltersApi(state: FakeState): Mock {
     if (path === '/api/v1/filters/draft-from-search' && method === 'POST' && state.searchDraft !== undefined) {
       return Promise.resolve(json(200, state.searchDraft))
     }
-    let match = /^\/api\/v1\/mail\/messages\/([^/]+)\/filter-draft$/.exec(path)
+    if (path === '/api/v1/mail/muted' && method === 'GET') {
+      return Promise.resolve(json(200, { threads: state.muted ?? [] }))
+    }
+    let match = /^\/api\/v1\/mail\/muted\/(\d+)$/.exec(path)
+    if (match !== null && method === 'DELETE') {
+      const before = state.muted ?? []
+      state.muted = before.filter((thread) => thread['id'] !== Number(match?.[1]))
+      return Promise.resolve(state.muted.length === before.length ? notFound() : new Response(null, { status: 204 }))
+    }
+    match = /^\/api\/v1\/mail\/messages\/([^/]+)\/filter-draft$/.exec(path)
     if (match !== null) {
       const draft = state.messageDrafts?.[decodeURIComponent(match[1] ?? '')]
       return Promise.resolve(draft === undefined ? notFound() : json(200, draft))

@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { type FakeState, HOME, sentBody, stubFiltersApi, WORK } from '@/test/fake-filters-api.ts'
 import { renderFiltersApp } from '@/test/filters-app.tsx'
 
+const MUTED = { id: 4, account_id: WORK, ids: 1, gmail: false, run_filters: true, created_at: '2026-11-19T09:00:00Z' }
+
 function state(overrides: Partial<FakeState> = {}): FakeState {
   return {
     accounts: [
@@ -29,6 +31,11 @@ function state(overrides: Partial<FakeState> = {}): FakeState {
     messages: [],
     ...overrides,
   }
+}
+
+/** Each request sent, as `"<METHOD> <path>"`. */
+function sentRequests(fetchMock: ReturnType<typeof stubFiltersApi>): string[] {
+  return fetchMock.mock.calls.map((call) => `${(call[1] as RequestInit | undefined)?.method ?? 'GET'} ${String(call[0])}`)
 }
 
 afterEach(() => {
@@ -158,5 +165,86 @@ describe('FiltersScreen', () => {
     await vi.waitFor(() => {
       expect(within(work).getByRole('button', { name: 'Add a rule set to Work mail' })).toHaveFocus()
     })
+  })
+
+  it('lists the muted conversations of each account, says muting needs Run filters, and unmutes one', async () => {
+    const muted = [
+      { id: 4, account_id: HOME, ids: 3, gmail: true, run_filters: false, created_at: '2026-11-18T09:00:00Z' },
+      { id: 5, account_id: WORK, ids: 1, gmail: false, run_filters: true, created_at: '2026-11-19T09:00:00Z' },
+    ]
+    const fake = state({ muted })
+    const fetchMock = stubFiltersApi(fake)
+    renderFiltersApp('/filters', { features: ['mail', 'filters'] })
+
+    const home = await screen.findByRole('list', { name: 'Muted conversations of home' })
+    expect(within(home).getByText('Known by 3 messages · and by its Gmail thread')).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'home' })).toHaveTextContent(
+      'Run filters is off for this account: muting has no effect until it is on.',
+    )
+    const work = screen.getByRole('list', { name: 'Muted conversations of Work mail' })
+    expect(within(work).getByText('Known by 1 message')).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Work mail' })).not.toHaveTextContent('muting has no effect')
+
+    await userEvent.click(within(home).getByRole('button', { name: /^Unmute the conversation muted / }))
+    await vi.waitFor(() => {
+      expect(screen.queryByRole('list', { name: 'Muted conversations of home' })).not.toBeInTheDocument()
+    })
+    expect(sentRequests(fetchMock)).toContain('DELETE /api/v1/mail/muted/4')
+    expect(fake.muted).toEqual([muted[1]])
+    // The list goes with its last conversation: focus stays in the account's section.
+    await vi.waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Add a rule set to home' })).toHaveFocus()
+    })
+  })
+
+  it('says when the muted conversations cannot be listed, and lists them on retry', async () => {
+    const fake = state({
+      muted: [MUTED],
+      refuse: { 'GET /api/v1/mail/muted': { status: 500, body: { detail: 'Server error' } } },
+    })
+    stubFiltersApi(fake)
+    renderFiltersApp('/filters', { features: ['mail', 'filters'] })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Server error')
+    fake.refuse = {}
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByRole('list', { name: 'Muted conversations of Work mail' })).toBeInTheDocument()
+  })
+
+  it('keeps a conversation the server would not unmute, saying so', async () => {
+    const fake = state({
+      muted: [MUTED],
+      refuse: { 'DELETE /api/v1/mail/muted/4': { status: 500, body: { detail: 'Server error' } } },
+    })
+    stubFiltersApi(fake)
+    renderFiltersApp('/filters', { features: ['mail', 'filters'] })
+
+    const work = await screen.findByRole('list', { name: 'Muted conversations of Work mail' })
+    await userEvent.click(within(work).getByRole('button', { name: /^Unmute the conversation muted / }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Server error')
+    expect(within(work).getAllByRole('listitem')).toHaveLength(1)
+  })
+
+  it('takes a conversation unmuted elsewhere off the list, with no error', async () => {
+    const fake = state({ muted: [MUTED] })
+    stubFiltersApi(fake)
+    renderFiltersApp('/filters', { features: ['mail', 'filters'] })
+
+    const work = await screen.findByRole('list', { name: 'Muted conversations of Work mail' })
+    fake.muted = []
+    await userEvent.click(within(work).getByRole('button', { name: /^Unmute the conversation muted / }))
+    await vi.waitFor(() => {
+      expect(screen.queryByRole('list', { name: 'Muted conversations of Work mail' })).not.toBeInTheDocument()
+    })
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('lists no muted conversations where the instance runs no mail client', async () => {
+    const fetchMock = stubFiltersApi(state({ muted: [MUTED] }))
+    renderFiltersApp('/filters', { features: ['filters'] })
+
+    await screen.findByRole('list', { name: 'Rule sets of Work mail' })
+    expect(screen.queryByRole('heading', { name: 'Muted conversations' })).not.toBeInTheDocument()
+    expect(sentRequests(fetchMock)).not.toContain('GET /api/v1/mail/muted')
   })
 })
