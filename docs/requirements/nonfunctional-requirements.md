@@ -464,7 +464,8 @@ bounded to one minor because the server relies on its handlers.
   for the MCP server); `account_autoconfig` with `user_id` and `outcome` (the source, or
   `none`); never a login, a host or a password.
 - **Removing a user** removes, in the same transaction, the app's rows about their accounts (and the
-  senders whose remote content they show) and mailroom-core's (`forget_user`: settings with their
+  senders whose remote content they show, and the ledger of copies their filters moved between
+  accounts) and mailroom-core's (`forget_user`: settings with their
   history, sealed passwords, send log). While a save of their accounts holds them past
   mailroom-core's lock timeout, nothing is removed: 503 `user_accounts_busy`.
 - **Known risk — outbound connections:** a login test or a folder listing connects to whatever
@@ -582,7 +583,10 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   lists (the folder as its segments joined by `/`, UID, the sender's address, the date, the
   subject's hash, the filter's id and name), one more record counting those past the report's
   200, and, when the run failed partway, one `run_failed` record naming the filter it failed on,
-  which may have acted on some messages. Never a subject or a body. The web's draft saves are
+  which may have acted on some messages; a filter's move to another account is recorded per
+  message as it went, refusals included (one refused on its own with its `reason`), and per copy
+  in the target account. Never a subject or
+  a body. The web's draft saves are
   not recorded (they are the user typing; an agent's are); its explicit deletes and every send
   are. A record is written by the thread that did the work, as the work reports it (an organize
   call's items once its groups are done, so a call cut at its deadline still records what it
@@ -608,12 +612,15 @@ What they do and the route list: [`filters.md`](filters.md). How:
   `filter_match_day` (a filter's real-run matches per UTC day, added to by the worker as a run
   finishes), `muted_thread` (by `user_id` and account id; its Message-IDs as `jsonb`, 200 at
   most, and Gmail's thread id), and `rule_set.kind` (`user`, or the account's one hidden `mute`
-  rule set, a partial unique index). Removing an account removes its rule sets and muted threads,
-  and the runs on it of the rule sets for all accounts, and a rule set its filters and runs;
-  removing a user removes all of theirs, with their accounts. Each rule set keeps its newest 100
-  runs, and every run still queued or in progress, and its filters' match days of the last 30,
-  pruned as runs are. A report is stored without NUL characters (`jsonb` refuses them; a header may
-  decode to one).
+  rule set, a partial unique index), `rule_set.disabled_reason` (why the app turned it off),
+  `transfer_ledger` (the copies a filter's move to another account made, keyed by user, account,
+  folder, UIDVALIDITY and UID: the loop guard; 90 days, a folder's entries dropped when its
+  UIDVALIDITY changes). Removing an account removes its rule sets, muted threads and ledger entries,
+  and the runs on it of the rule sets for all accounts, and turns off the user's other rule sets
+  moving to it; a rule set's removal removes its filters and runs; removing a user removes all of
+  theirs, with their accounts. Each rule set keeps its newest 100 runs, and every run still queued
+  or in progress, and its filters' match days of the last 30, pruned as runs are. A report is stored
+  without NUL characters (`jsonb` refuses them; a header may decode to one).
 - **The folder picker's** `GET /accounts/{id}/folders` lists through the mail service, as MCP's
   `folders_list` does: the selectable folders, each split on its own delimiter, without counts.
 - **Refusals** are 400 `{"detail": {"code", "message"}}`: `invalid_spec` (the filter engine's
@@ -656,8 +663,13 @@ What they do and the route list: [`filters.md`](filters.md). How:
     `match_timeout`, logged by its exception's type only (its text quotes the pattern); anything
     unexpected is `run_failed`, its exception's type name only. A move that copied messages but
     could not remove them (no MOVE, the removal refused) is `copied_not_removed`, and the run
-    turns its rule set off (`enabled` false, logged as `rule_set_turned_off`), since every trigger
-    would copy them again; the engine's searches also skip messages marked `\Deleted`.
+    turns its rule set off (`enabled` false, its `disabled_reason` set, logged as
+    `rule_set_turned_off`), since every trigger would copy them again; the engine's searches also
+    skip messages marked `\Deleted`. So does a move to another account that left a message in
+    both (`in_both_accounts`). Such a move's target is the run's `RunTargets` (checked again, the
+    user's move cap), its copies written to `transfer_ledger` before their originals go, on the
+    run's session, which commits each step; every run passes the engine the ledger's UIDs of its
+    folder to skip, read again before each filter.
     A run removed meanwhile (with its rule set or account) is left alone. A run whose job is
     neither waiting nor running when the worker starts (its worker stopped during it) is closed
     with the error `interrupted`.
@@ -699,7 +711,8 @@ What they do and the route list: [`filters.md`](filters.md). How:
   `filter_changed`, `filter_removed`, `filters_reordered`, `dry_run` (with `outcome`),
   `run_requested` and `run_filters_changed` (with `account_id`); from the worker `run_queued` and
   `rule_set_run` (with `account_id`, `trigger` and `outcome`: `ok`, the error's code, or `gone`) and
-  `match_count_failed` and `thread_join_failed` (with `error`, the exception's type);
+  `match_count_failed`, `thread_join_failed` and `ledger_write_failed` (with `error`, the
+  exception's type), `rule_set_turned_off` (with `reason`, its code);
   `thread_muted` and `thread_unmuted` (with `account_id` and `muted_thread_id`, never an id of
   the message); with `user_id`
   and `rule_set_id`, `filter_id` or `run_id`, and from the API `via` as for accounts; never a spec

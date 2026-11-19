@@ -11,7 +11,7 @@ from mailroom import audit
 from mailroom.audit import WEB, AuditTrail, Entry, Origin, retention, write_records
 from mailroom.models import AuditRecord
 from mailroom.worker.runs import run_records
-from mailroom_core.mail import AuditItem, AuditRecipients, subject_sha256
+from mailroom_core.mail import AuditItem, AuditRecipients, MessageRef, format_ref, subject_sha256
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session, sessionmaker
@@ -217,3 +217,97 @@ def test_a_dry_run_or_a_filter_that_matched_nothing_records_nothing() -> None:
     assert run_records(dry, {}, account_id=1, rule_set_id=1, run_id=1, error=None) == []
     idle = _report(matched=[])
     assert run_records(idle, {}, account_id=1, rule_set_id=1, run_id=1, error=None) == []
+
+
+def _transfer(*messages: dict[str, object], new_refs: list[str]) -> dict[str, object]:
+    return {
+        "account": 2,
+        "folder": ["Lists", "Shop"],
+        "messages": list(messages),
+        "new_refs": new_refs,
+        "error": None,
+    }
+
+
+TO_ACCOUNT_SPEC = {
+    "criterion": {"type": "anything"},
+    "action": {"type": "move_to_account", "args": {"account": 2, "folder": ["Lists", "Shop"]}},
+}
+
+
+def test_a_move_to_another_account_records_each_message_as_it_went() -> None:
+    """Each original under its account with its result, a refusal or a message left in both
+    included, and each copy under the target account; not the matched list besides."""
+    copy = format_ref(MessageRef(2, "Lists/Shop", 77, 501))
+    entries = run_records(
+        _report(
+            spec=TO_ACCOUNT_SPEC,
+            matched=_matched(3),
+            transfers=[
+                _transfer(
+                    {"uid": 0, "result": "ok", "removed": "trashed"},
+                    {"uid": 1, "result": "server_error", "removed": "failed", "copied": True},
+                    {"uid": 2, "result": "invalid_argument"},
+                    new_refs=[copy],
+                )
+            ],
+        ),
+        {3: "Shop"},
+        account_id=1,
+        rule_set_id=5,
+        run_id=9,
+        error=None,
+    )
+    assert [(e.action, e.account_id, e.result) for e in entries] == [
+        ("move_to_account", 1, "ok"),
+        ("move_to_account", 1, "server_error"),
+        ("move_to_account", 1, "invalid_argument"),
+        ("move_to_account", 2, "ok"),
+    ]
+    assert entries[1].detail == {
+        "folder": "Lists/News",
+        "filter_id": 3,
+        "filter": "Shop",
+        "uid": 1,
+        "from": "shop@example.org",
+        "subject_sha256": subject_sha256("Sale 1"),
+        "date": "x",
+        "destination": "Lists/Shop",
+        "destination_account": 2,
+        "removed": "failed",
+        "copied": True,
+    }
+    assert entries[3].detail == {
+        "folder": "Lists/Shop",
+        "uid": 501,
+        "source_account": 1,
+        "source_folder": "Lists/News",
+        "filter_id": 3,
+        "filter": "Shop",
+    }
+    assert {(e.rule_set_id, e.run_id, e.actor) for e in entries} == {(5, 9, "filter")}
+
+
+def test_a_message_refused_on_its_own_is_recorded_with_its_reason() -> None:
+    reason = "It has no Message-ID, so its copy could not be confirmed."
+    entries = run_records(
+        _report(
+            spec=TO_ACCOUNT_SPEC,
+            matched=_matched(2),
+            transfers=[
+                _transfer(
+                    {"uid": 0, "result": "ok", "removed": "trashed"},
+                    {"uid": 1, "result": "unsupported", "reason": reason},
+                    new_refs=[],
+                )
+            ],
+        ),
+        {3: "Shop"},
+        account_id=1,
+        rule_set_id=5,
+        run_id=9,
+        error=None,
+    )
+    assert [(e.account_id, e.result) for e in entries] == [(1, "ok"), (1, "unsupported")]
+    assert entries[1].detail["reason"] == reason
+    assert "removed" not in entries[1].detail

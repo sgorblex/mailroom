@@ -7,7 +7,8 @@ acts on one account, the one its row names: an all-accounts rule set has a run p
 failing on its own (a move to a folder that account lacks fails ``mailbox_missing``, nothing being
 created). A run whose job is gone (a worker stopped during it) is closed as ``interrupted`` when
 the next worker starts (``close_interrupted_runs``). A run whose move copied messages it then
-could not remove turns its rule set off (``COPIED_NOT_REMOVED``), so no trigger copies them again.
+could not remove turns its rule set off (``COPIED_NOT_REMOVED``), so no trigger copies them again,
+as does one whose moves to another account left messages in both (``IN_BOTH``).
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from typing import TYPE_CHECKING, Any, Final
 from sqlalchemy import BigInteger, column, func, text, update
 from sqlalchemy.exc import SQLAlchemyError
 
+from mailroom.accounts.service import move_cap
 from mailroom.accounts.store import AccountNotFound, load_accounts, user_store
 from mailroom.audit import Entry, write_records_in
 from mailroom.auth.users import time_zone_of
@@ -37,6 +39,16 @@ from mailroom.filters.runs import (
     run_filters_on,
 )
 from mailroom.filters.spec import InvalidSpecError
+from mailroom.filters.transfers import (
+    IN_BOTH,
+    IN_BOTH_TEXT,
+    RunTargets,
+    ledger_copies,
+    ledger_skip,
+    left_in_both,
+    moves_only,
+    transfer_records,
+)
 from mailroom.mail.connections import (
     PASSWORD_MISSING,
     PASSWORD_MISSING_TEXT,
@@ -105,7 +117,7 @@ def execute_run(db: Session, run_id: int, mailboxes: Mailboxes) -> None:
         db.execute(update(FilterRun).where(FilterRun.id == run_id).values(started_at=started_at))
         # Not idle in a transaction while the mailbox works.
         db.commit()
-        result, error = _run(rule_set, account_id, filters, mailboxes, zone, joins)
+        result, error = _run(db, rule_set, account_id, filters, mailboxes, zone, joins)
     except RunRefused as refused:
         error = refused.error
     except Exception as exc:
@@ -113,9 +125,11 @@ def execute_run(db: Session, run_id: int, mailboxes: Mailboxes) -> None:
         # Its text may quote anything, mail included: neither the record nor the log carries it.
         logger.error("A run of rule set %s failed: %s.", rule_set_id, type(exc).__name__)
         error = f"run_failed: {type(exc).__name__}"
-    recorded = _finish(db, run_id, started_at, result, error)
+    recorded = _finish(db, run_id, started_at, None if result is None else _stored(result), error)
     if recorded and error is not None and error.startswith(f"{COPIED_NOT_REMOVED}: "):
-        _turn_off(db, user_id, rule_set_id)
+        _turn_off(db, user_id, rule_set_id, COPIED_NOT_REMOVED, COPIED_NOT_REMOVED_TEXT)
+    elif recorded and result is not None and left_in_both(result):
+        _turn_off(db, user_id, rule_set_id, IN_BOTH, IN_BOTH_TEXT)
     if recorded and joins is not None:
         _join_threads(db, user_id, joins)
     if recorded and result is not None:
@@ -136,9 +150,14 @@ def execute_run(db: Session, run_id: int, mailboxes: Mailboxes) -> None:
     )
 
 
-def _turn_off(db: Session, user_id: int, rule_set_id: int) -> None:
-    """Disable the rule set: its run copied messages it could not remove. Commits ``db``."""
-    db.execute(update(RuleSet).where(RuleSet.id == rule_set_id).values(enabled=False))
+def _turn_off(db: Session, user_id: int, rule_set_id: int, code: str, text: str) -> None:
+    """Disable the rule set, its ``disabled_reason`` saying why (``code``, ``text``): its run
+    copied messages it could not remove. Commits ``db``."""
+    db.execute(
+        update(RuleSet)
+        .where(RuleSet.id == rule_set_id)
+        .values(enabled=False, disabled_reason=f"{code}: {text}")
+    )
     db.commit()
     logger.warning(
         "rule_set_turned_off",
@@ -146,7 +165,7 @@ def _turn_off(db: Session, user_id: int, rule_set_id: int) -> None:
             "event": "rule_set_turned_off",
             "user_id": user_id,
             "rule_set_id": rule_set_id,
-            "reason": COPIED_NOT_REMOVED,
+            "reason": code,
         },
     )
 
@@ -221,7 +240,9 @@ def run_records(
     the report lists them (``MATCHED_KEPT`` a filter), one for those it did not list, and, when
     the run failed partway, one ``run_failed`` record for the filter it failed on (the next one
     after those reported, ``names`` being every filter in order): it may have acted on some
-    messages. The sender as its bare address and the subject only as its hash, as mailroom-core's
+    messages. A move to another account is recorded per message as it went, refusals included,
+    and per copy (``transfer_records``), in place of the matched messages when it is the whole
+    action. The sender as its bare address and the subject only as its hash, as mailroom-core's
     items carry them; a dry run, nothing."""
     if result.get("dry_run"):
         return []
@@ -235,6 +256,20 @@ def run_records(
         matched = report.get("matched", [])
         filter_id = report.get("filter_id")
         about = {"folder": folder, "filter_id": filter_id, "filter": names.get(filter_id)}
+        if "transfers" in report:
+            summaries = {message.get("uid"): _message(message) for message in matched}
+            entries.extend(
+                transfer_records(
+                    report,
+                    about,
+                    summaries,
+                    account_id=account_id,
+                    rule_set_id=rule_set_id,
+                    run_id=run_id,
+                )
+            )
+            if moves_only(report):
+                continue
         entry = partial(record, action=str(report.get("action", "")), result="ok")
         entries.extend(entry(detail={**about, **_message(message)}) for message in matched)
         unlisted = report.get("matched_total", len(matched)) - len(matched)
@@ -324,6 +359,7 @@ def close_interrupted_runs(db: Session) -> list[int]:
 
 
 def _run(
+    db: Session,
     rule_set: RuleSet,
     account_id: int,
     filters: Sequence[Filter],
@@ -331,22 +367,34 @@ def _run(
     time_zone: TimeZoneName,
     joins: ThreadJoins | None = None,
 ) -> tuple[dict[str, Any] | None, str | None]:
-    """The run's ``result`` and ``error``: the rule set's filters on its folder of ``account_id``,
-    on the user's connections from the worker's pool, today being ``time_zone``'s; a mute rule
-    set's with its ``joins``. Raises ``RunRefused`` when it cannot start: ``account_not_found``
-    for an account that is not the user's."""
-    store = user_store(mailboxes.engine, rule_set.user_id)
+    """The run's ``result`` (``_bounded``) and ``error``: the rule set's filters on its
+    folder of ``account_id``, on the user's connections from the worker's pool, today being
+    ``time_zone``'s; a mute rule set's with its ``joins``. The copies a move to another account
+    left in the ledger are not matched, and the ones its moves make join it, both on ``db``,
+    which holds no work in between. Raises ``RunRefused`` when it cannot start:
+    ``account_not_found`` for an account that is not the user's."""
+    user_id = rule_set.user_id
+    store = user_store(mailboxes.engine, user_id)
     try:
         refused = unusable(store, mailboxes.subkey, account_id)
     except AccountNotFound:
         raise RunRefused("account_not_found", "No such account") from None
     if refused is not None:
         raise RunRefused(*refused)
-    with mailboxes.lease(rule_set.user_id, load_accounts(store).revision) as connections:
+    loaded_accounts = load_accounts(store)
+    with mailboxes.lease(user_id, loaded_accounts.revision) as connections:
         folder = rule_set_folder(connections, rule_set, account_id)
+        targets = RunTargets(
+            store,
+            mailboxes.subkey,
+            connections,
+            account_id,
+            move_cap(loaded_accounts.settings.limits),
+            partial(ledger_copies, db, user_id),
+        )
         try:
             threads = None if joins is None else joins.members
-            loaded = engine_filters(rule_set, folder, filters, threads=threads)
+            loaded = engine_filters(rule_set, folder, filters, threads=threads, accounts=targets)
         except InvalidSpecError as exc:
             raise RunRefused("invalid_spec", str(exc)) from None
         if joins is not None:
@@ -354,8 +402,14 @@ def _run(
         report = folder.new_report(dry_run=False)
         error = None
         try:
-            newest = None if joins is None else MUTE_NEWEST
-            folder.run_into(report, loaded, dry_run=False, newest=newest, time_zone=time_zone)
+            folder.run_into(
+                report,
+                loaded,
+                dry_run=False,
+                newest=None if joins is None else MUTE_NEWEST,
+                time_zone=time_zone,
+                skip=partial(ledger_skip, db, user_id, account_id),
+            )
         except MatchTimeoutError as exc:
             # Its text quotes the user's pattern: the log names the kind only.
             logger.warning("A run of rule set %s stopped: %s.", rule_set.id, type(exc).__name__)
@@ -388,3 +442,28 @@ def _bounded_entry(entry: dict[str, Any]) -> dict[str, Any]:
     if len(matched) <= MATCHED_KEPT:
         return entry
     return {**entry, "matched": matched[:MATCHED_KEPT], "matched_total": len(matched)}
+
+
+def _stored(result: dict[str, Any]) -> dict[str, Any]:
+    """``result`` as the run keeps it: each move to another account's ``messages`` and
+    ``new_refs`` cut to ``MATCHED_KEPT`` too, ``messages_total`` counting them all (the audit
+    trail has each)."""
+    entries = [
+        {**entry, "transfers": [_stored_transfer(t) for t in entry["transfers"]]}
+        if "transfers" in entry
+        else entry
+        for entry in result["filters"]
+    ]
+    return {**result, "filters": entries}
+
+
+def _stored_transfer(transfer: dict[str, Any]) -> dict[str, Any]:
+    messages = transfer["messages"]
+    if len(messages) <= MATCHED_KEPT and len(transfer["new_refs"]) <= MATCHED_KEPT:
+        return transfer
+    return {
+        **transfer,
+        "messages": messages[:MATCHED_KEPT],
+        "messages_total": len(messages),
+        "new_refs": transfer["new_refs"][:MATCHED_KEPT],
+    }

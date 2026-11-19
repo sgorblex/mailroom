@@ -149,11 +149,10 @@ released and checked in production before the next one starts. Batch 15 is the r
 - [x] **Match counts per filter** — how often each filter matched lately, so dead ones stand out.
 - [x] **Rules for all accounts** — one rule set applied to every account of the user
       ([`filters.md`](requirements/filters.md)).
-- [ ] **Filters that move to another account** — a `mailroom_core.filters` action naming the
-      target account, resolved by the host at load time (the user's own only, checked on save
-      and at run), with an account and folder picker in the filter editor. Needs a guard against loops (A to B and
-      B to A, or the target's new-mail filters picking the message up again) and a run that
-      writes to two mailboxes.
+- [ ] **Filters that move to another account** — the action, its checks and the loop-guard
+      ledger are in ([`filters.md`](requirements/filters.md#moves-to-another-account)); left: an
+      account and folder picker in the filter editor, and the rule set's `disabled_reason` in
+      the web.
 
 ### Milestone C: The index
 

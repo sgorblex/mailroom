@@ -15,7 +15,7 @@ from mailroom_core.filters import SpecError, json_schema, load_filter
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from mailroom_core.filters import Filter, ThreadResolver
+    from mailroom_core.filters import AccountResolver, Filter, ThreadResolver
 
 
 HIDDEN_CRITERIA: Final = frozenset({"in_thread"})
@@ -28,11 +28,17 @@ class InvalidSpecError(ValueError):
     schema's complaint, or the regular expression's error."""
 
 
-def loaded_filter(spec: Mapping[str, Any], *, threads: ThreadResolver | None = None) -> Filter:
+def loaded_filter(
+    spec: Mapping[str, Any],
+    *,
+    threads: ThreadResolver | None = None,
+    accounts: AccountResolver | None = None,
+) -> Filter:
     """The filter engine's filter for ``spec``, ``threads`` giving an ``in_thread`` its thread's
-    members (without it, it matches nothing). Raises ``InvalidSpecError``."""
+    members (without it, it matches nothing) and ``accounts`` a ``move_to_account`` its target
+    (without it, its moves fail). Raises ``InvalidSpecError``."""
     try:
-        return load_filter(spec, threads=threads)
+        return load_filter(spec, threads=threads, accounts=accounts)
     except SpecError as exc:
         raise InvalidSpecError(str(exc)) from None
     except RecursionError:

@@ -79,6 +79,8 @@ class RuleSet(Base):
     kind: Mapped[str] = mapped_column(Text, server_default="user")
     """``user``, or ``mute``: the account's hidden one muting threads (``mailroom.filters.mute``),
     left out of every listing and edit."""
+    disabled_reason: Mapped[str | None] = mapped_column(Text)
+    """Why the app turned it off, ``<code>: <message>``; cleared when the user turns it on."""
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -162,3 +164,21 @@ class MutedThread(Base):
     gm_thrid: Mapped[int | None] = mapped_column(BigInteger)
     """Gmail's ``X-GM-THRID``."""
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TransferLedger(Base):
+    """A message a filter's move to another account copied there, by its place in that account:
+    the target's runs leave it alone, so no filter moves it on or back (the loop guard). Pruned
+    when its folder's UIDVALIDITY changes and after ``mailroom.filters.transfers.LEDGER_DAYS``."""
+
+    __tablename__ = "transfer_ledger"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey(User.id, ondelete="CASCADE"), primary_key=True)
+    account_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    folder: Mapped[str] = mapped_column(Text, primary_key=True)
+    """As the server names it (``INBOX`` in capitals)."""
+    uid_validity: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    uid: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )

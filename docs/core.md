@@ -362,7 +362,8 @@ max_bytes=, refuse_each=False)` moves messages to a folder of another account th
   is repeated without copying twice, while a different message sharing the Message-ID (a
   list's copy, or one written to look like it) is not mistaken for it. Two moves of the same
   messages at once can each copy them: the guarantee is for a move repeated after another.
-- **The original** goes only once its copy is confirmed: to its account's Trash (one already in
+- **The original** goes only once its copy is confirmed, and after the caller's `copied`, when
+  given, has heard of the copies (one that raises leaves them in both): to its account's Trash (one already in
   Trash stays), or for good with `delete_uids` of exactly those UIDs; on Gmail, where that would
   only drop a label, by a move to Trash and the expunge there.
 - **Stops at the first error** in a folder. Copies whose originals could not be removed are in
@@ -599,9 +600,11 @@ or loaded from their data form. Its tests are in `tests/filters`.
   criterion is built; without a resolver, or for a name it does not know, it matches nothing.
   `move_to_account` is another: `load_action(spec, accounts=...)` (or `load_filter`) gives it the
   host's `AccountResolver`, which maps the target account id to an `AccountTarget` (connections
-  serving it and the run's account, and the `max_bytes` cap) when the move is made, and raises
-  `MailError` for an account the run may not move to; without one, every message fails
-  `unsupported`.
+  serving it and the run's account, the `max_bytes` cap, and `copied`, called with each chunk's
+  confirmed copies' refs before their originals are removed: the host's loop guard, whose
+  `MailError` leaves those originals in both accounts and stops the moves left) when the move is
+  made, and raises `MailError` for an account the run may not move to;
+  without one, every message fails `unsupported`.
 - **A run** (`Folder.run`, `run_into`) is one `with_mailbox` session for all the filters given,
   in order, each seeing what the earlier ones did: search, fetch only what the query cannot decide
   (`fetch_sources`, which never sets `\Seen`, parsed by `parsed_message`; cached for the run,
@@ -611,7 +614,9 @@ or loaded from their data form. Its tests are in `tests/filters`.
   an original a move copied but could not expunge never matches again. `newest=n` (at least 1)
   looks the folder's newest `n` messages up once (`exists-n+1:exists`), ANDs their UID range into
   every search, so an earlier filter's expunge does not shift it, and sets the report's
-  `limited_to_newest`. Its `FolderReport` gives per filter what it matched (from one `ENVELOPE`
+  `limited_to_newest`. `skip` (`SkipUids`), given the folder's server name and UIDVALIDITY, asked once
+  selected and again before each filter, returns UIDs no filter of the run matches (the app's
+  copies from another account). Its `FolderReport` gives per filter what it matched (from one `ENVELOPE`
   fetch) and did; `run_into` fills it as filters finish, so a failure keeps what was done. Mail
   failures are `MailError`s; anything else (a pattern's `MatchTimeoutError`, a bug) leaves the
   session as itself, never as a `server_error`.

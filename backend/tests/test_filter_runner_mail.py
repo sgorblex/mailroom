@@ -104,6 +104,86 @@ def test_a_rule_set_for_all_accounts_moves_where_the_folder_is_and_fails_where_n
     assert not has_folder(bare, "Archive")
 
 
+def test_a_filter_moves_to_another_account_and_the_copy_is_not_moved_back(
+    user_client: TestClient,
+    db_session: Session,
+    imap_server: ImapTestServer,
+    mailbox: Mailbox,
+    account: int,
+    mailboxes: Mailboxes,
+    audited: Callable[[int], list[AuditRecord]],
+    user: User,
+) -> None:
+    """The copy lands in the ledger, so the target's own rule set moving the same mail back
+    leaves it where it arrived: no loop."""
+    home_box = Mailbox(imap_server, imap_server.unique_user("home"))
+    endpoint = {"host": imap_server.host, "port": imap_server.port, "tls": "implicit"}
+    home = added(
+        user_client,
+        new_account("home", login=home_box.login, password=imap_server.password, imap=endpoint),
+    )
+    mailbox.append_raw("INBOX", mime("Autumn sale", sender=SHOP, message_id="<s@x.org>").encode())
+    mailbox.append("INBOX", (BANK, "Statement", False))
+    # No Message-ID: refused on its own, the other message still moving.
+    mailbox.append_raw("INBOX", f"From: {SHOP}\r\nSubject: No id\r\n\r\nhi\r\n".encode())
+    home_box.append_raw("INBOX", mime("Already home", sender=SHOP, message_id="<h@x.org>").encode())
+    for each in (account, home):
+        set_run_filters(user_client, each, on=True)
+    shop = SHOP_SPEC["criterion"]
+    out = add_rule_set(user_client, account, enabled=False)
+    add_filter(
+        user_client,
+        out,
+        "To home",
+        {
+            "criterion": shop,
+            "action": {"type": "move_to_account", "args": {"account": home, "folder": ["INBOX"]}},
+        },
+    )
+    back = add_rule_set(user_client, home, enabled=False)
+    add_filter(
+        user_client,
+        back,
+        "Back",
+        {
+            "criterion": shop,
+            "action": {
+                "type": "move_to_account",
+                "args": {"account": account, "folder": ["INBOX"]},
+            },
+        },
+    )
+    for rule_set_id in (out, back):
+        enabled = user_client.patch(f"/api/v1/rule-sets/{rule_set_id}", json={"enabled": True})
+        assert enabled.status_code == 200, enabled.json()
+
+    run_id = queued_run(user_client, out)
+    execute_run(db_session, run_id, mailboxes)
+    assert sorted(mailbox.subjects("INBOX")) == ["No id", "Statement"]
+    assert mailbox.subjects("Trash") == ["Autumn sale"]
+    assert sorted(home_box.subjects("INBOX")) == ["Already home", "Autumn sale"]
+    [entry] = run_out(user_client, out, run_id)["result"]["filters"]
+    [transfer] = entry["transfers"]
+    assert sorted(m["result"] for m in transfer["messages"]) == ["ok", "unsupported"]
+    [refused] = [m for m in transfer["messages"] if m["result"] != "ok"]
+    assert "no Message-ID" in refused["reason"]
+    recorded = sorted(
+        (r.action, r.account_id, r.result) for r in audited(user.id) if r.run_id == run_id
+    )
+    assert recorded == [
+        ("move_to_account", account, "ok"),
+        ("move_to_account", account, "unsupported"),
+        ("move_to_account", home, "ok"),
+    ]
+
+    # Home's run moves its own shop mail back, but not the copy it received.
+    back_run = queued_run(user_client, back)
+    execute_run(db_session, back_run, mailboxes)
+    assert home_box.subjects("INBOX") == ["Autumn sale"]
+    assert mailbox.subjects("INBOX") == ["Statement", "No id", "Already home"]
+    assert user_client.get(f"/api/v1/rule-sets/{out}").json()["enabled"] is True
+
+
 def starred(mailbox: Mailbox, folder: str) -> list[int]:
     conn = mailbox.client()
     try:

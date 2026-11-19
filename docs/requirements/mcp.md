@@ -126,7 +126,7 @@ not OAuth scope.
 | --- | --- | --- |
 | `filters_read` or any `mail_*` group (whichever is on) | `accounts_list` (`id`, a number, `name` (the account's own, null when unnamed), `display_name` (its name, else its login), login, `has_password`, `run_filters` where the instance runs filters, `send_mode`, `identities`, `keywords`: whether the server keeps keywords, so To sort can be used, null when it did not answer within 5 s) | readOnly, idempotent, openWorld |
 | | `folders_list` (`path` as the mail tools take it, `delimiter`, `segments`, `role`; `counts=true` adds unread and total) | readOnly, idempotent, openWorld |
-| `filters_read` (stable, on) | `filter_schema`, `rule_sets_list` (`account_id` an id or `all`, the rule sets for all accounts), `rule_set_get` (with its filters, each with `matches_30d` and `updated_at`, [`filters.md`](filters.md)), `runs_list` (each run with the `account_id` it ran on) | readOnly, idempotent |
+| `filters_read` (stable, on) | `filter_schema`, `rule_sets_list` (`account_id` an id or `all`, the rule sets for all accounts), `rule_set_get` (with its `disabled_reason` and its filters, each with `matches_30d` and `updated_at`, [`filters.md`](filters.md)), `runs_list` (each run with the `account_id` it ran on) | readOnly, idempotent |
 | `filters_write` (stable, on) | `rule_set_create` (`account_id` `all`: a [rule set for all accounts](filters.md), on INBOX only), `rule_set_update` (both take `marker`: `none`, `star` or `to_sort`, the last refused as `to_sort_unsupported` where the account keeps no keywords; their descriptions tell the agent to pick To sort for "only marked" where it does, else the star), `filter_add`, `filter_update` (each refusing the To sort actions the same way, a sender criterion on a public mail provider's whole domain as `public_provider_domain`, and `in_thread` as `hidden_criterion`, [`filters.md`](filters.md#filter-drafts)), `filters_reorder` | none |
 | | `rule_set_disable` | idempotent |
 | | `rule_set_delete`, `filter_delete` | destructive |
@@ -171,7 +171,10 @@ originals, the other deletes them for good, and says so as `folder_delete` does.
 - `dry_run` changes nothing and shares the user's one-dry-run-at-a-time slot with the web app.
 - **A filter may delete for good:** the filter tools accept the filter engine's `delete` action, as the
   web app does ([`filters.md`](filters.md)). It acts only once the rule set is enabled, by the
-  separate call above.
+  separate call above. A `move_to_account` names another of the user's accounts, checked as on
+  the web ([*Moves to another account*](filters.md#moves-to-another-account)); a rule set the
+  app turned off says why (`disabled_reason`), and `rule_set_enable`'s description asks the
+  agent to have the user check it first.
 - **The send mode is the guard against an agent tricked by an email.** It limits agents only
   ([`mail-client.md`](mail-client.md), *Send mode and who is acting*), a mode of `off` refuses
   every draft and send tool, and nothing in a tool's input can raise it. Mail text that tells an

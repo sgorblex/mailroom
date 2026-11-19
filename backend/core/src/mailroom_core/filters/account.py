@@ -29,7 +29,7 @@ from mailroom_core.mail import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable, Collection, Iterable
 
     from mailroom_core.config import TimeZoneName
     from mailroom_core.filters.report import (
@@ -40,6 +40,10 @@ if TYPE_CHECKING:
     )
     from mailroom_core.filters.spec.nodes import SpecNode
     from mailroom_core.mail import MailboxContext, MailConnections
+
+type SkipUids = Callable[[str, int], Collection[int]]
+"""The host's UIDs a run leaves alone, given the folder as the server names it and its
+UIDVALIDITY (`Folder.run`'s ``skip``)."""
 
 _SAMPLE = 10
 """UIDs a log line lists at most."""
@@ -103,6 +107,7 @@ class Folder:
         dry_run: bool = False,
         newest: int | None = None,
         time_zone: TimeZoneName | None = None,
+        skip: SkipUids | None = None,
     ) -> FolderReport:
         """Run one or more filters on this folder, in one session of the account's connections.
 
@@ -124,7 +129,10 @@ class Folder:
         selected, resolved to their UIDs first, so an earlier filter's move leaves the window in
         place and later mail stays out; the report's ``limited_to_newest`` says so when the
         folder held more. ``time_zone`` (an IANA name) is the zone whose today criteria relative
-        to the run count from (`OlderThanDays`); None, the machine's.
+        to the run count from (`OlderThanDays`); None, the machine's. ``skip``, given the folder
+        as the server names it and its UIDVALIDITY, returns UIDs no filter of the run matches
+        (the host's own record of messages it put there, say): asked once the folder is
+        selected and again before each filter, so a record made meanwhile counts.
 
         Returns a report (see :mod:`mailroom_core.filters.report`): per filter its spec,
         the matched messages (UID, From, Subject, Date, fetched as ENVELOPE)
@@ -135,7 +143,12 @@ class Folder:
         """
         report = self.new_report(dry_run)
         self.run_into(
-            report, filter_or_filters, dry_run=dry_run, newest=newest, time_zone=time_zone
+            report,
+            filter_or_filters,
+            dry_run=dry_run,
+            newest=newest,
+            time_zone=time_zone,
+            skip=skip,
         )
         return report
 
@@ -157,6 +170,7 @@ class Folder:
         dry_run: bool,
         newest: int | None = None,
         time_zone: TimeZoneName | None = None,
+        skip: SkipUids | None = None,
     ) -> None:
         """Like run(), appending each filter's report to report as soon as it finishes.
 
@@ -187,7 +201,12 @@ class Folder:
             deferred.clear()
             try:
                 selected = Selected(context, delimiter)
-                self._run_all(report, filters, selected, dry_run, newest, deferred)
+
+                def skipped() -> None:
+                    if skip is not None:
+                        selected.left.update(skip(path, context.uid_validity))
+
+                self._run_all(report, filters, selected, dry_run, newest, deferred, skipped)
             except Exception as error:
                 if _is_mail_error(error):
                     raise
@@ -215,6 +234,7 @@ class Folder:
         dry_run: bool,
         newest: int | None,
         deferred: list[tuple[FilterReport, Callable[[], TransferReport]]],
+        skipped: Callable[[], None],
     ) -> None:
         context = selected.context
         exists = context.exists
@@ -230,6 +250,7 @@ class Folder:
             report["limited_to_newest"] = newest
         fetched: dict[int, Message] = {}
         for f in filters:
+            skipped()
             before = len(selected.deferred)
             result = self._run_one(f, selected, dry_run, window, fetched)
             report["filters"].append(result)

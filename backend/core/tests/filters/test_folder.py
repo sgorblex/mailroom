@@ -188,6 +188,24 @@ class TestFolderRun:
             ["UNDELETED", "FROM", "a@b.example", "NOT", "FROM", "c@d.example"]
         ]
 
+    def test_skip_leaves_the_hosts_uids_to_every_filter(
+        self, account: Account, calls: Calls
+    ) -> None:
+        calls.searches = [[1, 2, 3], [2, 3, 4]]
+        action, done = recording()
+        asked: list[tuple[str, int]] = []
+
+        def skip(path: str, uid_validity: int) -> set[int]:
+            asked.append((path, uid_validity))
+            return {2, 3}
+
+        report = (account / "INBOX").run(
+            [Filter(Anything(), action), Filter(Anything(), action)], skip=skip
+        )
+        assert asked == [("INBOX", 1)] * 2  # before each filter
+        assert done == [[1], [4]]
+        assert [[m["uid"] for m in f["matched"]] for f in report["filters"]] == [[1], [4]]
+
     def test_every_search_skips_deleted_messages(self, account: Account, calls: Calls) -> None:
         """An original a move copied but could not expunge is marked \\Deleted: never again."""
         filters = [
@@ -582,7 +600,12 @@ class TestMoveToAccount:
             sessions_at_move.append(len(connections.sessions))
             assert conns is target.connections
             assert args == (2, "Lists/Nerds")
-            assert kwargs == {"removal": "trash", "max_bytes": 1000, "refuse_each": True}
+            assert kwargs == {
+                "removal": "trash",
+                "max_bytes": 1000,
+                "refuse_each": True,
+                "copied": None,
+            }
             assert [parse_ref(ref) for ref in refs] == [
                 MessageRef(1, "INBOX", 1, 1),
                 MessageRef(1, "INBOX", 1, 2),
@@ -780,3 +803,68 @@ class TestMoveToAccount:
             )
         move.assert_called_once()
         assert report["filters"][0]["transfers"][0]["messages"][0]["result"] == "ok"
+
+    def test_copied_is_handed_to_each_batchs_move(self, mine: Account, calls: Calls) -> None:
+        calls.searches = [list(range(1, MAX_REFS + 2))]
+        heard: list[list[str]] = []
+
+        def move(_c: object, refs: Sequence[str], *_a: object, **kwargs: Any) -> OrganizeResult:
+            result = moved(refs)
+            kwargs["copied"](result.groups[0].new_refs)
+            return result
+
+        def resolve(_account: int) -> AccountTarget:
+            return AccountTarget(MagicMock(), 1000, copied=lambda refs: heard.append(list(refs)))
+
+        action = MoveToAccount(2, Path("X"), accounts=resolve)
+        with patch(TRANSFER, side_effect=move):
+            (mine / "INBOX").run(Filter(Anything(), action))
+        assert [len(refs) for refs in heard] == [MAX_REFS, 1]
+        assert heard[1] == [f"copy-{MAX_REFS + 1}"]
+
+    def test_a_refusal_from_copied_stops_the_batches_left(
+        self, mine: Account, calls: Calls
+    ) -> None:
+        calls.searches = [list(range(1, MAX_REFS + 2))]
+        refusal = MailError("unsupported", "Not recorded.")
+
+        def refuse(_refs: Sequence[str]) -> None:
+            raise refusal
+
+        def move(_c: object, refs: Sequence[str], *_a: object, **kwargs: Any) -> OrganizeResult:
+            # As mailroom-core's: a refusal from `copied` leaves the originals, the group failed.
+            try:
+                kwargs["copied"]([f"copy-{parse_ref(ref).uid}" for ref in refs])
+            except MailError as error:
+                return moved(refs, error=error)
+            return moved(refs)
+
+        action = MoveToAccount(
+            2, Path("X"), accounts=lambda _a: AccountTarget(MagicMock(), 1000, copied=refuse)
+        )
+        with patch(TRANSFER, side_effect=move) as move_mock:
+            report = (mine / "INBOX").run(Filter(Anything(), action))
+        move_mock.assert_called_once()
+        [transfer] = report["filters"][0]["transfers"]
+        results = [m["result"] for m in transfer["messages"]]
+        assert results == ["unsupported"] * (MAX_REFS + 1)
+        assert transfer["error"] == f"unsupported: {refusal.message}"
+
+    def test_a_record_made_meanwhile_is_skipped_by_the_filters_after_it(
+        self, mine: Account, calls: Calls
+    ) -> None:
+        calls.searches = [[1, 2], [1, 2]]
+        recorded: set[int] = set()
+        first_done: list[list[int]] = []
+        second, second_done = recording()
+
+        def record_then(_selected: Selected, uids: Sequence[int]) -> None:
+            first_done.append(list(uids))
+            recorded.add(2)  # another run's copy, recorded while this one runs
+
+        (mine / "INBOX").run(
+            [Filter(Anything(), Action(record_then)), Filter(Anything(), second)],
+            skip=lambda _path, _validity: set(recorded),
+        )
+        assert first_done == [[1, 2]]
+        assert second_done == [[1]]

@@ -170,3 +170,49 @@ def test_rewrite_folder_rewrites_this_account_s_rule_sets_and_filters_only(
     every_filter = db_session.query(Filter).filter_by(rule_set_id=every.id).one()
     assert every_filter.spec == spec(move_to("Old"))
     assert rewrite_folder(db_session, user.id, 1, ["Gone"], ["New"]) == Rewritten([], [], [])
+
+
+def to_account(account: int, *folder: str) -> dict[str, Any]:
+    return {"type": "move_to_account", "args": {"account": account, "folder": list(folder)}}
+
+
+def test_a_move_to_another_account_names_that_accounts_folder(
+    db_session: Session, user: User
+) -> None:
+    """Account 2's rule set moving to account 1's Projects holds that folder's delete back, not
+    account 2's own Projects."""
+    moving = add_rule_set(
+        db_session, user, ["INBOX"], spec(to_account(1, "Projects", "x")), account_id=2
+    )
+    add_rule_set(db_session, user, ["INBOX"], spec(to_account(3, "Projects")), account_id=2)
+    assert naming_rule_sets(db_session, user.id, 1, ["Projects"]) == [
+        RuleSetRef(moving.id, "rules")
+    ]
+    assert naming_rule_sets(db_session, user.id, 2, ["Projects"]) == []
+    assert rewritten_spec(spec(to_account(1, "Old")), ["Old"], ["New"]) == spec(
+        to_account(1, "Old")
+    )
+
+
+def test_a_rename_rewrites_the_moves_to_it_from_other_accounts(
+    db_session: Session, user: User
+) -> None:
+    other = add_rule_set(
+        db_session,
+        user,
+        ["INBOX"],
+        spec({"seq": [to_account(1, "Old", "Sub"), move_to("Old")]}),
+        account_id=2,
+        enabled=True,
+    )
+    elsewhere = add_rule_set(db_session, user, ["INBOX"], spec(to_account(3, "Old")), account_id=2)
+    [moving] = db_session.query(Filter).filter_by(rule_set_id=other.id)
+
+    rewritten = rewrite_folder(db_session, user.id, 1, ["Old"], ["New"])
+    assert rewritten == Rewritten(rule_sets=[other.id], filters=[moving.id], all_accounts=[])
+    db_session.expire_all()
+    # Account 2's own Old stays: only the move to account 1 follows the rename.
+    assert moving.spec == spec({"seq": [to_account(1, "New", "Sub"), move_to("Old")]})
+    assert other.enabled is True
+    elsewhere_filter = db_session.query(Filter).filter_by(rule_set_id=elsewhere.id).one()
+    assert elsewhere_filter.spec == spec(to_account(3, "Old"))

@@ -12,10 +12,11 @@ written, or with `refuse_each` only itself, the others moving.
 
 A message already in the target folder (the same Message-ID, checked on its ENVELOPE) is not
 copied again, so a move cut off after its copy can be repeated without copying twice. Nothing is
-removed from the source before its copy is confirmed; a removal that fails leaves the message in
-both, which the group's error says, with the copies' refs. Deleting for good expunges exactly
-the moved UIDs (UIDPLUS); on Gmail, where that would only drop a label, it moves them to Trash
-and expunges them there.
+removed from the source before its copy is confirmed, and the caller's `copied`, when given,
+hears of the copies before then; a removal that fails, or a `copied` that raises, leaves the
+message in both, which the group's error says, with the copies' refs. Deleting for good expunges
+exactly the moved UIDs (UIDPLUS); on Gmail, where that would only drop a label, it moves them to
+Trash and expunges them there.
 """
 
 from dataclasses import dataclass, field
@@ -51,7 +52,7 @@ from mailroom_core.mail.selected import (
 from mailroom_core.render import format_size
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Callable, Iterator, Sequence
 
     from mailroom_core.mail.audit import Note
     from mailroom_core.mail.imap import MailboxContext, MailConnections
@@ -108,6 +109,7 @@ def move_to_account(
     removal: TransferRemoval,
     max_bytes: int,
     refuse_each: bool = False,
+    copied: Callable[[Sequence[str]], None] | None = None,
 ) -> OrganizeResult:
     """Moves to `folder` of `account`, another account than any ref's, the target rules of
     `move_messages` applying (never Drafts or Sent). Each message is copied with its flags and
@@ -116,7 +118,9 @@ def move_to_account(
     over `max_bytes` (`too_large`) refuses its folder's group, or with `refuse_each` itself only
     (its audit item carries the code, its group's `refused` the error), the others moving;
     `delete` needs UIDPLUS on the source, `trash` its Trash and MOVE or UIDPLUS. Each moved
-    message gives two audit items, the source's and the copy's."""
+    message gives two audit items, the source's and the copy's. `copied` hears each chunk's
+    confirmed copies (their refs) before their originals are removed; when it raises, they are
+    not removed and the group stops there, its error the one raised."""
     groups = _groups(connections, refs)
     if not connections.serves(account):
         raise MailError("invalid_argument", f"Unknown account {account}.")
@@ -159,13 +163,18 @@ def move_to_account(
     taken: set[int] = set()
 
     def act(group: _Group, note: Note) -> GroupResult:
-        return _transfer(connections, group, plans[group.account], taken, note)
+        return _transfer(connections, group, plans[group.account], taken, note, copied)
 
     return _each_group(groups, act)
 
 
 def _transfer(
-    connections: MailConnections, group: _Group, plan: _Plan, taken: set[int], note: Note
+    connections: MailConnections,
+    group: _Group,
+    plan: _Plan,
+    taken: set[int],
+    note: Note,
+    copied: Callable[[Sequence[str]], None] | None,
 ) -> GroupResult:
     """One source folder's messages, chunk by chunk; stops at the first error, noting what it
     did not reach as failed with that error."""
@@ -223,7 +232,12 @@ def _transfer(
             break
         target_validity = written.uid_validity
         confirmed = [item for item in chunk if item.uid in written.copies]
-        removed, removal_error = _remove_originals(connections, group, confirmed, plan)
+        unheard = _told(copied, plan, written, confirmed, group.account)
+        removed, removal_error = (
+            (None, unheard)
+            if unheard is not None
+            else _remove_originals(connections, group, confirmed, plan)
+        )
         for item in confirmed:
             copy = written.copies[item.uid]
             copies[item.uid] = copy
@@ -464,6 +478,28 @@ def _existing_copy(
 
 def _message_id(envelope: object) -> str:
     return text_value(getattr(envelope, "message_id", None)).strip()
+
+
+def _told(
+    copied: Callable[[Sequence[str]], None] | None,
+    plan: _Plan,
+    written: _Written,
+    confirmed: Sequence[_Planned],
+    account: int,
+) -> MailError | None:
+    """`copied` told of the confirmed copies; what it raised, as a MailError."""
+    if copied is None or not confirmed:
+        return None
+    validity = written.uid_validity
+    refs = [
+        format_ref(MessageRef(plan.account, plan.folder, validity, written.copies[item.uid]))
+        for item in confirmed
+    ]
+    try:
+        copied(refs)
+    except Exception as error:
+        return mail_error(error, account)
+    return None
 
 
 def _remove_originals(

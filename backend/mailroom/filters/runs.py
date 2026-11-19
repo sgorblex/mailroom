@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 from contextlib import contextmanager
 from datetime import UTC, date, datetime, timedelta
+from functools import partial
 from typing import TYPE_CHECKING, Any, Final
 
 from sqlalchemy import delete, func, literal, select, text
@@ -19,6 +20,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from mailroom.accounts.store import AccountNotFound, load_accounts
 from mailroom.filters.spec import InvalidSpecError, loaded_filter
+from mailroom.filters.transfers import ledger_skip
 from mailroom.mail.connections import (
     PASSWORD_MISSING,
     PASSWORD_MISSING_TEXT,
@@ -39,7 +41,7 @@ if TYPE_CHECKING:
 
     from mailroom.context import AppContext
     from mailroom.models import RuleSet
-    from mailroom_core.filters import FolderReport, ThreadResolver
+    from mailroom_core.filters import AccountResolver, FolderReport, ThreadResolver
     from mailroom_core.mail import MailConnections
 
 logger = logging.getLogger(__name__)
@@ -94,12 +96,13 @@ def engine_filters(
     filters: Sequence[Filter],
     *,
     threads: ThreadResolver | None = None,
+    accounts: AccountResolver | None = None,
 ) -> list[EngineFilter]:
     """``filters`` as the filter engine runs them on ``folder``: limited to the messages with the
     rule set's marker (the star or To sort), which they clear, unless it is ``none``; ``threads``
-    as for ``loaded_filter``. Raises ``InvalidSpecError`` for a stored spec the filter engine no
-    longer loads."""
-    loaded = [loaded_filter(row.spec, threads=threads) for row in filters]
+    and ``accounts`` as for ``loaded_filter``. Raises ``InvalidSpecError`` for a stored spec the
+    filter engine no longer loads."""
+    loaded = [loaded_filter(row.spec, threads=threads, accounts=accounts) for row in filters]
     mark = _MARKS.get(rule_set.marker)
     if mark is not None:
         [(_folder, loaded)] = marked_only([(folder, loaded)], mark)
@@ -224,7 +227,11 @@ def _dry_run_result(
                 user_id,
                 [account_id],
                 lambda: folder.run(
-                    loaded, dry_run=True, newest=DRY_RUN_MAX_MESSAGES, time_zone=zone
+                    loaded,
+                    dry_run=True,
+                    newest=DRY_RUN_MAX_MESSAGES,
+                    time_zone=zone,
+                    skip=partial(_skipped, ctx, user_id, account_id),
                 ),
                 deadline=DRY_RUN_SECONDS,
             )
@@ -243,6 +250,15 @@ def _dry_run_result(
         **labelled_report(report, filters, loaded),
         "limited_to_newest": report.get("limited_to_newest"),
     }
+
+
+def _skipped(
+    ctx: AppContext, user_id: int, account_id: int, path: str, uid_validity: int
+) -> set[int]:
+    """A dry run leaves alone what a real run would (``ledger_skip``), on a session of its own:
+    it runs on the mail pool's thread."""
+    with ctx.session_maker() as db:
+        return ledger_skip(db, user_id, account_id, path, uid_validity)
 
 
 def runs_of(db: Session, rule_set_id: int, limit: int) -> list[FilterRun]:

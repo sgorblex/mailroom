@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Final, Literal
 from mailroom.accounts.service import (
     account_not_found,
     attachment_limit_mb,
-    move_limit_mb,
+    move_cap,
     require_subkey,
 )
 from mailroom.accounts.store import account_password, load_accounts
@@ -83,8 +83,7 @@ class _Accounts:
     @property
     def move_cap(self) -> int:
         """The bytes a message moved to another account may have, at most ``MOVE_MAX_MB``."""
-        capped = self.limits.model_copy(update={"move_max_mb": move_limit_mb(self.limits)})
-        return core.move_cap(capped)
+        return move_cap(self.limits)
 
     @property
     def write_limits(self) -> Limits:
