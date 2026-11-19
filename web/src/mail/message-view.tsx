@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, ShieldAlert, ShieldCheck, ShieldQuestionMark, TriangleAlert } from 'lucide-react'
 
 import { readMessage, type MailAddress, type MessageView as MessageData } from '@/api/mail.ts'
 import { useTimeZone } from '@/auth/auth-context.ts'
@@ -17,6 +17,7 @@ import { HtmlBody } from './html-body.tsx'
 import { MAIL_NS } from './i18n.ts'
 import { mailErrorMessage } from './messages.ts'
 import { ReplyActions } from './reply-actions.tsx'
+import { authenticationState, recipientSummary, resultText } from './sender-checks.ts'
 import { isSameFolder, loadedFolders, roleFolder, useTriage } from './triage-context.ts'
 
 /** One message, mounted anew (by key) for each: its view choices are never carried over. */
@@ -42,6 +43,13 @@ export function MessageView({ messageRef }: { messageRef: string }): ReactElemen
   const marked = useRef(false)
   const view = state.kind === 'loaded' ? state.value.view : null
   const accountFolders = view === null ? undefined : folders[view.account_id]
+  // The user's own mail: no server checked who sent it on the way in.
+  const own =
+    view !== null &&
+    (['sent', 'drafts'] as const).some((role) => {
+      const folder = roleFolder(loadedFolders(accountFolders), role)
+      return folder !== undefined && isSameFolder(folder.path, view.folder)
+    })
 
   // The toolbar acts on the open message; opening an unread one marks it read, once, and a
   // failure leaves it unread without a word. A draft stays as it is, and opens in the composer
@@ -106,6 +114,7 @@ export function MessageView({ messageRef }: { messageRef: string }): ReactElemen
       {state.kind === 'loaded' && (
         <LoadedMessage
           view={state.value.view}
+          own={own}
           includeQuoted={state.value.includeQuoted}
           pending={pending}
           onToggleQuoted={() => {
@@ -123,6 +132,7 @@ export function MessageView({ messageRef }: { messageRef: string }): ReactElemen
 
 function LoadedMessage({
   view,
+  own,
   includeQuoted,
   pending,
   onToggleQuoted,
@@ -130,6 +140,8 @@ function LoadedMessage({
   onShowRemote,
 }: {
   view: MessageData
+  /** It is in the account's Sent or Drafts folder: it has no authentication to show. */
+  own: boolean
   /** What `view` was read with. */
   includeQuoted: boolean
   /** A reload with the other choice is on its way. */
@@ -150,9 +162,29 @@ function LoadedMessage({
           {view.subject === '' ? t('message.noSubject') : view.subject}
         </h2>
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-sm">
-          <AddressRow label={t('message.from')} addresses={view.from === null ? [] : [view.from]} />
-          <AddressRow label={t('message.to')} addresses={view.to} />
-          <AddressRow label={t('message.cc')} addresses={view.cc} />
+          <AddressRow label={t('message.from')} addresses={view.from === null ? [] : [view.from]}>
+            {view.sender_mismatch && view.from !== null && (
+              <p className="flex items-start gap-1 text-destructive">
+                <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+                {t('message.senderMismatch', { address: view.from.address })}
+              </p>
+            )}
+          </AddressRow>
+          {!own && (
+            <>
+              <dt className="text-muted-foreground">{t('message.authentication')}</dt>
+              <dd>
+                <Authentication authentication={view.authentication} />
+              </dd>
+            </>
+          )}
+          {view.sent_to !== null && (
+            <>
+              <dt className="text-muted-foreground">{t('message.sentTo')}</dt>
+              <dd className="min-w-0 break-words">{view.sent_to}</dd>
+            </>
+          )}
+          <Recipients view={view} />
           <AddressRow label={t('message.replyTo')} addresses={view.reply_to} />
           {view.date !== null && (
             <>
@@ -213,15 +245,107 @@ function LoadedMessage({
   )
 }
 
-function AddressRow({ label, addresses }: { label: string; addresses: MailAddress[] }): ReactElement | null {
+function AddressRow({
+  label,
+  addresses,
+  children,
+}: {
+  label: string
+  addresses: MailAddress[]
+  children?: ReactNode
+}): ReactElement | null {
   if (addresses.length === 0) {
     return null
   }
   return (
     <>
       <dt className="text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 break-words">{addresses.map(addressFull).join(', ')}</dd>
+      <dd className="min-w-0 break-words">
+        {addresses.map(addressFull).join(', ')}
+        {children}
+      </dd>
     </>
+  )
+}
+
+/** To and Cc in full, or summed up when there are many until the reader asks for them. */
+function Recipients({ view }: { view: MessageData }): ReactElement {
+  const { t } = useTranslation(MAIL_NS)
+  const [expanded, setExpanded] = useState(false)
+  const summary = recipientSummary(view.to, view.cc, view.sent_to)
+  // One toggle in one place for both states, so the focus stays on it.
+  return (
+    <>
+      {summary === null || expanded ? (
+        <>
+          <AddressRow label={t('message.to')} addresses={view.to} />
+          <AddressRow label={t('message.cc')} addresses={view.cc} />
+        </>
+      ) : (
+        <>
+          <dt className="text-muted-foreground">{t('message.recipients')}</dt>
+          <dd>
+            {summary.you
+              ? t('message.youAndOthers', { count: summary.others })
+              : t('message.recipientCount', { count: summary.others })}
+          </dd>
+        </>
+      )}
+      {summary !== null && (
+        <dd className="col-start-2">
+          <Button
+            variant="ghost"
+            size="xs"
+            aria-expanded={expanded}
+            onClick={() => {
+              setExpanded(!expanded)
+            }}
+          >
+            {expanded ? t('message.hideRecipients') : t('message.showRecipients')}
+          </Button>
+        </dd>
+      )}
+    </>
+  )
+}
+
+/** The account's own authentication server's verdict, with the results it gave when it gave any. */
+function Authentication({ authentication }: { authentication: MessageData['authentication'] }): ReactElement {
+  const { t } = useTranslation(MAIL_NS)
+  const state = authenticationState(authentication)
+  if (state === 'unverified') {
+    return (
+      <span className="flex flex-col">
+        <span className="flex items-start gap-1 text-muted-foreground">
+          <ShieldQuestionMark aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+          {t('message.authUnverified')}
+        </span>
+        <span className="text-xs text-muted-foreground">{t('message.authUnverifiedHint')}</span>
+      </span>
+    )
+  }
+  const none = t('message.authNone')
+  const results = t('message.authResults', {
+    spf: resultText(authentication.spf ?? none, authentication.spf_domain),
+    dkim: resultText(authentication.dkim ?? none, authentication.dkim_domain),
+    dmarc:
+      authentication.dmarc === 'pass' && !authentication.dmarc_pass
+        ? t('message.authDmarcNotThisFrom')
+        : (authentication.dmarc ?? none),
+  })
+  const Icon = state === 'pass' ? ShieldCheck : ShieldAlert
+  return (
+    <span className="flex flex-col">
+      <span className={`flex items-start gap-1 ${state === 'fail' ? 'text-destructive' : ''}`}>
+        <Icon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+        {state === 'pass'
+          ? t('message.authPass', { domain: authentication.from_domain ?? '' })
+          : state === 'fail'
+            ? t('message.authFail')
+            : t('message.authUnconfirmed')}
+      </span>
+      <span className="text-xs text-muted-foreground">{results}</span>
+    </span>
   )
 }
 
