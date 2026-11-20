@@ -32,7 +32,10 @@ live updates yet.
   together are summed up as *You and N others* (or *N recipients* when the identity is not among
   them), shown in full on request.
 - **Remote content** (remote images, `http` or `https`) is blocked and revealed per message
-  ([Glossary](../GLOSSARY.md)), never remembered; beside the gate, a line says how many remote
+  ([Glossary](../GLOSSARY.md)). Only a **sender** is ever remembered, and only from a message
+  whose DMARC passed for its one From at the account's own authentication server
+  (`remote_trusted` and [`/remote-senders`](#remote-content-senders) below; the server checks,
+  never the client); the web does not offer it yet. Beside the gate, a line says how many remote
   images are blocked (`remote_images`) or shown (`loadable_remote_images`), and the gate offers to
   show them only when some can be. What is removed either way is in the HTML route below.
 - **Link safety:** in the HTML view each link's tooltip is the host it really goes to (IDNA form,
@@ -1114,7 +1117,8 @@ a failure too, with the app's code `password_missing`.
   "authentication": {
     "verified": true, "spf": "pass", "spf_domain": "example.org", "dkim": "pass",
     "dkim_domain": "example.org", "dmarc": "pass", "dmarc_pass": true, "from_domain": "example.org"
-  }
+  },
+  "remote_trusted": false
 }
 ```
 
@@ -1170,6 +1174,9 @@ a failure too, with the app's code `password_missing`.
   `dmarc_pass` is true only when `dmarc` is `pass` for a message with exactly one From (one field,
   one address, and the header block not cut) whose domain is the result's `header.from`, that
   domain then being `from_domain`.
+- `remote_trusted` is true when `dmarc_pass` is and the user remembers `from.address`
+  ([remote content senders](#remote-content-senders)): the client then asks for the HTML view
+  with `remote=1` at once. The HTML route itself is unchanged: `remote` alone decides.
 - Reading **does not set `\Seen`.** Errors: 400, 404, 409 (stale), 502, 504.
 
 ### `GET /messages/{ref}/html?remote=0`
@@ -1210,6 +1217,23 @@ nosniff`, `Content-Security-Policy: default-src 'none'; sandbox`, `Cache-Control
 no-store`. Capped at the user's `attachment_max_mb` (mailroom-core settings, default 10): over
 it, 413 `too_large`. A part that is not an attachment, an inline part or the calendar part of that
 message: 404 `not_found`.
+
+### Remote content senders
+
+The senders whose remote content the user shows without asking, by From address (lowercase), one
+each; addresses travel in bodies, never in a URL.
+
+- `GET /remote-senders`: `{"senders": [{"address", "created_at"}]}`, by address.
+- `POST /remote-senders` `{"ref"}`: the server reads the message and remembers its From only when
+  `dmarc_pass` (one From, DMARC passed at the account's own authentication server); otherwise 400
+  `sender_not_verified`, so an account without an `authserv_id` remembers none. 201 with the
+  sender; one already remembered keeps its `created_at`. The read's errors as for `GET
+  /messages/{ref}`.
+- `POST /remote-senders/remove` `{"address"}` (compared lowercase): 204, or 404 when not
+  remembered.
+
+Removing the user removes them ([`nonfunctional-requirements.md`](nonfunctional-requirements.md),
+*Mail accounts*).
 
 ## Mailbox quota
 

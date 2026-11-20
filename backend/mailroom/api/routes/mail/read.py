@@ -12,7 +12,7 @@ from fastapi import Path, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from mailroom.api.deps import AccountId, Context, CurrentUser
+from mailroom.api.deps import AccountId, Context, CurrentUser, DbSession
 from mailroom.api.routes.mail._shared import (
     _NO_STORE,
     _PART,
@@ -21,7 +21,7 @@ from mailroom.api.routes.mail._shared import (
     Ref,
     mail_router,
 )
-from mailroom.mail import service
+from mailroom.mail import remote_senders, service
 from mailroom_core.config import MAX_SAFE_INTEGER
 from mailroom_core.mail import DISPLAYED_IMAGES, TO_SORT, SearchQuery
 
@@ -250,9 +250,12 @@ class MessageDetail(BaseModel):
     sent_to: str | None
     """The account's identity the message arrived at."""
     authentication: AuthenticationVerdict
+    remote_trusted: bool
+    """The user shows this sender's remote content without asking, and DMARC passed for the
+    message's one From: the client asks for the HTML with ``remote=1``."""
 
     @classmethod
-    def of(cls, view: MessageView) -> MessageDetail:
+    def of(cls, view: MessageView, *, remote_trusted: bool) -> MessageDetail:
         body = view.body
         return cls(
             ref=view.ref,
@@ -290,6 +293,7 @@ class MessageDetail(BaseModel):
             sender_mismatch=view.sender_mismatch,
             sent_to=view.sent_to,
             authentication=AuthenticationVerdict.model_validate(view.authentication),
+            remote_trusted=remote_trusted,
         )
 
 
@@ -375,6 +379,7 @@ def search(request: SearchRequest, ctx: Context, user: CurrentUser) -> MessagePa
 def message(
     ref: Ref,
     ctx: Context,
+    db: DbSession,
     user: CurrentUser,
     offset: Annotated[int, Query(ge=0)] = 0,
     include_quoted: bool = False,
@@ -387,7 +392,9 @@ def message(
         include_quoted=include_quoted,
         remote_check=True,
     )
-    return MessageDetail.of(view)
+    sender = remote_senders.verified_sender(view)
+    trusted = sender is not None and remote_senders.remembered(db, user.id, sender)
+    return MessageDetail.of(view, remote_trusted=trusted)
 
 
 def html_headers(*, remote: bool) -> dict[str, str]:

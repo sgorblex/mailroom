@@ -1,5 +1,6 @@
 """The app's own rows about a user's accounts (schema ``app``), beside mailroom-core's: the Run
-filters switch, and forgetting all of it when an account or its user goes."""
+filters switch, and forgetting all of it when an account or its user goes (the user's remembered
+remote-content senders too)."""
 
 from __future__ import annotations
 
@@ -9,7 +10,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 
 from mailroom.accounts.store import core_user_id, load_accounts, remove_account
-from mailroom.models import AccountFilterSettings, RuleSet
+from mailroom.models import AccountFilterSettings, RemoteContentSender, RuleSet
 from mailroom_core.store import forget_user
 
 if TYPE_CHECKING:
@@ -60,9 +61,10 @@ def forget_account(store: AccountStore, db: Session, user_id: int, account_id: i
 
 def forget_user_accounts(db: Session, user_id: int) -> None:
     """Remove everything about the user's accounts inside ``db``'s transaction, for the user's
-    own removal in the same one: the app's rows, then mailroom-core's (settings with their
-    history, sealed passwords, send log). Raises ``SettingsBusy`` while a save of their accounts
-    holds them."""
+    own removal in the same one: the app's rows (remembered senders included), then
+    mailroom-core's (settings with their history, sealed passwords, send log). Raises
+    ``SettingsBusy`` while a save of their accounts holds them."""
     db.execute(delete(AccountFilterSettings).where(AccountFilterSettings.user_id == user_id))
     db.execute(delete(RuleSet).where(RuleSet.user_id == user_id))
+    db.execute(delete(RemoteContentSender).where(RemoteContentSender.user_id == user_id))
     forget_user(db.connection(), core_user_id(user_id))

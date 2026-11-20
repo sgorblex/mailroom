@@ -7,6 +7,7 @@ from mailroom.models.account import AccountFilterSettings
 from mailroom.models.audit import AuditRecord
 from mailroom.models.base import Base
 from mailroom.models.filters import Filter, FilterRun, RuleSet
+from mailroom.models.remote_content import RemoteContentSender
 from mailroom.models.sso import ExternalIdentity, Intent, SsoLoginState
 from mailroom.models.user import User, UserSession
 
@@ -18,6 +19,7 @@ __all__ = [
     "Filter",
     "FilterRun",
     "Intent",
+    "RemoteContentSender",
     "RuleSet",
     "SsoLoginState",
     "User",
