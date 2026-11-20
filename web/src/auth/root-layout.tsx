@@ -6,6 +6,7 @@ import { useAuth } from '@/auth/auth-context.ts'
 import { LoginScreen } from '@/auth/login-screen.tsx'
 import { navPages, type NavPath } from '@/auth/nav-pages.ts'
 import { Button } from '@/components/ui/button.tsx'
+import { LiveUpdatesProvider } from '@/mail/live-provider.tsx'
 
 /** Every page sits behind sign-in; the nav shows only the instance's features. */
 export function RootLayout(): ReactElement {
@@ -47,7 +48,14 @@ export function RootLayout(): ReactElement {
         </p>
         <SignOutButton />
       </header>
-      <Outlet />
+      {/* Its stream closes with the signed-in layout. */}
+      {auth.features.has('mail') ? (
+        <LiveUpdatesProvider>
+          <Outlet />
+        </LiveUpdatesProvider>
+      ) : (
+        <Outlet />
+      )}
     </div>
   )
 }

@@ -11,7 +11,8 @@ delete is the one in the mail client. Product scope:
 **mailroom-core** (`render` and `mail`, connections in `mail.imap`; 0.1.2 for slices A and B, the
 0.1.3 for slice C's compose, drafts and send), over IMAP directly. Lists, searches without a
 body's text and folder counts read the [index](#index) where it holds every folder they involve,
-and the server otherwise; no live updates yet.
+and the server otherwise; the web client keeps them up to date from the
+[live updates](#live-updates).
 
 ## Slice A: read
 
@@ -1553,6 +1554,21 @@ Mailroom tab is open: no push service.
   user on one API process. A stream that falls 100 events behind is closed. Events are not
   replayed: a browser that connects again (EventSource does by itself) reads what it shows
   again.
+- The web client opens one stream while a user is signed in on an instance with the mail client
+  (closed at sign-out), naming the folder the mail screen shows (none for a search), and opens it
+  again when that changes, then reads the folders' counts again (events are not replayed across the
+  switch). A failure closes it and opens it again after 1 s, doubled each time up to a minute;
+  meanwhile a quiet line above the list says *Reconnecting to live updates…*, and once open again
+  it reads the folders, lists and index statuses again. `folder_changed` sets the folder's counts
+  in the sidebar (on Gmail, All Mail's: the account's folders are read again). `folder_changed` and
+  `new_mail` for a folder the list reads (with its subfolders, every folder of an all-folders
+  search, any on Gmail through All Mail) read its first page again: new rows come in at the top and
+  the rows loaded below stay (those new mail pushed off the first page too; those gone from it are
+  dropped; a Load more answered after it for a cursor it no longer ends at is dropped too), as do
+  the scroll position, the selection and the open message; the rows read again carry their flags as
+  changed elsewhere, the open message's too. A search the index never answers (a body's text,
+  Gmail's syntax) is not read again. `sync` moves the indexing line (*Index*) on, and takes it away
+  once the folder is ready.
 - How: the worker's sync and the API's own writes announce each folder change on Postgres's
   `mailroom_index` (ids only, and the new mail's UID range), delivered at their commit; each API
   process LISTENs on one connection of its own and, for a user with a stream open there, reads
@@ -1660,4 +1676,4 @@ that says how to read it. There is no REST route for threads yet.
 
 ## Later slices
 
-- Threaded list view, the index's sync and reads, and live updates ([`../REQUIREMENTS.md`](../REQUIREMENTS.md)).
+- Threaded list view and desktop notifications ([`../REQUIREMENTS.md`](../REQUIREMENTS.md)).

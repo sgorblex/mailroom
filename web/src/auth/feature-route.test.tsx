@@ -131,6 +131,9 @@ describe('featureRoute on a cold load', () => {
     })
     const { routeTree: tree } = await import('@/router.tsx')
     const { AuthProvider } = await import('@/auth/auth-provider.tsx')
+    // Under the cache, as main.tsx mounts it: the live updates read it.
+    const { QueryClientProvider } = await import('@tanstack/react-query')
+    const { createQueryClient } = await import('@/lib/query-client.ts')
     vi.stubGlobal(
       'fetch',
       vi.fn((path: string) =>
@@ -140,9 +143,11 @@ describe('featureRoute on a cold load', () => {
     vi.stubGlobal('scrollTo', vi.fn())
     const router = createRouter({ routeTree: tree, history: createMemoryHistory({ initialEntries: ['/mail'] }) })
     render(
-      <AuthProvider>
-        <RouterProvider router={router} />
-      </AuthProvider>,
+      <QueryClientProvider client={createQueryClient()}>
+        <AuthProvider>
+          <RouterProvider router={router} />
+        </AuthProvider>
+      </QueryClientProvider>,
     )
   }
 

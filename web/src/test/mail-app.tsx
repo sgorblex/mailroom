@@ -16,19 +16,27 @@ import type { Feature, User } from '@/api/auth.ts'
 import { AuthContext } from '@/auth/auth-context.ts'
 import { validateFilterDraftSearch } from '@/filters/draft-search.ts'
 import { createQueryClient } from '@/lib/query-client.ts'
+import { LiveUpdatesProvider } from '@/mail/live-provider.tsx'
 import { MailScreen } from '@/mail/mail-screen.tsx'
 import { validateMailSearch } from '@/mail/route-search.ts'
 
 /**
  * The mail screen at `path`, in a router of its own, with Accounts and a filter draft as
- * placeholders; its history to inspect. `strict` as `main.tsx` renders it; with `user`, signed in
+ * placeholders, under the live updates (a stream only where `stubEventSource` gave one); its
+ * history to inspect. `strict` as `main.tsx` renders it; with `user`, signed in
  * as them (else no `AuthProvider`) on an instance with `features`. A cache of its own, never retrying.
  */
 export function renderMailApp(
   path: string,
   { strict = false, user, features = ['mail'] }: { strict?: boolean; user?: User; features?: Feature[] } = {},
 ): RouterHistory {
-  const rootRoute = createRootRoute({ component: Outlet })
+  const rootRoute = createRootRoute({
+    component: () => (
+      <LiveUpdatesProvider>
+        <Outlet />
+      </LiveUpdatesProvider>
+    ),
+  })
   const accountsRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/accounts',

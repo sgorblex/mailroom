@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { QueryClientProvider } from '@tanstack/react-query'
 import {
   createMemoryHistory,
   createRootRoute,
@@ -10,6 +11,8 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { apiGetJson } from '@/api/http.ts'
+import { createQueryClient } from '@/lib/query-client.ts'
+import { stubEventSource } from '@/test/fake-event-source.ts'
 
 import { AuthProvider } from './auth-provider.tsx'
 import { RootLayout } from './root-layout.tsx'
@@ -35,9 +38,11 @@ function renderApp(): void {
   // The router restores scroll positions, which jsdom does not implement.
   vi.stubGlobal('scrollTo', vi.fn())
   render(
-    <AuthProvider>
-      <RouterProvider router={router} />
-    </AuthProvider>,
+    <QueryClientProvider client={createQueryClient()}>
+      <AuthProvider>
+        <RouterProvider router={router} />
+      </AuthProvider>
+    </QueryClientProvider>,
   )
 }
 
@@ -135,6 +140,27 @@ describe('RootLayout', () => {
     expect(screen.queryByRole('link', { name: 'Users' })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Sign out' }))
     expect(await screen.findByLabelText('Password')).toBeInTheDocument()
+  })
+
+  it("opens the user's live updates stream while signed in to the mail client, and closes it on signing out", async () => {
+    const sources = stubEventSource()
+    stubApi(true, ['mail'])
+    renderApp()
+
+    expect(await screen.findByText('Home page')).toBeInTheDocument()
+    expect(sources.instances.map((source) => [source.url, source.withCredentials])).toEqual([['/api/v1/mail/events', true]])
+    await userEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    expect(await screen.findByLabelText('Password')).toBeInTheDocument()
+    expect(sources.current()).toBeUndefined()
+  })
+
+  it('opens no stream on an instance without the mail client', async () => {
+    const sources = stubEventSource()
+    stubApi(true, ['filters'])
+    renderApp()
+
+    expect(await screen.findByText('Home page')).toBeInTheDocument()
+    expect(sources.instances).toHaveLength(0)
   })
 
   it.each([
