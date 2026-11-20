@@ -134,7 +134,8 @@ attachment through the host's proxy). The index is in (settings, the worker's sy
 own writes, and lists, searches and counts read from it), kept fresh over IMAP IDLE on INBOX and
 the folder being viewed, its changes pushed as server-sent events
 ([`requirements/mail-client.md`](requirements/mail-client.md) — *Live updates*), which the web
-client's counts, lists, flags and indexing line follow. Gap: desktop notifications.
+client's counts, lists, flags and indexing line follow, and desktop notifications of new mail
+in the folders each user chooses (*Desktop notifications* there).
 Target is
 **between tier 2 and tier 3**: tiers 1 and 2 in full, on top of
 the index and live updates; tier 3 items arrive one at a time.

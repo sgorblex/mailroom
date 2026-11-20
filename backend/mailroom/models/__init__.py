@@ -15,6 +15,7 @@ from mailroom.models.filters import (
     TransferLedger,
 )
 from mailroom.models.mail_index import MailIndexFolder, MailIndexMessage, MailViewInterest
+from mailroom.models.notifications import MailNotificationFolders
 from mailroom.models.remote_content import RemoteContentSender
 from mailroom.models.sso import ExternalIdentity, Intent, SsoLoginState
 from mailroom.models.user import User, UserSession
@@ -30,6 +31,7 @@ __all__ = [
     "Intent",
     "MailIndexFolder",
     "MailIndexMessage",
+    "MailNotificationFolders",
     "MailViewInterest",
     "MutedThread",
     "RemoteContentSender",

@@ -11,6 +11,7 @@ import { IndexSettings } from '@/profile/index-settings.tsx'
 import { LimitsForm } from '@/profile/limits-form.tsx'
 import { LinkedSignIn } from '@/profile/linked-sign-in.tsx'
 import { MarkReadForm } from '@/profile/mark-read-form.tsx'
+import { NotificationSettings } from '@/profile/notification-settings.tsx'
 import { RemoteSenders } from '@/profile/remote-senders.tsx'
 import { TimeZoneForm } from '@/profile/time-zone-form.tsx'
 import { userErrorMessage } from '@/users/messages.ts'
@@ -26,8 +27,8 @@ type Outcome =
 
 /**
  * The signed-in user's own page: their password, time zone, what "Mark all as read" does first
- * on a folder with subfolders, the senders whose remote images they show and the mail index's
- * settings (with the mail client), linked sign-ins, their mail limits where the
+ * on a folder with subfolders, the senders whose remote images they show, the mail index's
+ * settings and desktop notifications (with the mail client), linked sign-ins, their mail limits where the
  * instance sends (mail or MCP) and, with MCP, connected apps.
  */
 export function ProfileScreen(): ReactElement {
@@ -146,6 +147,7 @@ export function ProfileScreen(): ReactElement {
       {mail && <MarkReadForm />}
       {mail && <RemoteSenders />}
       {mail && <IndexSettings />}
+      {mail && <NotificationSettings />}
       <LinkedSignIn />
       {sends && <LimitsForm />}
       {mcp && <ConnectedApps />}
