@@ -201,6 +201,37 @@
         "scheduled": "Scheduled",
         "manual": "Run now"
       }
+    },
+    "draft": {
+      "fromMessage": "Filter messages like this",
+      "fromSearch": "Create a filter from a search",
+      "intro": "Nothing is saved until you add the filter, and it does nothing until you pick its action.",
+      "back": "Back to mail",
+      "loading": "Drafting the filter…",
+      "loadFailed": "Could not draft the filter.",
+      "nothingToDraft": "There is no message or search here to draft a filter from.",
+      "nothingInMessage": "This message has nothing a filter can match on: no mailing list and no sender address.",
+      "nothingInSearch": "None of this search's fields can be a filter condition.",
+      "nothingInSearchDropped": "None of this search's fields can be a filter condition ({{fields}} match differently in a filter).",
+      "noAccount": "The account is not there any more.",
+      "account": "Account",
+      "matchOn": "Match on",
+      "dropped": "Left out, as no filter condition matches them as the search does: {{fields}}.",
+      "fields": {
+        "from": "From (a public mail provider's whole domain)",
+        "text": "Words",
+        "since": "Since",
+        "before": "Before",
+        "has_attachment": "With attachments",
+        "gmail_query": "Gmail search"
+      },
+      "ruleSet": "Add it to a rule set of the inbox",
+      "newRuleSet": "A new rule set",
+      "newRuleSetName": "Name of the new rule set",
+      "newRuleSetDefault": "Inbox",
+      "startsOff": "A new rule set starts disabled: try it with a dry run, then enable it.",
+      "ruleSetOff": "This rule set is disabled: the filter runs once you enable it.",
+      "actsAtOnce": "This rule set is enabled: the filter acts on new mail as soon as you add it."
     }
   },
   "filterTypes": {
@@ -282,6 +313,7 @@
     "dryRunTimeout": "The dry run took too long: try a narrower filter or a smaller folder.",
     "dryRunBusy": "Another dry run of yours is still going: wait for it to finish, then try again.",
     "matchTimeout": "A filter's pattern took too long on a message, so the run stopped: simplify the pattern (nested repeats such as (a+)+ are the usual cause).",
+    "publicProviderDomain": "A filter cannot match every sender of a public mail provider (such as gmail.com): match the sender's address instead.",
     "tooManyFilters": "A rule set holds at most {{max}} filters: remove one to add another.",
     "invalidOrder": "The filters changed meanwhile. Reload the page and try again.",
     "invalidRuleSet": "A scheduled rule set needs an interval in minutes; the other triggers take none.",

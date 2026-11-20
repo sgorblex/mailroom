@@ -1,4 +1,4 @@
-import { useContext, useId, useState, type ReactElement, type SubmitEvent } from 'react'
+import { useId, useState, type ReactElement, type SubmitEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { Link } from '@tanstack/react-router'
@@ -6,12 +6,12 @@ import { ExternalLink, List } from 'lucide-react'
 
 import { ApiRequestError } from '@/api/http.ts'
 import { unsubscribe, type MessageView, type Unsubscribed } from '@/api/mail.ts'
-import { AuthContext } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { buttonVariants } from '@/components/ui/button-variants.ts'
 import { Dialog } from '@/components/ui/dialog.tsx'
 
 import { useCompose } from './compose-context.ts'
+import { useFiltersOffered } from './filter-draft.ts'
 import { MAIL_NS } from './i18n.ts'
 import { httpsUrl, listName, unsubscribeWay } from './list-unsubscribe.ts'
 import { mailErrorMessage } from './messages.ts'
@@ -32,7 +32,7 @@ const REFUSALS: Record<string, string> = {
 export function MailingListRow({ view }: { view: MessageView }): ReactElement | null {
   const { t } = useTranslation(MAIL_NS)
   const compose = useCompose()
-  const filters = useContext(AuthContext)?.features.has('filters') === true
+  const filters = useFiltersOffered()
   const [confirming, setConfirming] = useState(false)
   const hintId = useId()
   const list = view.headers.mailing_list
@@ -90,7 +90,11 @@ export function MailingListRow({ view }: { view: MessageView }): ReactElement | 
             </a>
           )}
           {way !== null && filters && (
-            <Link to="/filters" className="text-xs underline">
+            <Link
+              to="/filters/new"
+              search={{ account: view.account_id, message: view.ref }}
+              className="text-xs underline"
+            >
               {t('mailingList.filterInstead')}
             </Link>
           )}

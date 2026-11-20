@@ -11,21 +11,32 @@ import {
 } from '@tanstack/react-router'
 import { vi } from 'vitest'
 
-import type { User } from '@/api/auth.ts'
+import type { Feature, User } from '@/api/auth.ts'
 import { AuthContext } from '@/auth/auth-context.ts'
+import { validateFilterDraftSearch } from '@/filters/draft-search.ts'
 import { MailScreen } from '@/mail/mail-screen.tsx'
 import { validateMailSearch } from '@/mail/route-search.ts'
 
 /**
- * The mail screen at `path`, in a router of its own, with Accounts as a placeholder; its history to
- * inspect. `strict` as `main.tsx` renders it; with `user`, signed in as them (else no `AuthProvider`).
+ * The mail screen at `path`, in a router of its own, with Accounts and a filter draft as
+ * placeholders; its history to inspect. `strict` as `main.tsx` renders it; with `user`, signed in
+ * as them (else no `AuthProvider`) on an instance with `features`.
  */
-export function renderMailApp(path: string, { strict = false, user }: { strict?: boolean; user?: User } = {}): RouterHistory {
+export function renderMailApp(
+  path: string,
+  { strict = false, user, features = ['mail'] }: { strict?: boolean; user?: User; features?: Feature[] } = {},
+): RouterHistory {
   const rootRoute = createRootRoute({ component: Outlet })
   const accountsRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/accounts',
     component: () => <p>Accounts page</p>,
+  })
+  const filterDraftRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/filters/new',
+    validateSearch: validateFilterDraftSearch,
+    component: () => <p>Filter draft page</p>,
   })
   const mailRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -34,7 +45,7 @@ export function renderMailApp(path: string, { strict = false, user }: { strict?:
     component: MailScreen,
   })
   const history = createMemoryHistory({ initialEntries: [path] })
-  const router = createRouter({ routeTree: rootRoute.addChildren([accountsRoute, mailRoute]), history })
+  const router = createRouter({ routeTree: rootRoute.addChildren([accountsRoute, filterDraftRoute, mailRoute]), history })
   // The router restores scroll positions, which jsdom does not implement.
   vi.stubGlobal('scrollTo', vi.fn())
   const reject = (): Promise<void> => Promise.reject(new Error('not in this test'))
@@ -47,7 +58,7 @@ export function renderMailApp(path: string, { strict = false, user }: { strict?:
         value={{
           status: 'signed-in',
           user,
-          features: new Set(['mail']),
+          features: new Set(features),
           signIn: reject,
           signOut: reject,
           changeTimeZone: reject,

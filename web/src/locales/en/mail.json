@@ -130,6 +130,7 @@
     "moreOptions": "More options",
     "fewerOptions": "Fewer options",
     "clear": "Clear search",
+    "createFilter": "Create filter from this search",
     "account": "Account",
     "accountAll": "All accounts",
     "folder": "Folder",
@@ -206,7 +207,8 @@
     "htmlLoading": "Loading the HTML version…",
     "htmlFailed": "Could not load the HTML version.",
     "print": "Print",
-    "downloadSource": "Download .eml"
+    "downloadSource": "Download .eml",
+    "filterLike": "Filter messages like this"
   },
   "mailingList": {
     "label": "Mailing list",

@@ -6,6 +6,7 @@ import {
   FileDown,
   FolderInput,
   Forward,
+  ListFilter,
   Mail,
   MailOpen,
   PenLine,
@@ -38,13 +39,15 @@ export interface ActionContext {
   openPicker: (picker: 'move' | 'account', into?: Destination) => void
   /** Where a drag dropped the targets: a move goes there instead of opening a picker. */
   into?: Destination
+  /** Opens a filter drafted from the message, where the instance runs filters. */
+  draftFilter?: (message: Pick<Target, 'ref' | 'account_id'>) => void
 }
 
 /**
  * A mail action: the toolbar, the shortcuts, the reply buttons and the context menus all read
  * these. `triage` ones act on the targets and wait while another runs; `reply` and `compose` ones
  * open the composer, and their keys wait while one is open; `message` ones open the message in
- * another form, in a tab or as a download, and never wait.
+ * another form, in a tab or as a download, or a filter drafted from it, and never wait.
  */
 export interface MailAction {
   id: string
@@ -121,6 +124,18 @@ export const MAIL_ACTIONS: readonly MailAction[] = [
   answer('forward', 'forward', 'compose.forward', Forward, 'f'),
   messageForm('print', 'message.print', Printer, messagePrintUrl, false),
   messageForm('downloadSource', 'message.downloadSource', FileDown, messageSourceUrl, true),
+  {
+    id: 'filterLike',
+    group: 'message',
+    label: () => 'message.filterLike',
+    icon: () => ListFilter,
+    available: ({ message, draftFilter }) => message !== null && draftFilter !== undefined,
+    run: ({ message, draftFilter }: ActionContext): void => {
+      if (message !== null) {
+        draftFilter?.(message)
+      }
+    },
+  },
   {
     id: 'compose',
     group: 'compose',

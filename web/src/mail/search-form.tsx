@@ -1,13 +1,15 @@
 import { useId, useState, type ReactElement, type SubmitEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from '@tanstack/react-router'
-import { Search } from 'lucide-react'
+import { Link, useNavigate } from '@tanstack/react-router'
+import { ListFilter, Search } from 'lucide-react'
 
 import type { AccountId, Account } from '@/api/accounts.ts'
 import { SEARCH_FLAG_FIELDS, type SearchQuery } from '@/api/mail.ts'
 import { Button } from '@/components/ui/button.tsx'
+import { buttonVariants } from '@/components/ui/button-variants.ts'
 import { Input } from '@/components/ui/input.tsx'
 
+import { useFiltersOffered } from './filter-draft.ts'
 import { MAIL_NS } from './i18n.ts'
 
 const ALL = '*'
@@ -67,7 +69,8 @@ function queryOf(draft: Draft): SearchQuery {
 
 /**
  * A search over one account or all, with mailroom-mcp's search fields; the words box alone
- * searches headers and body, the rest are behind "More options". Remounted (by key) when the
+ * searches headers and body, the rest are behind "More options". A search shown can become a
+ * filter, where the instance runs them. Remounted (by key) when the
  * search in the URL changes, so it always shows the search the list is showing.
  */
 export function SearchForm({
@@ -86,6 +89,7 @@ export function SearchForm({
 }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const navigate = useNavigate()
+  const filters = useFiltersOffered()
   const id = useId()
   const [draft, setDraft] = useState(() => draftOf(query, accountId, folder))
   const [expanded, setExpanded] = useState(
@@ -148,12 +152,18 @@ export function SearchForm({
         >
           {expanded ? t('search.fewerOptions') : t('search.moreOptions')}
         </Button>
+        {query !== undefined && filters && (
+          <Link to="/filters/new" search={{ q: query }} className={buttonVariants({ variant: 'ghost', size: 'xs', className: 'ml-auto' })}>
+            <ListFilter aria-hidden="true" />
+            {t('search.createFilter')}
+          </Link>
+        )}
         {query !== undefined && (
           <Button
             type="button"
             variant="ghost"
             size="xs"
-            className="ml-auto"
+            className={filters ? undefined : 'ml-auto'}
             onClick={() => {
               void navigate({ to: '/mail', search: (previous) => ({ account: accountId, folder, sub: previous.sub }) })
             }}

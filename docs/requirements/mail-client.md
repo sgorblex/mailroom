@@ -17,7 +17,9 @@ live updates yet.
 - **Folders** per account, with their role and unread/total counts.
 - **Message list** of one folder, newest first, 25 at a time with a "load more"; optionally with
   its subfolders merged in (`subfolders`, below).
-- **Search** over one account or all, with the search fields of mailroom-mcp's `search`.
+- **Search** over one account or all, with the search fields of mailroom-mcp's `search`; a
+  search shown offers *Create filter from this search* where the instance runs filters
+  ([`filters.md`](filters.md#filter-drafts)).
 - **Message view:** headers, the text body (quotes and signatures collapsed), attachments and a
   calendar note; a **standalone HTML view** when the message has an HTML body; attachment download.
 - **Sender checks** in the message view's headers, from the read's `sender_mismatch`, `sent_to` and
@@ -47,12 +49,13 @@ live updates yet.
   way the message allows: [one click](#one-click-unsubscribe) when `one_click_unsubscribe`, behind
   a confirm dialog that names the host and then says how the list answered; else a draft to the
   `mailto:` address in the composer ([prefill](#compose) `unsubscribe`), when the account can
-  write mail; else the `https:` link in a new tab. *Filter instead* beside it leads to Filters,
-  when the instance runs them.
+  write mail; else the `https:` link in a new tab. *Filter instead* beside it opens the filter
+  [drafted from the message](filters.md#filter-drafts), when the instance runs filters.
 - **Print and download:** beside Reply, Reply all and Forward, *Print* opens the message's
   [printable page](#get-messagesrefprint) in a new tab, for the browser's own print, and
-  *Download .eml* saves [its source](#get-messagesrefsource); the row's context menu and the
-  command palette offer both too, the composer open or not.
+  *Download .eml* saves [its source](#get-messagesrefsource), and *Filter messages like this*
+  opens the filter [drafted from it](filters.md#filter-drafts) where the instance runs filters;
+  the row's context menu and the command palette offer them too, the composer open or not.
 - **Link safety:** in the HTML view each link's tooltip is the host it really goes to (IDNA form,
   never the sender's own title), and a link whose text names another host (not the link's, nor a
   parent or child of it) is followed by a red *⚠ host* marker naming the real one; no

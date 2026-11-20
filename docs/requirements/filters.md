@@ -154,6 +154,15 @@ picks what it does.
   `gmx` and `yandex` under any one- or two-label suffix (`hotmail.it`, `yahoo.co.uk`). With
   `incl_subdomains`, a country's shared second level that holds them (`co.uk`, `com.br`) is
   refused too.
+- **In the web**, *Filter messages like this* (beside Print, in a row's context menu and the
+  command palette), the mailing list row's *Filter instead* and the search form's *Create filter
+  from this search* open `/filters/new`, which keeps the message's ref and account or the search
+  in its URL as the mail screen does. It shows the filter editor started from the draft, a
+  message's `criteria` to match on instead, and the search's `dropped` fields named as left out.
+  The filter goes into a rule set of the account's `INBOX`, one it has (each saying whether it is
+  enabled, an enabled one acting on new mail at once) or a new one, made `new_mail` and disabled
+  as any new rule set; a search over all accounts asks which. Adding the filter opens its rule
+  set; a rule set made when adding the filter then failed is the one the next try adds to.
 
 ## Data model
 

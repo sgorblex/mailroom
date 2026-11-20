@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { type AccountId, accountIdSchema } from './accounts.ts'
 import { apiDelete, apiGetJson, apiPatchJson, apiPostJson, apiPutJson } from './http.ts'
+import { matchBody, type SearchQuery } from './mail.ts'
 
 export const TRIGGERS = ['new_mail', 'scheduled', 'manual'] as const
 export type Trigger = (typeof TRIGGERS)[number]
@@ -102,6 +103,14 @@ const runSchema = z.object({
 })
 export type Run = z.infer<typeof runSchema>
 
+/** A filter drafted from a message: `spec` uses the first of `criteria`, narrowest first. */
+const messageDraftSchema = z.object({ spec: specSchema, criteria: z.array(specSchema), name: z.string() })
+export type MessageDraft = z.infer<typeof messageDraftSchema>
+
+/** A filter drafted from a search; `dropped` names the search's fields no criterion matches. */
+const searchDraftSchema = z.object({ spec: specSchema, dropped: z.array(z.string()) })
+export type SearchDraft = z.infer<typeof searchDraftSchema>
+
 const folderSchema = z.object({ path: z.array(z.string()) })
 export type Folder = z.infer<typeof folderSchema>
 
@@ -127,6 +136,22 @@ export async function setRunFilters(accountId: AccountId, runFilters: boolean): 
 /** The filter engine's JSON Schema of a filter spec: the editor builds its fields from it. */
 export function getFilterSchema(signal?: AbortSignal): Promise<unknown> {
   return apiGetJson('/api/v1/filters/schema', { init: { signal } })
+}
+
+/** A filter the editor starts from, made from the message's List-Id and sender; saves nothing. */
+export function draftFromMessage(ref: string, signal?: AbortSignal): Promise<MessageDraft> {
+  return apiGetJson(`/api/v1/mail/messages/${encodeURIComponent(ref)}/filter-draft`, {
+    init: { signal },
+    schema: messageDraftSchema,
+  })
+}
+
+/** A filter the editor starts from, made from a search; its account and folder are not criteria. */
+export function draftFromSearch(query: SearchQuery, signal?: AbortSignal): Promise<SearchDraft> {
+  return apiPostJson('/api/v1/filters/draft-from-search', matchBody({ query, subfolders: false }), {
+    init: { signal },
+    schema: searchDraftSchema,
+  })
 }
 
 export function listRuleSets(accountId: AccountId, signal?: AbortSignal): Promise<RuleSet[]> {

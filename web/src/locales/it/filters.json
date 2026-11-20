@@ -201,6 +201,37 @@
         "scheduled": "Programmata",
         "manual": "Esegui ora"
       }
+    },
+    "draft": {
+      "fromMessage": "Filtra i messaggi come questo",
+      "fromSearch": "Crea un filtro da una ricerca",
+      "intro": "Non viene salvato nulla finché non aggiungi il filtro, che non fa nulla finché non scegli la sua azione.",
+      "back": "Torna alla posta",
+      "loading": "Preparo il filtro…",
+      "loadFailed": "Impossibile preparare il filtro.",
+      "nothingToDraft": "Qui non c'è un messaggio né una ricerca da cui preparare un filtro.",
+      "nothingInMessage": "Questo messaggio non ha nulla su cui un filtro possa agire: né una mailing list né l'indirizzo del mittente.",
+      "nothingInSearch": "Nessun campo di questa ricerca può diventare una condizione del filtro.",
+      "nothingInSearchDropped": "Nessun campo di questa ricerca può diventare una condizione del filtro ({{fields}} in un filtro funzionano diversamente).",
+      "noAccount": "L'account non c'è più.",
+      "account": "Account",
+      "matchOn": "Agisci su",
+      "dropped": "Esclusi, perché nessuna condizione del filtro li confronta come la ricerca: {{fields}}.",
+      "fields": {
+        "from": "Mittente (l'intero dominio di un provider pubblico)",
+        "text": "Parole",
+        "since": "Dal",
+        "before": "Prima del",
+        "has_attachment": "Con allegati",
+        "gmail_query": "Ricerca Gmail"
+      },
+      "ruleSet": "Aggiungilo a una regola della posta in arrivo",
+      "newRuleSet": "Una nuova regola",
+      "newRuleSetName": "Nome della nuova regola",
+      "newRuleSetDefault": "Posta in arrivo",
+      "startsOff": "Una nuova regola parte disabilitata: provala con una simulazione, poi abilitala.",
+      "ruleSetOff": "Questa regola è disabilitata: il filtro gira quando la abiliti.",
+      "actsAtOnce": "Questa regola è abilitata: il filtro agisce sulla nuova posta appena lo aggiungi."
     }
   },
   "filterTypes": {
@@ -282,6 +313,7 @@
     "dryRunTimeout": "La simulazione ci ha messo troppo: prova un filtro più mirato o una cartella più piccola.",
     "dryRunBusy": "Hai già una simulazione in corso: aspetta che finisca, poi riprova.",
     "matchTimeout": "L'espressione di un filtro ha richiesto troppo tempo su un messaggio, quindi l'esecuzione si è fermata: semplificala (di solito la causa sono ripetizioni annidate come (a+)+).",
+    "publicProviderDomain": "Un filtro non può agire su tutti i mittenti di un provider di posta pubblico (come gmail.com): usa l'indirizzo del mittente.",
     "tooManyFilters": "Una regola contiene al massimo {{max}} filtri: rimuovine uno per aggiungerne un altro.",
     "invalidOrder": "I filtri sono cambiati nel frattempo. Ricarica la pagina e riprova.",
     "invalidRuleSet": "Una regola programmata richiede un intervallo in minuti; gli altri avvii non ne prevedono.",
