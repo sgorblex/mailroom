@@ -181,12 +181,19 @@ MCP `message_read` still never set `\Seen`.
   Move to another account… (when the user has an account none of them is in: the account, then
   whether the originals go to Trash, the default, or are deleted for good, then the folder;
   deleting for good asks first, naming how many and from which account to which),
-  Star/Unstar, Mark read/unread.
+  Star/Unstar, Mark To sort/Mark sorted ([To sort](../GLOSSARY.md)), Mark read/unread.
 - **A star on each row** stars or unstars that one message, whatever is selected or open, without
   opening it: filled when starred, else an outline shown on hover and keyboard focus (always on a
   touch screen) and always there for screen readers, a toggle button named *Star* whose pressed
   state says whether the message is starred (its tooltip says *Star* or *Unstar*). While another
   action runs it is disabled and looks it, and a click sends nothing. Its result and any failure show in the toolbar's notice.
+- **A To sort mark on each row**, next to the star, marks that one message To sort or sorted the
+  same way: a toggle named *To sort*, filled when marked (its tooltip says *Mark To sort* or
+  *Mark sorted*).
+- Where the account's server keeps no keywords (the accounts listing's `keywords` is `false`),
+  the toolbar's To sort action and the row's mark are greyed out, their tooltip saying why, and
+  neither they nor `t` send anything; where it is not known, they are offered and the server's
+  `unsupported` is shown as any failure.
 - Results update the list in place: moved or trashed rows disappear, flags change on the row, and
   failed groups are shown with the mail error wording; a group of a move to another account
   whose copies were made but whose originals stayed says they are in both.
@@ -201,6 +208,7 @@ MCP `message_read` still never set `\Seen`.
 | `e` | Archive |
 | `#` | Trash |
 | `s` | Star or unstar |
+| `t` | Mark To sort or sorted |
 | `u` | Mark unread |
 | `v` | Open the move picker |
 | `Escape` | Close the picker, else clear the selection |

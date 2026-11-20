@@ -1,7 +1,19 @@
 import { useEffect, useRef, useState, type ReactElement, type ReactNode, type Ref } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { Archive, ArrowRightLeft, FolderInput, Mail, MailOpen, Star, StarOff, Trash2, X } from 'lucide-react'
+import {
+  Archive,
+  ArrowRightLeft,
+  BookmarkCheck,
+  BookmarkPlus,
+  FolderInput,
+  Mail,
+  MailOpen,
+  Star,
+  StarOff,
+  Trash2,
+  X,
+} from 'lucide-react'
 
 import type { AccountId } from '@/api/accounts.ts'
 import { useAccountName } from '@/accounts/accounts-context.ts'
@@ -122,6 +134,17 @@ export function Toolbar({ className }: { className?: string }): ReactElement | n
               {actions.star.flagged ? <Star aria-hidden="true" /> : <StarOff aria-hidden="true" />}
             </ToolButton>
           )}
+          {actions.toSort !== null && (
+            <ToolButton
+              label={actions.toSort.toSort ? t('triage.toSort') : t('triage.sorted')}
+              shortcut="t"
+              disabled={disabled}
+              unavailable={actions.toSort.unsupported ? t('triage.toSortUnsupported') : undefined}
+              onClick={actions.toSort.run}
+            >
+              {actions.toSort.toSort ? <BookmarkPlus aria-hidden="true" /> : <BookmarkCheck aria-hidden="true" />}
+            </ToolButton>
+          )}
           {actions.read !== null && (
             <ToolButton
               label={actions.read.seen ? t('triage.markRead') : t('triage.markUnread')}
@@ -176,10 +199,12 @@ export function Toolbar({ className }: { className?: string }): ReactElement | n
   )
 }
 
+/** A toolbar action; `unavailable`, the reason it cannot be done here, greys it out and says why. */
 function ToolButton({
   label,
   shortcut,
   disabled,
+  unavailable,
   expanded,
   onClick,
   ref,
@@ -188,24 +213,27 @@ function ToolButton({
   label: string
   shortcut: string | undefined
   disabled: boolean
+  unavailable?: string
   expanded?: boolean
   onClick: () => void
   ref?: Ref<HTMLButtonElement>
   children: ReactNode
 }): ReactElement {
+  const named = shortcut === undefined ? label : `${label} (${shortcut})`
   return (
     <Button
       ref={ref}
       variant="ghost"
       size="icon-sm"
       aria-label={label}
-      title={shortcut === undefined ? label : `${label} (${shortcut})`}
-      aria-keyshortcuts={shortcut}
-      aria-disabled={disabled}
+      title={unavailable === undefined ? named : `${named}: ${unavailable}`}
+      aria-keyshortcuts={unavailable === undefined ? shortcut : undefined}
+      aria-disabled={disabled || unavailable !== undefined}
+      className={cn(unavailable !== undefined && 'opacity-50')}
       aria-haspopup={expanded === undefined ? undefined : 'dialog'}
       aria-expanded={expanded}
       onClick={() => {
-        if (!disabled) {
+        if (!disabled && unavailable === undefined) {
           onClick()
         }
       }}
@@ -273,6 +301,9 @@ function doneMessage(t: TFunction, accountName: (id: AccountId) => string, actio
     case 'flag':
       if (action.change.flagged !== undefined) {
         return action.change.flagged ? t('triage.starred', { count }) : t('triage.unstarred', { count })
+      }
+      if (action.change.to_sort !== undefined) {
+        return action.change.to_sort ? t('triage.markedToSort', { count }) : t('triage.markedSorted', { count })
       }
       return action.change.seen === true ? t('triage.markedRead', { count }) : t('triage.markedUnread', { count })
   }

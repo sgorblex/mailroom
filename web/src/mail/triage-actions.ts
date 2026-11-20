@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 
+import { useAccountKeywords } from '@/accounts/accounts-context.ts'
 import type { AccountId } from '@/api/accounts.ts'
 import type { MailFolder, MoveRemoval } from '@/api/mail.ts'
 
@@ -12,6 +13,11 @@ export interface TriageActions {
   trash: (() => void) | null
   /** Star, or unstar when every target is starred: `flagged` is what it sets. */
   star: { flagged: boolean; run: () => void } | null
+  /**
+   * Mark To sort, or sorted when every target is marked: `toSort` is what it sets. `unsupported`
+   * when a target's account keeps no keywords: offered greyed out, and not to be run.
+   */
+  toSort: { toSort: boolean; unsupported: boolean; run: () => void } | null
   /** Mark read when a target is unread, else mark unread: `seen` is what it sets. */
   read: { seen: boolean; run: () => void } | null
   markUnread: (() => void) | null
@@ -31,6 +37,7 @@ export function movableInto(folder: MailFolder): boolean {
 export function useTriageActions(): TriageActions {
   const triage = useTriage()
   const { targets, run, flagsOf, loadFolders } = triage
+  const keywordsOf = useAccountKeywords()
   const accounts = [...new Set(targets.map((target) => target.account_id))]
   const accountsKey = JSON.stringify(accounts)
 
@@ -53,6 +60,7 @@ export function useTriageActions(): TriageActions {
       archive: null,
       trash: null,
       star: null,
+      toSort: null,
       read: null,
       markUnread: null,
       moveChoices: null,
@@ -65,6 +73,8 @@ export function useTriageActions(): TriageActions {
   const canArchive =
     accounts.every((account) => roleFolder(foldersOf(account), 'archive') !== undefined) && outside('archive').length > 0
   const flagged = !targets.every((target) => flagsOf(target).flagged)
+  const toSort = !targets.every((target) => flagsOf(target).to_sort)
+  const toSortUnsupported = accounts.some((each) => keywordsOf(each) === false)
   const seen = targets.some((target) => !flagsOf(target).seen)
   const [account] = accounts
   const folders = accounts.length === 1 && account !== undefined ? foldersOf(account) : undefined
@@ -76,6 +86,11 @@ export function useTriageActions(): TriageActions {
     archive: canArchive ? () => void run({ kind: 'archive' }, targets) : null,
     trash: outside('trash').length > 0 ? () => void run({ kind: 'trash' }, targets) : null,
     star: { flagged, run: () => void run({ kind: 'flag', change: { flagged } }, targets) },
+    toSort: {
+      toSort,
+      unsupported: toSortUnsupported,
+      run: () => void run({ kind: 'flag', change: { to_sort: toSort } }, targets),
+    },
     read: { seen, run: () => void run({ kind: 'flag', change: { seen } }, targets) },
     markUnread: () => void run({ kind: 'flag', change: { seen: false } }, targets),
     moveChoices:

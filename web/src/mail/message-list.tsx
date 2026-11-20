@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useSearch } from '@tanstack/react-router'
-import { Paperclip, Star } from 'lucide-react'
+import { Bookmark, Paperclip, Star } from 'lucide-react'
 
 import { AccountName } from '@/accounts/account-name.tsx'
-import { useAccountLabel, useAccountName } from '@/accounts/accounts-context.ts'
+import { useAccountKeywords, useAccountLabel, useAccountName } from '@/accounts/accounts-context.ts'
 import type { MessageItem, MessagePage, SourceFailure } from '@/api/mail.ts'
 import { useTimeZone } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
@@ -126,6 +126,7 @@ export function MessageList({
                   }}
                 />
                 <StarToggle message={message} />
+                <ToSortToggle message={message} />
                 <MessageRow message={message} source={searching ? 'account' : subfolders ? 'folder' : null} />
               </li>
             ))}
@@ -258,6 +259,41 @@ function StarToggle({ message }: { message: MessageItem }): ReactElement {
   )
 }
 
+/**
+ * Marks this one message To sort, or sorted, as `StarToggle` stars it. Greyed out, saying why, where
+ * the account's server keeps no keywords.
+ */
+function ToSortToggle({ message }: { message: MessageItem }): ReactElement {
+  const { t } = useTranslation(MAIL_NS)
+  const { flagsOf, run, busy } = useTriage()
+  const unsupported = useAccountKeywords()(message.account_id) === false
+  const marked = flagsOf(message).to_sort
+  const action = marked ? t('triage.sorted') : t('triage.toSort')
+  return (
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      aria-label={t('list.toSort')}
+      title={unsupported ? `${action}: ${t('triage.toSortUnsupported')}` : action}
+      aria-pressed={marked}
+      aria-disabled={busy || unsupported}
+      className={cn(
+        'mt-2.5 shrink-0 text-muted-foreground hover:text-foreground',
+        'aria-disabled:cursor-not-allowed aria-disabled:text-muted-foreground/50 aria-disabled:hover:text-muted-foreground/50',
+        !marked &&
+          'opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100',
+      )}
+      onClick={() => {
+        if (!busy && !unsupported) {
+          void run({ kind: 'flag', change: { to_sort: !marked } }, [message])
+        }
+      }}
+    >
+      <Bookmark aria-hidden="true" className={cn('size-3.5', marked && 'fill-current text-foreground')} />
+    </Button>
+  )
+}
+
 function MessageRow({ message, source }: { message: MessageItem; source: 'account' | 'folder' | null }): ReactElement {
   const { t, i18n } = useTranslation(MAIL_NS)
   const timeZone = useTimeZone()
@@ -281,8 +317,9 @@ function MessageRow({ message, source }: { message: MessageItem; source: 'accoun
         <span className={cn('min-w-0 flex-1 truncate', unread && 'font-semibold')}>
           {sender === '' ? t('message.noSender') : sender}
         </span>
-        {/* Shown by the row's star toggle; said here too for whoever goes through the links. */}
+        {/* Shown by the row's toggles; said here too for whoever goes through the links. */}
         {flags.flagged && <span className="sr-only">{t('list.flagged')}</span>}
+        {flags.to_sort && <span className="sr-only">{t('list.toSort')}</span>}
         {message.has_attachments && (
           <Paperclip role="img" aria-label={t('list.hasAttachments')} className="size-3.5 shrink-0 self-center" />
         )}

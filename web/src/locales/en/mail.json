@@ -92,6 +92,7 @@
     "failedFolder": "{{account}}, {{folder}}: {{reason}}",
     "unread": "Unread",
     "flagged": "Starred",
+    "toSort": "To sort",
     "hasAttachments": "Has attachments"
   },
   "search": {
@@ -188,6 +189,9 @@
     "cancel": "Cancel",
     "star": "Star",
     "unstar": "Unstar",
+    "toSort": "Mark To sort",
+    "sorted": "Mark sorted",
+    "toSortUnsupported": "the mail server cannot keep the To sort mark",
     "markRead": "Mark as read",
     "markUnread": "Mark as unread",
     "dismiss": "Dismiss",
@@ -207,6 +211,10 @@
     "starred_other": "Starred {{count}} messages.",
     "unstarred_one": "Unstarred {{count}} message.",
     "unstarred_other": "Unstarred {{count}} messages.",
+    "markedToSort_one": "Marked {{count}} message To sort.",
+    "markedToSort_other": "Marked {{count}} messages To sort.",
+    "markedSorted_one": "Marked {{count}} message sorted.",
+    "markedSorted_other": "Marked {{count}} messages sorted.",
     "markedRead_one": "Marked {{count}} message as read.",
     "markedRead_other": "Marked {{count}} messages as read.",
     "markedUnread_one": "Marked {{count}} message as unread.",

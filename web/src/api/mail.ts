@@ -17,6 +17,8 @@ const flagsSchema = z.object({
   flagged: z.boolean(),
   answered: z.boolean(),
   draft: z.boolean(),
+  /** The To sort mark (`$MailroomSort`). */
+  to_sort: z.boolean(),
 })
 
 const mailFolderSchema = z.object({
@@ -263,7 +265,14 @@ const organizeGroupSchema = z.object({
   /** On a move to another account, that account: `new_refs` are its. */
   destination_account: accountIdSchema.nullable().default(null),
   junk: z.enum(['spam', 'ham']).nullable(),
-  flags: z.array(z.object({ ref: z.string(), seen: z.boolean().nullable(), flagged: z.boolean().nullable() })),
+  flags: z.array(
+    z.object({
+      ref: z.string(),
+      seen: z.boolean().nullable(),
+      flagged: z.boolean().nullable(),
+      to_sort: z.boolean().nullable(),
+    }),
+  ),
   error: z.object({ code: z.string(), message: z.string() }).nullable(),
 })
 /** One account and folder of a batch: groups succeed or fail on their own. */
@@ -275,6 +284,8 @@ const organizeAnswerSchema = z.object({ results: z.array(organizeGroupSchema) })
 export interface FlagChange {
   seen?: boolean
   flagged?: boolean
+  /** Refused as `unsupported` where the account's server keeps no keywords. */
+  to_sort?: boolean
 }
 
 async function organize(route: string, body: object, signal?: AbortSignal): Promise<OrganizeGroup[]> {

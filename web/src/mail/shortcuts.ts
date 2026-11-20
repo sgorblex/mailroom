@@ -30,11 +30,11 @@ const REPEATING = new Set(['j', 'k'])
 
 /**
  * The mail screen's keyboard shortcuts (`docs/requirements/mail-client.md`): j/k move through
- * the list, x selects, e archives, # trashes, s stars, u marks unread, v opens the move picker,
- * Escape closes it or clears the selection; r, a and f reply, reply to all and forward the open
- * message, c writes a new one on `accountId`, and those four wait while a composer is open or
- * for an account in send mode off. None while typing, none with Ctrl or Meta (but for AltGr,
- * which types characters), and no letter with Alt.
+ * the list, x selects, e archives, # trashes, s stars, t marks To sort (or sorted), u marks
+ * unread, v opens the move picker, Escape closes it or clears the selection; r, a and f reply,
+ * reply to all and forward the open message, c writes a new one on `accountId`, and those four
+ * wait while a composer is open or for an account in send mode off. None while typing, none with
+ * Ctrl or Meta (but for AltGr, which types characters), and no letter with Alt.
  */
 export function useMailShortcuts(accountId: AccountId): void {
   const triage = useTriage()
@@ -101,6 +101,8 @@ export function useMailShortcuts(accountId: AccountId): void {
           return run(offered.trash)
         case 's':
           return run(offered.star?.run)
+        case 't':
+          return run(offered.toSort === null || offered.toSort.unsupported ? null : offered.toSort.run)
         case 'u':
           return run(offered.markUnread)
         case 'v':
