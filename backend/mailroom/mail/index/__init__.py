@@ -1,6 +1,6 @@
 """The mail index (``docs/requirements/mail-client.md``, *Index*): its settings (which folders of
-an account are indexed, the user's age limit under the instance's cap, each folder's state) and
-the sync the worker runs."""
+an account are indexed, the user's age limit under the instance's cap, each folder's state), the
+sync the worker runs, and the rows the app's own writes change (``writes``)."""
 
 from mailroom.mail.index.settings import (
     MAX_AGE_ENV,
@@ -15,9 +15,11 @@ from mailroom.mail.index.settings import (
     set_folder_enabled,
 )
 from mailroom.mail.index.sync import due_folders, fail_folder, sync_folder
+from mailroom.mail.index.writes import NOTIFY_CHANNEL, notify
 
 __all__ = [
     "MAX_AGE_ENV",
+    "NOTIFY_CHANNEL",
     "IndexFolderStatus",
     "IndexFolderSwitched",
     "IndexStatus",
@@ -28,6 +30,7 @@ __all__ = [
     "fail_folder",
     "index_status",
     "max_age_cap",
+    "notify",
     "set_folder_enabled",
     "sync_folder",
 ]

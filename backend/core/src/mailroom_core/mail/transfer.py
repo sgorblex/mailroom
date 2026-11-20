@@ -284,6 +284,7 @@ def _transfer(
         destination=plan.folder,
         destination_account=plan.account,
         refused=refusals,
+        trash=plan.trash if plan.removal == "trash" else None,
     )
     if failure is None:
         return result
@@ -301,6 +302,7 @@ def _transfer(
             destination=plan.folder,
             destination_account=plan.account,
             refused=refusals,
+            trash=plan.trash if plan.removal == "trash" else None,
         ),
     )
 

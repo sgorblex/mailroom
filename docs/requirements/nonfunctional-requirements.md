@@ -654,6 +654,8 @@ keeps it, with `mail`:
   `secrets_key_missing`), anything unexpected with `failed`, its exception's type logged; the
   next turn tries again. The sync never changes mail: every read is under EXAMINE. On Gmail only
   All Mail has a row, so only it is synced.
+- The API queues `sync_folder` too, in its own transaction, for a folder one of its writes left
+  unsure ([`mail-client.md`](mail-client.md) — *Index*, the app's own writes).
 
 ### Filters
 

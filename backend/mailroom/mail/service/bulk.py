@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Final, cast
 from mailroom.accounts.service import require_subkey
 from mailroom.audit import WEB, AuditTrail, Origin
 from mailroom.errors import Refusal, mail_refusal
+from mailroom.mail.index import writes as index_writes
 from mailroom.mail.service._shared import (
     _Accounts,
     _accounts,
@@ -120,7 +121,8 @@ def act_on_matching(
     ``too_many`` past ``BULK_MAX``: mailroom-core's ``act_on_matching``. The caller repeats it
     with the ``remaining`` count until none remain. Recorded per message as ``bulk_flag``,
     ``bulk_move`` or ``bulk_trash``, refusals and failed accounts too; logged with counts and
-    codes only."""
+    codes only. The thread that does the work brings the mail index in step with what it did
+    (``mailroom.mail.index.writes``)."""
     check_search(folder, query, subfolders=subfolders)
     event = "mail_bulk_acted"
     name = (
@@ -142,7 +144,7 @@ def act_on_matching(
     def work(connections: MailConnections) -> BulkResult:
         items: list[AuditItem] = []
         try:
-            return core.act_on_matching(
+            done = core.act_on_matching(
                 cast("MailConnections", _Stoppable(connections, stop)),
                 usable,
                 folder,
@@ -158,6 +160,8 @@ def act_on_matching(
             ) from None
         finally:
             trail.notes(items)
+        index_writes.organized(ctx.session_maker, user_id, items, done.groups)
+        return done
 
     try:
         if usable:

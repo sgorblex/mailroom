@@ -217,6 +217,19 @@ def queue_folder_sync(db: Session, user_id: int, account_id: int, folder_id: int
     )
 
 
+def folder_syncs_running(db: Session, folder_ids: Sequence[int]) -> set[int]:
+    """Which of the indexed folders ``folder_ids`` have a ``sync_folder`` job running now: one
+    that surveyed its folder before a write may store the flags it read over that write's."""
+    if not folder_ids:
+        return set()
+    query = text(
+        f"SELECT (args->>'folder_id')::bigint FROM {PROCRASTINATE_SCHEMA}.procrastinate_jobs"
+        " WHERE task_name = :name AND status = 'doing'"
+        " AND (args->>'folder_id')::bigint = ANY(:ids)"
+    )
+    return set(db.scalars(query, {"name": SYNC_FOLDER, "ids": list(folder_ids)}))
+
+
 def queue_run(db: Session, rule_set: RuleSet, account_id: int, trigger: str) -> int | None:
     """Queue a run of ``rule_set`` on ``account_id`` (its own, or one of an all-accounts rule
     set's) in ``db``'s transaction (the caller commits) and prune that account's history of it.
