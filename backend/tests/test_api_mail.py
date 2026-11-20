@@ -418,6 +418,14 @@ def test_a_message_reads_without_marking_it_seen(
     assert "> old quoted text" in full["text"]["content"]
     assert full["text"]["quoted_omitted"] is False
     assert (view["has_html"], view["has_remote_content"], view["calendar"]) == (False, False, None)
+    assert view["headers"] == {
+        "mailing_list": None,
+        "authentication": [],
+        "dkim_signatures": [],
+        "from_fields": 1,
+        "delivered_to": [],
+        "truncated": False,
+    }
     assert view["attachments"] == [
         {
             "part": "2",

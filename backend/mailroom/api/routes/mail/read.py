@@ -153,6 +153,60 @@ class BodyText(BaseModel):
     ``content`` marks the gap; the client offers to show it."""
 
 
+class ListLinks(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str | None
+    name: str | None
+    archive: str | None
+    post: str | None
+    help: str | None
+    unsubscribe_https: str | None
+    unsubscribe_mailto: str | None
+    one_click: bool
+    unsubscribe_fields: int
+    unsubscribe_post_fields: int
+
+
+class AuthResult(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    method: str
+    result: str
+    header_d: str | None
+    header_b: str | None
+    header_from: str | None
+
+
+class AuthResults(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    authserv_id: str | None
+    results: list[AuthResult]
+
+
+class DkimSignature(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    d: str
+    b: str
+    h: list[str]
+
+
+class HeaderInfo(BaseModel):
+    """What mailroom-core parsed from the list, authentication and delivery fields: the
+    sender's or a relay's words, none of them verified yet."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    mailing_list: ListLinks | None
+    authentication: list[AuthResults]
+    dkim_signatures: list[DkimSignature]
+    from_fields: int
+    delivered_to: list[str]
+    truncated: bool
+
+
 class MessageDetail(BaseModel):
     ref: str
     account_id: int
@@ -170,6 +224,7 @@ class MessageDetail(BaseModel):
     has_remote_content: bool
     attachments: list[MessagePart]
     calendar: MessagePart | None
+    headers: HeaderInfo
 
     @classmethod
     def of(cls, view: MessageView) -> MessageDetail:
@@ -205,6 +260,7 @@ class MessageDetail(BaseModel):
             has_remote_content=bool(view.has_remote_content),
             attachments=[MessagePart.of(info) for info in view.attachments],
             calendar=None if view.calendar is None else MessagePart.of(view.calendar),
+            headers=HeaderInfo.model_validate(view.headers),
         )
 
 

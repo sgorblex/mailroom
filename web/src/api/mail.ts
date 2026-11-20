@@ -65,6 +65,43 @@ export type MessagePage = z.infer<typeof messagePageSchema>
 const partSchema = z.object({ part: z.string(), name: z.string(), type: z.string(), size: z.number() })
 export type MessagePart = z.infer<typeof partSchema>
 
+/** The list, authentication and delivery fields as the server parsed them: the sender's or a relay's words, unverified. */
+const headerInfoSchema = z.object({
+  mailing_list: z
+    .object({
+      id: z.string().nullable(),
+      name: z.string().nullable(),
+      archive: z.string().nullable(),
+      post: z.string().nullable(),
+      help: z.string().nullable(),
+      unsubscribe_https: z.string().nullable(),
+      unsubscribe_mailto: z.string().nullable(),
+      one_click: z.boolean(),
+      unsubscribe_fields: z.number(),
+      unsubscribe_post_fields: z.number(),
+    })
+    .nullable(),
+  /** Topmost first. */
+  authentication: z.array(
+    z.object({
+      authserv_id: z.string().nullable(),
+      results: z.array(
+        z.object({
+          method: z.string(),
+          result: z.string(),
+          header_d: z.string().nullable(),
+          header_b: z.string().nullable(),
+          header_from: z.string().nullable(),
+        }),
+      ),
+    }),
+  ),
+  dkim_signatures: z.array(z.object({ d: z.string(), b: z.string(), h: z.array(z.string()) })),
+  from_fields: z.number(),
+  delivered_to: z.array(z.string()),
+  truncated: z.boolean(),
+})
+
 const messageViewSchema = z.object({
   ref: z.string(),
   account_id: accountIdSchema,
@@ -88,6 +125,7 @@ const messageViewSchema = z.object({
   has_remote_content: z.boolean(),
   attachments: z.array(partSchema),
   calendar: partSchema.nullable(),
+  headers: headerInfoSchema,
 })
 export type MessageView = z.infer<typeof messageViewSchema>
 

@@ -11,6 +11,7 @@ from mailroom_core.mail._mime import addresses, aware_date, header_text, text_va
 from mailroom_core.mail.content_type import content_type
 from mailroom_core.mail.download import body_text, part_content
 from mailroom_core.mail.errors import MailError
+from mailroom_core.mail.message_headers import FETCH_ITEM, MessageHeaders, parse_headers
 from mailroom_core.mail.ref import MessageRef, check_fresh, format_ref, parse_ref
 from mailroom_core.mail.structure import MimePart, Structure, analyse_structure
 from mailroom_core.render import (
@@ -107,6 +108,9 @@ class MessageView:
     inline_parts: tuple[PartInfo, ...]
     """What the HTML shows in place (`Structure.inline_parts`): not attachments."""
     calendar: PartInfo | None
+    headers: MessageHeaders
+    """List links, authentication results and delivery addresses, parsed from at most
+    `message_headers.MAX_BYTES` of those fields: unverified until a host checks them."""
     raw_headers: str | None
     """The header section as received, when asked for."""
 
@@ -156,7 +160,7 @@ def read_message(
     def run(context: MailboxContext) -> MessageView:
         check_fresh(message, context.uid_validity)
         client = context.client
-        items = ["ENVELOPE", "FLAGS", "INTERNALDATE", "RFC822.SIZE"]
+        items = ["ENVELOPE", "FLAGS", "INTERNALDATE", "RFC822.SIZE", FETCH_ITEM]
         if raw_headers:
             items.append("BODY.PEEK[HEADER]")
         data, structure = fetch_structure(client, message.uid, items)
@@ -213,6 +217,7 @@ def read_message(
             attachments=structure.attachments,
             inline_parts=structure.inline_parts,
             calendar=structure.calendar,
+            headers=parse_headers(fetched_headers(data)),
             raw_headers=(text_value(header) if raw_headers and isinstance(header, bytes) else None),
         )
 

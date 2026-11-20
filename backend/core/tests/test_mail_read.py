@@ -27,6 +27,7 @@ from mailroom_core.mail import (
     thread_page,
     thread_text,
 )
+from mailroom_core.mail import message_headers as message_headers_module
 from mailroom_core.mail import search as search_module
 from mailroom_core.mail import selected as selected_module
 from mailroom_core.testing import (
@@ -181,6 +182,46 @@ def test_reads_without_marking_read_with_attachments_and_quotes_collapsed(
     assert "> Can you send the report?" in quoted.body.text
 
     assert ["\\Seen" in m.flags for m in folder_contents(imap_server, user, "INBOX")] == [False]
+
+
+def test_a_read_parses_list_and_authentication_fields_from_a_capped_fetch(
+    imap_server, harness
+) -> None:
+    user = imap_server.unique_user("headers")
+    raw = (
+        "Authentication-Results: mx.example.test; dkim=pass header.d=example.org header.b=AAAA;\r\n"
+        " dmarc=pass header.from=example.org\r\n"
+        "Delivered-To: ale@example.test\r\n"
+        "DKIM-Signature: v=1; d=example.org; h=from:list-unsubscribe:list-unsubscribe-post;\r\n"
+        " b=AAAABBBB\r\n"
+        "From: News <news@example.org>\r\nTo: ale@example.test\r\nSubject: news\r\n"
+        "List-Id: News <news.example.org>\r\n"
+        "List-Unsubscribe: <https://example.org/u>\r\n"
+        "List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n"
+        "\r\nhello\r\n"
+    )
+    seed(imap_server, user, "INBOX", raw)
+    padded = "".join(f"Delivered-To: pad{i}@example.test\r\n" for i in range(4000))
+    seed(imap_server, user, "INBOX", padded + raw)
+    mail = harness((1, user))
+    padded_summary, summary = list_messages(mail, 1).messages
+    headers = read_message(mail, summary.ref).headers
+    assert not headers.truncated
+    assert headers.mailing_list is not None
+    assert (headers.mailing_list.id, headers.mailing_list.one_click) == ("news.example.org", True)
+    [trusted] = headers.authentication
+    assert trusted.authserv_id == "mx.example.test"
+    assert [(r.method, r.result) for r in trusted.results] == [("dkim", "pass"), ("dmarc", "pass")]
+    assert headers.dkim_signatures[0].h[1:] == ("list-unsubscribe", "list-unsubscribe-post")
+    assert (headers.from_fields, headers.delivered_to) == (1, ("ale@example.test",))
+
+    cut = read_message(mail, padded_summary.ref).headers
+    assert cut.truncated
+    assert len(cut.delivered_to) == message_headers_module.MAX_DELIVERED
+    assert ["\\Seen" in m.flags for m in folder_contents(imap_server, user, "INBOX")] == [
+        False,
+        False,
+    ]
 
 
 def test_pages_a_long_body_with_offset(imap_server, harness) -> None:

@@ -166,6 +166,14 @@ export function messageView(item: MessageItem, fields: Partial<MessageView> = {}
     has_remote_content: false,
     attachments: [],
     calendar: null,
+    headers: {
+      mailing_list: null,
+      authentication: [],
+      dkim_signatures: [],
+      from_fields: 1,
+      delivered_to: [],
+      truncated: false,
+    },
     ...fields,
   }
 }
