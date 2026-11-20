@@ -2,6 +2,7 @@ import type { TFunction } from 'i18next'
 import { describe, expect, it } from 'vitest'
 
 import { FOLDER_ROLES } from '@/api/mail.ts'
+import i18n from '@/i18n/i18n.ts'
 import enCommon from '@/locales/en/common.json'
 import en from '@/locales/en/mail.json'
 import itCommon from '@/locales/it/common.json'
@@ -9,6 +10,7 @@ import it_ from '@/locales/it/mail.json'
 import { keys } from '@/test/strings.ts'
 
 import { formatListDate, formatSize } from './format.ts'
+import { MAIL_NS } from './i18n.ts'
 import { sentMessage } from './messages.ts'
 
 describe.each([
@@ -30,6 +32,19 @@ describe('the compose strings', () => {
 describe('the message strings', () => {
   it('exist in both languages', () => {
     expect(keys(it_.message).sort()).toEqual(keys(en.message).sort())
+  })
+})
+
+describe('the remote image count', () => {
+  it.each([
+    ['en', 1, '1 remote image is blocked, so the sender cannot tell you opened it.', '1 remote image is shown for this message.'],
+    ['en', 4, '4 remote images are blocked, so the sender cannot tell you opened it.', '4 remote images are shown for this message.'],
+    ['it', 1, "1 immagine remota è bloccata, così il mittente non sa che l'hai aperto.", '1 immagine remota è mostrata per questo messaggio.'],
+    ['it', 4, "4 immagini remote sono bloccate, così il mittente non sa che l'hai aperto.", '4 immagini remote sono mostrate per questo messaggio.'],
+  ])('is worded in %s for %i', (language, count, blocked, shown) => {
+    const t = i18n.getFixedT(language, MAIL_NS)
+    expect(t('message.remoteBlocked', { count })).toBe(blocked)
+    expect(t('message.remoteShown', { count })).toBe(shown)
   })
 })
 

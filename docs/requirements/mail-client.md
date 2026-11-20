@@ -32,9 +32,9 @@ live updates yet.
   together are summed up as *You and N others* (or *N recipients* when the identity is not among
   them), shown in full on request.
 - **Remote content** (remote images, `http` or `https`) is blocked and revealed per message
-  ([Glossary](../GLOSSARY.md)), never remembered; the notice says how many remote images the
-  message asks for (`remote_images`), and offers to show them only when some can be
-  (`loadable_remote_images`). What is removed either way is in the HTML route below.
+  ([Glossary](../GLOSSARY.md)), never remembered; beside the gate, a line says how many remote
+  images are blocked (`remote_images`) or shown (`loadable_remote_images`), and the gate offers to
+  show them only when some can be. What is removed either way is in the HTML route below.
 - **Link safety:** in the HTML view each link's tooltip is the host it really goes to (IDNA form,
   never the sender's own title), and a link whose text names another host (not the link's, nor a
   parent or child of it) is followed by a red *⚠ host* marker naming the real one; no

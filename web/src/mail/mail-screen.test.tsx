@@ -547,6 +547,7 @@ describe('MailScreen', () => {
       )
     })
     expect(screen.queryByRole('button', { name: 'Show remote images' })).not.toBeInTheDocument()
+    expect(screen.getByText('2 remote images are shown for this message.')).toBeInTheDocument()
 
     // Text and back, in the same message: still revealed.
     await userEvent.click(screen.getByRole('button', { name: 'Text' }))
@@ -587,6 +588,7 @@ describe('MailScreen', () => {
     const frame = await screen.findByTitle(`HTML version of ${htmlOnly.subject}`)
     expect(frame).toHaveAttribute('sandbox', HTML_SANDBOX)
     expect(screen.queryByRole('button', { name: 'Show remote images' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/remote image/)).not.toBeInTheDocument()
   })
 
   it('searches with the form fields and lists the results with their source', async () => {

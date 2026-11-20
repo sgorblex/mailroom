@@ -56,7 +56,9 @@ export function HtmlBody({
           )}
         </div>
       )}
-      {remote && <p className="text-xs text-muted-foreground">{t('message.remoteShown')}</p>}
+      {remote && loadableRemoteImages > 0 && (
+        <p className="text-xs text-muted-foreground">{t('message.remoteShown', { count: loadableRemoteImages })}</p>
+      )}
       {state.kind === 'loading' && (
         <p role="status" className="text-sm text-muted-foreground">
           {t('message.htmlLoading')}
