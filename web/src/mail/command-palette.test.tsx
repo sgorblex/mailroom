@@ -162,7 +162,7 @@ describe('the command palette', () => {
     await user.keyboard('{Enter}')
 
     await waitFor(() => {
-      expect(bodiesTo(fetchMock, '/api/v1/mail/messages/archive')).toEqual([{ refs: [first?.ref] }])
+      expect(bodiesTo(fetchMock, '/api/v1/mail/messages/archive')).toEqual([{ refs: [first?.ref], source_folder: 'INBOX' }])
     })
 
     await user.keyboard('{Control>}k{/Control}')

@@ -375,15 +375,23 @@ class MailConnections:
                 state.delimiter = (found,)
         return found
 
-    def folders(self, account_id: int, *, with_status: bool = False) -> list[Folder]:
+    def folders(
+        self, account_id: int, *, with_status: bool | Callable[[Folder], bool] = False
+    ) -> list[Folder]:
         """The account's folders: special-use ones first in `FOLDER_ROLES` order, then the rest
-        by path. `with_status` adds the counts (one STATUS per selectable folder)."""
+        by path. `with_status` adds the counts (one STATUS per selectable folder); a predicate
+        instead adds them to the selectable folders it holds true of only."""
 
         def run(client: IMAPClient) -> list[Folder]:
             folders = folders_from(client.list_folders())
-            if not with_status:
+            if with_status is False:
                 return folders
-            return [_with_status(client, f) if f.selectable else f for f in folders]
+            return [
+                _with_status(client, f)
+                if f.selectable and (with_status is True or with_status(f))
+                else f
+                for f in folders
+            ]
 
         return self._on_connection(account_id, run)
 

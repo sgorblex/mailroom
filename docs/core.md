@@ -278,7 +278,9 @@ Gmail changes a message's mod-sequence when its labels change), so a host's copy
 stays current; None elsewhere. A pooled connection sends
 `ENABLE CONDSTORE` when the server offers CONDSTORE and ENABLE (Dovecot reports no HIGHESTMODSEQ
 on a SELECT otherwise): `MailboxContext.highest_modseq` comes from SELECT or EXAMINE and
-`Folder.highest_modseq` from STATUS, None without CONDSTORE.
+`Folder.highest_modseq` from STATUS, None without CONDSTORE. `MailConnections.folders` takes a
+predicate as `with_status`, to STATUS only the folders it holds true of: a host with its own counts
+of the others.
 
 ### Index fetch
 
@@ -298,7 +300,9 @@ surrogate as U+FFFD,
 so a database takes it, and stays the sender's. `IndexedMessage.thread_key` is Gmail's thread id,
 else the References root, else In-Reply-To, else the Message-ID. `gmail_uid` finds a message's UID
 in a label's folder by X-GM-MSGID (`unsupported` off Gmail), for acting there on an All Mail row;
-`folder_index_plan`, `indexed_messages` and `gmail_label_ref` run them on `MailConnections`.
+`folder_index_plan`, `indexed_messages` and `gmail_label_ref` run them on `MailConnections`;
+`gmail_label_refs` finds several messages of one label's folder in one session (a host acting
+from that label's view on All Mail rows).
 
 ## Organize
 
@@ -310,6 +314,10 @@ They return an `OrganizeResult`: per folder a `GroupResult` (count, new refs fro
 training, flags read back, or the `MailError`), and per message an `AuditItem`
 (`mailroom_core.mail.audit`, the sender's address and a hash of the subject) with the call's
 `outcome`. `organize_text` writes the tools' text; a host raises a lone folder's error itself.
+Out of Gmail's All Mail (`\All` on an `X-GM-EXT-1` server), which keeps every message,
+`move_messages` only copies (`selected.copy_uids`: the destination's label added, the others
+kept; items `copied`), but into Trash or Spam, and `archive_messages` is `invalid_argument`,
+nothing done; trash and junk move as anywhere.
 
 `set_flags` takes `seen`, `flagged` and `to_sort`, and reads each message's flags back
 (`FlagState`), comparing them ignoring case as IMAP does; `SearchQuery.to_sort` searches `KEYWORD`

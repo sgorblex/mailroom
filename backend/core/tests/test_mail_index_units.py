@@ -1,11 +1,20 @@
 """An index's Gmail rows and label lookups, and its plan's age limit, over a fake client."""
 
 from datetime import date
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
 
-from mailroom_core.mail import MailboxContext, MailError, fetch_index, gmail_uid, plan_index
+from mailroom_core.mail import (
+    MailboxContext,
+    MailError,
+    MessageRef,
+    fetch_index,
+    gmail_label_refs,
+    gmail_uid,
+    plan_index,
+)
 
 
 class _Client:
@@ -91,3 +100,19 @@ def test_finds_a_messages_uid_in_a_label_folder() -> None:
     with pytest.raises(MailError) as caught:
         gmail_uid(_context(_Client([41], gmail=False)), 1)
     assert caught.value.code == "unsupported"
+
+
+def test_finds_several_messages_of_a_label_folder_in_one_session() -> None:
+    client = _Client([41])
+    sessions: list[str] = []
+
+    def with_mailbox(account: int, folder: str, read_only: bool, fn: Any) -> Any:
+        sessions.append(folder)
+        assert read_only
+        return fn(_context(client))
+
+    connections = cast("Any", SimpleNamespace(with_mailbox=with_mailbox))
+    found = gmail_label_refs(connections, 3, "Work", [5, 6, 5])
+    assert found == {5: MessageRef(3, "Work", 7, 41), 6: MessageRef(3, "Work", 7, 41)}
+    assert sessions == ["Work"]
+    assert [call[2] for call in client.calls] == [b"5", b"6"]
