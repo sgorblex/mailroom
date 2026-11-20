@@ -288,5 +288,20 @@
     "keepEditing": "Continua a scrivere",
     "closeAnyway": "Chiudi comunque",
     "cancel": "Annulla"
+  },
+  "shortcuts": {
+    "title": "Scorciatoie da tastiera",
+    "moving": "Spostarsi",
+    "writing": "Scrivere",
+    "acting": "Agire sui messaggi",
+    "next": "Messaggio successivo",
+    "previous": "Messaggio precedente",
+    "select": "Seleziona o deseleziona il messaggio aperto",
+    "escape": "Chiudi la scelta della cartella, altrimenti annulla la selezione",
+    "escapeKey": "Esc",
+    "sheet": "Mostra queste scorciatoie",
+    "star": "Aggiungi a Speciali o rimuovi",
+    "toSort": "Segna da smistare o smistato",
+    "close": "Chiudi"
   }
 }

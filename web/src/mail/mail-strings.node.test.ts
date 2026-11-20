@@ -6,6 +6,7 @@ import enCommon from '@/locales/en/common.json'
 import en from '@/locales/en/mail.json'
 import itCommon from '@/locales/it/common.json'
 import it_ from '@/locales/it/mail.json'
+import { keys } from '@/test/strings.ts'
 
 import { formatListDate, formatSize } from './format.ts'
 import { sentMessage } from './messages.ts'
@@ -18,13 +19,6 @@ describe.each([
     expect(FOLDER_ROLES.filter((role) => !(role in locale.roles))).toEqual([])
   })
 })
-
-/** Every key path of a strings file, with each plural form as itself: the two languages' forms match. */
-function keys(strings: object, prefix = ''): string[] {
-  return Object.entries(strings).flatMap(([key, value]: [string, unknown]) =>
-    typeof value === 'object' && value !== null ? keys(value, `${prefix}${key}.`) : [`${prefix}${key}`],
-  )
-}
 
 describe('the compose strings', () => {
   it('exist in both languages', () => {

@@ -3,9 +3,9 @@ import { useNavigate, useSearch } from '@tanstack/react-router'
 
 import type { AccountId } from '@/api/accounts.ts'
 
-import { shortcutAction, type ActionContext } from './action-registry.ts'
+import { MAIL_ACTIONS, shortcutAction, type ActionContext, type MailAction } from './action-registry.ts'
 import { useCompose } from './compose-context.ts'
-import { useTriageActions } from './triage-actions.ts'
+import { NO_TRIAGE_ACTIONS, useTriageActions } from './triage-actions.ts'
 import { useTriage } from './triage-context.ts'
 
 /** Inputs whose keys are not text: a checkbox just ticked still lets `e` archive. */
@@ -28,23 +28,61 @@ const LETTER = /^[a-z]$/i
 /** Held down, only these repeat: the others would toggle or send again and again. */
 const REPEATING = new Set(['j', 'k'])
 
+interface SheetEntry {
+  key: string
+  label: string
+}
+
+/** The keys the mail screen handles itself, beside the registry's, with their names in the shortcut sheet. */
+const NAVIGATION_KEYS: readonly SheetEntry[] = [
+  { key: 'j', label: 'shortcuts.next' },
+  { key: 'k', label: 'shortcuts.previous' },
+  { key: 'x', label: 'shortcuts.select' },
+  { key: 'Escape', label: 'shortcuts.escape' },
+  { key: '?', label: 'shortcuts.sheet' },
+]
+
+/** No targets: the names an action gives itself whatever it acts on. */
+const NO_CONTEXT: ActionContext = {
+  actions: NO_TRIAGE_ACTIONS,
+  message: null,
+  account: null,
+  compose: { start: () => undefined, canCompose: () => true },
+  openPicker: () => undefined,
+}
+
+function registryKeys(groups: readonly MailAction['group'][]): SheetEntry[] {
+  return MAIL_ACTIONS.flatMap((action) =>
+    action.shortcut !== undefined && groups.includes(action.group)
+      ? [{ key: action.shortcut, label: action.sheetLabel ?? action.label(NO_CONTEXT) }]
+      : [],
+  )
+}
+
+/** The sheet's groups: the screen's own keys, then the registry's, which the toolbar and menus name too. */
+export const SHEET_GROUPS: readonly { title: string; entries: SheetEntry[] }[] = [
+  { title: 'shortcuts.moving', entries: [...NAVIGATION_KEYS] },
+  { title: 'shortcuts.writing', entries: registryKeys(['reply', 'compose']) },
+  { title: 'shortcuts.acting', entries: registryKeys(['triage']) },
+]
+
 /**
  * The mail screen's keyboard shortcuts (`docs/requirements/mail-client.md`): j/k move through
- * the list, x selects, Escape closes a picker or clears the selection; the other keys are the
- * action registry's, on the selection or the open message (a reply on the open one, a new
- * message on `accountId`). None while typing, none with Ctrl or Meta (but for AltGr, which types
- * characters), and no letter with Alt.
+ * the list, x selects, Escape closes a picker or clears the selection, `?` calls `onHelp` (the
+ * shortcut sheet); the other keys are the action registry's, on the selection or the open message
+ * (a reply on the open one, a new message on `accountId`). None while typing, none with Ctrl or
+ * Meta (but for AltGr, which types characters), and no letter with Alt.
  */
-export function useMailShortcuts(accountId: AccountId): void {
+export function useMailShortcuts(accountId: AccountId, onHelp: () => void): void {
   const triage = useTriage()
   const actions = useTriageActions()
   const compose = useCompose()
   const navigate = useNavigate()
   // The message in the URL is the current one at once; the open view is set only once it loads.
   const { message } = useSearch({ from: '/mail' })
-  const latest = useRef({ triage, actions, navigate, message, compose, accountId })
+  const latest = useRef({ triage, actions, navigate, message, compose, accountId, onHelp })
   useEffect(() => {
-    latest.current = { triage, actions, navigate, message, compose, accountId }
+    latest.current = { triage, actions, navigate, message, compose, accountId, onHelp }
   })
 
   useEffect(() => {
@@ -75,6 +113,9 @@ export function useMailShortcuts(accountId: AccountId): void {
           state.select([open], !state.selection.has(open.ref))
           return true
         }
+        case '?':
+          current.onHelp()
+          return true
         case 'Escape':
           if (state.picker) {
             state.setPicker(false)

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, type ReactElement } from 'react'
+import { useCallback, useMemo, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useSearch } from '@tanstack/react-router'
 
@@ -20,6 +20,7 @@ import { MailSidebar } from './mail-sidebar.tsx'
 import { MessageList } from './message-list.tsx'
 import { MessageView } from './message-view.tsx'
 import { SearchForm } from './search-form.tsx'
+import { ShortcutSheet, ShortcutSheetButton } from './shortcut-sheet.tsx'
 import { ComposeAnnouncer } from './send-status.tsx'
 import { useMailShortcuts } from './shortcuts.ts'
 import { storedSubfolders } from './subfolder-view.ts'
@@ -40,6 +41,7 @@ export function MailScreen(): ReactElement {
   const { state: accounts, retry } = useLoad(listAccounts, (error) =>
     accountErrorMessage(t, error, t('accounts.loadFailed')),
   )
+  const [sheet, setSheet] = useState(false)
 
   if (accounts.kind === 'loading') {
     return (
@@ -78,12 +80,28 @@ export function MailScreen(): ReactElement {
   const folder = search.folder ?? DEFAULT_FOLDER
   const requested = search.sub ?? storedSubfolders(accountId, folder)
   const accountIds = accounts.value.map((account) => account.id)
+  const openSheet = (): void => {
+    setSheet(true)
+  }
   return (
     <AccountsContext value={accounts.value}>
       <TriageProvider sourceKey={sourceKey(accountId, folder, requested, search.q)} accounts={accountIds}>
         <ComposeProvider accounts={accounts.value} accountId={accountId}>
-          <MailShortcuts accountId={accountId} />
-          <MailPanes accounts={accounts.value} accountId={accountId} folder={folder} requested={requested} />
+          <MailShortcuts accountId={accountId} onHelp={openSheet} />
+          <MailPanes
+            accounts={accounts.value}
+            accountId={accountId}
+            folder={folder}
+            requested={requested}
+            onHelp={openSheet}
+          />
+          {sheet && (
+            <ShortcutSheet
+              onClose={() => {
+                setSheet(false)
+              }}
+            />
+          )}
         </ComposeProvider>
       </TriageProvider>
     </AccountsContext>
@@ -96,12 +114,15 @@ function MailPanes({
   accountId,
   folder,
   requested,
+  onHelp,
 }: {
   accounts: Account[]
   accountId: AccountId
   folder: string
   /** The folder is to be listed with its subfolders (the URL's `sub`, else this browser's choice). */
   requested: boolean
+  /** Opens the shortcut sheet. */
+  onHelp: () => void
 }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const search = useSearch({ from: '/mail' })
@@ -127,7 +148,12 @@ function MailPanes({
           shown ? 'hidden' : 'flex',
         )}
       >
-        <ComposeBar accountId={accountId} />
+        <div className="flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <ComposeBar accountId={accountId} />
+          </div>
+          <ShortcutSheetButton onClick={onHelp} />
+        </div>
         <div className={cn('flex flex-col gap-3', covered && 'hidden lg:flex')}>
           <SearchForm
             key={JSON.stringify(search.q ?? null)}
@@ -169,8 +195,8 @@ function MailPanes({
   )
 }
 
-function MailShortcuts({ accountId }: { accountId: AccountId }): null {
-  useMailShortcuts(accountId)
+function MailShortcuts({ accountId, onHelp }: { accountId: AccountId; onHelp: () => void }): null {
+  useMailShortcuts(accountId, onHelp)
   return null
 }
 

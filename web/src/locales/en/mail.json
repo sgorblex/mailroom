@@ -288,5 +288,20 @@
     "keepEditing": "Keep editing",
     "closeAnyway": "Close anyway",
     "cancel": "Cancel"
+  },
+  "shortcuts": {
+    "title": "Keyboard shortcuts",
+    "moving": "Moving around",
+    "writing": "Writing",
+    "acting": "Acting on messages",
+    "next": "Next message",
+    "previous": "Previous message",
+    "select": "Select or deselect the open message",
+    "escape": "Close the picker, else clear the selection",
+    "escapeKey": "Esc",
+    "sheet": "Show these shortcuts",
+    "star": "Star or unstar",
+    "toSort": "Mark To sort or sorted",
+    "close": "Close"
   }
 }
