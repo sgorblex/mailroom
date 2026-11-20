@@ -150,9 +150,9 @@ released and checked in production before the next one starts. Batch 15 is the r
 - [x] **Rules for all accounts** — one rule set applied to every account of the user
       ([`filters.md`](requirements/filters.md)).
 - [ ] **Filters that move to another account** — the action, its checks and the loop-guard
-      ledger are in ([`filters.md`](requirements/filters.md#moves-to-another-account)); left: an
-      account and folder picker in the filter editor, and the rule set's `disabled_reason` in
-      the web.
+      ledger are in, and the filter editor's account and folder picker
+      ([`filters.md`](requirements/filters.md#moves-to-another-account)); left: the rule set's
+      `disabled_reason` in the web.
 
 ### Milestone C: The index
 

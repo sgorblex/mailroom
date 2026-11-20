@@ -6,7 +6,7 @@
  * editor keeps as a flat list of leaves. Every node carries a `key` for React; specs never do.
  */
 
-import { initialArg, type LeafDef, type Vocabulary } from './vocabulary.ts'
+import { initialArg, takesAccount, type LeafDef, type Vocabulary } from './vocabulary.ts'
 
 export type Args = Record<string, unknown>
 
@@ -156,13 +156,17 @@ export function todayIso(): string {
 
 /**
  * A leaf of `type`, its arguments at their starting values; arguments `previous` also has (same
- * name, as from "from contains" to "from is") keep their value.
+ * name, as from "from contains" to "from is") keep their value, but for a folder of another
+ * account than before (from "move to" to "move to another account", given `previousType`).
  */
-export function freshLeaf(defs: LeafDef[], type: string, previous: Args = {}): Leaf {
+export function freshLeaf(defs: LeafDef[], type: string, previous: Args = {}, previousType?: string): Leaf {
   const def = defs.find((candidate) => candidate.type === type)
+  const before = defs.find((candidate) => candidate.type === previousType)
+  const sameAccount = previousType === undefined || takesAccount(def) === takesAccount(before)
   const args: Args = {}
   for (const arg of def?.args ?? []) {
-    args[arg.name] = arg.name in previous ? previous[arg.name] : initialArg(arg, todayIso())
+    const kept = arg.name in previous && (sameAccount || arg.field.kind !== 'folder')
+    args[arg.name] = kept ? previous[arg.name] : initialArg(arg, todayIso())
   }
   return { key: newKey(), type, args }
 }
@@ -238,6 +242,7 @@ export function missingArgs(model: SpecModel, vocabulary: Vocabulary): boolean {
         case 'date':
           return typeof value !== 'string' || value === ''
         case 'integer':
+        case 'account':
           return typeof value !== 'number' || !Number.isInteger(value)
         default:
           return value === undefined

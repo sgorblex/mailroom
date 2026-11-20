@@ -1,4 +1,4 @@
-import { useId, type ReactElement } from 'react'
+import { useContext, useId, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowDown, ArrowUp, Plus, X } from 'lucide-react'
 
@@ -19,6 +19,7 @@ import {
   type Leaf,
   type SpecModel,
 } from './spec.ts'
+import { TargetAccountsContext } from './targets.ts'
 import type { LeafDef, Vocabulary } from './vocabulary.ts'
 import { FILTERS_NS } from './i18n.ts'
 
@@ -69,20 +70,41 @@ export function SpecTree({
 }
 
 /** The actions an account whose server keeps no keywords, or a rule set for all accounts, cannot take. */
-const TO_SORT_ACTIONS: ReadonlySet<string> = new Set(['mark_to_sort', 'unmark_to_sort'])
+const TO_SORT_ACTIONS: readonly string[] = ['mark_to_sort', 'unmark_to_sort']
+
+/** The action a rule set for all accounts, or a user with no other account, cannot take. */
+const MOVE_TO_ACCOUNT = 'move_to_account'
+
+/** The actions greyed out, each with the key of its label, which takes the type's as `label`. */
+function unavailableActions(
+  allAccounts: boolean,
+  keywords: boolean | null | undefined,
+  targets: number,
+): ReadonlyMap<string, string> {
+  const greyed = new Map<string, string>()
+  if (allAccounts || keywords === false) {
+    const reason = allAccounts ? 'filters.allAccounts.toSortUnavailable' : 'filters.tree.toSortUnavailable'
+    for (const type of TO_SORT_ACTIONS) {
+      greyed.set(type, reason)
+    }
+  }
+  if (allAccounts) {
+    greyed.set(MOVE_TO_ACCOUNT, 'filters.allAccounts.moveToAccountUnavailable')
+  } else if (targets === 0) {
+    greyed.set(MOVE_TO_ACCOUNT, 'filters.tree.noOtherAccount')
+  }
+  return greyed
+}
 
 function LeafOptions({
   defs,
   current,
-  unavailable = new Set(),
-  reason = 'filters.tree.toSortUnavailable',
+  unavailable = new Map(),
 }: {
   defs: LeafDef[]
   current: string | null
-  /** Greyed out with `reason`, unless already chosen. */
-  unavailable?: ReadonlySet<string>
-  /** The key of the greyed-out label, which takes the type's as `label`. */
-  reason?: string
+  /** Greyed out, each with the key of its label, unless already chosen. */
+  unavailable?: ReadonlyMap<string, string>
 }): ReactElement {
   const { t } = useTranslation(FILTERS_NS)
   const known = current === null || defs.some((def) => def.type === current)
@@ -90,12 +112,10 @@ function LeafOptions({
     <>
       {!known && <option value={`leaf:${current}`}>{current}</option>}
       {defs.map((def) => {
-        const greyed = unavailable.has(def.type) && def.type !== current
+        const reason = def.type === current ? undefined : unavailable.get(def.type)
         return (
-          <option key={def.type} value={`leaf:${def.type}`} disabled={greyed}>
-            {greyed
-              ? t(reason, { label: typeLabel(t, def.type) })
-              : typeLabel(t, def.type)}
+          <option key={def.type} value={`leaf:${def.type}`} disabled={reason !== undefined}>
+            {reason === undefined ? typeLabel(t, def.type) : t(reason, { label: typeLabel(t, def.type) })}
           </option>
         )
       })}
@@ -247,7 +267,8 @@ function ActionList({
 }): ReactElement {
   const { t } = useTranslation(FILTERS_NS)
   const idPrefix = useId()
-  const allAccounts = folders.kind === 'all-accounts'
+  const targets = useContext(TargetAccountsContext)
+  const unavailable = unavailableActions(folders.kind === 'all-accounts', keywords, targets.length)
 
   function move(from: number, to: number): void {
     const next = [...actions]
@@ -280,15 +301,15 @@ function ActionList({
                   value={`leaf:${action.type}`}
                   onChange={(event) => {
                     const type = event.target.value.slice('leaf:'.length)
-                    const changed = { ...freshLeaf(vocabulary.actions, type, action.args), key: action.key }
+                    const fresh = freshLeaf(vocabulary.actions, type, action.args, action.type)
+                    const changed = { ...fresh, key: action.key }
                     onChange(actions.map((item, at) => (at === index ? changed : item)))
                   }}
                 >
                   <LeafOptions
                     defs={vocabulary.actions}
                     current={action.type}
-                    unavailable={allAccounts || keywords === false ? TO_SORT_ACTIONS : undefined}
-                    reason={allAccounts ? 'filters.allAccounts.toSortUnavailable' : undefined}
+                    unavailable={unavailable}
                   />
                 </select>
                 <span className="ml-auto flex gap-1">

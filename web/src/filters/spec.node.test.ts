@@ -4,6 +4,7 @@ import schema from '@/test/filter-schema.json'
 
 import {
   changeKind,
+  freshLeaf,
   missingArgs,
   newSpecModel,
   readSpec,
@@ -72,6 +73,18 @@ describe('changeKind', () => {
   })
 })
 
+describe('freshLeaf', () => {
+  it('keeps a folder only when the account it is in stays the same', () => {
+    const toAccount = freshLeaf(vocabulary.actions, 'move_to_account', { folder: ['Archive'] }, 'move_to')
+    expect(toAccount.args).toEqual({ account: undefined, folder: [] })
+    const back = freshLeaf(vocabulary.actions, 'move_to', { account: 2, folder: ['Family'] }, 'move_to_account')
+    expect(back.args).toEqual({ folder: [] })
+    expect(freshLeaf(vocabulary.actions, 'trash', { folder: ['Archive'] }, 'move_to').args).toEqual({
+      folder: ['Archive'],
+    })
+  })
+})
+
 describe('missingArgs', () => {
   it('flags a new filter until its address and folder are set', () => {
     const model = newSpecModel(vocabulary)
@@ -82,5 +95,12 @@ describe('missingArgs', () => {
       actions: action === undefined ? [] : [{ ...action, args: { folder: ['News'] } }],
     }
     expect(missingArgs(filled, vocabulary)).toBe(false)
+  })
+
+  it('flags a move to another account until its account is chosen', () => {
+    const model = (args: Record<string, unknown>) =>
+      readSpec({ criterion: { type: 'anything' }, action: { type: 'move_to_account', args } })
+    expect(missingArgs(model({ folder: ['Family'] }), vocabulary)).toBe(true)
+    expect(missingArgs(model({ account: 2, folder: ['Family'] }), vocabulary)).toBe(false)
   })
 })

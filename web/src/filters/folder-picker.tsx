@@ -73,7 +73,7 @@ export function FolderPicker({
       aria-describedby={describedBy}
       aria-invalid={invalid}
       required={noneLabel === undefined}
-      disabled={folders.kind === 'loading'}
+      disabled={folders.kind === 'loading' || folders.kind === 'no-account'}
       className={selectClass}
       value={chosen === null ? '' : key(chosen)}
       onChange={(event) => {
@@ -81,7 +81,11 @@ export function FolderPicker({
       }}
     >
       <option value="">
-        {folders.kind === 'loading' ? t('filters.foldersLoading') : (noneLabel ?? t('filters.chooseFolder'))}
+        {folders.kind === 'loading'
+          ? t('filters.foldersLoading')
+          : folders.kind === 'no-account'
+            ? t('filters.chooseAccountFirst')
+            : (noneLabel ?? t('filters.chooseFolder'))}
       </option>
       {!known && <option value={key(chosen)}>{folderLabel(chosen)}</option>}
       {paths.map((path) => (

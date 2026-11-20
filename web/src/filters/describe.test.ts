@@ -69,6 +69,20 @@ describe('describeSpec', () => {
     ).toBe('If the recipient (or Cc) contains “me@” and dated before Jan 31, 2026, do nothing')
   })
 
+  it('names the account a filter moves to, by its id until the names are known', () => {
+    const spec = readSpec({
+      criterion: { type: 'anything' },
+      action: { type: 'move_to_account', args: { account: 2, folder: ['Family'] } },
+    })
+    const names = (id: number): string => (id === 2 ? 'home' : '')
+    expect(describeSpec({ ...wording('en'), accountName: names }, spec)).toBe(
+      'For every message, move to Family in account home',
+    )
+    expect(describeSpec({ ...wording('it'), accountName: () => '' }, spec)).toBe(
+      "Per ogni messaggio, sposta in Family nell'account 2",
+    )
+  })
+
   it('falls back to the type and its values for a type it has no phrase for', () => {
     expect(summary({ criterion: { type: 'smells_like', args: { what: 'spam' } }, action: { type: 'star' } })).toBe(
       'If smells_like: “spam”, star',

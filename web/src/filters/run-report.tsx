@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { useAccountName } from '@/accounts/accounts-context.ts'
 import type { Filter, FilterReport, RunReport } from '@/api/filters.ts'
 import { useTimeZone } from '@/auth/auth-context.ts'
 import { formatDateTime } from '@/lib/format.ts'
@@ -80,11 +81,12 @@ function FilterReportView({
 }): ReactElement {
   const { t, i18n } = useTranslation(FILTERS_NS)
   const timeZone = useTimeZone()
+  const accountName = useAccountName()
   const Heading = level === 3 ? 'h3' : 'h4'
   let action = entry.action
   if (entry.spec !== null) {
     try {
-      action = describeActions({ t, language: i18n.language, vocabulary }, readSpec(entry.spec).actions)
+      action = describeActions({ t, language: i18n.language, vocabulary, accountName }, readSpec(entry.spec).actions)
     } catch {
       // The action's own words, as the filter engine wrote them.
     }

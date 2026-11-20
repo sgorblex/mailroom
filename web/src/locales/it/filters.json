@@ -15,6 +15,7 @@
       "inboxOnly": "Una regola per tutti gli account smista la posta in arrivo di ciascuno.",
       "toSortUnsupported": "Da smistare vale per un account solo: una regola per tutti gli account usa la stella.",
       "toSortUnavailable": "{{label}} (vale per un account solo, non per tutti)",
+      "moveToAccountUnavailable": "{{label}} (una regola per tutti gli account agisce anche sull'altro account: metti lo spostamento in una regola di ciascun account)",
       "byRole": "Il cestino di ciascun account",
       "byPath": "Una cartella indicata dal percorso",
       "path": "Percorso della cartella",
@@ -57,6 +58,8 @@
     "foldersLoading": "Caricamento delle cartelle…",
     "foldersUnavailable": "Impossibile elencare le cartelle ({{message}}). Scrivi il percorso, con le parti separate da /.",
     "chooseFolder": "Scegli una cartella",
+    "chooseAccount": "Scegli un account",
+    "chooseAccountFirst": "Scegli prima l'account",
     "folderTyped": "es. Archivio/2026",
     "folderDefault": "Quella predefinita dell'account",
     "triggers": {
@@ -146,6 +149,7 @@
       "condition": "Condizione {{n}}",
       "typeOf": "Tipo di {{name}}",
       "toSortUnavailable": "{{label}} (il server di posta di questo account non può conservare il segno Da smistare)",
+      "noOtherAccount": "{{label}} (aggiungi prima un altro account)",
       "groups": "Gruppi",
       "and": "Tutte queste",
       "or": "Almeno una di queste",
@@ -364,7 +368,9 @@
     "copiedNotRemoved": "Uno spostamento ha copiato alcuni messaggi ma potrebbe non averli rimossi da questa cartella, quindi la regola è stata disattivata: controlla entrambe le cartelle prima di riattivarla.",
     "allAccountsInboxOnly": "Una regola per tutti gli account smista solo la posta in arrivo.",
     "accountRequired": "Scegli l'account su cui simulare questa regola.",
-    "wrongAccount": "Questa regola appartiene a un altro account."
+    "wrongAccount": "Questa regola appartiene a un altro account.",
+    "moveTargetNotFound": "Un filtro sposta la posta in un account che non è più tuo: scegli un altro account, o modifica il filtro.",
+    "moveTargetSameAccount": "Un filtro non può spostare la posta nell'account su cui agisce la sua regola (usa Sposta in), né da una regola per tutti gli account."
   },
   "filterPhrases": {
     "anything": "qualsiasi messaggio",

@@ -3,11 +3,15 @@ import type { TFunction } from 'i18next'
 import type { Args, CriterionNode, Leaf, SpecModel } from './spec.ts'
 import type { ArgField, LeafDef, Vocabulary } from './vocabulary.ts'
 
-/** What wording a spec needs: the reader's strings and language, and the schema's leaves. */
+/**
+ * What wording a spec needs: the reader's strings and language, the schema's leaves, and an
+ * account's name by its id (else the id shows).
+ */
 export interface Wording {
   t: TFunction
   language: string
   vocabulary: Vocabulary
+  accountName?: (id: number) => string
 }
 
 /** A leaf type's name for people; a type the locale does not know shows as it is. */
@@ -37,7 +41,10 @@ function formatDate(language: string, value: string): string {
   return new Intl.DateTimeFormat(language, { dateStyle: 'medium', timeZone: 'UTC' }).format(date)
 }
 
-/** One argument's value for a phrase: a choice by its name, a folder by its path, a date formatted. */
+/**
+ * One argument's value for a phrase: a choice by its name, a folder by its path, a date formatted,
+ * an account by its name.
+ */
 function argValue(wording: Wording, field: ArgField | undefined, value: unknown): string | undefined {
   const { t, language } = wording
   if (typeof value === 'string') {
@@ -47,7 +54,9 @@ function argValue(wording: Wording, field: ArgField | undefined, value: unknown)
     return field?.kind === 'date' ? formatDate(language, value) : value
   }
   if (typeof value === 'number') {
-    return String(value)
+    const name = field?.kind === 'account' ? wording.accountName?.(value) : undefined
+    // Before the accounts are loaded, a name is empty.
+    return name === undefined || name === '' ? String(value) : name
   }
   if (Array.isArray(value)) {
     return value.length === 0 ? undefined : folderLabel(value.map(String))

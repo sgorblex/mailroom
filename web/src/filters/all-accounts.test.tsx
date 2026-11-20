@@ -179,6 +179,11 @@ describe('the editor of a rule set for all accounts', () => {
     const form = screen.getByRole('form', { name: 'Add a filter' })
     const type = within(within(form).getByRole('group', { name: 'Action 1' })).getByLabelText('Type of Action 1')
     expect(within(type).getByRole('option', { name: 'Mark to sort (kept per account, not for all accounts)' })).toBeDisabled()
+    expect(
+      within(type).getByRole('option', {
+        name: 'Move to another account (a rule set for all accounts also runs on the other account: put the move in a rule set of each account)',
+      }),
+    ).toBeDisabled()
     expect(within(type).getByRole('option', { name: 'Star' })).toBeEnabled()
   })
 

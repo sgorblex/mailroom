@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState, type Dispatch, type ReactElement, type SetStateAction } from 'react'
+import { useContext, useEffect, useRef, useState, type Dispatch, type ReactElement, type SetStateAction } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowDown, ArrowUp } from 'lucide-react'
 
+import { AccountsContext, useAccountName } from '@/accounts/accounts-context.ts'
+import type { Account } from '@/api/accounts.ts'
 import { addFilter, changeFilter, removeFilter, reorderFilters, type Filter, type RuleSet } from '@/api/filters.ts'
 import { useTimeZone } from '@/auth/auth-context.ts'
 import { ConfirmRemoval } from '@/components/confirm-removal.tsx'
@@ -55,7 +57,10 @@ export function FilterList({
   const moveButtons = useRef(new Map<string, HTMLButtonElement>())
   /** The filter just moved, whose button takes focus once the list shows the move. */
   const focusAfterMove = useRef<{ id: number; direction: Direction } | null>(null)
-  const wording: Wording = { t, language: i18n.language, vocabulary }
+  const accountName = useAccountName()
+  const wording: Wording = { t, language: i18n.language, vocabulary, accountName }
+  const accounts = useContext(AccountsContext)
+  const targets = (accounts ?? []).filter((account) => account.id !== ruleSet.account_id)
   const full = filters.length >= MAX_FILTERS
 
   useEffect(() => {
@@ -119,6 +124,7 @@ export function FilterList({
               wording={wording}
               folders={folders}
               keywords={keywords}
+              targets={targets}
               moveButtonRef={(direction, button) => {
                 const key = `${String(filter.id)}-${direction}`
                 if (button === null) {
@@ -149,6 +155,7 @@ export function FilterList({
           vocabulary={vocabulary}
           folders={folders}
           keywords={keywords}
+          targets={targets}
           save={async (fields) => {
             const created = await addFilter(ruleSet.id, fields)
             setFilters((current) => [...current, created])
@@ -191,6 +198,7 @@ function FilterRow({
   wording,
   folders,
   keywords,
+  targets,
   moveButtonRef,
   onMove,
   onChanged,
@@ -202,6 +210,7 @@ function FilterRow({
   wording: Wording
   folders: FoldersState
   keywords: boolean | null | undefined
+  targets: readonly Account[]
   moveButtonRef: (direction: Direction, button: HTMLButtonElement | null) => void
   onMove: (direction: Direction) => void
   onChanged: (filter: Filter) => void
@@ -256,6 +265,7 @@ function FilterRow({
           vocabulary={wording.vocabulary}
           folders={folders}
           keywords={keywords}
+          targets={targets}
           save={async (fields) => {
             onChanged(await changeFilter(filter.id, fields))
             backToIdle(editTrigger)

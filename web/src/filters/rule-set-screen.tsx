@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
 
 import { AccountDot } from '@/accounts/account-name.tsx'
+import { AccountsContext } from '@/accounts/accounts-context.ts'
 import { listAccounts, type Account } from '@/api/accounts.ts'
 import {
   ALL_ACCOUNTS,
@@ -119,7 +120,7 @@ function RuleSetEditor({ ruleSet: initial, account, accounts, vocabulary }: Load
   }, [])
 
   return (
-    <>
+    <AccountsContext value={accounts}>
       <RuleSetHeader ruleSet={ruleSet} account={account} folders={folders} onChanged={setRuleSet} />
       <FilterList
         ruleSet={ruleSet}
@@ -145,7 +146,7 @@ function RuleSetEditor({ ruleSet: initial, account, accounts, vocabulary }: Load
         version={historyVersion}
         onRefresh={refreshHistory}
       />
-    </>
+    </AccountsContext>
   )
 }
 

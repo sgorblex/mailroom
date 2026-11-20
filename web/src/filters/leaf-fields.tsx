@@ -1,13 +1,14 @@
-import type { ReactElement } from 'react'
+import { useContext, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Input } from '@/components/ui/input.tsx'
 
 import { argLabel, choiceLabel } from './describe.ts'
 import { FolderPicker, selectClass } from './folder-picker.tsx'
-import type { FoldersState } from './folders.ts'
-import type { Args } from './spec.ts'
-import type { ArgDef, LeafDef } from './vocabulary.ts'
+import { useFolders, type FoldersState } from './folders.ts'
+import { todayIso, type Args } from './spec.ts'
+import { TargetAccountsContext } from './targets.ts'
+import { initialArg, takesAccount, type ArgDef, type LeafDef } from './vocabulary.ts'
 import { FILTERS_NS } from './i18n.ts'
 
 /** The argument fields of one leaf, as its definition in the schema lists them. */
@@ -34,6 +35,46 @@ export function LeafFields({
   if (def.args.length === 0) {
     return null
   }
+  if (takesAccount(def)) {
+    return <TargetFields idPrefix={idPrefix} def={def} args={args} onChange={onChange} />
+  }
+  return <Fields idPrefix={idPrefix} def={def} args={args} folders={folders} onChange={onChange} />
+}
+
+/** The fields of a leaf that takes another account: its folders are that account's. */
+function TargetFields({
+  idPrefix,
+  def,
+  args,
+  onChange,
+}: {
+  idPrefix: string
+  def: LeafDef
+  args: Args
+  onChange: (args: Args) => void
+}): ReactElement {
+  const targets = useContext(TargetAccountsContext)
+  const account = def.args.find((arg) => arg.field.kind === 'account')
+  const chosen = account === undefined ? undefined : args[account.name]
+  // A target no longer the user's has no folders to list.
+  const listed = targets.some((target) => target.id === chosen)
+  const folders = useFolders(listed && typeof chosen === 'number' ? chosen : null)
+  return <Fields idPrefix={idPrefix} def={def} args={args} folders={folders} onChange={onChange} />
+}
+
+function Fields({
+  idPrefix,
+  def,
+  args,
+  folders,
+  onChange,
+}: {
+  idPrefix: string
+  def: LeafDef
+  args: Args
+  folders: FoldersState
+  onChange: (args: Args) => void
+}): ReactElement {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       {def.args.map((arg) => (
@@ -44,7 +85,16 @@ export function LeafFields({
           value={args[arg.name]}
           folders={folders}
           onChange={(value) => {
-            onChange({ ...args, [arg.name]: value })
+            const next = { ...args, [arg.name]: value }
+            if (arg.field.kind === 'account') {
+              // A folder chosen in the account before is not one of this one's.
+              for (const other of def.args) {
+                if (other.field.kind === 'folder') {
+                  next[other.name] = initialArg(other, todayIso())
+                }
+              }
+            }
+            onChange(next)
           }}
         />
       ))}
@@ -106,6 +156,9 @@ function ArgField({
           }}
         />
       )
+      break
+    case 'account':
+      input = <AccountSelect id={id} value={value} onChange={onChange} />
       break
     case 'choice':
       input = (
@@ -176,5 +229,40 @@ function ArgField({
       </label>
       {input}
     </div>
+  )
+}
+
+/** Picks another of the user's accounts; a stored one no longer among them still shows, as removed. */
+function AccountSelect({
+  id,
+  value,
+  onChange,
+}: {
+  id: string
+  value: unknown
+  onChange: (value: unknown) => void
+}): ReactElement {
+  const { t } = useTranslation(FILTERS_NS)
+  const targets = useContext(TargetAccountsContext)
+  const chosen = typeof value === 'number' ? value : null
+  const known = chosen === null || targets.some((account) => account.id === chosen)
+  return (
+    <select
+      id={id}
+      required
+      className={selectClass}
+      value={chosen === null ? '' : String(chosen)}
+      onChange={(event) => {
+        onChange(event.target.value === '' ? undefined : Number(event.target.value))
+      }}
+    >
+      <option value="">{t('filters.chooseAccount')}</option>
+      {!known && <option value={String(chosen)}>{t('accounts.unknown', { ns: 'common' })}</option>}
+      {targets.map((account) => (
+        <option key={account.id} value={String(account.id)}>
+          {account.display_name}
+        </option>
+      ))}
+    </select>
   )
 }
