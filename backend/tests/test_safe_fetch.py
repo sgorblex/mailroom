@@ -339,7 +339,9 @@ def test_a_post_follows_no_redirect() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(303, headers={"Location": "https://example.org/done"})
 
-    assert refused(handler, "https://example.org/", form={"a": "b"}).problem == "redirect"
+    error = refused(handler, "https://example.org/", form={"a": "b"})
+    # The server answered: its status comes with the refusal.
+    assert (error.problem, error.status) == ("redirect", 303)
     with pytest.raises(ValueError, match="no redirect"):
         fetch(unreachable, "https://example.org/", form={"a": "b"}, max_redirects=1)
 
@@ -353,7 +355,13 @@ def test_a_post_answer_keeps_the_size_cap_and_deadline() -> None:
     def big(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=b"x" * 1001)
 
-    assert refused(big, "https://example.org/", form={"a": "b"}).problem == "too_large"
+    error = refused(big, "https://example.org/", form={"a": "b"})
+    assert (error.problem, error.status) == ("too_large", 200)
+
+    def down(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused", request=request)
+
+    assert refused(down, "https://example.org/", form={"a": "b"}).status is None
 
     async def slow(request: httpx.Request) -> httpx.Response:
         await anyio.sleep(1)

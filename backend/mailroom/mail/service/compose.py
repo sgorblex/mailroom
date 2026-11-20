@@ -181,16 +181,19 @@ def prefill(
     ctx: AppContext,
     user_id: int,
     ref: str,
-    mode: Literal["reply", "reply_all", "forward"],
+    mode: Literal["reply", "reply_all", "forward", "unsubscribe"],
     *,
     via: Via = "web",
 ) -> Prefill:
-    """What answering or forwarding the message ``ref`` names starts from; writes nothing. A
-    recipient no send could reach is left out: it would refuse every save of the draft."""
+    """What answering, forwarding or unsubscribing by mail from the message ``ref`` names starts
+    from; writes nothing. A recipient no send could reach is left out: it would refuse every save
+    of the draft."""
     accounts = _accounts(ctx, user_id)
     message = _message_ref(ctx, user_id, accounts, ref)
     account = accounts.config(message.account)
     _writable(account)
+    if mode == "unsubscribe":
+        return _unsubscribe_prefill(ctx, user_id, accounts, ref, account, via)
     original = _call(
         ctx,
         user_id,
@@ -226,6 +229,49 @@ def prefill(
             source=ref,
             attachments=(),
         )
+
+
+NO_UNSUBSCRIBE_ADDRESS: Final = "This message offers no address to unsubscribe by mail."
+
+
+def _unsubscribe_prefill(
+    ctx: AppContext,
+    user_id: int,
+    accounts: _Accounts,
+    ref: str,
+    account: AccountConfig,
+    via: Via,
+) -> Prefill:
+    """A draft to the message's List-Unsubscribe ``mailto:``: its one address, subject and body,
+    nothing else it asks for (cc, bcc, other fields), from the identity the message arrived at.
+    The user sends it, through the send gate like any other."""
+    view = _call(
+        ctx,
+        user_id,
+        accounts,
+        "mail_prefilled",
+        via,
+        account.id,
+        lambda connections: core.read_message(connections, ref, body_chars=1, account=account),
+    )
+    info = view.headers.mailing_list
+    link = None if info is None else info.unsubscribe_mailto
+    fields = None if link is None else core.mailto_fields(link)
+    if fields is None or not _can_be_sent_to(to := core.Mailbox(fields.to)):
+        raise Refusal("invalid", "no_unsubscribe_address", NO_UNSUBSCRIBE_ADDRESS)
+    with _as_refusals():
+        sender = core.from_identity(account, view.sent_to)
+    return Prefill(
+        account=account.id,
+        sender=sender.address,
+        to=(to,),
+        cc=(),
+        subject=_subject_cut(fields.subject or "unsubscribe"),
+        text=fields.body,
+        answers=None,
+        source=ref,
+        attachments=(),
+    )
 
 
 def _subject_cut(subject: str) -> str:

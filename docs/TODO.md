@@ -130,6 +130,9 @@ released and checked in production before the next one starts. Batch 15 is the r
 - [ ] **Mailing list badge** — the list's name, with its archive and unsubscribe at hand.
 - [ ] **Unsubscribe** — `List-Unsubscribe` one-click (RFC 8058) where the list supports it, else
       its link or address; never automatic, and with the offer of a filter instead.
+      The server side is in: `POST /mail/messages/{ref}/unsubscribe` and the prefill's
+      `unsubscribe` mode ([mail-client.md](requirements/mail-client.md#one-click-unsubscribe));
+      the web client's button is still to do.
 - [ ] **Replied indicator** — a mark on the rows the user answered or forwarded.
 - [x] **Remote content per sender** — the remote-content gate remembers the senders the user
       trusts.

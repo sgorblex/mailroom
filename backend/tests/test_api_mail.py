@@ -6,6 +6,7 @@ with mailroom-core's testing helpers."""
 from __future__ import annotations
 
 import base64
+import ipaddress
 import logging
 import os
 import threading
@@ -16,6 +17,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import quote
 
+import httpx
 import pytest
 
 from mailroom.accounts.store import load_accounts, user_store
@@ -24,6 +26,7 @@ from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
 from mailroom.auth.users import create_user
 from mailroom.mail.pool import DeadlineExceeded, MailPool
 from mailroom.models import Filter, RuleSet
+from mailroom.net.safe_fetch import safe_fetch
 from mailroom_core.crypto import secrets_subkey
 from mailroom_core.mail import (
     MESSAGES,
@@ -48,6 +51,7 @@ from mailroom_core.testing import (
     seed,
 )
 from tests.conftest import PASSWORD
+from tests.support.http import streamed
 from tests.support.mail import mail_servers_ssl_context
 from tests.test_api_accounts import new_account
 
@@ -59,6 +63,7 @@ if TYPE_CHECKING:
     from starlette.testclient import TestClient
 
     from mailroom.models import AuditRecord, User
+    from mailroom.net.safe_fetch import Fetched, IpAddress
     from mailroom_core.mail import Folder
     from mailroom_core.testing import ImapTestServer
 
@@ -480,6 +485,187 @@ def test_remote_content_is_remembered_only_for_a_verified_sender(
         senders, json={"ref": real}, headers={"Sec-Fetch-Site": "cross-site"}
     )
     assert cross_site.status_code == 403
+
+
+def test_one_click_unsubscribe_posts_only_where_the_accounts_server_vouches(
+    mailbox: Mailbox,
+    audited: Callable[[int], list[AuditRecord]],
+    user: User,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from mailroom.mail import unsubscribe
+
+    passed = (
+        "Authentication-Results: mx.google.com; dkim=pass header.d=news.example"
+        " header.b=AbCd1234\r\n"
+    )
+    signed = (
+        "DKIM-Signature: v=1; d=news.example; s=s1;\r\n"
+        " h=from:list-unsubscribe:list-unsubscribe-post; bh=x=; b=AbCd1234efgh\r\n"
+    )
+    listed = (
+        "List-Id: <weekly.news.example>\r\n"
+        "List-Unsubscribe: <https://news.example/u?t=secret42>\r\n"
+        "List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n"
+    )
+    tail = "From: news@news.example\r\nSubject: Weekly\r\n\r\nhi\r\n"
+    mailbox.seed(f"{passed}{signed}{listed}{tail}")
+    mailbox.seed(f"{passed}{signed.replace(':list-unsubscribe-post', '')}{listed}{tail}")
+    mailbox.seed(f"{passed}{signed}{listed}List-Unsubscribe: <https://evil.example/u>\r\n{tail}")
+    mailbox.seed(
+        f"{passed}{signed}{listed.replace('https://news.example/u?t=secret42', 'mailto:leave@news.example')}{tail}"
+    )
+    mailbox.seed(mime("No list"))
+    good, unsigned, repeated, mailto, plain = mailbox.refs()[::-1]
+    asked: list[httpx.Request] = []
+    answer: list[Callable[[httpx.Request], httpx.Response]] = [lambda _: httpx.Response(200)]
+    resolved = ["93.184.215.14"]
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        asked.append(request)
+        return answer[0](request)
+
+    async def public(_host: str) -> list[IpAddress]:
+        return [ipaddress.ip_address(resolved[0])]
+
+    async def fetch(url: str, **kwargs: Any) -> Fetched:
+        return await safe_fetch(url, resolver=public, transport=streamed(handle), **kwargs)
+
+    monkeypatch.setattr(unsubscribe, "safe_fetch", fetch)
+
+    def post(ref: str, **kwargs: Any) -> Any:
+        return mailbox.client.post(f"{MAIL}/messages/{ref}/unsubscribe", **kwargs)
+
+    # Without the account's authentication server nothing is believed.
+    assert detail(post(good)) == (400, "unsubscribe_unverified")
+    account = new_account(login=mailbox.login, imap=endpoint(mailbox.server))
+    account = {key: value for key, value in account.items() if key != "password"}
+    changed = mailbox.client.put(
+        "/api/v1/accounts/1", json=account | {"authserv_id": "mx.google.com"}
+    )
+    assert changed.status_code == 200, changed.text
+    assert detail(post(unsigned)) == (400, "unsubscribe_not_signed")
+    assert detail(post(repeated)) == (400, "unsubscribe_repeated")
+    assert detail(post(mailto)) == (400, "unsubscribe_not_https")
+    assert detail(post(plain)) == (400, "unsubscribe_unavailable")
+    assert asked == []
+
+    with caplog.at_level(logging.INFO, logger="mailroom"):
+        done = post(good)
+    assert done.status_code == 200, done.text
+    assert done.json() == {"outcome": "ok", "status": 200, "list_id": "weekly.news.example"}
+    [request] = asked
+    assert (request.method, str(request.url.path), request.url.query) == (
+        "POST",
+        "/u",
+        b"t=secret42",
+    )
+    assert request.headers["Host"] == "news.example"
+    assert request.content == b"List-Unsubscribe=One-Click"
+    assert {"cookie", "referer", "authorization"}.isdisjoint(request.headers.keys())
+    assert "secret42" not in caplog.text
+    assert "news.example" not in caplog.text
+
+    answer[0] = lambda _: httpx.Response(500)
+    assert post(good).json() == {
+        "outcome": "rejected",
+        "status": 500,
+        "list_id": "weekly.news.example",
+    }
+    cross_site = post(good, headers={"Sec-Fetch-Site": "cross-site"})
+    assert cross_site.status_code == 403
+    assert len(asked) == 2
+
+    records = [r for r in audited(user.id) if r.action == "unsubscribe"]
+    assert [r.result for r in records] == [
+        "unsubscribe_unverified",
+        "unsubscribe_not_signed",
+        "unsubscribe_repeated",
+        "unsubscribe_not_https",
+        "unsubscribe_unavailable",
+        "ok",
+        "rejected",
+    ]
+    assert {r.actor for r in records} == {"user"}
+    last = records[-1].detail
+    assert (last["list_id"], last["host"], last["status"]) == (
+        "weekly.news.example",
+        "news.example",
+        500,
+    )
+    assert "secret42" not in str([r.detail for r in records])
+
+
+def test_one_click_unsubscribe_says_how_the_list_answered_or_why_not(
+    mailbox: Mailbox,
+    audited: Callable[[int], list[AuditRecord]],
+    user: User,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mailroom.mail import unsubscribe
+
+    mailbox.seed(
+        "Authentication-Results: mx.google.com; dkim=pass header.d=news.example"
+        " header.b=AbCd1234\r\n"
+        "DKIM-Signature: v=1; d=news.example; s=s1;\r\n"
+        " h=from:list-unsubscribe:list-unsubscribe-post; bh=x=; b=AbCd1234efgh\r\n"
+        "List-Unsubscribe: <https://news.example/u>\r\n"
+        "List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n"
+        "From: news@news.example\r\nSubject: Weekly\r\n\r\nhi\r\n"
+    )
+    [ref] = mailbox.refs()
+    account = new_account(login=mailbox.login, imap=endpoint(mailbox.server))
+    account = {key: value for key, value in account.items() if key != "password"}
+    changed = mailbox.client.put(
+        "/api/v1/accounts/1", json=account | {"authserv_id": "mx.google.com"}
+    )
+    assert changed.status_code == 200, changed.text
+    asked: list[httpx.Request] = []
+    answer: list[Callable[[httpx.Request], httpx.Response]] = []
+    resolved = ["93.184.215.14"]
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        asked.append(request)
+        return answer[0](request)
+
+    async def public(_host: str) -> list[IpAddress]:
+        return [ipaddress.ip_address(resolved[0])]
+
+    async def fetch(url: str, **kwargs: Any) -> Fetched:
+        return await safe_fetch(url, resolver=public, transport=streamed(handle), **kwargs)
+
+    monkeypatch.setattr(unsubscribe, "safe_fetch", fetch)
+
+    def outcome() -> tuple[object, object]:
+        body = mailbox.client.post(f"{MAIL}/messages/{ref}/unsubscribe").json()
+        return body["outcome"], body["status"]
+
+    def unreachable(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused", request=request)
+
+    # The list answered: a redirect is not followed, a long page not read, but both are answers.
+    answer[:] = [lambda _: httpx.Response(303, headers={"Location": "https://news.example/ok"})]
+    assert outcome() == ("rejected", 303)
+    big = b"x" * (unsubscribe.MAX_ANSWER_BYTES + 1)
+    answer[:] = [lambda _: httpx.Response(200, content=big)]
+    assert outcome() == ("ok", 200)
+    assert len(asked) == 2
+    # A host that resolves to a private address is never asked.
+    resolved[0] = "10.0.0.1"
+    assert outcome() == ("refused", None)
+    assert len(asked) == 2
+    resolved[0] = "93.184.215.14"
+    answer[:] = [unreachable]
+    assert outcome() == ("failed", None)
+
+    records = [r for r in audited(user.id) if r.action == "unsubscribe"]
+    assert [(r.result, r.detail["status"]) for r in records] == [
+        ("rejected", 303),
+        ("ok", 200),
+        ("refused", None),
+        ("failed", None),
+    ]
 
 
 def test_a_message_reads_without_marking_it_seen(

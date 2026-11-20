@@ -7,7 +7,7 @@ an `AuthResults.authserv_id` with the account's own (`trusted_results`)."""
 import re
 from dataclasses import dataclass
 from typing import Final, Literal
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from mailroom_core.mail._mime import header_fields, header_text
 from mailroom_core.render.hosts import ascii_host
@@ -254,6 +254,84 @@ def authentication(
         dmarc_pass=dmarc_pass,
         from_domain=domain if dmarc_pass else None,
     )
+
+
+# Unsubscribing (RFC 8058, RFC 6068)
+
+OneClickRefusal = Literal["unavailable", "repeated", "not_https", "unverified", "not_signed"]
+"""Why a message may not be unsubscribed from in one click: no List-Unsubscribe with a
+`List-Unsubscribe=One-Click` List-Unsubscribe-Post; more than one of either field (or a block cut
+short, where a second may hide); no `https:` link in it; no authserv-id for the account; no
+signature the account's server passed that signs both fields."""
+MIN_SIGNATURE_PREFIX: Final = 8
+"""The shortest `header.b` that names a signature (RFC 6008, 2)."""
+_UNSUBSCRIBE_SIGNED: Final = frozenset({"list-unsubscribe", "list-unsubscribe-post"})
+
+
+@dataclass(frozen=True, slots=True)
+class OneClick:
+    """`one_click_unsubscribe`'s answer: the URL to POST to, or why there is none."""
+
+    url: str | None
+    refused: OneClickRefusal | None = None
+
+
+def one_click_unsubscribe(headers: MessageHeaders, authserv_id: str | None) -> OneClick:
+    """The `https:` List-Unsubscribe URL of a message that may be unsubscribed from in one click
+    (RFC 8058, 3): exactly one List-Unsubscribe and one List-Unsubscribe-Post, the latter
+    `List-Unsubscribe=One-Click`, and a DKIM signature that signs both and that the topmost
+    Authentication-Results field of `authserv_id` passed, named by its `header.d` and `header.b`
+    (only one signature may answer to them)."""
+    info = headers.mailing_list
+    if info is None or not info.unsubscribe_fields or not info.one_click:
+        return OneClick(None, "unavailable")
+    if headers.truncated or info.unsubscribe_fields != 1 or info.unsubscribe_post_fields != 1:
+        return OneClick(None, "repeated")
+    if info.unsubscribe_https is None:
+        return OneClick(None, "not_https")
+    if not authserv_id:
+        return OneClick(None, "unverified")
+    trusted = trusted_results(headers, authserv_id)
+    passed = () if trusted is None else trusted.results
+    for result in passed:
+        if result.method != "dkim" or result.result != "pass":
+            continue
+        d, b = result.header_d, result.header_b
+        if d is None or b is None or len(b) < MIN_SIGNATURE_PREFIX:
+            continue
+        named = [s for s in headers.dkim_signatures if s.d == d and s.b.startswith(b)]
+        if len(named) == 1 and set(named[0].h) >= _UNSUBSCRIBE_SIGNED:
+            return OneClick(info.unsubscribe_https)
+    return OneClick(None, "not_signed")
+
+
+MAX_MAILTO_HFIELDS: Final = 16
+
+
+@dataclass(frozen=True, slots=True)
+class Mailto:
+    """What a `mailto:` unsubscribe link asks to be sent: one address, a subject and a body
+    (RFC 6068), percent-decoded; every other field (cc, bcc, more To) is dropped."""
+
+    to: str
+    subject: str = ""
+    body: str = ""
+
+
+def mailto_fields(url: str) -> Mailto | None:
+    """`url`'s first address and its first `subject` and `body`; None when it is no
+    `mailto:` link with an address."""
+    if len(url) > MAX_URL or not _mailto(url):
+        return None
+    addresses, _, query = url[7:].partition("?")
+    to = unquote(addresses.split(",", 1)[0], errors="replace").strip()
+    if not _ADDRESS.fullmatch(to):
+        return None
+    fields: dict[str, str] = {}
+    for pair in query.split("&")[:MAX_MAILTO_HFIELDS]:
+        name, _, value = pair.partition("=")
+        fields.setdefault(unquote(name).strip().lower(), unquote(value, errors="replace"))
+    return Mailto(to=to, subject=fields.get("subject", ""), body=fields.get("body", ""))
 
 
 # Mailing lists

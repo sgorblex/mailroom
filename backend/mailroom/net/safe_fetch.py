@@ -37,11 +37,13 @@ MAX_FORM_BYTES = 1024
 
 
 class FetchError(Exception):
-    """A fetch refused or failed; ``problem`` says which way."""
+    """A fetch refused or failed; ``problem`` says which way, and ``status`` what the server
+    answered when it did (a redirect not followed, an answer over the cap or encoded)."""
 
-    def __init__(self, problem: FetchProblem, message: str) -> None:
+    def __init__(self, problem: FetchProblem, message: str, status: int | None = None) -> None:
         super().__init__(message)
         self.problem: FetchProblem = problem
+        self.status = status
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,6 +108,7 @@ async def safe_fetch(
     except httpx.InvalidURL as exc:
         msg = "not a URL"
         raise FetchError("url", msg) from exc
+    status: int | None = None
     try:
         with anyio.fail_after(deadline):
             for _ in range(max_redirects + 1):
@@ -114,14 +117,20 @@ async def safe_fetch(
                 )
                 if isinstance(reply, Fetched):
                     return reply
-                if reply.host != target.host:
+                if reply.url.host != target.host:
                     headers = _without_credentials(headers)
-                target = reply
+                target, status = reply.url, reply.status
     except TimeoutError as exc:
         msg = f"no answer within {deadline} s"
         raise FetchError("timeout", msg) from exc
     msg = f"more than {max_redirects} redirects"
-    raise FetchError("redirect", msg)
+    raise FetchError("redirect", msg, status)
+
+
+@dataclass(frozen=True, slots=True)
+class _Redirect:
+    url: httpx.URL
+    status: int
 
 
 async def _fetch_once(
@@ -132,7 +141,7 @@ async def _fetch_once(
     timeout: httpx.Timeout,
     resolver: Resolver,
     transport: httpx.AsyncBaseTransport | None,
-) -> Fetched | httpx.URL:
+) -> Fetched | _Redirect:
     """The answer at ``url`` (a POST of ``body`` when there is one), or where it redirects to."""
     host = _checked_host(url)
     address = await _vetted_address(host, resolver)
@@ -157,7 +166,7 @@ async def _fetch_once(
             reply = await client.send(request, stream=True)
             try:
                 if reply.status_code in _REDIRECTS:
-                    return _redirect_target(url, reply)
+                    return _Redirect(_redirect_target(url, reply), reply.status_code)
                 content = await _read_capped(reply, max_bytes)
             finally:
                 await reply.aclose()
@@ -179,12 +188,12 @@ def _redirect_target(url: httpx.URL, reply: httpx.Response) -> httpx.URL:
     location = reply.headers.get("Location")
     if not location:
         msg = f"redirect {reply.status_code} without a Location"
-        raise FetchError("redirect", msg)
+        raise FetchError("redirect", msg, reply.status_code)
     try:
         return url.join(location)
     except httpx.InvalidURL as exc:
         msg = "redirect to an invalid URL"
-        raise FetchError("redirect", msg) from exc
+        raise FetchError("redirect", msg, reply.status_code) from exc
 
 
 def _checked_host(url: httpx.URL) -> str:
@@ -230,11 +239,11 @@ async def _read_capped(reply: httpx.Response, max_bytes: int) -> bytes:
     encoding = reply.headers.get("Content-Encoding", "").strip().lower()
     if encoding not in {"", "identity"}:
         msg = f"answer encoded as {encoding}"
-        raise FetchError("failed", msg)
+        raise FetchError("failed", msg, reply.status_code)
     body = bytearray()
     async for chunk in reply.aiter_raw():
         body.extend(chunk)
         if len(body) > max_bytes:
             msg = f"answer larger than {max_bytes} bytes"
-            raise FetchError("too_large", msg)
+            raise FetchError("too_large", msg, reply.status_code)
     return bytes(body)

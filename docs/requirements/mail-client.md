@@ -527,9 +527,17 @@ mailroom-mcp's `draft` and `send` tools. Web composing is **plain text**; rich t
   "Forwarded message" block with the original's headers and text, and the original's
   attachments are offered as `keep` entries (the user can drop each). Only reply and reply all
   set `\Answered` on the original; a forward sets nothing.
+- **Unsubscribe by mail** (`mode` `unsubscribe`) starts a draft to the message's List-Unsubscribe
+  `mailto:` link, read by the server from the message: its first address alone, and its
+  `subject` (else `unsubscribe`) and `body`, percent-decoded; any `cc`, `bcc`, further `to` or
+  other field it names is dropped. `answers` is null. A message without such a link, or whose
+  address is not [deliverable](#compose), is 400 `no_unsubscribe_address`. It is sent like any
+  draft, by the user, through the send gate. The one-click kind is
+  [its own route](#one-click-unsubscribe).
 - **Identity:** the composer's `From` is a choice among the account's
   [identities](../GLOSSARY.md). A reply or reply all preselects the identity the original was
-  addressed to, else the account's default; a new message and a forward use the default.
+  addressed to, else the account's default; an unsubscribe by mail the identity the message
+  arrived at (`sent_to`), else the default; a new message and a forward use the default.
   An address outside the identities is `invalid_argument`. The accounts API gives the web
   client each account's `identities` (`address`, `name`, `default`), its `send_mode`,
   `attachment_max_mb` (the user's limit, at most 25) and `max_recipients`, so the composer can say
@@ -804,7 +812,7 @@ CSRF check apply. Bodies are JSON except `POST /drafts`. Unknown fields are 422.
 
 | Route | Body | Answers |
 | --- | --- | --- |
-| `POST /drafts/prefill` | `{"ref", "mode": "reply" \| "reply_all" \| "forward"}` | 200 the fields below; writes nothing |
+| `POST /drafts/prefill` | `{"ref", "mode": "reply" \| "reply_all" \| "forward" \| "unsubscribe"}` | 200 the fields below; writes nothing |
 | `POST /drafts` | multipart: `draft` (JSON) and `files[]` | 201 `{ref, parts, replaced, autosave}` |
 | `GET /drafts/{ref}` | | 200 the draft's fields, `lossy`, `parts`, `send` |
 | `GET /drafts/find?account=&compose_id=` | | 200 `{ref, parts}` of the newest version; 404 `not_found` |
@@ -841,7 +849,7 @@ The static route `GET /drafts/find` is matched before `GET /drafts/{ref}`.
   is true when the previous version was removed.
 - A draft with no recipient is a valid draft; a send needs at least one.
 - `POST /drafts/prefill` answers `{account, from, to, cc, bcc, subject, text, answers, attachments}`,
-  the fields of the draft it would start (`answers` null for a forward; `attachments`, for a
+  the fields of the draft it would start (`answers` null for a forward and an unsubscribe; `attachments`, for a
   forward, the original's `{ref, part, name, type, size}` that the composer offers as `keep`), `from` the
   identity address chosen as above. A recipient of the original that is not
   [deliverable](#compose) is left out, since it would refuse every save of the draft.
@@ -1237,6 +1245,32 @@ each; addresses travel in bodies, never in a URL.
 
 Removing the user removes them ([`nonfunctional-requirements.md`](nonfunctional-requirements.md),
 *Mail accounts*).
+
+### One-click unsubscribe
+
+`POST /messages/{ref}/unsubscribe` (no body) unsubscribes from the list the message came from by
+RFC 8058's one click, for the signed-in user only: no MCP tool does it, and nothing does it on its
+own. The server reads the message again (a stale ref is `stale_reference`) and posts
+`List-Unsubscribe=One-Click` to its List-Unsubscribe `https:` URL only when the account's
+authentication server vouches for it; otherwise 400 with one of:
+
+| Code | When |
+| --- | --- |
+| `unsubscribe_unavailable` | No List-Unsubscribe, or no List-Unsubscribe-Post of exactly `List-Unsubscribe=One-Click`. |
+| `unsubscribe_repeated` | More than one List-Unsubscribe or List-Unsubscribe-Post, or a header block cut at its cap. |
+| `unsubscribe_not_https` | The List-Unsubscribe has no `https:` link (a `mailto:` one is the [prefill](#compose)'s). |
+| `unsubscribe_unverified` | The account has no `authserv_id`. |
+| `unsubscribe_not_signed` | No DKIM signature that signs both fields was passed by the topmost Authentication-Results field of the account's `authserv_id` (named by its `header.d` and a `header.b` of at least 8 characters, and only one signature answering to them). |
+
+Once posted, 200 `{"outcome", "status", "list_id"}`: `outcome` `ok` (the list answered 2xx, its
+page over the cap or not), `rejected` (another status, in `status`, a redirect too: it is not
+followed), `refused` (`safe_fetch` would not send there: a non-public address) or `failed` (no
+answer: a timeout, a host that does not resolve, a broken connection). The POST goes through `safe_fetch`, with no cookies,
+no `Referer` and no redirect followed
+([`nonfunctional-requirements.md`](nonfunctional-requirements.md), *No request on mail's behalf,
+but one*). Every attempt, a refused one included, is an audit record `unsubscribe` with the
+message's folder, UID, `Message-ID`, sender and `list_id`, and once posted the URL's host and the
+status; the URL itself, and its query, are kept nowhere.
 
 ## Mailbox quota
 

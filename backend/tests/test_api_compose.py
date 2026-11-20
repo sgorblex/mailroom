@@ -321,6 +321,42 @@ def test_a_forward_offers_the_attachments(composer: Composer) -> None:
     assert [part["name"] for part in saved["parts"]] == ["notes.pdf"]
 
 
+def test_an_unsubscribe_by_mail_starts_a_draft_to_the_lists_one_address(
+    composer: Composer,
+) -> None:
+    ref = composer.seed(
+        "From: News <news@lists.example>\r\n"
+        f"To: {ALIAS}\r\nSubject: Weekly\r\n"
+        "List-Unsubscribe: <https://lists.example/u>,\r\n"
+        " <mailto:leave@lists.example,spy@evil.example?subject=Leave%20weekly"
+        "&cc=spy@evil.example&bcc=spy@evil.example&body=id%3D42&In-Reply-To=x>\r\n"
+        "\r\nhello\r\n"
+    )
+    answer = composer.client.post(
+        f"{MAIL}/drafts/prefill", json={"ref": ref, "mode": "unsubscribe"}
+    )
+    assert answer.status_code == 200, answer.text
+    started = answer.json()
+    assert started["from"] == ALIAS
+    assert started["to"] == [address("leave@lists.example")]
+    assert started["cc"] == started["bcc"] == started["attachments"] == []
+    assert (started["subject"], started["text"], started["answers"]) == (
+        "Leave weekly",
+        "id=42",
+        None,
+    )
+    assert composer.contents("Drafts") == []
+
+    plain = composer.seed(mime("No list", text="Hello"))
+    refused = composer.client.post(
+        f"{MAIL}/drafts/prefill", json={"ref": plain, "mode": "unsubscribe"}
+    )
+    assert (refused.status_code, refused.json()["detail"]["code"]) == (
+        400,
+        "no_unsubscribe_address",
+    )
+
+
 def test_a_recipient_no_send_could_reach_is_left_out_of_a_prefill(composer: Composer) -> None:
     ref = composer.seed(mime("Notes", sender="root@localhost", to=f"Me <{ME}>", text="Hello"))
     started = composer.client.post(
