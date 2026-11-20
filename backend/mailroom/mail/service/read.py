@@ -99,6 +99,22 @@ def folders(
     return listed if every else [folder for folder in listed if folder.selectable]
 
 
+def indexable_folders(
+    ctx: AppContext, user_id: int, account_id: int, *, via: Via = "web"
+) -> tuple[bool, list[Folder]]:
+    """Whether the account's server is Gmail (``X-GM-EXT-1``), and its selectable folders with
+    their counts: what the mail index's folders follow."""
+    accounts = _accounts(ctx, user_id)
+    _usable(ctx, user_id, accounts, account_id)
+
+    def read(connections: MailConnections) -> tuple[bool, list[Folder]]:
+        gmail = connections.capabilities(account_id).gmail
+        listed = connections.folders(account_id, with_status=True)
+        return gmail, [folder for folder in listed if folder.selectable]
+
+    return _call(ctx, user_id, accounts, "mail_index_folders", via, account_id, read)
+
+
 def folder_segments(folder: Folder) -> list[str]:
     """``folder``'s path split on its delimiter: how a rule set names a folder."""
     return folder.path.split(folder.delimiter) if folder.delimiter else [folder.path]

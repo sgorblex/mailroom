@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Identity,
+    Integer,
     String,
     false,
     func,
@@ -32,6 +33,9 @@ class User(Base):
     time_zone: Mapped[str | None] = mapped_column(String(64))
     # What "mark all as read" on a folder with subfolders does first: True, them too.
     mark_read_subfolders: Mapped[bool] = mapped_column(Boolean, server_default=true())
+    # The mail index's age limit: messages that arrived in the last this many days are indexed;
+    # None: no limit of the user's own (``MAILROOM_INDEX_MAX_AGE_DAYS`` still caps it).
+    index_max_age_days: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
