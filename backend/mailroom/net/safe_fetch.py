@@ -1,15 +1,16 @@
-"""An HTTPS GET that cannot be turned against the machine or its network (SSRF).
+"""An HTTPS GET, or a POST of a small form, that cannot be turned against the machine or its
+network (SSRF).
 
 Only ``https://`` on the default port, without credentials. The host is resolved first and every
 address it resolves to must be public: a private, loopback, link-local, multicast, reserved or
 unspecified address, IPv4 or IPv6 (an IPv4 one mapped into IPv6 included), refuses the fetch. The
 request then goes to the vetted address, the hostname kept for TLS (SNI and the certificate check)
 and ``Host``, so a second lookup cannot answer differently. A redirect is followed only up to
-``max_redirects`` (none by default), each target vetted the same way; one to another host gets
-no ``Authorization`` or ``Cookie`` the caller passed. No proxy from the environment, no cookies,
-a connect and a read timeout, a deadline for the whole fetch and a cap on the body, which is asked
-for and taken only unencoded (no compressed answer can grow past the cap). The caller checks the
-status and the content type."""
+``max_redirects`` (none by default, and never for a POST), each target vetted the same way; one
+to another host gets no ``Authorization`` or ``Cookie`` the caller passed. No proxy from the
+environment, no cookies, no ``Referer``, a connect and a read timeout, a deadline for the whole
+fetch and a cap on the body, which is asked for and taken only unencoded (no compressed answer can
+grow past the cap). The caller checks the status and the content type."""
 
 from __future__ import annotations
 
@@ -31,6 +32,8 @@ FetchProblem = Literal["url", "address", "unresolved", "redirect", "timeout", "t
 
 _REDIRECTS = frozenset({301, 302, 303, 307, 308})
 _CREDENTIALS = frozenset({"authorization", "cookie"})
+_REPLACED = frozenset({"accept-encoding", "referer", "content-type", "content-length"})
+MAX_FORM_BYTES = 1024
 
 
 class FetchError(Exception):
@@ -83,13 +86,20 @@ async def safe_fetch(
     max_bytes: int,
     max_redirects: int = 0,
     headers: Mapping[str, str] | None = None,
+    form: Mapping[str, str] | None = None,
     connect_timeout: float = 5.0,
     read_timeout: float = 10.0,
     deadline: float = 20.0,
     resolver: Resolver = resolve,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> Fetched:
-    """GET ``url`` within these limits. Raises ``FetchError``."""
+    """GET ``url`` within these limits, or POST ``form`` to it urlencoded (at most
+    ``MAX_FORM_BYTES``, no redirect). Raises ``FetchError``; ``ValueError`` for a POST with
+    redirects or a form over ``MAX_FORM_BYTES``."""
+    body = None if form is None else str(httpx.QueryParams(form)).encode("ascii")
+    if body is not None and (max_redirects or len(body) > MAX_FORM_BYTES):
+        msg = f"a POST follows no redirect and sends at most {MAX_FORM_BYTES} bytes"
+        raise ValueError(msg)
     timeout = httpx.Timeout(connect_timeout, read=read_timeout)
     try:
         target = httpx.URL(url)
@@ -99,7 +109,9 @@ async def safe_fetch(
     try:
         with anyio.fail_after(deadline):
             for _ in range(max_redirects + 1):
-                reply = await _fetch_once(target, max_bytes, headers, timeout, resolver, transport)
+                reply = await _fetch_once(
+                    target, max_bytes, headers, body, timeout, resolver, transport
+                )
                 if isinstance(reply, Fetched):
                     return reply
                 if reply.host != target.host:
@@ -116,25 +128,29 @@ async def _fetch_once(
     url: httpx.URL,
     max_bytes: int,
     headers: Mapping[str, str] | None,
+    body: bytes | None,
     timeout: httpx.Timeout,
     resolver: Resolver,
     transport: httpx.AsyncBaseTransport | None,
 ) -> Fetched | httpx.URL:
-    """The answer at ``url``, or where it redirects to."""
+    """The answer at ``url`` (a POST of ``body`` when there is one), or where it redirects to."""
     host = _checked_host(url)
     address = await _vetted_address(host, resolver)
     async with httpx.AsyncClient(
         transport=transport, follow_redirects=False, trust_env=False, timeout=timeout
     ) as client:
+        form_headers = {} if body is None else {"Content-Type": "application/x-www-form-urlencoded"}
         request = client.build_request(
-            "GET",
+            "GET" if body is None else "POST",
             url.copy_with(host=str(address)),
             # ``Host`` and TLS (SNI, the certificate) name the host, not the address.
             headers={
-                **{k: v for k, v in (headers or {}).items() if k.lower() != "accept-encoding"},
+                **{k: v for k, v in (headers or {}).items() if k.lower() not in _REPLACED},
+                **form_headers,
                 "Accept-Encoding": "identity",
                 "Host": url.netloc.decode("ascii"),
             },
+            content=body,
             extensions={"sni_hostname": host},
         )
         try:
