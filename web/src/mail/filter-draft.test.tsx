@@ -6,7 +6,7 @@ import type { Feature, User } from '@/api/auth.ts'
 import { type FakeMailState, messageItem, messageView, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
 import { renderMailApp } from '@/test/mail-app.tsx'
 
-const ALICE: User = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true }
+const ALICE: User = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null }
 const item = messageItem(WORK, 'INBOX', 1, { subject: 'Weekly' })
 
 function state(): FakeMailState {

@@ -1406,6 +1406,12 @@ folder off the index is read live, as before the index.
   the instance's `MAILROOM_INDEX_MAX_AGE_DAYS` (unset or not a whole number: no cap; clamped to
   1-36500): the smaller of the two is in force. Older messages are not indexed and stay readable
   live.
+- **Web.** The *Profile* page's *Index* section (with the mail client) sets the age limit (empty:
+  none) and, per account, lists the folders as a checklist: each one's switch (a Gmail label's and
+  a live folder's disabled; a label reads from All Mail while All Mail is on, else live) and a line
+  with its state, `indexed` out of `total` while it syncs (the list read again every 15 seconds
+  while a folder waits or syncs), its counts, day and last sync once ready, or the failure's code
+  in words. Saving the age limit reads every account's list again.
 
 Routes (under `/api/v1/mail`, as the rest of the [REST contract](#rest-contract)):
 

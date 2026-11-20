@@ -20,6 +20,8 @@ export type AuthContextValue = AuthState & {
   changeTimeZone: (timeZone: string | null) => Promise<void>
   /** Saves what "Mark all as read" on a folder with subfolders does first; rejects with the API error. */
   changeMarkReadSubfolders: (subfolders: boolean) => Promise<void>
+  /** Saves the user's own age limit of the mail index (`null`: none); rejects with the API error. */
+  changeIndexMaxAge: (days: number | null) => Promise<void>
   /** Ask the API again, after it could not be reached. */
   recheck: () => void
 }

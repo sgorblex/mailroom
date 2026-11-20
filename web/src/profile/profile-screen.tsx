@@ -7,6 +7,7 @@ import { useFeature, useMailLayer } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Input } from '@/components/ui/input.tsx'
 import { ConnectedApps } from '@/profile/connected-apps.tsx'
+import { IndexSettings } from '@/profile/index-settings.tsx'
 import { LimitsForm } from '@/profile/limits-form.tsx'
 import { LinkedSignIn } from '@/profile/linked-sign-in.tsx'
 import { MarkReadForm } from '@/profile/mark-read-form.tsx'
@@ -25,8 +26,8 @@ type Outcome =
 
 /**
  * The signed-in user's own page: their password, time zone, what "Mark all as read" does first
- * on a folder with subfolders and the senders whose remote images they show (with the mail
- * client), linked sign-ins, their mail limits where the
+ * on a folder with subfolders, the senders whose remote images they show and the mail index's
+ * settings (with the mail client), linked sign-ins, their mail limits where the
  * instance sends (mail or MCP) and, with MCP, connected apps.
  */
 export function ProfileScreen(): ReactElement {
@@ -144,6 +145,7 @@ export function ProfileScreen(): ReactElement {
       <TimeZoneForm />
       {mail && <MarkReadForm />}
       {mail && <RemoteSenders />}
+      {mail && <IndexSettings />}
       <LinkedSignIn />
       {sends && <LimitsForm />}
       {mcp && <ConnectedApps />}

@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 import { type AccountId, accountIdSchema } from './accounts.ts'
 import { getApiBaseUrl } from './api-base-url.ts'
-import { ApiRequestError, apiDelete, apiDeleteJson, apiGetJson, apiPostForm, apiPostJson, reportSessionEnded } from './http.ts'
+import { ApiRequestError, apiDelete, apiDeleteJson, apiGetJson, apiPostForm, apiPostJson, apiPutJson, reportSessionEnded } from './http.ts'
 
 /** The REST contract of `docs/requirements/mail-client.md`. Refs and cursors are opaque strings. */
 
@@ -401,6 +401,51 @@ export async function listMutedThreads(signal?: AbortSignal): Promise<MutedThrea
 
 export async function unmuteThread(id: number): Promise<void> {
   await apiDelete(`${base}/muted/${String(id)}`)
+}
+
+/** The longest age limit of the mail index, the user's or the instance's (`INDEX_MAX_AGE_DAYS`). */
+export const INDEX_MAX_AGE_DAYS = 36500
+
+const indexFolderSchema = z.object({
+  path: z.string(),
+  role: z.enum(FOLDER_ROLES).nullable(),
+  /** `folder`: indexed on its own; `label`: a Gmail folder read from All Mail, whose switch and sync it shows; `live`: never indexed. */
+  indexed_as: z.enum(['folder', 'label', 'live']),
+  enabled: z.boolean(),
+  /** The server's count; `null` when its STATUS failed. */
+  total: z.number().nullable(),
+  /** This and the rest `null` while the folder is off the index. */
+  state: z.enum(['pending', 'syncing', 'ready', 'failed']).nullable(),
+  /** The mail code that failed the last sync. */
+  error: z.string().nullable(),
+  /** What the index holds; `null` for a label. */
+  indexed: z.number().nullable(),
+  unread: z.number().nullable(),
+  /** The age limit's day the last sync kept to; `null`: every message. */
+  oldest_indexed: z.string().nullable(),
+  last_synced_at: z.string().nullable(),
+})
+export type IndexFolder = z.infer<typeof indexFolderSchema>
+
+const indexStatusSchema = z.object({
+  account_id: accountIdSchema,
+  gmail: z.boolean(),
+  /** The age limit in force: the user's, capped by the instance's; `null`: none. */
+  max_age_days: z.number().nullable(),
+  /** The instance's cap; `null` when it has none. */
+  max_age_cap_days: z.number().nullable(),
+  folders: z.array(indexFolderSchema),
+})
+export type IndexStatus = z.infer<typeof indexStatusSchema>
+
+/** The account's selectable folders, each with whether and how the mail index keeps it. */
+export function readIndexStatus(accountId: AccountId, signal?: AbortSignal): Promise<IndexStatus> {
+  return apiGetJson(`${base}/index/accounts/${String(accountId)}`, { init: { signal }, schema: indexStatusSchema })
+}
+
+/** Switches a folder on or off the index; off forgets what the index kept of it. */
+export async function setIndexFolder(accountId: AccountId, folder: string, enabled: boolean): Promise<void> {
+  await apiPutJson(`${base}/index/accounts/${String(accountId)}/folders`, { folder, enabled })
 }
 
 const unsubscribedSchema = z.object({
