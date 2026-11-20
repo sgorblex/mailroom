@@ -21,7 +21,7 @@ from mailroom.api.routes.mail._shared import (
     Ref,
     mail_router,
 )
-from mailroom.mail import remote_senders, service
+from mailroom.mail import remote_senders, service, unsubscribe
 from mailroom_core.config import MAX_SAFE_INTEGER
 from mailroom_core.mail import DISPLAYED_IMAGES, TO_SORT, SearchQuery
 
@@ -253,9 +253,13 @@ class MessageDetail(BaseModel):
     remote_trusted: bool
     """The user shows this sender's remote content without asking, and DMARC passed for the
     message's one From: the client asks for the HTML with ``remote=1``."""
+    one_click_unsubscribe: bool
+    """``POST /messages/{ref}/unsubscribe`` would post: the account's server vouches for it."""
 
     @classmethod
-    def of(cls, view: MessageView, *, remote_trusted: bool) -> MessageDetail:
+    def of(
+        cls, view: MessageView, *, remote_trusted: bool, one_click_unsubscribe: bool
+    ) -> MessageDetail:
         body = view.body
         return cls(
             ref=view.ref,
@@ -294,6 +298,7 @@ class MessageDetail(BaseModel):
             sent_to=view.sent_to,
             authentication=AuthenticationVerdict.model_validate(view.authentication),
             remote_trusted=remote_trusted,
+            one_click_unsubscribe=one_click_unsubscribe,
         )
 
 
@@ -394,7 +399,11 @@ def message(
     )
     sender = remote_senders.verified_sender(view)
     trusted = sender is not None and remote_senders.remembered(db, user.id, sender)
-    return MessageDetail.of(view, remote_trusted=trusted)
+    return MessageDetail.of(
+        view,
+        remote_trusted=trusted,
+        one_click_unsubscribe=unsubscribe.offered(ctx, user.id, view),
+    )
 
 
 def html_headers(*, remote: bool) -> dict[str, str]:

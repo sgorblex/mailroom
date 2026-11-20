@@ -15,6 +15,7 @@ import { useCompose } from './compose-context.ts'
 import { addressFull } from './format.ts'
 import { HtmlBody, type RemoteChoice } from './html-body.tsx'
 import { MAIL_NS } from './i18n.ts'
+import { MailingListRow } from './mailing-list.tsx'
 import { mailErrorMessage } from './messages.ts'
 import { ReplyActions } from './reply-actions.tsx'
 import { authenticationState, recipientSummary, resultText } from './sender-checks.ts'
@@ -192,6 +193,7 @@ function LoadedMessage({
               </dd>
             </>
           )}
+          <MailingListRow view={view} />
         </dl>
       </header>
       <ReplyActions account={view.account_id} messageRef={view.ref} />
