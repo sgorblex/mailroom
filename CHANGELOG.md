@@ -1,5 +1,58 @@
 # Changelog
 
+## [0.13.0](https://github.com/sgorblex/mailroom/compare/v0.12.0...v0.13.0) (2026-11-20)
+
+
+### Features
+
+* **accounts:** name each account's authentication server ([#96](https://github.com/sgorblex/mailroom/issues/96)) ([18a03ec](https://github.com/sgorblex/mailroom/commit/18a03ec371ba2f5a64a8855a8f3938f45cc2b8d9))
+* **api:** count and act on every message a search matches ([#92](https://github.com/sgorblex/mailroom/issues/92)) ([25c5983](https://github.com/sgorblex/mailroom/commit/25c59834f024aac5efebcef85172ab0a3554476e))
+* **api:** mark a folder read up to the UIDNEXT the user saw ([#90](https://github.com/sgorblex/mailroom/issues/90)) ([315615b](https://github.com/sgorblex/mailroom/commit/315615b3e8958d6ca45f6b25a069698a38df08cd))
+* **core:** a filter action that moves to another account ([#119](https://github.com/sgorblex/mailroom/issues/119)) ([ca2d2e6](https://github.com/sgorblex/mailroom/commit/ca2d2e6b0e36341ee490d7bd2e7662f35da04784))
+* **core:** add the To sort keyword ($MailroomSort) ([#82](https://github.com/sgorblex/mailroom/issues/82)) ([12177f6](https://github.com/sgorblex/mailroom/commit/12177f616882b1b5a6ed23d0fda67888ef457265))
+* **core:** filter on list, sender domain and thread; junk action ([#108](https://github.com/sgorblex/mailroom/issues/108)) ([21cb714](https://github.com/sgorblex/mailroom/commit/21cb714c78c3bdc6efd7207ee39dc6eba3f7c6dd))
+* **core:** parse list and authentication headers on every read ([#95](https://github.com/sgorblex/mailroom/issues/95)) ([30fb44b](https://github.com/sgorblex/mailroom/commit/30fb44b99bf7f3a6025e82f948cccc3a1016ecbb))
+* **core:** show each link's real host, mark misleading links and count remote images ([#99](https://github.com/sgorblex/mailroom/issues/99)) ([d74dcf1](https://github.com/sgorblex/mailroom/commit/d74dcf1140c47bd7218a17a0a9b9e8901d3c6848))
+* **filters:** count each filter's matches over 30 days ([#113](https://github.com/sgorblex/mailroom/issues/113)) ([809043b](https://github.com/sgorblex/mailroom/commit/809043bf7c024c18a2c154bdc8b6a3566f825448))
+* **filters:** draft a filter from a message or a search ([#109](https://github.com/sgorblex/mailroom/issues/109)) ([0dea801](https://github.com/sgorblex/mailroom/commit/0dea801bbbe30837da080c14939633bd86a6c898))
+* **filters:** filters that move to another account ([#120](https://github.com/sgorblex/mailroom/issues/120)) ([bbcd428](https://github.com/sgorblex/mailroom/commit/bbcd42893d5b62ba8a4a9f283bbbc80384a38f20))
+* **filters:** mute a thread ([#115](https://github.com/sgorblex/mailroom/issues/115)) ([05eb2fb](https://github.com/sgorblex/mailroom/commit/05eb2fb14808435d98dc81dc636c848114be6d9d))
+* **filters:** rule sets for all accounts ([#117](https://github.com/sgorblex/mailroom/issues/117)) ([715649c](https://github.com/sgorblex/mailroom/commit/715649c9c250358ed721da1fff6e4eb4db6b9c4a))
+* let a rule set limit itself to messages marked To sort ([#83](https://github.com/sgorblex/mailroom/issues/83)) ([959ab74](https://github.com/sgorblex/mailroom/commit/959ab74263725be5f3a4293534414b200d6b820d))
+* **mail:** check a message's sender, recipient and authentication on read ([#97](https://github.com/sgorblex/mailroom/issues/97)) ([4fdb9f3](https://github.com/sgorblex/mailroom/commit/4fdb9f3641abeb6b836b8e1c5afabd6d4eb5fb20))
+* **mail:** mark a forwarded original $Forwarded and show the marks on rows ([#106](https://github.com/sgorblex/mailroom/issues/106)) ([012dce4](https://github.com/sgorblex/mailroom/commit/012dce4ad47fa8c871366addbfc751b8d7db92f8))
+* **mail:** print a message and download its .eml source ([#107](https://github.com/sgorblex/mailroom/issues/107)) ([c0391a1](https://github.com/sgorblex/mailroom/commit/c0391a164f64969bbe12c0a87b6781cdd9108b27))
+* **mail:** remember the senders whose remote content the user shows ([#101](https://github.com/sgorblex/mailroom/issues/101)) ([65d44c8](https://github.com/sgorblex/mailroom/commit/65d44c8dc2ddbd8e489e8cbebc9f0a532fff07a3))
+* **mail:** report spam to the account's Junk folder ([#111](https://github.com/sgorblex/mailroom/issues/111)) ([5e61f43](https://github.com/sgorblex/mailroom/commit/5e61f43a93d19c9b97a3250e3e35a7bb792a80be))
+* **mail:** unsubscribe from a list in one click or by a drafted mail ([#104](https://github.com/sgorblex/mailroom/issues/104)) ([8ce6c96](https://github.com/sgorblex/mailroom/commit/8ce6c96c6dff90b25a35e243a19fc63a8a3433f1))
+* **net:** let safe_fetch POST a small form, with no redirect and no referrer ([#103](https://github.com/sgorblex/mailroom/issues/103)) ([a13bb30](https://github.com/sgorblex/mailroom/commit/a13bb309bf45a74559dded7dbb5f77c2d8ea6561))
+* **web:** command palette on Ctrl/Cmd+K ([#94](https://github.com/sgorblex/mailroom/issues/94)) ([2e92e4f](https://github.com/sgorblex/mailroom/commit/2e92e4fa60cbf37c2e6e02cb6122e380ce283bfd))
+* **web:** count the remote images beside the gate, blocked or shown ([#100](https://github.com/sgorblex/mailroom/issues/100)) ([5bd9a85](https://github.com/sgorblex/mailroom/commit/5bd9a85f213095143343bd5db62f7c4eeca2089b))
+* **web:** draft a filter from a message or a search ([#110](https://github.com/sgorblex/mailroom/issues/110)) ([be376bd](https://github.com/sgorblex/mailroom/commit/be376bd36179b91a23967bbae8e0ec95608bb949))
+* **web:** drag messages onto a folder to move them ([#89](https://github.com/sgorblex/mailroom/issues/89)) ([0260b92](https://github.com/sgorblex/mailroom/commit/0260b926a2b835f3342810a5c6bcea74e32fa06b))
+* **web:** list the keyboard shortcuts on ? ([#87](https://github.com/sgorblex/mailroom/issues/87)) ([94b72f5](https://github.com/sgorblex/mailroom/commit/94b72f56e7a564bcbe38deb56d27489d02cd4814))
+* **web:** mark all of a folder as read from its menu ([#91](https://github.com/sgorblex/mailroom/issues/91)) ([ab0a1a2](https://github.com/sgorblex/mailroom/commit/ab0a1a21b01f974f7f43308a6366657bf0a18323))
+* **web:** mark mail To sort from the mail screen ([#84](https://github.com/sgorblex/mailroom/issues/84)) ([9064923](https://github.com/sgorblex/mailroom/commit/9064923949520a39d757bce17949c40c2343fb4e))
+* **web:** mute a conversation and list the muted ones ([#116](https://github.com/sgorblex/mailroom/issues/116)) ([fbea1b6](https://github.com/sgorblex/mailroom/commit/fbea1b658b4974ed6c20f91a13bc2a6589f5d0fd))
+* **web:** offer Undo in a toast after moving or flagging mail ([#88](https://github.com/sgorblex/mailroom/issues/88)) ([b97abde](https://github.com/sgorblex/mailroom/commit/b97abde709396fc4282a96bf17d49642236a31d2))
+* **web:** pick the account and folder of a move to another account ([#121](https://github.com/sgorblex/mailroom/issues/121)) ([a2613a1](https://github.com/sgorblex/mailroom/commit/a2613a1b4745e19c3800fb0bb23d1c4f6d6f526c))
+* **web:** report spam, and offer a filter sending the sender to Junk ([#112](https://github.com/sgorblex/mailroom/issues/112)) ([07407ca](https://github.com/sgorblex/mailroom/commit/07407ca6d5e9f243decaf7a32c4e76a006dc3093))
+* **web:** rule sets for all accounts ([#118](https://github.com/sgorblex/mailroom/issues/118)) ([54b63cd](https://github.com/sgorblex/mailroom/commit/54b63cdda9265b0b9e0ce4daf122ff4cf7453f93))
+* **web:** select and act on every message a list or search matches ([#93](https://github.com/sgorblex/mailroom/issues/93)) ([f976a3b](https://github.com/sgorblex/mailroom/commit/f976a3b9d512ea22f2270776cd47e5fc2ae3c455))
+* **web:** share one action registry and add context menus ([#86](https://github.com/sgorblex/mailroom/issues/86)) ([f22c214](https://github.com/sgorblex/mailroom/commit/f22c214c78cca7c82fa4dacb5d66be747434ddcc))
+* **web:** show a message's mailing list, with its archive and unsubscribe ([#105](https://github.com/sgorblex/mailroom/issues/105)) ([838984b](https://github.com/sgorblex/mailroom/commit/838984b38ba9f001b25e33fb370796248eae97e8))
+* **web:** show a trusted sender's remote images and list them on Profile ([#102](https://github.com/sgorblex/mailroom/issues/102)) ([499cdde](https://github.com/sgorblex/mailroom/commit/499cdde83d3ca728bbbc3321a9974085bed1df33))
+* **web:** show each filter's matches over 30 days and its last edit ([#114](https://github.com/sgorblex/mailroom/issues/114)) ([00908ce](https://github.com/sgorblex/mailroom/commit/00908ce04f237f5e23878b7b8c6281e87b99e223))
+* **web:** show sender checks, Sent to and a recipient summary in the message view ([#98](https://github.com/sgorblex/mailroom/issues/98)) ([715b32f](https://github.com/sgorblex/mailroom/commit/715b32fa18453497bb2b4eb77c976d6b449ab697))
+
+
+### Bug Fixes
+
+* **accounts:** repair duplicate account names and refuse only new ones ([#81](https://github.com/sgorblex/mailroom/issues/81)) ([f0b8c00](https://github.com/sgorblex/mailroom/commit/f0b8c00cb096f97eb1d30bbf466553a21872197d))
+* **core:** carry an account's failure in the page cursor ([#80](https://github.com/sgorblex/mailroom/issues/80)) ([e368538](https://github.com/sgorblex/mailroom/commit/e368538b9242eeaa763ffad68a03403adbbe7403))
+* **core:** read a quota answer that names no quota root ([#77](https://github.com/sgorblex/mailroom/issues/77)) ([d2832c4](https://github.com/sgorblex/mailroom/commit/d2832c4f7f3fa54e432c5198e261f2c37d809af4))
+* **mcp:** take an account_id sent as a string of digits ([#79](https://github.com/sgorblex/mailroom/issues/79)) ([777c257](https://github.com/sgorblex/mailroom/commit/777c257a3b51a1cadcb46f49700a77d991a5a028))
+
 ## [0.12.0](https://github.com/sgorblex/mailroom/compare/v0.11.1...v0.12.0) (2026-11-18)
 
 
