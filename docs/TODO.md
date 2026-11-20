@@ -222,6 +222,11 @@ released and checked in production before the next one starts. Batch 15 is the r
 #### 11. Design
 
 - [ ] **Theme and design pass** — palette, typography, light/dark switch, app shell.
+- [ ] **Home page** — a real start page after sign-in instead of landing straight in a mail
+      list, its content configurable (unread across accounts, flagged, recent filter runs, say).
+- [ ] **Every message action in the reading pane** — each action on one message (move, archive,
+      junk, To sort, mute, filter like this, print, `.eml`, reply and the rest) offered in the
+      pane beside the message, not only some of them there and the rest elsewhere.
 - [ ] **Layout and density** — the reading pane on the right, below the list or off; compact or
       comfortable rows.
 - [ ] **Dark mode for HTML mail** — the sandboxed frame's colours adapted to a dark theme, off
