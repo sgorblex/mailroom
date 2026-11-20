@@ -9,12 +9,15 @@ The cursor holds, per source, the UID below which the walk continues, so mail ar
 pages never shifts them; a source whose UIDVALIDITY changed fails the cursor rather than skipping
 or repeating. A source that fails is not read again: the cursor carries it as failed, every
 later page reports it with the code it failed with, and paging ends once the others are done.
+An account that failed before a folder was chosen is carried likewise, with no folder, with
+mailroom-core's codes or the host's own (`host_codes`).
 """
 
 import re
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Literal, cast
 
 from mailroom_core.mail._mime import addresses, aware_date, header_text, text_value
@@ -57,6 +60,7 @@ _SLUG_CURSOR_VERSION: Final = 1
 _MAX_UID: Final = 0xFFFFFFFF
 """UIDs are 32-bit (RFC 3501): a cursor position beyond is no position."""
 _FROM_NEWEST: Final = 0
+_NO_HOST_CODES: Final[Mapping[str, str]] = MappingProxyType({})
 PREVIEW_BYTES: Final = 2048
 """Decoded bytes of the body part a preview is made from."""
 _PREVIEW_CHARS: Final = 1000
@@ -98,31 +102,52 @@ class Position:
         return [self.account, self.folder, self.uid_validity, self.before_uid]
 
 
-def encode_cursor(positions: Sequence[Position], failed: Sequence[PageFailure] = ()) -> str:
+def encode_cursor(
+    positions: Sequence[Position],
+    failed: Sequence[PageFailure] = (),
+    host_codes: Mapping[str, str] = _NO_HOST_CODES,
+) -> str:
     """The cursor for the next page: ``positions`` as base64url-encoded, versioned JSON, then
-    the sources that ``failed`` (folder failures only), each as account, folder and code.
+    the sources and accounts (folder None) that ``failed``, each as account, folder, code and
+    certificate flag. ``host_codes`` are the host's own codes an account may fail with, each
+    with its fixed message: an account's failure with one is carried too; any other failure
+    whose code is not mailroom-core's own is left out. Decoding takes the same ``host_codes``.
 
     With nothing failed it is `[2, positions]`, as before failures were carried.
     """
     value: list[object] = [_CURSOR_VERSION, [p.json() for p in positions]]
-    carried = [f for f in failed if f.folder is not None]
+    carried = [f for f in failed if _carried(f.code, f.folder, host_codes)]
     if carried:
         value.append([[f.account, f.folder, f.code, f.certificate] for f in carried])
     return b64url_encode(js_json(value))
 
 
-def decode_cursor(text: str) -> list[Position]:
-    """`invalid_argument` unless `text` is a cursor `encode_cursor` made; `stale_reference` if an
-    earlier version made it."""
-    return _read_cursor(text)[0]
+def _carried(code: str, folder: str | None, host_codes: Mapping[str, str]) -> bool:
+    return code in MAIL_ERROR_CODES or (folder is None and code in host_codes)
 
 
-def cursor_failures(text: str) -> list[PageFailure]:
+def decode_cursor(text: str, host_codes: Mapping[str, str] = _NO_HOST_CODES) -> list[Position]:
+    """`invalid_argument` unless `text` is a cursor `encode_cursor` made (with these
+    `host_codes`); `stale_reference` if an earlier version made it."""
+    return _read_cursor(text, host_codes)[0]
+
+
+def cursor_failures(text: str, host_codes: Mapping[str, str] = _NO_HOST_CODES) -> list[PageFailure]:
     """The failed sources `text` carries (see `encode_cursor`); refused as by `decode_cursor`."""
-    return _read_cursor(text)[1]
+    return _read_cursor(text, host_codes)[1]
 
 
-def _read_cursor(text: str) -> tuple[list[Position], list[PageFailure]]:
+def failed_accounts(cursor: str | None, host_codes: Mapping[str, str] = _NO_HOST_CODES) -> set[int]:
+    """The accounts `cursor` carries as failed before a folder was chosen: a search over several
+    accounts does not ask them again, and `read_page` reports them again."""
+    if cursor is None:
+        return set()
+    return {f.account for f in cursor_failures(cursor, host_codes) if f.folder is None}
+
+
+def _read_cursor(
+    text: str, host_codes: Mapping[str, str]
+) -> tuple[list[Position], list[PageFailure]]:
     try:
         value = b64url_json(text)
     except ValueError:
@@ -136,7 +161,7 @@ def _read_cursor(text: str) -> tuple[list[Position], list[PageFailure]]:
         and isinstance(value[1], list)
     ):
         positions = _positions(value[1])
-        failed = [] if len(value) == 2 else _failed(value[2])
+        failed = [] if len(value) == 2 else _failed(value[2], host_codes)
         if positions is not None and failed is not None:
             return positions, failed
     raise MailError("invalid_argument", "Not a cursor; use the one from the previous page.")
@@ -157,9 +182,9 @@ def _positions(value: list[object]) -> list[Position] | None:
     return positions
 
 
-def _failed(value: object) -> list[PageFailure] | None:
-    """The failures a cursor carries; their message is the code's own, never the cursor's
-    text."""
+def _failed(value: object, host_codes: Mapping[str, str]) -> list[PageFailure] | None:
+    """The failures a cursor carries; their message is the code's own (a host code's, from
+    `host_codes`), never the cursor's text."""
     if not isinstance(value, list):
         return None
     failed: list[PageFailure] = []
@@ -167,8 +192,9 @@ def _failed(value: object) -> list[PageFailure] | None:
         if not (
             isinstance(f, list)
             and len(f) == 4
-            and isinstance(f[1], str)
-            and f[2] in MAIL_ERROR_CODES
+            and (f[1] is None or isinstance(f[1], str))
+            and isinstance(f[2], str)
+            and _carried(f[2], f[1], host_codes)
             and isinstance(f[3], bool)
         ):
             return None
@@ -176,8 +202,13 @@ def _failed(value: object) -> list[PageFailure] | None:
         if account is None:
             return None
         code = cast("MailErrorCode", f[2])
-        error = MailError(code, CERTIFICATE_DETAIL if f[3] else None)
-        failed.append(PageFailure.of(account, f[1], error))
+        if f[2] in MAIL_ERROR_CODES:
+            error = MailError(code, CERTIFICATE_DETAIL if f[3] else None)
+            failed.append(PageFailure.of(account, f[1], error))
+        elif f[3]:
+            return None
+        else:  # the host's own code, of an account
+            failed.append(PageFailure(account, None, code, host_codes[f[2]]))
     return failed
 
 
@@ -403,6 +434,8 @@ def read_page(
     limit: int,
     cursor: str | None = None,
     previews: bool = True,
+    account_failures: Sequence[PageFailure] = (),
+    host_codes: Mapping[str, str] = _NO_HOST_CODES,
 ) -> Page:
     """Up to `limit` messages matching `criteria` across `sources`, newest first by arrival.
     `criteria` may differ per account (a mapping with every source's account), as a provider's
@@ -412,6 +445,11 @@ def read_page(
     source shows is then always its highest fetched UIDs, so the next page skips nothing, even
     when a message's date is older than its UID suggests (moved or imported mail). Sources of
     different accounts are read side by side, in threads of their own.
+
+    `account_failures` are the caller's accounts that failed before a folder was chosen (none of
+    them among `sources`): the page reports them after those the cursor carries
+    (`failed_accounts`), and its cursor carries them all to the following pages, those failed
+    with one of the host's own `host_codes` (code: fixed message) included.
     """
     if limit < 1:
         raise MailError("invalid_argument", "limit must be at least 1.")
@@ -430,7 +468,7 @@ def read_page(
     by_source = {source: given.get(source, given.get(source.account, ())) for source in sources}
     for each in by_source.values():
         search_arguments(each)  # refused here, not as a failure of each source
-    positions, carried = (None, []) if cursor is None else _read_cursor(cursor)
+    positions, carried = (None, []) if cursor is None else _read_cursor(cursor, host_codes)
     # A source that failed on an earlier page is not read again (it is in no position): it is
     # reported again, as it failed, until paging ends.
     failed_before = {(f.account, f.folder): f for f in carried}
@@ -483,7 +521,8 @@ def read_page(
 
     results = _by_account(sources, read)
     per_source: list[list[_Candidate]] = []
-    failures: list[PageFailure] = []
+    failures = [f for f in carried if f.folder is None]
+    failures += account_failures
     failed: set[int] = set()
     for index, source in enumerate(sources):
         result = results[index]
@@ -552,7 +591,7 @@ def read_page(
             following.append(Position(source.account, source.folder, uid_validity, before))
     return Page(
         messages=messages,
-        next_cursor=encode_cursor(following, failures) if more else None,
+        next_cursor=encode_cursor(following, failures, host_codes) if more else None,
         failures=tuple(failures),
     )
 

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Final
 from mailroom_core.mail._mime import header_text, text_value
 from mailroom_core.mail.errors import MailError
 from mailroom_core.mail.folders import with_subfolders
-from mailroom_core.mail.pages import Page, PageFailure, Source, read_page
+from mailroom_core.mail.pages import Page, PageFailure, Source, failed_accounts, read_page
 from mailroom_core.mail.ref import MessageRef, check_fresh, parse_ref
 from mailroom_core.mail.selected import search_uids
 
@@ -159,12 +159,16 @@ def search_messages(
     """`query` over `accounts` (the ids the caller may use, already resolved from `*`), in one
     folder (with `subfolders`, its subfolders too: `read_folders`) or all (`ALL_FOLDERS`).
     With several accounts one that cannot be searched becomes a failure with no folder and the
-    others still answer; with one, its MailError is raised."""
+    others still answer, and the following pages report it without asking it again; with one,
+    its MailError is raised."""
     check_subfolders(folder, subfolders=subfolders)
     sources: list[Source] = []
     failures: list[PageFailure] = []
     criteria: dict[int, Criteria] = {}
+    failed_before = failed_accounts(cursor)
     for account in accounts:
+        if account in failed_before:
+            continue
         try:
             gmail = (
                 query.gmail_query is not None or query.has_attachment is True
@@ -185,8 +189,15 @@ def search_messages(
             if len(accounts) == 1:
                 raise
             failures.append(PageFailure.of(account, None, error))
-    page = read_page(connections, sources, criteria, limit=limit, cursor=cursor, previews=previews)
-    return Page(page.messages, page.next_cursor, (*failures, *page.failures))
+    return read_page(
+        connections,
+        sources,
+        criteria,
+        limit=limit,
+        cursor=cursor,
+        previews=previews,
+        account_failures=failures,
+    )
 
 
 def _any_of(terms: Sequence[list[object]]) -> list[object]:

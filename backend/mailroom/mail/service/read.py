@@ -9,6 +9,7 @@ import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Literal, cast
 
 from mailroom.accounts.service import require_subkey
@@ -58,6 +59,9 @@ same."""
 ACCOUNT_SECONDS: Final = 25.0
 """When an all-accounts search cuts the accounts still reading their mailbox (``timeout``
 failures), inside the pool's 30 s deadline, so the others still answer."""
+HOST_CODES: Final = MappingProxyType({PASSWORD_MISSING: PASSWORD_MISSING_TEXT})
+"""The app's own codes an account of an all-accounts search fails with that its cursor carries,
+each with its fixed message."""
 
 
 def folders(
@@ -141,8 +145,9 @@ def search(
     (``ALL_FOLDERS``: not Junk or Trash; only the ``\\All`` folder where there is one). Over all
     accounts, one that cannot be searched is a failure of the page with no folder (an account
     without a usable password: code ``password_missing``; one too slow: ``timeout``) and the
-    others still answer, however many there are. Over one account and one folder, its error is
-    refused, as for a list, unless it reads subfolders too."""
+    others still answer, however many there are; later pages report it again without asking it
+    again (nor checking its password), until paging ends. Over one account and one folder, its
+    error is refused, as for a list, unless it reads subfolders too."""
     try:
         core.search_arguments(query.criteria())  # a line break in a term: refused up front
         core.check_subfolders(folder, subfolders=subfolders)
@@ -151,17 +156,25 @@ def search(
     accounts = _accounts(ctx, user_id)
     skipped: list[PageFailure] = []
     if account == ALL_ACCOUNTS:
+        try:
+            carried = [] if cursor is None else core.cursor_failures(cursor, HOST_CODES)
+        except MailError as error:
+            raise mail_refusal(error.code, error.message) from None
+        failed_before = {f.account for f in carried if f.folder is None}
         wanted = accounts.ids()
         if wanted:
             require_subkey(ctx.subkey)
         usable = []
         for account_id in wanted:
+            if account_id in failed_before:
+                continue
             if _missing_password(ctx, user_id, account_id):
                 skipped.append(_password_missing_failure(account_id, None))
             else:
                 usable.append(account_id)
         if not usable:
-            return Page((), None, tuple(skipped))
+            before = [f for f in carried if f.folder is None]
+            return Page((), None, (*before, *skipped))
         page = _call(
             ctx,
             user_id,
@@ -177,11 +190,11 @@ def search(
                 limit=limit,
                 cursor=cursor,
                 subfolders=subfolders,
+                skipped=skipped,
             ),
             on=usable,
         )
-        page = _with_password_failures(ctx, user_id, page)
-        return Page(page.messages, page.next_cursor, (*skipped, *page.failures))
+        return _with_password_failures(ctx, user_id, page)
     _usable(ctx, user_id, accounts, account)
     page = _call(
         ctx,
@@ -263,12 +276,14 @@ def _sources(
 
 class _Reading:
     """``connections`` for ``read_page``, counting the mailboxes each account has open for it:
-    the accounts that still read when the search's time is up, and only those, are cut."""
+    the accounts that still read when the search's time is up, and only those, are cut, and
+    what fails them then is a ``timeout``."""
 
     def __init__(self, connections: MailConnections) -> None:
         self._connections = connections
         self._lock = threading.Lock()
         self._open: Counter[int] = Counter()
+        self._cut: set[int] = set()
 
     def with_mailbox[T](
         self,
@@ -281,6 +296,12 @@ class _Reading:
             self._open[account_id] += 1
         try:
             return self._connections.with_mailbox(account_id, path, read_only, fn)
+        except MailError as error:
+            with self._lock:
+                cut = account_id in self._cut
+            if cut and error.code == "unreachable":
+                raise MailError("timeout") from None
+            raise
         finally:
             with self._lock:
                 self._open[account_id] -= 1
@@ -288,9 +309,13 @@ class _Reading:
     def __getattr__(self, name: str) -> object:
         return getattr(self._connections, name)
 
-    def reading(self) -> list[int]:
+    def cut_reading(self) -> None:
+        """Cut the accounts still reading a mailbox."""
         with self._lock:
-            return sorted(account for account, count in self._open.items() if count > 0)
+            reading = sorted(account for account, count in self._open.items() if count > 0)
+            self._cut.update(reading)
+        for account in reading:
+            self._connections.interrupt(account)
 
 
 def _search_accounts(
@@ -302,20 +327,28 @@ def _search_accounts(
     limit: int,
     cursor: str | None,
     subfolders: bool = False,
+    skipped: Sequence[PageFailure] = (),
 ) -> Page:
     """mailroom-core's ``search_messages`` over several accounts, with a deadline per account:
     their folders are found side by side, ``SOURCES_SECONDS`` at most, and the accounts still
     reading a mailbox at ``ACCOUNT_SECONDS`` are cut (one already done is left alone, so another
     call on it goes on). Each such account is a ``timeout`` failure; an account that fails is a
-    failure too, whatever the number of accounts."""
+    failure too, whatever the number of accounts. An account that failed before its folders were
+    found, on an earlier page, is not asked again: the cursor carries it, and each page reports
+    it. ``skipped`` are the accounts the caller did not pass, failed with the app's own codes
+    (``HOST_CODES``): the cursor carries them likewise."""
     started = time.monotonic()
-    failures: list[PageFailure] = []
+    failures = list(skipped)
     sources: list[Source] = []
     criteria: dict[int, Criteria] = {}
-    finder = ThreadPoolExecutor(max_workers=min(len(accounts), 8), thread_name_prefix="mail-src")
+    failed_before = core.failed_accounts(cursor, HOST_CODES)
+    asked = [account for account in accounts if account not in failed_before]
+    finder = ThreadPoolExecutor(
+        max_workers=max(1, min(len(asked), 8)), thread_name_prefix="mail-src"
+    )
     found = {
         account: finder.submit(_sources, connections, account, folder, query, subfolders)
-        for account in accounts
+        for account in asked
     }
     wait(found.values(), timeout=SOURCES_SECONDS)
     finder.shutdown(wait=False, cancel_futures=True)
@@ -335,34 +368,24 @@ def _search_accounts(
                 extra={"event": "mail_search_sources_failed", "account_id": account},
             )
             failures.append(PageFailure(account, None, "server_error", MESSAGES["server_error"]))
-    cut: set[int] = set()
     reading = _Reading(connections)
-
-    def expire() -> None:
-        for account in reading.reading():
-            if connections.interrupt(account):
-                cut.add(account)
-
-    timer = threading.Timer(max(0.0, started + ACCOUNT_SECONDS - time.monotonic()), expire)
+    timer = threading.Timer(
+        max(0.0, started + ACCOUNT_SECONDS - time.monotonic()), reading.cut_reading
+    )
     timer.daemon = True
     timer.start()
     try:
-        page = core.read_page(
+        return core.read_page(
             cast("MailConnections", reading),
             sources,
             criteria,
             limit=limit,
             cursor=cursor,
+            account_failures=failures,
+            host_codes=HOST_CODES,
         )
     finally:
         timer.cancel()
-    read_failures = (
-        PageFailure(f.account, f.folder, "timeout", MESSAGES["timeout"])
-        if f.account in cut and f.code == "unreachable"
-        else f
-        for f in page.failures
-    )
-    return Page(page.messages, page.next_cursor, (*failures, *read_failures))
 
 
 def read_message(
