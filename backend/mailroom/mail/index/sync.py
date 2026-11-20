@@ -11,6 +11,10 @@ changed since the stored HIGHESTMODSEQ where the folder has mod-sequences (CONDS
 message's, and on Gmail the labels with them. A UIDVALIDITY that changed drops the folder's rows,
 which are then built again. A message that cannot be fetched or stored is skipped, its UID alone
 logged, and stays readable live. Nothing here changes mail: every read is under EXAMINE.
+
+Each commit that changed the folder's rows or its state announces it on ``NOTIFY_CHANNEL``
+(``notify``), a batch with the range of the new mail it stored: the UIDs from the folder's
+UIDNEXT at its last pass on, none on a first sync or a rebuild.
 """
 
 from __future__ import annotations
@@ -27,6 +31,7 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from mailroom.mail.connections import PASSWORD_MISSING, PasswordMissing
 from mailroom.mail.index.rows import apply_flags, count_rows, flag_kinds, upsert_rows
 from mailroom.mail.index.settings import effective_max_age
+from mailroom.mail.index.writes import notify
 from mailroom.models import MailIndexFolder, MailIndexMessage, User
 from mailroom_core.mail import (
     INDEX_BATCH,
@@ -72,6 +77,9 @@ class _Survey:
     """The UIDs to fetch, newest first: all of the listed ones once UIDVALIDITY changed."""
     gone: frozenset[int]
     """Stored UIDs no longer listed."""
+    new_from: int | None
+    """The UIDNEXT of the folder's last pass, under the same UIDVALIDITY: the UIDs from it on are
+    new mail; None on a first sync or a rebuild."""
     flags: Mapping[int, frozenset[str]] | None
     """Flags to compare with the stored ones; None but on a pass's last job."""
     labels: Mapping[int, tuple[str, ...]] | None
@@ -130,12 +138,12 @@ def sync_folder(
             )
         )
     )
-    path, validity, modseq = row.path, row.uid_validity, row.highest_modseq
+    path, validity, modseq, uid_next = row.path, row.uid_validity, row.highest_modseq, row.uid_next
     db.commit()
     capacity = SLICE_BATCHES * INDEX_BATCH
 
     def survey(context: MailboxContext) -> _Survey:
-        return _survey(context, since, stored, validity, modseq, capacity)
+        return _survey(context, since, stored, (validity, modseq, uid_next), capacity)
 
     try:
         found = connections.with_mailbox(account_id, path, True, survey)
@@ -182,10 +190,11 @@ def _survey(
     context: MailboxContext,
     since: date | None,
     stored: frozenset[int],
-    validity: int | None,
-    modseq: int | None,
+    last: tuple[int | None, int | None, int | None],
     capacity: int,
 ) -> _Survey:
+    """``last``: the folder's UIDVALIDITY, HIGHESTMODSEQ and UIDNEXT at its last pass."""
+    validity, modseq, uid_next = last
     plan = plan_index(context, since=since)
     listed = [uid for batch in plan.batches for uid in batch]
     held = stored if context.uid_validity == validity else frozenset()
@@ -202,6 +211,7 @@ def _survey(
         highest_modseq=plan.highest_modseq,
         missing=missing,
         gone=held.difference(listed),
+        new_from=uid_next if context.uid_validity == validity else None,
         flags=None if flags is None else flags.flags,
         labels=None if flags is None else flags.labels,
     )
@@ -218,6 +228,7 @@ def _reconcile(
         db.rollback()
         return None, 0, 0
     rebuilt = row.uid_validity is not None and row.uid_validity != found.uid_validity
+    state = row.state
     messages = delete(MailIndexMessage).where(
         MailIndexMessage.folder_id == folder_id, MailIndexMessage.user_id == user_id
     )
@@ -239,6 +250,8 @@ def _reconcile(
     if row.state != "ready":
         row.state, row.error = "syncing", None
     count_rows(db, row)
+    if removed or changed or row.state != state:
+        notify(db, user_id, account_id, folder_id)
     db.commit()
     return rebuilt, removed, changed
 
@@ -310,6 +323,9 @@ def _stored_batch(
         return "off"
     _store(db, user_id, folder_id, messages)
     count_rows(db, row)
+    start = found.new_from
+    new = [message.uid for message in messages if start is not None and message.uid >= start]
+    notify(db, user_id, account_id, folder_id, new=(min(new), max(new)) if new else None)
     db.commit()
     return "stored"
 
@@ -363,6 +379,8 @@ def _finish(
         db.rollback()
         return False
     if not more:
+        if row.state != "ready":
+            notify(db, user_id, account_id, folder_id)
         row.uid_next = found.uid_next
         row.highest_modseq = found.highest_modseq
         row.oldest_indexed = since
@@ -377,6 +395,8 @@ def fail_folder(db: Session, user_id: int, account_id: int, folder_id: int, code
     db.rollback()
     row = _folder(db, user_id, account_id, folder_id, lock=True)
     if row is not None:
+        if row.state != "failed":
+            notify(db, user_id, account_id, folder_id)
         row.state, row.error = "failed", code
     db.commit()
     logger.info(
