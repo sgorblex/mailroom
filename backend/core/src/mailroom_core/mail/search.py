@@ -258,13 +258,18 @@ def _base_subject(subject: str) -> str:
     return _REPLY_PREFIX.sub("", subject).strip()
 
 
-def _header_block(data: Mapping[bytes, object]) -> str:
-    """The `BODY[HEADER.FIELDS (...)]` a FETCH answered, as text."""
+def fetched_fields(data: Mapping[bytes, object]) -> bytes:
+    """The `BODY[HEADER.FIELDS (...)]` a FETCH answered; empty when it has none."""
     block = next(
         (v for k, v in data.items() if isinstance(k, bytes) and k.startswith(b"BODY[HEADER")),
         b"",
     )
-    return text_value(block if isinstance(block, bytes) else b"")
+    return block if isinstance(block, bytes) else b""
+
+
+def _header_block(data: Mapping[bytes, object]) -> str:
+    """The `BODY[HEADER.FIELDS (...)]` a FETCH answered, as text."""
+    return text_value(fetched_fields(data))
 
 
 def _members(context: MailboxContext, ids: Sequence[str], subject: str, own: int | None) -> str:
@@ -368,11 +373,7 @@ def thread_key(connections: MailConnections, ref: str | MessageRef) -> ThreadKey
         data = context.client.fetch([message.uid], items).get(message.uid)
         if data is None:
             raise MailError("not_found")
-        block = next(
-            (v for k, v in data.items() if isinstance(k, bytes) and k.startswith(b"BODY[HEADER")),
-            b"",
-        )
-        parsed = parsed_message(block if isinstance(block, bytes) else b"")
+        parsed = parsed_message(fetched_fields(data))
         own = () if parsed.message_id is None else (parsed.message_id,)
         ids = (*parsed.references, *parsed.in_reply_to, *own)
         thread_id = data.get(b"X-GM-THRID")

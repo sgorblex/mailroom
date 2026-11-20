@@ -17,6 +17,7 @@ import re
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from functools import partial
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Literal, cast
 
@@ -652,20 +653,12 @@ def _previews(
         return {}
     indexes = sorted(wanted)
 
-    def fetch(position: int) -> dict[int, bytes]:
+    def fetch(position: int) -> dict[int, str]:
         index = indexes[position]
         source = sources[index]
-        mine = wanted[index]
-
-        def run(context: MailboxContext) -> dict[int, bytes]:
-            current = [c for c in mine if c.uid_validity == context.uid_validity]
-            return part_contents(
-                context.client,
-                [(c.uid, c.structure.body) for c in current if c.structure.body is not None],
-                PREVIEW_BYTES,
-            )
-
-        return connections.with_mailbox(source.account, source.folder, True, run)
+        return connections.with_mailbox(
+            source.account, source.folder, True, partial(_preview_texts, candidates=wanted[index])
+        )
 
     picked = [sources[index] for index in indexes]
     results = _by_account(picked, fetch)
@@ -675,11 +668,26 @@ def _previews(
         if isinstance(result, BaseException):
             continue
         for candidate in wanted[index]:
-            body = candidate.structure.body
-            data = result.get(candidate.uid)
-            if body is None or data is None:
-                continue
-            text = body_text(data, body, complete=len(data) < PREVIEW_BYTES)
-            fmt = candidate.structure.body_format
-            out[id(candidate)] = preview_of(text, fmt or "text")
+            if candidate.uid in result:
+                out[id(candidate)] = result[candidate.uid]
+    return out
+
+
+def _preview_texts(context: MailboxContext, candidates: Sequence[_Candidate]) -> dict[int, str]:
+    """The previews of `candidates` in the selected folder, by UID (one small download per body
+    part); a candidate of another UIDVALIDITY, with no text body or gone has none."""
+    current = [c for c in candidates if c.uid_validity == context.uid_validity]
+    data = part_contents(
+        context.client,
+        [(c.uid, c.structure.body) for c in current if c.structure.body is not None],
+        PREVIEW_BYTES,
+    )
+    out: dict[int, str] = {}
+    for candidate in current:
+        body = candidate.structure.body
+        content = data.get(candidate.uid)
+        if body is None or content is None:
+            continue
+        text = body_text(content, body, complete=len(content) < PREVIEW_BYTES)
+        out[candidate.uid] = preview_of(text, candidate.structure.body_format or "text")
     return out

@@ -52,6 +52,8 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger("mailroom_core.mail")
 
+GMAIL: Final = "X-GM-EXT-1"
+"""The capability Gmail is told by: its quirks go by it, never by the hostname."""
 _HEALTH_WAIT: Final = 1.0
 """Seconds a `reachability` probe waits for a connection of a busy account."""
 
@@ -123,6 +125,11 @@ class MailboxContext:
     highest_modseq: int | None = None
     """HIGHESTMODSEQ from the SELECT or EXAMINE answer; None without CONDSTORE, or in a folder
     the server keeps no mod-sequences for (NOMODSEQ)."""
+
+    @property
+    def gmail(self) -> bool:
+        """Whether the server is Gmail (`GMAIL`)."""
+        return bool(self.client.has_capability(GMAIL))
 
 
 @dataclass(frozen=True, slots=True)
@@ -886,11 +893,7 @@ def _log_out(client: IMAPClient) -> None:
 
 def _keywords(client: IMAPClient, selected: Mapping[bytes, object]) -> bool:
     permanent = selected.get(b"PERMANENTFLAGS")
-    return (
-        isinstance(permanent, tuple)
-        and b"\\*" in permanent
-        and not client.has_capability("X-GM-EXT-1")
-    )
+    return isinstance(permanent, tuple) and b"\\*" in permanent and not client.has_capability(GMAIL)
 
 
 def _enable_condstore(client: IMAPClient) -> None:
@@ -915,7 +918,7 @@ def _highest_modseq(selected: Mapping[bytes, object]) -> int | None:
 def _capabilities(raw: tuple[bytes, ...]) -> Capabilities:
     caps = {bytes(cap).upper() for cap in raw}
     return Capabilities(
-        gmail=b"X-GM-EXT-1" in caps,
+        gmail=GMAIL.encode() in caps,
         thread=b"THREAD=REFERENCES" in caps,
         move=b"MOVE" in caps,
         uidplus=b"UIDPLUS" in caps,

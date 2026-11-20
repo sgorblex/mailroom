@@ -37,7 +37,7 @@ the tools answer with, and the app's MCP writes thin tools over it. The filter e
 | `crypto` | Sealed secrets |
 | `store` | `AccountStore` and core's migrations, in schema `core` |
 | `render` | Bodies to text, quotes, the untrusted-content envelope, `safe_html` |
-| `mail` | Connections (`mail.imap`), operations on a selected folder (`mail.selected`), a folder's UIDs and flag changes (`mail.changes`), IDLE (`mail.idle`), refs, read, organize, folders (`mail.folders`), messages parsed for the filters (`mail.parsed`), compose, drafts, the tools' text, audit items |
+| `mail` | Connections (`mail.imap`), operations on a selected folder (`mail.selected`), a folder's UIDs and flag changes (`mail.changes`), what an index keeps per message (`mail.index`), IDLE (`mail.idle`), refs, read, organize, folders (`mail.folders`), messages parsed for the filters (`mail.parsed`), compose, drafts, the tools' text, audit items |
 | `send` | SMTP and the send gate |
 | `filters` | The filter engine: criteria, actions, rules as data (specs), runs, the runner and IDLE monitor, reports |
 | `testing` | A pytest plugin (no-network guard, store and mail fixtures) the app's tests load too |
@@ -276,6 +276,26 @@ time; flags leave out `\Recent`, which belongs to the session. A pooled connecti
 `ENABLE CONDSTORE` when the server offers CONDSTORE and ENABLE (Dovecot reports no HIGHESTMODSEQ
 on a SELECT otherwise): `MailboxContext.highest_modseq` comes from SELECT or EXAMINE and
 `Folder.highest_modseq` from STATUS, None without CONDSTORE.
+
+### Index fetch
+
+`mailroom_core.mail.index` reads what a host keeping an index of a folder stores, under EXAMINE and
+changing nothing. `plan_index` lists the folder's UIDs to index (`changes.uids_matching`, range by
+range), with `since` only those arrived on or after that day (SINCE, the age limit), newest (highest
+UID) first in batches of `INDEX_BATCH`; the `IndexPlan` carries UIDVALIDITY and HIGHESTMODSEQ as
+before the read. `fetch_index` reads one batch as `IndexedMessage`s with one FETCH: a page's own
+items (envelope, flags without `\Recent`, structure, INTERNALDATE, size), the thread headers
+(Message-ID, In-Reply-To, References, List-Id; cut past `parsed.MAX_HEADER_BYTES` as
+`search.thread_key` reads them, `parsed_message` dropping the field the cut split), and on Gmail
+X-GM-LABELS (decoded as LIST decodes a folder's path, so a label matches its folder),
+X-GM-MSGID and X-GM-THRID; then the previews as a page makes them (`preview_of`). It is refused
+(`stale_reference`) once the folder's UIDVALIDITY is no longer the plan's. Every text is a page's
+(decoded, flattened, capped; at most `index.INDEX_ADDRESSES` per address field) with each lone
+surrogate as U+FFFD,
+so a database takes it, and stays the sender's. `IndexedMessage.thread_key` is Gmail's thread id,
+else the References root, else In-Reply-To, else the Message-ID. `gmail_uid` finds a message's UID
+in a label's folder by X-GM-MSGID (`unsupported` off Gmail), for acting there on an All Mail row;
+`folder_index_plan`, `indexed_messages` and `gmail_label_ref` run them on `MailConnections`.
 
 ## Organize
 
