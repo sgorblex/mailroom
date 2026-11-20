@@ -94,7 +94,9 @@
     "flagged": "Starred",
     "toSort": "To sort",
     "hasAttachments": "Has attachments",
-    "menu": "Actions for {{subject}}"
+    "menu": "Actions for {{subject}}",
+    "dragging_one": "{{count}} message",
+    "dragging_other": "{{count}} messages"
   },
   "search": {
     "label": "Search mail",

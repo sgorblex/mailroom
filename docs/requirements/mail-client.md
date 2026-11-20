@@ -188,6 +188,15 @@ MCP `message_read` still never set `\Seen`.
   alone, the selection left as it was, but for Move to… and Move to another account…, whose picker
   makes the row the selection. Shift+right-click keeps the browser's own menu. The toolbar, the
   shortcuts, the reply buttons and these menus read one list of actions.
+- **Drag and drop:** a row dragged onto a folder of the sidebar's tree moves the selection when the
+  row is in it, else that row alone; a folder they cannot go to (one Move to… leaves out, a
+  level that holds only folders) does not take the drop, and one that does is highlighted while
+  the drag is over it. A folder of their own account is the toolbar's move, with its Undo; a
+  folder of another account (from a search) opens the Move to another account… picker on that
+  account's folders, focus on the folder dropped on and the originals going to Trash, so nothing
+  moves until the user picks; a drop never deletes for good. A selection spanning several
+  accounts (from a search) takes no drop, as Move to… is not offered for it either. From the
+  keyboard, `v` is the way.
 - **A star on each row** stars or unstars that one message, whatever is selected or open, without
   opening it: filled when starred, else an outline shown on hover and keyboard focus (always on a
   touch screen) and always there for screen readers, a toggle button named *Star* whose pressed

@@ -19,6 +19,12 @@ export type Action =
   | { kind: 'moveToAccount'; account: AccountId; folder: MailFolder; removal: MoveRemoval }
   | { kind: 'flag'; change: FlagChange }
 
+/** A folder of one of the user's accounts: where a drop moves messages to. */
+export interface Destination {
+  account: AccountId
+  folder: MailFolder
+}
+
 export interface Failure {
   account: AccountId
   folder: string
@@ -83,7 +89,9 @@ export interface Triage {
   setPicker: (open: boolean) => void
   /** The picker of a move to another account; opening one picker closes the other. */
   accountPicker: boolean
-  setAccountPicker: (open: boolean) => void
+  /** Where a drop opened the account picker: on that account's folders, that folder first. */
+  accountPickerInto: Destination | null
+  setAccountPicker: (open: boolean, into?: Destination) => void
 }
 
 export const TriageContext = createContext<Triage | null>(null)

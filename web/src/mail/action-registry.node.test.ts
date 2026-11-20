@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { listedActions, MAIL_ACTIONS, shortcutAction, type ActionContext } from './action-registry.ts'
+import type { MailFolder } from '@/api/mail.ts'
+
+import { dropAction, listedActions, MAIL_ACTIONS, mailAction, shortcutAction, type ActionContext } from './action-registry.ts'
 import { NO_TRIAGE_ACTIONS, type TriageActions } from './triage-actions.ts'
 import type { Target } from './triage-context.ts'
 
@@ -102,5 +104,41 @@ describe('the action registry', () => {
     expect(each.openPicker).toHaveBeenCalledWith('move')
     shortcutAction('a', each, { busy: false, composing: false })?.run(each)
     expect(each.compose.start).toHaveBeenCalledWith({ kind: 'reply_all', account: 1, ref: 'r1' })
+  })
+})
+
+describe('dropAction', () => {
+  const projects: MailFolder = { path: 'Projects', role: null, unread: 0, total: 0, delimiter: '/', selectable: true }
+  const sent: MailFolder = { ...projects, path: 'Sent', role: 'sent' }
+  const drop = (actions: Partial<TriageActions>, account: number, folder: MailFolder): string | undefined =>
+    dropAction({ ...context({ ...offered, ...actions }), into: { account, folder } })?.id
+
+  it('moves within the targets account to a folder they can go to, else to another account', () => {
+    expect(drop({ moveChoices: [projects] }, 1, projects)).toBe('move')
+    expect(drop({ moveChoices: [] }, 1, projects)).toBeUndefined()
+    expect(drop({}, 2, projects)).toBe('moveToAccount')
+    expect(drop({}, 2, sent)).toBeUndefined()
+    expect(drop({ otherAccounts: null }, 2, projects)).toBeUndefined()
+  })
+
+  it('refuses a level that holds only folders, and any folder for targets of several accounts', () => {
+    const level: MailFolder = { ...projects, path: 'Clients', selectable: false }
+    expect(drop({ moveChoices: [projects] }, 1, level)).toBeUndefined()
+    expect(drop({}, 2, level)).toBeUndefined()
+    // The targets' accounts are never other accounts to move to.
+    const mixed = { targets: [target, { ...target, ref: 'r2', account_id: 2 }], moveChoices: null, otherAccounts: [3] }
+    expect(drop(mixed, 1, projects)).toBeUndefined()
+    expect(drop(mixed, 2, projects)).toBeUndefined()
+  })
+
+  it('runs the move on the folder dropped on, and opens the account picker there', () => {
+    const move = vi.fn()
+    const openPicker = vi.fn()
+    const into = { account: 1, folder: projects }
+    mailAction('move').run(context({ ...offered, move }, { into, openPicker }))
+    expect(move).toHaveBeenCalledWith(projects)
+    expect(openPicker).not.toHaveBeenCalled()
+    mailAction('moveToAccount').run(context(offered, { into, openPicker }))
+    expect(openPicker).toHaveBeenCalledWith('account', into)
   })
 })
