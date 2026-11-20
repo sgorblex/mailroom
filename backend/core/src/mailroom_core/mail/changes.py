@@ -11,9 +11,10 @@ reports no expunge, so a host finds those by comparing `uids_of` with the UIDs i
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
+from imapclient.imap_utf7 import decode as decode_utf7
 from imapclient.response_parser import parse_fetch_response
 
-from mailroom_core.mail._mime import text_value
+from mailroom_core.mail._mime import text_value, well_formed
 from mailroom_core.mail.errors import MailError
 
 if TYPE_CHECKING:
@@ -46,6 +47,9 @@ class FolderFlags:
     highest_modseq: int | None
     """As `MailboxContext.highest_modseq`: the mod-sequence to ask changes since next time."""
     flags: Mapping[int, frozenset[str]]
+    labels: Mapping[int, tuple[str, ...]] | None = None
+    """On Gmail, the same messages' X-GM-LABELS (`stored_labels`), fetched with their flags:
+    Gmail changes a message's mod-sequence when its labels change. None elsewhere."""
 
 
 def uids_of(context: MailboxContext) -> FolderUids:
@@ -89,28 +93,32 @@ def uids_matching(context: MailboxContext, criteria: Sequence[object] = ()) -> t
 
 
 def flags_of(context: MailboxContext) -> FolderFlags:
-    """Every message's flags in the selected folder (UID FETCH 1:* (FLAGS)): what a server
-    without CONDSTORE leaves to compare."""
-    return FolderFlags(context.uid_validity, context.highest_modseq, _fetch_flags(context, None))
+    """Every message's flags in the selected folder (UID FETCH 1:* (FLAGS)), and on Gmail its
+    labels: what a server without CONDSTORE leaves to compare."""
+    return _fetch_flags(context, None)
 
 
 def changed_flags_of(context: MailboxContext, since: int) -> FolderFlags:
     """The flags of the messages whose mod-sequence is above `since`, a HIGHESTMODSEQ an earlier
-    answer gave (UID FETCH 1:* (FLAGS) (CHANGEDSINCE since)); `unsupported` in a folder without
-    mod-sequences (`MailboxContext.highest_modseq` None)."""
+    answer gave (UID FETCH 1:* (FLAGS) (CHANGEDSINCE since)), and on Gmail their labels;
+    `unsupported` in a folder without mod-sequences (`MailboxContext.highest_modseq` None)."""
     if context.highest_modseq is None:
         raise MailError("unsupported", "The folder keeps no mod-sequences.")
     if since < 0:
         raise MailError("invalid_argument", "A mod-sequence is not negative.")
-    changed = {} if since >= context.highest_modseq else _fetch_flags(context, since)
-    return FolderFlags(context.uid_validity, context.highest_modseq, changed)
+    if since >= context.highest_modseq:
+        return FolderFlags(
+            context.uid_validity, context.highest_modseq, {}, {} if context.gmail else None
+        )
+    return _fetch_flags(context, since)
 
 
-def _fetch_flags(context: MailboxContext, since: int | None) -> dict[int, frozenset[str]]:
+def _fetch_flags(context: MailboxContext, since: int | None) -> FolderFlags:
+    gmail = context.gmail
     if not context.exists:
-        return {}
+        return FolderFlags(context.uid_validity, context.highest_modseq, {}, {} if gmail else None)
     client = context.client
-    arguments = [b"1:*", b"(FLAGS)"]
+    arguments = [b"1:*", b"(FLAGS X-GM-LABELS)" if gmail else b"(FLAGS)"]
     if since is not None:
         arguments.append(f"(CHANGEDSINCE {since})".encode())
     # Sent raw: imapclient's `fetch` keeps only the answers to message ids it was given, and
@@ -118,9 +126,13 @@ def _fetch_flags(context: MailboxContext, since: int | None) -> dict[int, frozen
     # an unsolicited FETCH (another client's flag change, with CONDSTORE) names a sequence number.
     data = client._raw_command_untagged(b"FETCH", arguments)  # noqa: SLF001
     fetched = parse_fetch_response(data, client.normalise_times, False)
-    return {
-        int(items[b"UID"]): stored_flags(items) for items in fetched.values() if b"UID" in items
-    }
+    answers = {int(items[b"UID"]): items for items in fetched.values() if b"UID" in items}
+    return FolderFlags(
+        context.uid_validity,
+        context.highest_modseq,
+        {uid: stored_flags(items) for uid, items in answers.items()},
+        {uid: stored_labels(items) for uid, items in answers.items()} if gmail else None,
+    )
 
 
 def stored_flags(data: Mapping[bytes, object]) -> frozenset[str]:
@@ -128,3 +140,19 @@ def stored_flags(data: Mapping[bytes, object]) -> frozenset[str]:
     flags = data.get(b"FLAGS")
     texts = (text_value(flag) for flag in (flags if isinstance(flags, tuple | list) else ()))
     return frozenset(text for text in texts if text.lower() != _RECENT)
+
+
+def stored_labels(data: Mapping[bytes, object]) -> tuple[str, ...]:
+    """The X-GM-LABELS of a FETCH answer, decoded as LIST decodes a folder's path (modified UTF-7
+    only), so a label matches its folder; each once, without NULs, which Postgres holds none of."""
+    raw = data.get(b"X-GM-LABELS")
+    if not isinstance(raw, tuple | list):
+        return ()
+    out: list[str] = []
+    for label in raw:
+        try:
+            text = decode_utf7(label) if isinstance(label, bytes) else text_value(label)
+        except ValueError:
+            text = text_value(label)
+        out.append(well_formed(text).replace("\x00", ""))
+    return tuple(dict.fromkeys(label for label in out if label))

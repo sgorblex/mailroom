@@ -272,7 +272,10 @@ expunged ones, which a host finds by comparing UIDs; `unsupported` in a folder w
 mod-sequences). `MailConnections.folder_uids`, `folder_flags` and `changed_flags` run them in a
 session of their own. Each answer (`FolderUids`, `FolderFlags`) carries UIDVALIDITY and
 HIGHESTMODSEQ as the EXAMINE gave them, before the read, so a change in between shows again next
-time; flags leave out `\Recent`, which belongs to the session. A pooled connection sends
+time; flags leave out `\Recent`, which belongs to the session. On Gmail the flag reads fetch
+`X-GM-LABELS` too (`FolderFlags.labels`, decoded by `stored_labels` as LIST decodes a folder's path;
+Gmail changes a message's mod-sequence when its labels change), so a host's copy of the labels
+stays current; None elsewhere. A pooled connection sends
 `ENABLE CONDSTORE` when the server offers CONDSTORE and ENABLE (Dovecot reports no HIGHESTMODSEQ
 on a SELECT otherwise): `MailboxContext.highest_modseq` comes from SELECT or EXAMINE and
 `Folder.highest_modseq` from STATUS, None without CONDSTORE.

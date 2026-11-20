@@ -1,8 +1,14 @@
-"""The worker's tasks, and queueing runs of rule sets for them.
+"""The worker's tasks, and queueing runs of rule sets and the mail index's syncs for them.
 
 A run is queued as an ``app.filter_run`` row with no ``started_at`` plus the job
 ``run_rule_set(run_id)``, in one transaction: by Run now (the API), by the scheduled dispatcher
-below, and by the IDLE supervisor (``mailroom.worker.idle``) when a folder gets new mail.
+below, and by the IDLE supervisor (``mailroom.worker.idle``) when a folder gets new mail. Those run
+only with the ``filters`` feature.
+
+With the ``mail`` feature, the index dispatcher queues ``sync_account`` for every account every 5
+minutes; it brings the account's index folders in step with its listing and queues ``sync_folder``
+for each one due. A folder's job fetches a bounded share and queues the next one behind every
+other job, so a large mailbox takes turns with the others, its own filter runs included.
 """
 
 from __future__ import annotations
@@ -17,16 +23,19 @@ from procrastinate.manager import JobManager
 from procrastinate.tasks import configure_task
 from sqlalchemy import and_, func, or_, select, text
 
+from mailroom.config.features import features_from_env
 from mailroom.filters.runs import prune_runs
 from mailroom.models import AccountFilterSettings, FilterRun, RuleSet
 from mailroom.worker.app import PROCRASTINATE_SCHEMA, app
 from mailroom.worker.context import worker_context
+from mailroom.worker.index import account_folders_due, index_accounts, run_folder_sync
 from mailroom.worker.runs import execute_run
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from sqlalchemy import Select
+    from sqlalchemy.engine import Engine
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -35,6 +44,12 @@ RUN_RULE_SET: Final = "run_rule_set"
 """The job running one queued ``app.filter_run`` (its ``run_id``) of a rule set."""
 DISPATCH_SCHEDULED: Final = "dispatch_scheduled"
 """The periodic job queueing the scheduled rule sets that are due."""
+DISPATCH_INDEX: Final = "dispatch_index"
+"""The periodic job queueing ``sync_account`` for every account."""
+SYNC_ACCOUNT: Final = "sync_account"
+"""The job bringing one account's index folders in step and queueing the syncs due."""
+SYNC_FOLDER: Final = "sync_folder"
+"""The job running one share of an indexed folder's sync."""
 _IN_TRANSACTION: Final = JobManager(SyncPsycopgConnector())
 """Defers jobs on a connection the caller passes, never its own (it is never opened): the app's
 connector, once the worker opens it asynchronously, would take that connection for an async one."""
@@ -53,6 +68,11 @@ def ping() -> None:
 def run_rule_set(run_id: int) -> None:
     """Run the queued run ``run_id``: start it, run its rule set's enabled filters, and record the
     report or the error (``mailroom.worker.runs.execute_run``)."""
+    if not features_from_env().filters:
+        # The job ends here; the run stays open until the next worker start closes it as
+        # interrupted (``close_interrupted_runs``).
+        logger.info("Filters are off: run %s is not run.", run_id, extra={"run_id": run_id})
+        return
     context = worker_context()
     with context.sessions() as db:
         execute_run(db, run_id, context.mailboxes)
@@ -62,9 +82,50 @@ def run_rule_set(run_id: int) -> None:
 @app.task(name=DISPATCH_SCHEDULED, queueing_lock=DISPATCH_SCHEDULED)
 def dispatch_scheduled(timestamp: int) -> None:
     """Every minute: queue a run of each scheduled rule set that is due."""
+    if not features_from_env().filters:
+        return
     with worker_context().sessions() as db:
         queue_scheduled_runs(db, datetime.fromtimestamp(timestamp, UTC))
         db.commit()
+
+
+@app.periodic(cron="*/5 * * * *")
+@app.task(name=DISPATCH_INDEX, queueing_lock=DISPATCH_INDEX)
+def dispatch_index(timestamp: int) -> None:
+    """Every 5 minutes, with the mail client: queue ``sync_account`` for every account."""
+    _ = timestamp
+    if not features_from_env().mail:
+        return
+    context = worker_context()
+    with context.sessions() as db:
+        queue_index_accounts(db, context.mailboxes.engine)
+        db.commit()
+
+
+@app.task(name=SYNC_ACCOUNT)
+def sync_account(user_id: int, account_id: int) -> None:
+    """Bring the account's index folders in step with its listing, then queue ``sync_folder``
+    for each one due."""
+    if not features_from_env().mail:
+        return
+    context = worker_context()
+    with context.sessions() as db:
+        due = account_folders_due(db, context.mailboxes, user_id, account_id, datetime.now(UTC))
+        for folder_id in due:
+            queue_folder_sync(db, user_id, account_id, folder_id)
+        db.commit()
+
+
+@app.task(name=SYNC_FOLDER)
+def sync_folder(user_id: int, account_id: int, folder_id: int) -> None:
+    """One share of the indexed folder's sync; the next one queued when there is more."""
+    if not features_from_env().mail:
+        return
+    context = worker_context()
+    with context.sessions() as db:
+        if run_folder_sync(db, context.mailboxes, user_id, account_id, folder_id):
+            queue_folder_sync(db, user_id, account_id, folder_id)
+            db.commit()
 
 
 def mailbox_lock(user_id: int, account_id: int) -> str:
@@ -77,13 +138,10 @@ def rule_set_queueing_lock(rule_set_id: int, account_id: int) -> str:
     return f"rule_set:{rule_set_id}:{account_id}"
 
 
-def defer_rule_set_run(
-    db: Session, *, run_id: int, rule_set_id: int, user_id: int, account_id: int
-) -> int:
-    """Queue ``run_rule_set`` for ``run_id`` inside ``db``'s transaction, so the job exists exactly
-    when the run row does. Returns the job id. Raises procrastinate's ``AlreadyEnqueued`` when a
-    run of the rule set on the account is already waiting (the transaction is then unusable: run
-    this inside a savepoint)."""
+def _defer(db: Session, name: str, *, lock: str, queueing_lock: str, **arguments: int) -> int:
+    """Queue the task ``name`` inside ``db``'s transaction; its job id. Raises procrastinate's
+    ``AlreadyEnqueued`` when a job with ``queueing_lock`` is already waiting (the transaction is
+    then unusable: run this inside a savepoint)."""
     connection = db.connection()
     search_path = connection.execute(text("SELECT current_setting('search_path')")).scalar_one()
     # procrastinate's SQL names its tables and functions unqualified.
@@ -92,14 +150,71 @@ def defer_rule_set_run(
         {"path": f"{PROCRASTINATE_SCHEMA}, {search_path}"},
     )
     job_id = configure_task(
-        name=RUN_RULE_SET,
+        name=name,
         job_manager=_IN_TRANSACTION,
-        lock=mailbox_lock(user_id, account_id),
-        queueing_lock=rule_set_queueing_lock(rule_set_id, account_id),
+        lock=lock,
+        queueing_lock=queueing_lock,
         connection=connection.connection.driver_connection,
-    ).defer(run_id=run_id)
+    ).defer(**arguments)
     connection.execute(text("SELECT set_config('search_path', :path, true)"), {"path": search_path})
     return job_id
+
+
+def defer_rule_set_run(
+    db: Session, *, run_id: int, rule_set_id: int, user_id: int, account_id: int
+) -> int:
+    """Queue ``run_rule_set`` for ``run_id`` inside ``db``'s transaction, so the job exists exactly
+    when the run row does. Returns the job id. Raises procrastinate's ``AlreadyEnqueued`` when a
+    run of the rule set on the account is already waiting (the transaction is then unusable: run
+    this inside a savepoint)."""
+    return _defer(
+        db,
+        RUN_RULE_SET,
+        lock=mailbox_lock(user_id, account_id),
+        queueing_lock=rule_set_queueing_lock(rule_set_id, account_id),
+        run_id=run_id,
+    )
+
+
+def _defer_once(db: Session, name: str, *, lock: str, queueing_lock: str, **arguments: int) -> bool:
+    """``_defer`` in a savepoint of ``db``'s transaction (the caller commits); False when a job
+    with ``queueing_lock`` was already waiting."""
+    try:
+        with db.begin_nested():
+            _defer(db, name, lock=lock, queueing_lock=queueing_lock, **arguments)
+    except AlreadyEnqueued:
+        return False
+    return True
+
+
+def queue_index_accounts(db: Session, engine: Engine) -> int:
+    """Queue ``sync_account`` for every account of every user (the caller commits), one waiting
+    per account at most; how many were queued."""
+    return sum(
+        _defer_once(
+            db,
+            SYNC_ACCOUNT,
+            lock=mailbox_lock(user_id, account_id),
+            queueing_lock=f"index_account:{user_id}:{account_id}",
+            user_id=user_id,
+            account_id=account_id,
+        )
+        for user_id, account_id in index_accounts(db, engine)
+    )
+
+
+def queue_folder_sync(db: Session, user_id: int, account_id: int, folder_id: int) -> bool:
+    """Queue ``sync_folder`` for the indexed folder (the caller commits), one waiting per folder
+    at most; whether it was queued."""
+    return _defer_once(
+        db,
+        SYNC_FOLDER,
+        lock=mailbox_lock(user_id, account_id),
+        queueing_lock=f"index_folder:{folder_id}",
+        user_id=user_id,
+        account_id=account_id,
+        folder_id=folder_id,
+    )
 
 
 def queue_run(db: Session, rule_set: RuleSet, account_id: int, trigger: str) -> int | None:

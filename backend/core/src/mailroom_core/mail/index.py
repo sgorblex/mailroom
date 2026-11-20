@@ -10,10 +10,8 @@ size, but still to be kept and shown as untrusted.
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
-from imapclient.imap_utf7 import decode as decode_utf7
-
-from mailroom_core.mail._mime import addresses, aware_date, header_text, text_value, well_formed
-from mailroom_core.mail.changes import stored_flags, uids_matching
+from mailroom_core.mail._mime import addresses, aware_date, header_text, well_formed
+from mailroom_core.mail.changes import stored_flags, stored_labels, uids_matching
 from mailroom_core.mail.errors import MailError
 from mailroom_core.mail.pages import _FETCH, _Candidate, _fetch_candidates, _preview_texts
 from mailroom_core.mail.parsed import MAX_HEADER_BYTES, parsed_message
@@ -198,7 +196,6 @@ def _indexed(context: MailboxContext, candidate: _Candidate, snippet: str | None
     envelope = data.get(b"ENVELOPE")
     thread = parsed_message(fetched_fields(data))
     size = data.get(b"RFC822.SIZE")
-    labels = data.get(b"X-GM-LABELS")
     message_id = data.get(b"X-GM-MSGID")
     thread_id = data.get(b"X-GM-THRID")
     return IndexedMessage(
@@ -220,7 +217,7 @@ def _indexed(context: MailboxContext, candidate: _Candidate, snippet: str | None
         references_root=next(iter(thread.references), None),
         list_id=thread.list_id,
         snippet=None if snippet is None else well_formed(snippet),
-        gmail_labels=_labels(labels),
+        gmail_labels=stored_labels(data),
         gmail_message_id=message_id if isinstance(message_id, int) else None,
         gmail_thread_id=thread_id if isinstance(thread_id, int) else None,
     )
@@ -234,18 +231,3 @@ def _addresses(raw: object) -> tuple[Address, ...]:
         )
         for a in addresses(raw)[:INDEX_ADDRESSES]
     )
-
-
-def _labels(raw: object) -> tuple[str, ...]:
-    if not isinstance(raw, tuple | list):
-        return ()
-    out: list[str] = []
-    for label in raw:
-        try:
-            text = decode_utf7(label) if isinstance(label, bytes) else text_value(label)
-        except ValueError:
-            text = text_value(label)
-        # As LIST gives a folder's path (modified UTF-7 only), for a label to match its folder;
-        # Postgres holds no NUL.
-        out.append(well_formed(text).replace("\x00", ""))
-    return tuple(dict.fromkeys(label for label in out if label))
