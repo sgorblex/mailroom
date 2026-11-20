@@ -102,6 +102,15 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   CORS (any origin, no credentials), for browser-based MCP clients.
 - **Secrets** (account passwords, tokens) are sealed at rest as mailroom-core seals them and never
   appear in logs, errors or API responses. See *Mail accounts* below.
+- **Mail metadata at rest.** The mail index (`app.mail_index_folder`, `app.mail_index_message`)
+  keeps, per message of an indexed folder, what lists and search show without asking the server:
+  From, To and Cc, subject, Date and arrival time, flags and keywords, size, whether it has
+  attachments, Message-ID, In-Reply-To, References root, thread key, List-Id, the snippet a list
+  shows and on Gmail its labels and ids. Never a body or an attachment: a search for text stays
+  live on the server. Rows are plain (no column encryption: the database's own protection
+  applies), mail-derived and so untrusted, never written to a log line in clear, and read only
+  scoped to their user (each message row carries its folder's user, enforced by its foreign key).
+  They go with their account and their user.
 - **Deletes only deliberately.** Trash moves to `\Trash`, as in mailroom-mcp, and nothing is
   expunged but what a move copied elsewhere and **a draft Mailroom wrote**, by `UID EXPUNGE` of
   exactly that UID ([`mail-client.md`](mail-client.md), *The own-draft exception*); a draft
@@ -732,7 +741,9 @@ What they do and the route list: [`filters.md`](filters.md). How:
   table (`core.alembic_version`). Everything that migrates (API startup, `mise run migrate`,
   `reset-db`, the test databases, `check-migrations`) runs mailroom-core's `migrate` first, then
   the app's history, so app revisions may rely on `core`.
-- In production the database and role are **`mailroom`**.
+- In production the database and role are **`mailroom`**. The mail index's revision creates the
+  `pg_trgm` extension (trusted: the role needs `CREATE` on the database) in schema `app` unless
+  the database has it already; its downgrade drops it only from `app`.
 - Revisions are **timestamped** (`YYYYMMDDHHMM`, file `<rev>_<slug>.py`) and form one linear chain.
 - Every revision **downgrades**: `mise run check-migrations` runs upgrade → downgrade base →
   upgrade on a scratch database, locally and in CI.

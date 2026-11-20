@@ -1,6 +1,7 @@
 """The app's own rows about a user's accounts (schema ``app``), beside mailroom-core's: the Run
 filters switch, and forgetting all of it when an account or its user goes (the user's remembered
-remote-content senders, muted threads and ledger of copies moved between accounts too)."""
+remote-content senders, muted threads, ledger of copies moved between accounts and mail index
+too)."""
 
 from __future__ import annotations
 
@@ -14,6 +15,7 @@ from mailroom.filters.transfers import forget_target
 from mailroom.models import (
     AccountFilterSettings,
     FilterRun,
+    MailIndexFolder,
     MutedThread,
     RemoteContentSender,
     RuleSet,
@@ -64,7 +66,8 @@ def forget_account(store: AccountStore, db: Session, user_id: int, account_id: i
     )
     forget_target(db, user_id, account_id)
     # Its rule sets go too, with their filters and runs, the runs on it of the rule sets for all
-    # accounts (their reports name its mail), and its muted threads.
+    # accounts (their reports name its mail), its muted threads and its index, whose messages go
+    # with their folders.
     db.execute(delete(RuleSet).where(RuleSet.user_id == user_id, RuleSet.account_id == account_id))
     db.execute(
         delete(FilterRun).where(
@@ -77,6 +80,11 @@ def forget_account(store: AccountStore, db: Session, user_id: int, account_id: i
     db.execute(
         delete(MutedThread).where(
             MutedThread.user_id == user_id, MutedThread.account_id == account_id
+        )
+    )
+    db.execute(
+        delete(MailIndexFolder).where(
+            MailIndexFolder.user_id == user_id, MailIndexFolder.account_id == account_id
         )
     )
     db.commit()
@@ -92,5 +100,6 @@ def forget_user_accounts(db: Session, user_id: int) -> None:
     db.execute(delete(RuleSet).where(RuleSet.user_id == user_id))
     db.execute(delete(MutedThread).where(MutedThread.user_id == user_id))
     db.execute(delete(TransferLedger).where(TransferLedger.user_id == user_id))
+    db.execute(delete(MailIndexFolder).where(MailIndexFolder.user_id == user_id))
     db.execute(delete(RemoteContentSender).where(RemoteContentSender.user_id == user_id))
     forget_user(db.connection(), core_user_id(user_id))
