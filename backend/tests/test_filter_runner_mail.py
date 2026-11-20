@@ -15,7 +15,7 @@ from mailroom.models import AuditRecord, FilterRun, MutedThread
 from mailroom.worker.idle import FolderWatch, WatchedFolder
 from mailroom.worker.runs import execute_run
 from mailroom.worker.tasks import queue_new_mail_runs
-from mailroom_core.mail import TO_SORT, subject_sha256
+from mailroom_core.mail import TO_SORT, IdleChange, subject_sha256
 from mailroom_core.testing import mime
 from tests.support.mail import mail_servers_ssl_context
 from tests.test_api_accounts import added, new_account
@@ -27,6 +27,7 @@ from tests.test_filter_runner import (
     set_run_filters,
 )
 from tests.test_filters_dry_run import BANK, SHOP, Mailbox, message
+from tests.test_idle_supervisor import Heard
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -361,24 +362,33 @@ def test_a_watched_folder_queues_runs_that_move_new_mail(
     set_run_filters(user_client, account, on=True)
     rule_set_id = add_rule_set(user_client, account, trigger="new_mail")
     add_filter(user_client, rule_set_id, "Shop", SHOP_SPEC)
-    folder = WatchedFolder(user.id, account, ("INBOX",))
+    folder = WatchedFolder(user.id, account, "INBOX")
     mailbox.append("Archive")
 
     calls = 0
     changed = threading.Condition()
 
-    def on_new_mail() -> None:
-        nonlocal calls
-        with changed:
-            calls += 1
-            changed.notify_all()
+    class Reactor:
+        def connected(self) -> None:
+            self.changed(None)
+
+        def changed(self, change: IdleChange | None) -> None:
+            nonlocal calls
+            if change is not None and not change.new_mail:
+                return
+            with changed:
+                calls += 1
+                changed.notify_all()
+
+        def delimiter(self, _delimiter: str | None) -> None:
+            pass
 
     def wait_for(count: int) -> None:
         with changed:
             assert changed.wait_for(lambda: calls >= count, WAIT_SECONDS)
 
     revision = load_accounts(user_store(mailboxes.engine, user.id)).revision
-    watch = FolderWatch(mailboxes, folder, revision, on_new_mail)
+    watch = FolderWatch(mailboxes, folder, revision, Reactor())
     try:
         wait_for(1)
         assert watch.connected
@@ -394,7 +404,7 @@ def test_a_watched_folder_queues_runs_that_move_new_mail(
     assert not watch.alive
     assert watch.failure is None
 
-    [run_id] = queue_new_mail_runs(db_session, user.id, account, folder.folder)
+    [run_id] = queue_new_mail_runs(db_session, user.id, account, [folder.path])
     execute_run(db_session, run_id, mailboxes)
     run = run_out(user_client, rule_set_id, run_id)
     assert (run["trigger"], run["error"]) == ("new_mail", None)
@@ -405,12 +415,13 @@ def test_a_watched_folder_queues_runs_that_move_new_mail(
 def test_a_watch_on_a_missing_folder_ends_with_its_code(
     user: User, account: int, mailboxes: Mailboxes
 ) -> None:
-    folder = WatchedFolder(user.id, account, ("Nowhere",))
+    folder = WatchedFolder(user.id, account, "Nowhere")
     revision = load_accounts(user_store(mailboxes.engine, user.id)).revision
-    queued: list[None] = []
-    watch = FolderWatch(mailboxes, folder, revision, lambda: queued.append(None))
+    heard = Heard()
+    watch = FolderWatch(mailboxes, folder, revision, heard)
     watch.join(WAIT_SECONDS)
     assert not watch.alive
     assert not watch.connected
     assert (watch.failure or "").startswith("mailbox_missing: ")
-    assert queued == []
+    # The delimiter was looked up; nothing else came.
+    assert [event for event in heard.events if event != ("delimiter", "/")] == []

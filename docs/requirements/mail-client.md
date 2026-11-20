@@ -1423,6 +1423,14 @@ folder off the index is read live, as before the index.
   read into the index is skipped and stays readable live. A folder whose UIDVALIDITY changed is
   built again. The sync never changes mail. Details:
   [`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *Mail index sync*.
+- **Freshness.** Besides the 5-minute turn, the worker watches through IMAP IDLE, per account,
+  INBOX when it is on the index (on Gmail All Mail, which INBOX is a label of) and the indexed
+  folder a browser viewed last, while that browser's interest lasts (`app.mail_view_interest`,
+  each row with its expiry; the API writes them): new mail, a flag changed or a message expunged
+  there, by any client, syncs that folder at once (one sync waiting per folder). A folder a
+  `new_mail` rule set watches shares that watch. Details:
+  [`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *Filters* (the IDLE
+  supervisor).
 - **The app's own writes.** A move, archive, report as spam, trash, flag change, move to another
   account, bulk call or folder marked read, from the web or an agent, updates the index in the
   same request from the server's answer, never from another read: a moved message's row leaves

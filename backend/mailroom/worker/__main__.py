@@ -5,9 +5,10 @@ logs why and exits 0 before it touches the database, and an unknown feature name
 
 One worker runs at a time (it holds a database lock while it runs): a second one exits. At
 start, jobs a stopped worker left running are marked failed, and their runs closed as
-interrupted. Beside procrastinate's job loop, with filters, a thread runs the IDLE supervisor
-(``mailroom.worker.idle``). On SIGTERM or SIGINT procrastinate gives the jobs in progress
-`SHUTDOWN_SECONDS` to finish, then aborts them; the watches are then stopped too, and the
+interrupted. Beside procrastinate's job loop, a thread runs the IDLE supervisor
+(``mailroom.worker.idle``): the rule sets' watches with filters, the index's with the mail
+client. On SIGTERM or SIGINT procrastinate gives the jobs in progress `SHUTDOWN_SECONDS` to
+finish, then aborts them; the watches are then stopped too, and the
 worker's mail connections logged out, and it exits 0. A worker that stops without being asked
 (procrastinate stops itself when its database connection fails, as when PostgreSQL restarts)
 exits 1, so its unit's ``Restart=on-failure`` starts it again.
@@ -16,14 +17,17 @@ exits 1, so its unit's ``Restart=on-failure`` starts it again.
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 import signal
 import sys
 import threading
 from typing import Final
 
+import psycopg
+
 from mailroom.config.features import FEATURES_ENV, features_from_env
-from mailroom.database import get_sync_database_url, load_local_environment
+from mailroom.database import get_sync_database_url, libpq_database_url, load_local_environment
 from mailroom.database_connectivity import wait_for_sync_database
 from mailroom.db_migrations import wait_for_head
 from mailroom.observability.logging_config import configure_logging
@@ -123,17 +127,22 @@ def main() -> None:
             close_interrupted_runs(db)
         logger.info("Worker starting.")
         stop = threading.Event()
-        watching = None
-        if features.filters:
-            supervisor = IdleSupervisor(context.sessions, context.mailboxes)
-            watching = threading.Thread(target=supervisor.run, args=(stop,), name="idle-supervisor")
-            watching.start()
+        supervisor = IdleSupervisor(
+            context.sessions,
+            context.mailboxes,
+            rules=features.filters,
+            index=features.mail,
+            listen=functools.partial(
+                psycopg.connect, libpq_database_url(database_url), autocommit=True
+            ),
+        )
+        watching = threading.Thread(target=supervisor.run, args=(stop,), name="idle-supervisor")
+        watching.start()
         try:
             asked = asyncio.run(run_jobs())
         finally:
             stop.set()
-            if watching is not None:
-                watching.join()
+            watching.join()
             context.mailboxes.close()
     if not asked:
         logger.error("The worker stopped without being asked (its database went away?); exiting 1.")
