@@ -32,11 +32,11 @@ which are open per account (at first, those above the role folders; always those
 folder shown). A level that holds only folders (`\Noselect`, or not listed at all) is not a
 link, and a closed level shows the unread count of everything under it (All Mail and Starred
 left out, as they count it again). The move picker and the role actions (Archive, Trash, Drafts,
-Sent) use selectable folders only. Each listed folder has a menu (its ⋯ button, or Shift+F10 on
-it) to make a subfolder, rename or move it and delete it, and each account a button for a new
-top-level folder: see [*Folder management*](#folder-management) for what the web asks before
-each. A folder with subfolders the list would read (not those with a role kept apart, below;
-at most 50 folders with itself) is listed with them or without by its menu's "Include
+Sent) use selectable folders only. Each listed folder has a menu (its ⋯ button, a right-click,
+or Shift+F10 on it) to make a subfolder, rename or move it and delete it, and each account a
+button for a new top-level folder: see [*Folder management*](#folder-management) for what the
+web asks before each. A folder with subfolders the list would read (not those with a role kept
+apart, below; at most 50 folders with itself) is listed with them or without by its menu's "Include
 subfolders" or the button on its row; this browser remembers the choice per account and folder
 (a rename carries it over, a delete forgets it), the URL carries it (`sub`), each row then names
 its folder, the folder's unread count becomes that of what the list reads, and a search in that
@@ -182,6 +182,12 @@ MCP `message_read` still never set `\Seen`.
   whether the originals go to Trash, the default, or are deleted for good, then the folder;
   deleting for good asks first, naming how many and from which account to which),
   Star/Unstar, Mark To sort/Mark sorted ([To sort](../GLOSSARY.md)), Mark read/unread.
+- **A context menu on each row** (a right-click, or Shift+F10 or the context-menu key on it)
+  offers the toolbar's actions, with Reply, Reply all and Forward when it acts on one message,
+  each naming its key. On a selected row it acts on the selection; on any other row, on that row
+  alone, the selection left as it was, but for Move to… and Move to another account…, whose picker
+  makes the row the selection. Shift+right-click keeps the browser's own menu. The toolbar, the
+  shortcuts, the reply buttons and these menus read one list of actions.
 - **A star on each row** stars or unstars that one message, whatever is selected or open, without
   opening it: filled when starred, else an outline shown on hover and keyboard focus (always on a
   touch screen) and always there for screen readers, a toggle button named *Star* whose pressed

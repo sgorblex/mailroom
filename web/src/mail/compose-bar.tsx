@@ -1,21 +1,34 @@
-import { useEffect, useId, useRef, type ReactElement } from 'react'
+import { createElement, useEffect, useId, useRef, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { PenLine } from 'lucide-react'
 
 import type { AccountId } from '@/api/accounts.ts'
 import { Button } from '@/components/ui/button.tsx'
 
+import { mailAction, unavailableReason, type ActionContext } from './action-registry.ts'
 import { useCompose } from './compose-context.ts'
 import { MAIL_NS } from './i18n.ts'
 import { SentNotice } from './send-status.tsx'
+import { NO_TRIAGE_ACTIONS } from './triage-actions.ts'
+
+const COMPOSE = mailAction('compose')
 
 /** Starts a message on the account shown, or goes back to the draft a message is in front of. */
 export function ComposeBar({ accountId }: { accountId: AccountId }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
-  const { session, shown, start, backToDraft, canCompose } = useCompose()
+  const compose = useCompose()
+  const { session, shown, backToDraft } = compose
   const hintId = useId()
   const button = useRef<HTMLButtonElement>(null)
-  const allowed = canCompose(accountId)
+  const context: ActionContext = {
+    actions: NO_TRIAGE_ACTIONS,
+    message: null,
+    account: accountId,
+    compose,
+    openPicker: () => undefined,
+  }
+  const reason = unavailableReason(COMPOSE, context)
+  const allowed = reason === null
   const open = session !== null
 
   // The composer that had focus is gone.
@@ -35,18 +48,18 @@ export function ComposeBar({ accountId }: { accountId: AccountId }): ReactElemen
           type="button"
           size="sm"
           className="self-start"
-          title={`${t('compose.compose')} (c)`}
-          aria-keyshortcuts="c"
+          title={`${t(COMPOSE.label(context))} (${COMPOSE.shortcut ?? ''})`}
+          aria-keyshortcuts={COMPOSE.shortcut}
           aria-disabled={!allowed}
           aria-describedby={allowed ? undefined : hintId}
           onClick={() => {
             if (allowed) {
-              start({ kind: 'new', account: accountId })
+              COMPOSE.run(context)
             }
           }}
         >
-          <PenLine aria-hidden="true" />
-          {t('compose.compose')}
+          {createElement(COMPOSE.icon(context), { 'aria-hidden': true })}
+          {t(COMPOSE.label(context))}
         </Button>
       )}
       {open && !shown && (
@@ -55,9 +68,9 @@ export function ComposeBar({ accountId }: { accountId: AccountId }): ReactElemen
           {t('compose.backToDraft')}
         </Button>
       )}
-      {!allowed && !open && (
+      {reason !== null && !open && (
         <p id={hintId} className="text-xs text-muted-foreground">
-          {t('compose.offHint')}
+          {t(reason)}
         </p>
       )}
       <SentNotice />

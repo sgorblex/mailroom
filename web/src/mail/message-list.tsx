@@ -8,13 +8,17 @@ import { useAccountKeywords, useAccountLabel, useAccountName } from '@/accounts/
 import type { MessageItem, MessagePage, SourceFailure } from '@/api/mail.ts'
 import { useTimeZone } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
+import { Menu, type MenuItem, type MenuPoint } from '@/components/ui/menu.tsx'
 import { useLoad } from '@/lib/use-load.ts'
 import { useUnmountSignal } from '@/lib/use-unmount-signal.ts'
 import { cn } from '@/lib/utils.ts'
 
+import { listedActions, unavailableReason, type ActionContext } from './action-registry.ts'
+import { useCompose } from './compose-context.ts'
 import { addressLabel, formatListDate } from './format.ts'
 import { MAIL_NS } from './i18n.ts'
 import { ACCOUNT_NOT_FOUND, mailCodeMessage, mailErrorMessage } from './messages.ts'
+import { useTriageActions } from './triage-actions.ts'
 import { useTriage, type Target } from './triage-context.ts'
 
 type More = { kind: 'idle' } | { kind: 'loading' } | { kind: 'failed'; message: string }
@@ -47,6 +51,10 @@ export function MessageList({
     setReadFor(reloadKey)
     setLater([])
   }
+  const [menu, setMenu] = useState<{ row: MessageItem; anchor: HTMLElement; point: MenuPoint } | null>(null)
+  const closeMenu = useCallback(() => {
+    setMenu(null)
+  }, [])
   const unmountSignal = useUnmountSignal()
   const triage = useTriage()
   const { removed, setVisible } = triage
@@ -113,7 +121,29 @@ export function MessageList({
           <SelectAll messages={messages} />
           <ul aria-label={searching ? t('list.results') : t('list.messages')} className="flex flex-col divide-y rounded-lg border">
             {messages.map((message) => (
-              <li key={message.ref} className="group/row flex items-start">
+              // The row's link is what takes focus: its menu key and a right-click reach it from here.
+              // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
+              <li
+                key={message.ref}
+                className="group/row flex items-start"
+                onContextMenu={(event) => {
+                  const anchor = event.currentTarget.querySelector('a')
+                  // Shift+right-click keeps the browser's own menu.
+                  if (event.shiftKey || anchor === null) {
+                    return
+                  }
+                  event.preventDefault()
+                  setMenu({ row: message, anchor, point: { x: event.clientX, y: event.clientY } })
+                }}
+                onKeyDown={(event) => {
+                  const anchor = event.currentTarget.querySelector('a')
+                  if (anchor !== null && (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey))) {
+                    event.preventDefault()
+                    const rect = anchor.getBoundingClientRect()
+                    setMenu({ row: message, anchor, point: { x: rect.left, y: rect.bottom } })
+                  }
+                }}
+              >
                 <input
                   type="checkbox"
                   name="message"
@@ -132,6 +162,15 @@ export function MessageList({
             ))}
           </ul>
         </>
+      )}
+      {menu !== null && (
+        <MessageMenu
+          key={`${menu.row.ref} ${String(menu.point.x)} ${String(menu.point.y)}`}
+          row={menu.row}
+          anchor={menu.anchor}
+          point={menu.point}
+          onClose={closeMenu}
+        />
       )}
       {more.kind === 'failed' && (
         <p role="alert" className="text-sm text-destructive">
@@ -154,6 +193,68 @@ export function MessageList({
         </Button>
       )}
     </div>
+  )
+}
+
+/**
+ * The context menu of a row: the registry's actions on the selection when the row is in it, else
+ * on the row alone. A picker it opens acts on the selection, so an unselected row becomes it.
+ */
+function MessageMenu({
+  row,
+  anchor,
+  point,
+  onClose,
+}: {
+  row: MessageItem
+  anchor: HTMLElement
+  point: MenuPoint
+  onClose: () => void
+}): ReactElement {
+  const { t } = useTranslation(MAIL_NS)
+  const triage = useTriage()
+  const compose = useCompose()
+  const selected = triage.selection.has(row.ref)
+  const targets = selected ? [...triage.selection.values()] : [row]
+  const actions = useTriageActions(targets)
+  const [only] = targets
+  const context: ActionContext = {
+    actions,
+    message: targets.length === 1 && only !== undefined ? only : null,
+    account: null,
+    compose,
+    openPicker: (picker) => {
+      if (!selected) {
+        triage.clearSelection()
+        triage.select([row], true)
+      }
+      if (picker === 'move') {
+        triage.setPicker(true)
+      } else {
+        triage.setAccountPicker(true)
+      }
+    },
+  }
+  const items: MenuItem[] = [...listedActions('reply', context), ...listedActions('triage', context)].map((action) => {
+    const reason = action.group === 'triage' && triage.busy ? 'triage.busy' : unavailableReason(action, context)
+    return {
+      label: t(action.label(context)),
+      shortcut: action.shortcut,
+      disabledReason: reason === null ? null : t(reason),
+      destructive: action.destructive,
+      onSelect: () => {
+        action.run(context)
+      },
+    }
+  })
+  return (
+    <Menu
+      label={t('list.menu', { subject: row.subject === '' ? t('message.noSubject') : row.subject })}
+      anchor={anchor}
+      point={point}
+      items={items}
+      onClose={onClose}
+    />
   )
 }
 
@@ -308,6 +409,8 @@ function MessageRow({ message, source }: { message: MessageItem; source: 'accoun
       to="/mail"
       search={(previous) => ({ ...previous, message: message.ref })}
       aria-current={message.ref === open ? 'true' : undefined}
+      aria-haspopup="menu"
+      aria-keyshortcuts="Shift+F10"
       className={cn(
         'flex min-w-0 flex-1 flex-col gap-0.5 p-3 text-sm hover:bg-accent',
         message.ref === open && 'bg-accent',

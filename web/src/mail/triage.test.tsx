@@ -655,6 +655,79 @@ describe('marking read on open', () => {
   })
 })
 
+describe('message context menu', () => {
+  it('acts on an unselected row alone, leaving the selection as it was', async () => {
+    const fetchMock = stubMailApi(state())
+    renderMailApp('/mail')
+
+    const list = await messagesList()
+    await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 10' }))
+    fireEvent.contextMenu(rowLink(list, 'Message 8'), { clientX: 40, clientY: 60 })
+    const menu = screen.getByRole('menu', { name: 'Actions for Message 8' })
+    expect(within(menu).getByRole('menuitem', { name: 'Reply' })).toHaveFocus()
+    expect(within(menu).getByRole('menuitem', { name: 'Archive' })).toHaveAttribute('aria-keyshortcuts', 'e')
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Archive' }))
+
+    await reported('polite', 'Archived 1 message.')
+    expect(bodiesTo(fetchMock, '/api/v1/mail/messages/archive')).toEqual([{ refs: [third?.ref] }])
+    expect(within(list).getByRole('checkbox', { name: 'Select Message 10' })).toBeChecked()
+  })
+
+  it('acts on the whole selection from a selected row, with no reply to several', async () => {
+    const fetchMock = stubMailApi(state())
+    renderMailApp('/mail')
+
+    const list = await messagesList()
+    await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 10' }))
+    await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 9' }))
+    fireEvent.contextMenu(rowLink(list, 'Message 9'))
+    const menu = screen.getByRole('menu')
+    expect(within(menu).queryByRole('menuitem', { name: 'Reply' })).not.toBeInTheDocument()
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Star' }))
+
+    await reported('polite', 'Starred 2 messages.')
+    expect(bodiesTo(fetchMock, FLAG)).toEqual([{ refs: [unread?.ref, second?.ref], flagged: true }])
+  })
+
+  it('opens the move picker on an unselected row, which becomes the selection', async () => {
+    stubMailApi(state())
+    renderMailApp('/mail')
+
+    const list = await messagesList()
+    await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 10' }))
+    fireEvent.contextMenu(rowLink(list, 'Message 8'))
+    await userEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: 'Move to…' }))
+
+    expect(await screen.findByRole('dialog', { name: 'Move to' })).toBeInTheDocument()
+    expect(within(list).getByRole('checkbox', { name: 'Select Message 8' })).toBeChecked()
+    expect(within(list).getByRole('checkbox', { name: 'Select Message 10' })).not.toBeChecked()
+  })
+
+  it('leaves Shift+right-click to the browser', async () => {
+    stubMailApi(state())
+    renderMailApp('/mail')
+
+    const list = await messagesList()
+    const shown = fireEvent.contextMenu(rowLink(list, 'Message 8'), { shiftKey: true })
+    expect(shown).toBe(true)
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
+  it('opens from the keyboard and closes back onto the row', async () => {
+    stubMailApi(state())
+    renderMailApp('/mail')
+
+    const list = await messagesList()
+    const link = rowLink(list, 'Message 8')
+    link.focus()
+    await userEvent.keyboard('{Shift>}{F10}{/Shift}')
+    expect(screen.getByRole('menu', { name: 'Actions for Message 8' })).toBeInTheDocument()
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(link).toHaveFocus()
+  })
+})
+
 describe('keyboard shortcuts', () => {
   it('moves through the list with j and k', async () => {
     const history = renderAt('/mail')

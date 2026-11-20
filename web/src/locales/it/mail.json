@@ -93,7 +93,8 @@
     "unread": "Non letto",
     "flagged": "Speciale",
     "toSort": "Da smistare",
-    "hasAttachments": "Con allegati"
+    "hasAttachments": "Con allegati",
+    "menu": "Azioni per {{subject}}"
   },
   "search": {
     "label": "Cerca nella posta",
@@ -192,6 +193,7 @@
     "toSort": "Segna da smistare",
     "sorted": "Segna come smistato",
     "toSortUnsupported": "il server di posta non può conservare il segno Da smistare",
+    "busy": "un'altra azione è ancora in corso",
     "markRead": "Segna come letto",
     "markUnread": "Segna come non letto",
     "dismiss": "Chiudi",

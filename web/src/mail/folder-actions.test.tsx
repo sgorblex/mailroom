@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -56,6 +56,25 @@ describe('folder actions', () => {
     expect(items[1]).toHaveFocus()
     await userEvent.keyboard('{ArrowUp}{ArrowUp}')
     expect(items[2]).toHaveFocus()
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(projects).toHaveFocus()
+  })
+
+  it('opens the same menu on a right-click, and leaves Shift+right-click to the browser', async () => {
+    stubMailApi(state())
+    renderMailApp('/mail')
+
+    const projects = within(await tree()).getByRole('treeitem', { name: 'Projects' })
+    expect(fireEvent.contextMenu(projects, { shiftKey: true })).toBe(true)
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(fireEvent.contextMenu(projects, { clientX: 30, clientY: 50 })).toBe(false)
+    const menu = screen.getByRole('menu', { name: 'Actions for Projects' })
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'New subfolder…',
+      'Rename or move…',
+      'Delete…',
+    ])
     await userEvent.keyboard('{Escape}')
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
     expect(projects).toHaveFocus()
