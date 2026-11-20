@@ -15,6 +15,7 @@ from mailroom_core.mail import (
     MailError,
     Moved,
     delete_uids,
+    fetch_sources,
     message_id_uids,
     move_target,
     move_uids,
@@ -288,3 +289,30 @@ def test_looks_a_message_id_up_as_the_server_can(
         == found
     )
     assert client.searched == [sent]
+
+
+class SourceClient:
+    """Answers a FETCH of sources, with Gmail's thread ids when it has `X-GM-EXT-1`."""
+
+    def __init__(self, gmail: bool) -> None:
+        self.gmail = gmail
+        self.items: list[list[str]] = []
+
+    def has_capability(self, name: str) -> bool:
+        return self.gmail and name == "X-GM-EXT-1"
+
+    def fetch(self, uids: list[int], items: list[str]) -> dict[int, dict[bytes, object]]:
+        self.items.append(items)
+        thread = {b"X-GM-THRID": 1234} if "X-GM-THRID" in items else {}
+        return {uid: {b"BODY[]": b"Subject: s\r\n\r\n", b"FLAGS": (), **thread} for uid in uids}
+
+
+@pytest.mark.parametrize(("gmail", "thread"), [(False, None), (True, 1234)])
+def test_fetch_sources_reads_gmails_thread_id_by_capability(
+    gmail: bool, thread: int | None
+) -> None:
+    client = SourceClient(gmail)
+    context = cast("MailboxContext", SimpleNamespace(client=client))
+    fetched = fetch_sources(context, [5])
+    assert fetched[5].gmail_thread == thread
+    assert client.items == [["BODY.PEEK[]", "FLAGS", *(["X-GM-THRID"] if gmail else [])]]

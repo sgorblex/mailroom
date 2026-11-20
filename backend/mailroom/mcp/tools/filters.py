@@ -25,10 +25,10 @@ from mailroom.filters.service import (
     Spec,
     Trigger,
 )
+from mailroom.filters.spec import offered_schema
 from mailroom.mcp.envelope import wrapped_result
 from mailroom.mcp.tool import READ, Arguments, Hints, JsonObject, Tool
 from mailroom.mcp.tools.accounts import AccountArguments, AccountId, NoArguments
-from mailroom_core.filters import json_schema
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -133,7 +133,7 @@ def _run(run: RunOut) -> JsonObject:
 
 
 async def _filter_schema(_args: NoArguments, _call: ToolCall) -> JsonObject:
-    return json_schema()
+    return offered_schema()
 
 
 async def _rule_sets_list(args: AccountArguments, call: ToolCall) -> JsonObject:

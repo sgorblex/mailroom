@@ -16,6 +16,7 @@ from mailroom_core.filters.criteria.address import (
     CcIs,
     CcMatches,
     FromContains,
+    FromDomain,
     FromIs,
     FromMatches,
     FromMatchesName,
@@ -36,7 +37,10 @@ from mailroom_core.filters.criteria.flags import (
     IsUnread,
     IsUnstarred,
 )
+from mailroom_core.filters.criteria.lists import ListIs
 from mailroom_core.filters.criteria.subject import SubjectContains, SubjectIs, SubjectMatches
+from mailroom_core.filters.criteria.thread import InThread, ThreadMembers
+from mailroom_core.filters.message import Message
 from mailroom_core.mail import ParsedMessage, parsed_message
 from mailroom_core.render import Address
 
@@ -560,3 +564,108 @@ class TestCriteriaFiltering:
             assert negated.is_efficient is False
             assert negated.imap_query.criteria() == ["ALL"]
             assert negated.negated_prefilter is prefiltered.imap_query
+
+
+def _from(address: str) -> Message:
+    return Message(0, _parsed(sender=(Address(None, address),)), [])
+
+
+class TestFromDomain:
+    def test_matches_the_exact_domain_in_any_case(self) -> None:
+        criterion = FromDomain("Example.com")
+        assert criterion.func(_from("news@EXAMPLE.com"))
+        assert not criterion.func(_from("news@mail.example.com"))
+        assert not criterion.func(_from("news@notexample.com"))
+        assert not criterion.func(_from("example.com@evil.org"))
+        assert not criterion.func(_from("@example.com"))
+
+    def test_subdomains_only_when_asked(self) -> None:
+        criterion = FromDomain("example.com", incl_subdomains=True)
+        assert criterion.func(_from("a@example.com"))
+        assert criterion.func(_from("a@mail.Example.com"))
+        assert not criterion.func(_from("a@badexample.com"))
+
+    def test_a_unicode_domain_matches_its_idna_form(self) -> None:
+        for given, address in (
+            ("bücher.de", "a@xn--bcher-kva.de"),
+            ("xn--bcher-kva.de", "a@BÜCHER.de"),
+        ):
+            assert FromDomain(given).func(_from(address))
+
+    def test_any_from_address_counts(self) -> None:
+        parsed = _parsed(sender=(Address(None, "a@other.org"), Address(None, "b@example.com")))
+        assert FromDomain("example.com").func(Message(0, parsed, []))
+
+    def test_a_plain_domain_is_prefiltered_by_the_servers_from_search(self) -> None:
+        assert FromDomain("Example.com").imap_query.criteria() == ["FROM", "@example.com"]
+        assert FromDomain("example.com", incl_subdomains=True).imap_query.criteria() == [
+            "FROM",
+            "example.com",
+        ]
+        assert FromDomain("bücher.de").imap_query.criteria() == ["ALL"]
+        assert FromDomain("xn--bcher-kva.de").imap_query.criteria() == ["ALL"]
+        assert FromDomain("example.com").is_efficient is False
+
+    @pytest.mark.parametrize("domain", ["", "a@example.com", "exa mple.com", "com", "::1", "a>b.c"])
+    def test_refuses_what_is_no_domain(self, domain: str) -> None:
+        with pytest.raises(ValueError, match="not a domain"):
+            FromDomain(domain)
+
+
+class TestListIs:
+    def test_matches_the_list_id_in_any_case(self) -> None:
+        message = Message(0, _parsed(list_id="News.Example.ORG"), [])
+        assert ListIs("news.example.org").func(message)
+        assert ListIs("<NEWS.example.org>").func(message)
+        assert not ListIs("example.org").func(message)
+        assert not ListIs("news.example.org").func(Message(0, _parsed(), []))
+
+    def test_fetches_every_candidate(self) -> None:
+        assert ListIs("a.example").imap_query.criteria() == ["ALL"]
+
+    def test_refuses_an_empty_id(self) -> None:
+        with pytest.raises(ValueError, match="empty"):
+            ListIs(" <> ")
+
+
+class TestInThread:
+    MEMBERS = ThreadMembers(frozenset({"<root@x.org>", "<b@x.org>"}), frozenset({42}))
+
+    def criterion(self) -> InThread:
+        return InThread("t1", threads=lambda name: self.MEMBERS if name == "t1" else None)
+
+    @pytest.mark.parametrize(
+        "fields",
+        [
+            {"message_id": "<b@x.org>"},
+            {"in_reply_to": ("<other@x.org>", "<b@x.org>")},
+            {"references": ("<root@x.org>", "<c@x.org>")},
+        ],
+    )
+    def test_matches_by_any_threading_id(self, fields: dict[str, Any]) -> None:
+        assert self.criterion().func(Message(0, _parsed(**fields), []))
+
+    def test_matches_by_gmail_thread(self) -> None:
+        assert self.criterion().func(Message(0, _parsed(), [], gmail_thread=42))
+        assert not self.criterion().func(Message(0, _parsed(), [], gmail_thread=43))
+
+    def test_never_by_subject(self) -> None:
+        message = Message(0, _parsed(subject="Re: the thread", message_id="<new@x.org>"), [])
+        assert not self.criterion().func(message)
+
+    def test_an_unknown_thread_or_no_resolver_matches_nothing(self) -> None:
+        message = Message(0, _parsed(message_id="<b@x.org>"), [], gmail_thread=42)
+        assert not InThread("t1").func(message)
+        assert not InThread("t2", threads=lambda _: None).func(message)
+
+    def test_the_resolver_is_asked_once_when_built(self) -> None:
+        asked: list[str] = []
+
+        def threads(name: str) -> ThreadMembers:
+            asked.append(name)
+            return self.MEMBERS
+
+        criterion = InThread("t1", threads=threads)
+        for _ in range(3):
+            criterion.func(Message(0, _parsed(), []))
+        assert asked == ["t1"]

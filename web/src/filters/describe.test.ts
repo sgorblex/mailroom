@@ -44,6 +44,17 @@ describe('describeSpec', () => {
     ).toBe('If the subject contains “URGENT” or not read, star')
   })
 
+  it('says when a sender domain takes its subdomains', () => {
+    const domain = (args: Record<string, unknown>) => ({
+      criterion: { type: 'from_domain', args },
+      action: { type: 'junk' },
+    })
+    expect(summary(domain({ domain: 'example.com' }))).toBe('If the sender\'s domain is “example.com”, move to junk')
+    expect(summary(domain({ domain: 'example.com', incl_subdomains: true }))).toBe(
+      'If the sender\'s domain is “example.com” or under it, move to junk',
+    )
+  })
+
   it('names the headers a recipient criterion also looks at, and formats dates', () => {
     expect(
       summary({

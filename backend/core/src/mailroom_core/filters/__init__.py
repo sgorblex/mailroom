@@ -20,7 +20,7 @@ from mailroom_core.filters.actions.flags import (
     UnmarkToSort,
     Unstar,
 )
-from mailroom_core.filters.actions.move import MoveTo, Trash
+from mailroom_core.filters.actions.move import Junk, MoveTo, Trash
 from mailroom_core.filters.actions.noop import NoOp
 from mailroom_core.filters.criteria.address import (
     BccContains,
@@ -30,6 +30,7 @@ from mailroom_core.filters.criteria.address import (
     CcIs,
     CcMatches,
     FromContains,
+    FromDomain,
     FromIs,
     FromMatches,
     FromMatchesName,
@@ -52,7 +53,9 @@ from mailroom_core.filters.criteria.flags import (
     IsUnstarred,
     LacksFlag,
 )
+from mailroom_core.filters.criteria.lists import ListIs
 from mailroom_core.filters.criteria.subject import SubjectContains, SubjectIs, SubjectMatches
+from mailroom_core.filters.criteria.thread import InThread, ThreadMembers, ThreadResolver
 from mailroom_core.filters.filter import Filter, If
 from mailroom_core.filters.flags import Flag
 from mailroom_core.filters.message import Message
@@ -99,12 +102,14 @@ __all__ = [
     "Folder",
     "FolderReport",
     "FromContains",
+    "FromDomain",
     "FromIs",
     "FromMatches",
     "FromMatchesName",
     "HasFlag",
     "IMAPQuery",
     "If",
+    "InThread",
     "IsAnswered",
     "IsNotToSort",
     "IsRead",
@@ -113,7 +118,9 @@ __all__ = [
     "IsUnanswered",
     "IsUnread",
     "IsUnstarred",
+    "Junk",
     "LacksFlag",
+    "ListIs",
     "MarkAsAnswered",
     "MarkAsRead",
     "MarkAsUnanswered",
@@ -138,6 +145,8 @@ __all__ = [
     "SubjectContains",
     "SubjectIs",
     "SubjectMatches",
+    "ThreadMembers",
+    "ThreadResolver",
     "ToContains",
     "ToIs",
     "ToMatches",

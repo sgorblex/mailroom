@@ -291,6 +291,94 @@
           "properties": {
             "type": {
               "enum": [
+                "from_domain"
+              ]
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "domain": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "incl_subdomains": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "domain"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "list_is"
+              ]
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "list_id": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "list_id"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "in_thread"
+              ]
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "thread": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "The app's name for a thread it keeps (a muted one): its messages are the app's, looked up when the filter is loaded."
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "thread"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
                 "has_flag",
                 "lacks_flag"
               ]
@@ -405,6 +493,7 @@
             "type": {
               "enum": [
                 "delete",
+                "junk",
                 "mark_as_answered",
                 "mark_as_read",
                 "mark_as_unanswered",

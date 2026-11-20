@@ -3,6 +3,7 @@ untrusted-content envelope, and sanitised HTML for the Mailroom app's message vi
 
 from mailroom_core.render.body import RenderedBody, render_body
 from mailroom_core.render.envelope import untrusted
+from mailroom_core.render.hosts import ascii_host
 from mailroom_core.render.html import MAX_DEPTH, MAX_HTML_CHARS, HtmlText, html_to_text
 from mailroom_core.render.message import (
     Address,
@@ -50,6 +51,7 @@ __all__ = [
     "PartInfo",
     "RenderedBody",
     "SafeHtml",
+    "ascii_host",
     "clean_header",
     "clean_text",
     "collapse_quotes",

@@ -258,21 +258,31 @@ class FetchedMessage:
     source: bytes
     flags: frozenset[str]
     """As the server has them, `\\Seen`."""
+    gmail_thread: int | None = None
+    """Gmail's thread id (`X-GM-THRID`), on a server with `X-GM-EXT-1`."""
 
 
 def fetch_sources(context: MailboxContext, uids: Iterable[int]) -> dict[int, FetchedMessage]:
     """The whole source and flags of each of `uids` still in the folder, by UID, with
-    `BODY.PEEK[]`: unlike `BODY[]`, it never sets `\\Seen`."""
+    `BODY.PEEK[]`: unlike `BODY[]`, it never sets `\\Seen`. On Gmail, its thread id too."""
     wanted = list(dict.fromkeys(uids))
     if not wanted:
         return {}
-    fetched = context.client.fetch(wanted, ["BODY.PEEK[]", "FLAGS"])
+    gmail = context.client.has_capability("X-GM-EXT-1")
+    items = ["BODY.PEEK[]", "FLAGS", *(["X-GM-THRID"] if gmail else [])]
+    fetched = context.client.fetch(wanted, items)
     out: dict[int, FetchedMessage] = {}
     for uid, data in fetched.items():
         source = data.get(b"BODY[]")
         if not isinstance(source, bytes):
             continue
-        out[int(uid)] = FetchedMessage(uid=int(uid), source=source, flags=_flags(data))
+        thread = data.get(b"X-GM-THRID")
+        out[int(uid)] = FetchedMessage(
+            uid=int(uid),
+            source=source,
+            flags=_flags(data),
+            gmail_thread=thread if isinstance(thread, int) else None,
+        )
     return out
 
 

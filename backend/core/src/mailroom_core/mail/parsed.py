@@ -1,8 +1,9 @@
 """A whole message parsed from its raw source: the addresses, subject, date and text the filter
 engine matches on. Headers go through the same decoding as the message view (`_mime`), and the
 first of each field counts, as in the view's ENVELOPE; the body is every inline text part outside
-attached messages, the HTML ones read as their visible text when there is no plain one. Never
-raises: what cannot be read is left empty."""
+attached messages, the HTML ones read as their visible text when there is no plain one. Only the
+first `MAX_HEADER_BYTES` of the header block are read. Never raises: what cannot be read is left
+empty."""
 
 from __future__ import annotations
 
@@ -15,6 +16,7 @@ from email.utils import getaddresses, parsedate_to_datetime
 from typing import TYPE_CHECKING, Final
 
 from mailroom_core.mail._mime import decode_bytes, header_fields, header_text, unflow
+from mailroom_core.mail.message_headers import complete_fields, list_id
 from mailroom_core.render import Address, html_to_text
 
 if TYPE_CHECKING:
@@ -22,6 +24,16 @@ if TYPE_CHECKING:
     from email.message import Message
 
 _HEADER_END: Final = re.compile(rb"\r?\n\r?\n")
+MAX_HEADER_BYTES: Final = 256 * 1024
+"""Of the header block: a longer one is cut at the last whole field before it."""
+MAX_REFERENCES: Final = 100
+"""Message-IDs kept from References: the first (the thread's root), then the most recent."""
+MAX_IN_REPLY_TO: Final = 16
+MAX_MESSAGE_ID: Final = 900
+"""Of a Message-ID, brackets included: a longer one is left out."""
+_ANGLED: Final = re.compile(r"<([^<>]*)>")
+_ID_CHARS: Final = re.compile(r"[!-;=?-~]+")
+"""What a Message-ID holds between its brackets: printable ASCII but for `<` and `>`."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,11 +55,19 @@ class ParsedMessage:
     text: str
     """Every inline `text/plain` part (format=flowed joined), separated by line breaks;
     without any, every inline `text/html` part as its visible text. Line breaks are `\\n`."""
+    message_id: str | None = None
+    """The first `Message-ID:` field's id, angle brackets included."""
+    references: tuple[str, ...] = ()
+    """The first `References:` field's ids, at most `MAX_REFERENCES`."""
+    in_reply_to: tuple[str, ...] = ()
+    """The first `In-Reply-To:` field's ids, at most `MAX_IN_REPLY_TO`."""
+    list_id: str | None = None
+    """The first `List-Id:` field's identifier, without its angle brackets (RFC 2919)."""
 
 
 def parsed_message(source: bytes) -> ParsedMessage:
     """`source`, a message as `BODY[]` returns it, parsed."""
-    fields = header_fields(_HEADER_END.split(source, maxsplit=1)[0])
+    fields = header_fields(_header_block(source))
 
     def first(name: str) -> str | None:
         values = fields.get(name)
@@ -62,7 +82,39 @@ def parsed_message(source: bytes) -> ParsedMessage:
         subject=header_text(subject) if subject is not None else "",
         date=_date(first("date")),
         text=_text(source),
+        message_id=next(iter(_message_ids(first("message-id"))), None),
+        references=_references(_message_ids(first("references"))),
+        in_reply_to=_message_ids(first("in-reply-to"))[:MAX_IN_REPLY_TO],
+        list_id=_list_id(first("list-id")),
     )
+
+
+def _header_block(source: bytes) -> bytes:
+    head, *rest = _HEADER_END.split(source[:MAX_HEADER_BYTES], maxsplit=1)
+    return complete_fields(head) if not rest and len(source) > MAX_HEADER_BYTES else head
+
+
+def _message_ids(value: str | None) -> tuple[str, ...]:
+    """The well-formed `<local@domain>` ids of a field, in order. Matched bracket by bracket,
+    then checked, so a field of the sender's is read in one pass whatever it holds."""
+    if not value:
+        return ()
+    return tuple(
+        f"<{inner}>"
+        for inner in _ANGLED.findall(value)
+        if len(inner) + 2 <= MAX_MESSAGE_ID and _ID_CHARS.fullmatch(inner) and "@" in inner[1:-1]
+    )
+
+
+def _references(ids: tuple[str, ...]) -> tuple[str, ...]:
+    if len(ids) <= MAX_REFERENCES:
+        return ids
+    return (ids[0], *ids[len(ids) - MAX_REFERENCES + 1 :])
+
+
+def _list_id(value: str | None) -> str | None:
+    found = list_id(value) if value else None
+    return found[0] if found is not None else None
 
 
 def _addresses(value: str | None) -> tuple[Address, ...]:

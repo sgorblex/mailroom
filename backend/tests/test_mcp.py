@@ -380,6 +380,14 @@ def test_a_rule_set_s_marker_is_set_over_mcp(
     assert created["marker"] == "to_sort"
 
 
+def test_agents_are_not_offered_in_thread(mcp: Mcp, token: str, rule_set_id: int) -> None:
+    assert "in_thread" not in str(mcp.call(token, "filter_schema"))
+    thread = {"type": "in_thread", "args": {"thread": "muted"}}
+    spec = {"criterion": {"and": [thread]}, "action": {"type": "star"}}
+    refused = mcp.error(token, "filter_add", rule_set_id=rule_set_id, name="Thread", spec=spec)
+    assert "in_thread is kept for the app's own rule sets" in refused
+
+
 def test_edits_wait_for_a_disabled_rule_set(mcp: Mcp, token: str, rule_set_id: int) -> None:
     added = mcp.call(token, "filter_add", rule_set_id=rule_set_id, name="Shop", spec=SHOP_SPEC)
     second = mcp.call(token, "filter_add", rule_set_id=rule_set_id, name="Two", spec=SHOP_SPEC)

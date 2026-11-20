@@ -90,3 +90,22 @@ class Trash(Action):
                 )
             destination = trash.path
         _move(selected, uids, destination)
+
+
+class Junk(Action):
+    """Action that moves messages to the account's Junk folder, the one with its role
+    (special-use ``\\Junk``, else a well-known name; `unsupported` when it has none). Moved as
+    `MoveTo` moves.
+    """
+
+    spec_type = "junk"
+
+    def __init__(self) -> None:
+        """Initialize a Junk action."""
+        super().__init__(self._junk, name="move to junk")
+
+    def _junk(self, selected: Selected, uids: Sequence[int]) -> None:
+        junk = special_folder_in(selected.folders(), "junk")
+        if junk is None:
+            raise MailError("unsupported", "This account has no Junk folder.")
+        _move(selected, uids, junk.path)

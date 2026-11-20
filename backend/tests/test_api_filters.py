@@ -15,6 +15,7 @@ from mailroom.filters import runs as filter_runs
 from mailroom.filters import service as filters_service
 from mailroom.filters.runs import RunRefused, dry_run_slot, labelled_report, prune_runs
 from mailroom.filters.service import MAX_FILTERS
+from mailroom.filters.spec import offered_schema
 from mailroom.models import Filter, FilterRun, RuleSet
 from mailroom.worker.app import PROCRASTINATE_SCHEMA
 from mailroom_core.filters import MatchTimeoutError, json_schema, load_filter
@@ -74,8 +75,25 @@ def test_signed_out_browsers_are_refused(api_client: TestClient) -> None:
     assert api_client.post("/api/v1/rule-sets/1/run").status_code == 401
 
 
-def test_the_schema_is_the_engines(user_client: TestClient) -> None:
-    assert user_client.get("/api/v1/filters/schema").json() == json_schema()
+def test_the_schema_is_the_engines_without_in_thread(user_client: TestClient) -> None:
+    served = user_client.get("/api/v1/filters/schema").json()
+    assert served == offered_schema()
+    assert "in_thread" in str(json_schema())
+    assert "in_thread" not in str(served)
+
+
+def test_a_spec_naming_in_thread_is_refused(user_client: TestClient, rule_set_id: int) -> None:
+    thread = {"type": "in_thread", "args": {"thread": "muted"}}
+    spec = {"criterion": {"or": [{"type": "is_unread"}, {"not": thread}]}, "action": TO_ARCHIVE}
+    response = user_client.post(
+        f"/api/v1/rule-sets/{rule_set_id}/filters", json={"name": "Thread", "spec": spec}
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "hidden_criterion"
+
+    filter_id = add_filter(user_client, rule_set_id, "Good", SHOP_SPEC)
+    response = user_client.patch(f"/api/v1/filters/{filter_id}", json={"spec": spec})
+    assert response.json()["detail"]["code"] == "hidden_criterion"
 
 
 def test_run_filters_is_off_until_turned_on(user_client: TestClient, account: int) -> None:
