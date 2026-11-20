@@ -16,7 +16,9 @@ from mailroom_core.filters.actions.flags import (
     MarkAsRead,
     MarkAsUnanswered,
     MarkAsUnread,
+    MarkToSort,
     Star,
+    UnmarkToSort,
     Unstar,
 )
 from mailroom_core.filters.actions.move import MoveTo, Trash
@@ -42,8 +44,10 @@ from mailroom_core.filters.criteria.date import OlderThan, OlderThanDays
 from mailroom_core.filters.criteria.flags import (
     HasFlag,
     IsAnswered,
+    IsNotToSort,
     IsRead,
     IsStarred,
+    IsToSort,
     IsUnanswered,
     IsUnread,
     IsUnstarred,
@@ -81,9 +85,12 @@ CRITERIA: list[Criterion] = [
     FromMatches(r".*@example\.(com|org)"),
     FromMatchesName(r"Example .*"),
     HasFlag(Flag.FLAGGED),
+    HasFlag(Flag.TO_SORT),
     IsAnswered(),
+    IsNotToSort(),
     IsRead(),
     IsStarred(),
+    IsToSort(),
     IsUnanswered(),
     IsUnread(),
     IsUnstarred(),
@@ -107,12 +114,14 @@ ACTIONS: list[Action] = [
     MarkAsRead(),
     MarkAsUnanswered(),
     MarkAsUnread(),
+    MarkToSort(),
     MoveTo(Path(["Archive", "2025"])),
     MoveTo(Path("INBOX")),
     NoOp(),
     Star(),
     Trash(),
     Trash(Path(["Deleted Items"])),
+    UnmarkToSort(),
     Unstar(),
 ]
 

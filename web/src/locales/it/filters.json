@@ -197,6 +197,8 @@
     "is_unstarred": "Non ha la stella",
     "is_answered": "Ha risposta",
     "is_unanswered": "Non ha risposta",
+    "is_to_sort": "È da smistare",
+    "is_not_to_sort": "Non è da smistare",
     "from_contains": "Mittente contiene",
     "from_is": "Mittente è",
     "from_matches": "Mittente corrisponde (regex)",
@@ -226,6 +228,8 @@
     "mark_as_unanswered": "Segna come senza risposta",
     "star": "Metti la stella",
     "unstar": "Togli la stella",
+    "mark_to_sort": "Segna da smistare",
+    "unmark_to_sort": "Togli da smistare",
     "move_to": "Sposta in",
     "trash": "Sposta nel cestino",
     "no_op": "Non fare nulla"
@@ -245,7 +249,8 @@
   "filterChoices": {
     "SEEN": "Letto",
     "FLAGGED": "Con stella",
-    "ANSWERED": "Con risposta"
+    "ANSWERED": "Con risposta",
+    "TO_SORT": "Da smistare"
   },
   "filterErrors": {
     "invalidSpec": "Il filtro non è valido: {{message}}",
@@ -272,6 +277,8 @@
     "is_unstarred": "non ha la stella",
     "is_answered": "ha avuto risposta",
     "is_unanswered": "non ha avuto risposta",
+    "is_to_sort": "è da smistare",
+    "is_not_to_sort": "non è da smistare",
     "from_contains": "il mittente contiene “{{addr}}”",
     "from_is": "il mittente è “{{addr}}”",
     "from_matches": "il mittente corrisponde a “{{pattern}}”",
@@ -302,6 +309,8 @@
     "mark_as_unanswered": "segna come non risposto",
     "star": "metti la stella",
     "unstar": "togli la stella",
+    "mark_to_sort": "segna da smistare",
+    "unmark_to_sort": "togli da smistare",
     "move_to": "sposta in {{folder}}",
     "trash": "sposta nel cestino",
     "trash_to": "sposta nel cestino ({{folder}})",
@@ -310,7 +319,8 @@
   "filterPhraseChoices": {
     "SEEN": "è letto",
     "FLAGGED": "ha la stella",
-    "ANSWERED": "ha avuto risposta"
+    "ANSWERED": "ha avuto risposta",
+    "TO_SORT": "è da smistare"
   },
   "filterPhraseParts": {
     "quoted": "“{{value}}”",

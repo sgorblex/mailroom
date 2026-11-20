@@ -11,7 +11,7 @@ from mailroom_core.mail.errors import MailError
 from mailroom_core.mail.folders import with_subfolders
 from mailroom_core.mail.pages import Page, PageFailure, Source, failed_accounts, read_page
 from mailroom_core.mail.ref import MessageRef, check_fresh, parse_ref
-from mailroom_core.mail.selected import search_uids
+from mailroom_core.mail.selected import TO_SORT, search_uids
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -55,6 +55,8 @@ class SearchQuery:
     """Arrived before this day, by INTERNALDATE likewise."""
     unread: bool | None = None
     flagged: bool | None = None
+    to_sort: bool | None = None
+    """Marked To sort (the `TO_SORT` keyword), or not."""
     has_attachment: bool | None = None
     """True matches messages with an attachment: Gmail's own `has:attachment`, elsewhere an
     approximation (sent as multipart/mixed). False is ignored."""
@@ -82,6 +84,8 @@ class SearchQuery:
             out.append("UNSEEN" if self.unread else "SEEN")
         if self.flagged is not None:
             out.append("FLAGGED" if self.flagged else "UNFLAGGED")
+        if self.to_sort is not None:
+            out += ["KEYWORD" if self.to_sort else "UNKEYWORD", TO_SORT]
         raw = self.gmail_query
         if self.has_attachment is True:
             if gmail:

@@ -22,6 +22,7 @@
 | **Rule set** | An ordered list of filters for one account folder, with one trigger. [`requirements/filters.md`](requirements/filters.md). |
 | **Filter** | A rule (criteria plus actions) that sorts mail on the server, stored as its spec and run by the filter engine in the app's worker. |
 | **Filter engine** | `mailroom_core.filters`: criteria, actions, rules as data (specs), the runner and the IDLE monitor. It was imap-thingy, a library of its own on PyPI, until 2026-11-11; [`core.md`](core.md) — *Filters*. Not the app's `mailroom.filters`, the feature built on it. |
+| **To sort** | A mark on a message, the IMAP keyword `$MailroomSort`, for mail waiting to be sorted. Only a server that keeps keywords (PERMANENTFLAGS holding `\*`) can store it, and a Gmail account counts as one that cannot. [`core.md`](core.md) — *Organize*. |
 | **Trigger** | What starts a rule set's run: `new_mail` (IMAP IDLE), `scheduled` (every so many minutes) or `manual` (only *Run now*). |
 | **Run filters** | The per-account switch, off by default, without which the worker runs no rule set of that account. |
 | **Dry run** | Evaluating a rule set against real mail and reporting what each filter would match and do, changing nothing. |

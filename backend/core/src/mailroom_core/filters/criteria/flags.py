@@ -13,6 +13,12 @@ if TYPE_CHECKING:
     from mailroom_core.filters.message import Message
 
 
+def _holds(msg: Message, flagname: bytes) -> bool:
+    """Whether the message has the flag; IMAP compares flags and keywords ignoring case."""
+    wanted = flagname.lower()
+    return any(flag.lower() == wanted for flag in msg.flags)
+
+
 class HasFlag(Criterion):
     """Criterion that matches messages that have the given IMAP flag."""
 
@@ -24,14 +30,14 @@ class HasFlag(Criterion):
 
         Args:
             flag: A Flag enum member (e.g. Flag.SEEN). Uses efficient SEARCH keys
-                (SEEN, FLAGGED, ANSWERED).
+                (SEEN, FLAGGED, ANSWERED, KEYWORD $MailroomSort).
 
         """
         flagname = flag.value.flagname
         imap_key = flag.value.imap_true
 
         def func(msg: Message) -> bool:
-            return flagname in msg.flags
+            return _holds(msg, flagname)
 
         super().__init__(func, Q(imap_key), is_efficient=True)
 
@@ -47,14 +53,14 @@ class LacksFlag(Criterion):
 
         Args:
             flag: A Flag enum member. Uses efficient SEARCH keys
-                (UNSEEN, UNFLAGGED, UNANSWERED).
+                (UNSEEN, UNFLAGGED, UNANSWERED, UNKEYWORD $MailroomSort).
 
         """
         flagname = flag.value.flagname
         imap_key = flag.value.imap_false
 
         def func(msg: Message) -> bool:
-            return flagname not in msg.flags
+            return not _holds(msg, flagname)
 
         super().__init__(func, Q(imap_key), is_efficient=True)
 
@@ -117,3 +123,23 @@ class IsUnanswered(LacksFlag):
     def __init__(self) -> None:
         r"""Match absence of \Answered."""
         super().__init__(Flag.ANSWERED)
+
+
+class IsToSort(HasFlag):
+    """Match messages marked To sort."""
+
+    spec_type = "is_to_sort"
+
+    def __init__(self) -> None:
+        """Match the $MailroomSort keyword."""
+        super().__init__(Flag.TO_SORT)
+
+
+class IsNotToSort(LacksFlag):
+    """Match messages not marked To sort."""
+
+    spec_type = "is_not_to_sort"
+
+    def __init__(self) -> None:
+        """Match absence of the $MailroomSort keyword."""
+        super().__init__(Flag.TO_SORT)

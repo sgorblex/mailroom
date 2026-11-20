@@ -1,4 +1,4 @@
-"""Actions that set or clear IMAP flags (read, starred, answered)."""
+"""Actions that set or clear IMAP flags (read, starred, answered) and the To sort keyword."""
 
 from __future__ import annotations
 
@@ -98,3 +98,23 @@ class MarkAsUnanswered(RemoveFlag):
     def __init__(self) -> None:
         r"""Remove \Answered."""
         super().__init__(Flag.ANSWERED, "mark as unanswered")
+
+
+class MarkToSort(AddFlag):
+    """Mark messages To sort; `unsupported` in a folder that keeps no keywords."""
+
+    spec_type = "mark_to_sort"
+
+    def __init__(self) -> None:
+        """Add the $MailroomSort keyword."""
+        super().__init__(Flag.TO_SORT, "mark to sort")
+
+
+class UnmarkToSort(RemoveFlag):
+    """Clear the To sort mark; `unsupported` in a folder that keeps no keywords."""
+
+    spec_type = "unmark_to_sort"
+
+    def __init__(self) -> None:
+        """Remove the $MailroomSort keyword."""
+        super().__init__(Flag.TO_SORT, "unmark to sort")

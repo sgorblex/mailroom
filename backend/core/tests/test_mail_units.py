@@ -439,6 +439,8 @@ def test_search_criteria() -> None:
         "X-GM-RAW",
         "has:attachment",
     ]
+    assert SearchQuery(to_sort=True).criteria() == ["KEYWORD", "$MailroomSort"]
+    assert SearchQuery(to_sort=False).criteria() == ["UNKEYWORD", "$MailroomSort"]
 
 
 def test_gmail_finds_attachments_through_its_own_search() -> None:

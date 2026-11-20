@@ -94,7 +94,7 @@ OPTIONAL_PATH = Codec(
 )
 """Like :data:`PATH`, with ``None`` ↔ ``null``."""
 FLAG = Codec(_encode_flag, _decode_flag)
-"""Flag ↔ its enum member name (``"SEEN"``, ``"FLAGGED"``, ``"ANSWERED"``)."""
+"""Flag ↔ its enum member name (``"SEEN"``, ``"FLAGGED"``, ``"ANSWERED"``, ``"TO_SORT"``)."""
 DATE = Codec(lambda v: as_date(v).isoformat(), _decode_date)
 """date / datetime / ``DD-MMM-YYYY`` string → ISO 8601 date string (decoded to a date)."""
 

@@ -24,7 +24,7 @@ describe('readVocabulary', () => {
       { name: 'incl_bcc', required: false, field: { kind: 'boolean' } },
     ])
     expect(criterion('has_flag')?.args).toEqual([
-      { name: 'flag', required: true, field: { kind: 'choice', options: ['SEEN', 'FLAGGED', 'ANSWERED'] } },
+      { name: 'flag', required: true, field: { kind: 'choice', options: ['SEEN', 'FLAGGED', 'ANSWERED', 'TO_SORT'] } },
     ])
     expect(criterion('older_than')?.args[0]?.field).toEqual({ kind: 'date' })
     expect(criterion('older_than_days')?.args[0]?.field).toEqual({ kind: 'integer', minimum: 0, maximum: 36500 })

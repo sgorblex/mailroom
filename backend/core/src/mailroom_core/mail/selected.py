@@ -37,7 +37,9 @@ type Criteria = Sequence[object]
 """Core's own SEARCH criteria, written by `search_arguments` (not imapclient), e.g.
 `["SUBJECT", "invoice", "UNSEEN"]`; nested lists are parenthesised groups."""
 
-SETTABLE_FLAGS: Final = ("\\Seen", "\\Flagged", "\\Answered")
+TO_SORT: Final = "$MailroomSort"
+"""The keyword that marks a message "To sort"; servers compare keywords ignoring case."""
+SETTABLE_FLAGS: Final = ("\\Seen", "\\Flagged", "\\Answered", TO_SORT)
 """The flags `store_flags` sets and clears; `\\Deleted` is only ever set by a removal."""
 _DELETED: Final = b"\\Deleted"
 _MAX_UID: Final = 0xFFFFFFFF
@@ -399,12 +401,20 @@ def store_flags(
 ) -> None:
     """Sets the flags of `add` on `uids`, then clears those of `remove`; only
     `SETTABLE_FLAGS`, anything else (`\\Deleted` above all) refused with `invalid_argument`
-    before any is stored. Silent: nothing is read back."""
+    before any is stored. `TO_SORT`, a keyword, is `unsupported` where the folder keeps none
+    (`MailboxContext.keywords`). Silent: nothing is read back."""
     other = [flag for flag in (*add, *remove) if flag not in SETTABLE_FLAGS]
     if other:
-        raise MailError("invalid_argument", "Only \\Seen, \\Flagged and \\Answered can be set.")
+        raise MailError(
+            "invalid_argument", "Only \\Seen, \\Flagged, \\Answered and To sort can be set."
+        )
     if set(add) & set(remove):
         raise MailError("invalid_argument", "A flag cannot be both set and cleared.")
+    if TO_SORT in (*add, *remove) and not context.keywords:
+        raise MailError(
+            "unsupported",
+            "This mail server keeps no keywords in this folder, so it cannot mark To sort.",
+        )
     if not uids:
         return
     client = context.client

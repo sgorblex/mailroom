@@ -109,6 +109,9 @@ class MailboxContext:
     uid_next: int | None
     account: int
     """The account's id, as `with_mailbox` was given it."""
+    keywords: bool = False
+    """Whether keywords can be stored here: PERMANENTFLAGS holds `\\*` (never on EXAMINE, whose
+    answer allows no change) and the server is not Gmail, which turns keywords into labels."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,6 +192,7 @@ class _Account:
     capabilities: Capabilities | None = None
     delimiter: tuple[str | None] | None = None
     """Once asked: a one-tuple, since a server without a hierarchy has None."""
+    keywords: bool | None = None
     health: tuple[float, Reachability] | None = None
 
 
@@ -320,6 +324,21 @@ class MailConnections:
         with state.free:
             if state.generation == generation:
                 state.capabilities = found
+        return found
+
+    def keywords(self, account_id: int) -> bool:
+        """Whether the account's server keeps keywords such as `TO_SORT`, from a read-write
+        SELECT of INBOX (`MailboxContext.keywords`: never on Gmail); asked once, then cached
+        until the account's connections are closed."""
+        state = self._state(account_id)
+        known = state.keywords
+        if known is not None:
+            return known
+        generation = state.generation
+        found = self.with_mailbox(account_id, "INBOX", False, lambda context: context.keywords)
+        with state.free:
+            if state.generation == generation:
+                state.keywords = found
         return found
 
     def delimiter(self, account_id: int) -> str | None:
@@ -608,6 +627,7 @@ class MailConnections:
                     exists=int(selected[b"EXISTS"]),
                     uid_next=int(selected[b"UIDNEXT"]) if b"UIDNEXT" in selected else None,
                     account=account_id,
+                    keywords=_keywords(client, selected),
                 )
             except Exception as error:
                 raise self._failure(account_id, state, slot, error, "lock", read_only) from None
@@ -756,6 +776,7 @@ class MailConnections:
             state.generation += 1
             state.capabilities = None
             state.delimiter = None
+            state.keywords = None
             state.health = None
             for slot in state.slots:
                 if not slot.busy and slot.client is not None:
@@ -829,6 +850,15 @@ def _log_out(client: IMAPClient) -> None:
         client.logout()
     except Exception:
         _drop(client)
+
+
+def _keywords(client: IMAPClient, selected: Mapping[bytes, object]) -> bool:
+    permanent = selected.get(b"PERMANENTFLAGS")
+    return (
+        isinstance(permanent, tuple)
+        and b"\\*" in permanent
+        and not client.has_capability("X-GM-EXT-1")
+    )
 
 
 def _capabilities(raw: tuple[bytes, ...]) -> Capabilities:

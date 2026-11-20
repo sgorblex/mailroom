@@ -217,6 +217,16 @@ training, flags read back, or the `MailError`), and per message an `AuditItem`
 (`mailroom_core.mail.audit`, the sender's address and a hash of the subject) with the call's
 `outcome`. `organize_text` writes the tools' text; a host raises a lone folder's error itself.
 
+`set_flags` takes `seen`, `flagged` and `to_sort`, and reads each message's flags back
+(`FlagState`), comparing them ignoring case as IMAP does; `SearchQuery.to_sort` searches `KEYWORD`
+or `UNKEYWORD $MailroomSort`, and a list line shows `to sort`.
+
+**Keywords.** A folder keeps keywords when its read-write SELECT answers PERMANENTFLAGS holding
+`\*` (`MailboxContext.keywords`; never under EXAMINE). `MailConnections.keywords(account)` asks
+it once of INBOX, read-write, and caches it next to the capabilities until `close`. A Gmail
+account (`X-GM-EXT-1`) counts as keeping none, whatever it answers, since Gmail turns keywords
+into labels.
+
 They are built on `mailroom_core.mail.selected`, as `reply.mark_answered` and the drafts are:
 operations by UID on the folder a `with_mailbox` session holds (`search_uids` and
 `message_id_uids`, `fetch_sources` with `BODY.PEEK[]`, `fetch_source` capped at a size with
@@ -224,10 +234,11 @@ flags and INTERNALDATE, `fetch_envelopes`, `append_raw` with flags and an arriva
 `move_uids`, `store_flags`, `delete_uids`, `listed_folders`), with the refusals of a move
 (`move_target`) and `abandon_read_back` for a read-back failing after a write. Whatever acts
 inside a session of its own uses them, folders included, since a second connection of the
-account would wait for the one it holds. `store_flags` sets only
-`\Seen`, `\Flagged` and `\Answered`; `delete_uids` needs UIDPLUS and serves only a draft
-Mailroom wrote (*Safety*), a filter's `delete` and a move to another account for good. The filter
-engine runs on them too (*Filters*).
+account would wait for the one it holds. `store_flags` sets only `\Seen`, `\Flagged`,
+`\Answered` and the To sort keyword `TO_SORT` (`$MailroomSort`), which is `unsupported` in a
+folder that keeps no keywords; `delete_uids` needs UIDPLUS and serves only a draft Mailroom wrote
+(*Safety*), a filter's `delete` and a move to another account for good. The filter engine runs on
+them too (*Filters*).
 
 imapclient's `move()` needs MOVE, so without it core issues UID COPY, STORE `\Deleted` and UID
 EXPUNGE of exactly those UIDs itself, which only UIDPLUS allows; a server with neither is refused.
@@ -452,9 +463,12 @@ or loaded from their data form. Its tests are in `tests/filters`.
   `move_uids`, with its COPY and `UID EXPUNGE` fallback under UIDPLUS), so a folder that is not
   there is `mailbox_missing` and Drafts or Sent are refused, while a move into the folder being
   filtered (Trash from Trash too) is skipped; `trash` without a folder takes the special-use
-  Trash (`unsupported` without one). Flag actions are `store_flags`. `delete` removes for good
-  (`delete_uids`, UIDPLUS only), which a filter may do because the user wrote it, saw its dry run
-  and enabled it ([`requirements/filters.md`](requirements/filters.md)).
+  Trash (`unsupported` without one). Flag actions are `store_flags`: `star`, `mark_as_read` and
+  the like, and `mark_to_sort` / `unmark_to_sort` for the To sort keyword, `unsupported` where the
+  folder keeps no keywords; the criteria `is_to_sort` / `is_not_to_sort` (and `has_flag` with
+  `TO_SORT`) search `KEYWORD` / `UNKEYWORD $MailroomSort`, and every flag predicate ignores case.
+  `delete` removes for good (`delete_uids`, UIDPLUS only), which a filter may do because the user
+  wrote it, saw its dry run and enabled it ([`requirements/filters.md`](requirements/filters.md)).
 - **Specs** are the rules as data, the form the app stores (`spec`): leaves
   `{"type", "args"}`, the combinators `and`, `or`, `not`, `seq` for actions, and a filter
   `{"criterion", "action"}`. `load_filter` rebuilds an equal filter, `to_spec()` gives it back and
