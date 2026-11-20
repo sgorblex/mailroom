@@ -15,14 +15,12 @@ from mailroom.accounts import service
 from mailroom.filters import service as filters_service
 from mailroom.mail import service as mail_service
 from mailroom.mcp.tool import MAILBOX_READ, READ, Arguments, Hints, JsonObject, Tool
-from mailroom_core.config import MAX_SAFE_INTEGER
+from mailroom.mcp.tool import AccountId as BareAccountId
 
 if TYPE_CHECKING:
     from mailroom.mcp.tool import ToolCall
 
-AccountId = Annotated[
-    int, Field(ge=1, le=MAX_SAFE_INTEGER, description="An account id, from accounts_list.")
-]
+AccountId = Annotated[BareAccountId, Field(description="An account id, from accounts_list.")]
 
 ACCOUNT_FIELDS: Final = {
     "id",

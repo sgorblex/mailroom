@@ -16,19 +16,21 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Annotated, Any, Final
 
 import anyio.to_thread
 from mcp import types
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, ValidationError
 
 from mailroom.audit import MCP, Origin
 from mailroom.errors import Refusal
 from mailroom.mcp import audit
 from mailroom.mcp.verifier import approved_groups_of, grant_id_of, user_id_of
+from mailroom_core.config import MAX_SAFE_INTEGER
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Collection, Iterator, Mapping
@@ -59,6 +61,22 @@ class Arguments(BaseModel):
     """A tool's arguments: unknown ones refused, no type coercion (``"5"`` is not a number)."""
 
     model_config = ConfigDict(extra="forbid", strict=True)
+
+
+_ACCOUNT_ID_TEXT: Final = re.compile(r"[0-9]{1,16}")
+
+
+def _account_id_from_text(value: object) -> object:
+    """``"3"`` as ``3``: a client that cached a schema from when account ids were strings still
+    sends them so. Anything else is left for the strict check to refuse."""
+    if isinstance(value, str) and _ACCOUNT_ID_TEXT.fullmatch(value):
+        return int(value)
+    return value
+
+
+AccountId = Annotated[int, Field(ge=1, le=MAX_SAFE_INTEGER), BeforeValidator(_account_id_from_text)]
+"""An account id argument: an integer, also taken as a string of its digits (published as an
+integer)."""
 
 
 @dataclass(frozen=True, slots=True)
