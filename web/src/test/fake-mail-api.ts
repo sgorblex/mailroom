@@ -163,7 +163,8 @@ export function messageView(item: MessageItem, fields: Partial<MessageView> = {}
       quoted_omitted: false,
     },
     has_html: false,
-    has_remote_content: false,
+    remote_images: 0,
+    loadable_remote_images: 0,
     attachments: [],
     calendar: null,
     headers: {

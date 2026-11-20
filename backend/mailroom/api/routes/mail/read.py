@@ -238,7 +238,10 @@ class MessageDetail(BaseModel):
     flags: Flags
     text: BodyText
     has_html: bool
-    has_remote_content: bool
+    remote_images: int
+    """Remote images the HTML asks for, blocked until the reader shows them; 0 without HTML."""
+    loadable_remote_images: int
+    """Of those, the ``<img>`` sources that ``remote=1`` shows; the others stay blocked."""
     attachments: list[MessagePart]
     calendar: MessagePart | None
     headers: HeaderInfo
@@ -279,7 +282,8 @@ class MessageDetail(BaseModel):
                 quoted_omitted=body.quoted_lines + body.signature_lines > 0,
             ),
             has_html=view.has_html,
-            has_remote_content=bool(view.has_remote_content),
+            remote_images=view.remote_images or 0,
+            loadable_remote_images=view.loadable_remote_images or 0,
             attachments=[MessagePart.of(info) for info in view.attachments],
             calendar=None if view.calendar is None else MessagePart.of(view.calendar),
             headers=HeaderInfo.model_validate(view.headers),

@@ -60,6 +60,9 @@ def test_a_name_naming_no_one_else_is_fine(name: str | None, address: str | None
         ("Amazon.co.uk", "x@amazon.com"),
         # A dotted word ending in a real top-level domain reads as one: a false warning.
         ("Hello.World", "office@example.org"),
+        # Domains are read as a browser reads them: ß is no ss.
+        ("support@busineß.com", "support@business.com"),
+        ("busineß.com", "x@business.com"),
     ],
 )
 def test_a_name_naming_another_address_or_domain_warns(name: str, address: str) -> None:

@@ -225,7 +225,8 @@ function LoadedMessage({
         <HtmlBody
           messageRef={view.ref}
           subject={view.subject}
-          hasRemoteContent={view.has_remote_content}
+          remoteImages={view.remote_images}
+          loadableRemoteImages={view.loadable_remote_images}
           remote={remote}
           onShowRemote={onShowRemote}
         />

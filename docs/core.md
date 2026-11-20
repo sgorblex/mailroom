@@ -147,7 +147,16 @@ past libxml2's 2048 levels) the text can differ. Deliberate differences, all str
   for none); `RenderedBody.quoted_lines` and `signature_lines` say what was collapsed, so a host
   can word it its own way.
 
-`render.safe_html` is the app's (see *Stack*, HTML for display).
+`render.safe_html` is the app's (see *Stack*, HTML for display). Before nh3 cleans, an lxml pass
+counts the remote images (`remote_images`: `<img>` sources, `srcset` candidates, `background`
+attributes, CSS `url()`s; `loadable_remote_images`: the `<img>` sources alone, which `remote`
+shows) and rewrites each link's `title` to the host it goes to, in the IDNA form a browser
+computes (UTS #46, non-transitional, with the `idna` package: `ß` stays `ß`), and drops it when the
+host is none a browser would visit (a space, a `>`); nh3 keeps only titles that pass wrote. `render.hosts` decides when a link's text names another
+host than its own (neither it nor a parent or child of it, no public-suffix list):
+`safe_html` then puts a marker after the link, and `html_to_text` adds `(⚠ host)` after it, so the
+text body, MCP's included, carries the mark too. A backslash in an `http(s)` URL is read as a
+slash, as a browser does.
 
 ## Read
 
@@ -184,7 +193,7 @@ a server's full-text index may leave those headers out (Mailu), and a reply whos
 changed is then missed. A page item
 carries the arrival time as well as the Date header, and the size; a view carries `has_html` and,
 when the read asks for `remote_check` (off by default, as it costs the HTML's download and a
-sanitising pass), `has_remote_content`. A ref's error names no tool. A view also carries `headers`
+sanitising pass), `remote_images` and `loadable_remote_images`. A ref's error names no tool. A view also carries `headers`
 (`mail.message_headers`), parsed from one `BODY.PEEK[HEADER.FIELDS (…)]<0.65536>` fetched with
 it: From, the List-* fields, Authentication-Results, DKIM-Signature, Delivered-To and
 X-Original-To. Deliberate choices:

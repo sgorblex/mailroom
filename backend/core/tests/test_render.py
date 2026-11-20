@@ -203,7 +203,17 @@ class TestRenderBody:
     def test_escapes_brackets_in_link_text_so_the_shown_target_cannot_be_faked(self):
         html = '<a href="https://evil.example/x">https://bank.example](https://bank.example</a>'
         assert body(html, "html").text == (
-            "[https://bank.example\\](https://bank.example](https://evil.example/x)"
+            "[https://bank.example\\](https://bank.example](https://evil.example/x) (⚠ evil.example)"
+        )
+
+    def test_marks_a_link_whose_text_names_another_host(self):
+        html = (
+            '<p>Pay at <a href="https://evil.example\\@paypal.com/">www.paypal.com</a> today, '
+            '<a href="https://www.paypal.com/">paypal.com</a> or <a href="#x">paypal.com</a>.</p>'
+        )
+        assert body(html, "html").text == (
+            "Pay at [www.paypal.com](https://evil.example\\@paypal.com/) (⚠ evil.example) today, "
+            "[paypal.com](https://www.paypal.com/) or paypal.com."
         )
 
     def test_never_cuts_a_surrogate_pair_in_half(self):

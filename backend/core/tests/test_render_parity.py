@@ -58,6 +58,8 @@ GENERATED = {
 # inside <pre>, which only the unrendered text shows (render_body normalises it anyway).
 DIFFERENT_TREES = {"spike_misnest3", "spike_misnest4", "links"}
 RAW_TEXT_DIFFERS = {"spike_misnest1", "crlf"}
+# A link whose text names another host is marked here (`render.hosts`); the TypeScript has no mark.
+MARKED_LINKS = {"spike_brackets"}
 
 
 def _marks(text: str) -> str:
@@ -86,6 +88,8 @@ def _body(text: str, format: str, include_quoted: bool) -> dict[str, Any]:  # no
 def test_html_bodies(name: str):
     if name in DIFFERENT_TREES:
         pytest.skip("misnested markup: lxml's tree differs from htmlparser2's")
+    if name in MARKED_LINKS:
+        pytest.skip("a link whose text names another host is marked")
     expected = OUTPUTS["html"][name]
     html = GENERATED.get(name) or expected["input"]
     assert _body(html, "html", False) == expected["body"]

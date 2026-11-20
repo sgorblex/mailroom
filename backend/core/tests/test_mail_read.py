@@ -683,10 +683,12 @@ def test_html_view_inlines_cid_images_and_holds_remote_ones_back(imap_server, ha
     assert not summary.has_attachments
     ref = summary.ref
     view = read_message(mail, ref)
-    assert (view.has_html, view.has_remote_content, view.body_format) == (True, None, "html")
+    assert (view.has_html, view.remote_images, view.loadable_remote_images) == (True, None, None)
+    assert view.body_format == "html"
     assert view.attachments == ()
     assert [p.part for p in view.inline_parts] == ["2", "3"]
-    assert read_message(mail, ref, remote_check=True).has_remote_content is True
+    checked = read_message(mail, ref, remote_check=True)
+    assert (checked.remote_images, checked.loadable_remote_images) == (1, 1)
     assert read_attachment(mail, ref, "2", max_bytes=1000).data == PNG
 
     blocked = html_view(mail, ref, remote=False, max_inline_bytes=10_000)
@@ -694,7 +696,7 @@ def test_html_view_inlines_cid_images_and_holds_remote_ones_back(imap_server, ha
     assert "t.example" not in blocked.html
     assert "script" not in blocked.html
     assert "onclick" not in blocked.html
-    assert blocked.has_remote
+    assert blocked.remote_images == 1
     shown = html_view(mail, ref, remote=True, max_inline_bytes=0)
     assert "https://t.example/pixel.gif" in shown.html
     assert "data:image" not in shown.html

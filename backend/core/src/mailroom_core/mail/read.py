@@ -110,9 +110,11 @@ class MessageView:
     body_format: Literal["text", "html"] | None
     has_html: bool
     """The message has an HTML body: `html_view` shows it."""
-    has_remote_content: bool | None
-    """That HTML loads remote images (what `remote=True` would show); None unless the read
-    asked for `remote_check`."""
+    remote_images: int | None
+    """The remote images that HTML asks for (`SafeHtml.remote_images`): 0 without HTML; None
+    unless the read asked for `remote_check`."""
+    loadable_remote_images: int | None
+    """Of those, the ones `html_view(remote=True)` shows (`SafeHtml.loadable_remote_images`)."""
     attachments: tuple[PartInfo, ...]
     """Sizes are decoded sizes, estimated (`MimePart.decoded_size`)."""
     inline_parts: tuple[PartInfo, ...]
@@ -164,7 +166,7 @@ def read_message(
 ) -> MessageView:
     """One message: headers, attachment list, and one window of `body_chars` (UTF-16 units) of
     its body from `offset`, quoted history and signatures collapsed unless `include_quoted`
-    (`marker` as for `render_body`). `remote_check` tells whether the HTML has remote content,
+    (`marker` as for `render_body`). `remote_check` counts the remote images the HTML asks for,
     which costs a sanitising pass over it and, when the HTML is not the body shown, its
     download: off by default, as the TypeScript's read does neither. `account`, the message's
     account, gives the identity it was sent to and the authentication server whose verdict
@@ -200,14 +202,16 @@ def read_message(
                 max_chars=body_chars,
                 marker=marker,
             )
-        has_remote: bool | None = None
+        remote_images: int | None = None
+        loadable_remote_images: int | None = None
         if remote_check:
             if html is None:
                 html = _html(client, message.uid, structure)
-            has_remote = (
-                html is not None
-                and safe_html(html, inline_images={}, remote=False, max_inline_bytes=0).has_remote
-            )
+            remote_images = loadable_remote_images = 0
+            if html is not None:
+                checked = safe_html(html, inline_images={}, remote=False, max_inline_bytes=0)
+                remote_images = checked.remote_images
+                loadable_remote_images = checked.loadable_remote_images
         header = data.get(b"BODY[HEADER]")
         flags = data.get(b"FLAGS")
         size = data.get(b"RFC822.SIZE")
@@ -248,7 +252,8 @@ def read_message(
             body=body,
             body_format=fmt,
             has_html=structure.html is not None,
-            has_remote_content=has_remote,
+            remote_images=remote_images,
+            loadable_remote_images=loadable_remote_images,
             attachments=structure.attachments,
             inline_parts=structure.inline_parts,
             calendar=structure.calendar,

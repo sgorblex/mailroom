@@ -34,7 +34,8 @@ in the browser, tried with a dry run, and run by the worker. Product scope:
   UIDPLUS, which expunges exactly those messages; elsewhere the action fails `unsupported`).
   **What a criterion reads**: the first of each address field, the subject as the reader sees it
   (whitespace collapsed), and as the body every inline plain-text part, else the HTML's visible
-  text (no tags, styles or images; links as `[text](url)`; the first 2 million characters).
+  text (no tags, styles or images; links as `[text](url)`, marked like the
+  message view's text when the text names another host; the first 2 million characters).
   Attached messages and named files are not the body. `older_than_days` counts calendar days
   back from today in the user's time zone (UTC until they set one), in a run and a dry run alike.
   The `*_is` address criteria compare the whole address, ignoring case; the `*_contains` criteria

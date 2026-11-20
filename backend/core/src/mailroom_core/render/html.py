@@ -31,6 +31,14 @@ from mailroom_core.render._js import (
     utf16_length,
     utf16_prefix,
 )
+from mailroom_core.render.hosts import (
+    browser_url,
+    element_text,
+    link_host,
+    link_mark,
+    names_other_host,
+    web_url,
+)
 from mailroom_core.render.quotes import CUT_MARK, QUOTE_END, QUOTE_START
 
 MAX_HTML_CHARS: Final = 2_000_000
@@ -420,19 +428,22 @@ class _Converter:
             self._walk(children, level + 1, None)
 
     def _link(self, element: _Element, level: int) -> None:
-        """`[text](url)` for web and mail links; the text alone for anything else
+        """`[text](url)` for web and mail links, followed by `(⚠ host)` when the text names
+        another host than the link's (`render.hosts`); the text alone for anything else
         (javascript:, cid:, #)."""
         builder = self.builder
         href = element.attrib.get("href") or ""
         if not _LINK_SCHEME.match(href):
             self._walk(_children(element), level + 1, None)
             return
+        host = link_host(web_url(browser_url(href)))
+        mark = f" ({link_mark(host)})" if names_other_host(element_text(element), host) else ""
         builder.add_inline("[", no_transform=True)
         builder.transforms.append(_escape_brackets)
 
         def end() -> None:
             builder.transforms.pop()
-            builder.add_inline(f"]({_url(href)})", no_transform=True)
+            builder.add_inline(f"]({_url(href)}){mark}", no_transform=True)
 
         self._walk(_children(element), level + 1, end)
 

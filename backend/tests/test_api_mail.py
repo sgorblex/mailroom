@@ -456,7 +456,8 @@ def test_a_message_reads_without_marking_it_seen(
     full = mailbox.get(f"/messages/{ref}", include_quoted="true")
     assert "> old quoted text" in full["text"]["content"]
     assert full["text"]["quoted_omitted"] is False
-    assert (view["has_html"], view["has_remote_content"], view["calendar"]) == (False, False, None)
+    assert (view["has_html"], view["remote_images"], view["calendar"]) == (False, 0, None)
+    assert view["loadable_remote_images"] == 0
     assert view["headers"] == {
         "mailing_list": None,
         "authentication": [],
@@ -551,7 +552,7 @@ def test_the_html_view_is_a_sanitised_standalone_document(mailbox: Mailbox) -> N
     )
     [ref] = mailbox.refs()
     view = mailbox.get(f"/messages/{ref}")
-    assert (view["has_html"], view["has_remote_content"]) == (True, True)
+    assert (view["has_html"], view["remote_images"], view["loadable_remote_images"]) == (True, 2, 1)
     # The logo the HTML shows in place is no attachment.
     assert view["attachments"] == []
     assert mailbox.get("/accounts/1/messages")["messages"][0]["has_attachments"] is False
