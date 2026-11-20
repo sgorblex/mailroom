@@ -113,6 +113,7 @@
     "indexing_other": "Indexing: {{count, number}} messages so far",
     "indexingOf_one": "Indexing: {{indexed, number}} of {{count, number}} message",
     "indexingOf_other": "Indexing: {{indexed, number}} of {{count, number}} messages",
+    "reconnecting": "Reconnecting to live updates…",
     "loadMore": "Load more",
     "loadingMore": "Loading…",
     "partial": "Some mail could not be read:",

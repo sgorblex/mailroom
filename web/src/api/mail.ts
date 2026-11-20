@@ -427,6 +427,46 @@ const indexFolderSchema = z.object({
 })
 export type IndexFolder = z.infer<typeof indexFolderSchema>
 
+/** The live updates stream's events (`GET /mail/events`); mail-derived text in them is raw, never HTML. */
+const liveEventSchemas = {
+  folder_changed: z.object({ account: accountIdSchema, folder: z.string(), unread: z.number(), total: z.number() }),
+  sync: z.object({
+    account: accountIdSchema,
+    folder: z.string(),
+    state: z.enum(['pending', 'syncing', 'ready', 'failed']),
+    progress: z.number(),
+  }),
+  new_mail: z.object({
+    account: accountIdSchema,
+    folder: z.string(),
+    count: z.number(),
+    messages: z.array(z.object({ ref: z.string(), sender: z.string(), subject: z.string() })),
+  }),
+}
+export type LiveEventType = keyof typeof liveEventSchemas
+export const LIVE_EVENT_TYPES = Object.keys(liveEventSchemas) as LiveEventType[]
+export type LiveEvent = {
+  [K in LiveEventType]: { type: K } & z.infer<(typeof liveEventSchemas)[K]>
+}[LiveEventType]
+
+/** An event's data as the stream sent it; `null` when it is not what the type says. */
+export function parseLiveEvent(type: LiveEventType, data: string): LiveEvent | null {
+  let body: unknown
+  try {
+    body = JSON.parse(data)
+  } catch {
+    return null
+  }
+  const parsed = liveEventSchemas[type].safeParse(body)
+  return parsed.success ? ({ type, ...parsed.data } as LiveEvent) : null
+}
+
+/** The signed-in user's live updates stream; `viewing` names the folder the browser shows. */
+export function mailEventsUrl(viewing: { account: AccountId; folder: string } | null): string {
+  const query = viewing === null ? {} : { account: viewing.account, folder: viewing.folder }
+  return `${getApiBaseUrl()}${withQuery(`${base}/events`, query)}`
+}
+
 const indexStatusSchema = z.object({
   account_id: accountIdSchema,
   gmail: z.boolean(),
