@@ -438,9 +438,14 @@ const indexStatusSchema = z.object({
 })
 export type IndexStatus = z.infer<typeof indexStatusSchema>
 
-/** The account's selectable folders, each with whether and how the mail index keeps it. */
-export function readIndexStatus(accountId: AccountId, signal?: AbortSignal): Promise<IndexStatus> {
-  return apiGetJson(`${base}/index/accounts/${String(accountId)}`, { init: { signal }, schema: indexStatusSchema })
+/**
+ * The account's selectable folders, each with whether and how the mail index keeps it. `waiting`:
+ * the server's count of the folders waiting for or in their sync only (the others' `total` null),
+ * so that a page following a first sync asks the server little.
+ */
+export function readIndexStatus(accountId: AccountId, signal?: AbortSignal, waiting = false): Promise<IndexStatus> {
+  const query = waiting ? '?totals=waiting' : ''
+  return apiGetJson(`${base}/index/accounts/${String(accountId)}${query}`, { init: { signal }, schema: indexStatusSchema })
 }
 
 /** Switches a folder on or off the index; off forgets what the index kept of it. */

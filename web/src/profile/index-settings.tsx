@@ -10,14 +10,8 @@ import { useAuth, useTimeZone } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Input } from '@/components/ui/input.tsx'
 import { formatDateTime, formatDay } from '@/lib/format.ts'
-import { ACCOUNTS_KEY, READ_ON_MOUNT } from '@/mail/queries.ts'
+import { ACCOUNTS_KEY, INDEX_KEY, INDEXING_POLL_MS, indexStatusKey, READ_ON_MOUNT } from '@/mail/queries.ts'
 import { ACCOUNT_NOT_FOUND, mailCodeMessage, mailErrorMessage } from '@/mail/messages.ts'
-
-/** Every account's index settings, read again when the age limit changes. */
-const INDEX_KEY = ['mail-index'] as const
-
-/** How often the folders are read again, while one waits for its sync or is being synced. */
-const SYNCING_POLL_MS = 15_000
 
 type Outcome = { kind: 'idle' } | { kind: 'saved' } | { kind: 'failed'; message: string }
 
@@ -151,14 +145,14 @@ function AccountIndex({ account }: { account: Account }): ReactElement {
   const { t, i18n } = useTranslation()
   const timeZone = useTimeZone()
   const queryClient = useQueryClient()
-  const queryKey = [...INDEX_KEY, account.id]
+  const queryKey = indexStatusKey(account.id)
   const status = useQuery({
     queryKey,
     queryFn: ({ signal }) => readIndexStatus(account.id, signal),
     ...READ_ON_MOUNT,
     refetchInterval: (query) =>
       query.state.data?.folders.some((folder) => folder.state === 'pending' || folder.state === 'syncing') === true
-        ? SYNCING_POLL_MS
+        ? INDEXING_POLL_MS
         : false,
   })
   const [switching, setSwitching] = useState<string | null>(null)
