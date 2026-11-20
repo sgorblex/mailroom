@@ -1,6 +1,6 @@
 """One message (`src/mcp/tools/read.ts` and `attachment.ts`): its view, one part's content,
-and its HTML made safe to show. Every fetch is `BODY.PEEK` under EXAMINE: reading never sets
-`\\Seen`."""
+its whole source, and its HTML made safe to show. Every fetch is `BODY.PEEK` under EXAMINE:
+reading never sets `\\Seen`."""
 
 import re
 from dataclasses import dataclass
@@ -21,6 +21,7 @@ from mailroom_core.mail.message_headers import (
     parse_headers,
 )
 from mailroom_core.mail.ref import MessageRef, check_fresh, format_ref, parse_ref
+from mailroom_core.mail.selected import fetch_envelopes, fetch_source
 from mailroom_core.mail.structure import MimePart, Structure, analyse_structure
 from mailroom_core.render import (
     Address,
@@ -338,6 +339,39 @@ def read_attachment(
             data=data,
             encoded_size=leaf.size,
         )
+
+    return connections.with_mailbox(message.account, message.folder, True, run)
+
+
+@dataclass(frozen=True, slots=True)
+class RawMessage:
+    """A message's whole source as stored, and its subject."""
+
+    source: bytes
+    """The sender's bytes."""
+    subject: str
+    """Decoded and flattened but still the sender's words; `""` when absent."""
+
+
+def read_source(
+    connections: MailConnections, ref: str | MessageRef, *, max_bytes: int
+) -> RawMessage:
+    """The message's whole source, at most `max_bytes` (`too_large` beyond, never cut), with
+    its subject to name it by."""
+    message = _message(ref)
+
+    def run(context: MailboxContext) -> RawMessage:
+        check_fresh(message, context.uid_validity)
+        try:
+            source = fetch_source(context, message.uid, max_bytes).source
+        except MailError as error:
+            if error.code != "too_large":
+                raise
+            raise MailError(
+                "too_large", f"The message exceeds the {format_size(max_bytes)} limit."
+            ) from None
+        envelope = fetch_envelopes(context, [message.uid]).get(message.uid)
+        return RawMessage(source=source, subject=header_text(getattr(envelope, "subject", None)))
 
     return connections.with_mailbox(message.account, message.folder, True, run)
 

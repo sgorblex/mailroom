@@ -135,7 +135,8 @@ released and checked in production before the next one starts. Batch 15 is the r
 - [x] **Remote content per sender** — the remote-content gate remembers the senders the user
       trusts.
 - [x] **Tracker count** — how many trackers the remote-content gate blocked, beside it.
-- [ ] **Print and download** — a message printed as shown, or saved as its `.eml`.
+- [x] **Print and download** — a message printed with its headers and sanitised body, remote
+      images left out, or saved as its `.eml`.
 
 #### 5. Filters from the client
 

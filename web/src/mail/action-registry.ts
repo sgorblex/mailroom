@@ -3,11 +3,13 @@ import {
   ArrowRightLeft,
   BookmarkCheck,
   BookmarkPlus,
+  FileDown,
   FolderInput,
   Forward,
   Mail,
   MailOpen,
   PenLine,
+  Printer,
   Reply,
   ReplyAll,
   Star,
@@ -17,7 +19,7 @@ import {
 } from 'lucide-react'
 
 import type { AccountId } from '@/api/accounts.ts'
-import type { PrefillMode } from '@/api/mail.ts'
+import { messagePrintUrl, messageSourceUrl, type PrefillMode } from '@/api/mail.ts'
 
 import type { Compose } from './compose-context.ts'
 import { movableInto, type TriageActions } from './triage-actions.ts'
@@ -41,11 +43,12 @@ export interface ActionContext {
 /**
  * A mail action: the toolbar, the shortcuts, the reply buttons and the context menus all read
  * these. `triage` ones act on the targets and wait while another runs; `reply` and `compose` ones
- * open the composer, and their keys wait while one is open.
+ * open the composer, and their keys wait while one is open; `message` ones open the message in
+ * another form, in a tab or as a download, and never wait.
  */
 export interface MailAction {
   id: string
-  group: 'reply' | 'compose' | 'triage'
+  group: 'reply' | 'compose' | 'triage' | 'message'
   /** Its name's key in the `mail` namespace. */
   label: (context: ActionContext) => string
   icon: (context: ActionContext) => LucideIcon
@@ -84,10 +87,40 @@ function answer(id: string, mode: PrefillMode, label: string, icon: LucideIcon, 
   }
 }
 
+/** Opens `url` in a new tab, or saves it when `download` (the API names the file). */
+function openUrl(url: string, download: boolean): void {
+  const link = document.createElement('a')
+  link.href = url
+  if (download) {
+    link.download = ''
+  } else {
+    link.target = '_blank'
+    link.rel = 'noopener noreferrer'
+  }
+  link.click()
+}
+
+function messageForm(id: string, label: string, icon: LucideIcon, url: (ref: string) => string, download: boolean): MailAction {
+  return {
+    id,
+    group: 'message',
+    label: () => label,
+    icon: () => icon,
+    available: ({ message }) => message !== null,
+    run: ({ message }) => {
+      if (message !== null) {
+        openUrl(url(message.ref), download)
+      }
+    },
+  }
+}
+
 export const MAIL_ACTIONS: readonly MailAction[] = [
   answer('reply', 'reply', 'compose.reply', Reply, 'r'),
   answer('replyAll', 'reply_all', 'compose.replyAll', ReplyAll, 'a'),
   answer('forward', 'forward', 'compose.forward', Forward, 'f'),
+  messageForm('print', 'message.print', Printer, messagePrintUrl, false),
+  messageForm('downloadSource', 'message.downloadSource', FileDown, messageSourceUrl, true),
   {
     id: 'compose',
     group: 'compose',
@@ -232,14 +265,15 @@ export function unavailableReason(action: MailAction, context: ActionContext): s
   return action.unavailable?.(context) ?? null
 }
 
-/** Whether `action` can run now: available, not greyed out, not waiting on `busy` (triage) or an open composer (the others). */
+/** Whether `action` can run now: available, not greyed out, not waiting on `busy` (triage) or an open composer (reply and compose). */
 export function runnable(
   action: MailAction,
   context: ActionContext,
   { busy, composing }: { busy: boolean; composing: boolean },
 ): boolean {
+  const waiting = action.group === 'triage' ? busy : action.group !== 'message' && composing
   return (
-    !(action.group === 'triage' ? busy : composing) &&
+    !waiting &&
     action.available(context) &&
     unavailableReason(action, context) === null
   )

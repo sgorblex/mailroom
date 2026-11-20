@@ -256,7 +256,11 @@ function MessageMenu({
       }
     },
   }
-  const items: MenuItem[] = [...listedActions('reply', context), ...listedActions('triage', context)].map((action) => {
+  const items: MenuItem[] = [
+    ...listedActions('reply', context),
+    ...listedActions('message', context),
+    ...listedActions('triage', context),
+  ].map((action) => {
     const reason = action.group === 'triage' && triage.busy ? 'triage.busy' : unavailableReason(action, context)
     return {
       label: t(action.label(context)),

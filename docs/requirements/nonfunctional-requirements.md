@@ -40,6 +40,12 @@ and may try to run script, track the reader, phish, or — through the MCP — i
 - The iframe document carries its **own strict CSP** (`default-src 'none'`; images only from
   `data:` (the inlined `cid:` parts), unless the user reveals remote content; no scripts, no
   forms, no frames, `base-uri 'none'`), in addition to server-side sanitisation of the HTML.
+- The one HTML body shown outside that iframe is the **printable page** (`GET
+  /api/v1/mail/messages/{ref}/print`), a tab of its own for the browser's print: the same
+  sanitised HTML without remote images, boxed in so it paints nothing outside its own box and
+  takes none of the page's own styles, its headers escaped, under a CSP that sandboxes it
+  (popups only, for its links), loads nothing but `data:` images, runs no script and lets no one
+  frame it. The source download (`…/source`) is a file, served as a part is.
 - **No remote content by default.** Remote images are removed from the document and refused by its
   CSP until the user reveals them for that message (`?remote=1`); tracking pixels therefore never
   fire on open. The only thing remembered is a **sender** the user chose
@@ -511,7 +517,8 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   not; without `MOVE` it can be copied but not removed, so after a 504 a client should reload the
   folders rather than repeat the call.
 - **Logs:** `mail_folders`, `mail_quota`, `mail_listed`, `mail_searched`, `mail_read`,
-  `mail_thread_read` (MCP only), `mail_html_read`, `mail_attachment_read`, each with `user_id`,
+  `mail_thread_read` (MCP only), `mail_html_read`, `mail_attachment_read`, `mail_source_read`,
+  `mail_print_read`, each with `user_id`,
   `account_id`, `via`, `outcome` (`ok` or the code) and `duration_ms`; never a subject, an
   address, a folder name or a body. `mail_moved`, `mail_archived`, `mail_trashed` and
   `mail_flagged` carry `user_id`, `via`, `account_ids`, `ref_count`, `changed` (messages),

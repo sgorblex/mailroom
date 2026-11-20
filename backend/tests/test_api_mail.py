@@ -21,7 +21,7 @@ import httpx
 import pytest
 
 from mailroom.accounts.store import load_accounts, user_store
-from mailroom.api.routes.mail.read import download_name, served_type
+from mailroom.api.routes.mail.read import PRINT_CSP, download_name, served_type
 from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
 from mailroom.auth.users import create_user
 from mailroom.mail.pool import DeadlineExceeded, MailPool
@@ -887,16 +887,102 @@ def test_parts_download_as_files(mailbox: Mailbox, migrated_engine: Any, user: U
     assert detail(client.get(f"{MAIL}/messages/{ref}/parts/2")) == (413, "too_large")
 
 
+def test_the_source_downloads_as_an_eml_file(
+    mailbox: Mailbox, migrated_engine: Any, user: User
+) -> None:
+    message = mime("Q3 report: draft/final", text="the numbers")
+    mailbox.seed(message)
+    [ref] = mailbox.refs()
+    client = mailbox.client
+
+    response = client.get(f"{MAIL}/messages/{ref}/source")
+    assert response.status_code == 200
+    assert response.content == message.encode()
+    headers = response.headers
+    assert headers["content-disposition"] == (
+        "attachment; filename*=UTF-8''Q3%20report%3A%20draft_final.eml"
+    )
+    assert headers["content-type"] == "message/rfc822"
+    assert headers["x-content-type-options"] == "nosniff"
+    assert headers["content-security-policy"] == "default-src 'none'; sandbox"
+    assert headers["cache-control"] == "private, no-store"
+    # Reading the source never marks the message read.
+    assert mailbox.get(f"/messages/{ref}")["flags"]["seen"] is False
+
+    store = user_store(migrated_engine, user.id)
+    current = load_accounts(store)
+    store.save_settings({**current.doc, "limits": {"attachment_max_mb": 0.00001}}, current.revision)
+    assert detail(client.get(f"{MAIL}/messages/{ref}/source")) == (413, "too_large")
+
+
+def test_a_message_without_a_subject_downloads_as_message_eml(mailbox: Mailbox) -> None:
+    mailbox.seed(mime("", text="hello"))
+    [ref] = mailbox.refs()
+    response = mailbox.client.get(f"{MAIL}/messages/{ref}/source")
+    assert response.headers["content-disposition"] == "attachment; filename*=UTF-8''message.eml"
+
+
+def test_the_printable_page_escapes_headers_and_loads_nothing(mailbox: Mailbox) -> None:
+    mailbox.seed(
+        related_html(
+            '<p onclick="steal()">Hi <img src="cid:logo@x"> '
+            '<img src="https://t.example/pixel.gif"></p><script>alert(1)</script>'
+            '<div style="display:inline-block;margin-top:-400px;background-color:#fff">'
+            "<table><tr><th>From</th><td>Bank</td></tr></table></div>"
+        ).replace("Subject: News", "Subject: <b>News</b> & more")
+    )
+    [ref] = mailbox.refs()
+    response = mailbox.client.get(f"{MAIL}/messages/{ref}/print")
+    assert response.status_code == 200
+    headers = response.headers
+    assert headers["content-type"] == "text/html; charset=utf-8"
+    assert headers["content-security-policy"] == PRINT_CSP
+    assert "img-src data:;" in PRINT_CSP
+    assert "script-src" not in PRINT_CSP
+    assert "frame-ancestors 'none'" in PRINT_CSP
+    assert headers["x-content-type-options"] == "nosniff"
+    assert headers["referrer-policy"] == "no-referrer"
+    assert headers["cache-control"] == "private, no-store"
+    assert "content-disposition" not in headers
+    page = response.text
+    assert page.startswith("<!doctype html>")
+    assert "<title>&lt;b&gt;News&lt;/b&gt; &amp; more</title>" in page
+    assert "<b>News</b>" not in page
+    assert "Shop &lt;shop@example.org&gt;" in page
+    assert "data:image/png;base64," in page
+    for dropped in ("t.example", "<script", "alert(1)", "onclick"):
+        assert dropped not in page
+    # The sender's markup is boxed in below the headers, and the headers' look is not its.
+    head, body = page.split('<div class="body">', 1)
+    assert "Shop &lt;shop@example.org&gt;" in head
+    assert "margin-top:-400px" in body
+    assert "<th>From</th>" in body
+    assert ".body{position:relative;overflow:hidden;contain:paint}" in head
+    assert "th{" not in head.replace(".headers>tbody>tr>th{", "")
+
+
+def test_the_printable_page_of_a_text_message_has_its_whole_text(mailbox: Mailbox) -> None:
+    text = "\n".join([f"line {n} <tag>" for n in range(2000)] + ["> quoted & kept"])
+    mailbox.seed(mime("plain", text=text))
+    [ref] = mailbox.refs()
+    page = mailbox.client.get(f"{MAIL}/messages/{ref}/print").text
+    body = page.split('<pre class="text">', 1)[1]
+    assert "line 0 &lt;tag&gt;" in body
+    assert "line 1999 &lt;tag&gt;" in body
+    assert "&gt; quoted &amp; kept" in body
+    assert "<tag>" not in page
+
+
 def test_download_names_and_types() -> None:
-    assert download_name("../../etc/passwd", "2") == "_.._etc_passwd"
+    assert download_name("../../etc/passwd", "attachment-2") == "_.._etc_passwd"
     # Nothing a header could break on: control characters go, the rest is percent-encoded.
-    tricky = download_name('a\r\nSet-Cookie: x"; b.pdf', "2")
+    tricky = download_name('a\r\nSet-Cookie: x"; b.pdf', "attachment-2")
     assert tricky == 'aSet-Cookie: x"; b.pdf'
     assert quote(tricky, safe="") == "aSet-Cookie%3A%20x%22%3B%20b.pdf"
-    assert download_name("a" + chr(0x202E) + "exe.pdf\x00", "2") == "aexe.pdf"
-    assert download_name(None, "1.2") == "attachment-1.2"
-    assert download_name("  ..  ", "3") == "attachment-3"
-    assert len(download_name("x" * 400, "2")) == 150
+    assert download_name("a" + chr(0x202E) + "exe.pdf\x00", "attachment-2") == "aexe.pdf"
+    assert download_name(None, "attachment-1.2") == "attachment-1.2"
+    assert download_name("  ..  ", "attachment-3") == "attachment-3"
+    assert len(download_name("x" * 400, "attachment-2")) == 150
     assert served_type("image/png") == "image/png"
     for kind in ("text/html", "image/svg+xml", "application/pdf", "application/xml"):
         assert served_type(kind) == "application/octet-stream"

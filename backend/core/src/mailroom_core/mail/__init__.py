@@ -161,9 +161,11 @@ from mailroom_core.mail.read import (
     MAX_BODY_BYTES,
     Attachment,
     MessageView,
+    RawMessage,
     html_view,
     read_attachment,
     read_message,
+    read_source,
 )
 from mailroom_core.mail.recipients import (
     Mailbox,
@@ -334,6 +336,7 @@ __all__ = [
     "Position",
     "Quota",
     "QuotaUsage",
+    "RawMessage",
     "Reachability",
     "Removal",
     "ReplyRecipients",
@@ -433,6 +436,7 @@ __all__ = [
     "read_folders",
     "read_message",
     "read_page",
+    "read_source",
     "read_text",
     "recipient_list",
     "remove_draft",

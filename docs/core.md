@@ -162,7 +162,8 @@ slash, as a browser does.
 
 `mailroom_core.mail` holds what the read tools do, minus the tool plumbing: `list_messages`,
 `search_messages` (with `SearchQuery`), `thread_page`, `read_message`, `read_attachment` and
-`html_view` return typed results (`Page` of `MessageSummary`, `MessageView`, `Attachment`), and
+`html_view` return typed results (`Page` of `MessageSummary`, `MessageView`, `Attachment`),
+`read_source` the whole source under EXAMINE (`too_large` over its cap, never cut), and
 `mailroom_core.mail.text` writes the tools' text from them. Refs and cursors are the TypeScript
 server's bytes but for the account, a number since version 2: a ref (`mailroom_core.mail.ref`) is
 base64url of `[2, account, folder, uidValidity, uid]`, and one whose folder's UIDVALIDITY has

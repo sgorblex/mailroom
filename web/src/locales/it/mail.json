@@ -204,7 +204,9 @@
     "senderNotVerified": "Questo mittente non è stato verificato, quindi non può essere ricordato.",
     "htmlTitle": "Versione HTML di {{subject}}",
     "htmlLoading": "Caricamento della versione HTML…",
-    "htmlFailed": "Impossibile caricare la versione HTML."
+    "htmlFailed": "Impossibile caricare la versione HTML.",
+    "print": "Stampa",
+    "downloadSource": "Scarica .eml"
   },
   "mailingList": {
     "label": "Mailing list",
@@ -348,7 +350,7 @@
     "forward": "Inoltra",
     "unsubscribe": "Annulla iscrizione",
     "draft": "Bozza",
-    "replyActions": "Rispondi e inoltra",
+    "replyActions": "Rispondi, inoltra, stampa e scarica",
     "backToDraft": "Torna alla bozza",
     "offHint": "L'invio è disattivato per questo account, quindi non può scrivere posta. Puoi cambiarlo in Account.",
     "loading": "Apertura dell'editor…",
