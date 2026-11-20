@@ -3,7 +3,13 @@ an account are indexed, the user's age limit under the instance's cap, each fold
 sync the worker runs, the rows the app's own writes change (``writes``), and the folders browsers
 are viewing (``interest``)."""
 
-from mailroom.mail.index.interest import INTEREST_CHANNEL, prune_interest
+from mailroom.mail.index.interest import (
+    INTEREST_CHANNEL,
+    INTEREST_LASTS,
+    drop_interest,
+    hold_interest,
+    prune_interest,
+)
 from mailroom.mail.index.settings import (
     MAX_AGE_ENV,
     IndexedAs,
@@ -21,6 +27,7 @@ from mailroom.mail.index.writes import NOTIFY_CHANNEL, notify
 
 __all__ = [
     "INTEREST_CHANNEL",
+    "INTEREST_LASTS",
     "MAX_AGE_ENV",
     "NOTIFY_CHANNEL",
     "IndexFolderStatus",
@@ -28,9 +35,11 @@ __all__ = [
     "IndexStatus",
     "IndexedAs",
     "discover_folders",
+    "drop_interest",
     "due_folders",
     "effective_max_age",
     "fail_folder",
+    "hold_interest",
     "index_status",
     "max_age_cap",
     "notify",

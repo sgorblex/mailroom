@@ -59,17 +59,29 @@ logger = logging.getLogger(__name__)
 
 NOTIFY_CHANNEL: Final = "mailroom_index"
 """The Postgres channel a folder's index change is announced on: ``{"user_id", "account_id",
-"folder_id"}`` as JSON, ids only."""
+"folder_id"}`` as JSON, ids only, with ``"new": [low, high]`` when a sync stored new mail: the
+UIDs it stored from the folder's previous UIDNEXT on lie between the two."""
 _FLAGGED: Final = "\\Flagged"
 
 type _Key = tuple[int, str]
 """An account's folder: its id and the folder's path."""
 
 
-def notify(db: Session, user_id: int, account_id: int, folder_id: int) -> None:
-    """Announce on ``NOTIFY_CHANNEL`` that the folder's index changed; Postgres delivers it once
-    ``db``'s transaction commits, and drops it with a rollback."""
-    payload = json.dumps({"user_id": user_id, "account_id": account_id, "folder_id": folder_id})
+def notify(
+    db: Session,
+    user_id: int,
+    account_id: int,
+    folder_id: int,
+    *,
+    new: tuple[int, int] | None = None,
+) -> None:
+    """Announce on ``NOTIFY_CHANNEL`` that the folder's index changed (``new``: the range of the
+    UIDs of new mail stored); Postgres delivers it once ``db``'s transaction commits, and drops it
+    with a rollback."""
+    note: dict[str, object] = {"user_id": user_id, "account_id": account_id, "folder_id": folder_id}
+    if new is not None:
+        note["new"] = list(new)
+    payload = json.dumps(note)
     db.execute(
         text("SELECT pg_notify(:channel, :payload)"),
         {"channel": NOTIFY_CHANNEL, "payload": payload},

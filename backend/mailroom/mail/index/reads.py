@@ -60,7 +60,8 @@ _EPOCH: Final = datetime(1970, 1, 1, tzinfo=UTC)
 _MICROSECOND: Final = timedelta(microseconds=1)
 _SEEN: Final = "\\Seen"
 _FLAGGED: Final = "\\Flagged"
-_INBOX_LABEL: Final = "\\Inbox"
+INBOX_LABEL: Final = "\\Inbox"
+"""The X-GM-LABELS label of Gmail's INBOX, which is a label view of All Mail."""
 _GMAIL_SPECIAL: Final = {
     "\\sent": "\\Sent",
     "\\drafts": "\\Draft",
@@ -79,7 +80,7 @@ def gmail_label(folder: Folder) -> str | None:
     if not folder.selectable:
         return None
     if folder.path.upper() == "INBOX":
-        return _INBOX_LABEL
+        return INBOX_LABEL
     lowered = {flag.lower() for flag in folder.flags}
     if lowered & _GMAIL_LIVE:
         return None
