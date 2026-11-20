@@ -73,6 +73,7 @@ def test_signed_out_browsers_are_refused(api_client: TestClient) -> None:
     assert api_client.get("/api/v1/rule-sets/1").status_code == 401
     assert api_client.post("/api/v1/rule-sets/1/dry-run").status_code == 401
     assert api_client.post("/api/v1/rule-sets/1/run").status_code == 401
+    assert api_client.post("/api/v1/filters/draft-from-search", json={}).status_code == 401
 
 
 def test_the_schema_is_the_engines_without_in_thread(user_client: TestClient) -> None:
@@ -460,6 +461,75 @@ def test_an_invalid_spec_is_refused_with_the_engines_words(
     assert response.json()["detail"]["code"] == "invalid_spec"
     stored = user_client.get(f"/api/v1/rule-sets/{rule_set_id}").json()["filters"]
     assert [f["spec"] for f in stored] == [load_filter(SHOP_SPEC).to_spec()]
+
+
+def test_a_domain_filter_on_a_public_provider_is_refused(
+    user_client: TestClient, rule_set_id: int
+) -> None:
+    public = {
+        "criterion": {"type": "from_domain", "args": {"domain": "GMail.com"}},
+        "action": TO_ARCHIVE,
+    }
+    response = user_client.post(
+        f"/api/v1/rule-sets/{rule_set_id}/filters", json={"name": "All of Gmail", "spec": public}
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "public_provider_domain"
+
+    filter_id = add_filter(user_client, rule_set_id, "Good", SHOP_SPEC)
+    response = user_client.patch(f"/api/v1/filters/{filter_id}", json={"spec": public})
+    assert response.json()["detail"]["code"] == "public_provider_domain"
+    own = {"criterion": {"type": "from_domain", "args": {"domain": "shop.example"}}}
+    add_filter(user_client, rule_set_id, "Shop", own | {"action": TO_ARCHIVE})
+
+
+def test_an_old_filter_on_a_public_provider_can_still_be_edited(
+    user_client: TestClient, db_session: Session, rule_set_id: int
+) -> None:
+    public = load_filter(
+        {
+            "criterion": {"type": "from_domain", "args": {"domain": "gmail.com"}},
+            "action": TO_ARCHIVE,
+        }
+    ).to_spec()
+    row = Filter(rule_set_id=rule_set_id, position=0, name="Old", enabled=True, spec=public)
+    db_session.add(row)
+    db_session.commit()
+
+    renamed = user_client.patch(f"/api/v1/filters/{row.id}", json={"name": "New", "spec": public})
+    assert renamed.status_code == 200, renamed.text
+    assert (renamed.json()["name"], renamed.json()["spec"]) == ("New", public)
+    changed = {**public, "action": {"type": "star"}}
+    response = user_client.patch(f"/api/v1/filters/{row.id}", json={"spec": changed})
+    assert response.json()["detail"]["code"] == "public_provider_domain"
+
+
+def test_a_search_drafts_a_filter(user_client: TestClient) -> None:
+    body = {"account": "*", "folder": "*", "from": "shop.example", "text": "x", "unread": True}
+    response = user_client.post("/api/v1/filters/draft-from-search", json=body)
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "spec": {
+            "criterion": {
+                "and": [
+                    {"type": "from_contains", "args": {"addr": "shop.example"}},
+                    {"type": "is_unread"},
+                ]
+            },
+            "action": {"type": "no_op"},
+        },
+        "dropped": ["text"],
+    }
+
+    response = user_client.post("/api/v1/filters/draft-from-search", json={"text": "x"})
+    assert response.status_code == 400
+    assert response.json()["detail"] == {
+        "code": "nothing_to_filter",
+        "message": "Nothing here that a filter can match on.",
+        "dropped": ["text"],
+    }
+    response = user_client.post("/api/v1/filters/draft-from-search", json={"sorted": True})
+    assert response.status_code == 422
 
 
 def test_a_rule_set_holds_a_hundred_filters_at_most(

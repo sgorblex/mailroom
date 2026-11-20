@@ -518,7 +518,7 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   folders rather than repeat the call.
 - **Logs:** `mail_folders`, `mail_quota`, `mail_listed`, `mail_searched`, `mail_read`,
   `mail_thread_read` (MCP only), `mail_html_read`, `mail_attachment_read`, `mail_source_read`,
-  `mail_print_read`, each with `user_id`,
+  `mail_print_read`, `mail_filter_draft_read`, each with `user_id`,
   `account_id`, `via`, `outcome` (`ok` or the code) and `duration_ms`; never a subject, an
   address, a folder name or a body. `mail_moved`, `mail_archived`, `mail_trashed` and
   `mail_flagged` carry `user_id`, `via`, `account_ids`, `ref_count`, `changed` (messages),

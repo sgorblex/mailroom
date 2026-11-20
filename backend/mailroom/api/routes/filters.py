@@ -13,7 +13,9 @@ from fastapi import APIRouter, Path, Query
 from pydantic import BaseModel, Field
 
 from mailroom.api.deps import AccountId, Context, CurrentUser, DbSession
+from mailroom.api.routes.mail._shared import MatchRequest
 from mailroom.filters import service
+from mailroom.filters.drafts import SearchDraft, search_draft
 from mailroom.filters.service import (
     FilterFields,
     FilterOut,
@@ -49,6 +51,13 @@ class FilterOrder(BaseModel):
 def filter_schema() -> dict[str, Any]:
     """The JSON Schema (draft 2020-12) of a filter spec a user writes (``offered_schema``)."""
     return offered_schema()
+
+
+@filters_router.post("/filters/draft-from-search")
+def draft_from_search(body: MatchRequest, _user: CurrentUser) -> SearchDraft:
+    """A filter the editor starts from, made from a search's body as ``POST /mail/search`` takes
+    it; its account, folder and ``subfolders`` are the search's scope, not criteria."""
+    return search_draft(body.query())
 
 
 @filters_router.get("/accounts/{account_id}/folders")

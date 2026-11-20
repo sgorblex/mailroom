@@ -8,9 +8,9 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from mailroom.api.deps import Context, CurrentUser
-from mailroom.api.routes.mail._shared import mail_router
+from mailroom.api.routes.mail._shared import MatchRequest, mail_router
 from mailroom.api.routes.mail.organize import GroupOutcome
-from mailroom.api.routes.mail.read import MatchRequest, SourceFailure
+from mailroom.api.routes.mail.read import SourceFailure
 from mailroom.mail import service
 from mailroom_core.mail import BulkAction, BulkFlag, BulkMove, BulkTrash
 

@@ -423,6 +423,20 @@ def test_edits_wait_for_a_disabled_rule_set(mcp: Mcp, token: str, rule_set_id: i
     assert mcp.error(token, "rule_set_get", rule_set_id=rule_set_id) == "No such rule set"
 
 
+def test_a_domain_filter_on_a_public_provider_is_refused_over_mcp(
+    mcp: Mcp, token: str, rule_set_id: int
+) -> None:
+    public = {
+        "criterion": {"type": "from_domain", "args": {"domain": "outlook.com"}},
+        "action": {"type": "trash", "args": {}},
+    }
+    refused = mcp.error(token, "filter_add", rule_set_id=rule_set_id, name="X", spec=public)
+    assert "public mail provider" in refused
+    added = mcp.call(token, "filter_add", rule_set_id=rule_set_id, name="Shop", spec=SHOP_SPEC)
+    refused = mcp.error(token, "filter_update", filter_id=added["id"], spec=public)
+    assert "public mail provider" in refused
+
+
 def test_run_now_and_the_run_filters_switch(
     mcp: Mcp, token: str, account: int, rule_set_id: int
 ) -> None:

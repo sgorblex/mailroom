@@ -754,11 +754,11 @@ def test_refs_of_other_accounts_and_stale_refs_are_refused(
     client = mailbox.client
 
     stale = format_ref(MessageRef(1, "INBOX", message.uid_validity + 1, message.uid))
-    for path in ("", "/html", "/parts/2"):
+    for path in ("", "/html", "/parts/2", "/filter-draft"):
         assert detail(client.get(f"{MAIL}/messages/{stale}{path}")) == (409, "stale_reference")
 
     elsewhere = format_ref(MessageRef(2, "INBOX", message.uid_validity, message.uid))
-    for path in ("", "/html", "/parts/2"):
+    for path in ("", "/html", "/parts/2", "/filter-draft"):
         response = client.get(f"{MAIL}/messages/{elsewhere}{path}")
         assert response.json() == {
             "detail": {"code": "not_found", "message": "No such message or part."}
@@ -2417,3 +2417,31 @@ def test_folder_logs_carry_counts_never_names(
         assert isinstance(record.__dict__["duration_ms"], int)
         for name in ("Secret", "Hidden", "Plans", "Things"):
             assert name not in str(record.__dict__)
+
+
+def test_a_message_drafts_a_filter_from_its_list_and_sender(
+    mailbox: Mailbox, caplog: pytest.LogCaptureFixture
+) -> None:
+    listed = mime("Weekly", sender="Shop <news@shop.example>", text="hi").replace(
+        "MIME-Version", "List-Id: Shop news <news.shop.example>\r\nMIME-Version", 1
+    )
+    mailbox.seed(listed)
+    mailbox.seed(mime("Hello", sender="Maria <maria@gmail.com>", text="hi"))
+    maria, shop = mailbox.refs()
+
+    caplog.set_level(logging.INFO, logger="mailroom")
+    response = mailbox.client.get(f"{MAIL}/messages/{shop}/filter-draft")
+    assert response.status_code == 200, response.text
+    assert response.headers["cache-control"] == "private, no-store"
+    draft = response.json()
+    assert draft["name"] == "Shop news"
+    assert [c["type"] for c in draft["criteria"]] == ["list_is", "from_is", "from_domain"]
+    assert draft["spec"] == {"criterion": draft["criteria"][0], "action": {"type": "no_op"}}
+    assert "news@shop.example" not in caplog.text
+    assert "shop.example" not in caplog.text
+
+    draft = mailbox.get(f"/messages/{maria}/filter-draft")
+    assert draft["criteria"] == [{"type": "from_is", "args": {"addr": "maria@gmail.com"}}]
+    assert draft["name"] == "Maria"
+    # Drafting never marks the message read.
+    assert mailbox.get(f"/messages/{maria}")["flags"]["seen"] is False
