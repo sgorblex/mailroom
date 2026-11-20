@@ -15,7 +15,7 @@ from mailroom.models import AuditRecord, FilterRun, RuleSet
 from mailroom.worker import tasks
 from mailroom.worker.app import PROCRASTINATE_SCHEMA
 from mailroom.worker.context import Mailboxes, WorkerContext
-from mailroom.worker.idle import WatchedFolder, watched_folders
+from mailroom.worker.idle import rule_set_folders
 from mailroom.worker.runs import (
     COPIED_NOT_REMOVED,
     COPIED_NOT_REMOVED_TEXT,
@@ -557,11 +557,8 @@ def test_a_rule_set_for_all_accounts_is_queued_on_each_running_account(
     [run_id] = queue_new_mail_runs(db_session, user.id, home, ["INBOX"])
     assert [(run.id, run.account_id) for run in runs(db_session, new_mail)] == [(run_id, home)]
     assert queue_new_mail_runs(db_session, user.id, home, ["Archive"]) == []
-    watched = {folder for folder in watched_folders(db_session) if folder.user_id == user.id}
-    assert watched == {
-        WatchedFolder(user.id, work, ("INBOX",)),
-        WatchedFolder(user.id, home, ("INBOX",)),
-    }
+    watched = {folder for folder in rule_set_folders(db_session) if folder[0] == user.id}
+    assert watched == {(user.id, work, ("INBOX",)), (user.id, home, ("INBOX",))}
 
 
 def test_a_rule_set_for_all_accounts_failing_on_one_account_runs_on_the_others(
