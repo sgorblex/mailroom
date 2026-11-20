@@ -21,10 +21,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Final, Literal
 
-from sqlalchemy import BigInteger, any_, bindparam, delete, func, literal, not_, or_, select, update
-from sqlalchemy.dialects.postgresql import ARRAY, insert
+from sqlalchemy import BigInteger, any_, bindparam, delete, or_, select
+from sqlalchemy.dialects.postgresql import ARRAY
 
 from mailroom.mail.connections import PASSWORD_MISSING, PasswordMissing
+from mailroom.mail.index.rows import apply_flags, count_rows, flag_kinds, upsert_rows
 from mailroom.mail.index.settings import effective_max_age
 from mailroom.models import MailIndexFolder, MailIndexMessage, User
 from mailroom_core.mail import (
@@ -58,7 +59,6 @@ BATCH_PAUSE_SECONDS: Final = 0.5
 """The pause between two batches of a job, so a first sync does not hammer the server."""
 SYNC_FAILED: Final = "failed"
 """The error of a sync that failed other than on the mailbox; its exception's type is logged."""
-_SEEN: Final = "\\Seen"
 _EPOCH: Final = datetime(1970, 1, 1, tzinfo=UTC)
 """The arrival time of a message whose server gave none, nor a Date header."""
 
@@ -234,11 +234,11 @@ def _reconcile(
         removed = len(db.scalars(gone.returning(MailIndexMessage.uid)).all())
     changed = 0
     if found.flags and row.uid_validity == found.uid_validity:
-        changed = _apply_flags(db, user_id, folder_id, found.flags, found.labels)
+        changed = apply_flags(db, user_id, folder_id, found.flags, found.labels)
     row.uid_validity = found.uid_validity
     if row.state != "ready":
         row.state, row.error = "syncing", None
-    _count(db, row)
+    count_rows(db, row)
     db.commit()
     return rebuilt, removed, changed
 
@@ -309,7 +309,7 @@ def _stored_batch(
         db.rollback()
         return "off"
     _store(db, user_id, folder_id, messages)
-    _count(db, row)
+    count_rows(db, row)
     db.commit()
     return "stored"
 
@@ -404,79 +404,6 @@ def _folder(
     return row if row is not None and row.enabled else None
 
 
-def _count(db: Session, row: MailIndexFolder) -> None:
-    unread = not_(literal(_SEEN) == any_(MailIndexMessage.flags))
-    total, unseen = db.execute(
-        select(func.count(), func.count().filter(unread)).where(
-            MailIndexMessage.folder_id == row.id, MailIndexMessage.user_id == row.user_id
-        )
-    ).one()
-    row.message_count, row.unread_count = total, unseen
-
-
-def _split(flags: frozenset[str]) -> tuple[list[str], list[str]]:
-    """System flags (``\\Seen``...) and keywords, each sorted."""
-    return (
-        sorted(flag for flag in flags if flag.startswith("\\")),
-        sorted(flag for flag in flags if not flag.startswith("\\")),
-    )
-
-
-def _apply_flags(
-    db: Session,
-    user_id: int,
-    folder_id: int,
-    flags: Mapping[int, frozenset[str]],
-    labels: Mapping[int, tuple[str, ...]] | None = None,
-) -> int:
-    """Store the server's flags (and on Gmail labels) of the rows they differ on; how many."""
-    # One array parameter, of the reported UIDs only: CHANGEDSINCE reports a handful.
-    reported = bindparam("reported", sorted(flags), type_=ARRAY(BigInteger))
-    held = db.execute(
-        select(
-            MailIndexMessage.uid,
-            MailIndexMessage.flags,
-            MailIndexMessage.keywords,
-            MailIndexMessage.labels,
-        ).where(
-            MailIndexMessage.folder_id == folder_id,
-            MailIndexMessage.user_id == user_id,
-            MailIndexMessage.uid == any_(reported),
-        )
-    )
-    current = {
-        uid: (sorted(system), sorted(keywords), list(stored_labels))
-        for uid, system, keywords, stored_labels in held
-    }
-    changes: list[dict[str, Any]] = []
-    for uid, server in flags.items():
-        if uid not in current:
-            continue
-        system, keywords = _split(server)
-        held_labels = current[uid][2]
-        new_labels = held_labels if labels is None else list(labels.get(uid, ()))
-        if current[uid] != (system, keywords, new_labels):
-            changes.append(
-                {"at": uid, "new_flags": system, "new_keywords": keywords, "new_labels": new_labels}
-            )
-    if changes:
-        statement = (
-            update(MailIndexMessage)
-            .where(
-                MailIndexMessage.folder_id == folder_id,
-                MailIndexMessage.user_id == user_id,
-                MailIndexMessage.uid == bindparam("at"),
-            )
-            .values(
-                flags=bindparam("new_flags"),
-                keywords=bindparam("new_keywords"),
-                labels=bindparam("new_labels"),
-            )
-        )
-        db.connection().execute(statement, changes)
-    return len(changes)
-
-
 def _people(addresses: Sequence[Address]) -> list[dict[str, str | None]]:
     return [{"name": a.name, "address": a.address} for a in addresses]
 
@@ -486,7 +413,7 @@ def _text(addresses: Sequence[Address]) -> str:
 
 
 def _row(user_id: int, folder_id: int, message: IndexedMessage) -> dict[str, Any]:
-    system, keywords = _split(message.flags)
+    system, keywords = flag_kinds(message.flags)
     return {
         "folder_id": folder_id,
         "uid": message.uid,
@@ -515,16 +442,4 @@ def _row(user_id: int, folder_id: int, message: IndexedMessage) -> dict[str, Any
 
 
 def _store(db: Session, user_id: int, folder_id: int, messages: Sequence[IndexedMessage]) -> None:
-    if not messages:
-        return
-    statement = insert(MailIndexMessage).values(
-        [_row(user_id, folder_id, message) for message in messages]
-    )
-    kept = ("folder_id", "uid", "user_id")
-    columns = [column.name for column in MailIndexMessage.__table__.columns]
-    db.execute(
-        statement.on_conflict_do_update(
-            index_elements=["folder_id", "uid"],
-            set_={name: statement.excluded[name] for name in columns if name not in kept},
-        )
-    )
+    upsert_rows(db, [_row(user_id, folder_id, message) for message in messages])

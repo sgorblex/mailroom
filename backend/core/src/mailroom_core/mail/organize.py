@@ -84,6 +84,9 @@ class GroupResult:
     refused: tuple[tuple[int, MailError], ...] = ()
     """Messages refused on their own while the others went (`move_to_account`'s
     `refuse_each`): each UID with why."""
+    trash: str | None = None
+    """On a move to another account whose originals go to Trash, that Trash of `account`: where
+    the moved ones went, at UIDs the server does not say."""
 
     @property
     def ok(self) -> bool:

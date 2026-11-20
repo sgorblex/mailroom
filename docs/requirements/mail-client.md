@@ -1416,6 +1416,23 @@ folder off the index is read live, as before the index.
   read into the index is skipped and stays readable live. A folder whose UIDVALIDITY changed is
   built again. The sync never changes mail. Details:
   [`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *Mail index sync*.
+- **The app's own writes.** A move, archive, report as spam, trash, flag change, move to another
+  account, bulk call or folder marked read, from the web or an agent, updates the index in the
+  same request from the server's answer, never from another read: a moved message's row leaves
+  its folder and, when the server said where it landed (COPYUID) in a folder indexed under that
+  UIDVALIDITY, takes its new UID there (its arrival time and flags kept; one older than that
+  folder's age limit is left out); a flag change sets the flags asked; a folder marked read gets
+  `\Seen` below the UIDNEXT it was marked to. What the answer leaves unsure queues that folder's
+  sync instead: a group that failed or was refused, a move without COPYUID or whose source was not
+  indexed, a ref whose UIDVALIDITY the index does not hold, a bulk call (its UIDs come without
+  one; the rows change and the folders sync besides), a move to another account (its destination
+  and the Trash its originals went to), a folder whose sync was running as it was written (that
+  sync may have read the flags before the write). On Gmail a folder read from All Mail queues All
+  Mail's sync. The index is written once the call answered, outside its deadline (by the call's
+  own thread when the deadline cut it). Each folder whose rows changed or whose sync was queued
+  is announced on Postgres's `mailroom_index` channel (`pg_notify`,
+  `{"user_id", "account_id", "folder_id"}`), for live updates. An index write that fails leaves the mail call's answer as it was (logged as
+  `mail_index_write_failed`, with its exception's type only); the next sync puts the rows right.
 - **Web.** The *Profile* page's *Index* section (with the mail client) sets the age limit (empty:
   none) and, per account, lists the folders as a checklist: each one's switch (a Gmail label's and
   a live folder's disabled; a label reads from All Mail while All Mail is on, else live) and a line

@@ -14,6 +14,7 @@ from mailroom.audit import WEB, AuditTrail, Origin
 from mailroom.errors import Refusal
 from mailroom.filters.folders import Rewritten, naming_rule_sets, rewrite_folder
 from mailroom.filters.transfers import rename_in_ledger
+from mailroom.mail.index import writes as index_writes
 from mailroom.mail.service._shared import _Accounts, _accounts, _run, _Stoppable, _usable
 from mailroom_core import mail as core
 from mailroom_core.mail import AuditItem, FolderChangedError
@@ -305,7 +306,8 @@ def mark_folder_read(
     """Marks read every unread message of ``folder`` below ``uid_next``, the UIDNEXT of the
     listing the user confirmed from (``uid_validity`` its UIDVALIDITY, ``stale_reference`` when
     it changed): mailroom-core's ``mark_folder_read``. Returns how many it marked. Recorded once
-    for the folder as ``mark_folder_read`` with that count, refusals too."""
+    for the folder as ``mark_folder_read`` with that count, refusals too; the mail index follows
+    (``mailroom.mail.index.writes``)."""
     accounts = _accounts(ctx, user_id)
     _usable(ctx, user_id, accounts, account_id)
     trail = AuditTrail(ctx.session_maker, user_id, origin, "mark_folder_read")
@@ -316,14 +318,51 @@ def mark_folder_read(
             accounts,
             "mail_folder_marked_read",
             account_id,
-            lambda connections: core.mark_folder_read(
-                connections,
+            lambda connections: _marked_read(
+                ctx,
+                user_id,
+                lambda: core.mark_folder_read(
+                    connections,
+                    account_id,
+                    folder,
+                    uid_validity=uid_validity,
+                    uid_next=uid_next,
+                    note=trail.note,
+                ),
                 account_id,
                 folder,
                 uid_validity=uid_validity,
                 uid_next=uid_next,
-                note=trail.note,
             ),
         )
         logged["messages"] = marked
         return marked
+
+
+def _marked_read(
+    ctx: AppContext,
+    user_id: int,
+    mark: Callable[[], int],
+    account_id: int,
+    folder: str,
+    *,
+    uid_validity: int,
+    uid_next: int,
+) -> int:
+    """``mark``'s count, the index's rows of the folder marked read as it was; synced again
+    when it failed, maybe partway."""
+    done = False
+    try:
+        marked = mark()
+        done = True
+        return marked
+    finally:
+        index_writes.marked_read(
+            ctx.session_maker,
+            user_id,
+            account_id,
+            folder,
+            uid_validity=uid_validity,
+            uid_next=uid_next,
+            done=done,
+        )
