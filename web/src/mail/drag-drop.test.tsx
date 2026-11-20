@@ -95,7 +95,9 @@ describe('dragging messages onto a folder', () => {
     })
     expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument()
     expect(projects.parentElement).not.toHaveClass('ring-2')
-    expect(bodiesTo(fetchMock, MOVE)).toEqual([{ refs: [first?.ref, third?.ref], folder: 'Projects' }])
+    expect(bodiesTo(fetchMock, MOVE)).toEqual([
+      { refs: [first?.ref, third?.ref], folder: 'Projects', source_folder: 'INBOX' },
+    ])
   })
 
   it('moves an unselected row alone, and refuses its own folder and Sent', async () => {
@@ -118,7 +120,7 @@ describe('dragging messages onto a folder', () => {
     expect(dragOver(source, trash, transfer)).toBe(true)
     fireEvent.drop(trash, { dataTransfer: transfer })
     await waitFor(() => {
-      expect(bodiesTo(fetchMock, MOVE)).toEqual([{ refs: [second?.ref], folder: 'Trash' }])
+      expect(bodiesTo(fetchMock, MOVE)).toEqual([{ refs: [second?.ref], folder: 'Trash', source_folder: 'INBOX' }])
     })
   })
 

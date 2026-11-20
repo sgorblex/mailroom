@@ -33,7 +33,7 @@ domain each is for when it is a valid host name (`spf fail (evil.example), dkim 
 (evil.example), dmarc none`), or `not verified`. An attachment comes back as text,
 as an image, or as an embedded file, each type checked against the content. Their contract is
 the REST one in [`mail-client.md`](mail-client.md): the same service layer, so the same
-ownership, the user's limits (`body_chars`, `attachment_max_mb` in their mailroom-core settings,
+ownership, the same reads of the index (a Gmail label view's lines carry All Mail refs), the user's limits (`body_chars`, `attachment_max_mb` in their mailroom-core settings,
 set on their *Profile* page and never by a tool) and 30 s deadline. Reading never sets `\Seen`. `folders_list` gives each folder's `path` (the
 string `messages_list` and `messages_search` take as `folder`), `delimiter`, `segments` (what a
 rule set's folder and a `move_to` action take) and `role`; with `counts=true` it adds unread and
@@ -51,7 +51,10 @@ only "up to 50, any folders": the server instructions name the tools that give r
 `mail_read` is served. Nothing these tools do deletes permanently: `messages_trash` is a move to
 Trash (the only expunge is of a draft Mailroom wrote, by the draft tools: the
 [own-draft exception](mail-client.md#the-own-draft-exception)). There is no archive tool: `messages_move` to the account's
-archive folder does it.
+archive folder does it. `messages_move` and `messages_trash` take an optional `source_folder`,
+the folder the refs were listed from: on Gmail an All Mail ref is acted on there, so it leaves
+that folder only; without it a Gmail move out of All Mail only adds the destination's label
+([`mail-client.md`](mail-client.md) — *Index*). Other accounts ignore it.
 
 The `mail_folders` tools create, rename and delete an account's folders, the REST folder routes
 ([`mail-client.md`](mail-client.md) — *Folder management*) over the same service functions, with
@@ -133,8 +136,8 @@ not OAuth scope.
 | `filters_run` (stable, on) | `dry_run` (`account_id` for a rule set for all accounts) | readOnly, openWorld |
 | | `rule_set_enable`, `run_now` (answers the queued run; for a rule set for all accounts, an optional `account_id`, and `{"runs": [...]}`, a run per account without one), `account_run_filters(account_id, on)` | destructive |
 | `mail_read` (stable, on) | `messages_list`, `messages_search`, `message_read`, `thread_read`, `attachment_read` | readOnly, idempotent, openWorld |
-| `mail_organize` (stable, on) | `messages_move(refs, folder)`, `messages_flag(refs, seen?, flagged?, to_sort?)` | openWorld (flag also idempotent) |
-| | `messages_trash(refs)` | destructive, openWorld |
+| `mail_organize` (stable, on) | `messages_move(refs, folder, source_folder?)`, `messages_flag(refs, seen?, flagged?, to_sort?)` | openWorld (flag also idempotent) |
+| | `messages_trash(refs, source_folder?)` | destructive, openWorld |
 | | `thread_mute(ref)`, muting the message's conversation ([`filters.md`](filters.md#muted-threads)); the answer is the muted thread, with `run_filters` | idempotent, openWorld |
 | | `muted_threads_list(account_id?)` | readOnly, idempotent |
 | | `thread_unmute(id)` | none |

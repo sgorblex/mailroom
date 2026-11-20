@@ -23,11 +23,21 @@ class RefsRequest(BaseModel):
     refs: Annotated[list[BatchRef], Field(min_length=1, max_length=service.MAX_REFS)]
 
 
-class MoveRequest(RefsRequest):
-    folder: Annotated[str, Field(min_length=1, max_length=service.MAX_FOLDER)]
+Folder = Annotated[str, Field(min_length=1, max_length=service.MAX_FOLDER)]
 
 
-class MoveToAccountRequest(MoveRequest):
+class ViewRefsRequest(RefsRequest):
+    source_folder: Folder | None = None
+    """The folder the user acted from (INBOX or a label's): a Gmail All Mail ref is acted on
+    there, so that it leaves that view only. Ignored for other accounts."""
+
+
+class MoveRequest(ViewRefsRequest):
+    folder: Folder
+
+
+class MoveToAccountRequest(RefsRequest):
+    folder: Folder
     account: Annotated[int, Field(ge=1, le=MAX_SAFE_INTEGER)]
     """Another of the user's accounts than any ref's."""
     removal: Literal["trash", "delete"]
@@ -103,7 +113,11 @@ def organize_answer(result: OrganizeResult, *, copies_answer: bool = False) -> O
 
 @mail_router.post("/messages/move")
 def move(request: MoveRequest, ctx: Context, user: CurrentUser) -> OrganizeAnswer:
-    return organize_answer(service.move(ctx, user.id, request.refs, request.folder))
+    return organize_answer(
+        service.move(
+            ctx, user.id, request.refs, request.folder, source_folder=request.source_folder
+        )
+    )
 
 
 @mail_router.post("/messages/move-to-account")
@@ -119,18 +133,24 @@ def move_to_account(
 
 
 @mail_router.post("/messages/archive")
-def archive(request: RefsRequest, ctx: Context, user: CurrentUser) -> OrganizeAnswer:
-    return organize_answer(service.archive(ctx, user.id, request.refs))
+def archive(request: ViewRefsRequest, ctx: Context, user: CurrentUser) -> OrganizeAnswer:
+    return organize_answer(
+        service.archive(ctx, user.id, request.refs, source_folder=request.source_folder)
+    )
 
 
 @mail_router.post("/messages/junk")
-def junk(request: RefsRequest, ctx: Context, user: CurrentUser) -> OrganizeAnswer:
-    return organize_answer(service.junk(ctx, user.id, request.refs))
+def junk(request: ViewRefsRequest, ctx: Context, user: CurrentUser) -> OrganizeAnswer:
+    return organize_answer(
+        service.junk(ctx, user.id, request.refs, source_folder=request.source_folder)
+    )
 
 
 @mail_router.post("/messages/trash")
-def trash(request: RefsRequest, ctx: Context, user: CurrentUser) -> OrganizeAnswer:
-    return organize_answer(service.trash(ctx, user.id, request.refs))
+def trash(request: ViewRefsRequest, ctx: Context, user: CurrentUser) -> OrganizeAnswer:
+    return organize_answer(
+        service.trash(ctx, user.id, request.refs, source_folder=request.source_folder)
+    )
 
 
 @mail_router.post("/messages/flag")

@@ -9,9 +9,9 @@ creates, renames and deletes folders: Mailroom deletes mail only deliberately, a
 delete is the one in the mail client. Product scope:
 [`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Mail client*. Rendering and IMAP come from
 **mailroom-core** (`render` and `mail`, connections in `mail.imap`; 0.1.2 for slices A and B, the
-0.1.3 for slice C's compose, drafts and send), over IMAP directly. The [index](#index) is being
-built: its settings and sync are in, its reads are not, so every read is still live; no live
-updates yet.
+0.1.3 for slice C's compose, drafts and send), over IMAP directly. Lists, searches without a
+body's text and folder counts read the [index](#index) where it holds every folder they involve,
+and the server otherwise; no live updates yet.
 
 ## Slice A: read
 
@@ -103,9 +103,10 @@ Behaviour is mailroom-core's `mail.organize` (`move_messages`, `archive_messages
 ### Actions
 
 - **Move** to a folder of the message's account, by path, or of
-  [another of the user's accounts](#moving-to-another-account).
+  [another of the user's accounts](#moving-to-another-account). Out of Gmail's All Mail, which
+  keeps every message, a move only adds the destination's label, but into Trash or Spam.
 - **Archive:** move to the account's folder with role `archive`. The web toolbar hides the action
-  for an account without one.
+  for an account without one. Out of Gmail's All Mail it changes nothing: `invalid_argument`.
 - **Report spam:** move to the account's folder with role `junk`, which trains the account's Junk
   as any move there does ([Junk training](#junk-training)); audited as `junk`. REST and the web
   only: an agent moves to the Junk folder by its path.
@@ -359,14 +360,17 @@ JSON bodies (unknown fields are 422), CSRF as for every state-changing route.
 
 | Route | Body |
 | --- | --- |
-| `POST /messages/move` | `{"refs": ["…"], "folder": "Archive/2025"}` |
+| `POST /messages/move` | `{"refs": ["…"], "folder": "Archive/2025", "source_folder": "INBOX"}` |
 | `POST /messages/move-to-account` | `{"refs": ["…"], "account": "home", "folder": "INBOX", "removal": "trash"}` (`removal`: `trash` or `delete`) |
 | `POST /messages/archive` | `{"refs": ["…"]}` |
 | `POST /messages/junk` | `{"refs": ["…"]}` |
 | `POST /messages/trash` | `{"refs": ["…"]}` |
 | `POST /messages/flag` | `{"refs": ["…"], "seen": true, "flagged": false, "to_sort": true}` (`seen`, `flagged`, `to_sort` optional, at least one) |
 
-`refs` holds 1 to 50 strings of at most 4096 characters. Answer, `200`:
+`refs` holds 1 to 50 strings of at most 4096 characters. `source_folder` (move, archive, junk
+and trash; optional) is the folder the user acted from, where a Gmail All Mail ref is acted on
+([Index](#index), *Reads*); the web sends the folder it shows, none over every folder. Answer,
+`200`:
 
 ```jsonc
 {
@@ -960,9 +964,10 @@ characters are already stripped from headers.
   missing one.
 - A **cursor** is equally opaque (base64url of `[2, positions]`, then, when a folder or an
   account failed, `[account, folder, code, certificate]` for each, `folder` `null` for an
-  account): pass `next_cursor` back as
+  account; a page read from the [index](#index) has version 3): pass `next_cursor` back as
   `cursor`, with the same query. A malformed one is `invalid_argument`; one made before account
-  ids were numbers is `stale_reference`.
+  ids were numbers is `stale_reference`, as is an index one whose folder left the index or
+  changed since (start over without it).
 
 ### Errors
 
@@ -1058,7 +1063,9 @@ counts 0 (a tree's parents). Order: the folders with a role first, in the order 
 flagged, sent, drafts, all, archive, junk, trash, then the rest by path. Counts are always present
 here (STATUS; 0 for a folder whose STATUS failed). `uid_validity` and `uid_next` are STATUS's
 too, what a [mark read](#folder-management) sends back: `null` for an unselectable folder or one
-whose STATUS failed. Errors: 404 `not_found` (account), 409, 502, 504.
+whose STATUS failed. A folder the [index](#index) holds whole (ready, no age limit) takes its
+counts, UIDVALIDITY and UIDNEXT from the index instead, as of its last sync and the app's own
+writes since (UIDNEXT past the highest UID it holds), and is not asked STATUS. Errors: 404 `not_found` (account), 409, 502, 504.
 
 ### `GET /accounts/{account_id}/messages?folder=INBOX&limit=25&cursor=&subfolders=false`
 
@@ -1433,6 +1440,32 @@ folder off the index is read live, as before the index.
   is announced on Postgres's `mailroom_index` channel (`pg_notify`,
   `{"user_id", "account_id", "folder_id"}`), for live updates. An index write that fails leaves the mail call's answer as it was (logged as
   `mail_index_write_failed`, with its exception's type only); the next sync puts the rows right.
+- **Reads.** A list (with its subfolders too) and a search without `text` or `gmail_query` (over
+  one account or all) read the index when every folder they involve is on it and `ready`; else
+  they read the server as before the index, the whole request. The folder listing's counts come
+  from it folder by folder ([above](#get-accountsaccount_idfolders)). Pages
+  keep their shape and order (newest first by arrival, then folder and UID), with a cursor of
+  version 3 that keeps that place. On the index `from`, `to` and `subject` match a substring of
+  the sender's and To's names and addresses and of the subject, in any case; `since` and `before`
+  compare the arrival day in UTC; `has_attachment` is the message's structure (an attachment
+  part), not the `multipart/mixed` approximation. A folder indexed under an age limit holds only
+  the mail since its day: once a list or search has shown that, it goes on live, `BEFORE` that
+  day, unless the search's own `since` leaves nothing there. On Gmail, INBOX and the label folders
+  are read from All Mail's rows by label (INBOX `\Inbox`, Sent `\Sent`, Drafts `\Draft`,
+  Starred `\Starred`, Important `\Important`, any other the folder's path), each message with
+  its **All Mail ref**. A move, archive, trash or spam report of such a ref with `source_folder`
+  (the view acted from: INBOX or a label's folder) acts on the message in that folder, found by
+  its X-GM-MSGID (`UID SEARCH X-GM-MSGID`), so exactly that view's label comes off and the others
+  stay; one that folder does not hold, or with no index to tell its id, is acted on as given.
+  From All Mail itself (`source_folder` All Mail's, or none), a move only adds the destination's
+  label (a copy into its folder), but into Trash or Spam; an archive changes nothing and is
+  refused as such (`invalid_argument`); trash and spam move it out of All Mail. Flags act on All
+  Mail, where Gmail gives them the same effect; other accounts ignore `source_folder`. A read of
+  every folder (`*`) leaves out, off Gmail, a virtual folder off the index (where mailroom-core
+  reads `\All` alone, the index reads the folders it repeats). A label folder's counts are still
+  STATUS's. MCP reads
+  through the same service. When the index cannot be read at all, a first page and the counts go
+  live (logged as `mail_index_read_failed`, with the exception's type only).
 - **Web.** The *Profile* page's *Index* section (with the mail client) sets the age limit (empty:
   none) and, per account, lists the folders as a checklist: each one's switch (a Gmail label's and
   a live folder's disabled; a label reads from All Mail while All Mail is on, else live) and a line

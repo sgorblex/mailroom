@@ -514,10 +514,16 @@ async function organize(route: string, body: object, signal?: AbortSignal): Prom
 
 /**
  * Up to 50 refs, from any folders; a group's failure is in its result, and only a batch where no
- * group succeeded throws (the first failure's refusal).
+ * group succeeded throws (the first failure's refusal). `sourceFolder`, here and on archive, junk
+ * and trash: the folder shown, where a Gmail All Mail ref is acted on, so it leaves that view only.
  */
-export function moveMessages(refs: string[], folder: string, signal?: AbortSignal): Promise<OrganizeGroup[]> {
-  return organize('move', { refs, folder }, signal)
+export function moveMessages(
+  refs: string[],
+  folder: string,
+  signal?: AbortSignal,
+  sourceFolder?: string,
+): Promise<OrganizeGroup[]> {
+  return organize('move', { refs, folder, source_folder: sourceFolder }, signal)
 }
 
 /** What becomes of the originals of a move to another account: their account's Trash, or deleted for good. */
@@ -538,18 +544,18 @@ export function moveToAccount(
   return organize('move-to-account', { refs, account, folder, removal }, signal)
 }
 
-export function archiveMessages(refs: string[], signal?: AbortSignal): Promise<OrganizeGroup[]> {
-  return organize('archive', { refs }, signal)
+export function archiveMessages(refs: string[], signal?: AbortSignal, sourceFolder?: string): Promise<OrganizeGroup[]> {
+  return organize('archive', { refs, source_folder: sourceFolder }, signal)
 }
 
 /** Reports them as spam: moved to the account's Junk folder, which teaches its spam filter. */
-export function junkMessages(refs: string[], signal?: AbortSignal): Promise<OrganizeGroup[]> {
-  return organize('junk', { refs }, signal)
+export function junkMessages(refs: string[], signal?: AbortSignal, sourceFolder?: string): Promise<OrganizeGroup[]> {
+  return organize('junk', { refs, source_folder: sourceFolder }, signal)
 }
 
 /** Moves them to Trash, never deleting them. */
-export function trashMessages(refs: string[], signal?: AbortSignal): Promise<OrganizeGroup[]> {
-  return organize('trash', { refs }, signal)
+export function trashMessages(refs: string[], signal?: AbortSignal, sourceFolder?: string): Promise<OrganizeGroup[]> {
+  return organize('trash', { refs, source_folder: sourceFolder }, signal)
 }
 
 export function flagMessages(refs: string[], change: FlagChange, signal?: AbortSignal): Promise<OrganizeGroup[]> {

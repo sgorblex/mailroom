@@ -47,15 +47,25 @@ Refs = Annotated[
 ]
 
 
+SOURCE_FOLDER: Final = (
+    "The folder the refs were listed from (INBOX or a label's path), on Gmail: a ref of All "
+    "Mail is then acted on there, so it leaves that folder only and keeps its other labels. "
+    "Without it, a Gmail move out of All Mail only adds the destination's label. Ignored for "
+    "other accounts."
+)
+
+
 class MessagesMoveArguments(Arguments):
     refs: Refs
     folder: FolderPath = Field(
         description="Destination folder path, as folders_list gives it in `path`."
     )
+    source_folder: FolderPath | None = Field(default=None, description=SOURCE_FOLDER)
 
 
 class MessagesTrashArguments(Arguments):
     refs: Refs
+    source_folder: FolderPath | None = Field(default=None, description=SOURCE_FOLDER)
 
 
 class MessagesFlagArguments(Arguments):
@@ -94,13 +104,27 @@ async def _organize(call: ToolCall, work: Callable[[], OrganizeResult]) -> types
 async def _messages_move(args: MessagesMoveArguments, call: ToolCall) -> types.CallToolResult:
     return await _organize(
         call,
-        lambda: service.move(call.ctx, call.user_id, args.refs, args.folder, origin=call.origin),
+        lambda: service.move(
+            call.ctx,
+            call.user_id,
+            args.refs,
+            args.folder,
+            source_folder=args.source_folder,
+            origin=call.origin,
+        ),
     )
 
 
 async def _messages_trash(args: MessagesTrashArguments, call: ToolCall) -> types.CallToolResult:
     return await _organize(
-        call, lambda: service.trash(call.ctx, call.user_id, args.refs, origin=call.origin)
+        call,
+        lambda: service.trash(
+            call.ctx,
+            call.user_id,
+            args.refs,
+            source_folder=args.source_folder,
+            origin=call.origin,
+        ),
     )
 
 

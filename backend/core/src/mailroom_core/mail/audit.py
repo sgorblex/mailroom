@@ -88,8 +88,8 @@ class AuditItem:
     source_folder: str | None = None
     """On the copy a move from another account made, the folder it came from."""
     copied: bool | None = None
-    """True on a move that failed after copying it: it is in `destination`, and may still be in
-    `folder`."""
+    """True on a move that failed after copying it, or that only copied it (out of Gmail's All
+    Mail): it is in `destination`, and may still be in `folder`."""
     junk: Junk | None = None
     seen: bool | None = None
     """The flag change asked for, on a flag write."""
