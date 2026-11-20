@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button.tsx'
 import { useLoad } from '@/lib/use-load.ts'
 import { cn } from '@/lib/utils.ts'
 
+import { CommandPalette } from './command-palette.tsx'
 import { ComposeBar } from './compose-bar.tsx'
 import { useCompose } from './compose-context.ts'
 import { ComposeProvider } from './compose-provider.tsx'
@@ -23,7 +24,7 @@ import { SearchForm } from './search-form.tsx'
 import { BulkHost } from './select-matching.tsx'
 import { ShortcutSheet, ShortcutSheetButton } from './shortcut-sheet.tsx'
 import { ComposeAnnouncer } from './send-status.tsx'
-import { useMailShortcuts } from './shortcuts.ts'
+import { useMailShortcuts, usePaletteShortcut } from './shortcuts.ts'
 import { storedSubfolders } from './subfolder-view.ts'
 import { ToastHost } from './toast.tsx'
 import { OutcomeAnnouncer, Toolbar } from './toolbar.tsx'
@@ -44,6 +45,7 @@ export function MailScreen(): ReactElement {
     accountErrorMessage(t, error, t('accounts.loadFailed')),
   )
   const [sheet, setSheet] = useState(false)
+  const [palette, setPalette] = useState(false)
 
   if (accounts.kind === 'loading') {
     return (
@@ -90,7 +92,13 @@ export function MailScreen(): ReactElement {
       <ToastHost>
         <TriageProvider sourceKey={sourceKey(accountId, folder, requested, search.q)} accounts={accountIds}>
           <ComposeProvider accounts={accounts.value} accountId={accountId}>
-            <MailShortcuts accountId={accountId} onHelp={openSheet} />
+            <MailShortcuts
+              accountId={accountId}
+              onHelp={openSheet}
+              onPalette={() => {
+                setPalette((open) => !open)
+              }}
+            />
             <MailPanes
               accounts={accounts.value}
               accountId={accountId}
@@ -102,6 +110,15 @@ export function MailScreen(): ReactElement {
               <ShortcutSheet
                 onClose={() => {
                   setSheet(false)
+                }}
+              />
+            )}
+            {palette && (
+              <CommandPalette
+                accounts={accounts.value}
+                accountId={accountId}
+                onClose={() => {
+                  setPalette(false)
                 }}
               />
             )}
@@ -200,8 +217,17 @@ function MailPanes({
   )
 }
 
-function MailShortcuts({ accountId, onHelp }: { accountId: AccountId; onHelp: () => void }): null {
+function MailShortcuts({
+  accountId,
+  onHelp,
+  onPalette,
+}: {
+  accountId: AccountId
+  onHelp: () => void
+  onPalette: () => void
+}): null {
   useMailShortcuts(accountId, onHelp)
+  usePaletteShortcut(onPalette)
   return null
 }
 
