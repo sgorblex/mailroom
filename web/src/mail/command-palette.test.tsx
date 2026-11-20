@@ -106,16 +106,46 @@ describe('the command palette', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('closes on Escape with a query typed, rather than only clearing it', async () => {
+  it('jumps to the first and the last option by page, and closes on Escape', async () => {
     const user = userEvent.setup()
     stubMailApi(state())
     renderMailApp('/mail')
     await screen.findByRole('list', { name: 'Messages' })
 
     await user.keyboard('{Control>}k{/Control}')
-    await user.type(within(palette()).getByRole('combobox'), 'inbox')
+    const input = within(palette()).getByRole('combobox')
+    await user.type(input, 'inbox')
+    await waitFor(() => {
+      expect(options()).toEqual(['Inboxwork', 'Inboxhome'])
+    })
+    await user.keyboard('{PageDown}')
+    expect(within(palette()).getByRole('option', { selected: true })).toHaveTextContent('Inboxhome')
+    await user.keyboard('{PageUp}')
+    expect(within(palette()).getByRole('option', { selected: true })).toHaveTextContent('Inboxwork')
+
+    // Home and End move the caret in the query, not the highlighted option.
+    await user.keyboard('{End}')
+    expect(within(palette()).getByRole('option', { selected: true })).toHaveTextContent('Inboxwork')
+    await user.keyboard('{PageDown}{Home}')
+    expect(within(palette()).getByRole('option', { selected: true })).toHaveTextContent('Inboxhome')
+    expect(input).toHaveProperty('selectionStart', 0)
+
+    // With a query typed, Escape closes the palette rather than clearing it.
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('takes the wide dialog, its content setting no width of its own', async () => {
+    const user = userEvent.setup()
+    stubMailApi(state())
+    renderMailApp('/mail')
+    await screen.findByRole('list', { name: 'Messages' })
+
+    await user.keyboard('{Control>}k{/Control}')
+    expect(palette()).toHaveAttribute('data-size', 'lg')
+    const content = within(palette()).getByRole('combobox').parentElement
+    expect(content).toHaveClass('w-full')
+    expect(content?.className).not.toMatch(/\bw-\[/)
   })
 
   it("runs the registry's actions on the open message, and lists the recent choices first", async () => {
