@@ -81,6 +81,9 @@ class GroupResult:
     """Where a move took them, or copied them before it failed; None for a flag change."""
     destination_account: int | None = None
     """On a move to another account, that account: `destination` and `new_refs` are its."""
+    refused: tuple[tuple[int, MailError], ...] = ()
+    """Messages refused on their own while the others went (`move_to_account`'s
+    `refuse_each`): each UID with why."""
 
     @property
     def ok(self) -> bool:

@@ -329,6 +329,32 @@ def test_refuses_a_folder_with_a_message_it_could_not_confirm_or_too_large(
     assert subjects(imap_server, source, "Junk") == ["no id"]
 
 
+def test_refuse_each_refuses_only_the_messages_it_cannot_move(imap_server, users, mail) -> None:
+    source, target = users
+    seed(imap_server, source, "INBOX", mime("fine", text="x"))
+    seed(imap_server, source, "INBOX", mime("big", text="y" * 5000))
+    unnamed = b"From: ana@example.org\r\nSubject: no id\r\n\r\nhello\r\n"
+    seed(imap_server, source, "INBOX", unnamed)
+    refs = refs_in(mail)
+
+    result = move_to_account(
+        mail, refs, 2, "INBOX", removal="trash", max_bytes=1000, refuse_each=True
+    )
+
+    [group] = result.groups
+    assert group.error is None
+    assert group.count == 1
+    reasons = {uid: error.code for uid, error in group.refused}
+    assert sorted(reasons.values()) == ["too_large", "unsupported"]
+    assert any("no Message-ID" in error.message for _uid, error in group.refused)
+    by_uid = {item.uid: item.result for item in result.items if item.source_account is None}
+    assert {by_uid[uid] for uid in reasons} == {"too_large", "unsupported"}
+    assert result.outcome == "partial"
+    assert subjects(imap_server, target, "INBOX") == ["fine"]
+    assert sorted(subjects(imap_server, source, "INBOX")) == ["big", "no id"]
+    assert subjects(imap_server, source, "Trash") == ["fine"]
+
+
 def test_messages_sharing_a_message_id_each_get_a_copy(imap_server, users, mail) -> None:
     """A list's copy and the direct one share the Message-ID: in two folders, or chunks, of
     one call, neither may pass for the other's copy."""

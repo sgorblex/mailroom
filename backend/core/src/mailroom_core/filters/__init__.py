@@ -22,6 +22,7 @@ from mailroom_core.filters.actions.flags import (
 )
 from mailroom_core.filters.actions.move import Junk, MoveTo, Trash
 from mailroom_core.filters.actions.noop import NoOp
+from mailroom_core.filters.actions.transfer import AccountResolver, AccountTarget, MoveToAccount
 from mailroom_core.filters.criteria.address import (
     BccContains,
     BccIs,
@@ -67,7 +68,13 @@ from mailroom_core.filters.pattern import (
     set_match_timeout,
 )
 from mailroom_core.filters.query import All, IMAPQuery, Q
-from mailroom_core.filters.report import FilterReport, FolderReport, MessageSummary
+from mailroom_core.filters.report import (
+    FilterReport,
+    FolderReport,
+    MessageSummary,
+    TransferredMessage,
+    TransferReport,
+)
 from mailroom_core.filters.runner import Rules, RunRulesError, marked_only, monitor, run_rules
 from mailroom_core.filters.selected import Selected
 from mailroom_core.filters.spec import (
@@ -83,6 +90,8 @@ from mailroom_core.filters.spec import (
 __all__ = [
     "DEFAULT_MATCH_TIMEOUT",
     "Account",
+    "AccountResolver",
+    "AccountTarget",
     "Action",
     "All",
     "Anything",
@@ -130,6 +139,7 @@ __all__ = [
     "Message",
     "MessageSummary",
     "MoveTo",
+    "MoveToAccount",
     "NoOp",
     "NotSerializableError",
     "OlderThan",
@@ -150,6 +160,8 @@ __all__ = [
     "ToContains",
     "ToIs",
     "ToMatches",
+    "TransferReport",
+    "TransferredMessage",
     "Trash",
     "UnmarkToSort",
     "Unstar",

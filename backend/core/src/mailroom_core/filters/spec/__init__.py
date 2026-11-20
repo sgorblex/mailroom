@@ -12,8 +12,9 @@ functions rebuild an equal object from it. The format, described by :func:`json_
 - **action sequence**: ``{"seq": [a, ...]}``.
 - **filter**: ``{"criterion": c, "action": a}``.
 
-What a spec names but does not hold, the members of an ``in_thread`` criterion's thread, the host
-supplies as it loads it (``threads``).
+What a spec names but does not hold, the host supplies as it loads it: the members of an
+``in_thread`` criterion's thread (``threads``), and the connections a ``move_to_account`` action
+moves to another account with (``accounts``).
 
 Chains of the same combinator are flattened: ``a & b & c`` gives one ``and`` with three items.
 """
@@ -24,7 +25,7 @@ import functools
 import json
 from collections.abc import Mapping
 from importlib import resources
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Final, cast
 
 from mailroom_core.filters.actions.action import Action
 from mailroom_core.filters.criteria.criterion import Criterion
@@ -32,8 +33,9 @@ from mailroom_core.filters.filter import Filter
 from mailroom_core.filters.spec.nodes import NotSerializableError, SpecNode, SpecSerializable
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
+    from mailroom_core.filters.actions.transfer import AccountResolver
     from mailroom_core.filters.criteria.thread import ThreadResolver
 
 __all__ = [
@@ -122,23 +124,57 @@ def _load_criterion(spec: Mapping[str, Any], host: Mapping[str, Any]) -> Criteri
             return functools.reduce(Criterion.__or__, map(load, _check_items(node, "or")))
 
 
-def load_action(spec: Mapping[str, Any]) -> Action:
-    """Build an action from its spec node.
+def load_action(spec: Mapping[str, Any], *, accounts: AccountResolver | None = None) -> Action:
+    """Build an action from its spec node; ``accounts`` gives each ``move_to_account`` the
+    connections to its account, looked up when it moves (without it, its moves fail).
 
     Raises:
         SpecError: The spec is malformed or names an unknown type or argument.
 
     """
+    host = {} if accounts is None else {"accounts": accounts}
+    return _load_action(spec, host)
+
+
+_REMOVING: Final = frozenset({"delete", "trash", "junk", "move_to", "move_to_account"})
+"""Actions after which a message is no longer where the run found it."""
+
+
+def _load_action(spec: Mapping[str, Any], host: Mapping[str, Any]) -> Action:
     node = _check_mapping(spec, "action")
     if _only_key(node, ("type", "seq"), "action") == "type":
-        return cast("Action", _load_leaf(node, Action, {}))
+        return cast("Action", _load_leaf(node, Action, host))
     combine: Callable[[Action, Action], Action] = Action.__add__
-    return functools.reduce(combine, map(load_action, _check_items(node, "seq")))
+    items = [_load_action(item, host) for item in _check_items(node, "seq")]
+    leaves = list(_leaf_types(node))
+    if "move_to_account" in leaves:
+        after = leaves[leaves.index("move_to_account") + 1 :]
+        removing = next((leaf for leaf in after if leaf in _REMOVING), None)
+        if removing is not None:
+            raise SpecError(
+                f"a seq cannot have {removing} after move_to_account, which takes the messages "
+                "from the folder: put move_to_account last"
+            )
+    return functools.reduce(combine, items)
 
 
-def load_filter(spec: Mapping[str, Any], *, threads: ThreadResolver | None = None) -> Filter:
+def _leaf_types(node: Mapping[str, Any]) -> Iterator[str]:
+    """The types of a loaded action node's leaves, in order, nested seqs flattened."""
+    if "seq" in node:
+        for item in node["seq"]:
+            yield from _leaf_types(item)
+    else:
+        yield node["type"]
+
+
+def load_filter(
+    spec: Mapping[str, Any],
+    *,
+    threads: ThreadResolver | None = None,
+    accounts: AccountResolver | None = None,
+) -> Filter:
     """Build a filter from ``{"criterion": ..., "action": ...}`` (``threads`` as
-    `load_criterion` takes it).
+    `load_criterion` takes it, ``accounts`` as `load_action`).
 
     Raises:
         SpecError: The spec is malformed or names an unknown type or argument.
@@ -147,7 +183,10 @@ def load_filter(spec: Mapping[str, Any], *, threads: ThreadResolver | None = Non
     node = _check_mapping(spec, "filter")
     if set(node) != {"criterion", "action"}:
         raise SpecError(f'a filter spec has exactly "criterion" and "action", got {sorted(node)}')
-    return Filter(load_criterion(node["criterion"], threads=threads), load_action(node["action"]))
+    return Filter(
+        load_criterion(node["criterion"], threads=threads),
+        load_action(node["action"], accounts=accounts),
+    )
 
 
 @functools.cache

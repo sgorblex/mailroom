@@ -319,6 +319,7 @@
     "move_to": "Move to",
     "trash": "Move to the trash",
     "junk": "Move to junk",
+    "move_to_account": "Move to another account",
     "no_op": "Do nothing"
   },
   "filterArgs": {
@@ -334,7 +335,8 @@
     "flag": "Flag",
     "cutoff_date": "Before",
     "days": "Days",
-    "folder": "Folder"
+    "folder": "Folder",
+    "account": "Account"
   },
   "filterChoices": {
     "SEEN": "Read",
@@ -413,6 +415,7 @@
     "trash": "move to the trash",
     "trash_to": "move to the trash ({{folder}})",
     "junk": "move to junk",
+    "move_to_account": "move to {{folder}} in account {{account}}",
     "no_op": "do nothing"
   },
   "filterPhraseChoices": {

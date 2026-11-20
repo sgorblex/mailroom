@@ -449,8 +449,27 @@ def test_specs_are_kept_as_the_engine_serialises_them(
             },
             "invalid regular expression",
         ),
+        (
+            {
+                "criterion": {"type": "anything"},
+                "action": {
+                    "seq": [
+                        {"type": "move_to_account", "args": {"account": 2, "folder": ["X"]}},
+                        {"type": "trash"},
+                    ]
+                },
+            },
+            "a seq cannot have trash after move_to_account",
+        ),
     ],
-    ids=["no action", "unknown type", "bad argument", "argument type", "regular expression"],
+    ids=[
+        "no action",
+        "unknown type",
+        "bad argument",
+        "argument type",
+        "regular expression",
+        "move after a move to another account",
+    ],
 )
 def test_an_invalid_spec_is_refused_with_the_engines_words(
     user_client: TestClient, rule_set_id: int, spec: dict[str, Any], message: str

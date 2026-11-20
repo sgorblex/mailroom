@@ -23,6 +23,7 @@ from mailroom_core.filters.actions.flags import (
 )
 from mailroom_core.filters.actions.move import Junk, MoveTo, Trash
 from mailroom_core.filters.actions.noop import NoOp
+from mailroom_core.filters.actions.transfer import AccountTarget, MoveToAccount
 from mailroom_core.filters.criteria.address import (
     BccContains,
     BccIs,
@@ -125,6 +126,7 @@ ACTIONS: list[Action] = [
     MarkToSort(),
     MoveTo(Path(["Archive", "2025"])),
     MoveTo(Path("INBOX")),
+    MoveToAccount(2, Path(["Archive", "2025"])),
     NoOp(),
     Star(),
     Trash(),
@@ -145,6 +147,7 @@ COMBINED_CRITERIA: list[Criterion] = [
 
 COMBINED_ACTIONS: list[Action] = [
     MarkAsRead() + MoveTo(Path("Archive")),
+    Star() + MoveToAccount(3, Path("INBOX")),
     MarkAsRead().then(Star()).then(Trash()),
 ]
 
@@ -383,6 +386,70 @@ class TestHostArguments:
     def test_a_spec_cannot_carry_them(self) -> None:
         with pytest.raises(SpecError, match="threads"):
             load_criterion({"type": "in_thread", "args": {"thread": "t1", "threads": "x"}})
+
+    def test_the_account_resolver_is_not_in_the_spec(self) -> None:
+        action = MoveToAccount(2, Path("X"), accounts=lambda _: AccountTarget(MagicMock(), 1))
+        assert action.to_spec() == {
+            "type": "move_to_account",
+            "args": {"account": 2, "folder": ["X"]},
+        }
+        assert action == MoveToAccount(2, Path("X"))
+
+    def test_the_loader_supplies_the_account_resolver_inside_a_sequence(self) -> None:
+        def accounts(account: int) -> AccountTarget:
+            return AccountTarget(MagicMock(), account)
+
+        spec = {
+            "criterion": {"type": "is_read"},
+            "action": {
+                "seq": [
+                    {"type": "star"},
+                    {"type": "move_to_account", "args": {"account": 2, "folder": ["X"]}},
+                ]
+            },
+        }
+        on = _selected()
+        load_filter(spec, accounts=accounts).action.execute(on, [1])
+        assert on.left == {1}
+        [finish] = on.deferred
+        with patch("mailroom_core.filters.actions.transfer.move_to_account") as move:
+            finish()
+        assert move.call_args.kwargs["max_bytes"] == 2
+
+    def test_a_spec_cannot_carry_the_account_resolver(self) -> None:
+        with pytest.raises(SpecError, match="accounts"):
+            load_action(
+                {
+                    "type": "move_to_account",
+                    "args": {"account": 2, "folder": ["X"], "accounts": "x"},
+                }
+            )
+
+    @pytest.mark.parametrize(
+        "after",
+        [
+            {"type": "delete"},
+            {"type": "trash"},
+            {"type": "junk"},
+            {"type": "move_to", "args": {"folder": ["Y"]}},
+            {"type": "move_to_account", "args": {"account": 3, "folder": ["Y"]}},
+            {"seq": [{"type": "star"}, {"type": "trash"}]},
+        ],
+    )
+    def test_nothing_moves_or_deletes_after_it_in_a_sequence(self, after: dict[str, Any]) -> None:
+        move = {"type": "move_to_account", "args": {"account": 2, "folder": ["X"]}}
+        with pytest.raises(SpecError, match="after move_to_account"):
+            load_action({"seq": [move, {"type": "mark_as_read"}, after]})
+        with pytest.raises(SpecError, match="after move_to_account"):
+            load_action({"seq": [{"seq": [move]}, after]})
+        # Flags after it, and a move or a delete before it, are fine.
+        if "move_to_account" not in str(after):
+            load_action({"seq": [after, move, {"type": "star"}]})
+
+    @pytest.mark.parametrize("account", [0, -1, "2", True, 1.5])
+    def test_the_account_is_a_positive_integer(self, account: object) -> None:
+        with pytest.raises(SpecError):
+            load_action({"type": "move_to_account", "args": {"account": account, "folder": ["X"]}})
 
 
 class TestEqualityAndRepr:
