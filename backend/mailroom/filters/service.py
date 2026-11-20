@@ -25,6 +25,7 @@ from mailroom.filters.runs import (
     dry_run_result,
     dry_run_slot,
     enabled_filters,
+    matches_counted,
     prune_runs,
     run_filters_on,
     runs_of,
@@ -35,6 +36,8 @@ from mailroom.models import Filter, FilterRun, RuleSet
 from mailroom.worker.tasks import queue_run
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from sqlalchemy.orm import Session
 
     from mailroom.context import AppContext
@@ -79,7 +82,7 @@ class RuleSetPatch(BaseModel):
     enabled: bool | None = None
 
 
-class FilterOut(BaseModel):
+class FilterRowOut(BaseModel):
     id: int
     rule_set_id: int
     position: int
@@ -88,6 +91,13 @@ class FilterOut(BaseModel):
     spec: Spec
     created_at: datetime
     updated_at: datetime
+    """The user's last edit of its name, spec or switch; a reorder leaves it."""
+
+
+class FilterOut(FilterRowOut):
+    matches_30d: int
+    """Messages it acted on in real runs over the last 30 days (UTC), whatever its spec was then:
+    an edit keeps the count."""
 
 
 class RuleSetOut(BaseModel):
@@ -139,8 +149,19 @@ def _rule_set_out(rule_set: RuleSet) -> RuleSetOut:
     return RuleSetOut.model_validate(rule_set, from_attributes=True)
 
 
-def _filter_out(row: Filter) -> FilterOut:
-    return FilterOut.model_validate(row, from_attributes=True)
+def _filters_out(db: Session, rows: Sequence[Filter]) -> list[FilterOut]:
+    counted = matches_counted(db, [row.id for row in rows])
+    return [
+        FilterOut(
+            **FilterRowOut.model_validate(row, from_attributes=True).model_dump(),
+            matches_30d=counted.get(row.id, 0),
+        )
+        for row in rows
+    ]
+
+
+def _filter_out(db: Session, row: Filter) -> FilterOut:
+    return _filters_out(db, [row])[0]
 
 
 def _run_out(run: FilterRun) -> RunOut:
@@ -148,7 +169,7 @@ def _run_out(run: FilterRun) -> RunOut:
 
 
 def _detail(db: Session, rule_set: RuleSet) -> RuleSetDetail:
-    filters = [_filter_out(row) for row in _filters_of(db, rule_set.id)]
+    filters = _filters_out(db, _filters_of(db, rule_set.id))
     return RuleSetDetail(**_rule_set_out(rule_set).model_dump(), filters=filters)
 
 
@@ -472,7 +493,7 @@ def add_filter(
     db.commit()
     db.refresh(row)
     _log("filter_added", user_id, via, rule_set_id=rule_set.id, filter_id=row.id)
-    return _filter_out(row)
+    return _filter_out(db, row)
 
 
 def change_filter(
@@ -502,10 +523,12 @@ def change_filter(
         row.enabled = patch.enabled
     if spec is not None:
         row.spec = spec
+    if db.is_modified(row):
+        row.updated_at = func.clock_timestamp()
     db.commit()
     db.refresh(row)
     _log("filter_changed", user_id, via, rule_set_id=rule_set.id, filter_id=row.id)
-    return _filter_out(row)
+    return _filter_out(db, row)
 
 
 def remove_filter(
@@ -547,7 +570,7 @@ def reorder_filters(
         rows[filter_id].position = position
     db.commit()
     _log("filters_reordered", user_id, via, rule_set_id=rule_set.id)
-    return [_filter_out(row) for row in _filters_of(db, rule_set.id)]
+    return _filters_out(db, _filters_of(db, rule_set.id))
 
 
 _DRY_RUN_KIND: Final[dict[str, RefusalKind]] = {

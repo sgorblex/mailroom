@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Final
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Identity,
@@ -89,9 +90,20 @@ class Filter(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, server_default=true())
     spec: Mapped[dict[str, Any]] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    """The user's last edit of its name, spec or switch: a reorder or a folder rename leaves it."""
+
+
+class FilterMatchDay(Base):
+    """How many messages a filter acted on in its real runs on one day (UTC), kept 30 days."""
+
+    __tablename__ = "filter_match_day"
+
+    filter_id: Mapped[int] = mapped_column(
+        ForeignKey(Filter.id, ondelete="CASCADE"), primary_key=True
     )
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    count: Mapped[int] = mapped_column(Integer)
 
 
 class FilterRun(Base):

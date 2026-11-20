@@ -295,7 +295,9 @@ FILTER_TOOLS: Final[tuple[Tool[Any], ...]] = (
         title="Get a rule set",
         description=(
             "A rule set (its folder, trigger, marker and whether it is enabled) with all its "
-            "filters, in order, disabled ones too."
+            "filters, in order, disabled ones too. Each filter's matches_30d counts the messages "
+            "it acted on in real runs over the last 30 days, kept across edits; updated_at is "
+            "its last edit."
         ),
         group="filters_read",
         arguments=RuleSetArguments,

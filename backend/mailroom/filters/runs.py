@@ -11,9 +11,11 @@ from __future__ import annotations
 
 import logging
 from contextlib import contextmanager
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Final
 
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, func, literal, select, text
+from sqlalchemy.dialects.postgresql import insert
 
 from mailroom.accounts.store import AccountNotFound, load_accounts
 from mailroom.filters.spec import InvalidSpecError, loaded_filter
@@ -24,7 +26,7 @@ from mailroom.mail.connections import (
     unusable,
 )
 from mailroom.mail.pool import DeadlineExceeded
-from mailroom.models import AccountFilterSettings, Filter, FilterRun
+from mailroom.models import AccountFilterSettings, Filter, FilterMatchDay, FilterRun
 from mailroom_core.filters import Account, Flag, Folder, MatchTimeoutError, Path, marked_only
 from mailroom_core.filters import Filter as EngineFilter
 from mailroom_core.mail import MailError
@@ -51,6 +53,9 @@ _MARKS: Final = {"star": Flag.FLAGGED, "to_sort": Flag.TO_SORT}
 """The filter engine's flag for each marker a rule set may limit itself to."""
 RUNS_KEPT: Final = 100
 """Run history kept per rule set; older runs are pruned as new ones are recorded."""
+MATCH_DAYS: Final = 30
+"""A filter's match count covers its real runs of this many days, today (UTC) included; older days
+are pruned with the runs."""
 
 
 def run_filters_on(db: Session, user_id: int, account_id: int) -> bool:
@@ -247,8 +252,50 @@ def runs_of(db: Session, rule_set_id: int, limit: int) -> list[FilterRun]:
     )
 
 
+def _first_counted_day() -> date:
+    return datetime.now(UTC).date() - timedelta(days=MATCH_DAYS - 1)
+
+
+def count_matches(db: Session, result: dict[str, Any]) -> None:
+    """Add a real run's matches, each filter's total in ``result`` (``labelled_report``), to its
+    count for today; a dry run's are not counted, nor a filter removed meanwhile. The caller
+    commits."""
+    if result.get("dry_run"):
+        return
+    today = datetime.now(UTC).date()
+    for entry in result.get("filters", []):
+        filter_id = entry.get("filter_id")
+        matched = entry.get("matched_total", len(entry.get("matched", [])))
+        if not isinstance(filter_id, int) or not matched:
+            continue
+        rows = select(Filter.id, literal(today), literal(matched)).where(Filter.id == filter_id)
+        statement = insert(FilterMatchDay).from_select(["filter_id", "day", "count"], rows)
+        db.execute(
+            statement.on_conflict_do_update(
+                index_elements=[FilterMatchDay.filter_id, FilterMatchDay.day],
+                set_={"count": FilterMatchDay.count + statement.excluded.count},
+            )
+        )
+
+
+def matches_counted(db: Session, filter_ids: Sequence[int]) -> dict[int, int]:
+    """The messages each filter acted on in the last ``MATCH_DAYS`` days; none: absent."""
+    if not filter_ids:
+        return {}
+    rows = db.execute(
+        select(FilterMatchDay.filter_id, func.sum(FilterMatchDay.count))
+        .where(
+            FilterMatchDay.filter_id.in_(filter_ids),
+            FilterMatchDay.day >= _first_counted_day(),
+        )
+        .group_by(FilterMatchDay.filter_id)
+    )
+    return {filter_id: int(total) for filter_id, total in rows}
+
+
 def prune_runs(db: Session, rule_set_id: int, keep: int = RUNS_KEPT) -> None:
-    """Forget all but the rule set's newest ``keep`` runs; a run queued or in progress stays."""
+    """Forget all but the rule set's newest ``keep`` runs, a run queued or in progress staying,
+    and its filters' match counts older than ``MATCH_DAYS``."""
     newest = (
         select(FilterRun.id)
         .where(FilterRun.rule_set_id == rule_set_id)
@@ -260,5 +307,11 @@ def prune_runs(db: Session, rule_set_id: int, keep: int = RUNS_KEPT) -> None:
             FilterRun.rule_set_id == rule_set_id,
             FilterRun.finished_at.is_not(None),
             FilterRun.id.not_in(newest),
+        )
+    )
+    filters = select(Filter.id).where(Filter.rule_set_id == rule_set_id)
+    db.execute(
+        delete(FilterMatchDay).where(
+            FilterMatchDay.filter_id.in_(filters), FilterMatchDay.day < _first_counted_day()
         )
     )

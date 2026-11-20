@@ -602,10 +602,13 @@ What they do and the route list: [`filters.md`](filters.md). How:
 
 - **Storage** (schema `app`): `rule_set` (by `user_id` and the account's id in schema `core`),
   `filter` (`position` unique per rule set, deferred so a reorder swaps freely; `spec` as
-  the filter engine's `load_filter(spec).to_spec()` gives it back), `filter_run`. Removing an account
+  the filter engine's `load_filter(spec).to_spec()` gives it back), `filter_run`,
+  `filter_match_day` (a filter's real-run matches per UTC day, added to by the worker as a run
+  finishes). Removing an account
   removes its rule sets, and a rule set its filters and runs; removing a user removes all of
   theirs, with their accounts. Each rule
-  set keeps its newest 100 runs, and every run still queued or in progress. A report is stored
+  set keeps its newest 100 runs, and every run still queued or in progress, and its filters'
+  match days of the last 30, pruned as runs are. A report is stored
   without NUL characters (`jsonb` refuses them; a header may decode to one).
 - **The folder picker's** `GET /accounts/{id}/folders` lists through the mail service, as MCP's
   `folders_list` does: the selectable folders, each split on its own delimiter, without counts.
@@ -691,7 +694,8 @@ What they do and the route list: [`filters.md`](filters.md). How:
 - **Logs:** `rule_set_added`, `rule_set_changed`, `rule_set_removed`, `filter_added`,
   `filter_changed`, `filter_removed`, `filters_reordered`, `dry_run` (with `outcome`),
   `run_requested`, `run_filters_changed` (with `account_id`); from the worker `run_queued` and
-  `rule_set_run` (with `trigger` and `outcome`: `ok`, the error's code, or `gone`); with `user_id`
+  `rule_set_run` (with `trigger` and `outcome`: `ok`, the error's code, or `gone`) and
+  `match_count_failed` (with `error`, the exception's type); with `user_id`
   and `rule_set_id`, `filter_id` or `run_id`, and from the API `via` as for accounts; never a spec
   or a message.
 
