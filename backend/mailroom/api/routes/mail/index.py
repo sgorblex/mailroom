@@ -3,6 +3,8 @@ or off. The age limit is the user's own, under ``/auth/me``."""
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, StrictBool
 
 from mailroom.api.deps import AccountId, Context, CurrentUser, DbSession
@@ -21,10 +23,17 @@ class IndexFolderChange(BaseModel):
 
 @mail_router.get("/index/accounts/{account_id}")
 def index_status(
-    account_id: AccountId, ctx: Context, db: DbSession, user: CurrentUser
+    account_id: AccountId,
+    ctx: Context,
+    db: DbSession,
+    user: CurrentUser,
+    totals: Literal["all", "waiting"] = "all",
 ) -> IndexStatus:
-    """The account's selectable folders, each with whether and how it is indexed."""
-    return index.index_status(ctx, db, user.id, account_id, user.index_max_age_days)
+    """The account's selectable folders, each with whether and how it is indexed; with
+    ``totals=waiting``, the server's count of the folders waiting for their sync only."""
+    return index.index_status(
+        ctx, db, user.id, account_id, user.index_max_age_days, waiting_only=totals == "waiting"
+    )
 
 
 @mail_router.put("/index/accounts/{account_id}/folders")

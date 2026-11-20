@@ -18,6 +18,21 @@ export function messagesKey(source: string, cursor: string | null): readonly unk
   return ['messages', source, cursor]
 }
 
+/** Every account's mail index status. */
+export const INDEX_KEY = ['mail-index'] as const
+
+export function indexStatusKey(account: AccountId): readonly unknown[] {
+  return [...INDEX_KEY, account]
+}
+
+/** The account's index status as the indexing line reads it: the waiting folders' counts only. */
+export function indexWaitingKey(account: AccountId): readonly unknown[] {
+  return [...indexStatusKey(account), 'waiting']
+}
+
+/** How often an index status is read again while a folder's first sync is under way. */
+export const INDEXING_POLL_MS = 15_000
+
 export function messageKey(ref: string, offset: number, includeQuoted: boolean): readonly unknown[] {
   return ['message', ref, offset, includeQuoted]
 }

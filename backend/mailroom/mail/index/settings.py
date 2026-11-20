@@ -209,14 +209,30 @@ def _status(
 
 
 def index_status(
-    ctx: AppContext, db: Session, user_id: int, account_id: int, user_days: int | None
+    ctx: AppContext,
+    db: Session,
+    user_id: int,
+    account_id: int,
+    user_days: int | None,
+    *,
+    waiting_only: bool = False,
 ) -> IndexStatus:
     """The account's selectable folders as the index keeps them, in the listing's order; each one
-    seen for the first time gets its row."""
-    gmail, folders = service.indexable_folders(ctx, user_id, account_id)
-    kinds = _kinds(gmail, folders)
-    _first_sight(db, user_id, account_id, gmail, kinds)
-    rows = _rows(db, user_id, account_id)
+    seen for the first time gets its row. ``waiting_only``: for a page that only follows a first
+    sync, the server's count (STATUS) of the folders waiting for or in their sync only, and no
+    row written."""
+    if waiting_only:
+        rows = _rows(db, user_id, account_id)
+        db.commit()
+        gmail, folders = service.indexable_folders(
+            ctx, user_id, account_id, counted=lambda folder: _waiting(rows.get(folder.path))
+        )
+        kinds = _kinds(gmail, folders)
+    else:
+        gmail, folders = service.indexable_folders(ctx, user_id, account_id)
+        kinds = _kinds(gmail, folders)
+        _first_sight(db, user_id, account_id, gmail, kinds)
+        rows = _rows(db, user_id, account_id)
     all_mail = next(
         (rows.get(folder.path) for folder, _ in kinds if gmail and folder.role == "all"), None
     )
@@ -227,6 +243,10 @@ def index_status(
         max_age_cap_days=max_age_cap(),
         folders=[_status(folder, kind, rows.get(folder.path), all_mail) for folder, kind in kinds],
     )
+
+
+def _waiting(row: MailIndexFolder | None) -> bool:
+    return row is not None and row.enabled and row.state in ("pending", "syncing")
 
 
 def _row(db: Session, user_id: int, account_id: int, path: str) -> MailIndexFolder | None:
