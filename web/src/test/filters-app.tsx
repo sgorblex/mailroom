@@ -1,4 +1,5 @@
 import { render } from '@testing-library/react'
+import { QueryClientProvider } from '@tanstack/react-query'
 import {
   createMemoryHistory,
   createRootRoute,
@@ -15,6 +16,7 @@ import { FilterDraftRoute } from '@/filters/draft-screen.tsx'
 import { validateFilterDraftSearch } from '@/filters/draft-search.ts'
 import { FiltersScreen } from '@/filters/filters-screen.tsx'
 import { RuleSetRoute } from '@/filters/rule-set-screen.tsx'
+import { createQueryClient } from '@/lib/query-client.ts'
 
 import { renderSignedIn } from './signed-in.tsx'
 
@@ -59,7 +61,7 @@ export function renderFiltersApp(path: string, { features }: { features?: Featur
   vi.stubGlobal('scrollTo', vi.fn())
   const app = <RouterProvider router={router} />
   if (features === undefined) {
-    render(app)
+    render(<QueryClientProvider client={createQueryClient()}>{app}</QueryClientProvider>)
   } else {
     renderSignedIn(app, { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true }, features)
   }

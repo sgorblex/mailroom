@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearch } from '@tanstack/react-router'
 import { Bookmark, Forward, Paperclip, Reply, Star } from 'lucide-react'
 
@@ -9,7 +10,6 @@ import type { MatchScope, MessageItem, MessagePage, SourceFailure } from '@/api/
 import { useTimeZone } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Menu, type MenuItem, type MenuPoint } from '@/components/ui/menu.tsx'
-import { useLoad } from '@/lib/use-load.ts'
 import { useUnmountSignal } from '@/lib/use-unmount-signal.ts'
 import { cn } from '@/lib/utils.ts'
 
@@ -21,6 +21,7 @@ import { addressLabel, formatListDate } from './format.ts'
 import { MAIL_NS } from './i18n.ts'
 import { endMessageDrag, startMessageDrag } from './message-drag.ts'
 import { ACCOUNT_NOT_FOUND, mailCodeMessage, mailErrorMessage } from './messages.ts'
+import { fetchPage, messagesKey, READ_ON_MOUNT } from './queries.ts'
 import { SelectMatching } from './select-matching.tsx'
 import { TOAST_RETURN_ID } from './toast.tsx'
 import { useTriageActions } from './triage-actions.ts'
@@ -32,31 +33,37 @@ type More = { kind: 'idle' } | { kind: 'loading' } | { kind: 'failed'; message: 
  * A folder's messages or a search's, newest first, a page at a time: "Load more" asks for the
  * next one with the cursor the last page gave. Mounted anew (by key) for each source. Each row
  * names where it is: its account and folder in a search, its folder in a folder's subfolders.
+ * Invalidating its first page (`messagesKey`) reads the list again, keeping it on show meanwhile.
  */
 export function MessageList({
+  source,
   loadPage,
   match,
   searching,
   subfolders = false,
-  reloadKey,
 }: {
+  /** Names the list, for its pages' query keys. */
+  source: string
   loadPage: (cursor: string | null, signal: AbortSignal) => Promise<MessagePage>
   /** What the list shows as a search, for acting on every message it matches; without it, only loaded rows are. */
   match?: MatchScope
   searching: boolean
   /** Read with its subfolders. */
   subfolders?: boolean
-  /** A new value reads the list again from its first page, keeping it on show meanwhile. */
-  reloadKey?: unknown
 }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
-  const loadFirst = useCallback((signal: AbortSignal) => loadPage(null, signal), [loadPage])
-  const { state, retry } = useLoad(loadFirst, (error) => mailErrorMessage(t, error, t('list.loadFailed'), ACCOUNT_NOT_FOUND), reloadKey)
+  const queryClient = useQueryClient()
+  const first = useQuery({
+    queryKey: messagesKey(source, null),
+    queryFn: ({ signal }) => loadPage(null, signal),
+    ...READ_ON_MOUNT,
+  })
   const [later, setLater] = useState<MessagePage[]>([])
   const [more, setMore] = useState<More>({ kind: 'idle' })
-  const [readFor, setReadFor] = useState(reloadKey)
-  if (readFor !== reloadKey) {
-    setReadFor(reloadKey)
+  // The first page read again: the pages after it start over.
+  const [readAt, setReadAt] = useState(first.dataUpdatedAt)
+  if (readAt !== first.dataUpdatedAt) {
+    setReadAt(first.dataUpdatedAt)
     setLater([])
   }
   const [menu, setMenu] = useState<{ row: MessageItem; anchor: HTMLElement; point: MenuPoint } | null>(null)
@@ -66,7 +73,7 @@ export function MessageList({
   const unmountSignal = useUnmountSignal()
   const triage = useTriage()
   const { removed, setVisible } = triage
-  const loaded = state.kind === 'loaded' ? [state.value, ...later] : []
+  const loaded = first.status === 'success' ? [first.data, ...later] : []
   // Rows moved away since are gone in place.
   const messages = loaded.flatMap((page) => page.messages).filter((message) => !removed.has(message.ref))
   useEffect(() => {
@@ -79,20 +86,26 @@ export function MessageList({
     [setVisible],
   )
 
-  if (state.kind === 'loading') {
+  if (first.status === 'pending') {
     return (
       <p role="status" className="text-sm text-muted-foreground">
         {t('list.loading')}
       </p>
     )
   }
-  if (state.kind === 'failed') {
+  if (first.status === 'error') {
     return (
       <div className="flex flex-col items-start gap-3">
         <p role="alert" className="text-sm">
-          {state.message}
+          {mailErrorMessage(t, first.error, t('list.loadFailed'), ACCOUNT_NOT_FOUND)}
         </p>
-        <Button variant="outline" size="sm" onClick={retry}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            void first.refetch()
+          }}
+        >
           {t('auth.retry')}
         </Button>
       </div>
@@ -109,7 +122,7 @@ export function MessageList({
     setMore({ kind: 'loading' })
     const signal = unmountSignal()
     try {
-      const page = await loadPage(cursor, signal)
+      const page = await fetchPage(queryClient, messagesKey(source, cursor), (querySignal) => loadPage(cursor, querySignal), signal)
       setLater((value) => [...value, page])
       setMore({ kind: 'idle' })
     } catch (error) {
