@@ -114,6 +114,12 @@ def set_time_zone(db: Session, user: User, zone: TimeZoneName | None) -> None:
     db.commit()
 
 
+def set_mark_read_subfolders(db: Session, user: User, subfolders: bool) -> None:
+    """Keep whether ``user``'s "mark all as read" takes a folder's subfolders by default."""
+    user.mark_read_subfolders = subfolders
+    db.commit()
+
+
 def reset_password(db: Session, user: User, password: str, *, by: User) -> None:
     """An admin sets ``user``'s password and signs them out everywhere. Not their own, which needs
     the current password like anyone else's."""

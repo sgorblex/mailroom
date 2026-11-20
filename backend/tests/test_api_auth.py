@@ -21,7 +21,12 @@ if TYPE_CHECKING:
 
 EVERY_FEATURE = ["mail", "mcp", "filters"]
 SIGNED_IN = {
-    "user": {"username": USERNAME, "is_admin": False, "time_zone": None},
+    "user": {
+        "username": USERNAME,
+        "is_admin": False,
+        "time_zone": None,
+        "mark_read_subfolders": True,
+    },
     "features": EVERY_FEATURE,
 }
 SIGNED_OUT = {"user": None, "features": EVERY_FEATURE}
@@ -197,6 +202,38 @@ def test_an_unknown_time_zone_is_refused(user_client: TestClient, zone: object) 
 
 def test_setting_a_time_zone_needs_a_session(api_client: TestClient) -> None:
     response = api_client.put("/api/v1/auth/me/time-zone", json={"time_zone": "UTC"})
+    assert response.status_code == 401
+
+
+def test_the_user_picks_what_mark_all_as_read_does_first(
+    user_client: TestClient, db_session: Session, user: User
+) -> None:
+    route = "/api/v1/auth/me/mark-read-subfolders"
+    response = user_client.put(route, json={"mark_read_subfolders": False})
+    assert response.status_code == 200
+    assert response.json()["mark_read_subfolders"] is False
+    assert user_client.get("/api/v1/auth/me").json()["user"]["mark_read_subfolders"] is False
+    db_session.expire_all()
+    stored = db_session.get(User, user.id)
+    assert stored is not None
+    assert stored.mark_read_subfolders is False
+
+    for body in ({"mark_read_subfolders": "false"}, {"mark_read_subfolders": None}, {}):
+        assert user_client.put(route, json=body).status_code == 422
+    assert user_client.get("/api/v1/auth/me").json()["user"]["mark_read_subfolders"] is False
+
+    cross_site = user_client.put(
+        route, json={"mark_read_subfolders": True}, headers={"Sec-Fetch-Site": "cross-site"}
+    )
+    assert cross_site.status_code == 403
+    assert user_client.put(route, json={"mark_read_subfolders": True}).status_code == 200
+    assert user_client.get("/api/v1/auth/me").json()["user"]["mark_read_subfolders"] is True
+
+
+def test_picking_what_mark_all_as_read_does_needs_a_session(api_client: TestClient) -> None:
+    response = api_client.put(
+        "/api/v1/auth/me/mark-read-subfolders", json={"mark_read_subfolders": False}
+    )
     assert response.status_code == 401
 
 

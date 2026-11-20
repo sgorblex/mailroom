@@ -2,7 +2,17 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Identity, String, false, func
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Identity,
+    String,
+    false,
+    func,
+    true,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from mailroom.models.base import Base
@@ -20,6 +30,8 @@ class User(Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, server_default=false())
     # An IANA name, canonical case; None until set, and UTC is used.
     time_zone: Mapped[str | None] = mapped_column(String(64))
+    # What "mark all as read" on a folder with subfolders does first: True, them too.
+    mark_read_subfolders: Mapped[bool] = mapped_column(Boolean, server_default=true())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

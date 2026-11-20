@@ -221,6 +221,12 @@ training, flags read back, or the `MailError`), and per message an `AuditItem`
 (`FlagState`), comparing them ignoring case as IMAP does; `SearchQuery.to_sort` searches `KEYWORD`
 or `UNKEYWORD $MailroomSort`, and a list line shows `to sort`.
 
+`mark_folder_read` takes a folder with the UIDVALIDITY and UIDNEXT its listing gave (`Folder`),
+and in one read-write session refuses with `stale_reference` when the UIDVALIDITY changed, then
+sets `\Seen` (`store_flags`, 1,000 UIDs a STORE) on what `UID SEARCH UNSEEN UID 1:<uidnext-1>`
+finds: mail that arrived since the listing stays unread. It returns the count and notes one
+`AuditItem` for the folder, `messages` that count, refused ones included.
+
 **Keywords.** A folder keeps keywords when its read-write SELECT answers PERMANENTFLAGS holding
 `\*` (`MailboxContext.keywords`; never under EXAMINE). `MailConnections.keywords(account)` asks
 it once of INBOX, read-write, and caches it next to the capabilities until `close`. A Gmail

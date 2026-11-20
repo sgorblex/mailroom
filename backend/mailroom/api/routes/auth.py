@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, HTTPException, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from mailroom.api.deps import CurrentUser, DbSession, SessionCookie
 from mailroom.auth.password import MAX_PASSWORD_LENGTH, password_matches
@@ -18,7 +18,7 @@ from mailroom.auth.sessions import (
     session_user,
 )
 from mailroom.auth.throttle import LoginThrottle, client_key
-from mailroom.auth.users import set_time_zone, user_by_username
+from mailroom.auth.users import set_mark_read_subfolders, set_time_zone, user_by_username
 from mailroom.config.features import Feature, Features
 from mailroom.models import User
 from mailroom_core.config import TimeZone
@@ -38,14 +38,27 @@ class UserOut(BaseModel):
     is_admin: bool
     time_zone: str | None
     """An IANA name; null until the user sets one, and dates are then in UTC."""
+    mark_read_subfolders: bool
+    """What "mark all as read" on a folder with subfolders does first: true, them too."""
 
     @classmethod
     def of(cls, user: User) -> UserOut:
-        return cls(username=user.username, is_admin=user.is_admin, time_zone=user.time_zone)
+        return cls(
+            username=user.username,
+            is_admin=user.is_admin,
+            time_zone=user.time_zone,
+            mark_read_subfolders=user.mark_read_subfolders,
+        )
 
 
 class TimeZoneChange(BaseModel):
     time_zone: TimeZone | None
+
+
+class MarkReadSubfoldersChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mark_read_subfolders: StrictBool
 
 
 class MeResponse(BaseModel):
@@ -95,6 +108,20 @@ def change_time_zone(body: TimeZoneChange, db: DbSession, user: CurrentUser) -> 
     is ``Europe/Rome``). An unknown zone is a 422; null unsets it."""
     set_time_zone(db, user, body.time_zone)
     logger.info("time_zone_changed", extra={"event": "time_zone_changed", "user_id": user.id})
+    return UserOut.of(user)
+
+
+@auth_router.put("/me/mark-read-subfolders")
+def change_mark_read_subfolders(
+    body: MarkReadSubfoldersChange, db: DbSession, user: CurrentUser
+) -> UserOut:
+    """Whether the web's "mark all as read" on a folder with subfolders marks them too by
+    default (the other choice stays in the folder's menu). The answer is the user."""
+    set_mark_read_subfolders(db, user, body.mark_read_subfolders)
+    logger.info(
+        "mark_read_subfolders_changed",
+        extra={"event": "mark_read_subfolders_changed", "user_id": user.id},
+    )
     return UserOut.of(user)
 
 

@@ -161,13 +161,17 @@ def test_folders_carry_roles_and_counts(mailbox: Mailbox) -> None:
     listed = mailbox.get("/accounts/1/folders")
     assert listed["account_id"] == 1
     folders = {folder["path"]: folder for folder in listed["folders"]}
-    assert folders["INBOX"] == {
+    inbox = folders["INBOX"]
+    assert isinstance(inbox["uid_validity"], int)
+    assert inbox == {
         "path": "INBOX",
         "role": "inbox",
         "unread": 1,
         "total": 2,
         "delimiter": "/",
         "selectable": True,
+        "uid_validity": inbox["uid_validity"],
+        "uid_next": 3,
     }
     assert folders["Junk"]["role"] == "junk"
     assert listed["folders"][0]["path"] == "INBOX"
@@ -1740,6 +1744,8 @@ def test_all_folders_include_the_unselectable_ones(mailbox: Mailbox) -> None:
         "total": 0,
         "delimiter": "/",
         "selectable": False,
+        "uid_validity": None,
+        "uid_next": None,
     }
     assert every["Box/Leaf"]["selectable"] is True
     assert every["INBOX"]["selectable"] is True
@@ -1785,6 +1791,57 @@ def test_folder_writes_are_refused_and_write_nothing(
     )
 
 
+def test_a_folder_is_marked_read_up_to_the_listing_the_user_saw(
+    mailbox: Mailbox, audited: Callable[[int], list[AuditRecord]], user: User
+) -> None:
+    create_folders(mailbox.server, mailbox.login, "Lists")
+    mailbox.seed(mime("one"), folder="Lists")
+    mailbox.seed(mime("two"), folder="Lists")
+    mailbox.seed(mime("seen"), folder="Lists", flags=("\\Seen",))
+    listed = folder_paths(mailbox)["Lists"]
+    assert listed["unread"] == 2
+    mailbox.seed(mime("later"), folder="Lists")
+
+    stale = folder_call(
+        mailbox,
+        "mark-read",
+        folder="Lists",
+        uid_validity=listed["uid_validity"] + 1,
+        uid_next=listed["uid_next"],
+    )
+    assert detail(stale) == (409, "stale_reference")
+    assert folder_paths(mailbox)["Lists"]["unread"] == 3
+
+    marked = folder_call(
+        mailbox,
+        "mark-read",
+        folder="Lists",
+        uid_validity=listed["uid_validity"],
+        uid_next=listed["uid_next"],
+    )
+    assert (marked.status_code, marked.json()) == (
+        200,
+        {"account_id": 1, "folder": "Lists", "marked": 2},
+    )
+    assert marked.headers["cache-control"] == "private, no-store"
+    unread = [
+        message.subject
+        for message in folder_contents(mailbox.server, mailbox.login, "Lists")
+        if "\\Seen" not in message.flags
+    ]
+    assert unread == ["later"]
+
+    missing = folder_call(mailbox, "mark-read", folder="Gone", uid_validity=1, uid_next=2)
+    assert detail(missing) == (404, "mailbox_missing")
+
+    records = audited(user.id)
+    assert [(r.actor, r.action, r.account_id, r.result, r.detail) for r in records] == [
+        ("user", "mark_folder_read", 1, "stale_reference", {"folder": "Lists", "messages": 0}),
+        ("user", "mark_folder_read", 1, "ok", {"folder": "Lists", "messages": 2}),
+        ("user", "mark_folder_read", 1, "mailbox_missing", {"folder": "Gone", "messages": 0}),
+    ]
+
+
 def test_folder_requests_are_checked_before_anything_connects(mailbox: Mailbox) -> None:
     for action, body in (
         ("create", {"name": "No parent given"}),
@@ -1798,6 +1855,10 @@ def test_folder_requests_are_checked_before_anything_connects(mailbox: Mailbox) 
         ("delete", {"folder": "Lists", "messages": "1"}),
         ("delete", {"folder": "Lists", "messages": True}),
         ("delete", {"folder": "x" * 1001, "messages": 0}),
+        ("mark-read", {"folder": "Lists", "uid_validity": 1}),
+        ("mark-read", {"folder": "Lists", "uid_validity": 1, "uid_next": 0}),
+        ("mark-read", {"folder": "Lists", "uid_validity": 1, "uid_next": 2**32 + 1}),
+        ("mark-read", {"folder": "Lists", "uid_validity": "1", "uid_next": 2}),
     ):
         response = folder_call(mailbox, action, **body)
         assert response.status_code == 422, (action, body)

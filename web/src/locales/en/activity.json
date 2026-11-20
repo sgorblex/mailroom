@@ -38,6 +38,7 @@
     "folder_create": "Folder created",
     "folder_rename": "Folder renamed",
     "folder_delete": "Folder deleted",
+    "mark_folder_read": "Folder marked read",
     "run_failed": "Filter run failed"
   },
   "results": {
