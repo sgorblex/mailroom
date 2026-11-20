@@ -99,8 +99,8 @@ Behaviour is mailroom-core's `mail.organize` (`move_messages`, `archive_messages
 - **Archive:** move to the account's folder with role `archive`. The web toolbar hides the action
   for an account without one.
 - **Report spam:** move to the account's folder with role `junk`, which trains the account's Junk
-  as any move there does ([Junk training](#junk-training)); audited as `junk`. REST only: an
-  agent moves to the Junk folder by its path.
+  as any move there does ([Junk training](#junk-training)); audited as `junk`. REST and the web
+  only: an agent moves to the Junk folder by its path.
 - **Trash:** move to the account's folder with role `trash`. This is never a permanent delete:
   organizing deletes no mail (deleting a whole folder is [its own action](#folder-management)).
 - **Flag:** set or clear `\Seen` (read/unread), `\Flagged` (star/unstar) and the
@@ -236,7 +236,8 @@ MCP `message_read` still never set `\Seen`.
   how many were left unchanged. At the end the list and the folders are read again and the
   selection cleared; done in full, the toast says so, without Undo.
 - **Toolbar** acting on the selection, or on the open message when nothing is selected: Archive
-  (hidden when the account has no selectable archive-role folder), Trash, Move to… (a picker over
+  (hidden when the account has no selectable archive-role folder), Report spam (likewise without a
+  junk-role one), Trash, Move to… (a picker over
   the account's selectable folders, Drafts, Sent and the folder the messages are in left out),
   Move to another account… (when the user has an account none of them is in: the account, then
   whether the originals go to Trash, the default, or are deleted for good, then the folder;
@@ -277,9 +278,9 @@ MCP `message_read` still never set `\Seen`.
 - **Undo:** an action that went through in full says so in a toast at the foot of the screen,
   which stays across a change of folder or search and closes after 8 s, the clock paused while
   the pointer is on it or focus is in it; a live region announces it. An action's failure stays a
-  notice under the toolbar, without Undo, and a new action closes the toast. For a move, archive or
-  trash the toast offers **Undo**, which moves each source folder's messages back from the
-  `new_refs` the action answered (50 refs a request) and reads the list again; when a group
+  notice under the toolbar, without Undo, and a new action closes the toast. For a move, archive,
+  report of spam or trash the toast offers **Undo**, which moves each source folder's messages
+  back from the `new_refs` the action answered (50 refs a request) and reads the list again; when a group
   answered no `new_refs` (or fewer than it moved) the toast says it cannot be undone instead.
   For a flag change (star, To sort, read) Undo sets back the flags it changed on each message,
   the refs being the same. A move to another account offers no Undo. Undo sends its own requests,
@@ -287,6 +288,15 @@ MCP `message_read` still never set `\Seen`.
   the account as that move would ([Junk training](#junk-training)). Undo's own failure shows in
   the toast, which says it did not take back every change. Closing the toast puts focus back
   where it was before the toast took it.
+- **A filter after a report of spam:** where the instance runs filters, a report of spam that went
+  through in full, its messages all from one sender of one account, offers under the toolbar a
+  filter sending that sender's mail to Junk (`from_is` → `junk`), saying it acts only while its
+  rule set and the account's Run filters are on. Nothing is added unless the user chooses *Add the
+  filter*: it goes to a rule set of the account's `INBOX` that runs by itself (one acting on new
+  mail, an enabled one first), else to a new one, made `new_mail` and disabled as any new rule set
+  (a retry after the filter failed adds to that one). Then a disabled rule set and Run filters off
+  are each named with a button turning it on; neither is turned on unasked. Undo, *No thanks* or
+  another report of spam takes the offer away.
 - A selection over 50 refs is sent 50 at a time; a refused batch is shown as failed groups and the
   rest are still sent; only when every batch is refused is the outcome worded as that refusal.
 - **Keyboard shortcuts** on `/mail`, the screen's own keys and the action registry's:
@@ -301,6 +311,7 @@ MCP `message_read` still never set `\Seen`.
 | `r` / `a` / `f` | Reply / reply all / forward ([below](#keyboard-shortcuts)) |
 | `c` | Compose a new message ([below](#keyboard-shortcuts)) |
 | `e` | Archive |
+| `!` | Report spam |
 | `#` | Trash |
 | `v` | Open the move picker |
 | `s` | Star or unstar |

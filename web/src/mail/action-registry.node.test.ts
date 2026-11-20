@@ -33,6 +33,7 @@ function context(actions: Partial<TriageActions> = {}, overrides: Partial<Action
 const offered: Partial<TriageActions> = {
   targets: [target],
   archive: vi.fn(),
+  junk: vi.fn(),
   trash: vi.fn(),
   star: { flagged: true, run: vi.fn() },
   toSort: { toSort: true, unsupported: false, run: vi.fn() },
@@ -51,8 +52,9 @@ describe('the action registry', () => {
     const greyed = listedActions('triage', matching)
       .filter((action) => unavailableReason(action, matching) !== null)
       .map((action) => action.id)
-    expect(greyed).toEqual(['archive', 'moveToAccount'])
+    expect(greyed).toEqual(['archive', 'reportSpam', 'moveToAccount'])
     expect(shortcutAction('e', matching, { busy: false, composing: false })).toBeUndefined()
+    expect(shortcutAction('!', matching, { busy: false, composing: false })).toBeUndefined()
     expect(shortcutAction('#', matching, { busy: false, composing: false })?.id).toBe('trash')
   })
 
@@ -60,6 +62,7 @@ describe('the action registry', () => {
     const both = context({ ...offered, read: { seen: true, run: vi.fn() }, matching: 1200, unstar: vi.fn(), markSorted: vi.fn() })
     expect(ids('triage', both)).toEqual([
       'archive',
+      'reportSpam',
       'trash',
       'move',
       'moveToAccount',
@@ -82,6 +85,7 @@ describe('the action registry', () => {
     expect(ids('triage', context())).toEqual([])
     expect(ids('triage', context(offered))).toEqual([
       'archive',
+      'reportSpam',
       'trash',
       'move',
       'moveToAccount',
@@ -89,7 +93,7 @@ describe('the action registry', () => {
       'toSort',
       'markUnread',
     ])
-    expect(ids('triage', context({ ...offered, archive: null, otherAccounts: null, read: { seen: true, run: vi.fn() } }))).toEqual([
+    expect(ids('triage', context({ ...offered, archive: null, junk: null, otherAccounts: null, read: { seen: true, run: vi.fn() } }))).toEqual([
       'trash',
       'move',
       'star',
@@ -151,6 +155,7 @@ describe('the action registry', () => {
   it('runs a key only when its action can run now', () => {
     const idle = { busy: false, composing: false }
     expect(shortcutAction('e', context(offered), idle)?.id).toBe('archive')
+    expect(shortcutAction('!', context(offered), idle)?.id).toBe('reportSpam')
     expect(shortcutAction('e', context(), idle)).toBeUndefined()
     expect(shortcutAction('e', context(offered), { busy: true, composing: false })).toBeUndefined()
     // `u` marks unread even where the toolbar offers Mark as read.

@@ -6,6 +6,7 @@ import type { AccountId } from '@/api/accounts.ts'
 import {
   archiveMessages,
   flagMessages,
+  junkMessages,
   listMailFolders,
   moveMessages,
   moveToAccount,
@@ -34,6 +35,7 @@ import {
   type Matching,
   type MatchingAction,
   type Outcome,
+  type SpamOffer,
   type Target,
   type Triage,
   type Undo,
@@ -87,6 +89,8 @@ function destination(action: Action, folders: MailFolder[] | undefined): string 
       return undefined
     case 'archive':
       return roleFolder(folders, 'archive')?.path
+    case 'junk':
+      return roleFolder(folders, 'junk')?.path
     case 'trash':
       return roleFolder(folders, 'trash')?.path
     case 'flag':
@@ -102,11 +106,22 @@ function request(action: Action, refs: string[], signal: AbortSignal): Promise<O
       return moveToAccount(refs, action.account, action.folder.path, action.removal, signal)
     case 'archive':
       return archiveMessages(refs, signal)
+    case 'junk':
+      return junkMessages(refs, signal)
     case 'trash':
       return trashMessages(refs, signal)
     case 'flag':
       return flagMessages(refs, action.change, signal)
   }
+}
+
+/** The one sender of messages all of one account, to offer a filter on; `null` when they have several or none known. */
+function oneSender(targets: Target[]): SpamOffer | null {
+  const [first] = targets
+  const address = first?.from?.address.trim() ?? ''
+  const same = (target: Target): boolean =>
+    target.account_id === first?.account_id && target.from?.address.trim().toLowerCase() === address.toLowerCase()
+  return first === undefined || address === '' || !targets.every(same) ? null : { account: first.account_id, address }
 }
 
 /** `items` in requests of at most `BATCH`. */
@@ -197,6 +212,10 @@ export function TriageProvider({
     setBusy(value)
   }, [])
   const [reloads, setReloads] = useState(0)
+  const [spamOffer, setSpamOffer] = useState<SpamOffer | null>(null)
+  const dismissSpamOffer = useCallback(() => {
+    setSpamOffer(null)
+  }, [])
   // The silent mark-read of each ref still in flight: the user's own action on that ref waits for
   // it, so the server sees (and the screen applies) the two in that order.
   const pendingSilent = useRef(new Map<string, Promise<void>>())
@@ -301,6 +320,7 @@ export function TriageProvider({
         return
       }
       setBusyState(true)
+      setSpamOffer(null)
       const signal = unmountSignal()
       let failed = false
       // The flags set back, per ref.
@@ -384,6 +404,10 @@ export function TriageProvider({
         return
       }
       const key = sourceKey
+      // Another report of spam takes the last one's offer away, whatever comes of it.
+      if (action.kind === 'junk' && !silent) {
+        setSpamOffer(null)
+      }
       // Messages already where the action would put them are left alone.
       const pending = targets.filter((target) => {
         const where = destination(action, loadedFolders(foldersRef.current[target.account_id]))
@@ -493,6 +517,9 @@ export function TriageProvider({
       if (outcome.kind === 'refused' || outcome.failures.length > 0 || count === 0) {
         updateScope(key, () => ({ outcome }))
         return
+      }
+      if (action.kind === 'junk') {
+        setSpamOffer(oneSender(pending))
       }
       // Done in full: the toast says so, with Undo where it can be taken back.
       const plan = undo
@@ -710,6 +737,8 @@ export function TriageProvider({
     dismissOutcome,
     reloads,
     folderMarkedRead,
+    spamOffer,
+    dismissSpamOffer,
     run,
     picker: scope.picker,
     setPicker,
