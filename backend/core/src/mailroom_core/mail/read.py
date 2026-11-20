@@ -11,7 +11,15 @@ from mailroom_core.mail._mime import addresses, aware_date, header_text, text_va
 from mailroom_core.mail.content_type import content_type
 from mailroom_core.mail.download import body_text, part_content
 from mailroom_core.mail.errors import MailError
-from mailroom_core.mail.message_headers import FETCH_ITEM, MessageHeaders, parse_headers
+from mailroom_core.mail.identity import Addressed, sent_to
+from mailroom_core.mail.message_headers import (
+    FETCH_ITEM,
+    NOT_VERIFIED,
+    Authentication,
+    MessageHeaders,
+    authentication,
+    parse_headers,
+)
 from mailroom_core.mail.ref import MessageRef, check_fresh, format_ref, parse_ref
 from mailroom_core.mail.structure import MimePart, Structure, analyse_structure
 from mailroom_core.render import (
@@ -25,6 +33,7 @@ from mailroom_core.render import (
     format_size,
     render_body,
     safe_html,
+    sender_mismatch,
 )
 from mailroom_core.render.safe_html import RASTER_TYPES
 
@@ -34,6 +43,7 @@ if TYPE_CHECKING:
 
     from imapclient import IMAPClient
 
+    from mailroom_core.config import AccountConfig
     from mailroom_core.mail.imap import MailboxContext, MailConnections
 
 MAX_BODY_BYTES: Final = 5 * 1024 * 1024
@@ -113,6 +123,12 @@ class MessageView:
     `message_headers.MAX_BYTES` of those fields: unverified until a host checks them."""
     raw_headers: str | None
     """The header section as received, when asked for."""
+    sender_mismatch: bool = False
+    """A From display name names another address or domain (`render.sender_mismatch`)."""
+    sent_to: str | None = None
+    """The account's identity the message arrived at (`identity.sent_to`)."""
+    authentication: Authentication = NOT_VERIFIED
+    """The account's own authentication server's verdict (`message_headers.authentication`)."""
 
     def header_view(self) -> HeaderView:
         """The header fields a read shows."""
@@ -144,13 +160,16 @@ def read_message(
     raw_headers: bool = False,
     remote_check: bool = False,
     marker: Marker | None = default_marker,
+    account: AccountConfig | None = None,
 ) -> MessageView:
     """One message: headers, attachment list, and one window of `body_chars` (UTF-16 units) of
     its body from `offset`, quoted history and signatures collapsed unless `include_quoted`
     (`marker` as for `render_body`). `remote_check` tells whether the HTML has remote content,
     which costs a sanitising pass over it and, when the HTML is not the body shown, its
-    download: off by default, as the TypeScript's read does neither. Rendering costs about a
-    second per megabyte of HTML: call it from a worker thread, as every call here."""
+    download: off by default, as the TypeScript's read does neither. `account`, the message's
+    account, gives the identity it was sent to and the authentication server whose verdict
+    counts; without it, neither. Rendering costs about a second per megabyte of HTML: call it
+    from a worker thread, as every call here."""
     message = _message(ref)
     if offset < 0:
         raise MailError("invalid_argument", "offset must be at least 0.")
@@ -193,14 +212,30 @@ def read_message(
         flags = data.get(b"FLAGS")
         size = data.get(b"RFC822.SIZE")
         own = getattr(envelope, "message_id", None)
+        sender = addresses(getattr(envelope, "from_", None))
+        to = addresses(getattr(envelope, "to", None))
+        cc = addresses(getattr(envelope, "cc", None))
+        headers = parse_headers(fetched_headers(data))
+        arrived = (
+            None
+            if account is None
+            else sent_to(
+                account,
+                Addressed(
+                    to=tuple(a.address for a in to if a.address),
+                    cc=tuple(a.address for a in cc if a.address),
+                    delivered=headers.delivered_to,
+                ),
+            )
+        )
         return MessageView(
             ref=format_ref(message),
             account=message.account,
             folder=message.folder,
             uid=message.uid,
-            sender=addresses(getattr(envelope, "from_", None)),
-            to=addresses(getattr(envelope, "to", None)),
-            cc=addresses(getattr(envelope, "cc", None)),
+            sender=sender,
+            to=to,
+            cc=cc,
             reply_to=addresses(getattr(envelope, "reply_to", None)),
             date=aware_date(getattr(envelope, "date", None))
             or aware_date(data.get(b"INTERNALDATE")),
@@ -217,8 +252,15 @@ def read_message(
             attachments=structure.attachments,
             inline_parts=structure.inline_parts,
             calendar=structure.calendar,
-            headers=parse_headers(fetched_headers(data)),
+            headers=headers,
             raw_headers=(text_value(header) if raw_headers and isinstance(header, bytes) else None),
+            sender_mismatch=any(sender_mismatch(a.name, a.address) for a in sender),
+            sent_to=None if arrived is None else arrived.address,
+            authentication=authentication(
+                headers,
+                tuple(a.address or "" for a in sender),
+                None if account is None else account.authserv_id,
+            ),
         )
 
     return connections.with_mailbox(message.account, message.folder, True, run)

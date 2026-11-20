@@ -207,6 +207,23 @@ class HeaderInfo(BaseModel):
     truncated: bool
 
 
+class AuthenticationVerdict(BaseModel):
+    """The account's own authentication server's verdict: all null unless ``verified``."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    verified: bool
+    spf: str | None
+    spf_domain: str | None
+    """The domain SPF checked, as an ASCII host name."""
+    dkim: str | None
+    dkim_domain: str | None
+    """The signing domain of the DKIM result, likewise."""
+    dmarc: str | None
+    dmarc_pass: bool
+    from_domain: str | None
+
+
 class MessageDetail(BaseModel):
     ref: str
     account_id: int
@@ -225,6 +242,11 @@ class MessageDetail(BaseModel):
     attachments: list[MessagePart]
     calendar: MessagePart | None
     headers: HeaderInfo
+    sender_mismatch: bool
+    """The From display name names another address or domain than ``from.address``."""
+    sent_to: str | None
+    """The account's identity the message arrived at."""
+    authentication: AuthenticationVerdict
 
     @classmethod
     def of(cls, view: MessageView) -> MessageDetail:
@@ -261,6 +283,9 @@ class MessageDetail(BaseModel):
             attachments=[MessagePart.of(info) for info in view.attachments],
             calendar=None if view.calendar is None else MessagePart.of(view.calendar),
             headers=HeaderInfo.model_validate(view.headers),
+            sender_mismatch=view.sender_mismatch,
+            sent_to=view.sent_to,
+            authentication=AuthenticationVerdict.model_validate(view.authentication),
         )
 
 

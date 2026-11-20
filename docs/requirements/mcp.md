@@ -24,7 +24,13 @@ naming its folder after the ref) and return mailroom-core's text, its hints nami
 tools (`message_read`, `thread_read`, `attachment_read`): one line per message, dates in the
 user's time zone (UTC until they set one), each answer ending with the line that names it
 (`Dates are in Europe/Rome.`), a collapsed quote as a marker line naming `include_quoted`,
-everything mail-derived inside the envelope. An attachment comes back as text,
+everything mail-derived inside the envelope. `message_read` writes the REST read's checks after
+the envelope, as Mailroom's own lines holding no text of the message: `Sent to:` the identity it
+arrived at; a `Sender warning:` that the From display name names another address or domain than
+the From address shown, quoting neither; and `Authentication:` the account's server's `spf`,
+`dkim` and `dmarc` results as RFC 8601's words (`other` for any else), SPF and DKIM with the
+domain each is for when it is a valid host name (`spf fail (evil.example), dkim pass
+(evil.example), dmarc none`), or `not verified`. An attachment comes back as text,
 as an image, or as an embedded file, each type checked against the content. Their contract is
 the REST one in [`mail-client.md`](mail-client.md): the same service layer, so the same
 ownership, the user's limits (`body_chars`, `attachment_max_mb` in their mailroom-core settings,

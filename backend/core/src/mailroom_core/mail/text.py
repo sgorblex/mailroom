@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from mailroom_core.mail.imap import Folder
+    from mailroom_core.mail.message_headers import Authentication
     from mailroom_core.mail.organize import FlagState, GroupResult, OrganizeResult
     from mailroom_core.mail.pages import Page
     from mailroom_core.mail.read import Attachment, MessageView
@@ -89,7 +90,52 @@ def read_text(view: MessageView, *, offset: int, time_zone: str, tools: ToolName
         else ""
     )
     return "\n".join(
-        part for part in (untrusted("\n\n".join(sections)), footer, hint) if part != ""
+        part
+        for part in (untrusted("\n\n".join(sections)), checks_text(view), footer, hint)
+        if part != ""
+    )
+
+
+def checks_text(view: MessageView) -> str:
+    """Mailroom's own checks of a read, for after the envelope: fixed words, the account's own
+    identity and host names it validated, never the message's text."""
+    lines = []
+    if view.sent_to is not None:
+        lines.append(f"Sent to: {clean_header(view.sent_to, 254)}")
+    if view.sender_mismatch:
+        lines.append(
+            "Sender warning: the From display name names another address or domain than the "
+            "From address shown above."
+        )
+    lines.append(f"Authentication: {_authentication_text(view.authentication)}")
+    return "\n".join(lines)
+
+
+_RESULTS: Final = frozenset(
+    {"pass", "fail", "softfail", "neutral", "none", "temperror", "permerror", "policy"}
+)
+"""RFC 8601's results for SPF, DKIM and DMARC: any other is shown as `other`."""
+
+
+def _authentication_text(verdict: Authentication) -> str:
+    if not verdict.verified:
+        return "not verified"
+
+    def result(name: str, value: str | None, domain: str | None = None) -> str:
+        word = "none" if value is None else value if value in _RESULTS else "other"
+        return f"{name} {word}" + ("" if domain is None else f" ({domain})")
+
+    dmarc = (
+        "dmarc pass, but not for this From"
+        if verdict.dmarc == "pass" and not verdict.dmarc_pass
+        else result("dmarc", verdict.dmarc)
+    )
+    return ", ".join(
+        (
+            result("spf", verdict.spf, verdict.spf_domain),
+            result("dkim", verdict.dkim, verdict.dkim_domain),
+            dmarc,
+        )
     )
 
 

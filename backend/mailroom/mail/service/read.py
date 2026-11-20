@@ -407,12 +407,14 @@ def read_message(
     marker: Marker | None = None,
     via: Via = "web",
 ) -> MessageView:
-    """One message, its text body windowed by the user's ``body_chars`` from ``offset``;
-    ``raw_headers``, ``remote_check`` and ``marker`` (by default none where quotes were left
-    out) as for mailroom-core's ``read_message``."""
+    """One message, its text body windowed by the user's ``body_chars`` from ``offset``, checked
+    against its account's identities and authentication server; ``raw_headers``,
+    ``remote_check`` and ``marker`` (by default none where quotes were left out) as for
+    mailroom-core's ``read_message``."""
     accounts = _accounts(ctx, user_id)
     message = _message_ref(ctx, user_id, accounts, ref)
     body_chars = accounts.limits.body_chars
+    account = accounts.config(message.account)
     return _call(
         ctx,
         user_id,
@@ -429,6 +431,7 @@ def read_message(
             raw_headers=raw_headers,
             remote_check=remote_check,
             marker=marker,
+            account=account,
         ),
     )
 

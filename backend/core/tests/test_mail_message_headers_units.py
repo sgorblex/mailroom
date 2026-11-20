@@ -2,11 +2,14 @@
 headers a sender writes to mislead: huge, many, folded, encoded, commented."""
 
 from mailroom_core.mail import (
+    NOT_VERIFIED,
+    Authentication,
     AuthResult,
     AuthResults,
     DkimSignature,
     ListInfo,
     MessageHeaders,
+    authentication,
     parse_headers,
     trusted_results,
 )
@@ -115,7 +118,7 @@ def test_authentication_results_with_comments_versions_and_quoted_values() -> No
         "mx.google.com",
         (
             AuthResult("dkim", "pass", header_b="AbCd1234"),
-            AuthResult("spf", "pass"),
+            AuthResult("spf", "pass", smtp_mailfrom="example.org"),
             AuthResult("dmarc", "pass", header_from="example.org"),
         ),
     )
@@ -226,6 +229,142 @@ def test_an_unreadable_trusted_field_is_not_skipped_for_a_forged_one_below() -> 
     )
     assert broken_head.authentication[0] == AuthResults(None)
     assert trusted_results(broken_head, "mx.google.com") is None
+
+
+TRUSTED = "Authentication-Results: mx.google.com; spf=pass smtp.mailfrom=bank.example;"
+TRUSTED_RESULTS = (
+    " dkim=fail header.d=other.example header.b=AAAA;",
+    " dkim=pass header.d=bank.example header.b=BBBB;",
+    " dmarc=pass header.from=Bank.Example",
+)
+
+
+def test_the_verdict_is_the_topmost_field_of_the_accounts_server() -> None:
+    headers = parse_headers(block("From: x@bank.example", TRUSTED, *TRUSTED_RESULTS))
+    assert authentication(headers, ("x@BANK.example",), "mx.google.com") == Authentication(
+        verified=True,
+        spf="pass",
+        spf_domain="bank.example",
+        dkim="pass",
+        dkim_domain="bank.example",
+        dmarc="pass",
+        dmarc_pass=True,
+        from_domain="bank.example",
+    )
+
+
+def test_spf_and_dkim_name_the_domain_their_result_is_for() -> None:
+    headers = parse_headers(
+        block(
+            "Authentication-Results: mx.google.com; spf=pass smtp.mailfrom=bounce@Evil.Example;",
+            " dkim=fail header.d=bank.example; dkim=pass header.d=XN--bcher-kva.example;",
+            " dmarc=fail header.from=bank.example",
+        )
+    )
+    verdict = authentication(headers, ("x@bank.example",), "mx.google.com")
+    assert (verdict.spf, verdict.spf_domain) == ("pass", "evil.example")
+    assert (verdict.dkim, verdict.dkim_domain) == ("pass", "xn--bcher-kva.example")
+    # A domain that is no host name is left out, never shown as written.
+    odd = parse_headers(
+        block(
+            'Authentication-Results: mx.google.com; spf=fail smtp.mailfrom="a b@x y.example";',
+            " dkim=fail header.d=bank.example/evil",
+        )
+    )
+    verdict = authentication(odd, ("x@bank.example",), "mx.google.com")
+    assert (verdict.spf, verdict.spf_domain, verdict.dkim, verdict.dkim_domain) == (
+        "fail",
+        None,
+        "fail",
+        None,
+    )
+
+
+def test_without_the_accounts_server_nothing_is_verified() -> None:
+    headers = parse_headers(block("From: x@bank.example", TRUSTED, *TRUSTED_RESULTS))
+    assert authentication(headers, ("x@bank.example",), None) == NOT_VERIFIED
+    assert authentication(headers, ("x@bank.example",), "mx.example.net") == NOT_VERIFIED
+    assert NOT_VERIFIED.verified is False
+    assert (NOT_VERIFIED.spf, NOT_VERIFIED.dkim, NOT_VERIFIED.dmarc) == (None, None, None)
+
+
+def test_a_forged_topmost_field_of_another_server_is_passed_over() -> None:
+    headers = parse_headers(
+        block(
+            "From: x@bank.example",
+            "Authentication-Results: mx.evil.example; spf=pass; dkim=pass header.d=bank.example;",
+            " dmarc=pass header.from=bank.example",
+            "Authentication-Results: mx.google.com; spf=fail; dkim=none; dmarc=fail"
+            " header.from=bank.example",
+        )
+    )
+    verdict = authentication(headers, ("x@bank.example",), "mx.google.com")
+    assert (verdict.verified, verdict.spf, verdict.dkim, verdict.dmarc) == (
+        True,
+        "fail",
+        "none",
+        "fail",
+    )
+    assert not verdict.dmarc_pass
+    # Forged with the trusted id but below the server's own field: the topmost one counts.
+    forged_below = parse_headers(
+        block(
+            "From: x@bank.example",
+            "Authentication-Results: mx.google.com; dmarc=fail header.from=bank.example",
+            "Authentication-Results: mx.google.com; dmarc=pass header.from=bank.example",
+        )
+    )
+    assert not authentication(forged_below, ("x@bank.example",), "mx.google.com").dmarc_pass
+    # Forged with the trusted id where the server wrote none: not believed either.
+    alone = parse_headers(
+        block(
+            "From: x@bank.example",
+            "Authentication-Results: mx.evil.example; dmarc=pass header.from=bank.example",
+        )
+    )
+    assert authentication(alone, ("x@bank.example",), "mx.google.com") == NOT_VERIFIED
+
+
+def test_dmarc_passes_only_for_exactly_one_from_of_its_domain() -> None:
+    single = parse_headers(block("From: x@bank.example", TRUSTED, *TRUSTED_RESULTS))
+    other = authentication(single, ("x@evil.example",), "mx.google.com")
+    assert (other.dmarc, other.dmarc_pass, other.from_domain) == ("pass", False, None)
+    two = authentication(single, ("x@bank.example", "y@evil.example"), "mx.google.com")
+    assert not two.dmarc_pass
+    assert not authentication(single, (), "mx.google.com").dmarc_pass
+    doubled = parse_headers(
+        block("From: x@bank.example", "From: y@evil.example", TRUSTED, *TRUSTED_RESULTS)
+    )
+    assert not authentication(doubled, ("x@bank.example",), "mx.google.com").dmarc_pass
+    whole = block(TRUSTED, *TRUSTED_RESULTS, "From: x@bank.example", "Delivered-To: a@b.example")
+    cut = parse_headers(whole, cap=len(whole))
+    assert cut.truncated
+    assert (cut.from_fields, trusted_results(cut, "mx.google.com") is not None) == (1, True)
+    assert not authentication(cut, ("x@bank.example",), "mx.google.com").dmarc_pass
+
+
+def test_dmarc_compares_an_internationalised_domain_in_its_idna_form() -> None:
+    headers = parse_headers(
+        block(
+            "From: x@bücher.example",
+            "Authentication-Results: mx.google.com; dmarc=pass header.from=XN--bcher-kva.example",
+        )
+    )
+    verdict = authentication(headers, ("x@BÜCHER.example",), "mx.google.com")
+    assert (verdict.dmarc_pass, verdict.from_domain) == (True, "bücher.example")
+    assert authentication(headers, ("x@xn--bcher-kva.example",), "mx.google.com").dmarc_pass
+    assert not authentication(headers, ("x@bucher.example",), "mx.google.com").dmarc_pass
+
+
+def test_dkim_is_the_first_result_when_no_signature_passed() -> None:
+    headers = parse_headers(
+        block(
+            "Authentication-Results: mx.google.com; dkim=fail header.d=a.example;",
+            " dkim=neutral header.d=b.example",
+        )
+    )
+    verdict = authentication(headers, ("x@a.example",), "mx.google.com")
+    assert (verdict.spf, verdict.dkim, verdict.dmarc) == (None, "fail", None)
 
 
 def test_dkim_signatures_give_d_a_b_prefix_and_the_signed_fields() -> None:

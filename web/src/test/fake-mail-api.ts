@@ -174,6 +174,18 @@ export function messageView(item: MessageItem, fields: Partial<MessageView> = {}
       delivered_to: [],
       truncated: false,
     },
+    sender_mismatch: false,
+    sent_to: null,
+    authentication: {
+      verified: false,
+      spf: null,
+      spf_domain: null,
+      dkim: null,
+      dkim_domain: null,
+      dmarc: null,
+      dmarc_pass: false,
+      from_domain: null,
+    },
     ...fields,
   }
 }
