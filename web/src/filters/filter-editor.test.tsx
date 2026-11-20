@@ -14,7 +14,7 @@ const folders: FoldersState = { kind: 'loaded', paths: [['INBOX'], ['Archive'], 
 
 function renderEditor(spec: Record<string, unknown>): ReturnType<typeof vi.fn> {
   const save = vi.fn((fields: FilterFields) => Promise.resolve(fields))
-  const filter: Filter = { id: 1, rule_set_id: 1, position: 0, name: 'Tidy', enabled: true, spec }
+  const filter: Filter = { id: 1, rule_set_id: 1, position: 0, name: 'Tidy', enabled: true, spec, updated_at: '2026-11-12T12:00:00Z', matches_30d: 0 }
   render(<FilterEditor filter={filter} vocabulary={vocabulary} folders={folders} save={save} onCancel={vi.fn()} />)
   return save
 }

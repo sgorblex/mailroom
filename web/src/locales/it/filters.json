@@ -90,7 +90,11 @@
       "edit": "Modifica {{name}}",
       "remove": "Rimuovi {{name}}",
       "confirmRemoval": "Rimuovere {{name}}?",
-      "unreadable": "Aprilo per vederne la specifica."
+      "unreadable": "Aprilo per vederne la specifica.",
+      "matches_one": "{{count}} corrispondenza in 30 giorni",
+      "matches_other": "{{count}} corrispondenze in 30 giorni",
+      "noMatches": "Nessuna corrispondenza in 30 giorni",
+      "edited": "modificato il {{date}}"
     },
     "summary": {
       "and": "e",

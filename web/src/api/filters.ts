@@ -23,6 +23,10 @@ export const filterSchema = z.object({
   name: z.string(),
   enabled: z.boolean(),
   spec: specSchema,
+  /** The user's last edit of its name, spec or switch. */
+  updated_at: z.string(),
+  /** Messages it acted on in real runs over the last 30 days, edits or not. */
+  matches_30d: z.number(),
 })
 export type Filter = z.infer<typeof filterSchema>
 

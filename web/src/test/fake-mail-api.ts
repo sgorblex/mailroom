@@ -750,7 +750,14 @@ function filterRoutes(state: FakeMailState, path: string, init?: RequestInit): R
   }
   if (match[2] !== undefined) {
     const filters = (state.filters ??= [])
-    const filter = { ...(body as Omit<Filter, 'id' | 'rule_set_id' | 'position'>), id: filters.length + 1, rule_set_id: ruleSet.id, position: 0 }
+    const filter: Filter = {
+      ...(body as Pick<Filter, 'name' | 'enabled' | 'spec'>),
+      id: filters.length + 1,
+      rule_set_id: ruleSet.id,
+      position: 0,
+      updated_at: '2026-11-19T10:00:00+00:00',
+      matches_30d: 0,
+    }
     filters.push(filter)
     return json(201, filter)
   }
