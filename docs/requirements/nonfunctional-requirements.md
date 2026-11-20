@@ -518,15 +518,16 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   folders rather than repeat the call.
 - **Logs:** `mail_folders`, `mail_quota`, `mail_listed`, `mail_searched`, `mail_read`,
   `mail_thread_read` (MCP only), `mail_html_read`, `mail_attachment_read`, `mail_source_read`,
-  `mail_print_read`, `mail_filter_draft_read`, each with `user_id`, `account_id`, `via`, `outcome`
-  (`ok` or the code) and `duration_ms`; never a subject, an address, a folder name or a body.
-  `mail_moved`, `mail_archived`, `mail_junked`, `mail_trashed` and `mail_flagged` carry `user_id`,
-  `via`, `account_ids`, `ref_count`, `changed` (messages), `groups`, `failed_groups`, `codes` (the
-  failed groups'), `outcome` (`ok`, `partial`, `refused`, `failed`, or the code of a refused call)
-  and `duration_ms`: counts and codes only, never a folder, a ref, a `Message-ID` or a sender.
-  `mail_bulk_counted` (`POST /messages/count`) is logged as `mail_searched` is; `mail_bulk_acted`
-  (`POST /messages/bulk`) carries `user_id`, `via`, `account_ids`, `expected`, `done`, `remaining`,
-  `groups`, `failed_groups`, `codes`, `outcome` and `duration_ms`, never a search term.
+  `mail_print_read`, `mail_filter_draft_read`, `mail_thread_key_read` (a mute), each with
+  `user_id`, `account_id`, `via`, `outcome` (`ok` or the code) and `duration_ms`; never a subject,
+  an address, a folder name or a body. `mail_moved`, `mail_archived`, `mail_junked`,
+  `mail_trashed` and `mail_flagged` carry `user_id`, `via`, `account_ids`, `ref_count`, `changed`
+  (messages), `groups`, `failed_groups`, `codes` (the failed groups'), `outcome` (`ok`,
+  `partial`, `refused`, `failed`, or the code of a refused call) and `duration_ms`: counts and
+  codes only, never a folder, a ref, a `Message-ID` or a sender. `mail_bulk_counted` (`POST
+  /messages/count`) is logged as `mail_searched` is; `mail_bulk_acted` (`POST /messages/bulk`)
+  carries `user_id`, `via`, `account_ids`, `expected`, `done`, `remaining`, `groups`,
+  `failed_groups`, `codes`, `outcome` and `duration_ms`, never a search term.
   `mail_folder_created`, `mail_folder_renamed`, `mail_folder_deleted` and
   `mail_folder_marked_read` carry `user_id`, `via`, `account_id`, `outcome`, `duration_ms` and
   counts only (`rule_sets`, `filters`, `rule_sets_updated`, `messages`); `folder_rule_sets_failed`,
@@ -574,6 +575,7 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   `archive`, `junk`, `trash`, `flag`, `draft_save`, `draft_remove`, `send`, `folder_create`,
   `folder_rename`, `folder_delete`, `mark_folder_read`, `bulk_flag`, `bulk_move`, `bulk_trash`,
   `unsubscribe` (the list's id, the URL's host and the status it answered, never the URL),
+  `mute` and `unmute` (the `muted_thread_id`; a mute's folder and UID),
   or the filter's action as its report names it) and the result. A move to another account is
   recorded in both: the original's record names the `destination_account`, the copy's (in the
   target account) its `source_account` and `source_folder`. A run records each message its report
@@ -604,9 +606,11 @@ What they do and the route list: [`filters.md`](filters.md). How:
   `filter` (`position` unique per rule set, deferred so a reorder swaps freely; `spec` as
   the filter engine's `load_filter(spec).to_spec()` gives it back), `filter_run`,
   `filter_match_day` (a filter's real-run matches per UTC day, added to by the worker as a run
-  finishes). Removing an account
-  removes its rule sets, and a rule set its filters and runs; removing a user removes all of
-  theirs, with their accounts. Each rule
+  finishes), `muted_thread` (by `user_id` and account id; its Message-IDs as `jsonb`, 200 at
+  most, and Gmail's thread id), and `rule_set.kind` (`user`, or the account's one hidden `mute`
+  rule set, a partial unique index). Removing an account
+  removes its rule sets and muted threads, and a rule set its filters and runs; removing a user
+  removes all of theirs, with their accounts. Each rule
   set keeps its newest 100 runs, and every run still queued or in progress, and its filters'
   match days of the last 30, pruned as runs are. A report is stored
   without NUL characters (`jsonb` refuses them; a header may decode to one).
@@ -695,7 +699,9 @@ What they do and the route list: [`filters.md`](filters.md). How:
   `filter_changed`, `filter_removed`, `filters_reordered`, `dry_run` (with `outcome`),
   `run_requested`, `run_filters_changed` (with `account_id`); from the worker `run_queued` and
   `rule_set_run` (with `trigger` and `outcome`: `ok`, the error's code, or `gone`) and
-  `match_count_failed` (with `error`, the exception's type); with `user_id`
+  `match_count_failed` and `thread_join_failed` (with `error`, the exception's type);
+  `thread_muted` and `thread_unmuted` (with `account_id` and `muted_thread_id`, never an id of
+  the message); with `user_id`
   and `rule_set_id`, `filter_id` or `run_id`, and from the API `via` as for accounts; never a spec
   or a message.
 

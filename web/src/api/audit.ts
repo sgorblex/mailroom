@@ -23,6 +23,8 @@ export const MAIL_ACTIONS = [
   'bulk_flag',
   'bulk_move',
   'bulk_trash',
+  'mute',
+  'unmute',
 ] as const
 
 /** One message a write acted on, or tried to: never its subject or body. */

@@ -199,6 +199,7 @@ def test_the_folder_tools_say_a_delete_is_for_good_and_only_on_request(
     assert "a rename keeps the mail and points the rule sets naming the folder" in every
     # The organize tools' promise stands beside it.
     assert "these tools never delete mail permanently" in every
+    assert "thread_mute takes one such ref and mutes its conversation" in every
     assert "folder_delete" not in instructions(selected_groups("mail_read,mail_organize"))
 
     caplog.set_level(logging.WARNING)

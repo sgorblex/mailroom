@@ -43,6 +43,8 @@
     "bulk_flag": "Contrassegni cambiati (tutti i risultati)",
     "bulk_move": "Spostato (tutti i risultati)",
     "bulk_trash": "Spostato nel Cestino (tutti i risultati)",
+    "mute": "Conversazione silenziata",
+    "unmute": "Conversazione riattivata",
     "run_failed": "Esecuzione dei filtri non riuscita"
   },
   "results": {
@@ -78,6 +80,7 @@
     "by": "Chiesto da",
     "copied": "Copiato",
     "filter": "Filtro",
+    "muted_thread_id": "Conversazione silenziata",
     "matched": "Corrispondenze",
     "error": "Errore",
     "date": "Data",

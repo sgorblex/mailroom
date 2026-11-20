@@ -196,12 +196,14 @@ from mailroom_core.mail.reply import (
 from mailroom_core.mail.search import (
     ALL_FOLDERS,
     SearchQuery,
+    ThreadKey,
     check_subfolders,
     list_messages,
     read_folders,
     search_messages,
     search_sources,
     searchable_folders,
+    thread_key,
     thread_page,
 )
 from mailroom_core.mail.selected import (
@@ -345,6 +347,7 @@ __all__ = [
     "SearchQuery",
     "Source",
     "Structure",
+    "ThreadKey",
     "Threading",
     "Timeouts",
     "ToolNames",
@@ -458,6 +461,7 @@ __all__ = [
     "store_flags",
     "subfolders_of",
     "subject_sha256",
+    "thread_key",
     "thread_page",
     "thread_text",
     "threading",

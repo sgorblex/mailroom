@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 
     from mailroom.context import AppContext
     from mailroom.models import RuleSet
-    from mailroom_core.filters import FolderReport
+    from mailroom_core.filters import FolderReport, ThreadResolver
     from mailroom_core.mail import MailConnections
 
 logger = logging.getLogger(__name__)
@@ -88,12 +88,17 @@ def rule_set_folder(connections: MailConnections, rule_set: RuleSet) -> Folder:
 
 
 def engine_filters(
-    rule_set: RuleSet, folder: Folder, filters: Sequence[Filter]
+    rule_set: RuleSet,
+    folder: Folder,
+    filters: Sequence[Filter],
+    *,
+    threads: ThreadResolver | None = None,
 ) -> list[EngineFilter]:
     """``filters`` as the filter engine runs them on ``folder``: limited to the messages with the
-    rule set's marker (the star or To sort), which they clear, unless it is ``none``. Raises
-    ``InvalidSpecError`` for a stored spec the filter engine no longer loads."""
-    loaded = [loaded_filter(row.spec) for row in filters]
+    rule set's marker (the star or To sort), which they clear, unless it is ``none``; ``threads``
+    as for ``loaded_filter``. Raises ``InvalidSpecError`` for a stored spec the filter engine no
+    longer loads."""
+    loaded = [loaded_filter(row.spec, threads=threads) for row in filters]
     mark = _MARKS.get(rule_set.marker)
     if mark is not None:
         [(_folder, loaded)] = marked_only([(folder, loaded)], mark)

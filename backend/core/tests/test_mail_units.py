@@ -20,6 +20,7 @@ from mailroom_core.mail import (
     Position,
     SearchQuery,
     Source,
+    ThreadKey,
     analyse_structure,
     check_fresh,
     content_type,
@@ -33,6 +34,7 @@ from mailroom_core.mail import (
     preview_of,
     read_page,
     search_messages,
+    thread_key,
 )
 from mailroom_core.mail._mime import TransferDecoder, decode_words, parameters, unflow
 from mailroom_core.mail.imap import folders_from
@@ -468,6 +470,40 @@ def test_gmail_finds_attachments_through_its_own_search() -> None:
         "Content-Type",
         "multipart/mixed",
     ]
+
+
+def test_a_thread_key_asks_gmail_alone_for_its_thread() -> None:
+    """`thread_key` fetches `X-GM-THRID` only from a server with Gmail's extensions."""
+    asked: dict[int, list[str]] = {}
+    header = b"Message-ID: <m@example.org>\r\nReferences: <r@example.org>\r\n\r\n"
+
+    class Client:
+        def __init__(self, account: int) -> None:
+            self.account = account
+
+        def fetch(self, uids: list[int], items: list[str]) -> dict[int, dict[bytes, object]]:
+            asked[self.account] = items
+            data: dict[bytes, object] = {b"BODY[HEADER.FIELDS (MESSAGE-ID)]": header}
+            if "X-GM-THRID" in items:
+                data[b"X-GM-THRID"] = 1_766_000_000_000_000_000
+            return dict.fromkeys(uids, data)
+
+    class Connections:
+        def capabilities(self, account: int) -> SimpleNamespace:
+            return SimpleNamespace(gmail=account == 1)
+
+        def with_mailbox(
+            self, account: int, path: str, read_only: bool, fn: Callable[[MailboxContext], object]
+        ) -> object:
+            return fn(MailboxContext(Client(account), path, read_only, 7, 1, None, account))  # type: ignore[arg-type]
+
+    connections = cast("MailConnections", Connections())
+    gmail = thread_key(connections, MessageRef(1, "INBOX", 7, 3))
+    assert gmail == ThreadKey(("<r@example.org>", "<m@example.org>"), 1_766_000_000_000_000_000)
+    other = thread_key(connections, MessageRef(2, "INBOX", 7, 3))
+    assert other == ThreadKey(("<r@example.org>", "<m@example.org>"), None)
+    assert "X-GM-THRID" in asked[1]
+    assert "X-GM-THRID" not in asked[2]
 
 
 def test_each_account_gets_its_own_search() -> None:

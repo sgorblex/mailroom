@@ -19,13 +19,14 @@ from urllib.parse import quote
 
 import httpx
 import pytest
+from sqlalchemy import select
 
 from mailroom.accounts.store import load_accounts, user_store
 from mailroom.api.routes.mail.read import PRINT_CSP, download_name, served_type
 from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
 from mailroom.auth.users import create_user
 from mailroom.mail.pool import DeadlineExceeded, MailPool
-from mailroom.models import Filter, RuleSet
+from mailroom.models import Filter, MutedThread, RuleSet
 from mailroom.net.safe_fetch import safe_fetch
 from mailroom_core.crypto import secrets_subkey
 from mailroom_core.mail import (
@@ -38,6 +39,7 @@ from mailroom_core.mail import (
     MessageRef,
     Page,
     SearchQuery,
+    ThreadKey,
     format_ref,
     parse_ref,
 )
@@ -762,6 +764,7 @@ def test_refs_of_other_accounts_and_stale_refs_are_refused(
     stale = format_ref(MessageRef(1, "INBOX", message.uid_validity + 1, message.uid))
     for path in ("", "/html", "/parts/2", "/filter-draft"):
         assert detail(client.get(f"{MAIL}/messages/{stale}{path}")) == (409, "stale_reference")
+    assert detail(client.post(f"{MAIL}/messages/{stale}/mute")) == (409, "stale_reference")
 
     elsewhere = format_ref(MessageRef(2, "INBOX", message.uid_validity, message.uid))
     for path in ("", "/html", "/parts/2", "/filter-draft"):
@@ -775,6 +778,7 @@ def test_refs_of_other_accounts_and_stale_refs_are_refused(
     bob = create_user(db_session, "bob", PASSWORD)
     api_client.cookies.set(SESSION_COOKIE_NAME, create_session(db_session, bob))
     assert detail(api_client.get(f"{MAIL}/messages/{ref}")) == (404, "not_found")
+    assert detail(api_client.post(f"{MAIL}/messages/{ref}/mute")) == (404, "not_found")
     assert detail(api_client.get(f"{MAIL}/accounts/1/folders")) == (404, "not_found")
     assert api_client.post(f"{MAIL}/search", json={}).json() == {
         "messages": [],
@@ -2503,3 +2507,114 @@ def test_a_message_drafts_a_filter_from_its_list_and_sender(
     assert draft["name"] == "Maria"
     # Drafting never marks the message read.
     assert mailbox.get(f"/messages/{maria}")["flags"]["seen"] is False
+
+
+def test_a_message_mutes_its_thread_until_it_is_unmuted(
+    mailbox: Mailbox,
+    db_session: Session,
+    user: User,
+    audited: Callable[[int], list[AuditRecord]],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    mailbox.seed(mime("Plans", message_id="<root@example.org>", text="hi"))
+    mailbox.seed(
+        mime(
+            "Re: Plans",
+            message_id="<r1@example.org>",
+            in_reply_to="<root@example.org>",
+            references="<root@example.org>",
+        )
+    )
+    reply, root = mailbox.refs()
+
+    caplog.set_level(logging.INFO, logger="mailroom")
+    response = mailbox.client.post(f"{MAIL}/messages/{root}/mute")
+    assert response.status_code == 201, response.text
+    first = response.json()
+    assert (first["account_id"], first["ids"], first["gmail"]) == (1, 1, False)
+    # Run filters is off: the answer says so, as muting does nothing until it is on.
+    assert first["run_filters"] is False
+    assert "root@example.org" not in caplog.text
+    # The reply belongs to the muted thread: muting it adds its ids to that thread.
+    again = mailbox.client.post(f"{MAIL}/messages/{reply}/mute").json()
+    assert (again["id"], again["ids"]) == (first["id"], 2)
+    assert mailbox.get("/muted") == {"threads": [again]}
+    [thread] = db_session.scalars(select(MutedThread)).all()
+    assert thread.message_ids == ["<root@example.org>", "<r1@example.org>"]
+    # The rule set doing it is hidden from the user's.
+    assert mailbox.client.get("/api/v1/accounts/1/rule-sets").json() == []
+    [hidden] = db_session.scalars(select(RuleSet).where(RuleSet.user_id == user.id)).all()
+    assert (hidden.kind, hidden.folder, hidden.trigger, hidden.enabled) == (
+        "mute",
+        ["INBOX"],
+        "new_mail",
+        True,
+    )
+    # Muting reads the headers only, never marking the message read.
+    assert mailbox.get(f"/messages/{root}")["flags"]["seen"] is False
+
+    assert mailbox.client.delete(f"{MAIL}/muted/{first['id']}").status_code == 204
+    assert mailbox.get("/muted") == {"threads": []}
+    assert db_session.scalars(select(RuleSet).where(RuleSet.user_id == user.id)).all() == []
+    gone = mailbox.client.delete(f"{MAIL}/muted/{first['id']}")
+    assert (gone.status_code, gone.json()) == (404, {"detail": "No such muted thread"})
+    records = [(r.action, r.actor, r.result, r.account_id) for r in audited(user.id)]
+    assert records == [
+        ("mute", "user", "ok", 1),
+        ("mute", "user", "ok", 1),
+        ("unmute", "user", "ok", 1),
+    ]
+    assert audited(user.id)[0].detail["muted_thread_id"] == first["id"]
+
+
+def test_a_message_bridging_two_muted_threads_makes_them_one(
+    mailbox: Mailbox, db_session: Session, user: User, audited: Callable[[int], list[AuditRecord]]
+) -> None:
+    mailbox.seed(mime("First", message_id="<a@example.org>"))
+    mailbox.seed(mime("Second", message_id="<b@example.org>"))
+    both = "<a@example.org> <b@example.org>"
+    mailbox.seed(mime("Re: both", message_id="<c@example.org>", references=both))
+    bridge, second, first = mailbox.refs()
+    a = mailbox.client.post(f"{MAIL}/messages/{first}/mute").json()
+    b = mailbox.client.post(f"{MAIL}/messages/{second}/mute").json()
+    assert a["id"] != b["id"]
+
+    merged = mailbox.client.post(f"{MAIL}/messages/{bridge}/mute").json()
+    assert (merged["id"], merged["ids"]) == (a["id"], 3)
+    assert mailbox.get("/muted") == {"threads": [merged]}
+    [thread] = db_session.scalars(select(MutedThread)).all()
+    assert thread.message_ids == ["<a@example.org>", "<b@example.org>", "<c@example.org>"]
+    assert audited(user.id)[-1].detail["merged"] == [b["id"]]
+
+
+def test_a_gmail_thread_alone_is_muted_and_one_past_bigint_is_not(
+    mailbox: Mailbox, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mailroom.mail.service import read
+
+    mailbox.seed(mime("Plans"))
+    [ref] = mailbox.refs()
+    thread = 2**63 - 1
+
+    def gmail_only(_connections: object, _message: object) -> ThreadKey:
+        return ThreadKey((), thread)
+
+    monkeypatch.setattr(read.core, "thread_key", gmail_only)
+    muted = mailbox.client.post(f"{MAIL}/messages/{ref}/mute")
+    assert muted.status_code == 201, muted.text
+    assert (muted.json()["ids"], muted.json()["gmail"]) == (0, True)
+
+    thread = 2**63
+    assert detail(mailbox.client.post(f"{MAIL}/messages/{ref}/mute")) == (400, "nothing_to_mute")
+
+
+def test_a_message_without_a_message_id_cannot_be_muted(mailbox: Mailbox) -> None:
+    raw = mime("Anonymous", text="hi")
+    mailbox.seed(
+        "".join(
+            line for line in raw.splitlines(keepends=True) if not line.startswith("Message-ID:")
+        )
+    )
+    [ref] = mailbox.refs()
+    assert detail(mailbox.client.post(f"{MAIL}/messages/{ref}/mute")) == (400, "nothing_to_mute")
+    assert mailbox.get("/muted") == {"threads": []}

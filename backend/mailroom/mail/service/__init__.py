@@ -81,6 +81,7 @@ from mailroom.mail.service.read import (
     read_message,
     search,
     thread,
+    thread_key,
 )
 from mailroom.mail.service.send import (
     Dispatched,
@@ -153,6 +154,7 @@ __all__ = [
     "send_message",
     "send_reply",
     "thread",
+    "thread_key",
     "trash",
     "upload_limit",
     "upload_place",

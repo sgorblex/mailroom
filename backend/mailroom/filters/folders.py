@@ -105,7 +105,7 @@ def rewritten_spec(node: object, old: Sequence[str], new: Sequence[str]) -> obje
 def _rule_sets(db: Session, user_id: int, account_id: int, *, lock: bool) -> list[RuleSet]:
     statement = (
         select(RuleSet)
-        .where(RuleSet.user_id == user_id, RuleSet.account_id == account_id)
+        .where(RuleSet.user_id == user_id, RuleSet.account_id == account_id, RuleSet.kind == "user")
         .order_by(RuleSet.id)
     )
     if lock:

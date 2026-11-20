@@ -11,12 +11,14 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Identity,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
     false,
     func,
+    text,
     true,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
@@ -47,6 +49,15 @@ class RuleSet(Base):
             "(trigger = 'scheduled') = (interval_minutes IS NOT NULL)", name="interval"
         ),
         CheckConstraint("interval_minutes > 0", name="interval_positive"),
+        CheckConstraint("kind IN ('user', 'mute')", name="kind"),
+        # One muting rule set per account.
+        Index(
+            "uq_rule_set_mute",
+            "user_id",
+            "account_id",
+            unique=True,
+            postgresql_where=text("kind = 'mute'"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
@@ -61,6 +72,9 @@ class RuleSet(Base):
     """The mark the rule set limits itself to, cleared once a message is handled: ``none`` (every
     message), ``star`` (``\\Flagged``) or ``to_sort`` (the ``$MailroomSort`` keyword)."""
     enabled: Mapped[bool] = mapped_column(Boolean, server_default=false())
+    kind: Mapped[str] = mapped_column(Text, server_default="user")
+    """``user``, or ``mute``: the account's hidden one muting threads (``mailroom.filters.mute``),
+    left out of every listing and edit."""
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -124,3 +138,21 @@ class FilterRun(Base):
     """The filter engine's folder report, each filter's entry with its ``filter_id``
     (``mailroom.filters.runs.labelled_report``)."""
     error: Mapped[str | None] = mapped_column(Text)
+
+
+class MutedThread(Base):
+    """A conversation the user muted on one account: its new messages in INBOX arrive marked read,
+    by the account's ``mute`` rule set. Named by Message-IDs (seeded from the message muted, each
+    message matched since added, ``mailroom.filters.mute.MAX_IDS`` at most) and on Gmail by its
+    thread id."""
+
+    __tablename__ = "muted_thread"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey(User.id, ondelete="CASCADE"), index=True)
+    account_id: Mapped[int] = mapped_column(BigInteger)
+    message_ids: Mapped[list[str]] = mapped_column(JSONB)
+    """Angle brackets included, oldest first."""
+    gm_thrid: Mapped[int | None] = mapped_column(BigInteger)
+    """Gmail's ``X-GM-THRID``."""
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

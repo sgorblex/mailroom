@@ -22,6 +22,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from mailroom.accounts.store import AccountNotFound, load_accounts, user_store
 from mailroom.audit import Entry, write_records_in
 from mailroom.auth.users import time_zone_of
+from mailroom.filters.mute import NEWEST as MUTE_NEWEST
+from mailroom.filters.mute import ThreadJoins
 from mailroom.filters.runs import (
     MATCH_TIMEOUT_MESSAGE,
     RunRefused,
@@ -86,6 +88,7 @@ def execute_run(db: Session, run_id: int, mailboxes: Mailboxes) -> None:
     started_at = datetime.now(UTC)
     result: dict[str, Any] | None = None
     names: dict[int, str] = {}
+    joins: ThreadJoins | None = None
     try:
         if not run_filters_on(db, user_id, rule_set.account_id):
             msg = "Run filters is off for this account."
@@ -95,10 +98,12 @@ def execute_run(db: Session, run_id: int, mailboxes: Mailboxes) -> None:
         filters = enabled_filters(db, rule_set_id)
         names = {row.id: row.name for row in filters}
         zone = time_zone_of(db, user_id)
+        if rule_set.kind == "mute":
+            joins = ThreadJoins.of(db, user_id, account_id)
         db.execute(update(FilterRun).where(FilterRun.id == run_id).values(started_at=started_at))
         # Not idle in a transaction while the mailbox works.
         db.commit()
-        result, error = _run(rule_set, filters, mailboxes, zone)
+        result, error = _run(rule_set, filters, mailboxes, zone, joins)
     except RunRefused as refused:
         error = refused.error
     except Exception as exc:
@@ -109,6 +114,8 @@ def execute_run(db: Session, run_id: int, mailboxes: Mailboxes) -> None:
     recorded = _finish(db, run_id, started_at, result, error)
     if recorded and error is not None and error.startswith(f"{COPIED_NOT_REMOVED}: "):
         _turn_off(db, user_id, rule_set_id)
+    if recorded and joins is not None:
+        _join_threads(db, user_id, joins)
     if recorded and result is not None:
         _count_matches(db, user_id, result)
         _record_run(db, user_id, result, names, account_id, rule_set_id, run_id, error)
@@ -152,6 +159,20 @@ def _count_matches(db: Session, user_id: int, result: dict[str, Any]) -> None:
         logger.warning(
             "match_count_failed",
             extra={"event": "match_count_failed", "user_id": user_id, "error": type(exc).__name__},
+        )
+
+
+def _join_threads(db: Session, user_id: int, joins: ThreadJoins) -> None:
+    """Add the messages a mute rule set's run matched to their muted threads. Commits ``db``; a
+    failure is logged, never fails the run."""
+    try:
+        joins.save(db)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.warning(
+            "thread_join_failed",
+            extra={"event": "thread_join_failed", "user_id": user_id, "error": type(exc).__name__},
         )
 
 
@@ -300,11 +321,15 @@ def close_interrupted_runs(db: Session) -> list[int]:
 
 
 def _run(
-    rule_set: RuleSet, filters: Sequence[Filter], mailboxes: Mailboxes, time_zone: TimeZoneName
+    rule_set: RuleSet,
+    filters: Sequence[Filter],
+    mailboxes: Mailboxes,
+    time_zone: TimeZoneName,
+    joins: ThreadJoins | None = None,
 ) -> tuple[dict[str, Any] | None, str | None]:
     """The run's ``result`` and ``error``: the rule set's filters on its folder, on the user's
-    connections from the worker's pool, today being ``time_zone``'s. Raises ``RunRefused`` when
-    it cannot start."""
+    connections from the worker's pool, today being ``time_zone``'s; a mute rule set's with its
+    ``joins``. Raises ``RunRefused`` when it cannot start."""
     store = user_store(mailboxes.engine, rule_set.user_id)
     try:
         refused = unusable(store, mailboxes.subkey, rule_set.account_id)
@@ -315,13 +340,17 @@ def _run(
     with mailboxes.lease(rule_set.user_id, load_accounts(store).revision) as connections:
         folder = rule_set_folder(connections, rule_set)
         try:
-            loaded = engine_filters(rule_set, folder, filters)
+            threads = None if joins is None else joins.members
+            loaded = engine_filters(rule_set, folder, filters, threads=threads)
         except InvalidSpecError as exc:
             raise RunRefused("invalid_spec", str(exc)) from None
+        if joins is not None:
+            loaded = joins.watched(loaded)
         report = folder.new_report(dry_run=False)
         error = None
         try:
-            folder.run_into(report, loaded, dry_run=False, time_zone=time_zone)
+            newest = None if joins is None else MUTE_NEWEST
+            folder.run_into(report, loaded, dry_run=False, newest=newest, time_zone=time_zone)
         except MatchTimeoutError as exc:
             # Its text quotes the user's pattern: the log names the kind only.
             logger.warning("A run of rule set %s stopped: %s.", rule_set.id, type(exc).__name__)
