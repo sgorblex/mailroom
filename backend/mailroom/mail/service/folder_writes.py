@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Final, cast
 from mailroom.audit import WEB, AuditTrail, Origin
 from mailroom.errors import Refusal
 from mailroom.filters.folders import Rewritten, naming_rule_sets, rewrite_folder
+from mailroom.filters.transfers import rename_in_ledger
 from mailroom.mail.service._shared import _Accounts, _accounts, _run, _Stoppable, _usable
 from mailroom_core import mail as core
 from mailroom_core.mail import AuditItem, FolderChangedError
@@ -141,11 +142,13 @@ def create_folder(
 def _rewrite_rule_sets(
     ctx: AppContext, user_id: int, account_id: int, change: FolderChange
 ) -> Rewritten | None:
-    """Points the rule sets and filters naming the renamed folder at its new path; what it
-    changed, or None, logged, when the database step failed (the rename stands)."""
+    """Points the rule sets and filters naming the renamed folder at its new path, and the ledger
+    of copies moved there from another account; what it changed, or None, logged, when the
+    database step failed (the rename stands)."""
     destination = change.destination if change.destination is not None else change.path
     try:
         with ctx.session_maker() as db:
+            rename_in_ledger(db, user_id, account_id, change.path, destination, change.delimiter)
             return rewrite_folder(
                 db,
                 user_id,
@@ -178,8 +181,9 @@ def rename_folder(
 ) -> FolderRenamed:
     """Renames ``folder`` to ``name`` under ``parent`` (None: the top level), its subfolders with
     it (mailroom-core's ``rename_folder``), then points the account's rule sets and filter
-    actions that name it, or a folder under it, at the new path: enabled ones too; the rule sets
-    for all accounts naming it are left, and listed (``all_accounts_rule_sets``). Both run on
+    actions that name it, or a folder under it, at the new path, and the other accounts' filters
+    moving there (``move_to_account``): enabled ones too; the rule sets for all accounts naming it
+    are left, and listed (``all_accounts_rule_sets``). Both run on
     the pool's thread, so the rule sets follow a rename the server did after the call's deadline.
     A failure of that database step does not fail the call: ``rule_sets_updated`` is False.
     Recorded as ``folder_rename``, with the rule sets and filters changed."""

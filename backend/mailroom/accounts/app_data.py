@@ -1,6 +1,6 @@
 """The app's own rows about a user's accounts (schema ``app``), beside mailroom-core's: the Run
 filters switch, and forgetting all of it when an account or its user goes (the user's remembered
-remote-content senders and muted threads too)."""
+remote-content senders, muted threads and ledger of copies moved between accounts too)."""
 
 from __future__ import annotations
 
@@ -10,12 +10,14 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 
 from mailroom.accounts.store import core_user_id, load_accounts, remove_account
+from mailroom.filters.transfers import forget_target
 from mailroom.models import (
     AccountFilterSettings,
     FilterRun,
     MutedThread,
     RemoteContentSender,
     RuleSet,
+    TransferLedger,
 )
 from mailroom_core.store import forget_user
 
@@ -51,8 +53,8 @@ def set_run_filters(db: Session, user_id: int, account_id: int, *, run_filters: 
 def forget_account(store: AccountStore, db: Session, user_id: int, account_id: int) -> None:
     """Remove the account from mailroom-core and the app's rows about it, the runs on it of the
     user's rule sets for all accounts included. The app's rows go first, so none is left behind
-    if removing the account then fails. Raises ``AccountNotFound``, or ``RevisionConflict`` /
-    ``SettingsBusy``."""
+    if removing the account then fails; the user's other rule sets moving to it are turned off
+    (``forget_target``). Raises ``AccountNotFound``, or ``RevisionConflict`` / ``SettingsBusy``."""
     load_accounts(store).account(account_id)
     db.execute(
         delete(AccountFilterSettings).where(
@@ -60,6 +62,7 @@ def forget_account(store: AccountStore, db: Session, user_id: int, account_id: i
             AccountFilterSettings.account_id == account_id,
         )
     )
+    forget_target(db, user_id, account_id)
     # Its rule sets go too, with their filters and runs, the runs on it of the rule sets for all
     # accounts (their reports name its mail), and its muted threads.
     db.execute(delete(RuleSet).where(RuleSet.user_id == user_id, RuleSet.account_id == account_id))
@@ -88,5 +91,6 @@ def forget_user_accounts(db: Session, user_id: int) -> None:
     db.execute(delete(AccountFilterSettings).where(AccountFilterSettings.user_id == user_id))
     db.execute(delete(RuleSet).where(RuleSet.user_id == user_id))
     db.execute(delete(MutedThread).where(MutedThread.user_id == user_id))
+    db.execute(delete(TransferLedger).where(TransferLedger.user_id == user_id))
     db.execute(delete(RemoteContentSender).where(RemoteContentSender.user_id == user_id))
     forget_user(db.connection(), core_user_id(user_id))

@@ -7,7 +7,7 @@ matched and did (`FolderReport`). They run on mailroom-core's connections
 imap-thingy, a library of its own, until it joined mailroom-core.
 """
 
-from mailroom_core.filters.account import Account, Folder
+from mailroom_core.filters.account import Account, Folder, SkipUids
 from mailroom_core.filters.actions.action import Action
 from mailroom_core.filters.actions.delete import Delete
 from mailroom_core.filters.actions.flags import (
@@ -149,6 +149,7 @@ __all__ = [
     "Rules",
     "RunRulesError",
     "Selected",
+    "SkipUids",
     "SpecError",
     "SpecNode",
     "Star",

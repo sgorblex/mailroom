@@ -32,10 +32,14 @@ log = logging.getLogger(__name__)
 @dataclass(frozen=True, slots=True)
 class AccountTarget:
     """How a run moves messages to another account: connections serving both that account and
-    the run's, and the size a moved message may have (`move_to_account`'s `max_bytes`)."""
+    the run's, the size a moved message may have (`move_to_account`'s `max_bytes`), and
+    `copied`, called with the refs of each chunk's confirmed copies before their originals are
+    removed (the host's record of what it put there: its loop guard); when it raises, those
+    originals stay, and the moves left stop."""
 
     connections: MailConnections
     max_bytes: int
+    copied: Callable[[Sequence[str]], None] | None = None
 
 
 type AccountResolver = Callable[[int], AccountTarget]
@@ -102,12 +106,15 @@ class MoveToAccount(Action):
             "error": None,
         }
         noted: set[int] = set()
+        # A refusal of `copied` the moves left stop at: a copy it did not hear of could be moved on.
+        stopped: list[BaseException] = []
         try:
             if self._accounts is None:
                 raise MailError("unsupported", "Moves to another account are not available here.")
             target = self._accounts(self._account)
             delimiter = target.connections.delimiter(self._account)
             folder = self._folder.as_string(delimiter or ".")
+            hook = None if target.copied is None else _stopping(target.copied, stopped)
             for chunk in batched(refs, MAX_REFS, strict=False):
                 result = move_to_account(
                     target.connections,
@@ -117,8 +124,11 @@ class MoveToAccount(Action):
                     removal="trash",
                     max_bytes=target.max_bytes,
                     refuse_each=True,
+                    copied=hook,
                 )
                 _note(report, result, noted)
+                if stopped:
+                    raise stopped[0]
         except Exception as exc:
             # Logged by `mail_error`, never in the report: the transfers after it still run.
             error = mail_error(exc, self._account)
@@ -129,6 +139,21 @@ class MoveToAccount(Action):
         moved = sum(message["result"] == "ok" for message in report["messages"])
         log.info("moved %s of %s message(s) to account %s", moved, len(uids), self._account)
         return report
+
+
+def _stopping(
+    copied: Callable[[Sequence[str]], None], stopped: list[BaseException]
+) -> Callable[[Sequence[str]], None]:
+    """`copied`, keeping in `stopped` what it raises."""
+
+    def hear(refs: Sequence[str]) -> None:
+        try:
+            copied(refs)
+        except Exception as error:
+            stopped.append(error)
+            raise
+
+    return hear
 
 
 def _note(report: TransferReport, result: OrganizeResult, noted: set[int]) -> None:

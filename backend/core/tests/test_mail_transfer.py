@@ -29,7 +29,7 @@ from mailroom_core.testing import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Iterator, Sequence
 
 pytestmark = pytest.mark.integration
 
@@ -192,6 +192,41 @@ def test_repeating_a_move_whose_removal_failed_copies_nothing_twice(
     assert again.outcome == "ok"
     assert subjects(imap_server, target, "INBOX") == ["stuck"]
     assert subjects(imap_server, source, "Trash") == ["stuck"]
+
+
+def test_copied_hears_the_copies_before_the_originals_go(imap_server, users, mail) -> None:
+    source, _target = users
+    seed(imap_server, source, "INBOX", mime("heard"))
+    [ref] = refs_in(mail)
+    heard: list[tuple[list[str], list[str]]] = []
+
+    def copied(refs: Sequence[str]) -> None:
+        heard.append((list(refs), subjects(imap_server, source, "INBOX")))
+
+    result = move_to_account(mail, [ref], 2, "INBOX", removal="trash", max_bytes=CAP, copied=copied)
+
+    [group] = result.groups
+    assert heard == [(list(group.new_refs or ()), ["heard"])]
+    assert subjects(imap_server, source, "Trash") == ["heard"]
+
+
+def test_a_copied_that_raises_leaves_the_original_in_both(imap_server, users, mail) -> None:
+    source, target = users
+    seed(imap_server, source, "INBOX", mime("unheard"))
+    [ref] = refs_in(mail)
+
+    def refuse(_refs: Sequence[str]) -> None:
+        raise MailError("unsupported", "Not recorded.")
+
+    result = move_to_account(mail, [ref], 2, "INBOX", removal="trash", max_bytes=CAP, copied=refuse)
+
+    [group] = result.groups
+    assert group.error is not None
+    assert group.error.code == "unsupported"
+    source_item = next(item for item in result.items if item.account == 1)
+    assert (source_item.copied, source_item.removed) == (True, "failed")
+    assert subjects(imap_server, target, "INBOX") == ["unheard"]
+    assert subjects(imap_server, source, "INBOX") == ["unheard"]
 
 
 def test_a_message_already_in_the_target_is_not_copied_again(imap_server, users, mail) -> None:

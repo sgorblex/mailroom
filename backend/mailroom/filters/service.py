@@ -31,6 +31,7 @@ from mailroom.filters.runs import (
     runs_of,
 )
 from mailroom.filters.spec import InvalidSpecError, hidden_criterion, normalized_spec
+from mailroom.filters.transfers import check_rule_set_targets, check_targets
 from mailroom.mail import service as mail_service
 from mailroom.models import Filter, FilterRun, RuleSet
 from mailroom.worker.tasks import queue_run
@@ -117,6 +118,9 @@ class RuleSetOut(BaseModel):
     interval_minutes: int | None
     marker: Marker
     enabled: bool
+    disabled_reason: str | None
+    """Why the app turned it off (``<code>: <message>``: ``copied_not_removed``,
+    ``in_both_accounts``, ``move_target_removed``), until the user turns it on."""
     created_at: datetime
     updated_at: datetime
 
@@ -467,7 +471,9 @@ def change_rule_set(
 ) -> RuleSetOut:
     """Change the fields ``patch`` sets (a None one stays, but for ``interval_minutes``).
     ``disabled_only``: refuse an enabled rule set (``refuse_enabled``). A marker changed to
-    ``to_sort``, and an all-accounts rule set's folder, are checked as a new rule set's are."""
+    ``to_sort``, and an all-accounts rule set's folder, are checked as a new rule set's are;
+    turning it on checks its filters' moves to another account again (``check_targets``) and
+    clears its ``disabled_reason``."""
     if patch.marker == "to_sort":
         current = _owned_for_change(db, user_id, rule_set_id, disabled_only=disabled_only)
         account_id, marker = current.account_id, current.marker
@@ -484,6 +490,9 @@ def change_rule_set(
             changes.pop(field, None)
     if rule_set.account_id is None and "folder" in changes:
         changes["folder"] = _inbox_only(changes["folder"])
+    if changes.get("enabled") and not rule_set.enabled:
+        check_rule_set_targets(ctx.store(user_id), rule_set, enabled_filters(db, rule_set.id))
+        changes["disabled_reason"] = None
     trigger = changes.get("trigger", rule_set.trigger)
     if trigger != "scheduled" and "interval_minutes" not in changes:
         changes["interval_minutes"] = None
@@ -528,9 +537,11 @@ def add_filter(
     via: Via = "web",
 ) -> FilterOut:
     """Add a filter after the rule set's last one. One that marks or unmarks To sort is checked
-    as a To sort marker is (``check_marker``)."""
+    as a To sort marker is (``check_marker``); one that moves to another account, its target
+    (``check_targets``)."""
     rule_set = _owned_for_change(db, user_id, rule_set_id, disabled_only=disabled_only)
     spec = checked_spec(fields.spec)
+    check_targets(ctx.store(user_id), spec, rule_set.account_id)
     if marks_to_sort(spec):
         _check_to_sort_actions(ctx, db, user_id, rule_set.account_id, via)
         rule_set = _owned_for_change(db, user_id, rule_set_id, disabled_only=disabled_only)
@@ -565,11 +576,14 @@ def change_filter(
     via: Via = "web",
 ) -> FilterOut:
     """Change the fields ``patch`` sets (a None one stays). A spec changed to mark or unmark To
-    sort is checked as a new filter's is."""
+    sort, or to move to another account, is checked as a new filter's is; so is the spec of a
+    filter turned on, whose target may have gone while it was off."""
     row, rule_set = owned_filter(db, user_id, filter_id)
     if disabled_only:
         refuse_enabled(rule_set)
     spec = None if patch.spec is None else checked_spec(patch.spec, stored=row.spec)
+    if spec is not None or (patch.enabled and not row.enabled):
+        check_targets(ctx.store(user_id), spec or row.spec, rule_set.account_id)
     if spec is not None and marks_to_sort(spec) and not marks_to_sort(row.spec):
         _check_to_sort_actions(ctx, db, user_id, rule_set.account_id, via)
         row, rule_set = owned_filter(db, user_id, filter_id)

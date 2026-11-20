@@ -204,6 +204,7 @@ def test_a_user_adds_edits_and_removes_a_rule_set(
         "interval_minutes": 15,
         "marker": "none",
         "enabled": False,
+        "disabled_reason": None,
         "filters": [],
     }
     listed = user_client.get(rule_sets).json()

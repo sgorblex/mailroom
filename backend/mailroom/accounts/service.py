@@ -29,6 +29,7 @@ from mailroom.mail.connections import (
 from mailroom.mail.pool import DeadlineExceeded
 from mailroom_core.config import AccountColour
 from mailroom_core.mail import MESSAGES, MailError
+from mailroom_core.mail import move_cap as core_move_cap
 from mailroom_core.store import RevisionConflict, SettingsBusy
 
 if TYPE_CHECKING:
@@ -107,6 +108,12 @@ def attachment_limit_mb(limits: Limits) -> float:
 
 def move_limit_mb(limits: Limits) -> float:
     return min(limits.move_max_mb, MOVE_MAX_MB)
+
+
+def move_cap(limits: Limits) -> int:
+    """The bytes a message moved to another account may have, at most ``MOVE_MAX_MB``: by the
+    mail client and by a filter alike."""
+    return core_move_cap(limits.model_copy(update={"move_max_mb": move_limit_mb(limits)}))
 
 
 def account_not_found(*, coded: bool = False) -> Refusal:

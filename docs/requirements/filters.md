@@ -82,8 +82,8 @@ in the browser, tried with a dry run, and run by the worker. Product scope:
   MOVE copy then expunge exactly the copied messages; a move into the folder the rule set runs on
   is skipped. A filter never matches a message marked deleted (`\Deleted`), so an original that
   a move copied but could not remove is not copied again; and a run whose move copied messages
-  it could not remove turns its rule set off, with the error `copied_not_removed` in its history,
-  until the user has checked both folders and enables it again. `trash` without a folder needs
+  it could not remove turns its rule set off, with the error `copied_not_removed` in its history
+  and its `disabled_reason`, until the user has checked both folders and enables it again. `trash` without a folder needs
   the account's special-use Trash (`unsupported` without one); `junk` moves to the account's
   Junk folder, found by its role (special-use `\Junk`, else a well-known name; `unsupported`
   without one). `move_to_account` names another account's id and a folder there: in the run it
@@ -91,12 +91,8 @@ in the browser, tried with a dry run, and run by the worker. Product scope:
   the run is done with its folder it moves them as the mail client's *Move to another account*
   does, each copied, confirmed by its Message-ID, then moved to its own account's Trash; the
   run's report says per message whether it moved or the error that stopped it, and the filter
-  counts as not executed when any failed. A message without a Message-ID (its copy could not be
-  confirmed) or over the size cap is refused on its own, its reason in the report, while the
-  others move. In a `seq`, nothing that moves or deletes (`delete`, `trash`, `junk`, `move_to`,
-  another `move_to_account`) may follow a `move_to_account`: such a spec is refused when the
-  filter is saved (`invalid_spec`) or loaded. The app does not resolve the target account yet, so
-  for now every message of such a filter fails `unsupported` and stays where it is. Filters run
+  counts as not executed when any failed ([*Moves to another account*](#moves-to-another-account)).
+  Filters run
   in order; a disabled filter is skipped, by dry runs too. A disabled rule set never runs (no
   trigger fires, *Run now* is refused) but can still be dry-run; a new rule set starts disabled.
 - **Dry run** evaluates the rule set against the folder's real mail and reports, per filter, the
@@ -171,16 +167,63 @@ only while the account's *Run filters* is on, and the mute's answer says whether
   and the Filters page's list of each account's muted conversations to unmute, each saying when
   Run filters is off that muting has no effect until it is on.
 
+### Moves to another account
+
+A filter's `move_to_account` moves mail to a folder of **another of the user's accounts**
+(`mailroom.filters.transfers`).
+
+- **The target is checked** when the filter is added or its spec changed, when the filter is turned
+  on, and when its rule set is turned on: an account that is not the user's is refused, `400`
+  `move_target_not_found`; the rule set's own account, or any target in a rule set for all accounts
+  (which also runs on the target), `400` `move_target_same_account`. MCP's `filter_add` and
+  `filter_update` refuse them alike. A run checks again when it moves: the user's, not the account
+  it runs on, able to log in; a refusal then fails each message (`invalid_argument`, `auth_failed`),
+  which stays where it is. Each message is at most the user's move limit, as the mail client's *Move
+  to another account* (`move_max_mb`, 50 MB at most; `too_large` over it). A message over it, or
+  without a Message-ID (its copy could not be confirmed, `unsupported`), is refused on its own,
+  with its reason in the run's report, while the others move; the mail client's move refuses the
+  whole folder instead.
+- **Last in a `seq`**: nothing that moves or deletes (`delete`, `trash`, `junk`, `move_to`,
+  another `move_to_account`) may follow a `move_to_account` in a `seq`, at any depth, as the
+  messages are taken by then: such a spec is refused when the filter is saved (`400`
+  `invalid_spec`, MCP's `filter_add` and `filter_update` alike) and fails a run that loads it.
+- **Audit**: a real run records each message as it went, `move_to_account` with its result
+  (`ok`, or the code that stopped it, a refusal included), its `destination_account` and
+  `destination`, how it left (`removed`), `copied` when it failed after its copy, and the
+  `reason` of a message refused on its own; and each copy
+  under the target account (`source_account`, `source_folder`). The run's report keeps 200
+  messages per move, with `messages_total`.
+- **Left in both**: a run whose move copied a message but could not remove the original turns
+  its rule set off (as a `move_to` that copied without removing does), with `disabled_reason`
+  `in_both_accounts`, so no trigger copies it again until the user has checked both accounts
+  and turns it on.
+- **The loop guard** is the app's ledger of the copies those moves made (`transfer_ledger`: account,
+  folder, UIDVALIDITY, UID), written as each chunk of copies is confirmed, before its originals are
+  removed. Every run on a folder, dry runs included, leaves the copies listed there alone, reading
+  the ledger again before each filter, so the target account's own filters never move a copy on or
+  back (A to B and B to A, or the target's `new_mail` rule sets), a run that started while the
+  copies were made included. A copy stays listed 90 days; its folder's entries go once its
+  UIDVALIDITY changes, follow its rename, and go with its account and user; a leading INBOX is one
+  folder in any case. A ledger the database cannot write leaves that chunk's originals where they
+  were (in both accounts, so the rule set is turned off) and stops the moves left (`unsupported`).
+- **Removing the target account** turns off every rule set of the user's with a filter moving
+  to it, with `disabled_reason` `move_target_removed`; turning it on is refused
+  (`move_target_not_found`) until that filter is changed, disabled or removed.
+- **`disabled_reason`**, on every rule set (`<code>: <message>`, else null), says why the app
+  turned it off: `copied_not_removed`, `in_both_accounts` or `move_target_removed`; turning the
+  rule set on clears it.
+
 ### Folders renamed or deleted
 
 A rule set names a folder by its own `folder`, a filter by the `folder` of a `move_to` or
 `trash` action anywhere in its spec (in a `seq` at any depth); either names the folder and every
-folder under it. Segments compare exactly, but for a leading `INBOX`, in any case
+folder under it. A `move_to_account` names a folder of its target account, from a rule set of
+any of the user's accounts. Segments compare exactly, but for a leading `INBOX`, in any case
 (`mailroom.filters.folders`). When the user renames or moves a folder in the mail client
 ([`mail-client.md`](mail-client.md) — *Folder management*):
 
-- **A rename** points every such rule set and filter action of the account at the new path, in
-  one transaction, **enabled rule sets included**: they keep acting on the same folder, so this
+- **A rename** points every such rule set and filter action of the account, and every
+  `move_to_account` to it, at the new path, in one transaction, **enabled rule sets included**: they keep acting on the same folder, so this
   is no edit of what runs, and it is made even where an edit needs the rule set disabled first
   (the MCP write tools). A `new_mail` rule set's IDLE watch moves to the new path at the worker's next reconcile
   (30 s). A run going on meanwhile may fail `mailbox_missing`. When the database step fails, the
@@ -190,7 +233,7 @@ folder under it. Segments compare exactly, but for a leading `INBOX`, in any cas
   keep the old path: the answer lists those naming it (`all_accounts_rule_sets`, also in the audit
   record), and their moves there fail on that account until the user changes them.
 - **A delete** is refused while any rule set or filter action of the account, or of a rule set
-  for all accounts, names the folder or one under it (`folder_in_use`, naming them), so that no rule set is left on a folder that
+  for all accounts, or a `move_to_account` to it, names the folder or one under it (`folder_in_use`, naming them), so that no rule set is left on a folder that
   is gone. A rule set created between that check and the delete, or a folder deleted by another
   mail client, leaves a rule set naming a missing folder: its runs fail `mailbox_missing`.
 
@@ -253,8 +296,9 @@ Schema `app`; every row belongs to the user who owns the account.
 
 | Table | Columns |
 | --- | --- |
-| `rule_set` | `id`, `user_id`, `account_id` (null: all accounts, a `user` rule set only), `folder` (`text[]`, path segments), `name`, `trigger` (`new_mail` \| `scheduled` \| `manual`), `interval_minutes` (`scheduled` only), `marker` (`none` \| `star` \| `to_sort`), `enabled`, `kind` (`user` \| `mute`, one `mute` per account at most), timestamps |
+| `rule_set` | `id`, `user_id`, `account_id` (null: all accounts, a `user` rule set only), `folder` (`text[]`, path segments), `name`, `trigger` (`new_mail` \| `scheduled` \| `manual`), `interval_minutes` (`scheduled` only), `marker` (`none` \| `star` \| `to_sort`), `enabled`, `disabled_reason` (why the app turned it off, or null), `kind` (`user` \| `mute`, one `mute` per account at most), timestamps |
 | `filter` | `id`, `rule_set_id`, `position`, `name`, `enabled`, `spec` (`jsonb`, a filter spec), timestamps |
+| `transfer_ledger` | `user_id`, `account_id`, `folder` (as the server names it), `uid_validity`, `uid` (the key), `created_at`: a copy a `move_to_account` made |
 | `muted_thread` | `id`, `user_id`, `account_id`, `message_ids` (`jsonb`, at most 200), `gm_thrid` (Gmail's thread id, or null), `created_at` |
 | `filter_run` | `id`, `rule_set_id`, `account_id` (the account it ran on), `trigger`, `created_at`, `started_at` (null while queued), `finished_at`, `dry_run`, `result` (`jsonb`, the filter engine's run report), `error` |
 
@@ -293,6 +337,10 @@ An unknown or foreign id is a `404` with a plain `detail` (`"No such rule set"`)
   of the account's folder listing when it cannot be asked;
 - adding a filter or changing its spec: `400` `public_provider_domain` for a `from_domain` on a
   [public mail provider](#filter-drafts);
+- adding a filter or changing its spec: `400` `move_target_not_found`,
+  `move_target_same_account` for a [`move_to_account`](#moves-to-another-account) to an account
+  that is not another of the user's (or in a rule set for all accounts); turning a rule set on,
+  the same for its enabled filters;
 - adding a filter: `400` `too_many_filters` when the rule set already holds 100;
 - *Run now*: `400` `run_filters_off` while the account's *Run filters* is off (every account's,
   for a rule set for all accounts), `400` `rule_set_disabled`, `409` `run_pending` while a run of

@@ -304,7 +304,9 @@ async def _run_now(args: RuleSetRunArguments, call: ToolCall) -> JsonObject:
 _DISABLED_ONLY = " Only on a disabled rule set: rule_set_disable it first."
 _PUBLIC_PROVIDERS = (
     " A public mail provider's whole domain (gmail.com, outlook.com…) is refused in from_domain, "
-    "from_contains and from_matches: filter its sender with from_is."
+    "from_contains and from_matches: filter its sender with from_is. move_to_account names "
+    "another of the user's accounts, never the rule set's own, and not in a rule set for all "
+    "accounts."
 )
 
 FILTER_TOOLS: Final[tuple[Tool[Any], ...]] = (
@@ -337,10 +339,10 @@ FILTER_TOOLS: Final[tuple[Tool[Any], ...]] = (
         name="rule_set_get",
         title="Get a rule set",
         description=(
-            "A rule set (its folder, trigger, marker and whether it is enabled) with all its "
-            "filters, in order, disabled ones too. Each filter's matches_30d counts the messages "
-            "it acted on in real runs over the last 30 days, kept across edits; updated_at is "
-            "its last edit."
+            "A rule set (its folder, trigger, marker, whether it is enabled and, when the app "
+            "turned it off, disabled_reason) with all its filters, in order, disabled ones too. "
+            "Each filter's matches_30d counts the messages it acted on in real runs over the last "
+            "30 days, kept across edits; updated_at is its last edit."
         ),
         group="filters_read",
         arguments=RuleSetArguments,
@@ -464,7 +466,8 @@ FILTER_TOOLS: Final[tuple[Tool[Any], ...]] = (
         description=(
             "Enable a rule set: from now on it acts on the account's mail on its trigger, while "
             "the account's Run filters is on (the result says when it is off). Dry run it and "
-            "confirm with the user first."
+            "confirm with the user first. A rule set the app turned off (disabled_reason) needs "
+            "the user to check why before it is enabled again."
         ),
         group="filters_run",
         arguments=RuleSetArguments,
