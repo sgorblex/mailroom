@@ -101,6 +101,7 @@ def test_a_user_adds_edits_and_removes_an_account(
         "name": None,
         "display_name": "work@example.org",
         "colour": None,
+        "authserv_id": None,
         "login": "work@example.org",
         "send_mode": "drafts",
         "imap": {"host": "127.0.0.1", "port": 9, "tls": "implicit"},
@@ -228,6 +229,26 @@ def test_an_account_has_a_name_and_a_colour(user_client: TestClient) -> None:
     for wrong in ({"colour": "beige"}, {"name": "x" * 65}):
         change = edited(new_account(**wrong))
         assert user_client.put(f"/api/v1/accounts/{work}", json=change).status_code == 422
+
+
+def test_an_account_names_its_authentication_server(user_client: TestClient) -> None:
+    work = added(user_client, new_account(authserv_id="mx.google.com"))
+    [listed] = user_client.get("/api/v1/accounts").json()
+    assert listed["authserv_id"] == "mx.google.com"
+
+    # An edit replaces it like any field: without it, the account has none.
+    response = user_client.put(f"/api/v1/accounts/{work}", json=edited(new_account()))
+    assert response.json()["authserv_id"] is None
+
+    for wrong in ("", "mx.example.org; dkim=pass", "mx example.org"):
+        change = edited(new_account(authserv_id=wrong))
+        response = user_client.put(f"/api/v1/accounts/{work}", json=change)
+        assert response.status_code == 400
+        detail = response.json()["detail"]
+        assert detail["code"] == "invalid_account"
+        assert ["authserv_id"] in [issue["path"] for issue in detail["issues"]]
+    change = edited(new_account(authserv_id="x" * 254))
+    assert user_client.put(f"/api/v1/accounts/{work}", json=change).status_code == 422
 
 
 def test_a_user_names_each_account_differently(

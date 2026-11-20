@@ -387,7 +387,10 @@ bounded to one minor because the server relies on its handlers.
   `sky`, `blue`, `violet` or `pink`), each null when unset and given back as stored, so a
   client tells an unnamed account from one named after its login. Responses also carry a
   read-only `display_name`, what to call the account: its `name`, else its login (a body that
-  sends it back has it ignored). An edit replaces `name` and `colour` like the other fields. No
+  sends it back has it ignored). An account may also name its authentication server,
+  `authserv_id` (an RFC 8601 authserv-id: up to 253 characters of an RFC 2045 token, such as
+  `mx.google.com`; null when unset, and then no Authentication-Results field is believed for its
+  mail). An edit replaces `name`, `colour` and `authserv_id` like the other fields. No
   two of a user's accounts share a name, compared NFKC-normalised, trimmed and whatever their
   case; unnamed accounts share none. Core's `core_0005` repaired any stored duplicates: in each
   user's current settings the first account keeps the name and later ones become unnamed. An

@@ -112,6 +112,17 @@ def _not_blank(text: str) -> str:
 
 
 _AccountName = Annotated[StrictStr, Field(min_length=1, max_length=64), AfterValidator(_not_blank)]
+_AUTHSERV_ID = re.compile(r"[A-Za-z0-9!#$%&'*+.^_`{|}~-]+")
+"""An RFC 2045 token, as an Authentication-Results authserv-id is written (RFC 8601, 2.2)."""
+
+
+_AuthservId = Annotated[
+    StrictStr,
+    Field(min_length=1, max_length=253),
+    AfterValidator(
+        _matching(_AUTHSERV_ID, "must be a host name such as mx.google.com, with no spaces")
+    ),
+]
 
 
 class StrictModel(BaseModel):
@@ -148,12 +159,15 @@ type AccountAuth = PasswordAuth
 
 class AccountConfig(StrictModel):
     """One mail account: login, send mode, servers, identities and auto-approved recipients;
-    the name and colour it is shown with."""
+    the name and colour it is shown with; the authentication server its mail is checked by."""
 
     id: AccountId
     name: _AccountName | None = None
     """What the user calls the account; unset, listings show its login."""
     colour: AccountColour | None = None
+    authserv_id: _AuthservId | None = None
+    """The authentication server whose Authentication-Results this account's mail is checked by
+    (RFC 8601): only the topmost field of this id counts. Unset, no result is believed."""
     login: NonEmpty
     send_mode: SendMode
     auth: AccountAuth

@@ -1118,8 +1118,9 @@ a failure too, with the app's code `password_missing`.
 - `headers` is what mailroom-core parsed from From, the List-* fields, Authentication-Results,
   DKIM-Signature, Delivered-To and X-Original-To (*Read* in [`core.md`](../core.md)), from at most
   64 KiB of them (`truncated` when cut). **None of it is verified:** any field may be forged, and
-  only the topmost `authentication` entry of the account's own authentication server can be
-  believed. List links are `https:` or `mailto:` only, the topmost of each field;
+  only the topmost `authentication` entry of the account's own authentication server (its
+  `authserv_id`, *Account autoconfiguration*) can be believed. List links are `https:` or
+  `mailto:` only, the topmost of each field;
   `authentication` and `delivered_to` (X-Original-To's addresses, then Delivered-To's) are topmost
   first. The client shows none of it yet.
 - Reading **does not set `\Seen`.** Errors: 400, 404, 409 (stale), 502, 504.
@@ -1200,6 +1201,14 @@ either. It asks, in this order, and answers with the first that gives both serve
 5. Built-in presets by domain: Gmail, iCloud, Fastmail and Yahoo (each wanting an app password),
    Outlook and the other Microsoft domains (unsupported until OAuth2).
 
+A provider's `authserv_id` is the authserv-id its Authentication-Results fields carry (RFC 8601),
+for the account's own (*Sender authentication* in [`GLOSSARY.md`](../GLOSSARY.md)). Only Gmail has
+one, `mx.google.com`. iCloud, Fastmail, Yahoo and Microsoft are left without: their receiving hosts
+each write their own name, or split the results across several, so no one name can be trusted for
+them, and the user enters it if they know it. A suggestion's is only that, editable like the rest:
+reading a message uses the account's `authserv_id` as stored and never picks one by the IMAP
+host.
+
 Every fetch goes through `safe_fetch` ([`nonfunctional-requirements.md`](nonfunctional-requirements.md)
 — *Security*), two redirects at most, 64 KiB and 8 s each. The XML is parsed by lxml with no
 entity resolved, no DTD loaded and no network. From a document, only IMAP and SMTP servers with
@@ -1213,9 +1222,11 @@ The answer: `{"domain", "suggestion"}`, `domain` lower case and IDNA-encoded, `s
 when nothing answered, else `source` (`autoconfig`, `srv`, `mx`, `ispdb` or `preset`), `origin`
 (the document's URL, the SRV names or the MX host; null for a preset), `provider` (a known one's
 name, also when its servers came from a document, else null), `supported` (false for Microsoft),
-`note` (`app_password`, `oauth_required` or null), `login` (`address` or `local_part`), and
-`imap` and `smtp` as `{"host", "port", "tls", "outside_domain"}`. Not an address: 400
-`invalid_address`. Each user may look up 20 addresses a minute (429 `autoconfig_busy`). Logged as
+`note` (`app_password`, `oauth_required` or null), `login` (`address` or `local_part`),
+`imap` and `smtp` as `{"host", "port", "tls", "outside_domain"}`, and `authserv_id`: the known
+provider's authentication server, wherever the suggestion came from, null for any other. Not an
+address: 400 `invalid_address`. Each user may look up 20 addresses a minute (429
+`autoconfig_busy`). Logged as
 `account_autoconfig` with `user_id` and the `outcome` (the source, or `none`).
 
 A host the domain's own autoconfig document or its SRV records name that is neither the domain nor
@@ -1229,7 +1240,8 @@ beside them still is. Hosts from the ISPDB, the MX match and the presets are nev
 
 The web's *Accounts* form adds an account starting from the address alone, with **Find settings**
 (or Enter) and **Enter settings manually**. A suggestion fills the login, the IMAP and SMTP
-servers, and the form says where it came from (the document's URL, the DNS records, the provider
+servers and the authentication server (emptied when it has none), and the form says where it
+came from (the document's URL, the DNS records, the provider
 the MX points to, Thunderbird's database, Mailroom's own presets) and when the provider wants an
 app password; everything stays editable. Nothing found, or a failed lookup, offers the supported
 presets (Gmail, iCloud, Fastmail, Yahoo, as the web's own copy of the API's list). An unsupported

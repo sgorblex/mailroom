@@ -328,22 +328,38 @@ def test_the_ispdb_mx_and_presets_are_never_flagged() -> None:
 
 
 @pytest.mark.parametrize(
-    ("domain", "provider", "supported", "note"),
+    ("domain", "provider", "supported", "note", "authserv_id"),
     [
-        ("gmail.com", "Gmail", True, "app_password"),
-        ("icloud.com", "iCloud", True, "app_password"),
-        ("fastmail.com", "Fastmail", True, "app_password"),
-        ("yahoo.com", "Yahoo", True, "app_password"),
-        ("outlook.com", "Microsoft", False, "oauth_required"),
+        ("gmail.com", "Gmail", True, "app_password", "mx.google.com"),
+        # Each receiving host writes its own authserv-id, or none is published: left unset.
+        ("icloud.com", "iCloud", True, "app_password", None),
+        ("fastmail.com", "Fastmail", True, "app_password", None),
+        ("yahoo.com", "Yahoo", True, "app_password", None),
+        ("outlook.com", "Microsoft", False, "oauth_required", None),
     ],
 )
 def test_presets_when_nothing_answers(
-    domain: str, provider: str, supported: bool, note: str
+    domain: str, provider: str, supported: bool, note: str, authserv_id: str | None
 ) -> None:
     found = look_up(Web(), domain=domain)
     assert found is not None
     assert (found.source, found.origin, found.provider) == ("preset", None, provider)
-    assert (found.supported, found.note) == (supported, note)
+    assert (found.supported, found.note, found.authserv_id) == (supported, note, authserv_id)
+
+
+def test_a_provider_s_authentication_server_comes_with_it_from_anywhere() -> None:
+    dns = FakeDns(mx={"example.org": [MxRecord(10, "aspmx.l.google.com")]})
+    found = look_up(Web(), dns)
+    assert found is not None
+    assert (found.source, found.authserv_id) == ("mx", "mx.google.com")
+    gmail = config(server(host="imap.gmail.com"), server("smtp", "smtp.gmail.com", 465))
+    found = look_up(Web({OWN: gmail}))
+    assert found is not None
+    assert (found.source, found.authserv_id) == ("autoconfig", "mx.google.com")
+    # A server no known provider has suggests none.
+    found = look_up(Web({OWN: DOCUMENT}))
+    assert found is not None
+    assert found.authserv_id is None
 
 
 def test_nothing_found() -> None:
@@ -451,6 +467,7 @@ def test_route_answers_a_suggestion(fake_lookups: Web, user_client: TestClient) 
                 "tls": "implicit",
                 "outside_domain": False,
             },
+            "authserv_id": None,
         },
     }
 

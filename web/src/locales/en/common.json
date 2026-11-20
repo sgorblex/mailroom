@@ -185,6 +185,8 @@
     "smtpHost": "SMTP server",
     "smtpPort": "SMTP port",
     "smtpTls": "SMTP security",
+    "authservId": "Authentication server",
+    "authservIdHint": "Optional: the name your provider's mail servers put on their sender checks (the Authentication-Results header), such as mx.google.com for Gmail. Mailroom believes only those checks; without it, no sender is shown as verified.",
     "tls": {
       "implicit": "SSL/TLS",
       "starttls": "STARTTLS"

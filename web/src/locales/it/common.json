@@ -185,6 +185,8 @@
     "smtpHost": "Server SMTP",
     "smtpPort": "Porta SMTP",
     "smtpTls": "Sicurezza SMTP",
+    "authservId": "Server di autenticazione",
+    "authservIdHint": "Facoltativo: il nome che i server del tuo provider mettono sui controlli del mittente (l'intestazione Authentication-Results), per esempio mx.google.com per Gmail. Mailroom si fida solo di quei controlli; senza, nessun mittente risulta verificato.",
     "tls": {
       "implicit": "SSL/TLS",
       "starttls": "STARTTLS"

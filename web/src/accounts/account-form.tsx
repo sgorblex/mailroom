@@ -28,6 +28,7 @@ const MAX_IDENTITIES = 50
 type Field =
   | 'name'
   | 'colour'
+  | 'authserv_id'
   | 'login'
   | 'password'
   | `identities.${number}.address`
@@ -54,6 +55,7 @@ function fieldOf(issue: RefusalIssue, identities: number): Field | null {
   switch (first) {
     case 'name':
     case 'colour':
+    case 'authserv_id':
     case 'login':
     case 'password':
     case 'send_mode':
@@ -93,6 +95,7 @@ interface FormState {
   smtpHost: string
   smtpPort: string
   smtpTls: Endpoint['tls']
+  authservId: string
   sendMode: AccountFields['send_mode']
 }
 
@@ -120,6 +123,7 @@ function initialState(account: Account | undefined): FormState {
     smtpHost: account?.smtp.host ?? '',
     smtpPort: String(account?.smtp.port ?? 465),
     smtpTls: account?.smtp.tls ?? 'implicit',
+    authservId: account?.authserv_id ?? '',
     sendMode: account?.send_mode ?? 'drafts',
   }
 }
@@ -135,6 +139,7 @@ function withSuggestion(state: FormState, suggestion: Suggestion, address: strin
     smtpHost: suggestion.smtp.host,
     smtpPort: String(suggestion.smtp.port),
     smtpTls: suggestion.smtp.tls,
+    authservId: suggestion.authserv_id ?? '',
   }
 }
 
@@ -222,9 +227,11 @@ function fieldsOf(state: FormState, account: Account | undefined): AccountFields
     }
   })
   const name = state.name.trim()
+  const authservId = state.authservId.trim()
   return {
     name: name === '' ? null : name,
     colour: state.colour,
+    authserv_id: authservId === '' ? null : authservId,
     login: state.login.trim(),
     send_mode: state.sendMode,
     imap: { host: state.imapHost.trim(), port: Number(state.imapPort), tls: state.imapTls },
@@ -241,7 +248,8 @@ function fieldsOf(state: FormState, account: Account | undefined): AccountFields
  * login from the API's suggestion and says where it came from, first asking whether to use a
  * suggestion naming a host outside the address's domain; when nothing is found, or the user does
  * not use it, the presets are offered; entering the settings by hand is always possible. The account's name and colour are
- * how the web shows it.
+ * how the web shows it; its authentication server, which a suggestion fills too, is whose sender
+ * checks are believed.
  * Every identity is edited here: the first, more added or removed, and which one is
  * the default once there are several. `save` sends it; a refusal shows next to the fields
  * mailroom-core found wrong. The send mode shows only with the mail client or MCP; otherwise the
@@ -788,6 +796,21 @@ export function AccountForm({
           )}
           {endpoint('imap')}
           {endpoint('smtp')}
+          {row(
+            'authserv_id',
+            t('accounts.authservId'),
+            <Input
+              {...control('authserv_id', true)}
+              maxLength={253}
+              autoCapitalize="none"
+              spellCheck={false}
+              value={state.authservId}
+              onChange={(event) => {
+                set('authservId', event.target.value)
+              }}
+            />,
+            t('accounts.authservIdHint'),
+          )}
           {sends &&
             row(
               'send_mode',

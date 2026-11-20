@@ -33,7 +33,7 @@ the tools answer with, and the app's MCP writes thin tools over it. The filter e
 
 | Module | Holds |
 |---|---|
-| `config` | The settings document: accounts (with an optional name and colour), identities, send modes, limits (`CoreSettings`) |
+| `config` | The settings document: accounts (with an optional name, colour and authentication server, `authserv_id`), identities, send modes, limits (`CoreSettings`) |
 | `crypto` | Sealed secrets |
 | `store` | `AccountStore` and core's migrations, in schema `core` |
 | `render` | Bodies to text, quotes, the untrusted-content envelope, `safe_html` |
@@ -201,7 +201,7 @@ X-Original-To. Deliberate choices:
   (nested) and quoted strings are honoured, other methods and properties outside the
   `ptype.property` form skipped. A field that cannot be read keeps its place with no results, under
   the authserv-id before its first semicolon when that much reads; `trusted_results` (the topmost
-  field of the account's own authserv-id, which only a host knows) stops at a field whose
+  field of the account's own authserv-id, `AccountConfig.authserv_id`) stops at a field whose
   authserv-id cannot be read, so it never falls through to a forged field below it. Nothing in
   `headers` is verified on its own.
 - **DKIM-Signature** gives `d=`, the start of `b=` and the `h=` list of a well-formed signature;

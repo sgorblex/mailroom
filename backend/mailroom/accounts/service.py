@@ -72,6 +72,7 @@ class StoredAccount(BaseModel):
 
     name: str | None = None
     colour: AccountColour | None = None
+    authserv_id: str | None = None
     login: str
     send_mode: Literal["off", "drafts", "approval", "direct"]
     imap: StoredEndpoint

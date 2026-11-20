@@ -3,7 +3,7 @@ import type { Suggestion } from '@/api/accounts.ts'
 type Server = Omit<Suggestion['imap'], 'outside_domain'>
 
 /** Mailroom chose these hosts, so none is outside the domain. */
-function preset(provider: string, imap: Server, smtp: Server): Suggestion {
+function preset(provider: string, imap: Server, smtp: Server, authservId: string | null = null): Suggestion {
   return {
     source: 'preset',
     origin: null,
@@ -13,6 +13,7 @@ function preset(provider: string, imap: Server, smtp: Server): Suggestion {
     login: 'address',
     imap: { ...imap, outside_domain: false },
     smtp: { ...smtp, outside_domain: false },
+    authserv_id: authservId,
   }
 }
 
@@ -21,7 +22,12 @@ function preset(provider: string, imap: Server, smtp: Server): Suggestion {
  * (`PROVIDERS` in `backend/mailroom/accounts/autoconfig.py`), which answer only for their domains.
  */
 export const PRESETS: readonly Suggestion[] = [
-  preset('Gmail', { host: 'imap.gmail.com', port: 993, tls: 'implicit' }, { host: 'smtp.gmail.com', port: 465, tls: 'implicit' }),
+  preset(
+    'Gmail',
+    { host: 'imap.gmail.com', port: 993, tls: 'implicit' },
+    { host: 'smtp.gmail.com', port: 465, tls: 'implicit' },
+    'mx.google.com',
+  ),
   preset(
     'iCloud',
     { host: 'imap.mail.me.com', port: 993, tls: 'implicit' },
