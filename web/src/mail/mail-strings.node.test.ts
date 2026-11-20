@@ -33,6 +33,7 @@ describe('the message strings', () => {
   it('exist in both languages', () => {
     expect(keys(it_.message).sort()).toEqual(keys(en.message).sort())
     expect(keys(it_.mailingList).sort()).toEqual(keys(en.mailingList).sort())
+    expect(keys(it_.mute).sort()).toEqual(keys(en.mute).sort())
   })
 })
 

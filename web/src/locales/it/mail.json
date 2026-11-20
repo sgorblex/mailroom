@@ -313,6 +313,17 @@
     "failed": "Non è stato possibile annullare ogni modifica.",
     "impossible": "Non si può annullare: il server di posta non ha detto dove sono finiti i messaggi."
   },
+  "mute": {
+    "mute": "Silenzia conversazione",
+    "unmute": "Riattiva conversazione",
+    "muted": "Conversazione silenziata: i suoi nuovi messaggi nella posta in arrivo arriveranno già letti.",
+    "isMuted": "Questa conversazione è silenziata: i suoi nuovi messaggi nella posta in arrivo arrivano già letti.",
+    "runFiltersOff": "Esegui filtri è spento per {{account}}: silenziare non ha effetto finché non lo attivi.",
+    "unmuted": "Conversazione riattivata.",
+    "failed": "Impossibile silenziare la conversazione.",
+    "unmuteFailed": "Impossibile riattivare la conversazione.",
+    "nothingToMute": "Questo messaggio non ha un Message-ID da seguire, quindi la sua conversazione non può essere silenziata."
+  },
   "spamOffer": {
     "label": "Filtro per lo spam",
     "question": "Mandare la posta futura di {{address}} in Spam?",

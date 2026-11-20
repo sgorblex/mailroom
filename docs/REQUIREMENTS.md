@@ -150,8 +150,9 @@ the index and live updates; tier 3 items arrive one at a time.
 - Each filter shows how many messages it acted on in the last 30 days, and when it was last edited.
 - **Report spam** moves a message to Junk and offers, never adds unasked, a filter sending its
   sender's mail there; its rule set and Run filters are turned on only on the user's word.
-- **Mute a thread**: its new INBOX messages arrive marked read, by the account's hidden mute rule
-  set, only while Run filters is on
+- **Mute a conversation** from a message: its new messages in INBOX arrive marked read, by the
+  account's hidden mute rule set, while the account's Run filters is on, as the page says; the
+  Filters page lists them to unmute
   ([`requirements/filters.md`](requirements/filters.md#muted-threads)).
 - The worker runs them through the filter engine's runner, only for accounts whose user turned
   **Run filters** on (off by default), one run at a time per account; each run is kept in

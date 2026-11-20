@@ -56,6 +56,13 @@ live updates yet.
   *Download .eml* saves [its source](#get-messagesrefsource), and *Filter messages like this*
   opens the filter [drafted from it](filters.md#filter-drafts) where the instance runs filters;
   the row's context menu and the command palette offer them too, the composer open or not.
+- **Mute conversation:** beside them too, where the instance runs filters, it
+  [mutes](#muted-threads) the message's conversation; the toast says so, with Undo, and when the
+  account's Run filters is off, that muting has no effect until it is on. The message then shows
+  it is muted (and that note) with *Unmute conversation* in place of the button. Only a mute made
+  on the mail screen since it opened is known there: the API names no thread by message. The
+  Filters page lists every muted conversation under its account, with when it was muted, the
+  same note, and *Unmute*. The row's context menu and the command palette offer both.
 - **Link safety:** in the HTML view each link's tooltip is the host it really goes to (IDNA form,
   never the sender's own title), and a link whose text names another host (not the link's, nor a
   parent or child of it) is followed by a red *⚠ host* marker naming the real one; no

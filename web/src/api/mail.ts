@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 import { type AccountId, accountIdSchema } from './accounts.ts'
 import { getApiBaseUrl } from './api-base-url.ts'
-import { ApiRequestError, apiDeleteJson, apiGetJson, apiPostForm, apiPostJson, reportSessionEnded } from './http.ts'
+import { ApiRequestError, apiDelete, apiDeleteJson, apiGetJson, apiPostForm, apiPostJson, reportSessionEnded } from './http.ts'
 
 /** The REST contract of `docs/requirements/mail-client.md`. Refs and cursors are opaque strings. */
 
@@ -368,6 +368,37 @@ export function addRemoteSender(ref: string): Promise<RemoteSender> {
 
 export async function removeRemoteSender(address: string): Promise<void> {
   await apiPostJson(`${base}/remote-senders/remove`, { address })
+}
+
+const mutedThreadSchema = z.object({
+  id: z.number(),
+  account_id: accountIdSchema,
+  /** How many Message-IDs it is known by. */
+  ids: z.number(),
+  /** Known by its Gmail thread too. */
+  gmail: z.boolean(),
+  /** The account's Run filters: off, muting has no effect until it is on. */
+  run_filters: z.boolean(),
+  created_at: z.string(),
+})
+export type MutedThread = z.infer<typeof mutedThreadSchema>
+
+/** Mutes the conversation of the message `ref` names: its new messages in INBOX arrive marked read. */
+export function muteThread(ref: string): Promise<MutedThread> {
+  return apiPostJson(`${messagePath(ref)}/mute`, undefined, { schema: mutedThreadSchema })
+}
+
+/** The user's muted threads, oldest first. */
+export async function listMutedThreads(signal?: AbortSignal): Promise<MutedThread[]> {
+  const answer = await apiGetJson(`${base}/muted`, {
+    init: { signal },
+    schema: z.object({ threads: z.array(mutedThreadSchema) }),
+  })
+  return answer.threads
+}
+
+export async function unmuteThread(id: number): Promise<void> {
+  await apiDelete(`${base}/muted/${String(id)}`)
 }
 
 const unsubscribedSchema = z.object({

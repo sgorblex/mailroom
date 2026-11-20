@@ -1,6 +1,8 @@
 import {
   Archive,
   ArrowRightLeft,
+  Bell,
+  BellOff,
   BookmarkCheck,
   BookmarkPlus,
   FileDown,
@@ -24,6 +26,7 @@ import type { AccountId } from '@/api/accounts.ts'
 import { messagePrintUrl, messageSourceUrl, type PrefillMode } from '@/api/mail.ts'
 
 import type { Compose } from './compose-context.ts'
+import type { Muting } from './mute-context.ts'
 import { movableInto, type TriageActions } from './triage-actions.ts'
 import { isSameFolder, type Destination, type Target } from './triage-context.ts'
 
@@ -42,13 +45,16 @@ export interface ActionContext {
   into?: Destination
   /** Opens a filter drafted from the message, where the instance runs filters. */
   draftFilter?: (message: Pick<Target, 'ref' | 'account_id'>) => void
+  /** Mutes and unmutes the message's conversation, where the instance runs filters. */
+  muting?: Muting
 }
 
 /**
  * A mail action: the toolbar, the shortcuts, the reply buttons and the context menus all read
  * these. `triage` ones act on the targets and wait while another runs; `reply` and `compose` ones
  * open the composer, and their keys wait while one is open; `message` ones open the message in
- * another form, in a tab or as a download, or a filter drafted from it, and never wait.
+ * another form, in a tab or as a download, or a filter drafted from it, or mute its conversation,
+ * and never wait.
  */
 export interface MailAction {
   id: string
@@ -134,6 +140,30 @@ export const MAIL_ACTIONS: readonly MailAction[] = [
     run: ({ message, draftFilter }: ActionContext): void => {
       if (message !== null) {
         draftFilter?.(message)
+      }
+    },
+  },
+  {
+    id: 'mute',
+    group: 'message',
+    label: () => 'mute.mute',
+    icon: () => BellOff,
+    available: ({ message, muting }) => message !== null && muting !== undefined && muting.mutedAs(message.ref) === undefined,
+    run: ({ message, muting }: ActionContext): void => {
+      if (message !== null) {
+        muting?.mute(message)
+      }
+    },
+  },
+  {
+    id: 'unmute',
+    group: 'message',
+    label: () => 'mute.unmute',
+    icon: () => Bell,
+    available: ({ message, muting }) => message !== null && muting?.mutedAs(message.ref) !== undefined,
+    run: ({ message, muting }: ActionContext): void => {
+      if (message !== null) {
+        muting?.unmute(message)
       }
     },
   },

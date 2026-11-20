@@ -313,6 +313,17 @@
     "failed": "Could not undo every change.",
     "impossible": "It cannot be undone: the mail server did not say where the messages went."
   },
+  "mute": {
+    "mute": "Mute conversation",
+    "unmute": "Unmute conversation",
+    "muted": "Conversation muted: its new messages in the inbox will arrive marked read.",
+    "isMuted": "This conversation is muted: its new messages in the inbox arrive marked read.",
+    "runFiltersOff": "Run filters is off for {{account}}: muting has no effect until it is on.",
+    "unmuted": "Conversation unmuted.",
+    "failed": "Could not mute the conversation.",
+    "unmuteFailed": "Could not unmute the conversation.",
+    "nothingToMute": "This message has no Message-ID to follow, so its conversation cannot be muted."
+  },
   "spamOffer": {
     "label": "Filter for spam",
     "question": "Send future mail from {{address}} to Junk?",
