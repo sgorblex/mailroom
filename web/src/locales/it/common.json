@@ -248,6 +248,15 @@
     "saved": "Fuso orario salvato.",
     "saveFailed": "Impossibile salvare il fuso orario."
   },
+  "markRead": {
+    "title": "Segna tutti come letti",
+    "intro": "In una cartella con sottocartelle, cosa fa per primo “Segna tutti come letti” nel suo menu. Il menu offre anche l'altra scelta.",
+    "subtree": "La cartella e le sue sottocartelle",
+    "folderOnly": "Solo la cartella",
+    "save": "Salva",
+    "saved": "Salvato.",
+    "saveFailed": "Impossibile salvare questa scelta."
+  },
   "limits": {
     "title": "Limiti della posta",
     "intro": "Valgono per la tua posta qui e dalle app collegate, su tutti i tuoi account. Solo tu li cambi, qui: un'app collegata non può.",

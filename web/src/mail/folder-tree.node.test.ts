@@ -23,7 +23,7 @@ import {
 } from './folder-tree.ts'
 
 function folder(path: string, changes: Partial<MailFolder> = {}): MailFolder {
-  return { path, role: null, unread: 0, total: 0, delimiter: '/', selectable: true, ...changes }
+  return { path, role: null, unread: 0, total: 0, delimiter: '/', selectable: true, uid_validity: 1, uid_next: 1, ...changes }
 }
 
 /** Each node as `path` (`*` when the server did not list it), its children indented. */

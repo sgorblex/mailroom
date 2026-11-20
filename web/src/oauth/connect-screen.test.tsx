@@ -10,7 +10,7 @@ import { renderSignedIn } from '@/test/signed-in.tsx'
 
 import { ConnectScreen } from './connect-screen.tsx'
 
-const ALICE = { username: 'alice', is_admin: false, time_zone: null }
+const ALICE = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true }
 const REQUEST_PATH = '/api/v1/oauth/requests/req-1'
 const CALLBACK = 'https://claude.ai/api/mcp/auth_callback'
 
@@ -236,6 +236,7 @@ describe('ConnectScreen', () => {
           signIn: reject,
           signOut: reject,
           changeTimeZone: reject,
+          changeMarkReadSubfolders: reject,
           recheck: vi.fn(),
         }}
       >

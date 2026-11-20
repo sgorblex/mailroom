@@ -18,6 +18,8 @@ export type AuthContextValue = AuthState & {
   signOut: () => Promise<void>
   /** Saves the signed-in user's time zone (`null` unsets it); rejects with the API error. */
   changeTimeZone: (timeZone: string | null) => Promise<void>
+  /** Saves what "Mark all as read" on a folder with subfolders does first; rejects with the API error. */
+  changeMarkReadSubfolders: (subfolders: boolean) => Promise<void>
   /** Ask the API again, after it could not be reached. */
   recheck: () => void
 }
@@ -41,6 +43,15 @@ export function useFeature(feature: Feature): boolean {
 export function useMailLayer(): boolean {
   const { features } = useAuth()
   return features.has('mail') || features.has('mcp')
+}
+
+/**
+ * Whether "Mark all as read" on a folder with subfolders marks them too, unless the user picks the
+ * other item: the signed-in user's choice, else (outside an `AuthProvider` too) `true`.
+ */
+export function useMarkReadSubfolders(): boolean {
+  const auth = useContext(AuthContext)
+  return auth?.status === 'signed-in' ? auth.user.mark_read_subfolders : true
 }
 
 /**

@@ -31,6 +31,7 @@ import {
 
 import type { AccountId } from '@/api/accounts.ts'
 import type { FolderRole, MailFolder } from '@/api/mail.ts'
+import { useMarkReadSubfolders } from '@/auth/auth-context.ts'
 import { Menu, type MenuItem, type MenuPoint } from '@/components/ui/menu.tsx'
 import { cn } from '@/lib/utils.ts'
 
@@ -44,6 +45,7 @@ import {
   folderTree,
   hasListedSubfolders,
   initiallyExpanded,
+  listedSubfolders,
   listedUnread,
   subtreeUnread,
   visibleNodes,
@@ -51,6 +53,7 @@ import {
   type FolderRefusal,
 } from './folder-tree.ts'
 import { MAIL_NS } from './i18n.ts'
+import { hasUids, markReadScope } from './mark-folder-read.ts'
 import { carriesMessages, endMessageDrag, useDraggedMessages } from './message-drag.ts'
 import { storedPaths, storePaths } from './stored-paths.ts'
 import { storedSubfolders, storeSubfolders } from './subfolder-view.ts'
@@ -132,11 +135,11 @@ interface TreeState {
  * move, → and ← open and close, Enter opens the folder. A level that holds only folders is not a
  * link, and a closed one shows the unread count of everything under it. With `onAction`, each
  * listed folder has a menu (its ⋯ button, a right-click but with Shift, or Shift+F10 / the
- * context-menu key): a new subfolder, rename or move, delete, each disabled with the reason where
- * the server would refuse it. A folder with subfolders to list is listed with them or without (its
- * menu's "Include subfolders", or the button on its row), as this browser last chose for it; its
- * count is then theirs too. Messages dragged from the list drop on a folder they can move to,
- * highlighted while over it.
+ * context-menu key): mark all as read, a new subfolder, rename or move, delete, each disabled with
+ * the reason where the server would refuse it. A folder with subfolders to list is listed with
+ * them or without (its menu's "Include subfolders", or the button on its row), as this browser
+ * last chose for it; its count is then theirs too. Messages dragged from the list drop on a
+ * folder they can move to, highlighted while over it.
  */
 export function FolderTree({
   accountId,
@@ -158,6 +161,7 @@ export function FolderTree({
 }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const navigate = useNavigate()
+  const markReadSubfolders = useMarkReadSubfolders()
   const roots = useMemo(() => folderTree(folders), [folders])
   const [expanded, setOpen] = useExpanded(accountId, folders, current, reveal)
   const [focused, setFocused] = useState<string | null>(null)
@@ -291,7 +295,13 @@ export function FolderTree({
           point={menuFor.point}
           label={t('folderActions.menu', { name: menuFor.node.folder.role === null ? menuFor.node.name : t(`roles.${menuFor.node.folder.role}`) })}
           anchor={menuFor.anchor}
-          items={actionItems(t, menuFor.node, accountDelimiter(folders) !== null, subfoldersOf(menuFor.node.path), setSubfolders, onAction)}
+          items={actionItems(t, menuFor.node, {
+            hierarchy: accountDelimiter(folders) !== null,
+            merged: subfoldersOf(menuFor.node.path),
+            markReadSubfolders,
+            setSubfolders,
+            onAction,
+          })}
           onClose={closeMenu}
         />
       )}
@@ -352,10 +362,22 @@ const REFUSALS = {
 function actionItems(
   t: TFunction,
   node: FolderNode & { folder: MailFolder },
-  hierarchy: boolean,
-  merged: boolean,
-  setSubfolders: (path: string, on: boolean) => void,
-  onAction: (dialog: FolderDialog) => void,
+  {
+    hierarchy,
+    merged,
+    markReadSubfolders,
+    setSubfolders,
+    onAction,
+  }: {
+    /** The server has subfolders at all. */
+    hierarchy: boolean
+    /** The folder is listed with its subfolders. */
+    merged: boolean
+    /** The user's first "Mark all as read" on a folder with subfolders takes them too. */
+    markReadSubfolders: boolean
+    setSubfolders: (path: string, on: boolean) => void
+    onAction: (dialog: FolderDialog) => void
+  },
 ): MenuItem[] {
   const refused = folderRefusals(node)
   const reason = (refusal: FolderRefusal): string | null => (refusal === null ? null : t(REFUSALS[refusal]))
@@ -372,7 +394,30 @@ function actionItems(
       setSubfolders(node.path, !merged)
     },
   }
+  const { folder } = node
+  const markRead = (subfolders: boolean, label: string): MenuItem => {
+    const scope = markReadScope(node, subfolders)
+    return {
+      label,
+      disabledReason: scope.unread === 0 ? t('folderActions.noUnread') : hasUids(scope) ? null : t('folderActions.noUids'),
+      onSelect: () => {
+        onAction({ kind: 'markRead', scope })
+      },
+    }
+  }
+  // A folder with subfolders offers both, the user's choice first; a level holding only folders, them.
+  const withSubfolders = listedSubfolders(node).length > 0
+  const markReadItems = !withSubfolders
+    ? folder.selectable
+      ? [markRead(false, t('folderActions.markRead'))]
+      : []
+    : !folder.selectable
+      ? [markRead(true, t('folderActions.markReadSubtree'))]
+      : markReadSubfolders
+        ? [markRead(true, t('folderActions.markReadSubtree')), markRead(false, t('folderActions.markReadFolderOnly'))]
+        : [markRead(false, t('folderActions.markReadFolderOnly')), markRead(true, t('folderActions.markReadSubtree'))]
   return [
+    ...markReadItems,
     ...(hasListedSubfolders(node) ? [include] : []),
     // A server without a hierarchy has no subfolders.
     ...(hierarchy ? [subfolder] : []),

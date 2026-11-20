@@ -41,6 +41,10 @@ through the Vite proxy. Engineering baseline:
   reply and forward quotes, the send limit's refusal and the filters' `older_than_days` use it. How:
   [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md) —
   *Sign-in*.
+- **Mark all as read.** Each user picks on their *Profile* page what "Mark all as read" on a
+  folder with subfolders does first: the folder and its subfolders (the default) or the folder
+  alone; the folder's menu offers the other second
+  ([`requirements/mail-client.md`](requirements/mail-client.md) — *Folder management*).
 - **Single sign-on** (optional): "Sign in with …" an OpenID Connect provider, for users an admin
   already created; nobody signs up through it. A user links the provider's sign-in on their
   *Profile* page (and unlinks it there), or, when the instance says so, their first SSO sign-in

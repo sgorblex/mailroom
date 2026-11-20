@@ -348,6 +348,21 @@ export function TriageProvider({
     [setBusyState, unmountSignal, loadFolders, updateScope, toast, t],
   )
 
+  const folderMarkedRead = useCallback(
+    (account: AccountId, folders: readonly string[]) => {
+      const inFolder = new Set(
+        visible.current
+          .filter((row) => row.account_id === account && folders.some((folder) => isSameFolder(row.folder, folder)))
+          .map((row) => row.ref),
+      )
+      updateScope(currentKey.current, (current) => ({
+        overrides: new Map([...current.overrides].filter(([ref, flags]) => flags.seen || !inFolder.has(ref))),
+      }))
+      setReloads((value) => value + 1)
+    },
+    [updateScope],
+  )
+
   const run = useCallback(
     async (action: Action, targets: Target[], options: { silent?: boolean } = {}) => {
       const silent = options.silent === true
@@ -652,6 +667,7 @@ export function TriageProvider({
     outcome: scope.outcome,
     dismissOutcome,
     reloads,
+    folderMarkedRead,
     run,
     picker: scope.picker,
     setPicker,

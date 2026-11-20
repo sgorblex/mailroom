@@ -30,6 +30,9 @@ const mailFolderSchema = z.object({
   delimiter: z.string().nullable(),
   /** `false` for a level that holds only folders (`\Noselect`): no messages, counts 0. */
   selectable: z.boolean(),
+  /** STATUS's, what a mark-read sends back; `null` for a `\Noselect` folder or one whose STATUS failed. */
+  uid_validity: z.number().nullable(),
+  uid_next: z.number().nullable(),
 })
 export type MailFolder = z.infer<typeof mailFolderSchema>
 
@@ -175,6 +178,22 @@ export function renameFolder(accountId: AccountId, folder: string, parent: strin
  */
 export async function deleteFolder(accountId: AccountId, folder: string, messages: number): Promise<void> {
   await apiPostJson(`${accountPath(accountId)}/folders/delete`, { folder, messages }, { schema: folderDeletedSchema })
+}
+
+const folderMarkedReadSchema = z.object({ account_id: accountIdSchema, folder: z.string(), marked: z.number() })
+
+/**
+ * Marks every unread message of `folder` read, up to `uidNext`: mail that arrived after the listing
+ * the user confirmed from stays unread. A changed `uidValidity` is refused (`stale_reference`).
+ * The count marked.
+ */
+export async function markFolderRead(accountId: AccountId, folder: string, uidValidity: number, uidNext: number): Promise<number> {
+  const answer = await apiPostJson(
+    `${accountPath(accountId)}/folders/mark-read`,
+    { folder, uid_validity: uidValidity, uid_next: uidNext },
+    { schema: folderMarkedReadSchema },
+  )
+  return answer.marked
 }
 
 /** A folder's messages; with `subfolders`, its subfolders' too, merged newest first. */

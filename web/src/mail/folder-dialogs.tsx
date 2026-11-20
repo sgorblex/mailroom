@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input.tsx'
 
 import { accountDelimiter, ancestorPaths, isWithin, MAX_FOLDER_NAME, nameProblem, pathSegments } from './folder-tree.ts'
 import { MAIL_NS } from './i18n.ts'
+import { isStale, markReadError, markScopeRead, type MarkReadOutcome, type MarkReadScope } from './mark-folder-read.ts'
 import { folderName, mailErrorMessage } from './messages.ts'
 import { isSameFolder, roleFolder } from './triage-context.ts'
 
@@ -21,12 +22,14 @@ export type FolderDialog =
   | { kind: 'create'; parent: string | null }
   | { kind: 'rename'; folder: MailFolder }
   | { kind: 'delete'; folder: MailFolder }
+  | { kind: 'markRead'; scope: MarkReadScope }
 
 /** What a dialog did, for the sidebar to follow. */
 export type FolderDone =
   | { kind: 'created'; path: string }
   | { kind: 'renamed'; answer: FolderRenamed }
   | { kind: 'deleted'; path: string }
+  | { kind: 'markedRead'; scope: MarkReadScope; outcome: MarkReadOutcome }
 
 export function FolderDialogs({
   accountId,
@@ -34,12 +37,15 @@ export function FolderDialogs({
   dialog,
   onCancel,
   onDone,
+  onStale,
 }: {
   accountId: AccountId
   folders: readonly MailFolder[]
   dialog: FolderDialog
   onCancel: () => void
   onDone: (done: FolderDone) => void
+  /** Lists the folders again, after a refusal saying they changed. */
+  onStale: () => void
 }): ReactElement {
   const delimiter = accountDelimiter(folders)
   switch (dialog.kind) {
@@ -66,6 +72,8 @@ export function FolderDialogs({
           onDone={onDone}
         />
       )
+    case 'markRead':
+      return <MarkReadDialog accountId={accountId} scope={dialog.scope} onCancel={onCancel} onDone={onDone} onStale={onStale} />
   }
 }
 
@@ -463,6 +471,88 @@ function DeleteDialog({
           disabled={busy}
           cancelRef={cancelRef}
           destructive
+          onCancel={onCancel}
+        />
+      </form>
+    </Dialog>
+  )
+}
+
+/**
+ * Asks before marking a folder's many unread messages read, stating how many the listing counted;
+ * with its subfolders, each folder and its count too.
+ */
+function MarkReadDialog({
+  accountId,
+  scope,
+  onCancel,
+  onDone,
+  onStale,
+}: {
+  accountId: AccountId
+  scope: MarkReadScope
+  onCancel: () => void
+  onDone: (done: FolderDone) => void
+  /** Lists the folders again: one asked about changed since. */
+  onStale: () => void
+}): ReactElement {
+  const { t } = useTranslation(MAIL_NS)
+  const listId = useId()
+  const [busy, setBusy] = useState(false)
+  const [failure, setFailure] = useState<{ message: string; stale: boolean } | null>(null)
+  const name = folderName(t, scope.folder)
+  const title = scope.subfolders ? t('folderActions.markReadSubtreeTitle', { name }) : t('folderActions.markReadTitle', { name })
+
+  async function submit(event: SubmitEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
+    if (busy || failure?.stale === true) {
+      return
+    }
+    setBusy(true)
+    setFailure(null)
+    const outcome = await markScopeRead(accountId, scope)
+    const [first] = outcome.failed
+    // Some folders marked: the sidebar says which were not. None: this dialog says why.
+    if (first === undefined || outcome.done.length > 0) {
+      onDone({ kind: 'markedRead', scope, outcome })
+      return
+    }
+    const stale = isStale(first.error)
+    if (stale) {
+      onStale()
+    }
+    setFailure({ message: markReadError(t, first.error), stale })
+    setBusy(false)
+  }
+
+  return (
+    <Dialog label={title} onCancel={onCancel}>
+      <form noValidate onSubmit={(event) => void submit(event)} className="flex w-96 max-w-full flex-col gap-3">
+        <h2 className="text-base font-medium">{title}</h2>
+        {scope.subfolders ? (
+          <>
+            <p className="text-sm">{t('folderActions.markReadSubtreeQuestion', { count: scope.unread })}</p>
+            <h3 id={listId} className="sr-only">
+              {t('folderActions.markReadFolders')}
+            </h3>
+            <ul aria-labelledby={listId} className="max-h-48 overflow-y-auto text-sm text-muted-foreground">
+              {scope.folders.map((folder) => (
+                <li key={folder.path}>{t('folderActions.markReadFolderUnread', { name: folderName(t, folder), count: folder.unread })}</li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <p className="text-sm">{t('folderActions.markReadQuestion', { name, count: scope.unread })}</p>
+        )}
+        {failure !== null && (
+          <p role="alert" className="text-sm text-destructive">
+            {failure.message}
+          </p>
+        )}
+        <Buttons
+          cancel={t('folderActions.cancel')}
+          confirm={failure?.stale === true ? null : t('folderActions.markReadConfirm')}
+          disabled={busy}
           onCancel={onCancel}
         />
       </form>
