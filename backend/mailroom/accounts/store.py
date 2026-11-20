@@ -7,6 +7,7 @@ config models first.
 
 from __future__ import annotations
 
+import unicodedata
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
@@ -118,14 +119,16 @@ def save_account(
     new: bool,
 ) -> AccountConfig:
     """Add the account ``raw`` describes with a new id (``new``) or replace the one with its id,
-    storing ``password`` sealed when given (a new account needs one), refusing a name another of
-    the user's accounts has (``account_name_taken``) in the same revision. Raises ``AccountError``,
-    ``AccountNotFound``, or mailroom-core's ``RevisionConflict`` / ``SettingsBusy``."""
+    storing ``password`` sealed when given (a new account needs one), refusing a new or changed
+    name another of the user's accounts has (``account_name_taken``) in the same revision.
+    Raises ``AccountError``, ``AccountNotFound``, or mailroom-core's ``RevisionConflict`` /
+    ``SettingsBusy``."""
     if new and not password:
         msg = "A new account needs its password."
         raise AccountError(msg, "invalid_account", [Issue(("password",), "Required")])
     current = load_accounts(store)
     accounts = current.raw_accounts()
+    stored_name: str | None = None
     if new:
         account_id = store.new_account_id()
         index = len(accounts)
@@ -143,13 +146,14 @@ def save_account(
         if not isinstance(stored_id, int) or found is None:
             raise AccountNotFound(stored_id)
         account_id, index = stored_id, found
+        stored_name = current.account(account_id).name
         accounts[index] = dict(raw)
     doc: dict[str, Json] = {**current.doc, _ACCOUNTS: accounts}
     checked = core_settings_or_issues(doc)
     if not isinstance(checked, CoreSettings):
         issues = [_issue_of(issue, index) for issue in checked]
         raise AccountError(_issues_text(issues), "invalid_account", issues)
-    _refuse_a_taken_name(checked.account, index)
+    _refuse_a_taken_name(checked.account, index, stored_name)
     secrets = SecretChanges()
     if password:
         if subkey is None:
@@ -168,17 +172,23 @@ def save_account(
 
 
 def name_key(name: str) -> str:
-    """What two account names are compared by: the same once trimmed, whatever their case."""
-    return name.strip().casefold()
+    """What two account names are compared by: the same once NFKC-normalised and trimmed, whatever
+    their case."""
+    return unicodedata.normalize("NFKC", name).strip().casefold()
 
 
-def _refuse_a_taken_name(accounts: Sequence[AccountConfig], index: int) -> None:
+def _refuse_a_taken_name(
+    accounts: Sequence[AccountConfig], index: int, stored_name: str | None
+) -> None:
     """Refuse ``accounts[index]``'s name when another of the user's accounts has it
-    (``account_name_taken``); an unnamed account takes none."""
+    (``account_name_taken``), unless it is the account's ``stored_name`` kept; an unnamed account
+    takes none."""
     name = accounts[index].name
     if name is None:
         return
     key = name_key(name)
+    if stored_name is not None and name_key(stored_name) == key:
+        return
     for i, other in enumerate(accounts):
         if i != index and other.name is not None and name_key(other.name) == key:
             msg = f"Another account is already named {other.name!r}."

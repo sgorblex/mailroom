@@ -377,14 +377,17 @@ bounded to one minor because the server relies on its handlers.
   client tells an unnamed account from one named after its login. Responses also carry a
   read-only `display_name`, what to call the account: its `name`, else its login (a body that
   sends it back has it ignored). An edit replaces `name` and `colour` like the other fields. No
-  two of a user's accounts share a name, compared trimmed and whatever their case; unnamed
-  accounts share none. An account's folders and its Run filters switch are the filters' routes
-  ([Filters](#filters)).
+  two of a user's accounts share a name, compared NFKC-normalised, trimmed and whatever their
+  case; unnamed accounts share none. Core's `core_0005` repaired any stored duplicates: in each
+  user's current settings the first account keeps the name and later ones become unnamed. An
+  account's folders and its Run filters switch are the filters' routes ([Filters](#filters)).
 - **Checks:** mailroom-core's config models (`core_settings_or_issues`) validate the whole document
   before each save; a refusal is 400 `{"detail": {"code": "invalid_account", "message",
   "issues": [{"path", "message"}]}}`, `path` inside the account. A name another of the user's
-  accounts has, on an add or an edit, is 409 `account_name_taken` in the same shape (its issue
-  at `["name"]`), checked in the same revision as the save. A save racing another is 409
+  accounts has, on an add or an edit that changes the name, is 409 `account_name_taken` in the
+  same shape (its issue at `["name"]`), checked in the same revision as the save; an edit that
+  keeps the account's name is never refused for it. A name equal to the account's stored name
+  once normalised as above (another case, say) counts as kept. A save racing another is 409
   `accounts_changed` or 503 `accounts_busy`.
 - **Limits** (`GET` / `PUT /api/v1/me/limits`, mounted with the mail layer): the signed-in user's
   `send_per_hour`, `max_recipients`, `body_chars`, `attachment_max_mb` and `move_max_mb` (a

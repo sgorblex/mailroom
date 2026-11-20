@@ -89,9 +89,11 @@ shares a database with the app's (`mailroom_core.store`, `AccountStore`):
 
 - **`settings`**: the settings document, one row per revision, the current settings being the
   highest. Revisions are numbered per user (migration `core_0002`, which gave the rows stored
-  before it to `owner`). A save waits up to 5 s for another save of the
-  same user's settings (a per-user advisory lock, so users never wait on each other), then fails
-  with `SettingsBusy`.
+  before it to `owner`). `core_0005` made the account names of each user's current settings
+  unique, compared NFKC-normalised, trimmed and case-folded: an account whose name an earlier
+  one has became unnamed (older revisions untouched; its downgrade does nothing). A save waits
+  up to 5 s for another save of the same user's settings (a per-user advisory lock, so users
+  never wait on each other), then fails with `SettingsBusy`.
 - **`account_ids`**: the sequence account ids come from (`new_account_id`), across the instance
   and never handed out twice, even for an account that is never saved.
 - **`account_secrets`**: the sealed passwords.
