@@ -6,6 +6,7 @@ import { ArrowLeft } from 'lucide-react'
 import { AccountDot } from '@/accounts/account-name.tsx'
 import { listAccounts, type Account } from '@/api/accounts.ts'
 import {
+  ALL_ACCOUNTS,
   changeRuleSet,
   getFilterSchema,
   getRuleSet,
@@ -31,7 +32,10 @@ import { FILTERS_NS } from './i18n.ts'
 
 interface Loaded {
   ruleSet: RuleSetWithFilters
+  /** Its account; `undefined` for a rule set for all accounts, or when the account is gone. */
   account: Account | undefined
+  /** The user's accounts. */
+  accounts: Account[]
   vocabulary: Vocabulary
 }
 
@@ -64,7 +68,7 @@ export function RuleSetScreen({ ruleSetId }: { ruleSetId: number | null }): Reac
         return null
       }
       const account = accounts.find((candidate) => candidate.id === ruleSet.account_id)
-      return { ruleSet, account, vocabulary: readVocabulary(schema) }
+      return { ruleSet, account, accounts, vocabulary: readVocabulary(schema) }
     },
     [ruleSetId],
   )
@@ -104,7 +108,7 @@ export function RuleSetScreen({ ruleSetId }: { ruleSetId: number | null }): Reac
   )
 }
 
-function RuleSetEditor({ ruleSet: initial, account, vocabulary }: Loaded): ReactElement {
+function RuleSetEditor({ ruleSet: initial, account, accounts, vocabulary }: Loaded): ReactElement {
   const { filters: initialFilters, ...initialSettings } = initial
   const [ruleSet, setRuleSet] = useState<RuleSet>(initialSettings)
   const [filters, setFilters] = useState<Filter[]>(initialFilters)
@@ -125,9 +129,17 @@ function RuleSetEditor({ ruleSet: initial, account, vocabulary }: Loaded): React
         keywords={account?.keywords}
         setFilters={setFilters}
       />
-      <RunPanel ruleSet={ruleSet} account={account} filters={filters} vocabulary={vocabulary} onRan={refreshHistory} />
+      <RunPanel
+        ruleSet={ruleSet}
+        account={account}
+        accounts={accounts}
+        filters={filters}
+        vocabulary={vocabulary}
+        onRan={refreshHistory}
+      />
       <RunHistory
         ruleSetId={ruleSet.id}
+        accounts={ruleSet.account_id === ALL_ACCOUNTS ? accounts : undefined}
         filters={filters}
         vocabulary={vocabulary}
         version={historyVersion}
@@ -144,7 +156,7 @@ function RuleSetHeader({
   onChanged,
 }: {
   ruleSet: RuleSet
-  /** `undefined` when the account is gone: then a removed account, never its id. */
+  /** `undefined` for all accounts, or when the account is gone: then a removed account, never its id. */
   account: Account | undefined
   folders: FoldersState
   onChanged: (ruleSet: RuleSet) => void
@@ -155,6 +167,7 @@ function RuleSetHeader({
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const editTrigger = useRef<HTMLButtonElement>(null)
+  const allAccounts = ruleSet.account_id === ALL_ACCOUNTS
 
   function backToIdle(): void {
     setMode('idle')
@@ -193,9 +206,11 @@ function RuleSetHeader({
         <div className="flex min-w-0 flex-col gap-1">
           <h1 className="text-2xl font-semibold tracking-tight">{ruleSet.name}</h1>
           <p className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
-            <AccountDot colour={account?.colour ?? null} />
+            {!allAccounts && <AccountDot colour={account?.colour ?? null} />}
             {[
-              account?.display_name ?? t('accounts.unknown', { ns: 'common' }),
+              allAccounts
+                ? t('filters.allAccounts.title')
+                : (account?.display_name ?? t('accounts.unknown', { ns: 'common' })),
               folderLabel(ruleSet.folder),
               triggerSummary(t, ruleSet),
               ...(ruleSet.marker === 'none' ? [] : [t(`filters.ruleSet.markerShort.${ruleSet.marker}`)]),

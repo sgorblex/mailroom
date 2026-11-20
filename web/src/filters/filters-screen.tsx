@@ -1,15 +1,17 @@
-import { useCallback, useContext, useRef, useState, type ReactElement } from 'react'
+import { useCallback, useContext, useRef, useState, type ReactElement, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from '@tanstack/react-router'
 
 import { AccountName } from '@/accounts/account-name.tsx'
-import { type AccountId, listAccounts, type Account } from '@/api/accounts.ts'
+import { listAccounts, type Account } from '@/api/accounts.ts'
 import {
+  ALL_ACCOUNTS,
   addRuleSet,
   changeRuleSet,
   listRuleSets,
   removeRuleSet,
   type RuleSet,
+  type RuleSetAccount,
   type RuleSetFields,
 } from '@/api/filters.ts'
 import { apiErrorMessage } from '@/api/http.ts'
@@ -30,8 +32,9 @@ import { FILTERS_NS } from './i18n.ts'
 const NOTHING_MUTED: MutedThread[] = []
 
 /**
- * The signed-in user's rule sets, account by account; each opens in its own editor. Where the
- * instance runs the mail client too, each account's muted conversations follow its rule sets.
+ * The signed-in user's rule sets, account by account, then those for all accounts; each opens in
+ * its own editor. Where the instance runs the mail client too, each account's muted conversations
+ * follow its rule sets.
  */
 export function FiltersScreen(): ReactElement {
   const { t } = useTranslation(FILTERS_NS)
@@ -91,6 +94,7 @@ export function FiltersScreen(): ReactElement {
             onUnmuted={reloadMuted}
           />
         ))}
+      {accounts.kind === 'loaded' && accounts.value.length > 0 && <AllAccountsRuleSets accounts={accounts.value} />}
     </main>
   )
 }
@@ -105,15 +109,8 @@ function AccountRuleSets({
   onUnmuted: () => void
 }): ReactElement {
   const { t } = useTranslation(FILTERS_NS)
-  const navigate = useNavigate()
-  const load = useCallback((signal: AbortSignal) => listRuleSets(account.id, signal), [account.id])
-  const { state: ruleSets, retry: reload } = useLoad(load, (error) =>
-    filterErrorMessage(t, error, t('filters.loadFailed')),
-  )
-  const [adding, setAdding] = useState(false)
-  const addTrigger = useRef<HTMLButtonElement>(null)
-
   const headingId = `account-${String(account.id)}-rule-sets`
+  const addTrigger = useRef<HTMLButtonElement>(null)
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
@@ -129,6 +126,82 @@ function AccountRuleSets({
           )}
         </p>
       </div>
+      <RuleSets
+        owner={account.id}
+        listLabel={t('filters.ruleSetsOf', { account: account.display_name })}
+        addLabel={t('filters.ruleSet.addTo', { account: account.display_name })}
+        keywords={account.keywords}
+        addTrigger={addTrigger}
+      />
+      {muted.length > 0 && (
+        <MutedThreads
+          account={account}
+          threads={muted}
+          onChanged={() => {
+            onUnmuted()
+            // The row goes, the whole list with the last one: focus stays in this account's section.
+            requestAnimationFrame(() => addTrigger.current?.focus())
+          }}
+        />
+      )}
+    </section>
+  )
+}
+
+/** The rule sets for all accounts, which run on INBOX of each account whose Run filters is on. */
+function AllAccountsRuleSets({ accounts }: { accounts: Account[] }): ReactElement {
+  const { t } = useTranslation(FILTERS_NS)
+  const running = accounts.some((account) => account.run_filters === true)
+  return (
+    <section aria-labelledby="all-accounts-rule-sets" className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1">
+        <h2 id="all-accounts-rule-sets" className="text-lg font-medium">
+          {t('filters.allAccounts.title')}
+        </h2>
+        <p className="max-w-[65ch] text-sm text-muted-foreground">
+          {running ? t('filters.allAccounts.intro') : t('filters.allAccounts.noneRunning')}{' '}
+          {!running && (
+            <Link to="/accounts" className="text-foreground underline underline-offset-4">
+              {t('filters.goToAccounts')}
+            </Link>
+          )}
+        </p>
+      </div>
+      <RuleSets
+        owner={ALL_ACCOUNTS}
+        listLabel={t('filters.allAccounts.list')}
+        addLabel={t('filters.allAccounts.add')}
+      />
+    </section>
+  )
+}
+
+/** The rule sets of `owner`, each a row, and the form to add one, whose button is `addTrigger`. */
+function RuleSets({
+  owner,
+  listLabel,
+  addLabel,
+  keywords,
+  addTrigger: given,
+}: {
+  owner: RuleSetAccount
+  listLabel: string
+  addLabel: string
+  keywords?: boolean | null
+  addTrigger?: RefObject<HTMLButtonElement | null>
+}): ReactElement {
+  const { t } = useTranslation(FILTERS_NS)
+  const navigate = useNavigate()
+  const load = useCallback((signal: AbortSignal) => listRuleSets(owner, signal), [owner])
+  const { state: ruleSets, retry: reload } = useLoad(load, (error) =>
+    filterErrorMessage(t, error, t('filters.loadFailed')),
+  )
+  const [adding, setAdding] = useState(false)
+  const own = useRef<HTMLButtonElement>(null)
+  const addTrigger = given ?? own
+
+  return (
+    <>
       {ruleSets.kind === 'loading' && (
         <p role="status" className="text-sm text-muted-foreground">
           {t('filters.loading')}
@@ -148,17 +221,14 @@ function AccountRuleSets({
         <p className="text-sm text-muted-foreground">{t('filters.noRuleSets')}</p>
       )}
       {ruleSets.kind === 'loaded' && ruleSets.value.length > 0 && (
-        <ul
-          aria-label={t('filters.ruleSetsOf', { account: account.display_name })}
-          className="flex flex-col divide-y rounded-lg border"
-        >
+        <ul aria-label={listLabel} className="flex flex-col divide-y rounded-lg border">
           {ruleSets.value.map((ruleSet) => (
             <RuleSetRow
               key={ruleSet.id}
               ruleSet={ruleSet}
               onRemoved={() => {
                 reload()
-                // The row goes: focus stays in this account's rule sets.
+                // The row goes: focus stays in these rule sets.
                 requestAnimationFrame(() => addTrigger.current?.focus())
               }}
             />
@@ -167,10 +237,10 @@ function AccountRuleSets({
       )}
       {adding ? (
         <NewRuleSetForm
-          accountId={account.id}
-          keywords={account.keywords}
+          owner={owner}
+          keywords={keywords}
           save={async (fields) => {
-            const created = await addRuleSet(account.id, fields)
+            const created = await addRuleSet(owner, fields)
             await navigate({ to: '/filters/$ruleSetId', params: { ruleSetId: String(created.id) } })
           }}
           onCancel={() => {
@@ -183,7 +253,7 @@ function AccountRuleSets({
           ref={addTrigger}
           variant="outline"
           className="self-start"
-          aria-label={t('filters.ruleSet.addTo', { account: account.display_name })}
+          aria-label={addLabel}
           onClick={() => {
             setAdding(true)
           }}
@@ -191,34 +261,23 @@ function AccountRuleSets({
           {t('filters.ruleSet.add')}
         </Button>
       )}
-      {muted.length > 0 && (
-        <MutedThreads
-          account={account}
-          threads={muted}
-          onChanged={() => {
-            onUnmuted()
-            // The row goes, the whole list with the last one: focus stays in this account's section.
-            requestAnimationFrame(() => addTrigger.current?.focus())
-          }}
-        />
-      )}
-    </section>
+    </>
   )
 }
 
-/** The rule set form for a new rule set, with the account's folders to pick from. */
+/** The rule set form for a new rule set, with the account's folders to pick from (INBOX for all accounts). */
 function NewRuleSetForm({
-  accountId,
+  owner,
   keywords,
   save,
   onCancel,
 }: {
-  accountId: AccountId
+  owner: RuleSetAccount
   keywords: boolean | null | undefined
   save: (fields: RuleSetFields) => Promise<unknown>
   onCancel: () => void
 }): ReactElement {
-  return <RuleSetForm folders={useFolders(accountId)} keywords={keywords} save={save} onCancel={onCancel} />
+  return <RuleSetForm folders={useFolders(owner)} keywords={keywords} save={save} onCancel={onCancel} />
 }
 
 function RuleSetRow({ ruleSet, onRemoved }: { ruleSet: RuleSet; onRemoved: () => void }): ReactElement {

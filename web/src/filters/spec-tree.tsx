@@ -68,18 +68,21 @@ export function SpecTree({
   )
 }
 
-/** The actions an account whose server keeps no keywords cannot take. */
+/** The actions an account whose server keeps no keywords, or a rule set for all accounts, cannot take. */
 const TO_SORT_ACTIONS: ReadonlySet<string> = new Set(['mark_to_sort', 'unmark_to_sort'])
 
 function LeafOptions({
   defs,
   current,
   unavailable = new Set(),
+  reason = 'filters.tree.toSortUnavailable',
 }: {
   defs: LeafDef[]
   current: string | null
-  /** Greyed out with the reason, unless already chosen. */
+  /** Greyed out with `reason`, unless already chosen. */
   unavailable?: ReadonlySet<string>
+  /** The key of the greyed-out label, which takes the type's as `label`. */
+  reason?: string
 }): ReactElement {
   const { t } = useTranslation(FILTERS_NS)
   const known = current === null || defs.some((def) => def.type === current)
@@ -91,7 +94,7 @@ function LeafOptions({
         return (
           <option key={def.type} value={`leaf:${def.type}`} disabled={greyed}>
             {greyed
-              ? t('filters.tree.toSortUnavailable', { label: typeLabel(t, def.type) })
+              ? t(reason, { label: typeLabel(t, def.type) })
               : typeLabel(t, def.type)}
           </option>
         )
@@ -244,6 +247,7 @@ function ActionList({
 }): ReactElement {
   const { t } = useTranslation(FILTERS_NS)
   const idPrefix = useId()
+  const allAccounts = folders.kind === 'all-accounts'
 
   function move(from: number, to: number): void {
     const next = [...actions]
@@ -283,7 +287,8 @@ function ActionList({
                   <LeafOptions
                     defs={vocabulary.actions}
                     current={action.type}
-                    unavailable={keywords === false ? TO_SORT_ACTIONS : undefined}
+                    unavailable={allAccounts || keywords === false ? TO_SORT_ACTIONS : undefined}
+                    reason={allAccounts ? 'filters.allAccounts.toSortUnavailable' : undefined}
                   />
                 </select>
                 <span className="ml-auto flex gap-1">

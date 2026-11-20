@@ -30,9 +30,14 @@ export const filterSchema = z.object({
 })
 export type Filter = z.infer<typeof filterSchema>
 
+/** In place of an account id: the rule sets for all accounts, run on INBOX of each one whose Run filters is on. */
+export const ALL_ACCOUNTS = 'all'
+/** An account, or `ALL_ACCOUNTS`. */
+export type RuleSetAccount = AccountId | typeof ALL_ACCOUNTS
+
 export const ruleSetSchema = z.object({
   id: z.number(),
-  account_id: accountIdSchema,
+  account_id: z.union([accountIdSchema, z.literal(ALL_ACCOUNTS)]),
   folder: z.array(z.string()),
   name: z.string(),
   trigger: z.enum(TRIGGERS),
@@ -96,6 +101,8 @@ export type RunReport = z.infer<typeof runReportSchema>
 const runSchema = z.object({
   id: z.number(),
   rule_set_id: z.number(),
+  /** The account it ran on: its rule set's, or one of a rule set for all accounts. */
+  account_id: accountIdSchema,
   trigger: z.string(),
   dry_run: z.boolean(),
   created_at: z.string(),
@@ -121,8 +128,11 @@ export type Folder = z.infer<typeof folderSchema>
 const filterSettingsSchema = z.object({ run_filters: z.boolean() })
 
 const ruleSet = (id: number): string => `/api/v1/rule-sets/${String(id)}`
-const account = (accountId: AccountId): string => `/api/v1/accounts/${String(accountId)}`
-const accountRuleSets = (accountId: AccountId): string => `${account(accountId)}/rule-sets`
+const account = (accountId: RuleSetAccount): string => `/api/v1/accounts/${String(accountId)}`
+const accountRuleSets = (accountId: RuleSetAccount): string => `${account(accountId)}/rule-sets`
+/** `path`, on `accountId` when given. */
+const onAccount = (path: string, accountId: AccountId | undefined): string =>
+  accountId === undefined ? path : `${path}?account_id=${String(accountId)}`
 
 export function listFolders(accountId: AccountId, signal?: AbortSignal): Promise<Folder[]> {
   return apiGetJson(`${account(accountId)}/folders`, { init: { signal }, schema: z.array(folderSchema) })
@@ -158,11 +168,11 @@ export function draftFromSearch(query: SearchQuery, signal?: AbortSignal): Promi
   })
 }
 
-export function listRuleSets(accountId: AccountId, signal?: AbortSignal): Promise<RuleSet[]> {
+export function listRuleSets(accountId: RuleSetAccount, signal?: AbortSignal): Promise<RuleSet[]> {
   return apiGetJson(accountRuleSets(accountId), { init: { signal }, schema: z.array(ruleSetSchema) })
 }
 
-export function addRuleSet(accountId: AccountId, fields: RuleSetFields): Promise<RuleSet> {
+export function addRuleSet(accountId: RuleSetAccount, fields: RuleSetFields): Promise<RuleSet> {
   return apiPostJson(accountRuleSets(accountId), fields, { schema: ruleSetSchema })
 }
 
@@ -196,9 +206,12 @@ export async function reorderFilters(ruleSetId: number, filterIds: number[]): Pr
   await apiPutJson<unknown>(`${ruleSet(ruleSetId)}/order`, { filter_ids: filterIds })
 }
 
-/** Evaluates the rule set against the folder's mail, changing nothing; the run joins the history. */
-export function dryRun(ruleSetId: number): Promise<Run> {
-  return apiPostJson(`${ruleSet(ruleSetId)}/dry-run`, undefined, { schema: runSchema })
+/**
+ * Evaluates the rule set against the folder's mail, changing nothing; the run joins the history.
+ * A rule set for all accounts is tried on `accountId`.
+ */
+export function dryRun(ruleSetId: number, accountId?: AccountId): Promise<Run> {
+  return apiPostJson(onAccount(`${ruleSet(ruleSetId)}/dry-run`, accountId), undefined, { schema: runSchema })
 }
 
 /**

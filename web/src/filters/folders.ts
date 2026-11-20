@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import type { AccountId } from '@/api/accounts.ts'
-import { listFolders } from '@/api/filters.ts'
+import { ALL_ACCOUNTS, listFolders, type RuleSetAccount } from '@/api/filters.ts'
 import { accountErrorMessage } from '@/accounts/messages.ts'
 import { FILTERS_NS } from './i18n.ts'
 
@@ -10,16 +9,23 @@ export type FoldersState =
   | { kind: 'loading' }
   | { kind: 'failed'; message: string }
   | { kind: 'loaded'; paths: string[][] }
+  /** A rule set for all accounts: no one account's folders, so a path is typed. */
+  | { kind: 'all-accounts' }
 
-/** The account's folders, as path segments, for the folder pickers. */
-export function useFolders(accountId: AccountId): FoldersState {
+const ALL: FoldersState = { kind: 'all-accounts' }
+
+/** The account's folders, as path segments, for the folder pickers; none listed for all accounts. */
+export function useFolders(accountId: RuleSetAccount): FoldersState {
   const { t } = useTranslation(FILTERS_NS)
-  const [state, setState] = useState<{ accountId: AccountId; folders: FoldersState }>({
+  const [state, setState] = useState<{ accountId: RuleSetAccount; folders: FoldersState }>({
     accountId,
     folders: { kind: 'loading' },
   })
 
   useEffect(() => {
+    if (accountId === ALL_ACCOUNTS) {
+      return
+    }
     const controller = new AbortController()
     listFolders(accountId, controller.signal).then(
       (folders) => {
@@ -37,5 +43,8 @@ export function useFolders(accountId: AccountId): FoldersState {
     }
   }, [accountId, t])
 
+  if (accountId === ALL_ACCOUNTS) {
+    return ALL
+  }
   return state.accountId === accountId ? state.folders : { kind: 'loading' }
 }

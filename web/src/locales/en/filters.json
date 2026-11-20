@@ -6,6 +6,27 @@
     "goToAccounts": "Go to Accounts",
     "runFiltersOn": "Run filters is on: enabled rule sets run.",
     "runFiltersOff": "Run filters is off: nothing runs on this account until you turn it on.",
+    "allAccounts": {
+      "title": "All accounts",
+      "intro": "These rule sets sort the inbox of every account whose Run filters is on, each account on its own.",
+      "noneRunning": "These rule sets sort the inbox of every account whose Run filters is on, and it is off for every account: nothing runs until you turn it on for one.",
+      "list": "Rule sets for all accounts",
+      "add": "Add a rule set for all accounts",
+      "inboxOnly": "A rule set for all accounts sorts each account's inbox.",
+      "toSortUnsupported": "To sort is kept per account: a rule set for all accounts takes the star.",
+      "toSortUnavailable": "{{label}} (kept per account, not for all accounts)",
+      "byRole": "Each account's own trash",
+      "byPath": "A folder by its path",
+      "path": "Folder path",
+      "pathWarning": "Every account needs a folder at this path: on one without it the move fails, as its run reports, and no folder is created. Move to the trash and Move to junk work on every account.",
+      "tryOn": "Try on",
+      "dryRunOn": "Dry run on {{account}}",
+      "runHint_one": "Runs the enabled filters now on the inbox of the {{count}} account whose Run filters is on, moving and flagging mail for real.",
+      "runHint_other": "Runs the enabled filters now on the inboxes of the {{count}} accounts whose Run filters is on, moving and flagging mail for real.",
+      "runBlocked": "Run filters is off for every account: turn it on for one in Accounts to run this rule set.",
+      "queued_one": "Run queued on {{count}} account: follow it in the run history.",
+      "queued_other": "Runs queued on {{count}} accounts: follow them in the run history."
+    },
     "muted": {
       "title": "Muted conversations",
       "intro": "Their new messages in the inbox arrive marked read. Mute a conversation from one of its messages in Mail.",
@@ -338,7 +359,10 @@
     "accountNotFound": "The rule set's account is gone.",
     "interrupted": "The run was cut short and did not finish.",
     "runFailed": "The run stopped on an unexpected error ({{message}}).",
-    "copiedNotRemoved": "A move copied some messages but may not have removed them from this folder, so the rule set was turned off: check both folders before you enable it again."
+    "copiedNotRemoved": "A move copied some messages but may not have removed them from this folder, so the rule set was turned off: check both folders before you enable it again.",
+    "allAccountsInboxOnly": "A rule set for all accounts sorts the inbox only.",
+    "accountRequired": "Choose the account to dry run this rule set on.",
+    "wrongAccount": "This rule set belongs to another account."
   },
   "filterPhrases": {
     "anything": "any message",

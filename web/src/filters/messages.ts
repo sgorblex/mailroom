@@ -15,6 +15,12 @@ function codedMessage(t: TFunction, code: string | undefined, message: string): 
       return t('filterErrors.invalidRuleSet')
     case 'to_sort_unsupported':
       return t('filterErrors.toSortUnsupported')
+    case 'all_accounts_inbox_only':
+      return t('filterErrors.allAccountsInboxOnly')
+    case 'account_required':
+      return t('filterErrors.accountRequired')
+    case 'wrong_account':
+      return t('filterErrors.wrongAccount')
     case 'run_filters_off':
       return t('filterErrors.runFiltersOff')
     case 'rule_set_disabled':

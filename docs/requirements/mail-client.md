@@ -462,10 +462,11 @@ connection with no mailbox selected, every check there. Marking a folder read is
   subscriptions go with it. Every rule set and filter action (`move_to`, `trash`) of the account
   that names the folder or one under it is pointed at the new path, enabled ones included: they
   keep acting on the same folder ([`filters.md`](filters.md) — *Folders renamed or deleted*). The
-  answer lists them, and apart (`all_accounts_rule_sets`) the rule sets for all accounts naming
-  it, which a rename on one account leaves as they are. When that database step fails, the rename stands and the answer says
-  `rule_sets_updated: false`; nothing renames the folder back (that would be another write that
-  can fail).
+  answer lists them, and apart (`all_accounts_rule_sets`) the rule sets for all accounts naming it,
+  which a rename on one account leaves as they are; the web's notice of the rename says how many,
+  their moves there failing on this account until they are changed. When that database step fails,
+  the rename stands and the answer says `rule_sets_updated: false`; nothing renames the folder back
+  (that would be another write that can fail).
 - **Delete** a folder **and its mail, for good**: not to Trash, and nothing recovers it. The
   caller sends `messages`, the count it showed the user and the user confirmed; the server reads
   the count again (STATUS) and refuses with `folder_changed`, carrying the new `messages`, when

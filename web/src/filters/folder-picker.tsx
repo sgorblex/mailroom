@@ -1,4 +1,4 @@
-import { useState, type ReactElement } from 'react'
+import { useId, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Input } from '@/components/ui/input.tsx'
@@ -12,7 +12,9 @@ export const selectClass = 'h-9 w-full rounded-md border bg-transparent px-2 tex
 /**
  * Picks one of the account's folders. `null` is no folder: "choose one" unless `noneLabel` names
  * what none means (the trash action's default folder). When the folders cannot be listed, the
- * path is typed instead, its segments separated by `/`.
+ * path is typed instead, its segments separated by `/`; so it is for a rule set for all accounts,
+ * where an optional folder is the account's own by role unless a path is chosen, and a path warns
+ * that an account without it fails the move.
  */
 export function FolderPicker({
   id,
@@ -34,6 +36,20 @@ export function FolderPicker({
   const { t } = useTranslation(FILTERS_NS)
   const chosen = value === null || value.length === 0 ? null : value
 
+  if (folders.kind === 'all-accounts') {
+    return (
+      <AllAccountsFolder
+        // A required folder and an optional one start apart: by path, and by role unless one is set.
+        key={noneLabel === undefined ? 'required' : 'optional'}
+        id={id}
+        value={chosen}
+        onChange={onChange}
+        optional={noneLabel !== undefined}
+        describedBy={describedBy}
+        invalid={invalid}
+      />
+    )
+  }
   if (folders.kind === 'failed') {
     return (
       <TypedFolder
@@ -77,6 +93,69 @@ export function FolderPicker({
   )
 }
 
+/**
+ * A folder for a rule set for all accounts: by role (an optional folder left out) or by a typed
+ * path, with the warning that an account without that folder fails the move.
+ */
+function AllAccountsFolder({
+  id,
+  value,
+  onChange,
+  optional,
+  describedBy,
+  invalid,
+}: {
+  id: string
+  value: readonly string[] | null
+  onChange: (path: string[] | null) => void
+  optional: boolean
+  describedBy: string | undefined
+  invalid: boolean
+}): ReactElement {
+  const { t } = useTranslation(FILTERS_NS)
+  const warningId = useId()
+  const [byPath, setByPath] = useState(!optional || value !== null)
+  const described = optional || describedBy === undefined ? warningId : `${describedBy} ${warningId}`
+  return (
+    <div className="flex flex-col gap-2">
+      {optional && (
+        <select
+          id={id}
+          aria-describedby={describedBy}
+          className={selectClass}
+          value={byPath ? 'path' : 'role'}
+          onChange={(event) => {
+            const path = event.target.value === 'path'
+            setByPath(path)
+            if (!path) {
+              onChange(null)
+            }
+          }}
+        >
+          <option value="role">{t('filters.allAccounts.byRole')}</option>
+          <option value="path">{t('filters.allAccounts.byPath')}</option>
+        </select>
+      )}
+      {byPath && (
+        <>
+          <TypedFolder
+            id={optional ? `${id}-path` : id}
+            label={optional ? t('filters.allAccounts.path') : undefined}
+            value={value}
+            onChange={onChange}
+            required
+            describedBy={described}
+            invalid={invalid}
+          />
+          <p id={warningId} className="text-sm text-muted-foreground">
+            {t('filters.allAccounts.pathWarning')}
+          </p>
+        </>
+      )}
+    </div>
+  )
+}
+
 function segmentsOf(text: string): string[] | null {
   const segments = text.split('/').filter((segment) => segment !== '')
   return segments.length === 0 ? null : segments
@@ -88,6 +167,7 @@ function segmentsOf(text: string): string[] | null {
  */
 function TypedFolder({
   id,
+  label,
   value,
   onChange,
   required,
@@ -95,6 +175,8 @@ function TypedFolder({
   invalid,
 }: {
   id: string
+  /** Its own label, when no `<label>` names `id`. */
+  label?: string
   value: readonly string[] | null
   onChange: (path: string[] | null) => void
   required: boolean
@@ -109,6 +191,7 @@ function TypedFolder({
   return (
     <Input
       id={id}
+      aria-label={label}
       aria-describedby={describedBy}
       aria-invalid={invalid}
       required={required}

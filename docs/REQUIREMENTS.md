@@ -144,6 +144,8 @@ the index and live updates; tier 3 items arrive one at a time.
 - Per account, **rule sets** of filters, one folder each, stored through the filter engine's own
   rule serialisation, triggered on new mail, on a schedule or by hand, optionally
   for marked mail only (the star or To sort).
+- **Rule sets for all accounts**, on INBOX of each account whose Run filters is on; a move to a
+  folder an account lacks fails there and is reported in its run.
 - **Dry run** against real mail before enabling: which messages each filter would match and what it
   would do.
 - **Filters drafted** from a message (its list or sender) or from a search, in the mail client.

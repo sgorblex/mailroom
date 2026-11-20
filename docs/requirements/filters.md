@@ -40,7 +40,12 @@ in the browser, tried with a dry run, and run by the worker. Product scope:
   run of one needs it (`account_required`); *Run now* without it queues a run on each account
   whose *Run filters* is on, and is refused when none is; it answers the list of runs it
   queued, where a rule set of one account's *Run now* answers its one run. Naming another
-  account than a rule set's own is refused (`wrong_account`).
+  account than a rule set's own is refused (`wrong_account`). The web's Filters page lists them in
+  an *All accounts* section after the accounts'; their editor keeps the folder at INBOX, greys out
+  To sort, and takes a `move_to` folder as a typed path, and a `trash` folder either by role (each
+  account's own) or as a typed path, a path saying that an account without it fails the move and
+  that no folder is created. Its dry run asks which account to try on; *Run now* runs on each
+  account whose *Run filters* is on; the run history names each run's account.
 - A rule set holds **ordered filters**, each a filter spec (criteria plus actions), stored as
   the [filter engine](../GLOSSARY.md) serialises it and validated with its `load_filter`, its JSON
   Schema, and every `pattern` compiled as a regular expression (with `regex`, which the engine

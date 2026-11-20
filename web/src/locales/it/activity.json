@@ -89,7 +89,8 @@
     "messages": "Messaggi",
     "rule_sets": "Regole",
     "filters": "Filtri",
-    "rule_sets_error": "Regole non aggiornate"
+    "rule_sets_error": "Regole non aggiornate",
+    "all_accounts_rule_sets": "Regole per tutti gli account rimaste sul vecchio percorso"
   },
   "values": {
     "yes": "Sì",

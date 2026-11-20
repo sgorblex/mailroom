@@ -187,7 +187,15 @@ describe('folder actions', () => {
         refuse: {
           'POST /api/v1/mail/accounts/1/folders/rename': {
             status: 200,
-            body: { account_id: WORK, folder: 'Projects', path: 'Work', rule_sets: [], filters: [], rule_sets_updated: false },
+            body: {
+              account_id: WORK,
+              folder: 'Projects',
+              path: 'Work',
+              rule_sets: [],
+              filters: [],
+              rule_sets_updated: false,
+              all_accounts_rule_sets: [],
+            },
           },
         },
       }),
@@ -200,6 +208,37 @@ describe('folder actions', () => {
     await userEvent.type(within(dialog).getByRole('textbox', { name: 'Name' }), 'Work')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Rename' }))
     expect((await screen.findByText(/they still name the old folder/)).closest('[role="alert"]')).not.toBeNull()
+  })
+
+  it('says when rule sets for all accounts still name the old path', async () => {
+    stubMailApi(
+      state({
+        refuse: {
+          'POST /api/v1/mail/accounts/1/folders/rename': {
+            status: 200,
+            body: {
+              account_id: WORK,
+              folder: 'Projects',
+              path: 'Work',
+              rule_sets: [],
+              filters: [],
+              rule_sets_updated: true,
+              all_accounts_rule_sets: [7, 8],
+            },
+          },
+        },
+      }),
+    )
+    renderMailApp('/mail')
+
+    await userEvent.click(within(await menuOf('Projects')).getByRole('menuitem', { name: 'Rename or move…' }))
+    const dialog = screen.getByRole('dialog')
+    await userEvent.clear(within(dialog).getByRole('textbox', { name: 'Name' }))
+    await userEvent.type(within(dialog).getByRole('textbox', { name: 'Name' }), 'Work')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Rename' }))
+    const notice = await screen.findByText(/2 rule sets for all accounts still name the old path/)
+    expect(notice).toHaveTextContent('Renamed to Work.')
+    expect(notice.closest('[role="alert"]')).not.toBeNull()
   })
 
   it('deletes after confirming the count, and asks again when it changed', async () => {
