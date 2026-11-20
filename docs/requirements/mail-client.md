@@ -35,9 +35,12 @@ live updates yet.
   ([Glossary](../GLOSSARY.md)). Only a **sender** is ever remembered, and only from a message
   whose DMARC passed for its one From at the account's own authentication server
   (`remote_trusted` and [`/remote-senders`](#remote-content-senders) below; the server checks,
-  never the client); the web does not offer it yet. Beside the gate, a line says how many remote
-  images are blocked (`remote_images`) or shown (`loadable_remote_images`), and the gate offers to
-  show them only when some can be. What is removed either way is in the HTML route below.
+  never the client). The web offers *Always for this sender* beside *Show remote images* only on
+  `dmarc_pass`, loads the HTML with `remote=1` at once when `remote_trusted`, and lists the
+  remembered senders, each removable, on the *Profile* page. Beside the gate, a line says how many
+  remote images are blocked (`remote_images`) or shown (`loadable_remote_images`, and whether for
+  the message or its sender), and the gate offers to show them only when some can be. What is
+  removed either way is in the HTML route below.
 - **Link safety:** in the HTML view each link's tooltip is the host it really goes to (IDNA form,
   never the sender's own title), and a link whose text names another host (not the link's, nor a
   parent or child of it) is followed by a red *⚠ host* marker naming the real one; no

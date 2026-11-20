@@ -187,6 +187,7 @@ export function messageView(item: MessageItem, fields: Partial<MessageView> = {}
       dmarc_pass: false,
       from_domain: null,
     },
+    remote_trusted: false,
     ...fields,
   }
 }
@@ -779,6 +780,24 @@ export function stubMailApi(state: FakeMailState): Mock {
     }
     if (path === '/api/v1/mail/messages/count' || path === '/api/v1/mail/messages/bulk') {
       return matchingRoutes(state, path.endsWith('bulk'), JSON.parse(init?.body as string) as { expected?: number; action?: { kind: string } })
+    }
+    if (path === '/api/v1/mail/remote-senders' && init?.method === 'POST') {
+      // Remembered when DMARC passed for the message's From; its views then say so.
+      const { ref } = JSON.parse(init.body as string) as { ref: string }
+      const view = state.views[ref]
+      if (view === undefined) {
+        return notFound()
+      }
+      const address = view.from?.address
+      if (!view.authentication.dmarc_pass || address === undefined) {
+        return json(400, refusal(400, 'sender_not_verified').body)
+      }
+      for (const each of Object.values(state.views)) {
+        if (each.from?.address === address && each.authentication.dmarc_pass) {
+          each.remote_trusted = true
+        }
+      }
+      return json(201, { address, created_at: '2026-11-19T10:00:00+00:00' })
     }
     if (path === '/api/v1/mail/search') {
       return json(200, state.searchResult ?? { messages: [], next_cursor: null, failures: [] })

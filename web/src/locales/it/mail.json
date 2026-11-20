@@ -195,6 +195,11 @@
     "showRemote": "Mostra le immagini remote",
     "remoteShown_one": "{{count}} immagine remota è mostrata per questo messaggio.",
     "remoteShown_other": "{{count}} immagini remote sono mostrate per questo messaggio.",
+    "remoteShownSender_one": "{{count}} immagine remota è mostrata: per questo mittente le mostri sempre.",
+    "remoteShownSender_other": "{{count}} immagini remote sono mostrate: per questo mittente le mostri sempre.",
+    "trustSender": "Sempre per questo mittente",
+    "trustSenderFailed": "Impossibile ricordare questo mittente.",
+    "senderNotVerified": "Questo mittente non è stato verificato, quindi non può essere ricordato.",
     "htmlTitle": "Versione HTML di {{subject}}",
     "htmlLoading": "Caricamento della versione HTML…",
     "htmlFailed": "Impossibile caricare la versione HTML."

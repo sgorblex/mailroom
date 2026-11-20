@@ -259,6 +259,16 @@
     "saved": "Saved.",
     "saveFailed": "Could not save this choice."
   },
+  "remoteSenders": {
+    "title": "Remote images",
+    "intro": "Senders whose remote images you always show. A sender counts only when its message passed DMARC at the account's authentication server.",
+    "none": "No senders yet: choose “Always for this sender” beside a message's remote images.",
+    "loadFailed": "Could not load these senders.",
+    "remembered": "Since {{when}}",
+    "remove": "Remove",
+    "removeSender": "Remove {{address}}",
+    "removeFailed": "Could not remove this sender."
+  },
   "limits": {
     "title": "Mail limits",
     "intro": "They hold for your mail here and through connected apps, across all your accounts. Only you change them, here: a connected app cannot.",

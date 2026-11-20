@@ -131,7 +131,7 @@ released and checked in production before the next one starts. Batch 15 is the r
 - [ ] **Unsubscribe** — `List-Unsubscribe` one-click (RFC 8058) where the list supports it, else
       its link or address; never automatic, and with the offer of a filter instead.
 - [ ] **Replied indicator** — a mark on the rows the user answered or forwarded.
-- [ ] **Remote content per sender** — the remote-content gate remembers the senders the user
+- [x] **Remote content per sender** — the remote-content gate remembers the senders the user
       trusts.
 - [x] **Tracker count** — how many trackers the remote-content gate blocked, beside it.
 - [ ] **Print and download** — a message printed as shown, or saved as its `.eml`.

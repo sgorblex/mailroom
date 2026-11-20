@@ -45,6 +45,9 @@ through the Vite proxy. Engineering baseline:
   folder with subfolders does first: the folder and its subfolders (the default) or the folder
   alone; the folder's menu offers the other second
   ([`requirements/mail-client.md`](requirements/mail-client.md) — *Folder management*).
+- **Remote images.** Each user lists on their *Profile* page the senders whose remote images
+  they always show, and removes them there; a sender is added only from a message whose DMARC
+  passed ([`requirements/mail-client.md`](requirements/mail-client.md) — *Remote content*).
 - **Single sign-on** (optional): "Sign in with …" an OpenID Connect provider, for users an admin
   already created; nobody signs up through it. A user links the provider's sign-in on their
   *Profile* page (and unlinks it there), or, when the instance says so, their first SSO sign-in
