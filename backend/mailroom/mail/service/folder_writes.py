@@ -48,6 +48,8 @@ class FolderRenamed:
     rule_sets_updated: bool
     """False when the database step failed: the folder is renamed, the rule sets still name its
     old path."""
+    all_accounts_rule_sets: tuple[int, ...] = ()
+    """The rule sets for all accounts naming the old path, left as they are."""
 
 
 @contextmanager
@@ -176,7 +178,8 @@ def rename_folder(
 ) -> FolderRenamed:
     """Renames ``folder`` to ``name`` under ``parent`` (None: the top level), its subfolders with
     it (mailroom-core's ``rename_folder``), then points the account's rule sets and filter
-    actions that name it, or a folder under it, at the new path: enabled ones too. Both run on
+    actions that name it, or a folder under it, at the new path: enabled ones too; the rule sets
+    for all accounts naming it are left, and listed (``all_accounts_rule_sets``). Both run on
     the pool's thread, so the rule sets follow a rename the server did after the call's deadline.
     A failure of that database step does not fail the call: ``rule_sets_updated`` is False.
     Recorded as ``folder_rename``, with the rule sets and filters changed."""
@@ -198,6 +201,8 @@ def rename_folder(
             if rewritten is None
             else {"rule_sets": rewritten.rule_sets, "filters": rewritten.filters}
         )
+        if rewritten is not None and rewritten.all_accounts:
+            extra["all_accounts_rule_sets"] = rewritten.all_accounts
         for item in noted:
             trail.note(item, extra)
         return FolderRenamed(
@@ -205,6 +210,7 @@ def rename_folder(
             rule_sets=() if rewritten is None else tuple(rewritten.rule_sets),
             filters=() if rewritten is None else tuple(rewritten.filters),
             rule_sets_updated=rewritten is not None,
+            all_accounts_rule_sets=() if rewritten is None else tuple(rewritten.all_accounts),
         )
 
     with _logged_folder_call("mail_folder_renamed", user_id, origin.via, account_id) as logged:

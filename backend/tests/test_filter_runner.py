@@ -15,6 +15,7 @@ from mailroom.models import AuditRecord, FilterRun, RuleSet
 from mailroom.worker import tasks
 from mailroom.worker.app import PROCRASTINATE_SCHEMA
 from mailroom.worker.context import Mailboxes, WorkerContext
+from mailroom.worker.idle import WatchedFolder, watched_folders
 from mailroom.worker.runs import (
     COPIED_NOT_REMOVED,
     COPIED_NOT_REMOVED_TEXT,
@@ -30,7 +31,7 @@ from mailroom.worker.tasks import (
 )
 from mailroom_core.config import TimeZoneName
 from mailroom_core.filters import Folder
-from mailroom_core.mail import MESSAGES, CopiedNotRemovedError, Moved
+from mailroom_core.mail import MESSAGES, CopiedNotRemovedError, MailError, Moved
 from tests.test_api_accounts import added, new_account
 from tests.test_api_filters import SHOP_SPEC, add_filter, jobs, rule_set
 
@@ -54,7 +55,7 @@ def set_run_filters(client: TestClient, account_id: int, *, on: bool) -> None:
     assert client.put(settings, json={"run_filters": on}).status_code == 200
 
 
-def add_rule_set(client: TestClient, account_id: int, **changes: Any) -> int:
+def add_rule_set(client: TestClient, account_id: int | str, **changes: Any) -> int:
     body = rule_set(**({"enabled": True} | changes))
     response = client.post(f"/api/v1/accounts/{account_id}/rule-sets", json=body)
     assert response.status_code == 201, response.json()
@@ -97,7 +98,7 @@ def test_scheduled_rule_sets_are_queued_when_due(
             "task_name": "run_rule_set",
             "args": {"run_id": run_id},
             "lock": f"mailbox:{user.id}:{work}",
-            "queueing_lock": f"rule_set:{due}",
+            "queueing_lock": f"rule_set:{due}:{work}",
             "status": "todo",
         }
     ]
@@ -142,6 +143,12 @@ def test_new_mail_queues_the_folders_new_mail_rule_sets(
     # More new mail while that run waits: it will see that mail too.
     assert queue_new_mail_runs(db_session, user.id, work, ["INBOX"]) == []
     assert len(jobs(db_session)) == 1
+
+
+def queued_runs(client: TestClient, rule_set_id: int) -> list[int]:
+    response = client.post(f"/api/v1/rule-sets/{rule_set_id}/run")
+    assert response.status_code == 202, response.json()
+    return [run["id"] for run in response.json()]
 
 
 def queued_run(client: TestClient, rule_set_id: int) -> int:
@@ -469,7 +476,9 @@ def test_runs_a_stopped_worker_left_are_closed(
     running = queued_run(user_client, add_rule_set(user_client, work))
     never_started = queued_run(user_client, add_rule_set(user_client, work))
     still_running = queued_run(user_client, add_rule_set(user_client, work))
-    dry = FilterRun(rule_set_id=add_rule_set(user_client, work), trigger="manual", dry_run=True)
+    dry = FilterRun(
+        rule_set_id=add_rule_set(user_client, work), account_id=work, trigger="manual", dry_run=True
+    )
     db_session.add(dry)
     started = datetime.now(UTC) - timedelta(minutes=5)
     db_session.get_one(FilterRun, running).started_at = started
@@ -524,3 +533,69 @@ def test_a_pattern_out_of_time_fails_the_run(
     assert run["result"]["error"] == run["error"]
     assert "secret" not in caplog.text
     assert "MatchTimeoutError" in caplog.text
+
+
+def test_a_rule_set_for_all_accounts_is_queued_on_each_running_account(
+    user_client: TestClient, db_session: Session, user: User
+) -> None:
+    work = add_account(user_client)
+    home = add_account(user_client, "home")
+    add_account(user_client, "off", run_filters=False)
+    scheduled = add_rule_set(user_client, "all", **EVERY_15)
+    new_mail = add_rule_set(user_client, "all", trigger="new_mail")
+    now = datetime.now(UTC)
+
+    assert len(queue_scheduled_runs(db_session, now)) == 2
+    assert [run.account_id for run in runs(db_session, scheduled)] == [work, home]
+    # Each account keeps its own schedule and its own waiting run.
+    assert queue_scheduled_runs(db_session, now + timedelta(minutes=10)) == []
+    assert queue_scheduled_runs(db_session, now + timedelta(minutes=15)) == []
+    assert sorted(job["queueing_lock"] for job in jobs(db_session)) == sorted(
+        [f"rule_set:{scheduled}:{work}", f"rule_set:{scheduled}:{home}"]
+    )
+
+    [run_id] = queue_new_mail_runs(db_session, user.id, home, ["INBOX"])
+    assert [(run.id, run.account_id) for run in runs(db_session, new_mail)] == [(run_id, home)]
+    assert queue_new_mail_runs(db_session, user.id, home, ["Archive"]) == []
+    watched = {folder for folder in watched_folders(db_session) if folder.user_id == user.id}
+    assert watched == {
+        WatchedFolder(user.id, work, ("INBOX",)),
+        WatchedFolder(user.id, home, ("INBOX",)),
+    }
+
+
+def test_a_rule_set_for_all_accounts_failing_on_one_account_runs_on_the_others(
+    user_client: TestClient,
+    db_session: Session,
+    mailboxes: Mailboxes,
+    monkeypatch: pytest.MonkeyPatch,
+    user: User,
+) -> None:
+    work = add_account(user_client)
+    home = add_account(user_client, "home")
+    rule_set_id = add_rule_set(user_client, "all")
+    shop = add_filter(user_client, rule_set_id, "Shop", SHOP_SPEC)
+    queued = queued_runs(user_client, rule_set_id)
+    assert len(queued) == 2
+
+    def run_into(self: Folder, report: Any, *_args: object, **_kwargs: object) -> None:
+        if self.account.account_id == work:
+            raise MailError("mailbox_missing")
+        report["filters"].append({"spec": None, "action": "Move", "matched": [], "executed": True})
+
+    monkeypatch.setattr(Folder, "run_into", run_into)
+    for run_id in queued:
+        execute_run(db_session, run_id, mailboxes)
+
+    listed = user_client.get(f"/api/v1/rule-sets/{rule_set_id}/runs").json()
+    by_account = {run["account_id"]: run for run in listed}
+    assert by_account[work]["error"] == f"mailbox_missing: {MESSAGES['mailbox_missing']}"
+    assert by_account[home]["error"] is None
+    assert [entry["filter_id"] for entry in by_account[home]["result"]["filters"]] == [shop]
+    # The refusal is in the audit trail, on its account.
+    [failed] = db_session.scalars(
+        select(AuditRecord).where(
+            AuditRecord.user_id == user.id, AuditRecord.action == "run_failed"
+        )
+    )
+    assert (failed.account_id, failed.rule_set_id) == (work, rule_set_id)

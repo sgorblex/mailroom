@@ -462,14 +462,15 @@ connection with no mailbox selected, every check there. Marking a folder read is
   subscriptions go with it. Every rule set and filter action (`move_to`, `trash`) of the account
   that names the folder or one under it is pointed at the new path, enabled ones included: they
   keep acting on the same folder ([`filters.md`](filters.md) — *Folders renamed or deleted*). The
-  answer lists them. When that database step fails, the rename stands and the answer says
+  answer lists them, and apart (`all_accounts_rule_sets`) the rule sets for all accounts naming
+  it, which a rename on one account leaves as they are. When that database step fails, the rename stands and the answer says
   `rule_sets_updated: false`; nothing renames the folder back (that would be another write that
   can fail).
 - **Delete** a folder **and its mail, for good**: not to Trash, and nothing recovers it. The
   caller sends `messages`, the count it showed the user and the user confirmed; the server reads
   the count again (STATUS) and refuses with `folder_changed`, carrying the new `messages`, when
   it differs. Refused, before the folder is touched, while any rule set or filter action of the
-  account names the folder or one under it (`folder_in_use`, listing up to 10 of them as
+  account, or of a rule set for all accounts, names the folder or one under it (`folder_in_use`, listing up to 10 of them as
   `rule_sets: [{id, name}]`), and while the folder has subfolders (`\Noselect` ones too). On
   Gmail a folder is a label: its mail stays in All Mail. Mail that arrives between the count and
   the delete goes with the folder; IMAP cannot close that window, the count keeps it to seconds.
@@ -510,8 +511,8 @@ Drafts, Trash, Junk, Archive, All, Flagged, by special-use or by name) are never
 deleted, nor a folder holding one renamed (`invalid_argument`).
 
 Every call is recorded in the audit trail, refused ones included: `folder_create` (`folder`),
-`folder_rename` (`folder`, `destination`, and the `rule_sets` and `filters` ids it changed, or
-`rule_sets_error: true`), `folder_delete` (`folder`, `messages`), `mark_folder_read` (one record
+`folder_rename` (`folder`, `destination`, the `rule_sets` and `filters` ids it changed and any
+`all_accounts_rule_sets` it left, or `rule_sets_error: true`), `folder_delete` (`folder`, `messages`), `mark_folder_read` (one record
 for the folder: `folder`, and `messages`, the count marked). Its log lines, `mail_folder_created`,
 `mail_folder_renamed`, `mail_folder_deleted` and `mail_folder_marked_read`, carry `via`,
 `account_id`, `outcome`, `duration_ms` and counts (`rule_sets`, `filters`, `rule_sets_updated`,
@@ -522,7 +523,7 @@ for the folder: `folder`, and `messages`, the count marked). Its log lines, `mai
 | --- | --- | --- |
 | `GET /accounts/{account_id}/folders?all=true` | | The [listing](#get-accountsaccount_idfolders) with the `\Noselect` folders too |
 | `POST /accounts/{account_id}/folders` | `{"parent": "Projects", "name": "2026"}` | `201` `{"account_id", "path"}` |
-| `POST /accounts/{account_id}/folders/rename` | `{"folder": "Projects/2026", "parent": null, "name": "2026"}` | `200` `{"account_id", "folder", "path", "rule_sets", "filters", "rule_sets_updated"}`: `folder` the old path, `path` the new one |
+| `POST /accounts/{account_id}/folders/rename` | `{"folder": "Projects/2026", "parent": null, "name": "2026"}` | `200` `{"account_id", "folder", "path", "rule_sets", "filters", "rule_sets_updated", "all_accounts_rule_sets"}`: `folder` the old path, `path` the new one |
 | `POST /accounts/{account_id}/folders/delete` | `{"folder": "Projects/2026", "messages": 12}` | `200` `{"account_id", "folder", "messages"}` |
 | `POST /accounts/{account_id}/folders/mark-read` | `{"folder": "Lists", "uid_validity": 1700000000, "uid_next": 812}` | `200` `{"account_id", "folder", "marked"}` |
 

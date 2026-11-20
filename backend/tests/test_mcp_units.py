@@ -577,7 +577,7 @@ def test_every_account_id_is_published_as_an_integer() -> None:
             branch for branch in branches if branch.get("type") == "integer"
         ).items(), tool.name
         strings = [branch for branch in branches if branch.get("type") == "string"]
-        assert all(branch.get("const") == "*" for branch in strings), tool.name
+        assert all(branch.get("const") in {"*", "all"} for branch in strings), tool.name
 
 
 @pytest.mark.parametrize("text", ["3", "03", str(MAX_SAFE_INTEGER)])

@@ -37,8 +37,9 @@ _MARKER_CHECK: Final = "marker IN ('none', 'star', 'to_sort')"
 
 
 class RuleSet(Base):
-    """Ordered filters for one folder of one of the user's accounts, and what triggers them. The
-    account lives in mailroom-core's schema ``core``, keyed by its id there."""
+    """Ordered filters for one folder of one of the user's accounts, or for INBOX of each of their
+    accounts, and what triggers them. The account lives in mailroom-core's schema ``core``, keyed
+    by its id there."""
 
     __tablename__ = "rule_set"
     __table_args__ = (
@@ -50,6 +51,7 @@ class RuleSet(Base):
         ),
         CheckConstraint("interval_minutes > 0", name="interval_positive"),
         CheckConstraint("kind IN ('user', 'mute')", name="kind"),
+        CheckConstraint("account_id IS NOT NULL OR kind = 'user'", name="all_accounts"),
         # One muting rule set per account.
         Index(
             "uq_rule_set_mute",
@@ -62,7 +64,9 @@ class RuleSet(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey(User.id, ondelete="CASCADE"), index=True)
-    account_id: Mapped[int] = mapped_column(BigInteger)
+    account_id: Mapped[int | None] = mapped_column(BigInteger)
+    """None: every account of the user's whose Run filters is on, each run on one of them
+    (``FilterRun.account_id``), on INBOX only."""
     folder: Mapped[list[str]] = mapped_column(ARRAY(Text))
     """Path segments, as the server's delimiter splits them: ``["Archive", "2026"]``."""
     name: Mapped[str] = mapped_column(String(200))
@@ -129,6 +133,8 @@ class FilterRun(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
     rule_set_id: Mapped[int] = mapped_column(ForeignKey(RuleSet.id, ondelete="CASCADE"), index=True)
+    account_id: Mapped[int] = mapped_column(BigInteger)
+    """The account the run acted on: its rule set's, or one of an all-accounts rule set's."""
     trigger: Mapped[str] = mapped_column(Text)
     dry_run: Mapped[bool] = mapped_column(Boolean)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

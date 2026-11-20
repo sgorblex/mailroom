@@ -608,12 +608,12 @@ What they do and the route list: [`filters.md`](filters.md). How:
   `filter_match_day` (a filter's real-run matches per UTC day, added to by the worker as a run
   finishes), `muted_thread` (by `user_id` and account id; its Message-IDs as `jsonb`, 200 at
   most, and Gmail's thread id), and `rule_set.kind` (`user`, or the account's one hidden `mute`
-  rule set, a partial unique index). Removing an account
-  removes its rule sets and muted threads, and a rule set its filters and runs; removing a user
-  removes all of theirs, with their accounts. Each rule
-  set keeps its newest 100 runs, and every run still queued or in progress, and its filters'
-  match days of the last 30, pruned as runs are. A report is stored
-  without NUL characters (`jsonb` refuses them; a header may decode to one).
+  rule set, a partial unique index). Removing an account removes its rule sets and muted threads,
+  and the runs on it of the rule sets for all accounts, and a rule set its filters and runs;
+  removing a user removes all of theirs, with their accounts. Each rule set keeps its newest 100
+  runs, and every run still queued or in progress, and its filters' match days of the last 30,
+  pruned as runs are. A report is stored without NUL characters (`jsonb` refuses them; a header may
+  decode to one).
 - **The folder picker's** `GET /accounts/{id}/folders` lists through the mail service, as MCP's
   `folders_list` does: the selectable folders, each split on its own delimiter, without counts.
 - **Refusals** are 400 `{"detail": {"code", "message"}}`: `invalid_spec` (the filter engine's
@@ -697,8 +697,8 @@ What they do and the route list: [`filters.md`](filters.md). How:
   `error` repeats the failure. `error` is `<code>: <message>`.
 - **Logs:** `rule_set_added`, `rule_set_changed`, `rule_set_removed`, `filter_added`,
   `filter_changed`, `filter_removed`, `filters_reordered`, `dry_run` (with `outcome`),
-  `run_requested`, `run_filters_changed` (with `account_id`); from the worker `run_queued` and
-  `rule_set_run` (with `trigger` and `outcome`: `ok`, the error's code, or `gone`) and
+  `run_requested` and `run_filters_changed` (with `account_id`); from the worker `run_queued` and
+  `rule_set_run` (with `account_id`, `trigger` and `outcome`: `ok`, the error's code, or `gone`) and
   `match_count_failed` and `thread_join_failed` (with `error`, the exception's type);
   `thread_muted` and `thread_unmuted` (with `account_id` and `muted_thread_id`, never an id of
   the message); with `user_id`

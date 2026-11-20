@@ -12,7 +12,7 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Annotated, Any, Final, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 
 from mailroom.accounts import app_data
@@ -55,6 +55,13 @@ Spec = dict[str, Any]
 
 MAX_FILTERS: Final = 100
 """Filters per rule set; the web app's Add filter stops there too."""
+
+ALL_ACCOUNTS: Final = "all"
+"""In place of an account id: a rule set for every account of the user's, run on each one whose
+Run filters is on, on INBOX only (``RuleSet.account_id`` null)."""
+Accounts = int | Literal["all"]
+"""An account id, or ``ALL_ACCOUNTS``."""
+INBOX: Final = ("INBOX",)
 
 
 class RuleSetFields(BaseModel):
@@ -102,7 +109,8 @@ class FilterOut(FilterRowOut):
 
 class RuleSetOut(BaseModel):
     id: int
-    account_id: int
+    account_id: Accounts
+    """``all`` for a rule set run on every account whose Run filters is on."""
     folder: list[str]
     name: str
     trigger: Trigger
@@ -111,6 +119,11 @@ class RuleSetOut(BaseModel):
     enabled: bool
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("account_id", mode="before")
+    @classmethod
+    def _all_accounts(cls, value: object) -> object:
+        return ALL_ACCOUNTS if value is None else value
 
 
 class RuleSetDetail(RuleSetOut):
@@ -135,6 +148,8 @@ class FilterPatch(BaseModel):
 class RunOut(BaseModel):
     id: int
     rule_set_id: int
+    account_id: int
+    """The account it ran on: its rule set's, or one of an all-accounts rule set's."""
     trigger: Trigger
     dry_run: bool
     created_at: datetime
@@ -268,11 +283,26 @@ def marks_to_sort(spec: object) -> bool:
 
 
 def _check_to_sort_actions(
-    ctx: AppContext, db: Session, user_id: int, account_id: int, via: Via
+    ctx: AppContext, db: Session, user_id: int, account_id: int | None, via: Via
 ) -> None:
+    if account_id is None:
+        raise _to_sort_all_accounts()
     # Not idle in a transaction, the row locked, while the mailbox answers.
     db.commit()
     check_marker(ctx, user_id, account_id, via)
+
+
+def _to_sort_all_accounts() -> Refusal:
+    msg = "To sort is kept per account: a rule set for all accounts takes the star instead."
+    return Refusal("invalid", "to_sort_unsupported", msg)
+
+
+def _inbox_only(folder: Sequence[str]) -> list[str]:
+    """An all-accounts rule set's folder: INBOX, or ``all_accounts_inbox_only``."""
+    if len(folder) != 1 or folder[0].upper() != "INBOX":
+        msg = "A rule set for all accounts runs on INBOX only."
+        raise Refusal("invalid", "all_accounts_inbox_only", msg)
+    return list(INBOX)
 
 
 PUBLIC_PROVIDER_TEXT: Final = (
@@ -366,12 +396,24 @@ def set_run_filters(
     return on
 
 
-def rule_sets(ctx: AppContext, db: Session, user_id: int, account_id: int) -> list[RuleSetOut]:
-    """The account's rule sets, oldest first, without their filters; never the hidden ones."""
-    require_account(ctx.store(user_id), account_id)
+def running_accounts(db: Session, user_id: int) -> list[int]:
+    """The user's accounts whose Run filters is on, in id order: where an all-accounts rule set
+    runs."""
+    on = app_data.run_filters_by_account(db, user_id)
+    return sorted(account for account, running in on.items() if running)
+
+
+def rule_sets(ctx: AppContext, db: Session, user_id: int, account: Accounts) -> list[RuleSetOut]:
+    """The account's rule sets, or the all-accounts ones (``ALL_ACCOUNTS``), oldest first, without
+    their filters; never the hidden ones."""
+    if isinstance(account, int):
+        require_account(ctx.store(user_id), account)
+        of_account = RuleSet.account_id == account
+    else:
+        of_account = RuleSet.account_id.is_(None)
     rows = db.scalars(
         select(RuleSet)
-        .where(RuleSet.user_id == user_id, RuleSet.account_id == account_id, RuleSet.kind == "user")
+        .where(RuleSet.user_id == user_id, of_account, RuleSet.kind == "user")
         .order_by(RuleSet.id)
     )
     return [_rule_set_out(row) for row in rows]
@@ -381,16 +423,26 @@ def add_rule_set(
     ctx: AppContext,
     db: Session,
     user_id: int,
-    account_id: int,
+    account: Accounts,
     fields: RuleSetFields,
     *,
     via: Via = "web",
 ) -> RuleSetDetail:
-    require_account(ctx.store(user_id), account_id)
+    """A rule set on a folder of the account, or on INBOX of every account (``ALL_ACCOUNTS``:
+    ``all_accounts_inbox_only`` for another folder, ``to_sort_unsupported`` for the To sort
+    marker)."""
+    account_id = account if isinstance(account, int) else None
+    if account_id is not None:
+        require_account(ctx.store(user_id), account_id)
     check_schedule(fields.trigger, fields.interval_minutes)
-    if fields.marker == "to_sort":
+    values = fields.model_dump()
+    if account_id is None:
+        values["folder"] = _inbox_only(fields.folder)
+        if fields.marker == "to_sort":
+            raise _to_sort_all_accounts()
+    elif fields.marker == "to_sort":
         check_marker(ctx, user_id, account_id, via)
-    rule_set = RuleSet(user_id=user_id, account_id=account_id, **fields.model_dump())
+    rule_set = RuleSet(user_id=user_id, account_id=account_id, **values)
     db.add(rule_set)
     db.commit()
     db.refresh(rule_set)
@@ -415,19 +467,23 @@ def change_rule_set(
 ) -> RuleSetOut:
     """Change the fields ``patch`` sets (a None one stays, but for ``interval_minutes``).
     ``disabled_only``: refuse an enabled rule set (``refuse_enabled``). A marker changed to
-    ``to_sort`` is checked as a new rule set's is."""
+    ``to_sort``, and an all-accounts rule set's folder, are checked as a new rule set's are."""
     if patch.marker == "to_sort":
         current = _owned_for_change(db, user_id, rule_set_id, disabled_only=disabled_only)
         account_id, marker = current.account_id, current.marker
         # Not idle in a transaction, the row locked, while the mailbox answers.
         db.commit()
         if marker != "to_sort":
+            if account_id is None:
+                raise _to_sort_all_accounts()
             check_marker(ctx, user_id, account_id, via)
     rule_set = _owned_for_change(db, user_id, rule_set_id, disabled_only=disabled_only)
     changes = patch.model_dump(exclude_unset=True)
     for field in ("name", "folder", "trigger", "marker", "enabled"):
         if changes.get(field, None) is None:
             changes.pop(field, None)
+    if rule_set.account_id is None and "folder" in changes:
+        changes["folder"] = _inbox_only(changes["folder"])
     trigger = changes.get("trigger", rule_set.trigger)
     if trigger != "scheduled" and "interval_minutes" not in changes:
         changes["interval_minutes"] = None
@@ -593,20 +649,45 @@ def _dry_run_refusal(refusal: RunRefused) -> Refusal:
     return Refusal(kind, refusal.code, refusal.message, coded=kind == "not_found")
 
 
+def _account_of_run(
+    ctx: AppContext, user_id: int, rule_set: RuleSet, account_id: int | None
+) -> int:
+    """The account a run of ``rule_set`` acts on: its own (``account_id`` None or the same, else
+    ``wrong_account``), or for an all-accounts one ``account_id``, one of the user's
+    (``account_required`` when None)."""
+    if rule_set.account_id is not None:
+        if account_id not in (None, rule_set.account_id):
+            msg = "The rule set runs on another account."
+            raise Refusal("invalid", "wrong_account", msg)
+        return rule_set.account_id
+    if account_id is None:
+        msg = "Name the account to run this rule set for all accounts on."
+        raise Refusal("invalid", "account_required", msg)
+    require_account(ctx.store(user_id), account_id)
+    return account_id
+
+
 def dry_run(
-    ctx: AppContext, db: Session, user_id: int, rule_set_id: int, *, via: Via = "web"
+    ctx: AppContext,
+    db: Session,
+    user_id: int,
+    rule_set_id: int,
+    account_id: int | None = None,
+    *,
+    via: Via = "web",
 ) -> RunOut:
     """Run the enabled filters without acting, on the folder's newest messages, briefly
-    (``mailroom.filters.runs.dry_run_result``); the run joins the history, refused or not. One dry
-    run per user at a time: ``busy`` (``dry_run_busy``, not recorded) while another holds the
-    slot."""
+    (``mailroom.filters.runs.dry_run_result``); the run joins the history, refused or not. An
+    all-accounts rule set's on ``account_id`` (``_account_of_run``). One dry run per user at a
+    time: ``busy`` (``dry_run_busy``, not recorded) while another holds the slot."""
     rule_set = owned_rule_set(db, user_id, rule_set_id)
+    target = _account_of_run(ctx, user_id, rule_set, account_id)
     filters = enabled_filters(db, rule_set.id)
     # Not idle in a transaction while the mailbox answers.
     db.commit()
     try:
         with dry_run_slot(ctx.engine, user_id):
-            return _dry_run(ctx, db, user_id, rule_set, filters, via)
+            return _dry_run(ctx, db, user_id, rule_set, target, filters, via)
     except DryRunBusy:
         msg = "Another dry run of yours is still going: wait for it to finish."
         raise Refusal("busy", "dry_run_busy", msg) from None
@@ -617,6 +698,7 @@ def _dry_run(
     db: Session,
     user_id: int,
     rule_set: RuleSet,
+    account_id: int,
     filters: list[Filter],
     via: Via,
 ) -> RunOut:
@@ -624,13 +706,14 @@ def _dry_run(
     started = datetime.now(UTC)
     run = FilterRun(
         rule_set_id=rule_set.id,
+        account_id=account_id,
         trigger="manual",
         dry_run=True,
         created_at=started,
         started_at=started,
     )
     try:
-        run.result = dry_run_result(ctx, user_id, rule_set, filters)
+        run.result = dry_run_result(ctx, user_id, rule_set, filters, account_id)
     except RunRefused as refusal:
         run.error = refusal.error
         run.finished_at = datetime.now(UTC)
@@ -646,27 +729,55 @@ def _dry_run(
 def _record_run(db: Session, run: FilterRun) -> None:
     db.add(run)
     db.flush()
-    prune_runs(db, run.rule_set_id)
+    prune_runs(db, run.rule_set_id, run.account_id)
     db.commit()
 
 
-def run_now(db: Session, user_id: int, rule_set_id: int, *, via: Via = "web") -> RunOut:
-    """Queue a run for the worker. Refused while the account's Run filters is off, for a
-    disabled rule set, and while a run of it is already waiting."""
+def run_now(
+    ctx: AppContext,
+    db: Session,
+    user_id: int,
+    rule_set_id: int,
+    account_id: int | None = None,
+    *,
+    via: Via = "web",
+) -> RunOut | list[RunOut]:
+    """Queue a run for the worker: on the rule set's account, or for an all-accounts rule set on
+    ``account_id``, else on each account whose Run filters is on (``_account_of_run`` for the
+    account named). Refused while that Run filters is off (every one, for all accounts), for a
+    disabled rule set, and while a run of it is already waiting on each account. The run
+    queued; for an all-accounts rule set, the list of the runs queued."""
     rule_set = owned_rule_set(db, user_id, rule_set_id, lock=True)
-    if not run_filters_on(db, user_id, rule_set.account_id):
-        msg = "Run filters is off for this account: turn it on to run its rule sets."
-        raise Refusal("invalid", "run_filters_off", msg)
+    if rule_set.account_id is None and account_id is None:
+        accounts = running_accounts(db, user_id)
+        if not accounts:
+            msg = "Run filters is off for every account: turn it on for one to run this rule set."
+            raise Refusal("invalid", "run_filters_off", msg)
+    else:
+        target = _account_of_run(ctx, user_id, rule_set, account_id)
+        if not run_filters_on(db, user_id, target):
+            msg = "Run filters is off for this account: turn it on to run its rule sets."
+            raise Refusal("invalid", "run_filters_off", msg)
+        accounts = [target]
     if not rule_set.enabled:
         raise Refusal("invalid", "rule_set_disabled", "Enable the rule set to run it.")
-    run_id = queue_run(db, rule_set, "manual")
-    if run_id is None:
+    queued = [queue_run(db, rule_set, account, "manual") for account in accounts]
+    run_ids = [run_id for run_id in queued if run_id is not None]
+    if not run_ids:
         raise Refusal("conflict", "run_pending", "A run of this rule set is already waiting.")
     db.commit()
-    run = db.get_one(FilterRun, run_id)
-    db.refresh(run)
-    _log("run_requested", user_id, via, rule_set_id=rule_set.id, run_id=run.id)
-    return _run_out(run)
+    rows = db.scalars(select(FilterRun).where(FilterRun.id.in_(run_ids)).order_by(FilterRun.id))
+    out = [_run_out(run) for run in rows]
+    for run in out:
+        _log(
+            "run_requested",
+            user_id,
+            via,
+            rule_set_id=rule_set.id,
+            account_id=run.account_id,
+            run_id=run.id,
+        )
+    return out if rule_set.account_id is None else out[0]
 
 
 def runs(db: Session, user_id: int, rule_set_id: int, limit: int) -> list[RunOut]:

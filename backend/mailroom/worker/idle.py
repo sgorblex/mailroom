@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Final, Protocol
 from mailroom.accounts.store import AccountNotFound, account_password, load_accounts, user_store
 from mailroom.errors import SECRETS_KEY_MISSING
 from mailroom.mail.connections import PASSWORD_MISSING, PASSWORD_MISSING_TEXT, PasswordMissing
-from mailroom.models import RuleSet
+from mailroom.models import AccountFilterSettings, RuleSet
 from mailroom.worker.tasks import queue_new_mail_runs, runnable_rule_sets
 from mailroom_core.mail import IdleWatch, MailError
 
@@ -87,10 +87,11 @@ class Watch(Protocol):
 
 
 def watched_folders(db: Session) -> set[WatchedFolder]:
-    """The folders the runnable ``new_mail`` rule sets run on."""
+    """The folders the runnable ``new_mail`` rule sets run on, an all-accounts one's INBOX on each
+    account it runs on."""
     rows = db.execute(
         runnable_rule_sets("new_mail")
-        .with_only_columns(RuleSet.user_id, RuleSet.account_id, RuleSet.folder)
+        .with_only_columns(RuleSet.user_id, AccountFilterSettings.account_id, RuleSet.folder)
         .distinct()
     )
     return {WatchedFolder(user, account, tuple(folder)) for user, account, folder in rows}

@@ -56,6 +56,54 @@ def account(user_client: TestClient, mailbox: Mailbox) -> int:
     return added(user_client, body)
 
 
+def has_folder(mailbox: Mailbox, folder: str) -> bool:
+    conn = mailbox.client()
+    try:
+        return bool(conn.folder_exists(folder))
+    finally:
+        conn.logout()
+
+
+def test_a_rule_set_for_all_accounts_moves_where_the_folder_is_and_fails_where_not(
+    user_client: TestClient,
+    db_session: Session,
+    imap_server: ImapTestServer,
+    mailbox: Mailbox,
+    account: int,
+    mailboxes: Mailboxes,
+) -> None:
+    """The run on each account is its own: the account without Archive fails, nothing being
+    created there, and the other moves its mail all the same."""
+    bare = Mailbox(imap_server, imap_server.unique_user("bare"))
+    endpoint = {"host": imap_server.host, "port": imap_server.port, "tls": "implicit"}
+    other = added(
+        user_client,
+        new_account("bare", login=bare.login, password=imap_server.password, imap=endpoint),
+    )
+    mailbox.append("INBOX", (SHOP, "Autumn sale", False))
+    mailbox.append("Archive")
+    bare.append("INBOX", (SHOP, "Winter sale", False))
+    for each in (account, other):
+        set_run_filters(user_client, each, on=True)
+    rule_set_id = add_rule_set(user_client, "all")
+    add_filter(user_client, rule_set_id, "Shop", SHOP_SPEC)
+
+    response = user_client.post(f"/api/v1/rule-sets/{rule_set_id}/run")
+    assert response.status_code == 202, response.json()
+    for run in response.json():
+        execute_run(db_session, run["id"], mailboxes)
+
+    runs = {
+        run["account_id"]: run
+        for run in user_client.get(f"/api/v1/rule-sets/{rule_set_id}/runs").json()
+    }
+    assert runs[account]["error"] is None
+    assert mailbox.subjects("Archive") == ["Autumn sale"]
+    assert runs[other]["error"].startswith("mailbox_missing: ")
+    assert bare.subjects("INBOX") == ["Winter sale"]
+    assert not has_folder(bare, "Archive")
+
+
 def starred(mailbox: Mailbox, folder: str) -> list[int]:
     conn = mailbox.client()
     try:

@@ -52,7 +52,7 @@ account that are in use (``MailPool.call``'s deadline)."""
 _MARKS: Final = {"star": Flag.FLAGGED, "to_sort": Flag.TO_SORT}
 """The filter engine's flag for each marker a rule set may limit itself to."""
 RUNS_KEPT: Final = 100
-"""Run history kept per rule set; older runs are pruned as new ones are recorded."""
+"""Run history kept per rule set and account; older runs are pruned as new ones are recorded."""
 MATCH_DAYS: Final = 30
 """A filter's match count covers its real runs of this many days, today (UTC) included; older days
 are pruned with the runs."""
@@ -81,10 +81,11 @@ def enabled_filters(db: Session, rule_set_id: int) -> list[Filter]:
     )
 
 
-def rule_set_folder(connections: MailConnections, rule_set: RuleSet) -> Folder:
-    """The filter engine's folder the rule set runs on, on ``connections``: its segments joined
-    with the delimiter the server reports when it runs."""
-    return Folder(Account(connections, rule_set.account_id), Path(list(rule_set.folder)))
+def rule_set_folder(connections: MailConnections, rule_set: RuleSet, account_id: int) -> Folder:
+    """The filter engine's folder the rule set runs on in ``account_id`` (its own, or one of an
+    all-accounts rule set's), on ``connections``: its segments joined with the delimiter the
+    server reports when it runs."""
+    return Folder(Account(connections, account_id), Path(list(rule_set.folder)))
 
 
 def engine_filters(
@@ -183,17 +184,17 @@ class RunRefused(Exception):  # noqa: N818 -- the outcome of a run, not a bug
 
 
 def dry_run_result(
-    ctx: AppContext, user_id: int, rule_set: RuleSet, filters: Sequence[Filter]
+    ctx: AppContext, user_id: int, rule_set: RuleSet, filters: Sequence[Filter], account_id: int
 ) -> dict[str, Any]:
-    """The ``result`` of a dry run of ``rule_set``'s ``filters``: selected read-only, on the
-    folder's newest ``DRY_RUN_MAX_MESSAGES`` messages, on a connection of the API's mail pool for
-    ``DRY_RUN_SECONDS`` at most. Raises ``RunRefused``: ``account_not_found``, ``invalid_spec``,
-    ``dry_run_timeout``, ``match_timeout`` (a pattern took longer than the filter engine's match
-    timeout), the app's ``secrets_key_missing`` and ``password_missing``, mailroom-core's mail
-    error codes, or ``run_failed`` for anything else, whose text is neither kept nor logged (it
-    may quote anything, mail included)."""
+    """The ``result`` of a dry run of ``rule_set``'s ``filters`` in ``account_id``'s folder:
+    selected read-only, on the folder's newest ``DRY_RUN_MAX_MESSAGES`` messages, on a connection of
+    the API's mail pool for ``DRY_RUN_SECONDS`` at most. Raises ``RunRefused``:
+    ``account_not_found``, ``invalid_spec``, ``dry_run_timeout``, ``match_timeout`` (a pattern took
+    longer than the filter engine's match timeout), the app's ``secrets_key_missing`` and
+    ``password_missing``, mailroom-core's mail error codes, or ``run_failed`` for anything else,
+    whose text is neither kept nor logged (it may quote anything, mail included)."""
     try:
-        return _dry_run_result(ctx, user_id, rule_set, filters)
+        return _dry_run_result(ctx, user_id, rule_set, filters, account_id)
     except RunRefused:
         raise
     except Exception as exc:
@@ -203,10 +204,9 @@ def dry_run_result(
 
 
 def _dry_run_result(
-    ctx: AppContext, user_id: int, rule_set: RuleSet, filters: Sequence[Filter]
+    ctx: AppContext, user_id: int, rule_set: RuleSet, filters: Sequence[Filter], account_id: int
 ) -> dict[str, Any]:
     store = ctx.store(user_id)
-    account_id = rule_set.account_id
     try:
         refused = unusable(store, ctx.subkey, account_id)
     except AccountNotFound:
@@ -217,7 +217,7 @@ def _dry_run_result(
     zone = ctx.time_zone(user_id)
     try:
         with pool.lease(ctx, user_id, load_accounts(store).revision) as connections:
-            folder = rule_set_folder(connections, rule_set)
+            folder = rule_set_folder(connections, rule_set, account_id)
             loaded = engine_filters(rule_set, folder, filters)
             report = pool.call(
                 connections,
@@ -298,18 +298,20 @@ def matches_counted(db: Session, filter_ids: Sequence[int]) -> dict[int, int]:
     return {filter_id: int(total) for filter_id, total in rows}
 
 
-def prune_runs(db: Session, rule_set_id: int, keep: int = RUNS_KEPT) -> None:
-    """Forget all but the rule set's newest ``keep`` runs, a run queued or in progress staying,
-    and its filters' match counts older than ``MATCH_DAYS``."""
+def prune_runs(db: Session, rule_set_id: int, account_id: int, keep: int = RUNS_KEPT) -> None:
+    """Forget all but the rule set's newest ``keep`` runs on ``account_id`` (each account of an
+    all-accounts rule set keeps its own), a run queued or in progress staying, and its filters'
+    match counts older than ``MATCH_DAYS``."""
     newest = (
         select(FilterRun.id)
-        .where(FilterRun.rule_set_id == rule_set_id)
+        .where(FilterRun.rule_set_id == rule_set_id, FilterRun.account_id == account_id)
         .order_by(FilterRun.id.desc())
         .limit(keep)
     )
     db.execute(
         delete(FilterRun).where(
             FilterRun.rule_set_id == rule_set_id,
+            FilterRun.account_id == account_id,
             FilterRun.finished_at.is_not(None),
             FilterRun.id.not_in(newest),
         )

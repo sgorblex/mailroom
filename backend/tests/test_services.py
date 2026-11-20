@@ -117,7 +117,7 @@ def test_another_users_rows_are_not_found(
         lambda: filters.change_filter(ctx, db_session, bob.id, filter_id, FilterPatch(name="x")),
         lambda: filters.remove_filter(db_session, bob.id, filter_id),
         lambda: filters.dry_run(ctx, db_session, bob.id, rule_set_id),
-        lambda: filters.run_now(db_session, bob.id, rule_set_id),
+        lambda: filters.run_now(ctx, db_session, bob.id, rule_set_id),
         lambda: filters.runs(db_session, bob.id, rule_set_id, 20),
     ]
     for call in calls:
@@ -178,17 +178,25 @@ def test_an_enabled_rule_set_is_refused_where_asked(
 def test_run_now_keeps_its_guards(
     ctx: AppContext, db_session: Session, user: User, account: int, rule_set_id: int
 ) -> None:
-    assert refusal(lambda: filters.run_now(db_session, user.id, rule_set_id)).code == (
+    assert refusal(lambda: filters.run_now(ctx, db_session, user.id, rule_set_id)).code == (
         "run_filters_off"
     )
     filters.set_run_filters(ctx, db_session, user.id, account, on=True)
-    assert refusal(lambda: filters.run_now(db_session, user.id, rule_set_id)).code == (
+    assert refusal(lambda: filters.run_now(ctx, db_session, user.id, rule_set_id)).code == (
         "rule_set_disabled"
     )
     filters.change_rule_set(ctx, db_session, user.id, rule_set_id, RuleSetPatch(enabled=True))
-    run = filters.run_now(db_session, user.id, rule_set_id)
-    assert (run.trigger, run.dry_run, run.started_at) == ("manual", False, None)
-    pending = refusal(lambda: filters.run_now(db_session, user.id, rule_set_id))
+    wrong = refusal(lambda: filters.run_now(ctx, db_session, user.id, rule_set_id, account + 1))
+    assert wrong.code == "wrong_account"
+    run = filters.run_now(ctx, db_session, user.id, rule_set_id, account)
+    assert not isinstance(run, list)
+    assert (run.account_id, run.trigger, run.dry_run, run.started_at) == (
+        account,
+        "manual",
+        False,
+        None,
+    )
+    pending = refusal(lambda: filters.run_now(ctx, db_session, user.id, rule_set_id))
     assert (pending.kind, pending.code) == ("conflict", "run_pending")
 
 

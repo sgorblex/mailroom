@@ -662,7 +662,9 @@ def test_run_now_queues_a_run_for_the_worker(
     assert user_client.patch(path, json={"enabled": True}).status_code == 200
     response = user_client.post(run)
     assert response.status_code == 202
+    # A rule set of one account answers its run; only one for all accounts answers a list.
     queued = response.json()
+    assert queued["account_id"] == account
     assert (queued["trigger"], queued["dry_run"], queued["started_at"], queued["result"]) == (
         "manual",
         False,
@@ -674,7 +676,7 @@ def test_run_now_queues_a_run_for_the_worker(
             "task_name": "run_rule_set",
             "args": {"run_id": queued["id"]},
             "lock": f"mailbox:{user.id}:{account}",
-            "queueing_lock": f"rule_set:{rule_set_id}",
+            "queueing_lock": f"rule_set:{rule_set_id}:{account}",
             "status": "todo",
         }
     ]
@@ -830,17 +832,29 @@ def test_old_finished_runs_are_pruned(db_session: Session, user: User) -> None:
     db_session.flush()
     now = datetime.now(UTC)
     runs = [
-        FilterRun(rule_set_id=rule_set_row.id, trigger="manual", dry_run=True, finished_at=now)
+        FilterRun(
+            rule_set_id=rule_set_row.id,
+            account_id=1,
+            trigger="manual",
+            dry_run=True,
+            finished_at=now,
+        )
         for _ in range(5)
     ]
     # Queued: never pruned, however many runs come after it.
     runs[1].dry_run = False
     runs[1].finished_at = None
+    # Another account's runs of the same rule set count on their own.
+    other = FilterRun(
+        rule_set_id=rule_set_row.id, account_id=2, trigger="manual", dry_run=True, finished_at=now
+    )
+    db_session.add(other)
+    db_session.flush()
     db_session.add_all(runs)
     db_session.flush()
-    prune_runs(db_session, rule_set_row.id, keep=2)
+    prune_runs(db_session, rule_set_row.id, 1, keep=2)
     kept = db_session.scalars(select(FilterRun.id).order_by(FilterRun.id)).all()
-    assert kept == [runs[1].id, runs[3].id, runs[4].id]
+    assert kept == [other.id, runs[1].id, runs[3].id, runs[4].id]
 
 
 def test_match_counts_skip_dry_runs_and_old_days(db_session: Session, user: User) -> None:
@@ -863,7 +877,7 @@ def test_match_counts_skip_dry_runs_and_old_days(db_session: Session, user: User
         db_session.add(FilterMatchDay(filter_id=row.id, day=today - timedelta(days=age), count=7))
     db_session.flush()
     assert matches_counted(db_session, [row.id]) == {row.id: 258}
-    prune_runs(db_session, rule_set_row.id)
+    prune_runs(db_session, rule_set_row.id, 1)
     days = db_session.scalars(select(FilterMatchDay.day).order_by(FilterMatchDay.day)).all()
     assert days == [today - timedelta(days=MATCH_DAYS - 1), today]
 
@@ -891,3 +905,85 @@ def test_a_dry_run_and_a_real_run_name_an_action_alike() -> None:
         for written in ("Star()", "star")
     }
     assert labels == {"star"}
+
+
+def code_of(response: Any) -> tuple[int, str]:
+    return response.status_code, response.json()["detail"]["code"]
+
+
+def test_a_rule_set_for_all_accounts_runs_on_inbox_of_each_running_account(
+    user_client: TestClient, db_session: Session, user: User
+) -> None:
+    work = added(user_client, new_account("work"))
+    home = added(user_client, new_account("home"))
+    every = "/api/v1/accounts/all/rule-sets"
+    elsewhere = user_client.post(every, json=rule_set(folder=["Archive"]))
+    assert code_of(elsewhere) == (400, "all_accounts_inbox_only")
+    to_sort = user_client.post(every, json=rule_set(marker="to_sort"))
+    assert code_of(to_sort) == (400, "to_sort_unsupported")
+    assert user_client.get("/api/v1/accounts/any/rule-sets").status_code == 422
+
+    created = user_client.post(every, json=rule_set(folder=["inbox"]))
+    assert created.status_code == 201, created.json()
+    assert (created.json()["account_id"], created.json()["folder"]) == ("all", ["INBOX"])
+    rule_set_id = created.json()["id"]
+    assert [row["id"] for row in user_client.get(every).json()] == [rule_set_id]
+    assert user_client.get(f"/api/v1/accounts/{work}/rule-sets").json() == []
+    path = f"/api/v1/rule-sets/{rule_set_id}"
+    assert user_client.get(path).json()["account_id"] == "all"
+    assert code_of(user_client.patch(path, json={"folder": ["Archive"]})) == (
+        400,
+        "all_accounts_inbox_only",
+    )
+    assert code_of(user_client.patch(path, json={"marker": "to_sort"})) == (
+        400,
+        "to_sort_unsupported",
+    )
+    marks = {"criterion": FROM_SHOP, "action": {"type": "mark_to_sort"}}
+    added_marks = user_client.post(f"{path}/filters", json={"name": "Mark", "spec": marks})
+    assert code_of(added_marks) == (400, "to_sort_unsupported")
+    add_filter(user_client, rule_set_id, "Shop", SHOP_SPEC)
+
+    assert code_of(user_client.post(f"{path}/dry-run")) == (400, "account_required")
+    assert user_client.post(f"{path}/dry-run", params={"account_id": 999}).status_code == 404
+
+    run = f"{path}/run"
+    assert code_of(user_client.post(run)) == (400, "run_filters_off")
+    for account in (work, home):
+        settings = f"/api/v1/accounts/{account}/filter-settings"
+        assert user_client.put(settings, json={"run_filters": True}).status_code == 200
+    assert code_of(user_client.post(run)) == (400, "rule_set_disabled")
+    assert user_client.patch(path, json={"enabled": True}).status_code == 200
+
+    one = user_client.post(run, params={"account_id": home})
+    assert one.status_code == 202
+    assert [queued["account_id"] for queued in one.json()] == [home]
+    # Every running account but the one whose run still waits.
+    rest = user_client.post(run)
+    assert [queued["account_id"] for queued in rest.json()] == [work]
+    assert code_of(user_client.post(run)) == (409, "run_pending")
+    assert [job["queueing_lock"] for job in jobs(db_session)] == [
+        f"rule_set:{rule_set_id}:{home}",
+        f"rule_set:{rule_set_id}:{work}",
+    ]
+    assert [job["lock"] for job in jobs(db_session)] == [
+        f"mailbox:{user.id}:{home}",
+        f"mailbox:{user.id}:{work}",
+    ]
+    listed = user_client.get(f"{path}/runs").json()
+    assert [entry["account_id"] for entry in listed] == [work, home]
+
+    # Removing an account forgets the runs on it, its mail named in their reports.
+    assert user_client.delete(f"/api/v1/accounts/{home}").status_code == 204
+    left = user_client.get(f"{path}/runs").json()
+    assert [entry["account_id"] for entry in left] == [work]
+
+
+def test_a_rule_set_of_one_account_runs_on_that_account_only(
+    user_client: TestClient, account: int, rule_set_id: int
+) -> None:
+    other = added(user_client, new_account("home"))
+    path = f"/api/v1/rule-sets/{rule_set_id}"
+    for action in ("dry-run", "run"):
+        response = user_client.post(f"{path}/{action}", params={"account_id": other})
+        assert code_of(response) == (400, "wrong_account"), action

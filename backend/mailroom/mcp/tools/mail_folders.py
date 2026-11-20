@@ -85,6 +85,10 @@ RULE_SETS_NOT_UPDATED: Final = (
     "The folder was renamed, but its rule sets could not be updated: they still name the old "
     "path. Tell the user, who can point them at the new one."
 )
+ALL_ACCOUNTS_NOT_UPDATED: Final = (
+    "The rule sets for all accounts in all_accounts_rule_sets still name the old path, which "
+    "other accounts may keep: on this account their moves there fail until the user changes them."
+)
 
 
 async def _folder_create(args: FolderCreateArguments, call: ToolCall) -> JsonObject:
@@ -116,9 +120,12 @@ async def _folder_rename(args: FolderRenameArguments, call: ToolCall) -> JsonObj
         "rule_sets": list(renamed.rule_sets),
         "filters": list(renamed.filters),
         "rule_sets_updated": renamed.rule_sets_updated,
+        "all_accounts_rule_sets": list(renamed.all_accounts_rule_sets),
     }
     if not renamed.rule_sets_updated:
         answer["note"] = RULE_SETS_NOT_UPDATED
+    elif renamed.all_accounts_rule_sets:
+        answer["note"] = ALL_ACCOUNTS_NOT_UPDATED
     return answer
 
 

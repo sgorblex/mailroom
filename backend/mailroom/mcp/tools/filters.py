@@ -7,7 +7,7 @@ change only a disabled rule set ("disable it first"); turning anything on (``rul
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Any, Final
+from typing import TYPE_CHECKING, Annotated, Any, Final, Literal
 
 from pydantic import Field
 
@@ -28,7 +28,8 @@ from mailroom.filters.service import (
 from mailroom.filters.spec import offered_schema
 from mailroom.mcp.envelope import wrapped_result
 from mailroom.mcp.tool import READ, Arguments, Hints, JsonObject, Tool
-from mailroom.mcp.tools.accounts import AccountArguments, AccountId, NoArguments
+from mailroom.mcp.tool import AccountId as BareAccountId
+from mailroom.mcp.tools.accounts import NoArguments
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -44,6 +45,24 @@ Folder = Annotated[
         min_length=1,
         max_length=32,
         description="The folder's path segments, as folders_list gives them.",
+    ),
+]
+Accounts = Annotated[
+    BareAccountId | Literal["all"],
+    Field(
+        description=(
+            "An account id, from accounts_list, or all: a rule set run on INBOX of every account "
+            "whose Run filters is on."
+        )
+    ),
+]
+RunAccount = Annotated[
+    BareAccountId | None,
+    Field(
+        description=(
+            "For a rule set for all accounts (account_id all): the account id to run it on, from "
+            "accounts_list."
+        )
     ),
 ]
 FilterSpec = Annotated[
@@ -66,10 +85,22 @@ RUN_FILTERS_OFF_NOTE: Final = (
     "Run filters is off for this account, so the rule set will not run until it is turned on "
     "(account_run_filters)."
 )
+RUN_FILTERS_OFF_EVERYWHERE_NOTE: Final = (
+    "Run filters is off for every account, so the rule set will not run until it is turned on "
+    "for one (account_run_filters)."
+)
 
 
 class RuleSetArguments(Arguments):
     rule_set_id: RuleSetId
+
+
+class RuleSetRunArguments(RuleSetArguments):
+    account_id: RunAccount = None
+
+
+class RuleSetsListArguments(Arguments):
+    account_id: Accounts
 
 
 class FilterArguments(Arguments):
@@ -77,7 +108,7 @@ class FilterArguments(Arguments):
 
 
 class RuleSetCreateArguments(Arguments):
-    account_id: AccountId
+    account_id: Accounts
     name: Name
     folder: Folder
     trigger: Trigger = Field(description=_TRIGGER)
@@ -136,7 +167,7 @@ async def _filter_schema(_args: NoArguments, _call: ToolCall) -> JsonObject:
     return offered_schema()
 
 
-async def _rule_sets_list(args: AccountArguments, call: ToolCall) -> JsonObject:
+async def _rule_sets_list(args: RuleSetsListArguments, call: ToolCall) -> JsonObject:
     listed = await call.db(
         lambda db: service.rule_sets(call.ctx, db, call.user_id, args.account_id)
     )
@@ -234,9 +265,11 @@ async def _filters_reorder(args: FiltersReorderArguments, call: ToolCall) -> Jso
     return {"filters": [row.model_dump(mode="json") for row in ordered]}
 
 
-async def _dry_run(args: RuleSetArguments, call: ToolCall) -> JsonObject:
+async def _dry_run(args: RuleSetRunArguments, call: ToolCall) -> JsonObject:
     run = await call.db(
-        lambda db: service.dry_run(call.ctx, db, call.user_id, args.rule_set_id, via="mcp")
+        lambda db: service.dry_run(
+            call.ctx, db, call.user_id, args.rule_set_id, args.account_id, via="mcp"
+        )
     )
     return _run(run)
 
@@ -247,16 +280,25 @@ async def _rule_set_enable(args: RuleSetArguments, call: ToolCall) -> JsonObject
             call.ctx, db, call.user_id, args.rule_set_id, RuleSetPatch(enabled=True), via="mcp"
         )
         out: JsonObject = {"rule_set": changed.model_dump(mode="json")}
-        if not service.run_filters(call.ctx, db, call.user_id, changed.account_id):
-            out["note"] = RUN_FILTERS_OFF_NOTE
+        if isinstance(changed.account_id, int):
+            if not service.run_filters(call.ctx, db, call.user_id, changed.account_id):
+                out["note"] = RUN_FILTERS_OFF_NOTE
+        elif not service.running_accounts(db, call.user_id):
+            out["note"] = RUN_FILTERS_OFF_EVERYWHERE_NOTE
         return out
 
     return await call.db(enable)
 
 
-async def _run_now(args: RuleSetArguments, call: ToolCall) -> JsonObject:
-    run = await call.db(lambda db: service.run_now(db, call.user_id, args.rule_set_id, via="mcp"))
-    return _run(run)
+async def _run_now(args: RuleSetRunArguments, call: ToolCall) -> JsonObject:
+    queued = await call.db(
+        lambda db: service.run_now(
+            call.ctx, db, call.user_id, args.rule_set_id, args.account_id, via="mcp"
+        )
+    )
+    if isinstance(queued, list):
+        return {"runs": [_run(run) for run in queued]}
+    return _run(queued)
 
 
 _DISABLED_ONLY = " Only on a disabled rule set: rule_set_disable it first."
@@ -282,11 +324,12 @@ FILTER_TOOLS: Final[tuple[Tool[Any], ...]] = (
         name="rule_sets_list",
         title="List rule sets",
         description=(
-            "An account's rule sets, oldest first, without their filters. A rule set runs its "
-            "enabled filters, in order, on one folder, on its trigger."
+            "An account's rule sets, oldest first, without their filters; account_id all lists "
+            "the rule sets for all accounts. A rule set runs its enabled filters, in order, on "
+            "one folder, on its trigger."
         ),
         group="filters_read",
-        arguments=AccountArguments,
+        arguments=RuleSetsListArguments,
         hints=READ,
         run=_rule_sets_list,
     ),
@@ -308,8 +351,9 @@ FILTER_TOOLS: Final[tuple[Tool[Any], ...]] = (
         name="runs_list",
         title="List runs",
         description=(
-            "A rule set's runs, newest first, dry runs too: when, what each filter matched, and "
-            "any error. Senders and subjects come from mail, in untrusted_email tags."
+            "A rule set's runs, newest first, dry runs too: the account each ran on, when, what "
+            "each filter matched, and any error. Senders and subjects come from mail, in "
+            "untrusted_email tags."
         ),
         group="filters_read",
         arguments=RunsListArguments,
@@ -321,7 +365,10 @@ FILTER_TOOLS: Final[tuple[Tool[Any], ...]] = (
         title="Create a rule set",
         description=(
             "Create a rule set on an account folder. It always starts disabled: add filters, "
-            "dry_run it, then rule_set_enable it."
+            "dry_run it, then rule_set_enable it. With account_id all it runs on INBOX of every "
+            "account whose Run filters is on, each on its own: a move to a named folder fails "
+            "on an account without that folder (no folder is created); trash and junk without "
+            "a folder go to each account's own. It takes no to_sort marker."
         ),
         group="filters_write",
         arguments=RuleSetCreateArguments,
@@ -402,11 +449,12 @@ FILTER_TOOLS: Final[tuple[Tool[Any], ...]] = (
         title="Dry run a rule set",
         description=(
             "Run a rule set's enabled filters without acting, on its folder's newest messages, "
-            "and report what each would match; enabled or not, nothing changes. One dry run at a "
-            "time per user. Senders and subjects come from mail, in untrusted_email tags."
+            "and report what each would match; enabled or not, nothing changes. A rule set for "
+            "all accounts needs account_id. One dry run at a time per user. Senders and subjects "
+            "come from mail, in untrusted_email tags."
         ),
         group="filters_run",
-        arguments=RuleSetArguments,
+        arguments=RuleSetRunArguments,
         hints=Hints(read_only=True, open_world=True),
         run=_dry_run,
     ),
@@ -427,12 +475,15 @@ FILTER_TOOLS: Final[tuple[Tool[Any], ...]] = (
         name="run_now",
         title="Run a rule set now",
         description=(
-            "Queue a real run of an enabled rule set: its filters act on the folder's mail. "
-            "Refused while the account's Run filters is off, for a disabled rule set, and while "
-            "a run of it is already waiting. Confirm with the user first."
+            "Queue a real run of an enabled rule set: its filters act on the folder's mail. A "
+            "rule set for all accounts runs on account_id, or without it on every account whose "
+            "Run filters is on, a run each, and answers {runs: [...]}; any other answers its "
+            "run. Refused while the account's Run filters is off, for "
+            "a disabled rule set, and while a run of it is already waiting. Confirm with the "
+            "user first."
         ),
         group="filters_run",
-        arguments=RuleSetArguments,
+        arguments=RuleSetRunArguments,
         hints=Hints(destructive=True),
         run=_run_now,
     ),

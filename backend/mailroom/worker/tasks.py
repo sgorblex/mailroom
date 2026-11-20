@@ -72,9 +72,9 @@ def mailbox_lock(user_id: int, account_id: int) -> str:
     return f"mailbox:{user_id}:{account_id}"
 
 
-def rule_set_queueing_lock(rule_set_id: int) -> str:
-    """procrastinate ``queueing_lock``: one waiting run per rule set at most."""
-    return f"rule_set:{rule_set_id}"
+def rule_set_queueing_lock(rule_set_id: int, account_id: int) -> str:
+    """procrastinate ``queueing_lock``: one waiting run per rule set and account at most."""
+    return f"rule_set:{rule_set_id}:{account_id}"
 
 
 def defer_rule_set_run(
@@ -82,8 +82,8 @@ def defer_rule_set_run(
 ) -> int:
     """Queue ``run_rule_set`` for ``run_id`` inside ``db``'s transaction, so the job exists exactly
     when the run row does. Returns the job id. Raises procrastinate's ``AlreadyEnqueued`` when a
-    run of the rule set is already waiting (the transaction is then unusable: run this inside a
-    savepoint)."""
+    run of the rule set on the account is already waiting (the transaction is then unusable: run
+    this inside a savepoint)."""
     connection = db.connection()
     search_path = connection.execute(text("SELECT current_setting('search_path')")).scalar_one()
     # procrastinate's SQL names its tables and functions unqualified.
@@ -95,17 +95,18 @@ def defer_rule_set_run(
         name=RUN_RULE_SET,
         job_manager=_IN_TRANSACTION,
         lock=mailbox_lock(user_id, account_id),
-        queueing_lock=rule_set_queueing_lock(rule_set_id),
+        queueing_lock=rule_set_queueing_lock(rule_set_id, account_id),
         connection=connection.connection.driver_connection,
     ).defer(run_id=run_id)
     connection.execute(text("SELECT set_config('search_path', :path, true)"), {"path": search_path})
     return job_id
 
 
-def queue_run(db: Session, rule_set: RuleSet, trigger: str) -> int | None:
-    """Queue a run of ``rule_set`` in ``db``'s transaction (the caller commits) and prune its
-    history. Returns the run's id, or None when a run of it is already waiting."""
-    run = FilterRun(rule_set_id=rule_set.id, trigger=trigger, dry_run=False)
+def queue_run(db: Session, rule_set: RuleSet, account_id: int, trigger: str) -> int | None:
+    """Queue a run of ``rule_set`` on ``account_id`` (its own, or one of an all-accounts rule
+    set's) in ``db``'s transaction (the caller commits) and prune that account's history of it.
+    Returns the run's id, or None when a run of it on the account is already waiting."""
+    run = FilterRun(rule_set_id=rule_set.id, account_id=account_id, trigger=trigger, dry_run=False)
     try:
         with db.begin_nested():
             db.add(run)
@@ -115,17 +116,18 @@ def queue_run(db: Session, rule_set: RuleSet, trigger: str) -> int | None:
                 run_id=run.id,
                 rule_set_id=rule_set.id,
                 user_id=rule_set.user_id,
-                account_id=rule_set.account_id,
+                account_id=account_id,
             )
     except AlreadyEnqueued:
         return None
-    prune_runs(db, rule_set.id)
+    prune_runs(db, rule_set.id, account_id)
     logger.info(
         "run_queued",
         extra={
             "event": "run_queued",
             "user_id": rule_set.user_id,
             "rule_set_id": rule_set.id,
+            "account_id": account_id,
             "run_id": run.id,
             "trigger": trigger,
         },
@@ -133,58 +135,73 @@ def queue_run(db: Session, rule_set: RuleSet, trigger: str) -> int | None:
     return run.id
 
 
-def runnable_rule_sets(trigger: str) -> Select[RuleSet]:
-    """The enabled rule sets with ``trigger`` whose account's Run filters is on."""
+def runnable_rule_sets(trigger: str) -> Select[RuleSet, int]:
+    """The enabled rule sets with ``trigger``, each with an account it runs on whose Run filters
+    is on: its own, or each such account of the user's for an all-accounts rule set."""
     return (
-        select(RuleSet)
+        select(RuleSet, AccountFilterSettings.account_id)
         .join(
             AccountFilterSettings,
             and_(
                 AccountFilterSettings.user_id == RuleSet.user_id,
-                AccountFilterSettings.account_id == RuleSet.account_id,
+                or_(
+                    RuleSet.account_id.is_(None),
+                    AccountFilterSettings.account_id == RuleSet.account_id,
+                ),
             ),
         )
         .where(RuleSet.enabled, RuleSet.trigger == trigger, AccountFilterSettings.run_filters)
     )
 
 
-def due_rule_sets(db: Session, now: datetime) -> Sequence[RuleSet]:
-    """The runnable scheduled rule sets never run on schedule, or last queued on schedule at least
-    their interval (less ``SCHEDULE_SLACK``) before ``now``."""
+def due_rule_sets(db: Session, now: datetime) -> Sequence[tuple[RuleSet, int]]:
+    """The runnable scheduled rule sets, each with its account, never run there on schedule, or
+    last queued there on schedule at least their interval (less ``SCHEDULE_SLACK``) before
+    ``now``."""
     last = (
         select(func.max(FilterRun.created_at))
-        .where(FilterRun.rule_set_id == RuleSet.id, FilterRun.trigger == "scheduled")
+        .where(
+            FilterRun.rule_set_id == RuleSet.id,
+            FilterRun.account_id == AccountFilterSettings.account_id,
+            FilterRun.trigger == "scheduled",
+        )
         .scalar_subquery()
     )
     every = func.make_interval(0, 0, 0, 0, 0, RuleSet.interval_minutes)
     statement = (
         runnable_rule_sets("scheduled")
         .where(or_(last.is_(None), last + every <= now + SCHEDULE_SLACK))
-        .order_by(RuleSet.id)
+        .order_by(RuleSet.id, AccountFilterSettings.account_id)
     )
-    return db.scalars(statement).all()
+    return [(rule_set, account_id) for rule_set, account_id in db.execute(statement).all()]
 
 
 def queue_scheduled_runs(db: Session, now: datetime) -> list[int]:
-    """Queue a run of each scheduled rule set due at ``now`` (the caller commits); a rule set with
-    a run already waiting is skipped. Returns the queued runs' ids."""
-    queued = (queue_run(db, rule_set, "scheduled") for rule_set in due_rule_sets(db, now))
+    """Queue a run of each scheduled rule set due at ``now`` on each of its accounts (the caller
+    commits); one with a run already waiting there is skipped. Returns the queued runs' ids."""
+    queued = (
+        queue_run(db, rule_set, account_id, "scheduled")
+        for rule_set, account_id in due_rule_sets(db, now)
+    )
     return [run_id for run_id in queued if run_id is not None]
 
 
 def queue_new_mail_runs(
     db: Session, user_id: int, account_id: int, folder: Sequence[str]
 ) -> list[int]:
-    """Queue a run of each runnable ``new_mail`` rule set on the folder (the caller commits).
-    Returns the queued runs' ids."""
+    """Queue a run on ``account_id`` of each runnable ``new_mail`` rule set on the folder, the
+    user's all-accounts ones included (the caller commits). Returns the queued runs' ids."""
     statement = (
         runnable_rule_sets("new_mail")
         .where(
             RuleSet.user_id == user_id,
-            RuleSet.account_id == account_id,
+            AccountFilterSettings.account_id == account_id,
             RuleSet.folder == list(folder),
         )
         .order_by(RuleSet.id)
     )
-    queued = (queue_run(db, rule_set, "new_mail") for rule_set in db.scalars(statement).all())
+    queued = (
+        queue_run(db, rule_set, account_id, "new_mail")
+        for rule_set, _ in db.execute(statement).all()
+    )
     return [run_id for run_id in queued if run_id is not None]

@@ -2114,7 +2114,7 @@ def add_rule_set(
     user_id: int,
     folder: list[str],
     *specs: dict[str, Any],
-    account_id: int = 1,
+    account_id: int | None = 1,
     enabled: bool = False,
     name: str = "rules",
 ) -> RuleSet:
@@ -2164,6 +2164,7 @@ def test_folders_are_created_renamed_and_deleted(
             "rule_sets": [],
             "filters": [],
             "rule_sets_updated": True,
+            "all_accounts_rule_sets": [],
         },
     )
     assert {"Work", "Work/Città 2026"} <= server_folders(mailbox)
@@ -2349,6 +2350,7 @@ def test_a_rename_carries_the_rule_sets_with_it(
         db_session, user.id, ["INBOX"], moving_to("Older"), moving_to("Old", "Sub")
     )
     other_account = add_rule_set(db_session, user.id, ["Old"], account_id=2)
+    every = add_rule_set(db_session, user.id, ["INBOX"], moving_to("Old"), account_id=None)
     bob = create_user(db_session, "bob", PASSWORD)
     bobs = add_rule_set(db_session, bob.id, ["Old"], moving_to("Old"))
     [stays, moves] = db_session.query(Filter).filter_by(rule_set_id=mover.id).order_by(Filter.id)
@@ -2362,6 +2364,8 @@ def test_a_rename_carries_the_rule_sets_with_it(
         "rule_sets": [enabled.id, below.id, mover.id],
         "filters": [moves.id],
         "rule_sets_updated": True,
+        # Reported, not rewritten: the user's other accounts may keep their Old.
+        "all_accounts_rule_sets": [every.id],
     }
     assert {"Older/New", "Older/New/Sub"} <= server_folders(mailbox)
     db_session.expire_all()
@@ -2372,6 +2376,7 @@ def test_a_rename_carries_the_rule_sets_with_it(
     assert other_account.folder == ["Old"]
     assert bobs.folder == ["Old"]
     assert db_session.query(Filter).filter_by(rule_set_id=bobs.id).one().spec == moving_to("Old")
+    assert db_session.query(Filter).filter_by(rule_set_id=every.id).one().spec == moving_to("Old")
 
     [record] = audited(user.id)
     assert (record.action, record.result, record.detail) == (
@@ -2382,6 +2387,7 @@ def test_a_rename_carries_the_rule_sets_with_it(
             "destination": "Older/New",
             "rule_sets": [enabled.id, below.id, mover.id],
             "filters": [moves.id],
+            "all_accounts_rule_sets": [every.id],
         },
     )
 
