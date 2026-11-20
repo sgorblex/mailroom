@@ -31,7 +31,7 @@ class AuditListArguments(Arguments):
         min_length=1,
         max_length=200,
         description=(
-            "move, move_to_account, archive, trash, flag, draft_save, draft_remove, send, "
+            "move, move_to_account, archive, junk, trash, flag, draft_save, draft_remove, send, "
             "folder_create, folder_rename, folder_delete, mark_folder_read, bulk_flag, bulk_move, "
             "bulk_trash, or a filter's."
         ),

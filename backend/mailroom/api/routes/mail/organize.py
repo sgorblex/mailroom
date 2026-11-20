@@ -1,5 +1,5 @@
 """The organize routes, which change folders and flags of batches of refs: move (to another of
-the user's accounts too), archive, trash and flag."""
+the user's accounts too), archive, junk (report spam), trash and flag."""
 
 from __future__ import annotations
 
@@ -121,6 +121,11 @@ def move_to_account(
 @mail_router.post("/messages/archive")
 def archive(request: RefsRequest, ctx: Context, user: CurrentUser) -> OrganizeAnswer:
     return organize_answer(service.archive(ctx, user.id, request.refs))
+
+
+@mail_router.post("/messages/junk")
+def junk(request: RefsRequest, ctx: Context, user: CurrentUser) -> OrganizeAnswer:
+    return organize_answer(service.junk(ctx, user.id, request.refs))
 
 
 @mail_router.post("/messages/trash")

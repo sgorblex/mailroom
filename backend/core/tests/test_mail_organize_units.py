@@ -20,6 +20,7 @@ from mailroom_core.mail import (
     archive_messages,
     audit_outcome,
     format_ref,
+    junk_messages,
     mark_forwarded,
     move_messages,
     organize_text,
@@ -293,6 +294,7 @@ class TestWholeCallRefusals:
             lambda: move_messages(connections, refs, "Archive"),
             lambda: trash_messages(connections, refs),
             lambda: archive_messages(connections, refs),
+            lambda: junk_messages(connections, refs),
             lambda: set_flags(connections, refs, seen=True),
         ):
             with pytest.raises(MailError) as raised:
@@ -334,6 +336,25 @@ def test_trash_and_archive_refuse_what_they_cannot_do() -> None:
     assert client.calls == []
     assert archive_messages(connections, [ref()]).groups[0].destination == "Archive"
     assert trash_messages(connections, [ref(folder="Junk")]).groups[0].junk is None
+
+
+def test_junk_moves_to_the_junk_role_and_trains_spam() -> None:
+    connections, client = stubbed({"MOVE"}, folders=[Folder("INBOX", "/", "inbox", ())])
+    [none] = junk_messages(connections, [ref()]).groups
+    assert none.error is not None
+    assert (none.error.code, none.error.detail) == ("unsupported", "Account 1 has no Junk folder.")
+    assert client.calls == []
+
+    connections, client = stubbed({"MOVE"})
+    [in_junk] = junk_messages(connections, [ref(folder="Junk")]).groups
+    assert in_junk.error is not None
+    assert in_junk.error.detail == "They are already in that folder."
+    assert client.calls == []
+    result = junk_messages(connections, [ref()])
+    [group] = result.groups
+    assert (group.destination, group.junk) == ("Junk", "spam")
+    assert client.calls == [("move", [5], "Junk")]
+    assert [(i.destination, i.junk, i.result) for i in result.items] == [("Junk", "spam", "ok")]
 
 
 def test_set_flags_stores_and_reads_back() -> None:

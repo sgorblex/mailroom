@@ -89,7 +89,7 @@ top-level with `noopener noreferrer`. Security:
 ## Slice B: organize
 
 Slice B lets the user change a message's flags and folder from the web client and the MCP tools.
-Behaviour is mailroom-core's `mail.organize` (`move_messages`, `archive_messages`,
+Behaviour is mailroom-core's `mail.organize` (`move_messages`, `archive_messages`, `junk_messages`,
 `trash_messages`, `set_flags`), itself the behaviour of mailroom-mcp's `organize` tools.
 
 ### Actions
@@ -98,6 +98,9 @@ Behaviour is mailroom-core's `mail.organize` (`move_messages`, `archive_messages
   [another of the user's accounts](#moving-to-another-account).
 - **Archive:** move to the account's folder with role `archive`. The web toolbar hides the action
   for an account without one.
+- **Report spam:** move to the account's folder with role `junk`, which trains the account's Junk
+  as any move there does ([Junk training](#junk-training)); audited as `junk`. REST only: an
+  agent moves to the Junk folder by its path.
 - **Trash:** move to the account's folder with role `trash`. This is never a permanent delete:
   organizing deletes no mail (deleting a whole folder is [its own action](#folder-management)).
 - **Flag:** set or clear `\Seen` (read/unread), `\Flagged` (star/unstar) and the
@@ -148,6 +151,7 @@ shows each failed group with the mail error wording and updates the rows of the 
 | Trash, and the messages are already in Trash | `invalid_argument`: "They are already in Trash; mailroom never deletes permanently." |
 | Trash, and the account has no Trash folder | `unsupported` |
 | Archive, and the account has no Archive folder | `unsupported`: "<account> has no Archive folder." |
+| Report spam, and the account has no Junk folder | `unsupported`: "<account> has no Junk folder." |
 | None of `seen`, `flagged`, `to_sort` given | `invalid_argument`: "Give `seen`, `flagged`, `to_sort` or several." |
 | `to_sort` in a folder that keeps no keywords | `unsupported` |
 | The server has neither MOVE nor UIDPLUS | `unsupported` |
@@ -334,6 +338,7 @@ JSON bodies (unknown fields are 422), CSRF as for every state-changing route.
 | `POST /messages/move` | `{"refs": ["…"], "folder": "Archive/2025"}` |
 | `POST /messages/move-to-account` | `{"refs": ["…"], "account": "home", "folder": "INBOX", "removal": "trash"}` (`removal`: `trash` or `delete`) |
 | `POST /messages/archive` | `{"refs": ["…"]}` |
+| `POST /messages/junk` | `{"refs": ["…"]}` |
 | `POST /messages/trash` | `{"refs": ["…"]}` |
 | `POST /messages/flag` | `{"refs": ["…"], "seen": true, "flagged": false, "to_sort": true}` (`seen`, `flagged`, `to_sort` optional, at least one) |
 

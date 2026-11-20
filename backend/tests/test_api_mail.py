@@ -150,7 +150,13 @@ def test_signed_out_browsers_are_refused_uncached(api_client: TestClient) -> Non
     ]
     refused += [
         api_client.post(f"{MAIL}{path}", json={"refs": ["x"], "folder": "Archive"})
-        for path in ("/search", "/messages/move", "/messages/archive", "/messages/trash")
+        for path in (
+            "/search",
+            "/messages/move",
+            "/messages/archive",
+            "/messages/junk",
+            "/messages/trash",
+        )
     ]
     refused.append(api_client.post(f"{MAIL}/messages/flag", json={"refs": ["x"], "seen": True}))
     for response in refused:
@@ -1845,6 +1851,55 @@ def test_archive_moves_to_the_archive_folder_or_is_unsupported(
     assert subjects(mailbox, "Archive") == ["keep"]
 
 
+def test_junk_reports_spam_to_the_junk_folder_or_is_unsupported(
+    mailbox: Mailbox,
+    audited: Callable[[int], list[AuditRecord]],
+    user: User,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mailbox.seed(mime("buy now", sender="Spam <spam@example.org>"))
+    [ref] = mailbox.refs()
+    [group] = mailbox.organize("junk", refs=[ref])
+    assert (group["ok"], group["count"], group["junk"], len(group["new_refs"])) == (
+        True,
+        1,
+        "spam",
+        1,
+    )
+    assert subjects(mailbox, "Junk") == ["buy now"]
+    assert subjects(mailbox, "INBOX") == []
+    [record] = audited(user.id)
+    assert (record.actor, record.action, record.result) == ("user", "junk", "ok")
+    assert (record.detail["folder"], record.detail["destination"]) == ("INBOX", "Junk")
+    assert record.detail["junk"] == "spam"
+
+    # The stale ref is refused, never another message.
+    stale = mailbox.client.post(f"{MAIL}/messages/junk", json={"refs": [ref]})
+    assert detail(stale)[0] == 404
+
+    [junked] = group["new_refs"]
+    again = mailbox.client.post(f"{MAIL}/messages/junk", json={"refs": [junked]})
+    assert detail(again) == (400, "invalid_argument")
+
+    # A server with no folder in the junk role.
+    real = MailConnections.folders
+
+    def without_junk(self: MailConnections, account_id: str, **kwargs: Any) -> list[Folder]:
+        return [
+            replace(f, role=None) if f.role == "junk" else f
+            for f in real(self, account_id, **kwargs)
+        ]
+
+    monkeypatch.setattr(MailConnections, "folders", without_junk)
+    mailbox.seed(mime("more"))
+    [inbox] = mailbox.refs()
+    refused = mailbox.client.post(f"{MAIL}/messages/junk", json={"refs": [inbox]})
+    assert detail(refused) == (502, "unsupported")
+    assert refused.json()["detail"]["message"].endswith("Account 1 has no Junk folder.")
+    assert subjects(mailbox, "INBOX") == ["more"]
+    assert [r.result for r in audited(user.id) if r.action == "junk"].count("unsupported") == 1
+
+
 def test_trash_moves_to_trash_and_never_deletes(
     mailbox: Mailbox, audited: Callable[[int], list[AuditRecord]], user: User
 ) -> None:
@@ -1957,6 +2012,7 @@ def test_a_batch_is_refused_whole_before_any_write(mailbox: Mailbox) -> None:
         ("move", {"folder": "Archive"}),
         ("archive", {}),
         ("trash", {}),
+        ("junk", {}),
         ("flag", {"seen": True}),
     ):
         foreign = post(action, refs=[ref, elsewhere], **extra)
@@ -2003,6 +2059,7 @@ def test_a_batch_naming_an_account_that_cannot_log_in_is_refused_before_any_writ
         ("move", {"folder": "Archive"}),
         ("archive", {}),
         ("trash", {}),
+        ("junk", {}),
         ("flag", {"seen": True}),
     )
 
@@ -2017,6 +2074,7 @@ def test_a_batch_naming_an_account_that_cannot_log_in_is_refused_before_any_writ
     [kept] = folder_contents(mailbox.server, mailbox.login, "INBOX")
     assert (kept.subject, set(kept.flags) - {"\\Recent"}) == ("mine", set())
     assert subjects(mailbox, "Archive") == subjects(mailbox, "Trash") == []
+    assert subjects(mailbox, "Junk") == []
 
 
 def test_a_cross_site_organize_is_refused(mailbox: Mailbox) -> None:

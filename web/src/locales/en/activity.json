@@ -30,6 +30,7 @@
     "move": "Moved",
     "move_to_account": "Moved to another account",
     "archive": "Archived",
+    "junk": "Reported as spam",
     "trash": "Moved to Trash",
     "flag": "Flags changed",
     "draft_save": "Draft saved",

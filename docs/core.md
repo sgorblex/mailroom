@@ -260,7 +260,8 @@ X-Original-To. Deliberate choices:
 ## Organize
 
 `mailroom_core.mail.organize`: `move_messages`, `trash_messages`, `archive_messages` (to the folder
-with role `archive`) and `set_flags` take up to 50 refs from any folders, check every ref and its
+with role `archive`), `junk_messages` (to the folder with role `junk`, training `spam`) and
+`set_flags` take up to 50 refs from any folders, check every ref and its
 account before writing anything, and act per folder, a failing folder leaving the others done.
 They return an `OrganizeResult`: per folder a `GroupResult` (count, new refs from COPYUID, Junk
 training, flags read back, or the `MailError`), and per message an `AuditItem`

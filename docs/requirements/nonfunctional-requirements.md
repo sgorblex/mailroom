@@ -518,16 +518,15 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   folders rather than repeat the call.
 - **Logs:** `mail_folders`, `mail_quota`, `mail_listed`, `mail_searched`, `mail_read`,
   `mail_thread_read` (MCP only), `mail_html_read`, `mail_attachment_read`, `mail_source_read`,
-  `mail_print_read`, `mail_filter_draft_read`, each with `user_id`,
-  `account_id`, `via`, `outcome` (`ok` or the code) and `duration_ms`; never a subject, an
-  address, a folder name or a body. `mail_moved`, `mail_archived`, `mail_trashed` and
-  `mail_flagged` carry `user_id`, `via`, `account_ids`, `ref_count`, `changed` (messages),
-  `groups`, `failed_groups`, `codes` (the failed groups'), `outcome` (`ok`, `partial`,
-  `refused`, `failed`, or the code of a refused call) and `duration_ms`: counts and codes only,
-  never a folder, a ref, a `Message-ID` or a sender. `mail_bulk_counted` (`POST
-  /messages/count`) is logged as `mail_searched` is; `mail_bulk_acted` (`POST /messages/bulk`)
-  carries `user_id`, `via`, `account_ids`, `expected`, `done`, `remaining`, `groups`,
-  `failed_groups`, `codes`, `outcome` and `duration_ms`, never a search term.
+  `mail_print_read`, `mail_filter_draft_read`, each with `user_id`, `account_id`, `via`, `outcome`
+  (`ok` or the code) and `duration_ms`; never a subject, an address, a folder name or a body.
+  `mail_moved`, `mail_archived`, `mail_junked`, `mail_trashed` and `mail_flagged` carry `user_id`,
+  `via`, `account_ids`, `ref_count`, `changed` (messages), `groups`, `failed_groups`, `codes` (the
+  failed groups'), `outcome` (`ok`, `partial`, `refused`, `failed`, or the code of a refused call)
+  and `duration_ms`: counts and codes only, never a folder, a ref, a `Message-ID` or a sender.
+  `mail_bulk_counted` (`POST /messages/count`) is logged as `mail_searched` is; `mail_bulk_acted`
+  (`POST /messages/bulk`) carries `user_id`, `via`, `account_ids`, `expected`, `done`, `remaining`,
+  `groups`, `failed_groups`, `codes`, `outcome` and `duration_ms`, never a search term.
   `mail_folder_created`, `mail_folder_renamed`, `mail_folder_deleted` and
   `mail_folder_marked_read` carry `user_id`, `via`, `account_id`, `outcome`, `duration_ms` and
   counts only (`rule_sets`, `filters`, `rule_sets_updated`, `messages`); `folder_rule_sets_failed`,
@@ -572,7 +571,7 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   account's match count on a refused bulk call, the rule sets and filters a rename changed) with
   who acted (`user` on the web, `agent` with the MCP `client_id` and `grant_id`, or `filter`, a
   real run, with its `rule_set_id` and `run_id`), the action (`move`, `move_to_account`,
-  `archive`, `trash`, `flag`, `draft_save`, `draft_remove`, `send`, `folder_create`,
+  `archive`, `junk`, `trash`, `flag`, `draft_save`, `draft_remove`, `send`, `folder_create`,
   `folder_rename`, `folder_delete`, `mark_folder_read`, `bulk_flag`, `bulk_move`, `bulk_trash`,
   `unsubscribe` (the list's id, the URL's host and the status it answered, never the URL),
   or the filter's action as its report names it) and the result. A move to another account is

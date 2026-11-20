@@ -1,6 +1,6 @@
-"""Moving, trashing, archiving and flagging messages: `src/mail/organize.ts`, with the grouping,
-refusals and Junk training of `src/mcp/tools/organize.ts`, on the operations of `selected`; and
-marking a whole folder read, up to the UIDNEXT the caller read.
+"""Moving, trashing, archiving, reporting as spam and flagging messages: `src/mail/organize.ts`,
+with the grouping, refusals and Junk training of `src/mcp/tools/organize.ts`, on the operations
+of `selected`; and marking a whole folder read, up to the UIDNEXT the caller read.
 
 Refs may come from several folders and accounts. Every one is parsed and its account checked
 before anything is written; then each folder is one group, done in one mailbox session, and a
@@ -40,7 +40,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
     from mailroom_core.mail.audit import AuditResult, Note
-    from mailroom_core.mail.imap import Folder, MailboxContext, MailConnections
+    from mailroom_core.mail.imap import Folder, FolderRole, MailboxContext, MailConnections
     from mailroom_core.mail.selected import Moved
 
 MAX_REFS: Final = 50
@@ -138,15 +138,29 @@ def move_messages(connections: MailConnections, refs: Sequence[str], folder: str
 
 def archive_messages(connections: MailConnections, refs: Sequence[str]) -> OrganizeResult:
     """Moves to each account's folder with role `archive`, as `move_messages` would."""
+    return _move_to_role(connections, refs, "archive", "Archive")
+
+
+def junk_messages(connections: MailConnections, refs: Sequence[str]) -> OrganizeResult:
+    """Reports them as spam: moves to each account's folder with role `junk`, as `move_messages`
+    would, which teaches the spam filter `spam`."""
+    return _move_to_role(connections, refs, "junk", "Junk")
+
+
+def _move_to_role(
+    connections: MailConnections, refs: Sequence[str], role: FolderRole, name: str
+) -> OrganizeResult:
+    """Moves to each account's selectable folder with `role`; `unsupported` for an account's
+    group when it has none."""
     groups = _groups(connections, refs)
     folders_of = _folder_lookup(connections)
 
     def act(group: _Group, note: Note) -> GroupResult:
         folders = folders_of(group.account)
-        archive = special_folder_in(folders, "archive")
-        if archive is None or not archive.selectable:
-            raise MailError("unsupported", f"Account {group.account} has no Archive folder.")
-        target = move_target(group.folder, archive.path, folders, account=group.account)
+        found = special_folder_in(folders, role)
+        if found is None or not found.selectable:
+            raise MailError("unsupported", f"Account {group.account} has no {name} folder.")
+        target = move_target(group.folder, found.path, folders, account=group.account)
         return _move_to(connections, group, folders, target, note)
 
     return _each_group(groups, act)

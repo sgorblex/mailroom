@@ -10,6 +10,7 @@ export const MAIL_ACTIONS = [
   'move',
   'move_to_account',
   'archive',
+  'junk',
   'trash',
   'flag',
   'draft_save',

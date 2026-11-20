@@ -1,5 +1,5 @@
-"""Organizing batches of refs: moves, within an account or to another, archiving, trashing and
-flag changes."""
+"""Organizing batches of refs: moves, within an account or to another, archiving, reporting as
+spam, trashing and flag changes."""
 
 from __future__ import annotations
 
@@ -203,6 +203,22 @@ def archive(
         origin,
         refs,
         lambda connections, _: core.archive_messages(connections, refs),
+    )
+
+
+def junk(
+    ctx: AppContext, user_id: int, refs: Sequence[str], *, origin: Origin = WEB
+) -> OrganizeResult:
+    """Reports them as spam: moves them to each account's folder with role ``junk``, teaching
+    the spam filter; ``unsupported`` for an account's group when it has none."""
+    return _organize(
+        ctx,
+        user_id,
+        "mail_junked",
+        "junk",
+        origin,
+        refs,
+        lambda connections, _: core.junk_messages(connections, refs),
     )
 
 
