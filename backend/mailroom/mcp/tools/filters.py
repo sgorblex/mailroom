@@ -17,6 +17,7 @@ from mailroom.filters.service import (
     FilterFields,
     FilterPatch,
     IntervalMinutes,
+    Marker,
     Name,
     RuleSetFields,
     RuleSetPatch,
@@ -50,6 +51,12 @@ FilterSpec = Annotated[
 ]
 
 _INTERVAL = "Minutes between runs: for trigger scheduled only, and required there."
+_MARKER = (
+    "Limit the rule set to marked messages, whose mark the run clears once its filters have "
+    "acted: none (every message), star, or to_sort (the To sort mark, only where accounts_list "
+    "gives the account keywords true). For 'only marked' pick to_sort where the account has "
+    "keywords, else star."
+)
 _TRIGGER = (
     "new_mail: on each new message in the folder; scheduled: every interval_minutes; "
     "manual: only on run_now."
@@ -75,10 +82,7 @@ class RuleSetCreateArguments(Arguments):
     folder: Folder
     trigger: Trigger = Field(description=_TRIGGER)
     interval_minutes: IntervalMinutes | None = Field(default=None, description=_INTERVAL)
-    starred_only: bool = Field(
-        default=False,
-        description="Only starred messages, which the run unstars once its filters have acted.",
-    )
+    marker: Marker = Field(default="none", description=_MARKER)
 
 
 class RuleSetUpdateArguments(Arguments):
@@ -89,7 +93,7 @@ class RuleSetUpdateArguments(Arguments):
     folder: Folder | None = None
     trigger: Trigger | None = Field(default=None, description=_TRIGGER)
     interval_minutes: IntervalMinutes | None = Field(default=None, description=_INTERVAL)
-    starred_only: bool | None = None
+    marker: Marker | None = Field(default=None, description=_MARKER)
 
 
 class FilterAddArguments(Arguments):
@@ -168,7 +172,7 @@ async def _rule_set_update(args: RuleSetUpdateArguments, call: ToolCall) -> Json
     )
     changed = await call.db(
         lambda db: service.change_rule_set(
-            db, call.user_id, args.rule_set_id, patch, disabled_only=True, via="mcp"
+            call.ctx, db, call.user_id, args.rule_set_id, patch, disabled_only=True, via="mcp"
         )
     )
     return changed.model_dump(mode="json")
@@ -177,7 +181,7 @@ async def _rule_set_update(args: RuleSetUpdateArguments, call: ToolCall) -> Json
 async def _rule_set_disable(args: RuleSetArguments, call: ToolCall) -> JsonObject:
     changed = await call.db(
         lambda db: service.change_rule_set(
-            db, call.user_id, args.rule_set_id, RuleSetPatch(enabled=False), via="mcp"
+            call.ctx, db, call.user_id, args.rule_set_id, RuleSetPatch(enabled=False), via="mcp"
         )
     )
     return changed.model_dump(mode="json")
@@ -196,7 +200,7 @@ async def _filter_add(args: FilterAddArguments, call: ToolCall) -> JsonObject:
     fields = FilterFields(name=args.name, enabled=args.enabled, spec=args.spec)
     added = await call.db(
         lambda db: service.add_filter(
-            db, call.user_id, args.rule_set_id, fields, disabled_only=True, via="mcp"
+            call.ctx, db, call.user_id, args.rule_set_id, fields, disabled_only=True, via="mcp"
         )
     )
     return added.model_dump(mode="json")
@@ -206,7 +210,7 @@ async def _filter_update(args: FilterUpdateArguments, call: ToolCall) -> JsonObj
     patch = FilterPatch.model_validate(args.model_dump(exclude_unset=True, exclude={"filter_id"}))
     changed = await call.db(
         lambda db: service.change_filter(
-            db, call.user_id, args.filter_id, patch, disabled_only=True, via="mcp"
+            call.ctx, db, call.user_id, args.filter_id, patch, disabled_only=True, via="mcp"
         )
     )
     return changed.model_dump(mode="json")
@@ -240,7 +244,7 @@ async def _dry_run(args: RuleSetArguments, call: ToolCall) -> JsonObject:
 async def _rule_set_enable(args: RuleSetArguments, call: ToolCall) -> JsonObject:
     def enable(db: Session) -> JsonObject:
         changed = service.change_rule_set(
-            db, call.user_id, args.rule_set_id, RuleSetPatch(enabled=True), via="mcp"
+            call.ctx, db, call.user_id, args.rule_set_id, RuleSetPatch(enabled=True), via="mcp"
         )
         out: JsonObject = {"rule_set": changed.model_dump(mode="json")}
         if not service.run_filters(call.ctx, db, call.user_id, changed.account_id):
@@ -285,7 +289,10 @@ FILTER_TOOLS: Final[tuple[Tool[Any], ...]] = (
     Tool(
         name="rule_set_get",
         title="Get a rule set",
-        description="A rule set with all its filters, in order, disabled ones too.",
+        description=(
+            "A rule set (its folder, trigger, marker and whether it is enabled) with all its "
+            "filters, in order, disabled ones too."
+        ),
         group="filters_read",
         arguments=RuleSetArguments,
         hints=READ,
@@ -318,7 +325,7 @@ FILTER_TOOLS: Final[tuple[Tool[Any], ...]] = (
     Tool(
         name="rule_set_update",
         title="Update a rule set",
-        description="Change a rule set's name, folder, trigger or starred only." + _DISABLED_ONLY,
+        description="Change a rule set's name, folder, trigger or marker." + _DISABLED_ONLY,
         group="filters_write",
         arguments=RuleSetUpdateArguments,
         hints=Hints(),

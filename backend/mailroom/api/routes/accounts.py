@@ -88,7 +88,10 @@ def _fields(body: AccountFields) -> dict[str, Json]:
 
 @accounts_router.get("")
 def accounts(ctx: Context, db: DbSession, user: CurrentUser) -> list[ListedAccount]:
-    return service.listed_accounts(ctx, db, user.id)
+    """The user's accounts; whether each keeps keywords is asked of its server (cached while the
+    user's connections last), a few seconds at most."""
+    keywords = mail.account_keywords(ctx, user.id)
+    return service.listed_accounts(ctx, db, user.id, keywords)
 
 
 @accounts_router.get("/autoconfig")

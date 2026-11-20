@@ -175,7 +175,7 @@ def test_a_user_adds_edits_and_removes_a_rule_set(
         "name": "Newsletters",
         "trigger": "scheduled",
         "interval_minutes": 15,
-        "starred_only": False,
+        "marker": "none",
         "enabled": False,
         "filters": [],
     }
@@ -184,10 +184,10 @@ def test_a_user_adds_edits_and_removes_a_rule_set(
     assert "filters" not in listed[0]
 
     path = f"/api/v1/rule-sets/{added['id']}"
-    response = user_client.patch(path, json={"name": "News", "enabled": True, "starred_only": True})
+    response = user_client.patch(path, json={"name": "News", "enabled": True, "marker": "star"})
     assert response.status_code == 200
     changed = response.json()
-    assert (changed["name"], changed["enabled"], changed["starred_only"]) == ("News", True, True)
+    assert (changed["name"], changed["enabled"], changed["marker"]) == ("News", True, "star")
     assert changed["interval_minutes"] == 15
 
     # Leaving the schedule drops its interval.
@@ -200,6 +200,90 @@ def test_a_user_adds_edits_and_removes_a_rule_set(
     assert user_client.get(rule_sets).json() == []
     events = [record.msg for record in caplog.records if str(record.msg).startswith("rule_set_")]
     assert events == ["rule_set_added", "rule_set_changed", "rule_set_changed", "rule_set_removed"]
+
+
+def test_to_sort_is_taken_only_where_the_server_keeps_keywords(
+    user_client: TestClient, account: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    keeps: list[bool] = [False]
+    asked: list[int] = []
+
+    def keywords(_ctx: object, _user_id: int, account_id: int, *, via: str) -> bool:
+        asked.append(account_id)
+        return keeps[0]
+
+    monkeypatch.setattr(filters_service.mail_service, "keywords", keywords)
+    rule_sets = f"/api/v1/accounts/{account}/rule-sets"
+    response = user_client.post(rule_sets, json=rule_set(marker="to_sort"))
+    assert (response.status_code, response.json()["detail"]["code"]) == (
+        400,
+        "to_sort_unsupported",
+    )
+    starred = user_client.post(rule_sets, json=rule_set(marker="star")).json()
+    path = f"/api/v1/rule-sets/{starred['id']}"
+    response = user_client.patch(path, json={"marker": "to_sort"})
+    assert response.json()["detail"]["code"] == "to_sort_unsupported"
+    assert user_client.get(path).json()["marker"] == "star"
+    assert asked == [account, account]
+
+    keeps[0] = True
+    assert user_client.patch(path, json={"marker": "to_sort"}).json()["marker"] == "to_sort"
+    added_to_sort = user_client.post(rule_sets, json=rule_set(marker="to_sort"))
+    assert (added_to_sort.status_code, added_to_sort.json()["marker"]) == (201, "to_sort")
+    assert len(asked) == 4
+
+    # Kept as it is, To sort is not asked again, whatever the server now says.
+    keeps[0] = False
+    renamed = user_client.patch(path, json={"name": "Renamed", "marker": "to_sort"}).json()
+    assert (renamed["name"], renamed["marker"]) == ("Renamed", "to_sort")
+    assert len(asked) == 4
+
+
+def test_a_filter_marks_to_sort_only_where_the_server_keeps_keywords(
+    user_client: TestClient, rule_set_id: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    keeps: list[bool] = [False]
+    asked: list[int] = []
+
+    def keywords(_ctx: object, _user_id: int, account_id: int, *, via: str) -> bool:
+        asked.append(account_id)
+        return keeps[0]
+
+    monkeypatch.setattr(filters_service.mail_service, "keywords", keywords)
+    marks = {
+        "criterion": FROM_SHOP,
+        "action": {"seq": [{"type": "star"}, {"type": "mark_to_sort"}]},
+    }
+    filters = f"/api/v1/rule-sets/{rule_set_id}/filters"
+    response = user_client.post(filters, json={"name": "Shop", "spec": marks})
+    assert (response.status_code, response.json()["detail"]["code"]) == (
+        400,
+        "to_sort_unsupported",
+    )
+    # Its criteria only match nothing there: they are taken.
+    looks = {"criterion": {"type": "is_to_sort"}, "action": TO_ARCHIVE}
+    shop = add_filter(user_client, rule_set_id, "Shop", looks)
+    path = f"/api/v1/filters/{shop}"
+    response = user_client.patch(path, json={"spec": marks})
+    assert response.json()["detail"]["code"] == "to_sort_unsupported"
+    assert len(asked) == 2
+
+    keeps[0] = True
+    assert user_client.patch(path, json={"spec": marks}).status_code == 200
+    assert len(asked) == 3
+    # Kept as it is, it is not asked again.
+    keeps[0] = False
+    assert user_client.patch(path, json={"name": "Shop 2", "spec": marks}).status_code == 200
+    assert len(asked) == 3
+
+
+def test_to_sort_on_an_unreachable_server_is_refused_with_its_failure(
+    user_client: TestClient, account: int
+) -> None:
+    response = user_client.post(
+        f"/api/v1/accounts/{account}/rule-sets", json=rule_set(marker="to_sort")
+    )
+    assert (response.status_code, response.json()["detail"]["code"]) == (502, "unreachable")
 
 
 @pytest.mark.parametrize(

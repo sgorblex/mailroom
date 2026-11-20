@@ -15,13 +15,15 @@ from mailroom.models import AuditRecord
 from mailroom.worker.idle import FolderWatch, WatchedFolder
 from mailroom.worker.runs import execute_run
 from mailroom.worker.tasks import queue_new_mail_runs
-from mailroom_core.mail import subject_sha256
+from mailroom_core.mail import TO_SORT, subject_sha256
+from tests.support.mail import mail_servers_ssl_context
 from tests.test_api_accounts import added, new_account
 from tests.test_api_filters import SHOP_SPEC, add_filter
 from tests.test_filter_runner import add_rule_set, queued_run, run_out, set_run_filters
-from tests.test_filters_dry_run import BANK, SHOP, Mailbox
+from tests.test_filters_dry_run import BANK, SHOP, Mailbox, message
 
 if TYPE_CHECKING:
+    from fastapi import FastAPI
     from sqlalchemy.orm import Session
     from starlette.testclient import TestClient
 
@@ -88,7 +90,7 @@ def test_a_run_acts_on_the_folder_and_reports_it(
     assert "Autumn sale" not in str(record.detail)
 
 
-def test_a_starred_only_run_handles_starred_mail_only(
+def test_a_star_marked_run_handles_starred_mail_only(
     user_client: TestClient,
     db_session: Session,
     mailbox: Mailbox,
@@ -98,7 +100,7 @@ def test_a_starred_only_run_handles_starred_mail_only(
     mailbox.append("INBOX", (SHOP, "Autumn sale", False), (SHOP, "Picks", True))
     mailbox.append("Archive")
     set_run_filters(user_client, account, on=True)
-    rule_set_id = add_rule_set(user_client, account, starred_only=True)
+    rule_set_id = add_rule_set(user_client, account, marker="star")
     add_filter(user_client, rule_set_id, "Shop", SHOP_SPEC)
 
     run_id = queued_run(user_client, rule_set_id)
@@ -108,6 +110,42 @@ def test_a_starred_only_run_handles_starred_mail_only(
     assert mailbox.subjects("INBOX") == ["Autumn sale"]
     assert mailbox.subjects("Archive") == ["Picks"]
     assert starred(mailbox, "Archive") == []
+
+
+def test_a_to_sort_run_handles_mail_marked_to_sort_only(
+    user_client: TestClient,
+    db_session: Session,
+    mailbox: Mailbox,
+    account: int,
+    mailboxes: Mailboxes,
+    application: FastAPI,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The test Dovecot keeps keywords, so the account takes a To sort rule set (the API asks)."""
+    monkeypatch.setattr(application.state, "mail_ssl_context", mail_servers_ssl_context())
+    mailbox.append("INBOX", (SHOP, "Autumn sale", True))
+    mailbox.append("Archive")
+    conn = mailbox.client()
+    try:
+        conn.append("INBOX", message(SHOP, "Picks"), flags=[TO_SORT.encode()])
+    finally:
+        conn.logout()
+    set_run_filters(user_client, account, on=True)
+    rule_set_id = add_rule_set(user_client, account, marker="to_sort")
+    add_filter(user_client, rule_set_id, "Shop", SHOP_SPEC)
+
+    run_id = queued_run(user_client, rule_set_id)
+    execute_run(db_session, run_id, mailboxes)
+
+    assert run_out(user_client, rule_set_id, run_id)["error"] is None
+    assert mailbox.subjects("INBOX") == ["Autumn sale"]
+    assert mailbox.subjects("Archive") == ["Picks"]
+    conn = mailbox.client()
+    try:
+        conn.select_folder("Archive", readonly=True)
+        assert conn.search(["KEYWORD", TO_SORT]) == []
+    finally:
+        conn.logout()
 
 
 def test_a_watched_folder_queues_runs_that_move_new_mail(

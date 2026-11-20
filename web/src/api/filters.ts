@@ -5,6 +5,10 @@ import { apiDelete, apiGetJson, apiPatchJson, apiPostJson, apiPutJson } from './
 export const TRIGGERS = ['new_mail', 'scheduled', 'manual'] as const
 export type Trigger = (typeof TRIGGERS)[number]
 
+/** The mark a rule set limits itself to, cleared once a message is handled: none is every message. */
+export const MARKERS = ['none', 'star', 'to_sort'] as const
+export type Marker = (typeof MARKERS)[number]
+
 /**
  * A filter spec (`{"criterion": …, "action": …}`), kept as the server sent it: the
  * server validates it, and the editor reads it with `@/filters/spec.ts`.
@@ -28,7 +32,7 @@ export const ruleSetSchema = z.object({
   name: z.string(),
   trigger: z.enum(TRIGGERS),
   interval_minutes: z.number().nullable().optional(),
-  starred_only: z.boolean(),
+  marker: z.enum(MARKERS),
   enabled: z.boolean(),
 })
 export type RuleSet = z.infer<typeof ruleSetSchema>
@@ -42,7 +46,7 @@ export interface RuleSetFields {
   folder: string[]
   trigger: Trigger
   interval_minutes: number | null
-  starred_only: boolean
+  marker: Marker
   enabled: boolean
 }
 

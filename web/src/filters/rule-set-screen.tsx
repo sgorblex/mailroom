@@ -122,6 +122,7 @@ function RuleSetEditor({ ruleSet: initial, account, vocabulary }: Loaded): React
         filters={filters}
         vocabulary={vocabulary}
         folders={folders}
+        keywords={account?.keywords}
         setFilters={setFilters}
       />
       <RunPanel ruleSet={ruleSet} account={account} filters={filters} vocabulary={vocabulary} onRan={refreshHistory} />
@@ -176,6 +177,7 @@ function RuleSetHeader({
     return (
       <RuleSetForm
         folders={folders}
+        keywords={account?.keywords}
         ruleSet={ruleSet}
         save={async (fields) => {
           onChanged(await changeRuleSet(ruleSet.id, fields))
@@ -196,7 +198,7 @@ function RuleSetHeader({
               account?.display_name ?? t('accounts.unknown', { ns: 'common' }),
               folderLabel(ruleSet.folder),
               triggerSummary(t, ruleSet),
-              ...(ruleSet.starred_only ? [t('filters.ruleSet.starredOnlyShort')] : []),
+              ...(ruleSet.marker === 'none' ? [] : [t(`filters.ruleSet.markerShort.${ruleSet.marker}`)]),
               ruleSet.enabled ? t('filters.ruleSet.isEnabled') : t('filters.ruleSet.isDisabled'),
             ].join(' · ')}
           </p>

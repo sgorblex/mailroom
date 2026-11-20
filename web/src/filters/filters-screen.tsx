@@ -129,6 +129,7 @@ function AccountRuleSets({ account }: { account: Account }): ReactElement {
       {adding ? (
         <NewRuleSetForm
           accountId={account.id}
+          keywords={account.keywords}
           save={async (fields) => {
             const created = await addRuleSet(account.id, fields)
             await navigate({ to: '/filters/$ruleSetId', params: { ruleSetId: String(created.id) } })
@@ -158,14 +159,16 @@ function AccountRuleSets({ account }: { account: Account }): ReactElement {
 /** The rule set form for a new rule set, with the account's folders to pick from. */
 function NewRuleSetForm({
   accountId,
+  keywords,
   save,
   onCancel,
 }: {
   accountId: AccountId
+  keywords: boolean | null | undefined
   save: (fields: RuleSetFields) => Promise<unknown>
   onCancel: () => void
 }): ReactElement {
-  return <RuleSetForm folders={useFolders(accountId)} save={save} onCancel={onCancel} />
+  return <RuleSetForm folders={useFolders(accountId)} keywords={keywords} save={save} onCancel={onCancel} />
 }
 
 function RuleSetRow({ ruleSet, onRemoved }: { ruleSet: RuleSet; onRemoved: () => void }): ReactElement {
@@ -218,7 +221,7 @@ function RuleSetRow({ ruleSet, onRemoved }: { ruleSet: RuleSet; onRemoved: () =>
             {[
               folderLabel(ruleSet.folder),
               triggerSummary(t, ruleSet),
-              ...(ruleSet.starred_only ? [t('filters.ruleSet.starredOnlyShort')] : []),
+              ...(ruleSet.marker === 'none' ? [] : [t(`filters.ruleSet.markerShort.${ruleSet.marker}`)]),
             ].join(' · ')}
           </span>
         </div>

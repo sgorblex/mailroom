@@ -116,16 +116,16 @@ not OAuth scope.
 
 | Group (status, default) | Tool | Annotations |
 | --- | --- | --- |
-| `filters_read` or any `mail_*` group (whichever is on) | `accounts_list` (`id`, a number, `name` (the account's own, null when unnamed), `display_name` (its name, else its login), login, `has_password`, `run_filters` where the instance runs filters, `send_mode`, `identities`) | readOnly, idempotent |
+| `filters_read` or any `mail_*` group (whichever is on) | `accounts_list` (`id`, a number, `name` (the account's own, null when unnamed), `display_name` (its name, else its login), login, `has_password`, `run_filters` where the instance runs filters, `send_mode`, `identities`, `keywords`: whether the server keeps keywords, so To sort can be used, null when it did not answer within 5 s) | readOnly, idempotent, openWorld |
 | | `folders_list` (`path` as the mail tools take it, `delimiter`, `segments`, `role`; `counts=true` adds unread and total) | readOnly, idempotent, openWorld |
 | `filters_read` (stable, on) | `filter_schema`, `rule_sets_list`, `rule_set_get` (with its filters), `runs_list` | readOnly, idempotent |
-| `filters_write` (stable, on) | `rule_set_create`, `rule_set_update`, `filter_add`, `filter_update`, `filters_reorder` | none |
+| `filters_write` (stable, on) | `rule_set_create`, `rule_set_update` (both take `marker`: `none`, `star` or `to_sort`, the last refused as `to_sort_unsupported` where the account keeps no keywords; their descriptions tell the agent to pick To sort for "only marked" where it does, else the star), `filter_add`, `filter_update` (each refusing the To sort actions the same way), `filters_reorder` | none |
 | | `rule_set_disable` | idempotent |
 | | `rule_set_delete`, `filter_delete` | destructive |
 | `filters_run` (stable, on) | `dry_run` | readOnly, openWorld |
 | | `rule_set_enable`, `run_now`, `account_run_filters(account_id, on)` | destructive |
 | `mail_read` (stable, on) | `messages_list`, `messages_search`, `message_read`, `thread_read`, `attachment_read` | readOnly, idempotent, openWorld |
-| `mail_organize` (stable, on) | `messages_move(refs, folder)`, `messages_flag(refs, seen?, flagged?)` | openWorld (flag also idempotent) |
+| `mail_organize` (stable, on) | `messages_move(refs, folder)`, `messages_flag(refs, seen?, flagged?, to_sort?)` | openWorld (flag also idempotent) |
 | | `messages_trash(refs)` | destructive, openWorld |
 | `mail_transfer` (preview, off) | `messages_move_to_account(refs, account_id, folder)`, `messages_move_to_account_for_good(refs, account_id, folder)` | destructive, openWorld |
 | `mail_draft` (stable, on) | `draft_create` | openWorld |

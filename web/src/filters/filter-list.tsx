@@ -32,12 +32,15 @@ export function FilterList({
   filters,
   vocabulary,
   folders,
+  keywords,
   setFilters,
 }: {
   ruleSet: RuleSet
   filters: Filter[]
   vocabulary: Vocabulary
   folders: FoldersState
+  /** Whether the account's server keeps keywords (`Account.keywords`): where not, To sort is greyed out. */
+  keywords?: boolean | null
   setFilters: Dispatch<SetStateAction<Filter[]>>
 }): ReactElement {
   const { t, i18n } = useTranslation(FILTERS_NS)
@@ -113,6 +116,7 @@ export function FilterList({
               last={index === filters.length - 1}
               wording={wording}
               folders={folders}
+              keywords={keywords}
               moveButtonRef={(direction, button) => {
                 const key = `${String(filter.id)}-${direction}`
                 if (button === null) {
@@ -142,6 +146,7 @@ export function FilterList({
         <FilterEditor
           vocabulary={vocabulary}
           folders={folders}
+          keywords={keywords}
           save={async (fields) => {
             const created = await addFilter(ruleSet.id, fields)
             setFilters((current) => [...current, created])
@@ -183,6 +188,7 @@ function FilterRow({
   last,
   wording,
   folders,
+  keywords,
   moveButtonRef,
   onMove,
   onChanged,
@@ -193,6 +199,7 @@ function FilterRow({
   last: boolean
   wording: Wording
   folders: FoldersState
+  keywords: boolean | null | undefined
   moveButtonRef: (direction: Direction, button: HTMLButtonElement | null) => void
   onMove: (direction: Direction) => void
   onChanged: (filter: Filter) => void
@@ -245,6 +252,7 @@ function FilterRow({
           filter={filter}
           vocabulary={wording.vocabulary}
           folders={folders}
+          keywords={keywords}
           save={async (fields) => {
             onChanged(await changeFilter(filter.id, fields))
             backToIdle(editTrigger)

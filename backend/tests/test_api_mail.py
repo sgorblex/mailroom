@@ -27,6 +27,7 @@ from mailroom.models import Filter, RuleSet
 from mailroom_core.crypto import secrets_subkey
 from mailroom_core.mail import (
     MESSAGES,
+    TO_SORT,
     Capabilities,
     MailboxContext,
     MailConnections,
@@ -189,7 +190,13 @@ def test_a_folder_pages_newest_first(mailbox: Mailbox) -> None:
     item = first["messages"][0]
     assert item["from"] == {"name": "Ada Lovelace", "address": "ada@example.org"}
     assert item["date"] == "2026-10-03T09:00:00+02:00"
-    assert item["flags"] == {"seen": False, "flagged": False, "answered": False, "draft": False}
+    assert item["flags"] == {
+        "seen": False,
+        "flagged": False,
+        "answered": False,
+        "draft": False,
+        "to_sort": False,
+    }
     assert item["preview"] == "Body number 2."
     assert (item["account_id"], item["folder"], item["has_attachments"]) == (
         1,
@@ -1507,20 +1514,29 @@ def test_flags_change_read_back_and_repeat(mailbox: Mailbox) -> None:
             "new_refs": [],
             "destination_account": None,
             "junk": None,
-            "flags": [{"ref": ref, "seen": True, "flagged": False}],
+            "flags": [{"ref": ref, "seen": True, "flagged": False, "to_sort": False}],
             "error": None,
         }
         assert flags() == {"\\Seen"}
     [starred] = mailbox.organize("flag", refs=[ref], seen=False, flagged=True)
-    assert starred["flags"] == [{"ref": ref, "seen": False, "flagged": True}]
+    assert starred["flags"] == [{"ref": ref, "seen": False, "flagged": True, "to_sort": False}]
     assert flags() == {"\\Flagged"}
     [unstarred] = mailbox.organize("flag", refs=[ref], flagged=False, seen=None)
-    assert unstarred["flags"] == [{"ref": ref, "seen": False, "flagged": False}]
+    assert unstarred["flags"] == [{"ref": ref, "seen": False, "flagged": False, "to_sort": False}]
     assert mailbox.get(f"/messages/{ref}")["flags"]["flagged"] is False
+    [marked] = mailbox.organize("flag", refs=[ref], to_sort=True)
+    assert marked["flags"] == [{"ref": ref, "seen": False, "flagged": False, "to_sort": True}]
+    assert flags() == {TO_SORT}
+    assert mailbox.get(f"/messages/{ref}")["flags"]["to_sort"] is True
+    [cleared] = mailbox.organize("flag", refs=[ref], to_sort=False)
+    assert cleared["flags"][0]["to_sort"] is False
+    assert flags() == set()
 
     neither = mailbox.client.post(f"{MAIL}/messages/flag", json={"refs": [ref]})
     assert detail(neither) == (400, "invalid_argument")
-    assert neither.json()["detail"]["message"].endswith("Give `seen`, `flagged` or both.")
+    assert neither.json()["detail"]["message"].endswith(
+        "Give `seen`, `flagged`, `to_sort` or several."
+    )
 
 
 def test_a_batch_is_refused_whole_before_any_write(mailbox: Mailbox) -> None:

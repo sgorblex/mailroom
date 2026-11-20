@@ -20,7 +20,7 @@ function state(overrides: Partial<FakeState> = {}): FakeState {
         name: 'Newsletters',
         trigger: 'scheduled',
         interval_minutes: 15,
-        starred_only: false,
+        marker: 'none',
         enabled: true,
       },
     ],
@@ -75,7 +75,9 @@ describe('FiltersScreen', () => {
     const interval = within(form).getByLabelText('Every (minutes)')
     await userEvent.clear(interval)
     await userEvent.type(interval, '30')
-    await userEvent.click(within(form).getByLabelText('Starred only'))
+    await userEvent.click(within(form).getByLabelText('Only marked messages'))
+    // Not known to keep keywords: the star.
+    expect(within(form).getByLabelText('Star')).toBeChecked()
     await userEvent.click(within(form).getByRole('button', { name: 'Add rule set' }))
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Old mail' })).toBeInTheDocument()
@@ -84,9 +86,47 @@ describe('FiltersScreen', () => {
       folder: ['Lists', 'Nerds'],
       trigger: 'scheduled',
       interval_minutes: 30,
-      starred_only: true,
+      marker: 'star',
       enabled: false,
     })
+  })
+
+  it('marks a new rule set To sort where the server keeps keywords', async () => {
+    const fake = state()
+    fake.accounts[1] = { id: HOME, run_filters: false, keywords: true }
+    const fetchMock = stubFiltersApi(fake)
+    renderFiltersApp('/filters')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add a rule set to home' }))
+    const form = screen.getByRole('form', { name: 'Add a rule set' })
+    await userEvent.type(within(form).getByLabelText('Name'), 'Sorting')
+    const folder = within(form).getByLabelText('Folder')
+    await vi.waitFor(() => {
+      expect(folder).toBeEnabled()
+    })
+    await userEvent.selectOptions(folder, 'INBOX')
+    expect(within(form).queryByLabelText('To sort')).not.toBeInTheDocument()
+    await userEvent.click(within(form).getByLabelText('Only marked messages'))
+    expect(within(form).getByLabelText('To sort')).toBeChecked()
+    await userEvent.click(within(form).getByRole('button', { name: 'Add rule set' }))
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Sorting' })).toBeInTheDocument()
+    expect(sentBody(fetchMock, 'POST', '/api/v1/accounts/2/rule-sets')).toMatchObject({ marker: 'to_sort' })
+  })
+
+  it('greys To sort out, saying why, where the server keeps no keywords', async () => {
+    const fake = state()
+    fake.accounts[1] = { id: HOME, run_filters: false, keywords: false }
+    stubFiltersApi(fake)
+    renderFiltersApp('/filters')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add a rule set to home' }))
+    const form = screen.getByRole('form', { name: 'Add a rule set' })
+    await userEvent.click(within(form).getByLabelText('Only marked messages'))
+    expect(within(form).getByLabelText('Star')).toBeChecked()
+    const toSort = within(form).getByLabelText('To sort')
+    expect(toSort).toBeDisabled()
+    expect(toSort).toHaveAccessibleDescription("This account's mail server cannot keep the To sort mark.")
   })
 
   it('turns a rule set off', async () => {

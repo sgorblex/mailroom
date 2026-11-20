@@ -14,6 +14,7 @@ from mailroom_core.filters import (
     Account,
     Delete,
     Filter,
+    Flag,
     FromIs,
     IsNotToSort,
     IsToSort,
@@ -29,10 +30,10 @@ from mailroom_core.filters import (
     Trash,
     UnmarkToSort,
     get_match_timeout,
+    marked_only,
     monitor,
     run_rules,
     set_match_timeout,
-    starred_only,
 )
 from mailroom_core.mail import MailError, connections_from
 from mailroom_core.testing import (
@@ -151,21 +152,26 @@ def test_marks_finds_and_clears_to_sort(imap_server: ImapTestServer, mail) -> No
     assert flags(imap_server, user, "INBOX") == {"Sale": set(), "Lunch?": set()}
 
 
-def test_starred_only_moves_starred_mail_and_unstars_it(imap_server: ImapTestServer, mail) -> None:
-    user = imap_server.unique_user("starred")
+@pytest.mark.parametrize(
+    ("marker", "mark"), [(Flag.FLAGGED, "\\Flagged"), (Flag.TO_SORT, "$MailroomSort")]
+)
+def test_marked_only_moves_marked_mail_and_clears_the_mark(
+    imap_server: ImapTestServer, mail, marker: Flag, mark: str
+) -> None:
+    user = imap_server.unique_user("marked")
     create_folders(imap_server, user, "Shop")
     seed(imap_server, user, "INBOX", mime("Sale", sender=SHOP))
-    seed(imap_server, user, "INBOX", mime("Picks", sender=SHOP), flags=["\\Flagged"])
+    seed(imap_server, user, "INBOX", mime("Picks", sender=SHOP), flags=[mark])
     account = mail(user)
 
-    rules = starred_only(
-        [(account.inbox, [Filter(FromIs("news@shop.example"), MoveTo(Path("Shop")))])]
+    rules = marked_only(
+        [(account.inbox, [Filter(FromIs("news@shop.example"), MoveTo(Path("Shop")))])], marker
     )
     [report] = run_rules(rules, dry_run=False)
 
     assert [m["subject"] for m in report["filters"][0]["matched"]] == ["Picks"]
     assert subjects(imap_server, user, "INBOX") == ["Sale"]
-    assert "\\Flagged" not in flags(imap_server, user, "Shop")["Picks"]
+    assert mark not in flags(imap_server, user, "Shop")["Picks"]
 
 
 def test_an_exact_address_is_not_a_substring_of_another(imap_server: ImapTestServer, mail) -> None:

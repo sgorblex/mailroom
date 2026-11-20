@@ -30,6 +30,8 @@ a dry run)."""
 
 _TRIGGER_CHECK: Final = "trigger IN ('new_mail', 'scheduled', 'manual')"
 
+_MARKER_CHECK: Final = "marker IN ('none', 'star', 'to_sort')"
+
 
 class RuleSet(Base):
     """Ordered filters for one folder of one of the user's accounts, and what triggers them. The
@@ -38,6 +40,7 @@ class RuleSet(Base):
     __tablename__ = "rule_set"
     __table_args__ = (
         CheckConstraint(_TRIGGER_CHECK, name="trigger"),
+        CheckConstraint(_MARKER_CHECK, name="marker"),
         # An interval exactly when scheduled, and a positive one.
         CheckConstraint(
             "(trigger = 'scheduled') = (interval_minutes IS NOT NULL)", name="interval"
@@ -53,7 +56,9 @@ class RuleSet(Base):
     name: Mapped[str] = mapped_column(String(200))
     trigger: Mapped[str] = mapped_column(Text)
     interval_minutes: Mapped[int | None] = mapped_column(Integer)
-    starred_only: Mapped[bool] = mapped_column(Boolean, server_default=false())
+    marker: Mapped[str] = mapped_column(Text, server_default="none")
+    """The mark the rule set limits itself to, cleared once a message is handled: ``none`` (every
+    message), ``star`` (``\\Flagged``) or ``to_sort`` (the ``$MailroomSort`` keyword)."""
     enabled: Mapped[bool] = mapped_column(Boolean, server_default=false())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

@@ -64,6 +64,13 @@ class MessagesFlagArguments(Arguments):
     flagged: StrictBool | None = Field(
         default=None, description="true: flag (star); false: unflag."
     )
+    to_sort: StrictBool | None = Field(
+        default=None,
+        description=(
+            "true: mark To sort; false: clear it. Only where accounts_list gives the account "
+            "keywords true; elsewhere refused as unsupported."
+        ),
+    )
 
 
 def organize_answer(result: OrganizeResult, *, copies_answer: bool = False) -> types.CallToolResult:
@@ -106,6 +113,7 @@ async def _messages_flag(args: MessagesFlagArguments, call: ToolCall) -> types.C
             args.refs,
             seen=args.seen,
             flagged=args.flagged,
+            to_sort=args.to_sort,
             origin=call.origin,
         ),
     )
@@ -142,7 +150,10 @@ MAIL_ORGANIZE_TOOLS: Final[tuple[Tool[Any], ...]] = (
     Tool(
         name="messages_flag",
         title="Mark messages",
-        description="Mark messages read or unread, and flag or unflag them. Refs stay valid.",
+        description=(
+            "Mark messages read or unread, flag or unflag them, and mark them To sort or clear "
+            "it. Refs stay valid."
+        ),
         group="mail_organize",
         arguments=MessagesFlagArguments,
         hints=ORGANIZE_IDEMPOTENT,

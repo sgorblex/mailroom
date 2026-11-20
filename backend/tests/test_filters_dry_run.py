@@ -173,11 +173,11 @@ def test_a_nul_in_a_header_does_not_stop_the_report(
     assert [m["subject"] for m in entry["matched"]] == ["Plain", "Salenow"]
 
 
-def test_starred_only_looks_at_starred_mail(
+def test_a_star_marker_looks_at_starred_mail(
     user_client: TestClient, mailbox: Mailbox, account: int
 ) -> None:
     mailbox.append("INBOX", (SHOP, "Autumn sale", False), (SHOP, "Picks", True))
-    body = rule_set(starred_only=True)
+    body = rule_set(marker="star")
     rule_set_id = user_client.post(f"/api/v1/accounts/{account}/rule-sets", json=body).json()["id"]
     add_filter(user_client, rule_set_id, "Shop", SHOP_SPEC)
 

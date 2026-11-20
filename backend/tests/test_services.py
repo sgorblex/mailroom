@@ -66,9 +66,9 @@ def rule_set_id(ctx: AppContext, db_session: Session, user: User, account: int) 
 
 
 @pytest.fixture
-def filter_id(db_session: Session, user: User, rule_set_id: int) -> int:
+def filter_id(ctx: AppContext, db_session: Session, user: User, rule_set_id: int) -> int:
     fields = FilterFields(name="Shop", spec=SHOP_SPEC)
-    return filters.add_filter(db_session, user.id, rule_set_id, fields).id
+    return filters.add_filter(ctx, db_session, user.id, rule_set_id, fields).id
 
 
 @pytest.fixture
@@ -106,13 +106,15 @@ def test_another_users_rows_are_not_found(
             RuleSetFields(name="x", folder=["INBOX"], trigger="manual"),
         ),
         lambda: filters.rule_set_detail(db_session, bob.id, rule_set_id),
-        lambda: filters.change_rule_set(db_session, bob.id, rule_set_id, RuleSetPatch(name="x")),
+        lambda: filters.change_rule_set(
+            ctx, db_session, bob.id, rule_set_id, RuleSetPatch(name="x")
+        ),
         lambda: filters.remove_rule_set(db_session, bob.id, rule_set_id),
         lambda: filters.add_filter(
-            db_session, bob.id, rule_set_id, FilterFields(name="x", spec=SHOP_SPEC)
+            ctx, db_session, bob.id, rule_set_id, FilterFields(name="x", spec=SHOP_SPEC)
         ),
         lambda: filters.reorder_filters(db_session, bob.id, rule_set_id, [filter_id]),
-        lambda: filters.change_filter(db_session, bob.id, filter_id, FilterPatch(name="x")),
+        lambda: filters.change_filter(ctx, db_session, bob.id, filter_id, FilterPatch(name="x")),
         lambda: filters.remove_filter(db_session, bob.id, filter_id),
         lambda: filters.dry_run(ctx, db_session, bob.id, rule_set_id),
         lambda: filters.run_now(db_session, bob.id, rule_set_id),
@@ -129,15 +131,16 @@ def test_another_users_rows_are_not_found(
 
 
 def test_an_enabled_rule_set_is_refused_where_asked(
-    db_session: Session, user: User, rule_set_id: int, filter_id: int
+    ctx: AppContext, db_session: Session, user: User, rule_set_id: int, filter_id: int
 ) -> None:
-    filters.change_rule_set(db_session, user.id, rule_set_id, RuleSetPatch(enabled=True))
+    filters.change_rule_set(ctx, db_session, user.id, rule_set_id, RuleSetPatch(enabled=True))
     calls: list[Callable[[], object]] = [
         lambda: filters.change_rule_set(
-            db_session, user.id, rule_set_id, RuleSetPatch(name="x"), disabled_only=True
+            ctx, db_session, user.id, rule_set_id, RuleSetPatch(name="x"), disabled_only=True
         ),
         lambda: filters.remove_rule_set(db_session, user.id, rule_set_id, disabled_only=True),
         lambda: filters.add_filter(
+            ctx,
             db_session,
             user.id,
             rule_set_id,
@@ -145,7 +148,7 @@ def test_an_enabled_rule_set_is_refused_where_asked(
             disabled_only=True,
         ),
         lambda: filters.change_filter(
-            db_session, user.id, filter_id, FilterPatch(name="x"), disabled_only=True
+            ctx, db_session, user.id, filter_id, FilterPatch(name="x"), disabled_only=True
         ),
         lambda: filters.remove_filter(db_session, user.id, filter_id, disabled_only=True),
         lambda: filters.reorder_filters(
@@ -164,10 +167,10 @@ def test_an_enabled_rule_set_is_refused_where_asked(
 
     # Without the guard, as the web app asks, the change goes through; once disabled, so does
     # a guarded one.
-    filters.change_filter(db_session, user.id, filter_id, FilterPatch(name="Shop 2"))
-    filters.change_rule_set(db_session, user.id, rule_set_id, RuleSetPatch(enabled=False))
+    filters.change_filter(ctx, db_session, user.id, filter_id, FilterPatch(name="Shop 2"))
+    filters.change_rule_set(ctx, db_session, user.id, rule_set_id, RuleSetPatch(enabled=False))
     changed = filters.change_rule_set(
-        db_session, user.id, rule_set_id, RuleSetPatch(name="News"), disabled_only=True
+        ctx, db_session, user.id, rule_set_id, RuleSetPatch(name="News"), disabled_only=True
     )
     assert (changed.name, changed.enabled) == ("News", False)
 
@@ -182,7 +185,7 @@ def test_run_now_keeps_its_guards(
     assert refusal(lambda: filters.run_now(db_session, user.id, rule_set_id)).code == (
         "rule_set_disabled"
     )
-    filters.change_rule_set(db_session, user.id, rule_set_id, RuleSetPatch(enabled=True))
+    filters.change_rule_set(ctx, db_session, user.id, rule_set_id, RuleSetPatch(enabled=True))
     run = filters.run_now(db_session, user.id, rule_set_id)
     assert (run.trigger, run.dry_run, run.started_at) == ("manual", False, None)
     pending = refusal(lambda: filters.run_now(db_session, user.id, rule_set_id))
@@ -213,9 +216,9 @@ def test_checks_refuse_as_invalid(
         lambda: filters.add_rule_set(ctx, db_session, user.id, account, scheduled)
     ).code == ("invalid_rule_set")
     bad_spec = FilterFields(name="x", spec={"criterion": {"type": "nope"}})
-    assert refusal(lambda: filters.add_filter(db_session, user.id, rule_set_id, bad_spec)).code == (
-        "invalid_spec"
-    )
+    assert refusal(
+        lambda: filters.add_filter(ctx, db_session, user.id, rule_set_id, bad_spec)
+    ).code == ("invalid_spec")
     assert refusal(lambda: filters.reorder_filters(db_session, user.id, rule_set_id, [1])).code == (
         "invalid_order"
     )
@@ -232,7 +235,9 @@ def test_writes_log_where_they_came_from(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     caplog.set_level(logging.INFO)
-    filters.change_rule_set(db_session, user.id, rule_set_id, RuleSetPatch(name="x"), via="mcp")
+    filters.change_rule_set(
+        ctx, db_session, user.id, rule_set_id, RuleSetPatch(name="x"), via="mcp"
+    )
     [record] = [r for r in caplog.records if r.msg == "rule_set_changed"]
     assert (record.__dict__["via"], record.__dict__["user_id"]) == ("mcp", user.id)
 

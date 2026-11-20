@@ -92,9 +92,9 @@ def rule_set_detail(rule_set_id: RowId, db: DbSession, user: CurrentUser) -> Rul
 
 @filters_router.patch("/rule-sets/{rule_set_id}")
 def change_rule_set(
-    rule_set_id: RowId, body: RuleSetPatch, db: DbSession, user: CurrentUser
+    rule_set_id: RowId, body: RuleSetPatch, ctx: Context, db: DbSession, user: CurrentUser
 ) -> RuleSetOut:
-    return service.change_rule_set(db, user.id, rule_set_id, body)
+    return service.change_rule_set(ctx, db, user.id, rule_set_id, body)
 
 
 @filters_router.delete("/rule-sets/{rule_set_id}", status_code=204)
@@ -104,16 +104,16 @@ def delete_rule_set(rule_set_id: RowId, db: DbSession, user: CurrentUser) -> Non
 
 @filters_router.post("/rule-sets/{rule_set_id}/filters", status_code=201)
 def add_filter(
-    rule_set_id: RowId, body: FilterFields, db: DbSession, user: CurrentUser
+    rule_set_id: RowId, body: FilterFields, ctx: Context, db: DbSession, user: CurrentUser
 ) -> FilterOut:
-    return service.add_filter(db, user.id, rule_set_id, body)
+    return service.add_filter(ctx, db, user.id, rule_set_id, body)
 
 
 @filters_router.patch("/filters/{filter_id}")
 def change_filter(
-    filter_id: RowId, body: FilterPatch, db: DbSession, user: CurrentUser
+    filter_id: RowId, body: FilterPatch, ctx: Context, db: DbSession, user: CurrentUser
 ) -> FilterOut:
-    return service.change_filter(db, user.id, filter_id, body)
+    return service.change_filter(ctx, db, user.id, filter_id, body)
 
 
 @filters_router.delete("/filters/{filter_id}", status_code=204)

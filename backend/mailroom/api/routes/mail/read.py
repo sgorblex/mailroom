@@ -23,7 +23,7 @@ from mailroom.api.routes.mail._shared import (
 )
 from mailroom.mail import service
 from mailroom_core.config import MAX_SAFE_INTEGER
-from mailroom_core.mail import DISPLAYED_IMAGES, SearchQuery
+from mailroom_core.mail import DISPLAYED_IMAGES, TO_SORT, SearchQuery
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -76,6 +76,7 @@ class Flags(BaseModel):
     flagged: bool
     answered: bool
     draft: bool
+    to_sort: bool
 
     @classmethod
     def of(cls, flags: Iterable[str]) -> Flags:
@@ -85,6 +86,7 @@ class Flags(BaseModel):
             flagged="\\flagged" in lowered,
             answered="\\answered" in lowered,
             draft="\\draft" in lowered,
+            to_sort=TO_SORT.lower() in lowered,
         )
 
 

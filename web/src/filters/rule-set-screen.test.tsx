@@ -26,7 +26,7 @@ function state(overrides: Partial<FakeState> = {}): FakeState {
         name: 'Inbox sorting',
         trigger: 'new_mail',
         interval_minutes: null,
-        starred_only: false,
+        marker: 'none',
         enabled: true,
       },
     ],
@@ -400,6 +400,39 @@ describe('RuleSetScreen', () => {
       interval_minutes: null,
       enabled: false,
     })
+  })
+
+  it('keeps To sort on a rule set that has it, though the server now keeps no keywords', async () => {
+    const fake = state({ accounts: [{ id: WORK, run_filters: true, keywords: false }] })
+    for (const ruleSet of fake.ruleSets) {
+      ruleSet.marker = 'to_sort'
+    }
+    const fetchMock = stubFiltersApi(fake)
+    renderFiltersApp('/filters/1')
+
+    expect(await screen.findByText('work · INBOX · on new mail · to sort only · enabled')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Edit settings' }))
+    const form = screen.getByRole('form', { name: 'Edit Inbox sorting' })
+    expect(within(form).getByLabelText('Only marked messages')).toBeChecked()
+    expect(within(form).getByLabelText('To sort')).toBeEnabled()
+    await userEvent.click(within(form).getByLabelText('Star'))
+    await userEvent.click(within(form).getByRole('button', { name: 'Save' }))
+
+    expect(await screen.findByText('work · INBOX · on new mail · starred only · enabled')).toBeInTheDocument()
+    expect(sentBody(fetchMock, 'PATCH', '/api/v1/rule-sets/1')).toMatchObject({ marker: 'star' })
+  })
+
+  it('greys out the To sort actions where the server keeps no keywords', async () => {
+    stubFiltersApi(state({ accounts: [{ id: WORK, run_filters: true, keywords: false }] }))
+    renderFiltersApp('/filters/1')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add a filter' }))
+    const form = screen.getByRole('form', { name: 'Add a filter' })
+    const type = within(within(form).getByRole('group', { name: 'Action 1' })).getByLabelText('Type of Action 1')
+    const reason = "(this account's mail server cannot keep the To sort mark)"
+    expect(within(type).getByRole('option', { name: `Mark to sort ${reason}` })).toBeDisabled()
+    expect(within(type).getByRole('option', { name: `Clear to sort ${reason}` })).toBeDisabled()
+    expect(within(type).getByRole('option', { name: 'Star' })).toBeEnabled()
   })
 
   it('shows mail content as text, never as markup', async () => {

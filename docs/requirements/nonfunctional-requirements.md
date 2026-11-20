@@ -371,7 +371,11 @@ bounded to one minor because the server relies on its handlers.
   `{"ok", "code", "message"}`), `GET /{id}/quota` (the server's quota, kept 10 minutes:
   [`mail-client.md`](mail-client.md) — *Mailbox quota*), `GET /autoconfig?address=` (suggested
   servers, stored nowhere: [`mail-client.md`](mail-client.md) — *Account autoconfiguration*).
-  Responses carry `has_password`, never the password. An account may have a `name` (1 to 64
+  Responses carry `has_password`, never the password. The listing also carries `keywords`,
+  whether the server keeps keywords (To sort): mailroom-core's cached `keywords`, asked of every
+  account side by side for 5 s at most, null for one that cannot log in or has not answered
+  (and in the answer to a change, which asks nothing). One whose server refused the login or
+  could not be reached is not asked again for 5 minutes, unless the account changes. An account may have a `name` (1 to 64
   characters, not blank) and a `colour` (`slate`, `red`, `orange`, `amber`, `green`, `teal`,
   `sky`, `blue`, `violet` or `pink`), each null when unset and given back as stored, so a
   client tells an unnamed account from one named after its login. Responses also carry a
@@ -566,7 +570,7 @@ What they do and the route list: [`filters.md`](filters.md). How:
   by its match timeout (`DEFAULT_MATCH_TIMEOUT`, 1 s per message, process-wide): a pattern that
   backtracks past it raises `MatchTimeoutError`, which fails the run with `match_timeout`.
 - **Dry run** (`POST /rule-sets/{id}/dry-run`), synchronous: the enabled filters, wrapped for
-  starred only, run through the filter engine's `Folder.run(dry_run=True, newest=500)`
+  the rule set's marker, run through the filter engine's `Folder.run(dry_run=True, newest=500)`
   (read-only select, every search bounded to the folder's newest 500 messages) on the user's
   connections from the API's mail pool, under its gates and a 30 s deadline (`MailPool.call`):
   past it, the user's connections to the account in use are cut and the answer is 504
@@ -589,7 +593,7 @@ What they do and the route list: [`filters.md`](filters.md). How:
 - **The worker** (`mailroom/worker/`) runs nothing for an account whose Run filters is off, nor for
   a disabled rule set:
   - `run_rule_set` checks both again when it starts (else the run's error is `run_filters_off` or
-    `rule_set_disabled`), commits `started_at`, runs the enabled filters (wrapped for starred only)
+    `rule_set_disabled`), commits `started_at`, runs the enabled filters (wrapped for the marker)
     through the filter engine's `Folder.run_into`, on the user's connections leased from the
     worker's mail pool, with no transaction open, and records `finished_at`, the report and the
     error (the filters finished so far kept). A mailbox failure is `<code>: <message>`,

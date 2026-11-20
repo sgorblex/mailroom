@@ -493,8 +493,9 @@ or loaded from their data form. Its tests are in `tests/filters`.
   inside OR or NOT as a group, and `search_uids` sends them (`CHARSET UTF-8` only for non-ASCII
   text; a line break in a value is `invalid_argument`).
 - **The runner**: `Rules` pairs folders with their filters; `run_rules` runs them in turn, or one
-  thread per folder with every failure raised together (`RunRulesError`); `starred_only` limits
-  rules to starred messages, unstarring them first; `monitor` keeps an `IdleWatch` per folder
+  thread per folder with every failure raised together (`RunRulesError`); `marked_only` limits
+  rules to messages with a marker, the star (`Flag.FLAGGED`) or To sort (`Flag.TO_SORT`), clearing
+  it first; `monitor` keeps an `IdleWatch` per folder
   until stopped and runs the folder's filters when it connects and on new mail, on a pooled
   connection, never on the watch's own; a folder whose name cannot be looked up is logged by
   code and skipped, the others watched. A run holds one of its account's connections throughout,

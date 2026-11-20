@@ -419,3 +419,55 @@ def test_account_ids_are_numbered_in_every_table_and_given_back(
         upgrade(engine, CORE_MIGRATIONS)
         command.upgrade(config, "head")
         assert _rows(engine, "select count(*) from core.former_slugs") == [(5,)]
+
+
+def test_starred_only_becomes_a_rule_set_s_marker_and_comes_back(
+    throwaway_databases: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``202611181200``: true is the star, false none; down again, any marker is true, and a
+    ``to_sort`` rule set is disabled (it would act on starred mail instead)."""
+    from alembic import command
+    from alembic.config import Config
+
+    from mailroom.db_migrations import alembic_ini_path
+    from mailroom_core.store import upgrade
+
+    with throwaway_databases.migrated(lambda _: None) as engine:
+        monkeypatch.setenv("DATABASE_URL", engine.url.render_as_string(hide_password=False))
+        config = Config(str(alembic_ini_path()))
+        config.attributes["quiet"] = True
+        upgrade(engine, CORE_MIGRATIONS)
+        command.upgrade(config, "202611171200")
+        add_user = (
+            "insert into app.user (username, password_hash) values ('alice', 'x') returning id"
+        )
+        alice = _insert(engine, add_user)
+        add_rule_set = (
+            "insert into app.rule_set "
+            "(user_id, account_id, folder, name, trigger, starred_only, enabled) "
+            "values (:u, 1, '{INBOX}', :name, 'manual', :starred, true)"
+        )
+        _insert(engine, add_rule_set, u=alice, name="starred", starred=True)
+        _insert(engine, add_rule_set, u=alice, name="every", starred=False)
+
+        command.upgrade(config, "202611181200")
+        assert _rows(engine, "select name, marker from app.rule_set order by id") == [
+            ("starred", "star"),
+            ("every", "none"),
+        ]
+        add_to_sort = (
+            "insert into app.rule_set "
+            "(user_id, account_id, folder, name, trigger, marker, enabled) "
+            "values (:u, 1, '{INBOX}', :name, 'manual', 'to_sort', :enabled)"
+        )
+        _insert(engine, add_to_sort, u=alice, name="to sort", enabled=True)
+        _insert(engine, add_to_sort, u=alice, name="to sort, off", enabled=False)
+
+        command.downgrade(config, "202611171200")
+        query = "select name, starred_only, enabled from app.rule_set order by id"
+        assert _rows(engine, query) == [
+            ("starred", True, True),
+            ("every", False, True),
+            ("to sort", True, False),
+            ("to sort, off", True, False),
+        ]

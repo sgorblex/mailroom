@@ -27,11 +27,14 @@ export function SpecTree({
   model,
   vocabulary,
   folders,
+  keywords,
   onChange,
 }: {
   model: SpecModel
   vocabulary: Vocabulary
   folders: FoldersState
+  /** Whether the account's server keeps keywords: where not, the To sort actions are greyed out. */
+  keywords?: boolean | null
   onChange: (model: SpecModel) => void
 }): ReactElement {
   const { t } = useTranslation(FILTERS_NS)
@@ -55,6 +58,7 @@ export function SpecTree({
           actions={model.actions}
           vocabulary={vocabulary}
           folders={folders}
+          keywords={keywords}
           onChange={(actions) => {
             onChange({ ...model, actions })
           }}
@@ -64,17 +68,34 @@ export function SpecTree({
   )
 }
 
-function LeafOptions({ defs, current }: { defs: LeafDef[]; current: string | null }): ReactElement {
+/** The actions an account whose server keeps no keywords cannot take. */
+const TO_SORT_ACTIONS: ReadonlySet<string> = new Set(['mark_to_sort', 'unmark_to_sort'])
+
+function LeafOptions({
+  defs,
+  current,
+  unavailable = new Set(),
+}: {
+  defs: LeafDef[]
+  current: string | null
+  /** Greyed out with the reason, unless already chosen. */
+  unavailable?: ReadonlySet<string>
+}): ReactElement {
   const { t } = useTranslation(FILTERS_NS)
   const known = current === null || defs.some((def) => def.type === current)
   return (
     <>
       {!known && <option value={`leaf:${current}`}>{current}</option>}
-      {defs.map((def) => (
-        <option key={def.type} value={`leaf:${def.type}`}>
-          {typeLabel(t, def.type)}
-        </option>
-      ))}
+      {defs.map((def) => {
+        const greyed = unavailable.has(def.type) && def.type !== current
+        return (
+          <option key={def.type} value={`leaf:${def.type}`} disabled={greyed}>
+            {greyed
+              ? t('filters.tree.toSortUnavailable', { label: typeLabel(t, def.type) })
+              : typeLabel(t, def.type)}
+          </option>
+        )
+      })}
     </>
   )
 }
@@ -212,11 +233,13 @@ function ActionList({
   actions,
   vocabulary,
   folders,
+  keywords,
   onChange,
 }: {
   actions: Leaf[]
   vocabulary: Vocabulary
   folders: FoldersState
+  keywords: boolean | null | undefined
   onChange: (actions: Leaf[]) => void
 }): ReactElement {
   const { t } = useTranslation(FILTERS_NS)
@@ -257,7 +280,11 @@ function ActionList({
                     onChange(actions.map((item, at) => (at === index ? changed : item)))
                   }}
                 >
-                  <LeafOptions defs={vocabulary.actions} current={action.type} />
+                  <LeafOptions
+                    defs={vocabulary.actions}
+                    current={action.type}
+                    unavailable={keywords === false ? TO_SORT_ACTIONS : undefined}
+                  />
                 </select>
                 <span className="ml-auto flex gap-1">
                   <Button
