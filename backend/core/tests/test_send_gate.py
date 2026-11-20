@@ -30,6 +30,7 @@ from mailroom_core.send import (
     DRAFT_KEPT,
     DRAFT_NOT_REMOVED,
     ORIGINAL_NOT_MARKED,
+    ORIGINAL_NOT_MARKED_FORWARDED,
     Admitted,
     Delivery,
     Drafted,
@@ -92,6 +93,7 @@ class StubConnections:
     gmail: bool = False
     capabilities_fail: bool = False
     append_fails: bool = False
+    keywords: bool = False
     appended: list[tuple[str, bytes, tuple[str, ...]]] = field(default_factory=list)
 
     def capabilities(self, _account: str) -> Capabilities:
@@ -123,6 +125,7 @@ class StubConnections:
                 exists=1,
                 uid_next=7,
                 account=_account,
+                keywords=self.keywords,
             )
         )
 
@@ -848,8 +851,8 @@ def test_a_capabilities_failure_after_delivery_keeps_the_sent_item(
     assert [(i.delivery, i.filed) for i in gate.items] == [("sent", False)]
 
 
-def stored_draft(answers: MessageRef | None = None) -> Draft:
-    return Draft(ref=MessageRef(1, "Drafts", 1, 5), own=True, answers=answers)
+def stored_draft(answers: MessageRef | None = None, forwards: MessageRef | None = None) -> Draft:
+    return Draft(ref=MessageRef(1, "Drafts", 1, 5), own=True, answers=answers, forwards=forwards)
 
 
 class FailingRemoval(StubConnections):
@@ -892,11 +895,28 @@ def test_a_draft_that_was_not_filed_stays_as_the_only_copy() -> None:
     assert [(i.flag, i.removed) for i in items] == [("\\Answered", None)]
 
 
+def test_a_forward_whose_original_will_not_mark_is_only_a_note() -> None:
+    items: list[AuditItem] = []
+    connections = cast("MailConnections", FailingRemoval(keywords=True))
+    forwarded = MessageRef(1, "INBOX", 1, 9)
+    notes = settle_draft(connections, stored_draft(forwards=forwarded), items.append, filed=False)
+    assert notes == (ORIGINAL_NOT_MARKED_FORWARDED, DRAFT_KEPT)
+    assert [(i.folder, i.flag, i.removed) for i in items] == [("INBOX", "$Forwarded", None)]
+    # Where no keywords are kept there is nothing to set, and nothing failed.
+    items.clear()
+    without = cast("MailConnections", FailingRemoval())
+    notes = settle_draft(without, stored_draft(forwards=forwarded), items.append, filed=False)
+    assert notes == (DRAFT_KEPT,)
+    assert items == []
+
+
 def test_the_notes_have_stable_codes_a_host_can_word() -> None:
-    assert [note.code for note in (DRAFT_NOT_REMOVED, DRAFT_KEPT, ORIGINAL_NOT_MARKED)] == [
+    notes = (DRAFT_NOT_REMOVED, DRAFT_KEPT, ORIGINAL_NOT_MARKED, ORIGINAL_NOT_MARKED_FORWARDED)
+    assert [note.code for note in notes] == [
         "draft_not_removed",
         "draft_kept",
         "original_not_marked",
+        "original_not_marked_forwarded",
     ]
 
 

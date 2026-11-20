@@ -23,6 +23,7 @@ from mailroom_core.mail.compose import (
     DRAFT_HEADER,
     compose,
     draft_answers,
+    draft_forwards,
     is_own_draft,
     new_message_id,
 )
@@ -88,6 +89,8 @@ class Draft:
     answers: MessageRef | None = None
     """The message a send is to mark `\\Answered`, in this draft's account or None: the header is
     only as trustworthy as whoever wrote the draft."""
+    forwards: MessageRef | None = None
+    """The message a send is to mark `FORWARDED`, the same way."""
     text: str = ""
     lossy: bool = False
     """Its text is not all of it: it had HTML, inline images or an invite with no name, which a
@@ -242,7 +245,7 @@ def read_draft(connections: MailConnections, ref: MessageRef) -> Draft:
         identifier = None if message_id is None else header_text(message_id) or None
         built_on = None if identifier is None or not own else _OWN_ID.fullmatch(identifier)
         in_reply_to = getattr(envelope, "in_reply_to", None)
-        answers = draft_answers(headers)
+        answers, forwards = draft_answers(headers), draft_forwards(headers)
         return Draft(
             ref=ref,
             own=own,
@@ -256,6 +259,7 @@ def read_draft(connections: MailConnections, ref: MessageRef) -> Draft:
             in_reply_to=None if in_reply_to is None else header_text(in_reply_to) or None,
             references=references_in(headers),
             answers=answers if answers is None or answers.account == ref.account else None,
+            forwards=forwards if forwards is None or forwards.account == ref.account else None,
             text=text.replace("\r\n", "\n"),
             lossy=lossy,
             attachments=structure.carried,
@@ -398,14 +402,16 @@ def save_draft(
     goes only once the new one is confirmed, and failing to remove it does not fail the save.
 
     A host has checked the caps of `check_fields`, the recipient count and the identity, and
-    that every ref in `replaces`, `keep` and `message.answers` is the caller's. `send_disabled`
-    when the account's `send_mode` is `off`.
+    that every ref in `replaces`, `keep`, `message.answers` and `message.forwards` is the
+    caller's. `send_disabled` when the account's `send_mode` is `off`.
     """
     check_sendable(account)
     if replaces is not None and replaces.account != account.id:
         raise MailError("invalid_argument", "That draft belongs to another account.")
     if message.answers is not None and parse_ref(message.answers).account != account.id:
         raise MailError("invalid_argument", "The message answered belongs to another account.")
+    if message.forwards is not None and parse_ref(message.forwards).account != account.id:
+        raise MailError("invalid_argument", "The message forwarded belongs to another account.")
     if compose_id is not None:
         _check_compose_id(compose_id)
     uploads = [len(attachment.content) for attachment in message.attachments]

@@ -25,7 +25,9 @@ from mailroom_core.mail import (
     forwarded_original,
     from_identity,
     original_message,
+    parse_ref,
     quoted_original,
+    read_draft,
     recipient_list,
     reply_recipients,
     reply_subject,
@@ -610,6 +612,33 @@ def test_a_sent_draft_marks_what_it_answers(
     gate.send_draft(account, saved.ref)
     assert b"X-Mailroom-Draft" not in smtp_server.delivered_to(to)[0].raw
     assert "\\Answered" in folder_contents(imap_server, user, "INBOX")[0].flags
+
+
+def test_a_sent_draft_marks_what_it_forwards(
+    live: Callable[..., Live],
+    imap_server: ImapTestServer,
+    smtp_server: SmtpTestServer,
+    user: str,
+) -> None:
+    uid = seed(imap_server, user, "INBOX", mime("Dinner", text="Friday?"))
+    to = f"{user}-to@example.org"
+    account = direct(imap_server, user)
+    gate = live(account)
+    forwards = format_ref(ref_to(imap_server, user, "INBOX", uid))
+    saved = save_draft(
+        gate.mail,
+        account,
+        from_user(user, [to], forwards=forwards),
+        cap=1024,
+        note=lambda _item: None,
+    )
+    assert saved.ref is not None
+    assert read_draft(gate.mail, saved.ref).forwards == parse_ref(forwards)
+    gate.send_draft(account, saved.ref)
+    assert b"X-Mailroom-Draft" not in smtp_server.delivered_to(to)[0].raw
+    flags = folder_contents(imap_server, user, "INBOX")[0].flags
+    assert "$Forwarded" in flags
+    assert "\\Answered" not in flags
 
 
 def test_a_draft_that_could_not_be_filed_stays_and_cannot_go_twice(

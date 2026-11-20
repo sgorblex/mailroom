@@ -306,6 +306,19 @@ class TestMessageFormatting:
             "REF · 2026-10-03 12:12 · maria@example.org · Sort me · to sort"
         )
 
+    def test_shows_answered_and_forwarded(self):
+        item = ListItem(
+            ref="REF",
+            date=datetime(2026, 10, 3, 12, 12, tzinfo=UTC),
+            sender=[Address(address="maria@example.org")],
+            subject="Passed on",
+            flags={"\\Seen", "\\Answered", "$forwarded"},
+            has_attachments=False,
+        )
+        assert list_line(item, "UTC") == (
+            "REF · 2026-10-03 12:12 · maria@example.org · Passed on · answered,forwarded"
+        )
+
     def test_renders_the_header_block_with_attachments_and_an_invite_note(self):
         view = HeaderView(
             sender=[Address(address="a@x.org")],

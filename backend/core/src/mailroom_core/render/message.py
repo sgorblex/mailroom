@@ -100,8 +100,8 @@ def _to_fixed_1(value: float) -> str:
 
 
 def _format_flags(flags: AbstractSet[str] | None, has_attachments: bool) -> str:
-    """Unread, flagged, to sort, answered, draft, has attachments: the flags worth a glance in a
-    list. Flags are compared ignoring case, as IMAP does."""
+    """Unread, flagged, to sort, answered, forwarded, draft, has attachments: the flags worth a
+    glance in a list. Flags are compared ignoring case, as IMAP does."""
     lowered = {flag.lower() for flag in flags or ()}
 
     def has(flag: str) -> bool:
@@ -113,6 +113,8 @@ def _format_flags(flags: AbstractSet[str] | None, has_attachments: bool) -> str:
         # mailroom_core.mail.TO_SORT: render sits below mail.
         "to sort" if has("$MailroomSort") else "",
         "answered" if has("\\Answered") else "",
+        # mailroom_core.mail.FORWARDED, likewise.
+        "forwarded" if has("$Forwarded") else "",
         "draft" if has("\\Draft") else "",
         "attachments" if has_attachments else "",
     ]

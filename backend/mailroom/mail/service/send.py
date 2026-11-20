@@ -307,8 +307,9 @@ def _admit(
 
 def _draft_unsettled(draft: Draft, filed: bool) -> tuple[gate.SendNote, ...]:
     """What ``gate.settle_draft`` would have reported had none of it worked."""
-    unmarked = () if draft.answers is None else (gate.ORIGINAL_NOT_MARKED,)
-    return (*unmarked, gate.DRAFT_NOT_REMOVED if filed else gate.DRAFT_KEPT)
+    answered = () if draft.answers is None else (gate.ORIGINAL_NOT_MARKED,)
+    forwarded = () if draft.forwards is None else (gate.ORIGINAL_NOT_MARKED_FORWARDED,)
+    return (*answered, *forwarded, gate.DRAFT_NOT_REMOVED if filed else gate.DRAFT_KEPT)
 
 
 def send_holds(ctx: AppContext, user_id: int, ref: str) -> bool:
@@ -575,7 +576,7 @@ def send_forward(
     origin: Origin,
 ) -> Dispatched:
     """A forward from an agent: the original inline, its attachments too by default, an optional
-    note above it."""
+    note above it. It marks the original ``$Forwarded`` once delivered, where keywords are kept."""
     accounts = _accounts(ctx, user_id)
     original_ref = _message_ref(ctx, user_id, accounts, ref)
     account, used = _written(ctx, user_id, accounts, original_ref.account, [ref])
@@ -585,7 +586,7 @@ def send_forward(
     limits = accounts.write_limits
     zone = ctx.time_zone(user_id)
 
-    def message(connections: MailConnections) -> MessageInput:
+    def build(connections: MailConnections) -> _Outgoing:
         original = core.original_message(connections, original_ref)
         forwarded = core.forwarded_original(original, zone)
         sources = (
@@ -593,14 +594,24 @@ def send_forward(
             if include_attachments
             else []
         )
-        return core.MessageInput(
+        message = core.MessageInput(
             sender=core.from_identity(account, sender, original.addressed),
             to=recipients[0],
             cc=recipients[1],
             bcc=recipients[2],
             subject=_subject_cut(core.forward_subject(original.subject)),
             text=forwarded if text is None else f"{text}\n\n{forwarded}",
+            forwards=ref,
             attachments=core.attachments_from(connections, sources, core.attachment_cap(limits)),
         )
 
-    return _dispatch(ctx, user_id, accounts, account, origin, _plain(message), on=used)
+        def mark(settling: MailConnections, _filed: bool) -> tuple[gate.SendNote, ...]:
+            note = gate.mark_original(
+                settling, original_ref, _sending(ctx, user_id, origin).note, forwarded=True
+            )
+            return () if note is None else (note,)
+
+        unmarked = (gate.ORIGINAL_NOT_MARKED_FORWARDED,)
+        return _Outgoing(message, None, None, mark, lambda _filed: unmarked)
+
+    return _dispatch(ctx, user_id, accounts, account, origin, build, on=used)

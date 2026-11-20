@@ -37,6 +37,7 @@ from mailroom_core.mail import (
     compose,
     deliverable_address,
     draft_answers,
+    draft_forwards,
     envelope_mailboxes,
     format_ref,
     forward_subject,
@@ -455,6 +456,7 @@ class TestDraftMark:
             f"Subject: a\r\n{DRAFT_HEADER}: 1; answers={ANSWERED}\r\nTo: b\r\n",
             f"{DRAFT_HEADER}: 1;\r\n answers={ANSWERED}\r\n",
             f"{DRAFT_HEADER}: 1;\tanswers={ANSWERED}\r\n",
+            f"{DRAFT_HEADER}: 1; forwards={ANSWERED}\r\n",
         ],
     )
     def test_detects_both_forms(self, block: str) -> None:
@@ -475,10 +477,24 @@ class TestDraftMark:
     def test_does_not_take_anything_else_for_a_mark(self, block: str) -> None:
         assert not is_own_draft(block)
 
+    def test_carries_what_a_draft_forwards_apart_from_what_one_answers(self) -> None:
+        stored = compose(replace(BASE, draft=True, forwards=self.ANSWERED)).stored
+        assert f"{DRAFT_HEADER}: 1; forwards={self.ANSWERED}" in headers_of(stored)
+        assert is_own_draft(stored)
+        assert draft_forwards(stored) == parse_ref(self.ANSWERED)
+        assert draft_answers(stored) is None
+        answering = compose(replace(BASE, draft=True, answers=self.ANSWERED)).stored
+        assert draft_forwards(answering) is None
+
+    def test_refuses_a_draft_that_answers_and_forwards(self) -> None:
+        with pytest.raises(MailError, match="not both"):
+            compose(replace(BASE, draft=True, answers=self.ANSWERED, forwards=self.ANSWERED))
+
     def test_answers_nothing_without_a_readable_ref(self) -> None:
         assert draft_answers(f"{DRAFT_HEADER}: 1\r\n") is None
         assert draft_answers(f"{DRAFT_HEADER}: 1; answers=abc\r\n") is None
         assert draft_answers("Subject: a\r\n") is None
+        assert draft_forwards(f"{DRAFT_HEADER}: 1; forwards=abc\r\n") is None
 
 
 class TestWithoutHeaders:

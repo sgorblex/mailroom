@@ -26,6 +26,7 @@ from mailroom_core.mail import (
     is_own_draft,
     list_messages,
     mark_answered,
+    mark_forwarded,
     original_message,
     parse_ref,
     quoted_original,
@@ -342,6 +343,20 @@ def test_marks_the_original_answered(imap_server, harness) -> None:
     assert "\\Answered" in message.flags
     with pytest.raises(MailError, match="out of date"):
         mark_answered(mail, replace(ref, uid_validity=1))
+
+
+def test_marks_the_original_forwarded(imap_server, harness) -> None:
+    user = imap_server.unique_user("forwarded")
+    seed(imap_server, user, "INBOX", mime("Dinner", text="Friday?"))
+    mail = harness(test_account(1, user, imap_server))
+    ref = only_ref(mail)
+
+    mark_forwarded(mail, ref)
+    [message] = folder_contents(imap_server, user, "INBOX")
+    assert "$Forwarded" in message.flags
+    assert "\\Answered" not in message.flags
+    with pytest.raises(MailError, match="out of date"):
+        mark_forwarded(mail, replace(ref, uid_validity=1))
 
 
 def test_tags_a_removal_by_trash_in_the_audit_items(imap_server, harness) -> None:

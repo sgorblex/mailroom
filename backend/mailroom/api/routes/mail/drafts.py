@@ -68,6 +68,7 @@ class PrefillAnswer(BaseModel):
     subject: str
     text: str
     answers: str | None
+    forwards: str | None
     attachments: list[KeptPart]
 
     @classmethod
@@ -81,6 +82,7 @@ class PrefillAnswer(BaseModel):
             subject=started.subject,
             text=started.text,
             answers=started.answers,
+            forwards=started.forwards,
             attachments=[
                 KeptPart(ref=started.source, **MessagePart.of(info).model_dump())
                 for info in started.attachments
@@ -115,6 +117,7 @@ class DraftRequest(BaseModel):
     compose_id: Annotated[str, Field(pattern=_COMPOSE_ID)]
     ref: BatchRef | None = None
     answers: BatchRef | None = None
+    forwards: BatchRef | None = None
     sender: Annotated[str | None, Field(alias="from", max_length=_MAX_ADDRESS)] = None
     to: list[DraftAddress] = []
     cc: list[DraftAddress] = []
@@ -129,6 +132,7 @@ class DraftRequest(BaseModel):
             compose_id=self.compose_id,
             ref=self.ref,
             answers=self.answers,
+            forwards=self.forwards,
             sender=self.sender,
             to=[address.mailbox() for address in self.to],
             cc=[address.mailbox() for address in self.cc],
@@ -184,6 +188,7 @@ class DraftAnswer(BaseModel):
     subject: str
     text: str
     answers: str | None
+    forwards: str | None
     lossy: bool
     parts: list[MessagePart]
     send: DraftSend | None
@@ -203,6 +208,7 @@ class DraftAnswer(BaseModel):
             subject=draft.subject,
             text=draft.text,
             answers=None if draft.answers is None else format_ref(draft.answers),
+            forwards=None if draft.forwards is None else format_ref(draft.forwards),
             lossy=draft.lossy,
             parts=[MessagePart.of(info) for info in draft.attachments],
             send=None

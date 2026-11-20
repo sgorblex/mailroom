@@ -70,6 +70,8 @@ class Prefill:
     text: str
     answers: str | None
     """The message a send is to mark ``\\Answered``: the ref, for a reply."""
+    forwards: str | None
+    """The message a send is to mark ``$Forwarded``: the ref, for a forward."""
     source: str
     """The ref ``attachments`` are parts of."""
     attachments: tuple[PartInfo, ...]
@@ -85,6 +87,7 @@ class DraftFields:
     compose_id: str
     ref: str | None = None
     answers: str | None = None
+    forwards: str | None = None
     sender: str | None = None
     to: Sequence[Mailbox] = ()
     cc: Sequence[Mailbox] = ()
@@ -214,6 +217,7 @@ def prefill(
                 subject=_subject_cut(core.forward_subject(original.subject)),
                 text=f"\n\n{core.forwarded_original(original, zone)}",
                 answers=None,
+                forwards=ref,
                 source=ref,
                 attachments=original.attachments,
             )
@@ -226,6 +230,7 @@ def prefill(
             subject=_subject_cut(core.reply_subject(original.subject)),
             text=f"\n\n{core.quoted_original(original, zone)}",
             answers=ref,
+            forwards=None,
             source=ref,
             attachments=(),
         )
@@ -269,6 +274,7 @@ def _unsubscribe_prefill(
         subject=_subject_cut(fields.subject or "unsubscribe"),
         text=fields.body,
         answers=None,
+        forwards=None,
         source=ref,
         attachments=(),
     )
@@ -375,7 +381,7 @@ def save_draft(
     agent's save is recorded in the audit trail, the web's are not: they are the user typing."""
     accounts = _accounts(ctx, user_id)
     _usable(ctx, user_id, accounts, fields.account)
-    named = [fields.ref, fields.answers, *(ref for ref, _part in fields.keep)]
+    named = [fields.ref, fields.answers, fields.forwards, *(ref for ref, _part in fields.keep)]
     used = _ref_accounts(ctx, user_id, accounts, [ref for ref in named if ref is not None])
     account = accounts.config(fields.account)
     limits = accounts.write_limits
@@ -398,9 +404,12 @@ def save_draft(
         text=fields.text,
         attachments=tuple(uploads),
         answers=fields.answers,
+        forwards=fields.forwards,
     )
     replaces = None if fields.ref is None else core.parse_ref(fields.ref)
-    for named_ref in (fields.ref, fields.answers):
+    if fields.answers is not None and fields.forwards is not None:
+        raise mail_refusal("invalid_argument", "A draft answers or forwards a message, not both.")
+    for named_ref in (fields.ref, fields.answers, fields.forwards):
         if named_ref is not None and core.parse_ref(named_ref).account != account.id:
             elsewhere = "That message belongs to another account."
             raise mail_refusal("invalid_argument", elsewhere)

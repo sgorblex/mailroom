@@ -533,8 +533,11 @@ mailroom-mcp's `draft` and `send` tools. Web composing is **plain text**; rich t
   one is cut, never refused.
 - **Forward** has an empty recipient list and the subject with one `Fwd: `. The body holds a
   "Forwarded message" block with the original's headers and text, and the original's
-  attachments are offered as `keep` entries (the user can drop each). Only reply and reply all
-  set `\Answered` on the original; a forward sets nothing.
+  attachments are offered as `keep` entries (the user can drop each). Reply and reply all set
+  `\Answered` on the original once sent; a forward sets the `$Forwarded` keyword, where the
+  server keeps keywords (not Gmail), and a failure to set it is the note
+  `original_not_marked_forwarded`. No agent can set `$Forwarded` through `messages_flag`. The
+  list's rows show both marks.
 - **Unsubscribe by mail** (`mode` `unsubscribe`) starts a draft to the message's List-Unsubscribe
   `mailto:` link, read by the server from the message: its first address alone, and its
   `subject` (else `unsubscribe`) and `body`, percent-decoded; any `cc`, `bcc`, further `to` or
@@ -589,7 +592,8 @@ composer to server.
 - **Fields:** the draft keeps `From`, To, Cc, Bcc (Bcc is kept in the draft and in the Sent copy,
   never on the wire), subject, the plain text and the attachments. A header
   `X-Mailroom-Draft: 1` marks a draft Mailroom wrote; when the draft answers a message it reads
-  `X-Mailroom-Draft: 1; answers=<ref>`. The header is stripped before the message is sent.
+  `X-Mailroom-Draft: 1; answers=<ref>`, when it forwards one `X-Mailroom-Draft: 1; forwards=<ref>`.
+  The header is stripped before the message is sent.
 - **`lossy`:** a draft written elsewhere may hold what the plain-text editor cannot keep (an HTML
   body, inline images, formatting). `GET /drafts/{ref}` then answers `lossy: true` and the
   composer warns that saving keeps only the plain text and the attachments. Only a save does
@@ -662,7 +666,7 @@ These bind every code path that sends.
 - **One connection, verified TLS:** one SMTP connection per send, certificate and
   host name checked, implicit TLS or STARTTLS as the account says; a server that does not offer
   a required STARTTLS fails the send.
-- **Filing is secondary.** Filing to Sent, removing the draft and setting `\Answered` are separate
+- **Filing is secondary.** Filing to Sent, removing the draft and marking the original are separate
   calls after delivery. Each can only set `filed: false` or add a note; none can turn a
   delivered message into a failure, and none is retried in a way that could send again. A draft
   that did not reach Sent stays in Drafts, as the only copy in the account, with a note; its key
@@ -715,7 +719,8 @@ user next sends, so a direct send's `GET /sends/{id}` is `not_found` after a day
   the notes); `rejected` (recipients the
   server refused while accepting others: delivered to the rest); `notes` (fixed English texts such
   as "Sent, but not filed in Sent."); `note_codes` (stable codes of the notes, for a client that
-  words them itself: `draft_not_removed`, `draft_kept`, `original_not_marked`; not being filed has
+  words them itself: `draft_not_removed`, `draft_kept`, `original_not_marked`,
+  `original_not_marked_forwarded`; not being filed has
   none, `filed` says it); `settled` (filing and what follows it are over, so `filed` and the notes
   are final: `sent` comes earlier, and a restart can leave it false, so a client stops waiting
   after 70 s, past the two 30 s calls that follow a delivery).
@@ -837,6 +842,7 @@ The static route `GET /drafts/find` is matched before `GET /drafts/{ref}`.
   "compose_id": "6f1c0a2e-…",                  // UUID; required
   "ref": "WzIsMSwiSU5CT1gi…",                    // the latest version being replaced; null for the first save
   "answers": "WzIsMSwiSU5CT1gi…",                // the message being replied to; null otherwise
+  "forwards": null,                            // the message being forwarded; null otherwise
   "from": "me@example.org",                    // one of the identities; null: the default
   "to": [ { "name": "", "address": "ada@example.org" } ],
   "cc": [], "bcc": [],
@@ -856,13 +862,14 @@ The static route `GET /drafts/find` is matched before `GET /drafts/{ref}`.
   attachment tray from `parts`, with `keep` entries that name the draft's own parts. `replaced`
   is true when the previous version was removed.
 - A draft with no recipient is a valid draft; a send needs at least one.
-- `POST /drafts/prefill` answers `{account, from, to, cc, bcc, subject, text, answers, attachments}`,
-  the fields of the draft it would start (`answers` null for a forward and an unsubscribe; `attachments`, for a
+- `POST /drafts/prefill` answers `{account, from, to, cc, bcc, subject, text, answers, forwards,
+  attachments}`, the fields of the draft it would start (`answers` the ref for a reply, `forwards`
+  the ref for a forward, else null; `attachments`, for a
   forward, the original's `{ref, part, name, type, size}` that the composer offers as `keep`), `from` the
   identity address chosen as above. A recipient of the original that is not
   [deliverable](#compose) is left out, since it would refuse every save of the draft.
 - `GET /drafts/{ref}` answers `{ref, account, compose_id, from, to, cc, bcc, subject, text, answers,
-  lossy, parts, send}`: `compose_id` is `null` for a draft not written by Mailroom; `send` is
+  forwards, lossy, parts, send}`: `compose_id` is `null` for a draft not written by Mailroom; `send` is
   `null`, or `{send_id, state, code}` of the send of this draft, so reopening shows an `unknown`
   banner. `bcc` is shown to its owner.
 - `DELETE /drafts/{ref}` answers `{"removed": "expunged" | "trashed"}`.
@@ -872,7 +879,8 @@ The static route `GET /drafts/find` is matched before `GET /drafts/{ref}`.
   body as `GET /sends/{id}`; once the draft is removed, 404 `not_found`. `send_id` is a string,
   opaque to the client. A draft written elsewhere has no `compose_id`, so its key comes from its
   ref.
-- A draft's `ref` and `answers` must name the same account as `account`, else `invalid_argument`;
+- A draft's `ref`, `answers` and `forwards` must name the same account as `account`, and a draft
+  sets `answers` or `forwards`, not both, else `invalid_argument`;
   `keep` may name any of the user's accounts. A message answered that is gone by the first save
   no longer threads it: the draft is saved all the same, without `answers`. A save keeps the
   threading headers of the version it replaces.
@@ -978,8 +986,10 @@ even once it is back.
 { "name": "Ada Lovelace", "address": "ada@example.org" }   // name "" when absent
 
 // Flags
-{ "seen": true, "flagged": false, "answered": false, "draft": false, "to_sort": false }
+{ "seen": true, "flagged": false, "answered": false, "forwarded": false, "draft": false, "to_sort": false }
 ```
+
+`forwarded` is the `$Forwarded` keyword a sent forward sets.
 
 `date` is the `Date` header, else the arrival time (INTERNALDATE), as ISO 8601 with offset (UTC
 as `Z`: `"2026-10-30T09:12:00Z"`), or `null` when the message has neither.
@@ -1033,7 +1043,7 @@ mode a folder that cannot be read is reported in `failures`, as in a search, nev
       "date": "2026-10-30T09:12:00Z",
       "from": { "name": "Ada Lovelace", "address": "ada@example.org" },
       "subject": "Notes on the engine",
-      "flags": { "seen": false, "flagged": false, "answered": false, "draft": false, "to_sort": false },
+      "flags": { "seen": false, "flagged": false, "answered": false, "forwarded": false, "draft": false, "to_sort": false },
       "has_attachments": true,
       "preview": "Dear Charles, the notes are attached…",
       "size": 48213
@@ -1101,7 +1111,7 @@ a failure too, with the app's code `password_missing`.
   "date": "2026-10-30T09:12:00Z",
   "subject": "Notes on the engine",
   "message_id": "<a1b2@example.org>",                                        // null when absent
-  "flags": { "seen": false, "flagged": false, "answered": false, "draft": false, "to_sort": false },
+  "flags": { "seen": false, "flagged": false, "answered": false, "forwarded": false, "draft": false, "to_sort": false },
   "text": {
     "content": "Dear Charles, …",
     "removed_chars": 0,

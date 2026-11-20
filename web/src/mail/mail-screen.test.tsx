@@ -9,7 +9,7 @@ import { renderMailApp } from '@/test/mail-app.tsx'
 import { HTML_SANDBOX } from './html-body.tsx'
 
 const inbox = Array.from({ length: 30 }, (_, index) =>
-  messageItem(WORK, 'INBOX', 100 - index, index === 0 ? { flags: { seen: false, flagged: true, answered: false, draft: false, to_sort: false } } : {}),
+  messageItem(WORK, 'INBOX', 100 - index, index === 0 ? { flags: { seen: false, flagged: true, answered: false, forwarded: false, draft: false, to_sort: false } } : {}),
 )
 const plain = inbox[1] ?? messageItem(WORK, 'INBOX', 0)
 const html = inbox[2] ?? messageItem(WORK, 'INBOX', 0)
@@ -97,6 +97,26 @@ describe('MailScreen', () => {
     expect(within(list).getAllByRole('listitem')).toHaveLength(25)
     expect(within(list).getByRole('link', { name: /Unread:\s*Message 100/ })).toBeInTheDocument()
     expect(within(list).getByRole('button', { name: 'Star', pressed: true })).toBeInTheDocument()
+  })
+
+  it('marks the rows of messages answered or forwarded', async () => {
+    const flags = { seen: true, flagged: false, draft: false, to_sort: false }
+    const messages = {
+      '1/INBOX': [
+        messageItem(WORK, 'INBOX', 3, { subject: 'Replied', flags: { ...flags, answered: true, forwarded: false } }),
+        messageItem(WORK, 'INBOX', 2, { subject: 'Passed on', flags: { ...flags, answered: false, forwarded: true } }),
+        messageItem(WORK, 'INBOX', 1, { subject: 'Untouched', flags: { ...flags, answered: false, forwarded: false } }),
+      ],
+    }
+    stubMailApi(state({ messages }))
+    renderMailApp('/mail')
+
+    const list = await messagesList()
+    const row = (subject: string) => within(list).getByRole('link', { name: new RegExp(subject) })
+    expect(within(row('Replied')).getByRole('img', { name: 'Answered' })).toBeInTheDocument()
+    expect(within(row('Replied')).queryByRole('img', { name: 'Forwarded' })).not.toBeInTheDocument()
+    expect(within(row('Passed on')).getByRole('img', { name: 'Forwarded' })).toBeInTheDocument()
+    expect(within(row('Untouched')).queryByRole('img', { name: /Answered|Forwarded/ })).not.toBeInTheDocument()
   })
 
   it('names each account by its name, with its colour, never by its id', async () => {

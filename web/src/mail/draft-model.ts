@@ -12,6 +12,7 @@ export interface ComposeStart {
   composeId: string
   ref: string | null
   answers: string | null
+  forwards: string | null
   /** The draft has no `compose_id`: another client wrote it, so its ref is its send's key. */
   elsewhere: boolean
   form: ComposeForm
@@ -32,6 +33,7 @@ function draftStart(draft: Draft, composeId: string, account: Account | undefine
     composeId: draft.compose_id ?? composeId,
     ref: draft.ref,
     answers: draft.answers,
+    forwards: draft.forwards,
     elsewhere: draft.compose_id === null,
     form: {
       from: knownFrom(account, draft.from),
@@ -56,7 +58,7 @@ export async function loadStart(
   const { source, composeId } = session
   switch (source.kind) {
     case 'new':
-      return { account: source.account, composeId, ref: null, answers: null, elsewhere: false, form: BLANK_FORM, lossy: false, send: null }
+      return { account: source.account, composeId, ref: null, answers: null, forwards: null, elsewhere: false, form: BLANK_FORM, lossy: false, send: null }
     case 'draft': {
       const draft = await readDraft(source.ref, signal)
       return draftStart(draft, composeId, accountOf(draft.account))
@@ -75,6 +77,7 @@ export async function loadStart(
         composeId,
         ref: null,
         answers: prefill.answers,
+        forwards: prefill.forwards,
         elsewhere: false,
         form: {
           from: knownFrom(accountOf(prefill.account), prefill.from),
@@ -132,6 +135,7 @@ export class DraftModel {
               compose_id: start.composeId,
               ref,
               answers: start.answers,
+              forwards: start.forwards,
               from: form.from,
               to: form.to,
               cc: form.cc,

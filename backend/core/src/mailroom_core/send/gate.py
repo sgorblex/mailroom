@@ -46,7 +46,8 @@ from mailroom_core.mail.errors import MailError, mail_error
 from mailroom_core.mail.identity import from_identity
 from mailroom_core.mail.outgoing import attachment_cap, check_sendable
 from mailroom_core.mail.recipients import check_recipient_count, deliverable_address, matches_rule
-from mailroom_core.mail.reply import mark_answered
+from mailroom_core.mail.reply import mark_answered, mark_forwarded
+from mailroom_core.mail.selected import FORWARDED
 from mailroom_core.render import format_date
 from mailroom_core.send.smtp import Transfer, watched
 from mailroom_core.store import SEND_CEILING, SendLimitReached, SendsBusy
@@ -69,7 +70,9 @@ _HOUR: Final = timedelta(hours=1)
 _SENT_FLAGS: Final = ("\\Seen",)
 _SEAL: Final = object()
 
-type SendNoteCode = Literal["draft_not_removed", "draft_kept", "original_not_marked"]
+type SendNoteCode = Literal[
+    "draft_not_removed", "draft_kept", "original_not_marked", "original_not_marked_forwarded"
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +90,9 @@ DRAFT_NOT_REMOVED: Final = SendNote(
 DRAFT_KEPT: Final = SendNote("draft_kept", "The draft was kept as the only copy of the message.")
 ORIGINAL_NOT_MARKED: Final = SendNote(
     "original_not_marked", "The original could not be marked as answered."
+)
+ORIGINAL_NOT_MARKED_FORWARDED: Final = SendNote(
+    "original_not_marked_forwarded", "The original could not be marked as forwarded."
 )
 
 
@@ -523,37 +529,41 @@ def prepare_draft(
     )
 
 
-def mark_original(connections: MailConnections, ref: MessageRef, note: Note) -> SendNote | None:
-    """Sets \\Answered on what a sent reply answers. A failure is audited and comes back as a
-    note for the sender: the reply has gone."""
+def mark_original(
+    connections: MailConnections, ref: MessageRef, note: Note, *, forwarded: bool = False
+) -> SendNote | None:
+    """Sets \\Answered on what a sent reply answers, or `FORWARDED` on what a sent forward
+    forwards (`mark_forwarded`: where keywords are kept). A failure is audited and comes back as a
+    note for the sender: the message has gone."""
     try:
-        mark_answered(connections, ref)
+        (mark_forwarded if forwarded else mark_answered)(connections, ref)
     except Exception as error:
         note(
             AuditItem(
                 account=ref.account,
                 folder=ref.folder,
                 uid=ref.uid,
-                flag="\\Answered",
+                flag=FORWARDED if forwarded else "\\Answered",
                 result=audit_result(error),
             )
         )
-        return ORIGINAL_NOT_MARKED
+        return ORIGINAL_NOT_MARKED_FORWARDED if forwarded else ORIGINAL_NOT_MARKED
     return None
 
 
 def settle_draft(
     connections: MailConnections, draft: Draft, note: Note, *, filed: bool
 ) -> tuple[SendNote, ...]:
-    """Once a draft has been delivered: marks what it answers, and removes it if `filed`, what
-    `file_sent` answered. Otherwise it stays: it is the only copy in the account, and the send's
-    key keeps a retry from delivering it again. What the sender should know comes back as notes,
-    never as an error."""
+    """Once a draft has been delivered: marks what it answers or forwards, and removes it if
+    `filed`, what `file_sent` answered. Otherwise it stays: it is the only copy in the account,
+    and the send's key keeps a retry from delivering it again. What the sender should know comes
+    back as notes, never as an error."""
     notes: list[SendNote] = []
-    if draft.answers is not None:
-        marked = mark_original(connections, draft.answers, note)
-        if marked is not None:
-            notes.append(marked)
+    for original, forwarded in ((draft.answers, False), (draft.forwards, True)):
+        if original is not None:
+            marked = mark_original(connections, original, note, forwarded=forwarded)
+            if marked is not None:
+                notes.append(marked)
     if not filed:
         notes.append(DRAFT_KEPT)
     elif try_remove_draft(connections, draft.ref, note) == "failed":

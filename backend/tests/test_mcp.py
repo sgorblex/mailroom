@@ -1973,6 +1973,9 @@ def test_a_forward_carries_the_attachments_byte_for_byte(
     assert "Subject: Fwd: Invoice" in raw
     assert "---------- Forwarded message ---------" in raw
     assert base64.b64encode(PDF).decode() in raw.replace("\r\n", "")
+    flags = writer.contents("INBOX")[0].flags
+    assert "$Forwarded" in flags
+    assert "\\Answered" not in flags
 
 
 def test_a_draft_is_sent_as_stored_then_removed_and_asking_twice_delivers_once(
@@ -2299,6 +2302,29 @@ def test_a_reply_kept_as_a_draft_marks_the_original_once_the_user_sends_it(
         time.sleep(0.05)
     assert view.state == "sent"
     assert "\\Answered" in writer.contents("INBOX")[0].flags
+
+
+def test_a_forward_draft_an_agent_updates_still_marks_the_original_once_sent(
+    mcp: Mcp, token: str, writer: Writer, ctx: AppContext, user: User
+) -> None:
+    writer.mail.seed(writer.login, mime("Invoice", sender=stranger(), to=writer.me))
+    ref = inbox_ref(mcp, token)
+    set_mode(ctx, user, "drafts")
+    drafted = mcp.text(token, "message_forward", ref=ref, to=[stranger()], text="FYI")
+    found = re.search(r"Draft: ([\w-]{20,})\.$", drafted)
+    assert found, drafted
+    updated = draft_ref(mcp.text(token, "draft_update", ref=found.group(1), text="FYI, see below"))
+    draft = mail_service.read_draft(ctx, user.id, updated).draft
+    assert draft.forwards is not None
+    assert format_ref(draft.forwards) == ref
+    view = mail_service.send_draft(ctx, user.id, updated, by="user")
+    for _ in range(300):
+        view = mail_service.read_send(ctx, user.id, view.send_id)
+        if view.settled:
+            break
+        time.sleep(0.05)
+    assert view.state == "sent"
+    assert "$Forwarded" in writer.contents("INBOX")[0].flags
 
 
 @pytest.mark.parametrize("state", ["sending", "unknown", "sent"])

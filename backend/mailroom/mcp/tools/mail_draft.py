@@ -97,6 +97,10 @@ def _answered_ref(draft: Draft) -> str | None:
     return None if draft.answers is None else format_ref(draft.answers)
 
 
+def _forwarded_ref(draft: Draft) -> str | None:
+    return None if draft.forwards is None else format_ref(draft.forwards)
+
+
 async def _saved(call: ToolCall, saved: SavedDraft) -> str:
     """The sentence for a save, from the draft as it is stored: its identity and recipients are
     read back, since a reply takes them from an email."""
@@ -194,6 +198,7 @@ async def _draft_update(args: DraftUpdateArguments, call: ToolCall) -> types.Cal
         compose_id=draft.compose_id or _compose_id(),
         ref=args.ref,
         answers=_answered_ref(draft),
+        forwards=_forwarded_ref(draft),
         sender=args.sender or (draft.sender[0].address if draft.sender else None),
         to=draft.to if to is None else to,
         cc=draft.cc if cc is None else cc,

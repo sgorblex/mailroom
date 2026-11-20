@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useSearch } from '@tanstack/react-router'
-import { Bookmark, Paperclip, Star } from 'lucide-react'
+import { Bookmark, Forward, Paperclip, Reply, Star } from 'lucide-react'
 
 import { AccountName } from '@/accounts/account-name.tsx'
 import { useAccountKeywords, useAccountLabel, useAccountName } from '@/accounts/accounts-context.ts'
@@ -446,6 +446,12 @@ function MessageRow({ message, source }: { message: MessageItem; source: 'accoun
         {/* Shown by the row's toggles; said here too for whoever goes through the links. */}
         {flags.flagged && <span className="sr-only">{t('list.flagged')}</span>}
         {flags.to_sort && <span className="sr-only">{t('list.toSort')}</span>}
+        {message.flags.answered && (
+          <Reply role="img" aria-label={t('list.answered')} className="size-3.5 shrink-0 self-center text-muted-foreground" />
+        )}
+        {message.flags.forwarded && (
+          <Forward role="img" aria-label={t('list.forwarded')} className="size-3.5 shrink-0 self-center text-muted-foreground" />
+        )}
         {message.has_attachments && (
           <Paperclip role="img" aria-label={t('list.hasAttachments')} className="size-3.5 shrink-0 self-center" />
         )}

@@ -55,7 +55,7 @@ describe.each([
 ])('a delivered send in %s', (_language, locale) => {
   const t = ((key: string) => locale.compose[key.replace('compose.', '') as keyof typeof locale.compose]) as TFunction
 
-  it.each(['draft_not_removed', 'draft_kept', 'original_not_marked'])('words the note %s', (code) => {
+  it.each(['draft_not_removed', 'draft_kept', 'original_not_marked', 'original_not_marked_forwarded'])('words the note %s', (code) => {
     const worded = sentMessage(t, { filed: true, rejected: [], note_codes: [code] })
     expect(worded.length).toBeGreaterThan(locale.compose.sent.length + 10)
     expect(worded).not.toContain('undefined')
