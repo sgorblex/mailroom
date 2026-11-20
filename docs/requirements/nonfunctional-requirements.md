@@ -487,7 +487,10 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   `mail_flagged` carry `user_id`, `via`, `account_ids`, `ref_count`, `changed` (messages),
   `groups`, `failed_groups`, `codes` (the failed groups'), `outcome` (`ok`, `partial`,
   `refused`, `failed`, or the code of a refused call) and `duration_ms`: counts and codes only,
-  never a folder, a ref, a `Message-ID` or a sender.
+  never a folder, a ref, a `Message-ID` or a sender. `mail_bulk_counted` (`POST
+  /messages/count`) is logged as `mail_searched` is; `mail_bulk_acted` (`POST /messages/bulk`)
+  carries `user_id`, `via`, `account_ids`, `expected`, `done`, `remaining`, `groups`,
+  `failed_groups`, `codes`, `outcome` and `duration_ms`, never a search term.
   `mail_folder_created`, `mail_folder_renamed`, `mail_folder_deleted` and
   `mail_folder_marked_read` carry `user_id`, `via`, `account_id`, `outcome`, `duration_ms` and
   counts only (`rule_sets`, `filters`, `rule_sets_updated`, `messages`); `folder_rule_sets_failed`,
@@ -528,11 +531,12 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   on or tried to, and per folder created, renamed, deleted or marked read, refused attempts
   included: the item's fields (account, folder, UID, `Message-ID`, sender and recipients in
   clear, the subject's SHA-256, destination, flags, junk, removal, send mode and delivery stage,
-  a deleted folder's confirmed message count, the count a folder's mark read marked, the rule
-  sets and filters a rename changed) with who acted (`user` on the web, `agent` with the MCP
-  `client_id` and `grant_id`, or `filter`, a real run, with its `rule_set_id` and `run_id`),
-  the action (`move`, `move_to_account`, `archive`, `trash`, `flag`, `draft_save`,
-  `draft_remove`, `send`, `folder_create`, `folder_rename`, `folder_delete`, `mark_folder_read`,
+  a deleted folder's confirmed message count, the count a folder's mark read marked, an
+  account's match count on a refused bulk call, the rule sets and filters a rename changed) with
+  who acted (`user` on the web, `agent` with the MCP `client_id` and `grant_id`, or `filter`, a
+  real run, with its `rule_set_id` and `run_id`), the action (`move`, `move_to_account`,
+  `archive`, `trash`, `flag`, `draft_save`, `draft_remove`, `send`, `folder_create`,
+  `folder_rename`, `folder_delete`, `mark_folder_read`, `bulk_flag`, `bulk_move`, `bulk_trash`,
   or the filter's action as its report names it) and the result. A move to another account is
   recorded in both: the original's record names the `destination_account`, the copy's (in the
   target account) its `source_account` and `source_folder`. A run records each message its report

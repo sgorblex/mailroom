@@ -293,6 +293,59 @@ Refs in `flags` and `new_refs` are the client's to store; the source refs of a m
 stale afterwards. Errors: 400, 404, 409, 422, 429, 502, 504, and the answers cannot be cached
 (`Cache-Control: private, no-store`).
 
+### Every message a search matches
+
+*Select all matching* acts on every message a list or a search matches, not only the refs the
+client has loaded, with mailroom-core's `count_matching` and `act_on_matching`
+([`../core.md`](../core.md) — *Organize*). The scope and criteria are those of
+[`POST /search`](#post-search) without `limit` and `cursor` (`account` a number or `*`, `folder`
+a path or `*`, `subfolders`, the criteria); a list is a search with no criteria. The action is
+`{"kind": "flag", "seen", "flagged", "to_sort"}` (at least one), `{"kind": "move", "folder"}`
+(of each message's account, never Drafts or Sent) or `{"kind": "trash"}`.
+
+| Route | Body | Answer |
+| --- | --- | --- |
+| `POST /messages/count` | `{"account": 1, "folder": "INBOX", "from": "shop", "action": {"kind": "flag", "seen": true}}` (`action` optional) | `200` `{"total", "failures"}` |
+| `POST /messages/bulk` | `{"account": "*", "folder": "INBOX", "subject": "invoice", "action": {"kind": "trash"}, "expected": 1234}` | `200` `{"done", "remaining", "results", "failures"}` |
+
+- **The count** is of what the action would still change, over the folders it acts on: with
+  `action` a flag change leaves out the messages that already have it and a move the folders it
+  does not move from (below); without one, every match. The client shows the count with the
+  action, the user confirms it, and the client sends it as `expected`, an integer from 0 to
+  5,000; a count taken without the action can differ, and is then refused as `count_changed`.
+- **Each bulk call** searches again (`UID SEARCH` per folder), refuses with `count_changed`
+  (409, carrying `matching`, the count now) when the count is not `expected`, and with
+  `too_many` (409) past 5,000, writing nothing; otherwise it acts on at most **500** messages,
+  newest first in each folder, the folders in search order, by UID set on the paths of the
+  organize routes (a move's `MOVE`, or UIDPLUS's copy and `UID EXPUNGE` of exactly those UIDs;
+  a trash is a move; flags by `STORE`). `remaining` is the count to send as `expected` next:
+  the client repeats the call until it is 0, or stops at a group's failure. `results` holds one
+  group per folder acted on, as the organize routes answer them (`flags` always `[]`); when
+  every group failed, the call answers the first group's error instead.
+- **A move over several folders** (`folder` `*`, or `subfolders`) leaves its destination out of
+  the folders searched, so a move from a search of every folder works, and All Mail too, out of
+  which nothing moves (Gmail keeps the message there). Over every folder of an account with All
+  Mail, where a search reads All Mail alone, the move reads instead the folders a message can
+  leave: the inbox and the account's own folders (Gmail's labels), not Starred, Important, Sent,
+  Drafts, Junk or Trash. A message there under several labels is counted, and moved, once per
+  label; one only in All Mail (archived) is not moved.
+- **What would still match is refused** (`invalid_argument`), so that a repeated call never acts
+  on a message twice: a move into the one folder searched, a move out of All Mail searched alone,
+  a trash with Trash among the folders searched.
+- **Over every account** (`account` `*`) an account or folder that cannot be searched, or an
+  account the action cannot apply to (no Trash, no such destination), is in `failures` as in a
+  search (`folder` `null` when the account failed before a folder was chosen; an account without
+  a usable password `password_missing`) and the others are counted and acted on. Over one
+  account, its failure, or that of its one folder, is the answer.
+- **Audit:** each message acted on, or failed, is a record of its own, with action `bulk_flag`,
+  `bulk_move` or `bulk_trash` and the fields of the organize records; a refused call is one
+  record per account searched (`folder`, the scope's, and `messages`, its count), and a failed
+  account one record with its code.
+
+Errors: 400 `invalid_argument`, 404 `not_found` (account) and `mailbox_missing`, 409
+`count_changed`, `too_many`, `auth_failed` and `password_missing`, 422, 429, 502, 504. There is
+no MCP tool.
+
 ### MCP
 
 The tools `messages_move`, `messages_trash` and `messages_flag` (group `mail_organize`,
@@ -771,8 +824,9 @@ Attachments are named by `ref` and `part` only: an agent never passes file conte
 
 Every route is under `/api/v1/mail`, needs a [user session](../GLOSSARY.md), and sees only the
 signed-in user's accounts. Reads are `GET` but search, a `POST` with a JSON body so that search
-terms (addresses, subjects, words of a body) are never in an API URL; the four organize routes
-(slice B) and the three folder writes ([folder management](#folder-management)) are `POST` too.
+terms (addresses, subjects, words of a body) are never in an API URL, and so are the count and
+bulk action over what a search matches; the four organize routes (slice B) and the folder writes
+([folder management](#folder-management)) are `POST` too.
 Every response, the `401` of a missing or expired session included, carries `Cache-Control:
 private, no-store`. The SPA does keep a search
 in its own URL (`?q=`), so the access logs in front of it, the web image's nginx and the host's
@@ -804,7 +858,7 @@ malformed request (bad query value, wrong type) is FastAPI's 422 with its `detai
 elsewhere.
 
 Mailbox failures carry the 14 codes of mailroom-mcp, plus `delivery_unknown` (`src/imap/errors.ts`),
-and mailroom-core's `folder_exists` and `folder_changed`:
+and mailroom-core's `folder_exists`, `folder_changed`, `count_changed` and `too_many`:
 
 | Code | Status | Message |
 | --- | --- | --- |
@@ -824,11 +878,14 @@ and mailroom-core's `folder_exists` and `folder_changed`:
 | `delivery_unknown` | 409 | Delivery could not be confirmed: the message may already have gone out, so it was not sent again. |
 | `folder_exists` | 409 | A folder with that name already exists. |
 | `folder_changed` | 409 | The folder changed since it was read. It holds *N* messages now; nothing was deleted. (`detail.messages`: *N*.) |
+| `count_changed` | 409 | The messages matching changed since they were counted. *N* match now; nothing was changed. (`detail.matching`: *N*.) |
+| `too_many` | 409 | Too many messages match to act on them all. *N* match; at most 5000 are acted on together. Narrow the search. (`detail.matching`: *N*.) |
 | `server_error` | 502 | The mail server reported an error. |
 
 The send group (`send_disabled`, `rate_limited`, `recipient_refused`, `delivery_unknown`) belongs
 to slice C; slices A and B never answer them, nor the folder group (`folder_exists`,
-`folder_changed`, [folder management](#folder-management)). The app's own codes keep their
+`folder_changed`, [folder management](#folder-management)), nor the bulk group (`count_changed`,
+`too_many`, [every message a search matches](#every-message-a-search-matches)). The app's own codes keep their
 statuses: `password_missing`, `draft_not_editable` and `folder_in_use` (a rule set names the
 folder: `detail.rule_sets`, up to 10 `{id, name}`) 409, `secrets_key_missing` 503, an unknown account `not_found` 404
 (coded). A mailbox failure carrying a code not in this table keeps its code, with status 502. The

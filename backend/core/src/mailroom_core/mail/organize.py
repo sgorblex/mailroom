@@ -188,72 +188,83 @@ def set_flags(
     if seen is None and flagged is None and to_sort is None:
         raise MailError("invalid_argument", "Give `seen`, `flagged`, `to_sort` or several.")
     groups = _groups(connections, refs)
+
+    def act(group: _Group, note: Note) -> GroupResult:
+        return _flag_group(connections, group, note, seen=seen, flagged=flagged, to_sort=to_sort)
+
+    return _each_group(groups, act)
+
+
+def _flag_group(
+    connections: MailConnections,
+    group: _Group,
+    note: Note,
+    *,
+    seen: bool | None,
+    flagged: bool | None,
+    to_sort: bool | None,
+) -> GroupResult:
+    """Sets and clears the flags asked for on the group's messages in one session, notes each
+    one, and reads their flags back."""
     wanted = ((_SEEN, seen), (_FLAGGED, flagged), (TO_SORT, to_sort))
     add = [flag for flag, change in wanted if change is True]
     remove = [flag for flag, change in wanted if change is False]
 
-    def act(group: _Group, note: Note) -> GroupResult:
-        def run(context: MailboxContext) -> GroupResult:
-            for ref in group.refs:
-                check_fresh(ref, context.uid_validity)
-            client = context.client
-            envelopes = _envelopes(context, group)
-            uids = sorted(envelopes)
+    def run(context: MailboxContext) -> GroupResult:
+        for ref in group.refs:
+            check_fresh(ref, context.uid_validity)
+        client = context.client
+        envelopes = _envelopes(context, group)
+        uids = sorted(envelopes)
 
-            def note_all(result: AuditResult) -> None:
-                for uid in uids:
-                    note(
-                        message_item(
-                            group.account,
-                            group.folder,
-                            uid,
-                            envelopes[uid],
-                            result,
-                            seen=seen,
-                            flagged=flagged,
-                            to_sort=to_sort,
-                        )
+        def note_all(result: AuditResult) -> None:
+            for uid in uids:
+                note(
+                    message_item(
+                        group.account,
+                        group.folder,
+                        uid,
+                        envelopes[uid],
+                        result,
+                        seen=seen,
+                        flagged=flagged,
+                        to_sort=to_sort,
                     )
-
-            try:
-                store_flags(context, uids, add=add, remove=remove)
-            except Exception as error:
-                mapped = mail_error(error, group.account)
-                note_all(mapped.code)
-                raise mapped from None
-            note_all("ok")
-
-            def ref_of(uid: int) -> str:
-                return format_ref(
-                    MessageRef(group.account, group.folder, context.uid_validity, uid)
                 )
 
-            try:
-                after = client.fetch(uids, ["FLAGS"])
-                read_back = {
-                    uid: {bytes(flag).lower() for flag in after[uid].get(b"FLAGS", ())}
-                    for uid in uids
-                    if uid in after
-                }
-                states = tuple(
-                    FlagState(
-                        ref_of(uid),
-                        _SEEN.lower().encode() in flags,
-                        _FLAGGED.lower().encode() in flags,
-                        TO_SORT.lower().encode() in flags,
-                    )
-                    for uid, flags in read_back.items()
+        try:
+            store_flags(context, uids, add=add, remove=remove)
+        except Exception as error:
+            mapped = mail_error(error, group.account)
+            note_all(mapped.code)
+            raise mapped from None
+        note_all("ok")
+
+        def ref_of(uid: int) -> str:
+            return format_ref(MessageRef(group.account, group.folder, context.uid_validity, uid))
+
+        try:
+            after = client.fetch(uids, ["FLAGS"])
+            read_back = {
+                uid: {bytes(flag).lower() for flag in after[uid].get(b"FLAGS", ())}
+                for uid in uids
+                if uid in after
+            }
+            states = tuple(
+                FlagState(
+                    ref_of(uid),
+                    _SEEN.lower().encode() in flags,
+                    _FLAGGED.lower().encode() in flags,
+                    TO_SORT.lower().encode() in flags,
                 )
-            except Exception as error:
-                abandon_read_back(context, error)  # logged; the change stands
-                states = tuple(FlagState(ref_of(uid), None, None, None) for uid in uids)
-            return GroupResult(
-                group.account, group.folder, count=len(uids), new_refs=(), flags=states
+                for uid, flags in read_back.items()
             )
+        except Exception as error:
+            abandon_read_back(context, error)  # logged; the change stands
+            states = tuple(FlagState(ref_of(uid), None, None, None) for uid in uids)
+        return GroupResult(group.account, group.folder, count=len(uids), new_refs=(), flags=states)
 
-        return connections.with_mailbox(group.account, group.folder, False, run)
-
-    return _each_group(groups, act)
+    return connections.with_mailbox(group.account, group.folder, False, run)
 
 
 def mark_folder_read(
@@ -376,15 +387,18 @@ def _move_to(
     note: Note,
 ) -> GroupResult:
     """A move's Junk training, then the move; `move_target` refused what it had to."""
-    source = next((f for f in folders if f.path == group.folder), None)
-    # Mailu's imapsieve learns spam on the way into Junk and ham on the way out, except into
-    # Trash.
-    junk: Junk | None = None
+    return _move(connections, group, target.path, _junk(folders, group.folder, target), note)
+
+
+def _junk(folders: Sequence[Folder], source: str, target: Folder) -> Junk | None:
+    """What a move from `source` to `target` teaches the spam filter: Mailu's imapsieve learns
+    spam on the way into Junk and ham on the way out, except into Trash."""
+    found = next((f for f in folders if f.path == source), None)
     if target.role == "junk":
-        junk = "spam"
-    elif source is not None and source.role == "junk" and target.role != "trash":
-        junk = "ham"
-    return _move(connections, group, target.path, junk, note)
+        return "spam"
+    if found is not None and found.role == "junk" and target.role != "trash":
+        return "ham"
+    return None
 
 
 def _move(

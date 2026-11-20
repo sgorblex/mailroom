@@ -153,11 +153,7 @@ def search(
     others still answer, however many there are; later pages report it again without asking it
     again (nor checking its password), until paging ends. Over one account and one folder, its
     error is refused, as for a list, unless it reads subfolders too."""
-    try:
-        core.search_arguments(query.criteria())  # a line break in a term: refused up front
-        core.check_subfolders(folder, subfolders=subfolders)
-    except MailError as error:
-        raise mail_refusal(error.code, error.message) from None
+    check_search(folder, query, subfolders=subfolders)
     accounts = _accounts(ctx, user_id)
     skipped: list[PageFailure] = []
     if account == ALL_ACCOUNTS:
@@ -224,6 +220,16 @@ def search(
     return page
 
 
+def check_search(folder: str, query: SearchQuery, *, subfolders: bool) -> None:
+    """Refuses, before anything connects, a term with a line break and ``subfolders`` with
+    ``ALL_FOLDERS``."""
+    try:
+        core.search_arguments(query.criteria())
+        core.check_subfolders(folder, subfolders=subfolders)
+    except MailError as error:
+        raise mail_refusal(error.code, error.message) from None
+
+
 def _password_missing_failure(account_id: int, folder: str | None) -> PageFailure:
     code = cast("MailErrorCode", PASSWORD_MISSING)  # the app's own code
     return PageFailure(account_id, folder, code, PASSWORD_MISSING_TEXT)
@@ -233,6 +239,16 @@ def _with_password_failures(ctx: AppContext, user_id: int, page: Page) -> Page:
     """``page`` with each ``server_error`` of an account whose password no longer opens as
     ``password_missing``: mailroom-core reports any failure to open a connection, the pool's
     ``PasswordMissing`` included, as a server error of the source."""
+    if not page.failures:
+        return page
+    return Page(page.messages, page.next_cursor, password_checked(ctx, user_id, page.failures))
+
+
+def password_checked(
+    ctx: AppContext, user_id: int, failures: Sequence[PageFailure]
+) -> tuple[PageFailure, ...]:
+    """``failures`` with each ``server_error`` of an account whose password no longer opens as
+    ``password_missing`` (``_with_password_failures``)."""
     missing: dict[int, bool] = {}
 
     def checked(failure: PageFailure) -> PageFailure:
@@ -244,9 +260,7 @@ def _with_password_failures(ctx: AppContext, user_id: int, page: Page) -> Page:
             return _password_missing_failure(failure.account, failure.folder)
         return failure
 
-    if not page.failures:
-        return page
-    return Page(page.messages, page.next_cursor, tuple(checked(f) for f in page.failures))
+    return tuple(checked(f) for f in failures)
 
 
 def _first_failure(page: Page) -> None:
@@ -259,24 +273,12 @@ def _first_failure(page: Page) -> None:
 def _sources(
     connections: MailConnections, account: int, folder: str, query: SearchQuery, subfolders: bool
 ) -> tuple[list[Source], Criteria]:
-    """What mailroom-core's ``search_messages`` reads in ``account``, and with which criteria:
-    as it does, a Gmail account's ``has_attachment`` goes into X-GM-RAW (Gmail ignores the
-    ``Content-Type`` header search), so its capabilities are asked only when the query needs
-    them."""
-    gmail = (
-        query.gmail_query is not None or query.has_attachment is True
-    ) and connections.capabilities(account).gmail
-    if query.gmail_query is not None and not gmail:
-        raise MailError(
-            "unsupported",
-            f"gmail_query works only on Gmail accounts; account {account} is not one.",
-        )
-    paths = (
-        core.searchable_folders(connections, account)
-        if folder == ALL_FOLDERS
-        else core.read_folders(connections, account, folder, subfolders=subfolders)
+    """What mailroom-core's ``search_messages`` reads in ``account``, and with which criteria
+    (its ``search_sources``)."""
+    paths, criteria = core.search_sources(
+        connections, account, folder, query, subfolders=subfolders
     )
-    return [Source(account, path) for path in paths], query.criteria(gmail=gmail)
+    return [Source(account, path) for path in paths], criteria
 
 
 class _Reading:

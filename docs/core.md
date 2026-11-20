@@ -227,6 +227,30 @@ sets `\Seen` (`store_flags`, 1,000 UIDs a STORE) on what `UID SEARCH UNSEEN UID 
 finds: mail that arrived since the listing stays unread. It returns the count and notes one
 `AuditItem` for the folder, `messages` that count, refused ones included.
 
+`mailroom_core.mail.bulk` acts on every message a search matches rather than on refs.
+`count_matching(connections, accounts, folder, query, subfolders=, action=)` counts what
+`search_messages` would list (`search_sources` gives each account's folders and criteria), and
+with a `BulkAction` (`BulkFlag`, `BulkMove`, `BulkTrash`) only what it would change: a flag
+change adds the negation of the flags it sets (`UNSEEN` for `seen`…, ORed) to the search, a
+move or a trash `UNDELETED`.
+`act_on_matching(..., action, expected=, note=)` searches again per folder (`UID SEARCH`,
+read-only), raises `MatchCountError` (`count_changed`, or `too_many` past `BULK_MAX`, 5,000,
+with `matching`) unless the total is `expected`, then acts on at most `BULK_BATCH` (500) UIDs,
+newest first, each folder a group done as `move_messages` and `set_flags` do theirs
+(`move_uids`, `store_flags`, with their checks and Junk training), and returns a `BulkResult`
+(`done`, `remaining`, `groups`, `failures`). A move over several folders (`ALL_FOLDERS`, or with
+`subfolders`) leaves its destination and All Mail out of the folders it searches, counting
+included; over every folder of an account with All Mail, where a search reads All Mail alone, it
+reads instead the folders a message can leave (the inbox and the account's own folders, Gmail's
+labels: not Starred, Important, Sent, Drafts, Junk or Trash), a message under several labels
+counted and moved once per label. A move into a folder still searched, out of All Mail, or a
+trash with Trash searched is `invalid_argument`, so what was done never matches again and a
+repeated call never acts twice. A group copied but not removed (`CopiedNotRemovedError`, its
+`GroupResult` failed with a `destination`) is left out of `remaining` and must not be repeated:
+its messages are in both folders. Over several accounts an account or folder that fails is a `PageFailure` and the
+others go on; over one, its error is raised. Notes an `AuditItem` per message, per failed
+source, and per account on a refusal (`messages`, its count).
+
 **Keywords.** A folder keeps keywords when its read-write SELECT answers PERMANENTFLAGS holding
 `\*` (`MailboxContext.keywords`; never under EXAMINE). `MailConnections.keywords(account)` asks
 it once of INBOX, read-write, and caches it next to the capabilities until `close`. A Gmail

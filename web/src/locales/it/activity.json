@@ -39,6 +39,9 @@
     "folder_rename": "Cartella rinominata",
     "folder_delete": "Cartella eliminata",
     "mark_folder_read": "Cartella segnata come letta",
+    "bulk_flag": "Contrassegni cambiati (tutti i risultati)",
+    "bulk_move": "Spostato (tutti i risultati)",
+    "bulk_trash": "Spostato nel Cestino (tutti i risultati)",
     "run_failed": "Esecuzione dei filtri non riuscita"
   },
   "results": {
