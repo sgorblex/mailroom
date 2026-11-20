@@ -110,6 +110,8 @@ export interface FakeMailState {
   indexMaxAgeDays?: number | null
   /** The instance's cap on it; none unless it says otherwise. */
   indexMaxAgeCap?: number | null
+  /** Each account's folders whose new mail notifies, which `PUT /mail/notifications/accounts/{id}` sets; INBOX unless it says otherwise. */
+  notifications?: Record<string, string[]>
 }
 
 /** The statuses of the mail codes the organize routes answer (`docs/requirements/mail-client.md`). */
@@ -750,6 +752,28 @@ function indexRoutes(state: FakeMailState, url: URL, init?: RequestInit): Respon
   return json(200, { account_id: Number(match[1]), folder, enabled })
 }
 
+/** The desktop notifications' folder choice over `state.notifications`; `null` for another path. */
+function notificationRoutes(state: FakeMailState, url: URL, init?: RequestInit): Response | null {
+  const chosen = (account: AccountId): { account_id: AccountId; folders: string[] } => ({
+    account_id: account,
+    folders: state.notifications?.[account] ?? ['INBOX'],
+  })
+  if (url.pathname === '/api/v1/mail/notifications') {
+    return json(200, { accounts: state.accounts.map(chosen) })
+  }
+  const match = /^\/api\/v1\/mail\/notifications\/accounts\/(\d+)$/.exec(url.pathname)
+  if (match === null || init?.method !== 'PUT') {
+    return null
+  }
+  const account = Number(match[1])
+  if (!state.accounts.includes(account)) {
+    return notFound()
+  }
+  const { folders } = JSON.parse(init.body as string) as { folders: string[] }
+  state.notifications = { ...state.notifications, [account]: folders }
+  return json(200, chosen(account))
+}
+
 /** Counting and acting on `state.matching`, as the bulk routes do: refused unless `expected` is the count. */
 function matchingRoutes(state: FakeMailState, bulk: boolean, body: { expected?: number; action?: { kind: string } }): Response {
   const found = state.matching ?? { total: 0 }
@@ -866,7 +890,7 @@ export function stubMailApi(state: FakeMailState): Mock {
         }),
       )
     }
-    const indexed = indexRoutes(state, url, init)
+    const indexed = indexRoutes(state, url, init) ?? notificationRoutes(state, url, init)
     if (indexed !== null) {
       return indexed
     }

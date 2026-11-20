@@ -467,6 +467,21 @@ export function mailEventsUrl(viewing: { account: AccountId; folder: string } | 
   return `${getApiBaseUrl()}${withQuery(`${base}/events`, query)}`
 }
 
+const accountNotificationsSchema = z.object({ account_id: accountIdSchema, folders: z.array(z.string()) })
+export type AccountNotifications = z.infer<typeof accountNotificationsSchema>
+const notificationsSchema = z.object({ accounts: z.array(accountNotificationsSchema) })
+
+/** Each account's folders whose new mail shows as a desktop notification. */
+export async function readNotificationFolders(signal?: AbortSignal): Promise<AccountNotifications[]> {
+  const read = await apiGetJson(`${base}/notifications`, { init: { signal }, schema: notificationsSchema })
+  return read.accounts
+}
+
+/** The account's folders whose new mail shows as a desktop notification, all at once. */
+export function setNotificationFolders(accountId: AccountId, folders: string[]): Promise<AccountNotifications> {
+  return apiPutJson(`${base}/notifications/accounts/${String(accountId)}`, { folders }, { schema: accountNotificationsSchema })
+}
+
 const indexStatusSchema = z.object({
   account_id: accountIdSchema,
   gmail: z.boolean(),

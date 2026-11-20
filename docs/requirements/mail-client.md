@@ -12,7 +12,8 @@ delete is the one in the mail client. Product scope:
 0.1.3 for slice C's compose, drafts and send), over IMAP directly. Lists, searches without a
 body's text and folder counts read the [index](#index) where it holds every folder they involve,
 and the server otherwise; the web client keeps them up to date from the
-[live updates](#live-updates).
+[live updates](#live-updates), and shows new mail as [desktop
+notifications](#desktop-notifications).
 
 ## Slice A: read
 
@@ -1575,6 +1576,40 @@ Mailroom tab is open: no push service.
   the folder's row and the new rows to build the events
   ([`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *Mail client*).
 
+## Desktop notifications
+
+New mail shows as the browser's own notifications (the Notification API) while a Mailroom tab is
+open: no push service, no service worker. They come from the [live updates](#live-updates)'
+`new_mail` events.
+
+- Which folders notify is kept per user and account on the server
+  (`app.mail_notification_folders`; no row: INBOX alone, so every account's INBOX notifies until
+  the user chooses). `GET /api/v1/mail/notifications` gives `{"accounts": [{"account_id",
+  "folders"}]}` for each of the user's accounts; `PUT
+  /api/v1/mail/notifications/accounts/{account_id}` `{"folders": [...]}` (at most 200, `INBOX` in
+  any case, kept once each) sets all of one account's at once and answers
+  `{"account_id", "folders"}`; another user's account is 404 `not_found`. A folder removed or
+  renamed stays in the choice and no longer notifies. Removing the account forgets its choice.
+- The Profile's *Desktop notifications* section asks the browser's permission only from its
+  *Allow desktop notifications* button, never on load, or says the browser shows them, blocks
+  them (to allow in its site settings) or cannot: no Notification API, or one whose constructor
+  throws (Chrome for Android leaves notifications to a service worker, which Mailroom has none
+  of), tried before the permission is granted, when it shows nothing, or learnt from a
+  notification that failed. Per account it lists the folders whose new mail can notify, each
+  with a checkbox: those on the index (another server's `\All` folder too), and on Gmail INBOX
+  instead of All Mail (read from All Mail, whose `new_mail` is INBOX's).
+- With the permission granted, a `new_mail` event for a chosen folder shows one notification per
+  message it names (the newest 3): the sender as its title and the subject as its body, nothing
+  else (*(unknown sender)*, *(no subject)* when empty), tagged with the ref so that two open tabs
+  show it once; when `count` is more, one more says *N new messages*. None shows for the folder
+  the focused tab shows, this tab or another: the tab that is visible and focused announces the
+  account and folder it shows over `BroadcastChannel('mailroom-viewing')` on focus, on a
+  visibility change and when it opens another folder, and null on blur, when hidden or unloaded
+  (only the tab that announced a folder takes it back); every tab skips that folder as well as its
+  own while focused. Without BroadcastChannel only the tab's own counts. Clicking one focuses the
+  tab and opens the message in its folder (the summary, the folder). The choice is read when an
+  event first needs it, and again after a minute.
+
 ## Mailbox quota
 
 `GET /api/v1/accounts/{id}/quota` (the signed-in user's own account; mounted in every edition)
@@ -1676,4 +1711,4 @@ that says how to read it. There is no REST route for threads yet.
 
 ## Later slices
 
-- Threaded list view and desktop notifications ([`../REQUIREMENTS.md`](../REQUIREMENTS.md)).
+- Threaded list view ([`../REQUIREMENTS.md`](../REQUIREMENTS.md)).
