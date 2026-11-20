@@ -62,6 +62,8 @@ export interface MailAction {
   /** Opens a picker instead of acting at once. */
   picker?: 'move' | 'account'
   destructive?: boolean
+  /** It acts on every message the list or search matches when they are selected; the other triage actions are greyed out then. */
+  matching?: boolean
 }
 
 function answer(id: string, mode: PrefillMode, label: string, icon: LucideIcon, shortcut: string): MailAction {
@@ -118,6 +120,7 @@ export const MAIL_ACTIONS: readonly MailAction[] = [
     available: ({ actions }) => actions.trash !== null,
     run: ({ actions }) => actions.trash?.(),
     destructive: true,
+    matching: true,
   },
   {
     id: 'move',
@@ -134,6 +137,7 @@ export const MAIL_ACTIONS: readonly MailAction[] = [
       }
     },
     picker: 'move',
+    matching: true,
   },
   {
     id: 'moveToAccount',
@@ -155,6 +159,17 @@ export const MAIL_ACTIONS: readonly MailAction[] = [
     sheetLabel: 'shortcuts.star',
     available: ({ actions }) => actions.star !== null,
     run: ({ actions }) => actions.star?.run(),
+    matching: true,
+  },
+  {
+    // Every matching message selected: star sets, this clears.
+    id: 'unstar',
+    group: 'triage',
+    label: () => 'triage.unstar',
+    icon: () => StarOff,
+    available: ({ actions }) => actions.unstar !== null,
+    run: ({ actions }) => actions.unstar?.(),
+    matching: true,
   },
   {
     id: 'toSort',
@@ -166,6 +181,18 @@ export const MAIL_ACTIONS: readonly MailAction[] = [
     available: ({ actions }) => actions.toSort !== null,
     unavailable: ({ actions }) => (actions.toSort?.unsupported === true ? 'triage.toSortUnsupported' : null),
     run: ({ actions }) => actions.toSort?.run(),
+    matching: true,
+  },
+  {
+    // Every matching message selected: To sort sets, this clears.
+    id: 'markSorted',
+    group: 'triage',
+    label: () => 'triage.sorted',
+    icon: () => BookmarkCheck,
+    available: ({ actions }) => actions.markSorted !== null,
+    unavailable: ({ actions }) => (actions.toSort?.unsupported === true ? 'triage.toSortUnsupported' : null),
+    run: ({ actions }) => actions.markSorted?.(),
+    matching: true,
   },
   {
     id: 'markRead',
@@ -174,17 +201,19 @@ export const MAIL_ACTIONS: readonly MailAction[] = [
     icon: () => MailOpen,
     available: ({ actions }) => actions.read?.seen === true,
     run: ({ actions }) => actions.read?.run(),
+    matching: true,
   },
   {
-    // Listed when every target is read; `u` marks unread whatever they are.
+    // Listed when every target is read, or every matching message is selected; `u` marks unread whatever they are.
     id: 'markUnread',
     group: 'triage',
     label: () => 'triage.markUnread',
     icon: () => Mail,
     shortcut: 'u',
     available: ({ actions }) => actions.markUnread !== null,
-    listed: ({ actions }) => actions.read?.seen === false,
+    listed: ({ actions }) => actions.read?.seen === false || actions.matching !== null,
     run: ({ actions }) => actions.markUnread?.(),
+    matching: true,
   },
 ]
 
@@ -197,6 +226,9 @@ export function listedActions(group: MailAction['group'], context: ActionContext
 
 /** Why `action` is greyed out here, or `null` when it can run. */
 export function unavailableReason(action: MailAction, context: ActionContext): string | null {
+  if (context.actions.matching !== null && action.group === 'triage' && action.matching !== true) {
+    return 'matching.unavailable'
+  }
   return action.unavailable?.(context) ?? null
 }
 

@@ -217,17 +217,31 @@ export function searchMessages(
   options: { subfolders?: boolean; cursor?: string | null; limit?: number } = {},
   signal?: AbortSignal,
 ): Promise<MessagePage> {
-  // A body, not a query string: search terms stay out of access logs. The URL keeps the account as
-  // text; the API takes its number, or `*`.
-  const { account, ...terms } = query
   const body = {
-    ...terms,
-    account: account === undefined || account === '*' ? account : Number(account),
-    subfolders: options.subfolders === true ? true : undefined,
+    ...matchBody({ query, subfolders: options.subfolders === true }),
     limit: options.limit,
     cursor: options.cursor ?? undefined,
   }
   return apiPostJson(`${base}/search`, body, { init: { signal }, schema: messagePageSchema })
+}
+
+/** What a list or a search shows, to act on all it matches: a folder's list is a search with no criteria. */
+export interface MatchScope {
+  query: SearchQuery
+  subfolders: boolean
+}
+
+/**
+ * A search's scope and criteria as a body, not a query string: search terms stay out of access
+ * logs. The URL keeps the account as text; the API takes its number, or `*`.
+ */
+function matchBody({ query, subfolders }: MatchScope): object {
+  const { account, ...terms } = query
+  return {
+    ...terms,
+    account: account === undefined || account === '*' ? account : Number(account),
+    subfolders: subfolders ? true : undefined,
+  }
 }
 
 /** One window of the message's text from `offset`; reading never marks it seen. */
@@ -349,6 +363,47 @@ export function trashMessages(refs: string[], signal?: AbortSignal): Promise<Org
 
 export function flagMessages(refs: string[], change: FlagChange, signal?: AbortSignal): Promise<OrganizeGroup[]> {
   return organize('flag', { refs, ...change }, signal)
+}
+
+/** The most messages a bulk action acts on, all calls together: past it, `too_many`. */
+export const BULK_MAX = 5000
+
+/** What a bulk action does to every message a scope matches. */
+export type BulkAction = ({ kind: 'flag' } & FlagChange) | { kind: 'move'; folder: string } | { kind: 'trash' }
+
+const matchCountSchema = z.object({ total: z.number(), failures: z.array(failureSchema) })
+
+const bulkAnswerSchema = z.object({
+  done: z.number(),
+  /** The next call's `expected`: 0 once every message is done. */
+  remaining: z.number(),
+  results: z.array(organizeGroupSchema),
+  failures: z.array(failureSchema),
+})
+export type BulkAnswer = z.infer<typeof bulkAnswerSchema>
+
+/** How many messages `scope` matches; with `action`, how many it would still change. */
+export function countMatching(
+  scope: MatchScope,
+  action: BulkAction | null,
+  signal?: AbortSignal,
+): Promise<z.infer<typeof matchCountSchema>> {
+  return apiPostJson(`${base}/messages/count`, { ...matchBody(scope), action: action ?? undefined }, {
+    init: { signal },
+    schema: matchCountSchema,
+  })
+}
+
+/**
+ * `action` on at most 500 of what `scope` matches, refused as `count_changed` (carrying
+ * `matching`, the count now) unless `expected` still matches, and as `too_many` past `BULK_MAX`.
+ * Called again with each answer's `remaining` until it is 0.
+ */
+export function actOnMatching(scope: MatchScope, action: BulkAction, expected: number, signal?: AbortSignal): Promise<BulkAnswer> {
+  return apiPostJson(`${base}/messages/bulk`, { ...matchBody(scope), action, expected }, {
+    init: { signal },
+    schema: bulkAnswerSchema,
+  })
 }
 
 const keepPartSchema = partSchema.extend({ ref: z.string() })

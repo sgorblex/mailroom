@@ -31,6 +31,8 @@ import {
   type Failure,
   type Flags,
   type FolderState,
+  type Matching,
+  type MatchingAction,
   type Outcome,
   type Target,
   type Triage,
@@ -53,6 +55,8 @@ interface Scope {
   picker: boolean
   accountPicker: boolean
   accountPickerInto: Destination | null
+  matching: Matching | null
+  bulk: MatchingAction | null
 }
 
 const NO_SELECTION: ReadonlyMap<string, Target> = new Map()
@@ -60,7 +64,17 @@ const NO_OVERRIDES: ReadonlyMap<string, Flags> = new Map()
 const NO_ACCOUNTS: readonly AccountId[] = []
 
 function freshScope(key: string): Scope {
-  return { key, selection: NO_SELECTION, overrides: NO_OVERRIDES, outcome: null, picker: false, accountPicker: false, accountPickerInto: null }
+  return {
+    key,
+    selection: NO_SELECTION,
+    overrides: NO_OVERRIDES,
+    outcome: null,
+    picker: false,
+    accountPicker: false,
+    accountPickerInto: null,
+    matching: null,
+    bulk: null,
+  }
 }
 
 /** Where a move-like action puts an account's messages; `undefined` while that is not known. */
@@ -394,8 +408,9 @@ export function TriageProvider({
         }
       } else {
         setBusyState(true)
-        // The last outcome goes, so the live region empties and an identical one is read out again.
-        updateScope(key, () => ({ picker: false, accountPicker: false, outcome: null }))
+        // The last outcome goes, so the live region empties and an identical one is read out again;
+        // an action on rows ends a selection of every matching message.
+        updateScope(key, () => ({ picker: false, accountPicker: false, outcome: null, matching: null }))
         toast.clear()
       }
       const signal = unmountSignal()
@@ -613,15 +628,37 @@ export function TriageProvider({
             selection.delete(target.ref)
           }
         }
-        return { selection }
+        return { selection, matching: null }
       })
     },
     [sourceKey, updateScope],
   )
 
   const clearSelection = useCallback(() => {
-    updateScope(sourceKey, () => ({ selection: NO_SELECTION }))
+    updateScope(sourceKey, () => ({ selection: NO_SELECTION, matching: null }))
   }, [sourceKey, updateScope])
+  const selectMatching = useCallback(
+    (matching: Matching) => {
+      updateScope(sourceKey, () => ({ matching }))
+    },
+    [sourceKey, updateScope],
+  )
+  const setBulk = useCallback(
+    (bulk: MatchingAction | null) => {
+      updateScope(sourceKey, () => ({ bulk, picker: false, accountPicker: false }))
+    },
+    [sourceKey, updateScope],
+  )
+  const bulkDone = useCallback(
+    (touched: AccountId[]) => {
+      for (const account of new Set(touched)) {
+        loadFolders(account, true)
+      }
+      updateScope(sourceKey, () => ({ bulk: null, matching: null, selection: NO_SELECTION, overrides: NO_OVERRIDES }))
+      setReloads((value) => value + 1)
+    },
+    [sourceKey, updateScope, loadFolders],
+  )
   const setOpen = useCallback(
     (target: Target | null) => {
       setOpenState(() => target)
@@ -658,6 +695,11 @@ export function TriageProvider({
     selection: scope.selection,
     select,
     clearSelection,
+    matching: scope.matching,
+    selectMatching,
+    bulk: scope.bulk,
+    setBulk,
+    bulkDone,
     open,
     setOpen,
     setVisible,

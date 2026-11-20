@@ -5,7 +5,7 @@ import { Bookmark, Paperclip, Star } from 'lucide-react'
 
 import { AccountName } from '@/accounts/account-name.tsx'
 import { useAccountKeywords, useAccountLabel, useAccountName } from '@/accounts/accounts-context.ts'
-import type { MessageItem, MessagePage, SourceFailure } from '@/api/mail.ts'
+import type { MatchScope, MessageItem, MessagePage, SourceFailure } from '@/api/mail.ts'
 import { useTimeZone } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Menu, type MenuItem, type MenuPoint } from '@/components/ui/menu.tsx'
@@ -19,6 +19,7 @@ import { addressLabel, formatListDate } from './format.ts'
 import { MAIL_NS } from './i18n.ts'
 import { endMessageDrag, startMessageDrag } from './message-drag.ts'
 import { ACCOUNT_NOT_FOUND, mailCodeMessage, mailErrorMessage } from './messages.ts'
+import { SelectMatching } from './select-matching.tsx'
 import { TOAST_RETURN_ID } from './toast.tsx'
 import { useTriageActions } from './triage-actions.ts'
 import { useTriage, type Target } from './triage-context.ts'
@@ -32,11 +33,14 @@ type More = { kind: 'idle' } | { kind: 'loading' } | { kind: 'failed'; message: 
  */
 export function MessageList({
   loadPage,
+  match,
   searching,
   subfolders = false,
   reloadKey,
 }: {
   loadPage: (cursor: string | null, signal: AbortSignal) => Promise<MessagePage>
+  /** What the list shows as a search, for acting on every message it matches; without it, only loaded rows are. */
+  match?: MatchScope
   searching: boolean
   /** Read with its subfolders. */
   subfolders?: boolean
@@ -95,6 +99,9 @@ export function MessageList({
 
   const failures = uniqueFailures(loaded.flatMap((page) => page.failures))
   const nextCursor = loaded[loaded.length - 1]?.next_cursor ?? null
+  // Every loaded row selected, and more to load: the rest of what the list matches can be.
+  const allLoaded = messages.length > 0 && messages.every((message) => triage.selection.has(message.ref))
+  const offerMatching = match !== undefined && (triage.matching !== null || (allLoaded && nextCursor !== null))
 
   async function loadMore(cursor: string): Promise<void> {
     setMore({ kind: 'loading' })
@@ -121,6 +128,7 @@ export function MessageList({
       ) : (
         <>
           <SelectAll messages={messages} />
+          {offerMatching && <SelectMatching loaded={messages.length} scope={match} />}
           <ul id={TOAST_RETURN_ID} aria-label={searching ? t('list.results') : t('list.messages')} className="flex flex-col divide-y rounded-lg border">
             {messages.map((message) => (
               // The row's link is what takes focus: its menu key and a right-click reach it from here.
@@ -128,10 +136,12 @@ export function MessageList({
               <li
                 key={message.ref}
                 className="group/row flex items-start"
-                // Dragged onto a folder, it moves the selection when it is in it, else itself alone.
+                // Dragged onto a folder, it moves the selection when it is in it (as every row is while
+                // every matching message is selected), else itself alone.
                 draggable
                 onDragStart={(event) => {
-                  const targets = triage.selection.has(message.ref) ? [...triage.selection.values()] : [message]
+                  const inSelection = triage.matching !== null || triage.selection.has(message.ref)
+                  const targets = inSelection ? [...triage.selection.values()] : [message]
                   startMessageDrag(event.dataTransfer, targets, t('list.dragging', { count: targets.length }))
                 }}
                 onDragEnd={endMessageDrag}
@@ -159,7 +169,7 @@ export function MessageList({
                   value={message.ref}
                   aria-label={t('triage.select', { subject: message.subject === '' ? t('message.noSubject') : message.subject })}
                   className="m-3 mr-0 size-4 shrink-0 accent-primary"
-                  checked={triage.selection.has(message.ref)}
+                  checked={triage.matching !== null || triage.selection.has(message.ref)}
                   onChange={(event) => {
                     triage.select([message], event.target.checked)
                   }}
@@ -223,9 +233,11 @@ function MessageMenu({
   const { t } = useTranslation(MAIL_NS)
   const triage = useTriage()
   const compose = useCompose()
-  const selected = triage.selection.has(row.ref)
+  // Every row is selected, as its checkbox shows, while every matching message is.
+  const selected = triage.matching !== null || triage.selection.has(row.ref)
   const targets = selected ? [...triage.selection.values()] : [row]
-  const actions = useTriageActions(targets)
+  // On the selection, the toolbar's actions: on every matching message when they are selected.
+  const actions = useTriageActions(selected ? undefined : targets)
   const [only] = targets
   const context: ActionContext = {
     actions,
@@ -306,10 +318,10 @@ function Failures({ failures }: { failures: SourceFailure[] }): ReactElement {
 /** Selects every loaded row, or none once all are. */
 function SelectAll({ messages }: { messages: Target[] }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
-  const { selection, select } = useTriage()
+  const { selection, select, matching } = useTriage()
   const box = useRef<HTMLInputElement>(null)
   const chosen = messages.filter((message) => selection.has(message.ref)).length
-  const all = chosen === messages.length
+  const all = matching !== null || chosen === messages.length
   useEffect(() => {
     if (box.current !== null) {
       box.current.indeterminate = chosen > 0 && !all
