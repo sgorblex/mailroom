@@ -24,6 +24,7 @@ import { ShortcutSheet, ShortcutSheetButton } from './shortcut-sheet.tsx'
 import { ComposeAnnouncer } from './send-status.tsx'
 import { useMailShortcuts } from './shortcuts.ts'
 import { storedSubfolders } from './subfolder-view.ts'
+import { ToastHost } from './toast.tsx'
 import { OutcomeAnnouncer, Toolbar } from './toolbar.tsx'
 import { isSameFolder, loadedFolders, useTriage } from './triage-context.ts'
 import { TriageProvider } from './triage-provider.tsx'
@@ -85,25 +86,27 @@ export function MailScreen(): ReactElement {
   }
   return (
     <AccountsContext value={accounts.value}>
-      <TriageProvider sourceKey={sourceKey(accountId, folder, requested, search.q)} accounts={accountIds}>
-        <ComposeProvider accounts={accounts.value} accountId={accountId}>
-          <MailShortcuts accountId={accountId} onHelp={openSheet} />
-          <MailPanes
-            accounts={accounts.value}
-            accountId={accountId}
-            folder={folder}
-            requested={requested}
-            onHelp={openSheet}
-          />
-          {sheet && (
-            <ShortcutSheet
-              onClose={() => {
-                setSheet(false)
-              }}
+      <ToastHost>
+        <TriageProvider sourceKey={sourceKey(accountId, folder, requested, search.q)} accounts={accountIds}>
+          <ComposeProvider accounts={accounts.value} accountId={accountId}>
+            <MailShortcuts accountId={accountId} onHelp={openSheet} />
+            <MailPanes
+              accounts={accounts.value}
+              accountId={accountId}
+              folder={folder}
+              requested={requested}
+              onHelp={openSheet}
             />
-          )}
-        </ComposeProvider>
-      </TriageProvider>
+            {sheet && (
+              <ShortcutSheet
+                onClose={() => {
+                  setSheet(false)
+                }}
+              />
+            )}
+          </ComposeProvider>
+        </TriageProvider>
+      </ToastHost>
     </AccountsContext>
   )
 }
@@ -248,7 +251,8 @@ function Listing({ accountId, folder, subfolders }: { accountId: AccountId; fold
   )
   // What the composer does changes these two folders' lists under the user's eyes.
   const { revision } = useCompose()
-  const shownFolder = loadedFolders(useTriage().folders[accountId])?.find((each) => isSameFolder(each.path, folder))
+  const { folders, reloads } = useTriage()
+  const shownFolder = loadedFolders(folders[accountId])?.find((each) => isSameFolder(each.path, folder))
   const live = q === undefined && (shownFolder?.role === 'drafts' || shownFolder?.role === 'sent')
   return (
     <MessageList
@@ -256,7 +260,8 @@ function Listing({ accountId, folder, subfolders }: { accountId: AccountId; fold
       loadPage={loadPage}
       searching={q !== undefined}
       subfolders={merged}
-      reloadKey={live ? revision : undefined}
+      // An undo moves messages back: every list reads itself again.
+      reloadKey={`${live ? String(revision) : '-'}:${String(reloads)}`}
     />
   )
 }

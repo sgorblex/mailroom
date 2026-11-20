@@ -32,6 +32,14 @@ export function failureKey(failure: Failure): string {
   return JSON.stringify([failure.account, failure.folder, failure.code, failure.inBoth ?? 0])
 }
 
+/**
+ * How to take back an action that succeeded: move each source folder's messages back from where
+ * they landed (`refs`, the new ones), or set back the flags it changed, per message.
+ */
+export type Undo =
+  | { kind: 'move'; groups: { account: AccountId; folder: string; refs: string[] }[] }
+  | { kind: 'flag'; accounts: AccountId[]; restores: { change: FlagChange; refs: string[] }[]; before: [string, Flags][] }
+
 /** What the last action did, for the toolbar to word. */
 export type Outcome =
   | { kind: 'done'; action: Action; count: number; failures: Failure[] }
@@ -67,6 +75,8 @@ export interface Triage {
   busy: boolean
   outcome: Outcome | null
   dismissOutcome: () => void
+  /** Counts the lists read again after an undo: the list shown reads itself again when it changes. */
+  reloads: number
   /** Runs an action on `targets`; `silent` (marking read on open) neither waits for nor reports anything. */
   run: (action: Action, targets: Target[], options?: { silent?: boolean }) => Promise<void>
   picker: boolean

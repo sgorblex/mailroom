@@ -39,6 +39,10 @@ export interface FakeMailState {
   refuse?: Record<string, { status: number; body: unknown }>
   /** `"<account>/<folder path>"` → the code its group fails with in an organize batch. */
   groupFailures?: Record<string, string>
+  /** Moves answer no `new_refs`, as from a server without COPYUID. */
+  noNewRefs?: boolean
+  /** Moves answer one `new_refs` fewer than they moved. */
+  shortNewRefs?: boolean
   /** `"<account>/<folder path>"` → the code its group fails with after copying, the messages in both. */
   copiedNotRemoved?: Record<string, string>
   /** Called with each request (`"POST /api/v1/mail/messages/flag"`, its body); the answer waits for the promise it returns. */
@@ -277,7 +281,11 @@ function organize(
       return { ...failed(copiedOnly), destination_account: to, new_refs: newRefs }
     }
     state.messages[key] = (state.messages[key] ?? []).filter((item) => !items.includes(item))
-    return { ...group, new_refs: newRefs, destination_account: route === 'move-to-account' ? to : null }
+    return {
+      ...group,
+      new_refs: state.noNewRefs === true ? null : state.shortNewRefs === true ? newRefs.slice(1) : newRefs,
+      destination_account: route === 'move-to-account' ? to : null,
+    }
   })
   const first = results.find((result) => result.error !== null)
   // A move to another account that made copies answers them, failed or not: they are in both.

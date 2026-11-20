@@ -25,8 +25,8 @@ const ALERT_ID = 'triage-outcome-alert'
 
 /**
  * The actions on the selection, or on the open message when nothing is selected, with what the
- * last one did (shown here, announced by `OutcomeAnnouncer`). Each button names its keyboard
- * shortcut.
+ * last one did when it did not go through in full (shown here, announced by `OutcomeAnnouncer`;
+ * one that did is the toast's). Each button names its keyboard shortcut.
  */
 export function Toolbar({ className }: { className?: string }): ReactElement | null {
   const { t } = useTranslation(MAIL_NS)
@@ -262,6 +262,13 @@ function doneMessage(t: TFunction, accountName: (id: AccountId) => string, actio
       }
       return action.change.seen === true ? t('triage.markedRead', { count }) : t('triage.markedUnread', { count })
   }
+}
+
+/** What an action that went through in full did, in words: the toast's message. */
+export function DoneMessage({ action, count }: { action: Action; count: number }): ReactElement {
+  const { t } = useTranslation(MAIL_NS)
+  const accountName = useAccountName()
+  return <>{doneMessage(t, accountName, action, count)}</>
 }
 
 function failedOutcome(outcome: Outcome): boolean {

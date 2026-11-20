@@ -225,6 +225,15 @@
     "failed": "Could not change the messages.",
     "gone": "Not every message is still in that folder. Reload the list."
   },
+  "undo": {
+    "undo": "Undo",
+    "done": "Undone.",
+    "failed": "Could not undo every change.",
+    "impossible": "It cannot be undone: the mail server did not say where the messages went."
+  },
+  "toast": {
+    "dismiss": "Dismiss"
+  },
   "compose": {
     "compose": "Compose",
     "newMessage": "New message",

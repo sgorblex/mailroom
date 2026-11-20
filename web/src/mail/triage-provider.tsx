@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
 
 import type { AccountId } from '@/api/accounts.ts'
 import {
@@ -16,6 +17,9 @@ import {
 import { ApiRequestError } from '@/api/http.ts'
 import { useUnmountSignal } from '@/lib/use-unmount-signal.ts'
 
+import { MAIL_NS } from './i18n.ts'
+import { useToast } from './toast-context.ts'
+import { DoneMessage } from './toolbar.tsx'
 import {
   failureKey,
   isSameFolder,
@@ -29,6 +33,7 @@ import {
   type Outcome,
   type Target,
   type Triage,
+  type Undo,
 } from './triage-context.ts'
 
 /** The most refs one request takes; a larger selection goes in several. */
@@ -88,6 +93,27 @@ function request(action: Action, refs: string[], signal: AbortSignal): Promise<O
   }
 }
 
+/** `items` in requests of at most `BATCH`. */
+function batches<T>(items: T[]): T[][] {
+  const out: T[][] = []
+  for (let start = 0; start < items.length; start += BATCH) {
+    out.push(items.slice(start, start + BATCH))
+  }
+  return out
+}
+
+/** The flags `change` set that `before` did not have, as they were: what sets them back. */
+function restoring(change: FlagChange, before: Flags): FlagChange {
+  const back: FlagChange = {}
+  for (const flag of ['seen', 'flagged', 'to_sort'] as const) {
+    const value = change[flag]
+    if (value !== undefined && before[flag] !== value) {
+      back[flag] = before[flag]
+    }
+  }
+  return back
+}
+
 /** The groups a refused batch would have had, each failed with the refusal's code. */
 function refusedGroups(targets: Target[], error: unknown): Failure[] {
   const code = (error instanceof ApiRequestError ? error.code : undefined) ?? 'server_error'
@@ -141,6 +167,8 @@ export function TriageProvider({
   children: ReactNode
 }): ReactElement {
   const navigate = useNavigate()
+  const { t } = useTranslation(MAIL_NS)
+  const toast = useToast()
   const unmountSignal = useUnmountSignal()
   const [folders, foldersRef, setFolders] = useMirrored<Record<string, FolderState>>({})
   const [removed, , setRemoved] = useMirrored<ReadonlySet<string>>(new Set())
@@ -148,6 +176,11 @@ export function TriageProvider({
   const [scoped, scopedRef, setScoped] = useMirrored<Scope>(freshScope(sourceKey))
   const [busy, setBusy] = useState(false)
   const busyRef = useRef(false)
+  const setBusyState = useCallback((value: boolean) => {
+    busyRef.current = value
+    setBusy(value)
+  }, [])
+  const [reloads, setReloads] = useState(0)
   // The silent mark-read of each ref still in flight: the user's own action on that ref waits for
   // it, so the server sees (and the screen applies) the two in that order.
   const pendingSilent = useRef(new Map<string, Promise<void>>())
@@ -242,6 +275,77 @@ export function TriageProvider({
     [scopedRef],
   )
 
+  /**
+   * Takes back an action with its own requests (audited as any): moves the messages back from
+   * where they landed, then reads the list again, or sets back the flags it changed.
+   */
+  const undoAction = useCallback(
+    async (plan: Undo) => {
+      if (busyRef.current) {
+        return
+      }
+      setBusyState(true)
+      const signal = unmountSignal()
+      let failed = false
+      // The flags set back, per ref.
+      const restored = new Map<string, FlagChange>()
+      try {
+        const requests =
+          plan.kind === 'move'
+            ? plan.groups.flatMap((group) =>
+                batches(group.refs).map((refs) => ({ change: {}, send: () => moveMessages(refs, group.folder, signal) })),
+              )
+            : plan.restores.flatMap((restore) =>
+                batches(restore.refs).map((refs) => ({
+                  change: restore.change,
+                  send: () => flagMessages(refs, restore.change, signal),
+                })),
+              )
+        for (const { change, send } of requests) {
+          try {
+            for (const group of await send()) {
+              if (group.error !== null || !group.ok) {
+                failed = true
+              } else {
+                for (const state of group.flags) {
+                  restored.set(state.ref, change)
+                }
+              }
+            }
+          } catch {
+            if (signal.aborted) {
+              return
+            }
+            failed = true
+          }
+        }
+      } finally {
+        setBusyState(false)
+      }
+      const accounts = plan.kind === 'move' ? plan.groups.map((group) => group.account) : plan.accounts
+      for (const account of new Set(accounts)) {
+        loadFolders(account, true)
+      }
+      if (plan.kind === 'move') {
+        setReloads((value) => value + 1)
+      } else {
+        updateScope(currentKey.current, (current) => {
+          const overrides = new Map(current.overrides)
+          // Only the flags set back: another changed since stays as it is now.
+          for (const [ref, flags] of plan.before) {
+            const change = restored.get(ref)
+            if (change !== undefined) {
+              overrides.set(ref, { ...(current.overrides.get(ref) ?? flags), ...change })
+            }
+          }
+          return { overrides }
+        })
+      }
+      toast.show(failed ? { message: t('undo.failed'), tone: 'error' } : { message: t('undo.done') })
+    },
+    [setBusyState, unmountSignal, loadFolders, updateScope, toast, t],
+  )
+
   const run = useCallback(
     async (action: Action, targets: Target[], options: { silent?: boolean } = {}) => {
       const silent = options.silent === true
@@ -272,10 +376,10 @@ export function TriageProvider({
           stored.set(target.ref, entry)
         }
       } else {
-        busyRef.current = true
-        setBusy(true)
+        setBusyState(true)
         // The last outcome goes, so the live region empties and an identical one is read out again.
         updateScope(key, () => ({ picker: false, accountPicker: false, outcome: null }))
+        toast.clear()
       }
       const signal = unmountSignal()
       let count = 0
@@ -284,7 +388,12 @@ export function TriageProvider({
       // outcome is worded as that refusal.
       let refusal: unknown = null
       let refusedBatches = 0
-      const batches = Math.ceil(pending.length / BATCH)
+      const batchCount = Math.ceil(pending.length / BATCH)
+      // How to take it back: `null` once a group's messages cannot be found where they went.
+      let undo: Undo | null =
+        action.kind === 'flag'
+          ? { kind: 'flag', accounts: [], restores: [], before: [] }
+          : { kind: 'move', groups: [] }
       try {
         if (!silent) {
           const marking = pending.flatMap((target) => pendingSilent.current.get(target.ref) ?? [])
@@ -293,8 +402,7 @@ export function TriageProvider({
             return
           }
         }
-        for (let start = 0; start < pending.length; start += BATCH) {
-          const batch = pending.slice(start, start + BATCH)
+        for (const batch of batches(pending)) {
           let groups: OrganizeGroup[]
           try {
             groups = await request(action, batch.map((target) => target.ref), signal)
@@ -327,6 +435,7 @@ export function TriageProvider({
               applyFlags(group, members, action.change)
             } else {
               applyMove(group, members, action)
+              undo = undoMove(undo, group)
             }
           }
         }
@@ -339,18 +448,61 @@ export function TriageProvider({
           }
           settle()
         } else {
-          busyRef.current = false
-          setBusy(false)
+          setBusyState(false)
         }
       }
       if (silent) {
         return
       }
       const outcome: Outcome =
-        refusedBatches === batches
+        refusedBatches === batchCount
           ? { kind: 'refused', action, error: refusal }
           : { kind: 'done', action, count, failures: uniqueFailures(failures) }
-      updateScope(key, () => ({ outcome }))
+      if (outcome.kind === 'refused' || outcome.failures.length > 0 || count === 0) {
+        updateScope(key, () => ({ outcome }))
+        return
+      }
+      // Done in full: the toast says so, with Undo where it can be taken back.
+      const plan = undo
+      const message = <DoneMessage action={action} count={count} />
+      if (action.kind === 'moveToAccount') {
+        toast.show({ message })
+      } else if (plan?.kind === 'flag' && plan.restores.length === 0) {
+        // Every message already was as the action left it.
+        toast.show({ message })
+      } else if (plan === null) {
+        toast.show({
+          message: (
+            <>
+              {message} {t('undo.impossible')}
+            </>
+          ),
+        })
+      } else {
+        toast.show({
+          message,
+          action: {
+            label: t('undo.undo'),
+            run: () => {
+              void undoAction(plan)
+            },
+          },
+        })
+      }
+
+      /** `plan` with the group's messages to move back from where they landed, or `null` when the server did not say. */
+      function undoMove(plan: Undo | null, group: OrganizeGroup): Undo | null {
+        if (plan?.kind !== 'move' || group.new_refs === null || group.new_refs.length < group.count) {
+          return null
+        }
+        const same = plan.groups.find((each) => each.account === group.account && each.folder === group.folder)
+        if (same !== undefined) {
+          same.refs.push(...group.new_refs)
+          return plan
+        }
+        plan.groups.push({ account: group.account, folder: group.folder, refs: [...group.new_refs] })
+        return plan
+      }
 
       function applyFlags(group: OrganizeGroup, members: Target[], change: FlagChange): void {
         let unread = 0
@@ -367,6 +519,21 @@ export function TriageProvider({
           }
           next.set(target.ref, after)
           unread += Number(!after.seen) - Number(!before.seen)
+          if (undo?.kind === 'flag') {
+            undo.before.push([target.ref, before])
+            const back = restoring(change, before)
+            if (Object.keys(back).length > 0) {
+              const restore = undo.restores.find((each) => JSON.stringify(each.change) === JSON.stringify(back))
+              if (restore === undefined) {
+                undo.restores.push({ change: back, refs: [target.ref] })
+              } else {
+                restore.refs.push(target.ref)
+              }
+            }
+          }
+        }
+        if (undo?.kind === 'flag' && !undo.accounts.includes(group.account)) {
+          undo.accounts.push(group.account)
         }
         updateScope(key, () => ({ overrides: next }))
         adjustFolder(group.account, group.folder, unread, 0)
@@ -402,6 +569,10 @@ export function TriageProvider({
     },
     [
       sourceKey,
+      setBusyState,
+      undoAction,
+      toast,
+      t,
       foldersRef,
       overridesOf,
       openRef,
@@ -474,6 +645,7 @@ export function TriageProvider({
     busy,
     outcome: scope.outcome,
     dismissOutcome,
+    reloads,
     run,
     picker: scope.picker,
     setPicker,

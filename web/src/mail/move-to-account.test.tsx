@@ -41,7 +41,7 @@ const actions = (): Promise<HTMLElement> => screen.findByRole('group', { name: '
 
 async function reported(live: 'polite' | 'assertive', text: string): Promise<void> {
   await waitFor(() => {
-    expect(document.querySelector(`[aria-live="${live}"]`)).toHaveTextContent(text)
+    expect(document.getElementById(live === 'polite' ? 'toast-status' : 'triage-outcome-alert')).toHaveTextContent(text)
   })
 }
 
