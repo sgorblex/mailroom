@@ -137,9 +137,9 @@ interface TreeState {
  * listed folder has a menu (its ⋯ button, a right-click but with Shift, or Shift+F10 / the
  * context-menu key): mark all as read, a new subfolder, rename or move, delete, each disabled with
  * the reason where the server would refuse it. A folder with subfolders to list is listed with
- * them or without (its menu's "Include subfolders", or the button on its row), as this browser
- * last chose for it; its count is then theirs too. Messages dragged from the list drop on a
- * folder they can move to, highlighted while over it.
+ * them or without (its menu's "Show subfolders' mail here", or the button on its row), as this
+ * browser last chose for it; its count is then theirs too. Messages dragged from the list drop on
+ * a folder they can move to, highlighted while over it.
  */
 export function FolderTree({
   accountId,
@@ -388,7 +388,7 @@ function actionItems(
     },
   }
   const include: MenuItem = {
-    label: t('folders.includeSubfolders'),
+    label: t('folders.showSubfolders'),
     checked: merged,
     onSelect: () => {
       setSubfolders(node.path, !merged)
@@ -589,7 +589,7 @@ function TreeItem({ node, level, tree }: { node: FolderNode; level: number; tree
             type="button"
             tabIndex={-1}
             aria-hidden="true"
-            title={t(merged ? 'folders.onlyThisFolder' : 'folders.includeSubfolders')}
+            title={t(merged ? 'folders.showThisFolderOnly' : 'folders.showSubfolders')}
             onMouseDown={(event) => {
               event.preventDefault()
             }}
