@@ -20,6 +20,17 @@ live updates yet.
 - **Search** over one account or all, with the search fields of mailroom-mcp's `search`.
 - **Message view:** headers, the text body (quotes and signatures collapsed), attachments and a
   calendar note; a **standalone HTML view** when the message has an HTML body; attachment download.
+- **Sender checks** in the message view's headers, from the read's `sender_mismatch`, `sent_to` and
+  `authentication` (below): a warning under From when the display name names another address or
+  site, quoting the real address, never the name; the authentication verdict, *Verified* with the
+  DMARC domain only on `dmarc_pass`, a warning when SPF, DKIM or DMARC is `fail`, else *Not
+  confirmed*, each with the three results, SPF and DKIM naming the domain each was for (*DKIM pass
+  (evil.example)*; a DMARC `pass` that is not `dmarc_pass` reads *pass, but not for this From*), or
+  *Not verified* (pointing to the account's authentication server) when nothing is believed, the
+  verdict left out for a message in the account's Sent or Drafts folder (the user's own); *Sent
+  to* the identity it arrived at. More than three To and Cc addresses
+  together are summed up as *You and N others* (or *N recipients* when the identity is not among
+  them), shown in full on request.
 - **Remote content** (remote images, `http` or `https`) is blocked and revealed per message
   ([Glossary](../GLOSSARY.md)), never remembered; what is removed either way is in the HTML
   route below.

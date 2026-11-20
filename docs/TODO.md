@@ -119,14 +119,14 @@ released and checked in production before the next one starts. Batch 15 is the r
 
 #### 4. Reading a message
 
-- [ ] **Sender mismatch warning** — when a sender's display name is or looks like an address other
+- [x] **Sender mismatch warning** — when a sender's display name is or looks like an address other
       than the one it sends from, show the real one and flag it.
-- [ ] **Sender authentication** — a badge for the SPF, DKIM and DMARC results, and a warning when
+- [x] **Sender authentication** — a badge for the SPF, DKIM and DMARC results, and a warning when
       they fail.
 - [ ] **Link safety** — a link's real address on hover, and a warning when its text names
       another site.
-- [ ] **"Sent to" address** — which of the user's addresses or aliases a message arrived at.
-- [ ] **Recipient summary** — "to you and 12 others", expanded on click.
+- [x] **"Sent to" address** — which of the user's addresses or aliases a message arrived at.
+- [x] **Recipient summary** — "to you and 12 others", expanded on click.
 - [ ] **Mailing list badge** — the list's name, with its archive and unsubscribe at hand.
 - [ ] **Unsubscribe** — `List-Unsubscribe` one-click (RFC 8058) where the list supports it, else
       its link or address; never automatic, and with the offer of a filter instead.

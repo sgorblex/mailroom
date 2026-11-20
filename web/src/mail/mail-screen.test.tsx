@@ -374,6 +374,114 @@ describe('MailScreen', () => {
     expect(screen.queryByText('Quoted text or a signature is hidden.')).not.toBeInTheDocument()
   })
 
+  it("warns of a sender's name that names another address, quoting the real one, and shows the checks", async () => {
+    const people = Array.from({ length: 4 }, (_, index) => ({ name: '', address: `p${String(index)}@example.org` }))
+    const fake = state()
+    fake.views[plain.ref] = messageView(plain, {
+      from: { name: 'service@paypal.com', address: 'x@evil.example' },
+      to: [...people, { name: 'Me', address: 'me@example.org' }],
+      cc: [{ name: '', address: 'boss@example.org' }],
+      sender_mismatch: true,
+      sent_to: 'me@example.org',
+      authentication: {
+        verified: true,
+        spf: 'pass',
+        spf_domain: 'evil.example',
+        dkim: null,
+        dkim_domain: null,
+        dmarc: 'fail',
+        dmarc_pass: false,
+        from_domain: null,
+      },
+    })
+    stubMailApi(fake)
+    renderMailApp(`/mail?message=${plain.ref}`)
+
+    expect(
+      await screen.findByText('The sender\'s name shows another address or site. It was sent from x@evil.example.'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Failed: the sender may be forged')).toBeInTheDocument()
+    expect(screen.getByText('SPF pass (evil.example), DKIM none, DMARC fail')).toBeInTheDocument()
+    expect(screen.getByText('Sent to').nextElementSibling).toHaveTextContent('me@example.org')
+
+    expect(screen.getByText(/You and 5 others/)).toBeInTheDocument()
+    expect(screen.queryByText(/p0@example\.org/)).not.toBeInTheDocument()
+    const toggle = screen.getByRole('button', { name: 'Show all recipients', expanded: false })
+    await userEvent.click(toggle)
+    expect(screen.getByText(/p0@example\.org, .*Me <me@example\.org>/)).toBeInTheDocument()
+    expect(screen.getByText('boss@example.org')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Show fewer recipients', expanded: true })).toBe(toggle)
+    expect(toggle).toHaveFocus()
+    await userEvent.click(toggle)
+    expect(screen.getByText(/You and 5 others/)).toBeInTheDocument()
+    expect(toggle).toHaveFocus()
+  })
+
+  it("does not show a DMARC pass that is not for this message's From as a pass", async () => {
+    const fake = state()
+    fake.views[plain.ref] = messageView(plain, {
+      authentication: {
+        verified: true,
+        spf: 'pass',
+        spf_domain: null,
+        dkim: 'pass',
+        dkim_domain: 'evil.example',
+        dmarc: 'pass',
+        dmarc_pass: false,
+        from_domain: null,
+      },
+    })
+    stubMailApi(fake)
+    renderMailApp(`/mail?message=${plain.ref}`)
+
+    expect(await screen.findByText('SPF pass, DKIM pass (evil.example), DMARC pass, but not for this From')).toBeInTheDocument()
+    expect(screen.queryByText('Verified: sent by example.org')).not.toBeInTheDocument()
+  })
+
+  it('shows a verified sender, and one not verified as such', async () => {
+    const fake = state()
+    fake.views[plain.ref] = messageView(plain, {
+      authentication: {
+        verified: true,
+        spf: 'pass',
+        spf_domain: 'example.org',
+        dkim: 'pass',
+        dkim_domain: 'example.org',
+        dmarc: 'pass',
+        dmarc_pass: true,
+        from_domain: 'example.org',
+      },
+    })
+    stubMailApi(fake)
+    renderMailApp(`/mail?message=${plain.ref}`)
+
+    expect(await screen.findByText('Verified: sent by example.org')).toBeInTheDocument()
+    expect(screen.queryByText(/The sender's name/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Sent to')).not.toBeInTheDocument()
+    const headers = screen.getByRole('heading', { name: plain.subject }).nextElementSibling as HTMLElement
+    expect(within(headers).getByText('To').nextElementSibling).toHaveTextContent('me@example.org')
+    cleanup()
+
+    stubMailApi(state())
+    renderMailApp(`/mail?message=${html.ref}`)
+    expect(await screen.findByText('Not verified')).toBeInTheDocument()
+    expect(screen.queryByText(/^SPF/)).not.toBeInTheDocument()
+  })
+
+  it("leaves out the authentication of the user's own mail, in the Sent folder", async () => {
+    const sent = messageItem(WORK, 'Sent Messages', 3, { subject: 'My report' })
+    const fake = state()
+    fake.messages['1/Sent Messages'] = [sent]
+    fake.views[sent.ref] = messageView(sent)
+    stubMailApi(fake)
+    renderMailApp(`/mail?message=${sent.ref}`)
+
+    expect(await screen.findByRole('heading', { name: 'My report' })).toBeInTheDocument()
+    await screen.findByRole('treeitem', { name: 'Sent' })
+    expect(screen.queryByText('Authentication')).not.toBeInTheDocument()
+    expect(screen.queryByText('Not verified')).not.toBeInTheDocument()
+  })
+
   it('words a refused HTML view in place of the frame, never inside it', async () => {
     stubMailApi(state({ refuse: { [`GET /api/v1/mail/messages/${html.ref}/html`]: refusal(429, 'busy') } }))
     renderMailApp(`/mail?message=${html.ref}`)
