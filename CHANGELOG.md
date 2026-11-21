@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.14.0](https://github.com/sgorblex/mailroom/compare/v0.13.0...v0.14.0) (2026-11-21)
+
+
+### Features
+
+* **core:** fetch what the mail index keeps per message ([#130](https://github.com/sgorblex/mailroom/issues/130)) ([a7a1313](https://github.com/sgorblex/mailroom/commit/a7a13131b8ae1af93a935b6739bc67ab59fdda2b))
+* **core:** read folder UIDs and flag changes with CONDSTORE ([#129](https://github.com/sgorblex/mailroom/issues/129)) ([127a05b](https://github.com/sgorblex/mailroom/commit/127a05bb2857f4fa1ada6e07f9d9ccdfca060802))
+* **index:** add the mail index tables ([#131](https://github.com/sgorblex/mailroom/issues/131)) ([92111bd](https://github.com/sgorblex/mailroom/commit/92111bd1ecc963cd945a97277371221552d12256))
+* **index:** choose which folders the index keeps, and how far back ([#132](https://github.com/sgorblex/mailroom/issues/132)) ([f04ded7](https://github.com/sgorblex/mailroom/commit/f04ded7259d5f7913015c0c6e0146944d43e17f3))
+* **index:** read lists, searches and folder counts from the mail index ([#136](https://github.com/sgorblex/mailroom/issues/136)) ([39e6a1a](https://github.com/sgorblex/mailroom/commit/39e6a1a1ab524dc36875956a0b6703107a051104))
+* **index:** update the mail index from the app's own writes ([#135](https://github.com/sgorblex/mailroom/issues/135)) ([ad4edf5](https://github.com/sgorblex/mailroom/commit/ad4edf5ac0838947dbbba067afb03256e14bb389))
+* **mail:** group lists, searches and views by conversation on the index ([#147](https://github.com/sgorblex/mailroom/issues/147)) ([d232b52](https://github.com/sgorblex/mailroom/commit/d232b52af10ede89000002cc48f773fab83b00a9))
+* **mail:** keep saved views and read All inboxes from the index ([#145](https://github.com/sgorblex/mailroom/issues/145)) ([7b7b058](https://github.com/sgorblex/mailroom/commit/7b7b0583e452ddbf595fd51965efd0e92f2d1778))
+* **mail:** parse a search syntax and take it in MCP's messages_search ([#142](https://github.com/sgorblex/mailroom/issues/142)) ([6e1eacf](https://github.com/sgorblex/mailroom/commit/6e1eacf93e1430ec8c4624a405805f2c6e232459))
+* **mail:** push the index's changes to the browser as server-sent events ([#139](https://github.com/sgorblex/mailroom/issues/139)) ([36ce60f](https://github.com/sgorblex/mailroom/commit/36ce60f56dc2a1fd09ad10ee3b027e78607e5fe1))
+* **web:** follow the index's live updates in the mail client ([#140](https://github.com/sgorblex/mailroom/issues/140)) ([a44d1b2](https://github.com/sgorblex/mailroom/commit/a44d1b2892d7347fe4a23e67bd43c7c7742dafed))
+* **web:** quick filters above the message list ([#144](https://github.com/sgorblex/mailroom/issues/144)) ([f41f162](https://github.com/sgorblex/mailroom/commit/f41f1620e7aab794989b1aee5244cbeb38fec918))
+* **web:** read the search syntax in the search box, with chips ([#143](https://github.com/sgorblex/mailroom/issues/143)) ([515fa96](https://github.com/sgorblex/mailroom/commit/515fa966ae8cf04ef85c8fa1265251628dd36e56))
+* **web:** say above the message list how far a folder's indexing has come ([#137](https://github.com/sgorblex/mailroom/issues/137)) ([5469a88](https://github.com/sgorblex/mailroom/commit/5469a881b6f51d853736491e437f6eaba8ac6b2e))
+* **web:** set the mail index's age limit and folders on the Profile page ([#133](https://github.com/sgorblex/mailroom/issues/133)) ([ee6c04c](https://github.com/sgorblex/mailroom/commit/ee6c04c86680f1083ddcb55dee5080c453aecc03))
+* **web:** show lists by conversation, read and act on a conversation whole ([#148](https://github.com/sgorblex/mailroom/issues/148)) ([62f8235](https://github.com/sgorblex/mailroom/commit/62f8235bc86c01e3d47ef6d036a72107f5dfc43c))
+* **web:** show new mail as desktop notifications ([#141](https://github.com/sgorblex/mailroom/issues/141)) ([0563b22](https://github.com/sgorblex/mailroom/commit/0563b22c85ba78ebc84f75de92cba7c2b5871a6f))
+* **web:** views in the sidebar, and save a search as one ([#146](https://github.com/sgorblex/mailroom/issues/146)) ([271fd3d](https://github.com/sgorblex/mailroom/commit/271fd3d846a36bb2f8897e62d0bf1ef8d292395b))
+* **web:** virtualised message list that reads its pages as it is scrolled ([#149](https://github.com/sgorblex/mailroom/issues/149)) ([9bd9e77](https://github.com/sgorblex/mailroom/commit/9bd9e77ec37191f149964b15ab72d04134292732))
+* **worker:** keep the index fresh over IMAP IDLE ([#138](https://github.com/sgorblex/mailroom/issues/138)) ([6044338](https://github.com/sgorblex/mailroom/commit/60443389c0f86b180f67c5e9e5ab3d6c5b6b4c87))
+* **worker:** sync the mail index's folders ([#134](https://github.com/sgorblex/mailroom/issues/134)) ([2e12b92](https://github.com/sgorblex/mailroom/commit/2e12b927971969b026afd6bbe83483f7a26777b8))
+
+
+### Bug Fixes
+
+* **core:** accept a From under header.from as DMARC aligned ([#126](https://github.com/sgorblex/mailroom/issues/126)) ([efc34ac](https://github.com/sgorblex/mailroom/commit/efc34acd8c310cb91eb15b6e51fa13554fd11ada))
+* **web:** keep password managers off the command palette input ([#123](https://github.com/sgorblex/mailroom/issues/123)) ([9bcbc77](https://github.com/sgorblex/mailroom/commit/9bcbc7783f08b48b4036b2bcd0329092eb3db5cd))
+* **web:** name the subfolders switch by what it shows ([#124](https://github.com/sgorblex/mailroom/issues/124)) ([8ba5b24](https://github.com/sgorblex/mailroom/commit/8ba5b24d6e50cbcf3c9cb6244a02e0597b0e0729))
+* **web:** widen the command palette and build its combobox on Downshift ([#125](https://github.com/sgorblex/mailroom/issues/125)) ([0671b4b](https://github.com/sgorblex/mailroom/commit/0671b4b80ffdb834551475c054bf9044c79ab355))
+
 ## [0.13.0](https://github.com/sgorblex/mailroom/compare/v0.12.0...v0.13.0) (2026-11-20)
 
 
