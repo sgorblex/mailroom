@@ -13,8 +13,8 @@
     "unread_other": "{{count}} non letti",
     "expand": "Espandi",
     "collapse": "Comprimi",
-    "includeSubfolders": "Includi le sottocartelle",
-    "onlyThisFolder": "Solo questa cartella",
+    "showSubfolders": "Mostra qui la posta delle sottocartelle",
+    "showThisFolderOnly": "Mostra solo questa cartella",
     "withSubfolders": "{{name}}, con le sottocartelle"
   },
   "folderActions": {

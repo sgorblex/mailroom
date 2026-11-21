@@ -294,8 +294,9 @@ describe('MailScreen', () => {
     const inbox = within(tree).getByRole('treeitem', { name: 'Inbox, 1 unread' })
     inbox.focus()
     await userEvent.keyboard('{Shift>}{F10}{/Shift}')
-    const include = within(screen.getByRole('menu')).getByRole('menuitemcheckbox', { name: 'Include subfolders' })
+    const include = within(screen.getByRole('menu')).getByRole('menuitemcheckbox', { name: "Show subfolders' mail here" })
     expect(include).toHaveAttribute('aria-checked', 'false')
+    expect(within(tree).getByTitle("Show subfolders' mail here")).toBeInTheDocument()
     await userEvent.click(include)
 
     const list = await screen.findByRole('list', { name: 'Messages' })
@@ -305,6 +306,7 @@ describe('MailScreen', () => {
     expect(queriesTo(fetchMock, '/api/v1/mail/accounts/1/messages').map((query) => query.get('subfolders'))).toEqual([null, 'true'])
     // Its count is what the list reads: Trash under it is left out.
     expect(within(tree).getByRole('treeitem', { name: 'Inbox, with subfolders, 3 unread' })).toBeInTheDocument()
+    expect(within(tree).getByTitle('Show this folder only')).toBeInTheDocument()
 
     // A search in the folder reads its subfolders too; one in every folder does not.
     await userEvent.type(screen.getByRole('searchbox', { name: 'Words' }), 'notes')
@@ -332,7 +334,7 @@ describe('MailScreen', () => {
     expect(queriesTo(again, '/api/v1/mail/accounts/1/messages').map((query) => query.get('subfolders'))).toEqual(['true'])
     within(tree2).getByRole('treeitem', { name: /^Inbox/ }).focus()
     await userEvent.keyboard('{Shift>}{F10}{/Shift}')
-    const checked = within(screen.getByRole('menu')).getByRole('menuitemcheckbox', { name: 'Include subfolders' })
+    const checked = within(screen.getByRole('menu')).getByRole('menuitemcheckbox', { name: "Show subfolders' mail here" })
     expect(checked).toHaveAttribute('aria-checked', 'true')
     await userEvent.click(checked)
     expect(await within(tree2).findByRole('treeitem', { name: 'Inbox, 1 unread' })).toBeInTheDocument()
