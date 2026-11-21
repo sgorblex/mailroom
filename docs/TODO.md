@@ -177,6 +177,12 @@ released and checked in production before the next one starts. Batch 15 is the r
 
 ### Milestone D: Writing and sending
 
+First, a fix carried over from 0.14.0 testing:
+
+- [ ] **Gmail folder counts from the index** — a Gmail account's label folders are counted from
+      All Mail's indexed rows and their labels in one query, instead of a STATUS per label (a
+      folder list with 122 labels took over 20 s).
+
 #### 7. Compose
 
 - [ ] **Reply from the right address** — a reply goes from the identity the message arrived at.
@@ -230,6 +236,16 @@ released and checked in production before the next one starts. Batch 15 is the r
       pane beside the message, not only some of them there and the rest elsewhere.
 - [ ] **Layout and density** — the reading pane on the right, below the list or off; compact or
       comfortable rows.
+- [ ] **Profile layout** — the Profile uses the width of a desktop screen, its sections side by
+      side in a grid instead of one narrow column.
+- [ ] **Index folder picker** — the folders the index keeps chosen in a tree, one account at a
+      time, with a filter box, a parent ticking its subfolders, and all/none, instead of one long
+      flat list.
+- [ ] **Panes that scroll on their own** — the folder pane and the message list each scroll
+      independently, as the reading pane does.
+- [ ] **Accounts apart from folders** — an account switcher at the top of the sidebar, the tree
+      showing the chosen account's folders only, so changing account never means scrolling past
+      another's folders; All inboxes and the views stay above it.
 - [ ] **Dark mode for HTML mail** — the sandboxed frame's colours adapted to a dark theme, off
       for a message with one click.
 - [ ] **Calendar invites** — an `.ics` invite shown as a card, with Accept, Tentative and Decline.
