@@ -327,6 +327,17 @@
     "summary_one": "{{count}} nuovo messaggio",
     "summary_other": "{{count}} nuovi messaggi"
   },
+  "signatures": {
+    "title": "Firme",
+    "intro": "Una firma per ogni indirizzo da cui scrivi. Un nuovo messaggio, una risposta o un inoltro da quell'indirizzo comincia con la firma, sotto il punto in cui scrivi e sopra l'eventuale citazione, e così anche i messaggi scritti da un agente. Cambiando il mittente in un messaggio la firma cambia, se non l'hai modificata lì. Le immagini non vengono conservate.",
+    "of": "Firma di {{address}}",
+    "placeholder": "Nessuna firma",
+    "save": "Salva la firma",
+    "saved": "Salvata.",
+    "loading": "Caricamento delle firme…",
+    "loadFailed": "Impossibile caricare le firme.",
+    "saveFailed": "Impossibile salvare la firma."
+  },
   "limits": {
     "title": "Limiti della posta",
     "intro": "Valgono per la tua posta qui e dalle app collegate, su tutti i tuoi account. Solo tu li cambi, qui: un'app collegata non può.",

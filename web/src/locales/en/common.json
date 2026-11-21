@@ -327,6 +327,17 @@
     "summary_one": "{{count}} new message",
     "summary_other": "{{count}} new messages"
   },
+  "signatures": {
+    "title": "Signatures",
+    "intro": "A signature for each address you send from. A new message, a reply or a forward from that address starts with it, below where you write and above any quote, and so do the messages an agent writes. Changing From in a message swaps it, unless you edited it there. Images are not kept.",
+    "of": "Signature of {{address}}",
+    "placeholder": "No signature",
+    "save": "Save signature",
+    "saved": "Saved.",
+    "loading": "Loading the signatures…",
+    "loadFailed": "Could not load the signatures.",
+    "saveFailed": "Could not save the signature."
+  },
   "limits": {
     "title": "Mail limits",
     "intro": "They hold for your mail here and through connected apps, across all your accounts. Only you change them, here: a connected app cannot.",

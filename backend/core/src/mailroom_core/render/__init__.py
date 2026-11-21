@@ -18,7 +18,12 @@ from mailroom_core.render.message import (
     header_block,
     list_line,
 )
-from mailroom_core.render.outgoing_html import InlineImage, OutgoingHtml, outgoing_html
+from mailroom_core.render.outgoing_html import (
+    SIGNATURE_MARK,
+    InlineImage,
+    OutgoingHtml,
+    outgoing_html,
+)
 from mailroom_core.render.quotes import (
     CUT_MARK,
     MARKER_LINE,
@@ -41,6 +46,7 @@ __all__ = [
     "MAX_HTML_CHARS",
     "QUOTE_END",
     "QUOTE_START",
+    "SIGNATURE_MARK",
     "Address",
     "CleanText",
     "Collapsed",

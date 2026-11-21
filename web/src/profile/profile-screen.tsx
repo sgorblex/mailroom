@@ -14,6 +14,7 @@ import { LinkedSignIn } from '@/profile/linked-sign-in.tsx'
 import { MarkReadForm } from '@/profile/mark-read-form.tsx'
 import { NotificationSettings } from '@/profile/notification-settings.tsx'
 import { RemoteSenders } from '@/profile/remote-senders.tsx'
+import { SignatureSettings } from '@/profile/signature-settings.tsx'
 import { TimeZoneForm } from '@/profile/time-zone-form.tsx'
 import { userErrorMessage } from '@/users/messages.ts'
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@/users/password.ts'
@@ -29,8 +30,8 @@ type Outcome =
 /**
  * The signed-in user's own page: their password, time zone, what "Mark all as read" does first
  * on a folder with subfolders, the senders whose remote images they show, the mail index's
- * settings and desktop notifications (with the mail client), linked sign-ins, their mail limits where the
- * instance sends (mail or MCP) and, with MCP, connected apps.
+ * settings and desktop notifications (with the mail client), linked sign-ins, their identities'
+ * signatures and mail limits where the instance sends (mail or MCP) and, with MCP, connected apps.
  */
 export function ProfileScreen(): ReactElement {
   const { t } = useTranslation()
@@ -151,6 +152,7 @@ export function ProfileScreen(): ReactElement {
       {mail && <IndexSettings />}
       {mail && <NotificationSettings />}
       <LinkedSignIn />
+      {sends && <SignatureSettings />}
       {sends && <LimitsForm />}
       {mcp && <ConnectedApps />}
     </main>

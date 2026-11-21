@@ -1,6 +1,7 @@
 import { useEffect, useId, useImperativeHandle, useRef, useState, type ReactElement, type ReactNode, type Ref } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Extension, EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/react'
+import { Extension, EditorContent, Node, useEditor, useEditorState, type Editor } from '@tiptap/react'
+import { DOMParser as SchemaParser, type Node as DocNode } from '@tiptap/pm/model'
 import StarterKit from '@tiptap/starter-kit'
 import Image, { type ImageOptions } from '@tiptap/extension-image'
 import Link from '@tiptap/extension-link'
@@ -16,9 +17,55 @@ import { Input } from '@/components/ui/input.tsx'
 import { isPart, type InlineItem } from './compose-form.ts'
 import { MAIL_NS } from './i18n.ts'
 import { linkTarget, SAFE_LINK, SHOWN_IMAGES } from './rich-text.ts'
+import { SIGNATURE_MARK } from './signature.ts'
 
 export interface RichEditorHandle {
   focus: (where?: 'start') => void
+  /**
+   * The signature `before` (HTML; `null` for none) swapped for `after`, where the signature's
+   * block still holds `before` as it was put there. A message without the block gets one at its
+   * end only with `append`, and only if it had no signature to lose.
+   */
+  swapSignature: (before: string | null, after: string | null, append: boolean) => void
+}
+
+/** The block the signature goes in, marked so the server keeps it; empty for none. */
+const SignatureBlock = Node.create({
+  name: 'signature',
+  group: 'block',
+  content: 'block*',
+  defining: true,
+  parseHTML: () => [{ tag: `div[${SIGNATURE_MARK}]` }],
+  renderHTML: () => ['div', { [SIGNATURE_MARK]: '' }, 0],
+})
+
+/** The signature's HTML as a block of the editor's: parsed in an inert document, so nothing in it loads. */
+function signatureNode(editor: Editor, html: string | null): DocNode | null {
+  const parsed = new window.DOMParser().parseFromString(`<div ${SIGNATURE_MARK}="">${html ?? ''}</div>`, 'text/html')
+  const node = SchemaParser.fromSchema(editor.schema).parse(parsed.body).firstChild
+  return node?.type.name === 'signature' ? node : null
+}
+
+function swapSignature(editor: Editor, before: string | null, after: string | null, append: boolean): void {
+  const { doc } = editor.state
+  const next = signatureNode(editor, after)
+  if (next === null) {
+    return
+  }
+  for (let index = 0, at = 0; index < doc.childCount; index += 1) {
+    const current = doc.child(index)
+    if (current.type.name === 'signature') {
+      const previous = signatureNode(editor, before)
+      if (previous !== null && current.content.eq(previous.content)) {
+        editor.view.dispatch(editor.state.tr.replaceWith(at, at + current.nodeSize, next))
+      }
+      return
+    }
+    at += current.nodeSize
+  }
+  if (append && before === null && after !== null) {
+    editor.view.dispatch(editor.state.tr.insert(doc.content.size, next))
+  }
 }
 
 function dataUrl(file: File): Promise<string> {
@@ -183,6 +230,7 @@ export function RichEditor({
   onImages,
   onFiles,
   onPlainText,
+  placeholder,
 }: {
   ref?: Ref<RichEditorHandle>
   /** Focused at its start once created, as a reply is. */
@@ -198,7 +246,10 @@ export function RichEditor({
   onImages: (files: File[]) => string[] | null
   /** Other files dropped in, for the attachments. */
   onFiles: (files: File[]) => void
-  onPlainText: () => void
+  /** The switch to plain text; none without. */
+  onPlainText?: () => void
+  /** What the empty editor shows; the message body's by default. */
+  placeholder?: string
 }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const bodyId = useId()
@@ -235,7 +286,8 @@ export function RichEditor({
         isAllowedUri: (url, { defaultValidate }) => defaultValidate(url) && SAFE_LINK.test(url),
       }),
       InlineImage.configure({ inline: true, resolve: (contentId) => shown.get(contentId) }),
-      Placeholder.configure({ placeholder: t('compose.bodyPlaceholder') }),
+      SignatureBlock,
+      Placeholder.configure({ placeholder: placeholder ?? t('compose.bodyPlaceholder') }),
       // A reply's quote stays a cite, as mail clients mark one.
       Extension.create({
         name: 'citeQuote',
@@ -286,7 +338,10 @@ export function RichEditor({
       },
     },
     onUpdate: ({ editor: changed }) => {
-      latest.current.onChange(changed.getHTML(), changed.getText({ blockSeparator: '\n' }))
+      // The text only says whether anything was written: the server derives the text part from
+      // the HTML. A signature alone is nothing written, so a message left with only it is discarded.
+      const text = changed.getText({ blockSeparator: '\n', textSerializers: { signature: () => '' } })
+      latest.current.onChange(changed.getHTML(), text.trim() === '' ? '' : text)
     },
   })
 
@@ -341,6 +396,9 @@ export function RichEditor({
     focus: (where) => {
       editor.commands.focus(where ?? null)
     },
+    swapSignature: (before, after, append) => {
+      swapSignature(editor, before, after, append)
+    },
   }))
 
   const active = useEditorState({
@@ -391,10 +449,12 @@ export function RichEditor({
         <ToolButton label={t('compose.quote')} pressed={active.blockquote} disabled={locked} onClick={run((chain) => chain.toggleBlockquote())}>
           <TextQuote aria-hidden="true" />
         </ToolButton>
-        <Button type="button" variant="ghost" size="xs" className="ml-auto" disabled={locked} onClick={onPlainText}>
-          <Type aria-hidden="true" />
-          {t('compose.plainText')}
-        </Button>
+        {onPlainText !== undefined && (
+          <Button type="button" variant="ghost" size="xs" className="ml-auto" disabled={locked} onClick={onPlainText}>
+            <Type aria-hidden="true" />
+            {t('compose.plainText')}
+          </Button>
+        )}
       </div>
       <EditorContent editor={editor} className="flex flex-1 flex-col" />
       {linking && (

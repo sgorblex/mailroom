@@ -362,7 +362,9 @@ def test_a_prefill_gives_the_quote_and_the_forward_in_html_too(composer: Compose
         ).json()
 
     reply = started("reply")
-    assert reply["html"].startswith("<p></p><div>On 2026-10-01 12:00, Shop")
+    assert reply["html"].startswith(
+        "<p></p><div data-mailroom-signature></div><div>On 2026-10-01 12:00, Shop"
+    )
     assert '<blockquote type="cite"><p>Sale <b>today</b>' in reply["html"]
     assert "script" not in reply["html"]
     assert "cid:" not in reply["html"]
@@ -422,6 +424,43 @@ def test_a_reply_quotes_only_the_selected_text(composer: Composer) -> None:
 
     too_long = {"ref": ref, "mode": "reply", "quote": "x" * (service.MAX_QUOTE_CHARS + 1)}
     assert composer.client.post(f"{MAIL}/drafts/prefill", json=too_long).status_code == 422
+
+
+def test_a_prefill_carries_the_signature_of_the_identity_it_goes_from(
+    composer: Composer,
+    application: FastAPI,
+    sessions: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The prefill reads the signature in a session of its own: inside the test's transaction.
+    monkeypatch.setattr(application.state, "session_maker", sessions)
+    signed = composer.client.put(
+        "/api/v1/accounts/1/signatures", json={"address": ALIAS, "html": "<p>Ada <b>L</b></p>"}
+    )
+    assert signed.status_code == 200, signed.text
+    ref = composer.seed(mime("Plans", sender="Ana <ana@x.org>", to=ALIAS, text="Friday?"))
+
+    def started(mode: str) -> Any:
+        return composer.client.post(
+            f"{MAIL}/drafts/prefill", json={"ref": ref, "mode": mode}
+        ).json()
+
+    reply = started("reply")
+    assert reply["from"] == ALIAS
+    assert reply["text"].startswith("\n\n-- \nAda L\n\nOn ")
+    assert reply["html"].startswith(
+        "<p></p><div data-mailroom-signature><p>Ada <b>L</b></p></div><div>On "
+    )
+    forward = started("forward")
+    assert forward["text"].startswith("\n\n-- \nAda L\n\n---------- Forwarded message")
+    assert forward["html"].startswith("<p></p><div data-mailroom-signature><p>Ada <b>L</b></p>")
+
+    unsigned = composer.seed(mime("Plans", sender="Ana <ana@x.org>", to=ME, text="Friday?"))
+    other = composer.client.post(
+        f"{MAIL}/drafts/prefill", json={"ref": unsigned, "mode": "reply"}
+    ).json()
+    assert other["text"].startswith("\n\nOn ")
+    assert other["html"].startswith("<p></p><div data-mailroom-signature></div><div>On ")
 
 
 def test_an_html_draft_keeps_its_html_and_its_inline_images(composer: Composer) -> None:

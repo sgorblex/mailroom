@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Final, cast
 from mailroom.accounts.store import AccountNotFound, account_password, load_accounts
 from mailroom.audit import WEB, AuditTrail, Origin
 from mailroom.errors import Refusal, mail_refusal
+from mailroom.mail import signatures
 from mailroom.mail.service._shared import (
     _Accounts,
     _accounts,
@@ -466,6 +467,16 @@ def _plain(
     return build
 
 
+def _signatures(
+    ctx: AppContext, user_id: int, account_id: int, *, signature: bool
+) -> dict[str, signatures.Signature]:
+    """The account's signatures by lowercase address, none when ``signature`` is false."""
+    if not signature:
+        return {}
+    with ctx.session_maker() as db:
+        return signatures.account_signatures(db, user_id, account_id)
+
+
 def _above(html: str | None, original: str | None) -> str | None:
     """An agent's HTML with the original quoted or forwarded below it, parted as a prefill parts
     them, so a reply sent and one drafted read the same; None without HTML. ``invalid_argument``
@@ -490,10 +501,12 @@ def send_message(
     text: str,
     html: str | None = None,
     attachments: Sequence[tuple[str, str]] = (),
+    signature: bool = True,
     origin: Origin,
 ) -> Dispatched:
     """A new message from an agent, as far as the account's send mode lets it. ``attachments``
-    are ``(ref, part)`` of existing messages; with ``html``, ``text`` is derived from it."""
+    are ``(ref, part)`` of existing messages; with ``html``, ``text`` is derived from it. The
+    identity's signature goes below the text unless ``signature`` is false."""
     accounts = _accounts(ctx, user_id)
     account, used = _written(ctx, user_id, accounts, account_id, [r for r, _ in attachments])
     with _as_refusals():
@@ -503,6 +516,7 @@ def send_message(
     sources = _attachment_sources(attachments)
     with _as_refusals():
         from_ = core.from_identity(account, sender)
+    signed = _signatures(ctx, user_id, account.id, signature=signature).get(from_.address.lower())
 
     def message(connections: MailConnections) -> MessageInput:
         files = core.attachments_from(connections, sources, core.attachment_cap(limits))
@@ -512,8 +526,8 @@ def send_message(
             cc=recipients[1],
             bcc=recipients[2],
             subject=subject,
-            text=text,
-            html=html,
+            text=signatures.signed_text(text, signed),
+            html=signatures.signed_html(html, signed),
             attachments=files,
         )
 
@@ -533,11 +547,13 @@ def send_reply(
     bcc: Sequence[Mailbox] = (),
     attachments: Sequence[tuple[str, str]] = (),
     quote: bool = True,
+    signature: bool = True,
     origin: Origin,
 ) -> Dispatched:
     """A reply from an agent: threaded, to the original's Reply-To or sender (everyone with
-    ``reply_all``) and ``cc``, from the identity it was sent to, quoting it (in HTML with
-    ``html``). It marks the original ``\\Answered`` once delivered."""
+    ``reply_all``) and ``cc``, from the identity it was sent to, with its signature unless
+    ``signature`` is false, quoting it (in HTML with ``html``). It marks the original
+    ``\\Answered`` once delivered."""
     accounts = _accounts(ctx, user_id)
     original_ref = _message_ref(ctx, user_id, accounts, ref)
     account, used = _written(
@@ -549,6 +565,7 @@ def send_reply(
     limits = accounts.write_limits
     sources = _attachment_sources(attachments)
     zone = ctx.time_zone(user_id)
+    by_address = _signatures(ctx, user_id, account.id, signature=signature)
 
     def build(connections: MailConnections) -> _Outgoing:
         original = core.original_message(
@@ -557,14 +574,20 @@ def send_reply(
         answered = core.reply_recipients(original, account, reply_all=reply_all)
         thread = core.threading(original)
         files = core.attachments_from(connections, sources, core.attachment_cap(limits))
+        from_ = core.from_identity(account, sender, original.addressed)
+        signed = by_address.get(from_.address.lower())
+        body = signatures.signed_text(text, signed)
         message = core.MessageInput(
-            sender=core.from_identity(account, sender, original.addressed),
+            sender=from_,
             to=_deliverable(answered.to),
             cc=_deliverable((*answered.cc, *extra_cc)),
             bcc=extra_bcc,
             subject=_subject_cut(core.reply_subject(original.subject)),
-            text=f"{text}\n\n{core.quoted_original(original, zone)}" if quote else text,
-            html=_above(html, core.quoted_original_html(original, zone) if quote else None),
+            text=f"{body}\n\n{core.quoted_original(original, zone)}" if quote else body,
+            html=_above(
+                signatures.signed_html(html, signed),
+                core.quoted_original_html(original, zone) if quote else None,
+            ),
             answers=ref,
             in_reply_to=thread.in_reply_to,
             references=thread.references,
@@ -592,11 +615,13 @@ def send_forward(
     html: str | None = None,
     sender: str | None = None,
     include_attachments: bool = True,
+    signature: bool = True,
     origin: Origin,
 ) -> Dispatched:
     """A forward from an agent: the original inline, its attachments too by default, an optional
-    note above it. With ``html`` the note is HTML and so is the original, its inline images
-    carried. It marks the original ``$Forwarded`` once delivered, where keywords are kept."""
+    note above it, and the identity's signature above it unless ``signature`` is false. With
+    ``html`` the note is HTML and so is the original, its inline images carried. It marks the
+    original ``$Forwarded`` once delivered, where keywords are kept."""
     accounts = _accounts(ctx, user_id)
     original_ref = _message_ref(ctx, user_id, accounts, ref)
     account, used = _written(ctx, user_id, accounts, original_ref.account, [ref])
@@ -605,10 +630,14 @@ def send_forward(
     recipients = _deliverable(to), _deliverable(cc), _deliverable(bcc)
     limits = accounts.write_limits
     zone = ctx.time_zone(user_id)
+    by_address = _signatures(ctx, user_id, account.id, signature=signature)
 
     def build(connections: MailConnections) -> _Outgoing:
         original = core.original_message(connections, original_ref, with_html=html is not None)
         forwarded = core.forwarded_original(original, zone)
+        from_ = core.from_identity(account, sender, original.addressed)
+        signed = by_address.get(from_.address.lower())
+        note = signatures.signed_text(text or "", signed)
         sources = (
             [core.AttachmentSource(original_ref, part.part) for part in original.attachments]
             if include_attachments
@@ -620,13 +649,15 @@ def send_forward(
                 for part in original.inline
             ]
         message = core.MessageInput(
-            sender=core.from_identity(account, sender, original.addressed),
+            sender=from_,
             to=recipients[0],
             cc=recipients[1],
             bcc=recipients[2],
             subject=_subject_cut(core.forward_subject(original.subject)),
-            text=forwarded if text is None else f"{text}\n\n{forwarded}",
-            html=_above(html, core.forwarded_original_html(original, zone)),
+            text=f"{note}\n\n{forwarded}" if note else forwarded,
+            html=_above(
+                signatures.signed_html(html, signed), core.forwarded_original_html(original, zone)
+            ),
             forwards=ref,
             attachments=core.attachments_from(connections, sources, core.attachment_cap(limits)),
         )

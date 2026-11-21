@@ -5,10 +5,7 @@ import type { Account, Identity } from '@/api/accounts.ts'
 
 import { addressFull } from './format.ts'
 import { MAIL_NS } from './i18n.ts'
-
-function defaultIdentity(identities: Identity[]): Identity | undefined {
-  return identities.find((identity) => identity.default === true) ?? identities[0]
-}
+import { defaultIdentity } from './signature.ts'
 
 function label(identity: Identity): string {
   return addressFull({ name: identity.name ?? '', address: identity.address })

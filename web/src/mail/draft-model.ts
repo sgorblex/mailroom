@@ -1,4 +1,4 @@
-import type { AccountId, Account } from '@/api/accounts.ts'
+import { accountSignatures, type AccountId, type Account, type IdentitySignature } from '@/api/accounts.ts'
 import { ApiRequestError } from '@/api/http.ts'
 import { deleteDraft, findDraft, prefillDraft, readDraft, saveDraft, type Draft, type DraftSend } from '@/api/mail.ts'
 
@@ -16,6 +16,7 @@ import {
 } from './compose-form.ts'
 import type { ComposeSession } from './compose-session.ts'
 import { SaveQueue, type SaveState } from './save-queue.ts'
+import { fromAddress, newMessageHtml, signatureOf } from './signature.ts'
 
 /** What an editor opens on. */
 export interface ComposeStart {
@@ -29,6 +30,8 @@ export interface ComposeStart {
   form: ComposeForm
   lossy: boolean
   send: Draft['send']
+  /** The account's identities with their signatures, to swap one for another when From changes. */
+  signatures: IdentitySignature[]
 }
 
 const BLANK_FORM: ComposeForm = { from: null, to: [], cc: [], bcc: [], subject: '', text: '', html: '', inline: [], tray: [] }
@@ -38,7 +41,7 @@ function knownFrom(account: Account | undefined, from: string | null): string | 
   return account?.identities.some((identity) => identity.address === from) === true ? from : null
 }
 
-function draftStart(draft: Draft, composeId: string, account: Account | undefined): ComposeStart {
+function draftStart(draft: Draft, composeId: string, account: Account | undefined, signatures: IdentitySignature[]): ComposeStart {
   return {
     account: draft.account,
     composeId: draft.compose_id ?? composeId,
@@ -59,6 +62,7 @@ function draftStart(draft: Draft, composeId: string, account: Account | undefine
     },
     lossy: draft.lossy,
     send: draft.send,
+    signatures,
   }
 }
 
@@ -69,22 +73,50 @@ export async function loadStart(
   signal: AbortSignal,
 ): Promise<ComposeStart | null> {
   const { source, composeId } = session
+  // The signature a new message starts with, and its swap when From changes: without them, the
+  // composer still opens, with none.
+  const signaturesOf = (account: AccountId): Promise<IdentitySignature[]> =>
+    accountSignatures(account, signal).catch((error: unknown) => {
+      if (signal.aborted) {
+        throw error
+      }
+      return []
+    })
   switch (source.kind) {
-    case 'new':
-      return { account: source.account, composeId, ref: null, answers: null, forwards: null, elsewhere: false, form: BLANK_FORM, lossy: false, send: null }
+    case 'new': {
+      const signatures = await signaturesOf(source.account)
+      const signature = signatureOf(signatures, fromAddress(accountOf(source.account), null))
+      return {
+        account: source.account,
+        composeId,
+        ref: null,
+        answers: null,
+        forwards: null,
+        elsewhere: false,
+        form: { ...BLANK_FORM, html: newMessageHtml(signature) },
+        lossy: false,
+        send: null,
+        signatures,
+      }
+    }
     case 'draft': {
+      // A ref is opaque here: the account is known once the draft is read.
       const draft = await readDraft(source.ref, signal)
-      return draftStart(draft, composeId, accountOf(draft.account))
+      return draftStart(draft, composeId, accountOf(draft.account), await signaturesOf(draft.account))
     }
     case 'recover': {
-      const found = await findDraft(source.account, source.composeId, signal)
+      const [found, signatures] = await Promise.all([findDraft(source.account, source.composeId, signal), signaturesOf(source.account)])
       if (found === null) {
         return null
       }
-      return draftStart(await readDraft(found.ref, signal), source.composeId, accountOf(source.account))
+      return draftStart(await readDraft(found.ref, signal), source.composeId, accountOf(source.account), signatures)
     }
     default: {
-      const prefill = await prefillDraft(source.ref, source.kind, source.quote ?? null, signal)
+      const [prefill, guessed] = await Promise.all([
+        prefillDraft(source.ref, source.kind, source.quote ?? null, signal),
+        signaturesOf(source.account),
+      ])
+      const signatures = prefill.account === source.account ? guessed : await signaturesOf(prefill.account)
       return {
         account: prefill.account,
         composeId,
@@ -105,6 +137,7 @@ export async function loadStart(
         },
         lossy: false,
         send: null,
+        signatures,
       }
     }
   }

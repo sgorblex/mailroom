@@ -1,5 +1,5 @@
-"""Each user's mail accounts: list, add, edit, remove, test the login and read the quota. Only the
-signed-in user's own: another user's account id is a 404."""
+"""Each user's mail accounts: list, add, edit, remove, test the login, read the quota and keep each
+identity's signature. Only the signed-in user's own: another user's account id is a 404."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import logging
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from mailroom.accounts import service
 from mailroom.accounts.autoconfig import Autoconfig, AutoconfigAnswer, address_domain
@@ -15,6 +15,7 @@ from mailroom.accounts.service import ListedAccount, StoredAccount, StoredEndpoi
 from mailroom.api.deps import AccountId, Context, CurrentUser, DbSession
 from mailroom.errors import Refusal
 from mailroom.mail import service as mail
+from mailroom.mail import signatures
 
 if TYPE_CHECKING:
     from mailroom_core.mail import QuotaUsage
@@ -80,6 +81,24 @@ class AccountQuota(BaseModel):
     storage: Usage | None
     """In bytes."""
     messages: Usage | None
+
+
+class IdentitySignature(BaseModel):
+    """Both empty for an identity without one."""
+
+    address: str
+    html: str
+    """Sanitised as an outgoing message's HTML is, without images."""
+    text: str
+    """``html`` as a message's text part has it."""
+
+
+class SignatureChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    address: str = Field(max_length=320)
+    html: str = Field(max_length=signatures.MAX_SIGNATURE_CHARS)
+    """Without text: the signature is removed."""
 
 
 def _fields(body: AccountFields) -> dict[str, Json]:
@@ -162,6 +181,53 @@ def account_quota(
         storage=None if found is None else Usage.of(found.storage),
         messages=None if found is None else Usage.of(found.messages),
     )
+
+
+@accounts_router.get("/{account_id}/signatures")
+def account_signatures(
+    account_id: AccountId, ctx: Context, db: DbSession, user: CurrentUser
+) -> list[IdentitySignature]:
+    """Each of the account's identities, in its order, with its signature."""
+    account = service.require_account(ctx.store(user.id), account_id)
+    kept = signatures.account_signatures(db, user.id, account_id)
+    listed = []
+    for identity in account.identities:
+        signature = kept.get(identity.address.lower())
+        html, text = ("", "") if signature is None else (signature.html, signature.text)
+        listed.append(IdentitySignature(address=identity.address, html=html, text=text))
+    return listed
+
+
+@accounts_router.put("/{account_id}/signatures")
+def change_signature(
+    account_id: AccountId,
+    body: SignatureChange,
+    ctx: Context,
+    db: DbSession,
+    user: CurrentUser,
+) -> IdentitySignature:
+    """The identity's signature, sanitised; one without text removes it. ``identity_not_found``
+    (404) for an address that is none of the account's identities."""
+    account = service.require_account(ctx.store(user.id), account_id)
+    identity = next(
+        (i for i in account.identities if i.address.lower() == body.address.lower()), None
+    )
+    if identity is None:
+        msg = "No such identity on this account."
+        raise Refusal("not_found", "identity_not_found", msg, coded=True)
+    signature = signatures.set_signature(db, user.id, account_id, identity.address, body.html)
+    logger.info(
+        "signature_changed",
+        extra={
+            "event": "signature_changed",
+            "user_id": user.id,
+            "account_id": account_id,
+            "outcome": "removed" if signature is None else "kept",
+        },
+    )
+    if signature is None:
+        return IdentitySignature(address=identity.address, html="", text="")
+    return IdentitySignature(address=identity.address, html=signature.html, text=signature.text)
 
 
 def _log_test(user_id: int, account_id: int, outcome: str) -> None:

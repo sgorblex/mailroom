@@ -30,6 +30,7 @@ from mailroom.context import app_context
 from mailroom.errors import Refusal, mail_refusal
 from mailroom.filters import service as filters_service
 from mailroom.mail import service as mail_service
+from mailroom.mail import signatures
 from mailroom.mcp.app import instructions, tools_for
 from mailroom.mcp.groups import selected_groups
 from mailroom.mcp.settings import McpSettings
@@ -2190,6 +2191,59 @@ def test_an_html_forward_carries_the_originals_images(
     assert '<img src="cid:logo@x">' in html
     [image] = [part for part in wire.walk() if part["Content-ID"] == "<logo@x>"]
     assert image.get_content() == FAKE_PNG
+
+
+def _lf(text: str) -> str:
+    return text.replace("\r\n", "\n")
+
+
+def test_drafts_and_sends_carry_the_identitys_signature_unless_told_not_to(
+    mcp: Mcp,
+    token: str,
+    writer: Writer,
+    db_session: Session,
+    ctx: AppContext,
+    user: User,
+    smtp_server: Any,
+) -> None:
+    signatures.set_signature(db_session, user.id, 1, writer.me, "<p>Ada <b>L</b></p>")
+    signatures.set_signature(db_session, user.id, 1, writer.alias, "<p>Alias sig</p>")
+    to = stranger()
+    mcp.text(token, "message_send", to=[to], subject="Plain", text="Hi")
+    mcp.text(token, "message_send", to=[to], subject="Rich", html="<p>Hi</p>")
+    mcp.text(token, "message_send", to=[to], subject="Bare", text="Hi", include_signature=False)
+    plain, rich, bare = smtp_server.delivered_to(to)
+    assert _lf(text_part(plain.raw)).rstrip() == "Hi\n\n-- \nAda L"
+    assert html_part(rich.raw).startswith(
+        '<p>Hi</p><div data-mailroom-signature=""><p>Ada <b>L</b></p></div>'
+    )
+    assert "Ada" not in text_part(bare.raw)
+
+    ana = stranger()
+    writer.mail.seed(
+        writer.login, mime("Dinner", sender=f"Ana <{ana}>", to=writer.alias, text="Friday?")
+    )
+    mcp.text(token, "message_reply", ref=inbox_ref(mcp, token), text="Yes")
+    replied = _lf(text_part(smtp_server.delivered_to(ana)[0].raw))
+    assert replied.startswith("Yes\n\n-- \nAlias sig\n\nOn ")
+    bo = stranger()
+    mcp.text(token, "message_forward", ref=inbox_ref(mcp, token), to=[bo])
+    assert _lf(text_part(smtp_server.delivered_to(bo)[0].raw)).startswith(
+        "-- \nAlias sig\n\n---------- Forwarded message"
+    )
+
+    created = mcp.text(token, "draft_create", reply_to=inbox_ref(mcp, token), text="Sure")
+    draft = mail_service.read_draft(ctx, user.id, draft_ref(created)).draft
+    assert _lf(draft.text).startswith("Sure\n\n-- \nAlias sig\n\nOn ")
+    unsigned = mcp.text(
+        token,
+        "draft_create",
+        reply_to=inbox_ref(mcp, token),
+        text="Sure",
+        quote=False,
+        include_signature=False,
+    )
+    assert mail_service.read_draft(ctx, user.id, draft_ref(unsigned)).draft.text.strip() == ("Sure")
 
 
 def test_an_html_draft_keeps_its_html_until_text_replaces_it(
