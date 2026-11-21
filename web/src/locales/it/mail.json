@@ -131,8 +131,8 @@
   },
   "search": {
     "label": "Cerca nella posta",
-    "text": "Parole",
-    "placeholder": "Cerca nella posta",
+    "text": "Termini di ricerca",
+    "placeholder": "Cerca nella posta, come from:ada is:unread",
     "submit": "Cerca",
     "moreOptions": "Altre opzioni",
     "fewerOptions": "Meno opzioni",
@@ -152,9 +152,23 @@
     "unread": "Non letti",
     "flagged": "Speciali",
     "has_attachment": "Con allegati",
+    "to_sort": "Da smistare",
     "gmail_query": "Ricerca Gmail",
     "gmailHint": "La sintassi di ricerca di Gmail, solo per gli account Gmail.",
-    "withSubfolders": "{{folder}} e le sue sottocartelle"
+    "withSubfolders": "{{folder}} e le sue sottocartelle",
+    "read": "Letti",
+    "terms": "Termini della ricerca",
+    "chip": "{{name}}: {{value}}",
+    "removeTerm": "Togli {{term}}",
+    "errors": {
+      "unterminated_quote": "Una virgoletta non è chiusa.",
+      "empty_value": "{{key}}: vuole un valore.",
+      "bad_value": "{{key}}: accetta {{options}}.",
+      "bad_date": "{{key}}: vuole una data nel formato YYYY-MM-DD.",
+      "conflict": "Due termini chiedono valori diversi per lo stesso criterio.",
+      "unknown_account": "Nessuno dei tuoi account ha quel nome.",
+      "ambiguous_account": "Più di un account ha quel nome: sceglilo in Altre opzioni."
+    }
   },
   "message": {
     "label": "Messaggio",

@@ -47,8 +47,10 @@ export function searchQuery(value: unknown): SearchQuery | undefined {
     delete query.account
   }
   for (const key of SEARCH_FLAG_FIELDS) {
-    if (fields[key] === true) {
-      query[key] = true
+    // `false` only where the syntax can write it: `is:read`.
+    const flag = fields[key]
+    if (flag === true || (key === 'unread' && flag === false)) {
+      query[key] = flag
     }
   }
   return query

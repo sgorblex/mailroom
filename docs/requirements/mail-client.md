@@ -20,7 +20,8 @@ notifications](#desktop-notifications).
 - **Folders** per account, with their role and unread/total counts.
 - **Message list** of one folder, newest first, 25 at a time with a "load more"; optionally with
   its subfolders merged in (`subfolders`, below).
-- **Search** over one account or all, with the search fields of mailroom-mcp's `search`; a
+- **Search** over one account or all, with the search fields of mailroom-mcp's `search`, typed
+  in the [search syntax](#search-syntax) or set in the form behind *More options*; a
   search shown offers *Create filter from this search* where the instance runs filters
   ([`filters.md`](filters.md#filter-drafts)).
 - **Message view:** headers, the text body (quotes and signatures collapsed), attachments and a
@@ -123,6 +124,17 @@ different values (`conflict`: `from:a from:b`, `is:read is:unread`). The backend
 (`mailroom.mail.search_syntax`) and the web client's are held to the same vectors,
 `web/src/test/search-syntax-vectors.json`. MCP's `messages_search` takes it as `query`
 ([`mcp.md`](mcp.md)).
+
+The web client's search box takes it, read as the user types: each term shows as a chip (*From:
+ada*, *Unread*, a word) whose ✕ removes it from the line, and a line at fault says why under the
+box, in the user's language, and is not searched. The form behind *More options* shows the same
+search and writes each change back into the line: a criterion's first term (or a term at fault
+of its key, such as a bad `after:` date) rewritten in place, its others dropped, and a box
+unticked drops its term (`is:read` is only typed); an account by its name, else login, when
+that names it alone, else its id; the account and folder shown are the line's default, so
+choosing them drops `account:` and `in:`. A quote left open keeps the form from being edited
+until it is closed. A search from the URL is shown as a line again, its words first; Gmail's own
+search stays a field of the form.
 
 ## Slice B: organize
 

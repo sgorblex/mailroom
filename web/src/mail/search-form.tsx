@@ -1,7 +1,7 @@
-import { useId, useState, type ReactElement, type SubmitEvent } from 'react'
+import { useId, useRef, useState, type ReactElement, type SubmitEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { ListFilter, Search } from 'lucide-react'
+import { ListFilter, Search, X } from 'lucide-react'
 
 import type { AccountId, Account } from '@/api/accounts.ts'
 import { SEARCH_FLAG_FIELDS, type SearchQuery } from '@/api/mail.ts'
@@ -11,67 +11,59 @@ import { Input } from '@/components/ui/input.tsx'
 
 import { useFiltersOffered } from './filter-draft.ts'
 import { MAIL_NS } from './i18n.ts'
+import {
+  accountTerm,
+  flagValues,
+  lineOf,
+  namedAccount,
+  parseSearch,
+  readLeniently,
+  termField,
+  terms,
+  withField,
+  withoutTerm,
+  type AccountChoice,
+  type SearchField,
+  type Term,
+} from './search-syntax.ts'
 
 const ALL = '*'
 const selectClass = 'h-9 w-full rounded-md border bg-transparent px-2 text-sm'
 const TEXT_FIELDS = ['from', 'to', 'subject'] as const
 const DATE_FIELDS = ['since', 'before'] as const
 
-interface Draft {
-  /** `*` or an account's id, as the select holds it. */
-  account: string
-  folder: string
-  text: string
-  from: string
-  to: string
-  subject: string
-  since: string
-  before: string
-  gmail_query: string
-  unread: boolean
-  flagged: boolean
-  has_attachment: boolean
-}
-
-/** A new search starts where the reader is: the account and folder shown. */
-function draftOf(query: SearchQuery | undefined, accountId: AccountId, folder: string): Draft {
-  return {
-    account: query?.account ?? String(accountId),
-    folder: query?.folder ?? folder,
-    text: query?.text ?? '',
-    from: query?.from ?? '',
-    to: query?.to ?? '',
-    subject: query?.subject ?? '',
-    since: query?.since ?? '',
-    before: query?.before ?? '',
-    gmail_query: query?.gmail_query ?? '',
-    unread: query?.unread ?? false,
-    flagged: query?.flagged ?? false,
-    has_attachment: query?.has_attachment ?? false,
+/**
+ * The line a search in the URL is written as: its account and folder only when they are not the
+ * ones shown, which a line without them searches.
+ */
+function lineOfQuery(query: SearchQuery | undefined, accounts: Account[], accountId: AccountId, folder: string): string {
+  if (query === undefined) {
+    return ''
   }
-}
-
-function queryOf(draft: Draft): SearchQuery {
-  const query: SearchQuery = { account: draft.account, folder: draft.folder }
-  for (const key of ['text', ...TEXT_FIELDS, ...DATE_FIELDS, 'gmail_query'] as const) {
-    const value = draft[key].trim()
-    if (value !== '') {
-      query[key] = value
-    }
-  }
-  for (const key of SEARCH_FLAG_FIELDS) {
-    if (draft[key]) {
-      query[key] = true
-    }
-  }
-  return query
+  const { account, folder: searched, from, to, subject, text, since, before, unread, flagged, to_sort, has_attachment } = query
+  return lineOf({
+    from,
+    to,
+    subject,
+    text,
+    since,
+    before,
+    unread,
+    flagged,
+    to_sort,
+    has_attachment,
+    account: account === undefined || account === String(accountId) ? undefined : accountTerm(accounts, account),
+    folder: searched === folder ? undefined : searched,
+  })
 }
 
 /**
- * A search over one account or all, with mailroom-mcp's search fields; the words box alone
- * searches headers and body, the rest are behind "More options". A search shown can become a
- * filter, where the instance runs them. Remounted (by key) when the
- * search in the URL changes, so it always shows the search the list is showing.
+ * A search over one account or all. The box takes the search syntax (`from:ada is:unread
+ * invoice`), read as the user types: its terms show as chips, removed by a click, and "More
+ * options" holds the same search as a form, every change written back into the line. Gmail's own
+ * search sits only in the form. A search shown can become a filter, where the instance runs them.
+ * Remounted (by key) when the search in the URL changes, so it always shows the search the list
+ * is showing.
  */
 export function SearchForm({
   accounts,
@@ -91,54 +83,157 @@ export function SearchForm({
   const navigate = useNavigate()
   const filters = useFiltersOffered()
   const id = useId()
-  const [draft, setDraft] = useState(() => draftOf(query, accountId, folder))
+  const box = useRef<HTMLInputElement>(null)
+  const [line, setLine] = useState(() => lineOfQuery(query, accounts, accountId, folder))
+  const [gmailQuery, setGmailQuery] = useState(query?.gmail_query ?? '')
   const [expanded, setExpanded] = useState(
     query !== undefined && Object.keys(query).some((key) => key !== 'text' && key !== 'account' && key !== 'folder'),
   )
 
-  function set<K extends keyof Draft>(key: K, value: Draft[K]): void {
-    setDraft((previous) => ({ ...previous, [key]: value }))
+  const lexed = terms(line)
+  const result = parseSearch(line)
+  // A line at fault still fills the form: as far as it can be read.
+  const shown = result.ok ? result.parsed : readLeniently(line)
+  const choice: AccountChoice =
+    shown.account === undefined ? { ok: true, account: String(accountId) } : namedAccount(accounts, shown.account)
+  const searchedAccount = choice.ok ? choice.account : ''
+  const searchedFolder = shown.folder ?? folder
+  const problem = !result.ok
+    ? t(`search.errors.${result.code}`, { key: result.key, options: flagValues(result.key ?? '').join(', ') })
+    : choice.ok
+      ? null
+      : t(`search.errors.${choice.code}`)
+
+  function set(field: Exclude<SearchField, 'text'>, value: string | boolean | undefined): void {
+    const next = withField(line, field, value)
+    if (next !== null) {
+      setLine(next)
+    }
   }
 
   function submit(event: SubmitEvent<HTMLFormElement>): void {
     event.preventDefault()
+    if (!result.ok || !choice.ok) {
+      box.current?.focus()
+      return
+    }
+    const { parsed } = result
+    const q: SearchQuery = { account: searchedAccount, folder: searchedFolder }
+    for (const key of ['text', ...TEXT_FIELDS, ...DATE_FIELDS] as const) {
+      const value = parsed[key]?.trim()
+      if (value) {
+        q[key] = value
+      }
+    }
+    if (gmailQuery.trim() !== '') {
+      q.gmail_query = gmailQuery.trim()
+    }
+    for (const key of SEARCH_FLAG_FIELDS) {
+      if (parsed[key] !== undefined) {
+        q[key] = parsed[key]
+      }
+    }
     void navigate({
       to: '/mail',
-      search: (previous) => ({ account: previous.account, folder: previous.folder, sub: previous.sub, q: queryOf(draft) }),
+      search: (previous) => ({ account: previous.account, folder: previous.folder, sub: previous.sub, q }),
     })
+  }
+
+  /** What a chip says: the criterion and its value, in the form's words. */
+  function chipLabel(term: Term): string {
+    const field = termField(term)
+    const raw = line.slice(term.start, term.end)
+    if (field === null) {
+      return raw
+    }
+    if (field === 'text') {
+      return term.value
+    }
+    if ((SEARCH_FLAG_FIELDS as readonly string[]).includes(field)) {
+      return field === 'unread' && term.value.toLowerCase() === 'read' ? t('search.read') : t(`search.${field}`)
+    }
+    let value = term.value
+    if (field === 'folder') {
+      value = value === ALL ? t('search.folderAll') : value.toUpperCase() === 'INBOX' ? t('search.folderInbox') : value
+    } else if (field === 'account') {
+      const named = namedAccount(accounts, value)
+      value = !named.ok
+        ? value
+        : named.account === ALL
+          ? t('search.accountAll')
+          : (accounts.find((account) => String(account.id) === named.account)?.display_name ?? value)
+    }
+    return t('search.chip', { name: t(`search.${field}`), value })
   }
 
   // The folder shown is offered, next to the inbox and every folder; in the account shown, it
   // takes its subfolders along.
   const shownLabel = folder.toUpperCase() === 'INBOX' ? t('search.folderInbox') : folder
-  const withSubfolders = subfolders && draft.account === String(accountId)
+  const withSubfolders = subfolders && searchedAccount === String(accountId)
   const folderOptions = [
     ...(folder.toUpperCase() === 'INBOX' ? [] : [['INBOX', t('search.folderInbox')]]),
     ...(folder !== ALL ? [[folder, withSubfolders ? t('search.withSubfolders', { folder: shownLabel }) : shownLabel]] : []),
     [ALL, t('search.folderAll')],
   ]
-  if (!folderOptions.some(([value]) => value === draft.folder)) {
-    folderOptions.push([draft.folder, draft.folder])
+  if (!folderOptions.some(([value]) => value === searchedFolder)) {
+    folderOptions.push([searchedFolder, searchedFolder])
   }
 
   const optionsId = `${id}-options`
+  const problemId = `${id}-problem`
+  const chips = lexed.terms.filter((term) => term.key !== null || term.value !== '')
+  // A quote left open hides where the line's terms end: the form waits for it to be closed.
+  const locked = lexed.unterminated
   return (
     <form role="search" aria-label={t('search.label')} onSubmit={submit} className="flex flex-col gap-2">
       <div className="flex gap-2">
         <Input
+          ref={box}
           type="search"
           name="q"
           aria-label={t('search.text')}
           placeholder={t('search.placeholder')}
-          value={draft.text}
+          autoComplete="off"
+          spellCheck={false}
+          value={line}
+          aria-invalid={problem !== null}
+          aria-describedby={problem === null ? undefined : problemId}
           onChange={(event) => {
-            set('text', event.target.value)
+            setLine(event.target.value)
           }}
         />
         <Button type="submit" variant="outline" size="icon" aria-label={t('search.submit')}>
           <Search aria-hidden="true" />
         </Button>
       </div>
+      {problem !== null && (
+        <p id={problemId} className="text-xs text-destructive">
+          {problem}
+        </p>
+      )}
+      {chips.length > 0 && (
+        <ul aria-label={t('search.terms')} className="flex flex-wrap gap-1">
+          {chips.map((term) => {
+            const label = chipLabel(term)
+            return (
+              <li key={term.start} className="flex max-w-full items-center gap-1 rounded-md border py-0.5 pr-0.5 pl-2 text-xs">
+                <span className="min-w-0 truncate">{label}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={t('search.removeTerm', { term: label })}
+                  onClick={() => {
+                    setLine(withoutTerm(line, term))
+                  }}
+                >
+                  <X aria-hidden="true" />
+                </Button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <Button
           type="button"
@@ -177,11 +272,18 @@ export function SearchForm({
           <select
             id={`${id}-account`}
             className={selectClass}
-            value={draft.account}
+            value={searchedAccount}
+            disabled={locked}
             onChange={(event) => {
-              set('account', event.target.value)
+              const { value } = event.target
+              set('account', value === String(accountId) ? undefined : accountTerm(accounts, value))
             }}
           >
+            {!choice.ok && (
+              <option value="" disabled>
+                {shown.account}
+              </option>
+            )}
             <option value={ALL}>{t('search.accountAll')}</option>
             {accounts.map((account) => (
               <option key={account.id} value={account.id}>
@@ -194,9 +296,11 @@ export function SearchForm({
           <select
             id={`${id}-folder`}
             className={selectClass}
-            value={draft.folder}
+            value={searchedFolder}
+            disabled={locked}
             onChange={(event) => {
-              set('folder', event.target.value)
+              const { value } = event.target
+              set('folder', value === folder ? undefined : value)
             }}
           >
             {folderOptions.map(([value, label]) => (
@@ -210,7 +314,8 @@ export function SearchForm({
           <Field key={key} id={`${id}-${key}`} label={t(`search.${key}`)} wide={key === 'subject'}>
             <Input
               id={`${id}-${key}`}
-              value={draft[key]}
+              value={shown[key] ?? ''}
+              disabled={locked}
               onChange={(event) => {
                 set(key, event.target.value)
               }}
@@ -222,7 +327,8 @@ export function SearchForm({
             <Input
               id={`${id}-${key}`}
               type="date"
-              value={draft[key]}
+              value={shown[key] ?? ''}
+              disabled={locked}
               onChange={(event) => {
                 set(key, event.target.value)
               }}
@@ -237,9 +343,10 @@ export function SearchForm({
                 id={`${id}-${key}`}
                 type="checkbox"
                 className="size-4 accent-primary"
-                checked={draft[key]}
+                checked={shown[key] === true}
+                disabled={locked}
                 onChange={(event) => {
-                  set(key, event.target.checked)
+                  set(key, event.target.checked ? true : undefined)
                 }}
               />
               <label htmlFor={`${id}-${key}`}>{t(`search.${key}`)}</label>
@@ -250,9 +357,9 @@ export function SearchForm({
           <Input
             id={`${id}-gmail`}
             aria-describedby={`${id}-gmail-hint`}
-            value={draft.gmail_query}
+            value={gmailQuery}
             onChange={(event) => {
-              set('gmail_query', event.target.value)
+              setGmailQuery(event.target.value)
             }}
           />
         </Field>

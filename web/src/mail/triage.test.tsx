@@ -859,7 +859,7 @@ describe('keyboard shortcuts', () => {
     const history = renderMailApp(`/mail?message=${String(second?.ref)}`)
     await actions()
 
-    await userEvent.type(screen.getByRole('searchbox', { name: 'Words' }), 'jkxes#uv')
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search terms' }), 'jkxes#uv')
     await userEvent.click(screen.getByRole('button', { name: 'More options' }))
     await userEvent.selectOptions(screen.getByLabelText('Account'), 'All accounts')
     screen.getByLabelText('Account').focus()

@@ -166,6 +166,7 @@ export interface SearchQuery {
   unread?: boolean
   flagged?: boolean
   has_attachment?: boolean
+  to_sort?: boolean
   gmail_query?: string
 }
 
@@ -180,7 +181,7 @@ export const SEARCH_TEXT_FIELDS = [
   'before',
   'gmail_query',
 ] as const
-export const SEARCH_FLAG_FIELDS = ['unread', 'flagged', 'has_attachment'] as const
+export const SEARCH_FLAG_FIELDS = ['unread', 'flagged', 'to_sort', 'has_attachment'] as const
 
 const base = '/api/v1/mail'
 const accountPath = (id: AccountId): string => `${base}/accounts/${String(id)}`
