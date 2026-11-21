@@ -17,7 +17,7 @@ from mailroom_core.mail._mime import text_value
 from mailroom_core.mail.errors import MailError
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
 
     from mailroom_core.mail.imap import MailboxContext
 
@@ -49,8 +49,13 @@ class FolderFlags:
 
 
 def uids_of(context: MailboxContext) -> FolderUids:
-    """Every UID in the selected folder, by UID SEARCH over ranges of at most `UID_CHUNK`
-    messages each.
+    """Every UID in the selected folder (`uids_matching` with no criteria)."""
+    return FolderUids(context.uid_validity, context.highest_modseq, uids_matching(context))
+
+
+def uids_matching(context: MailboxContext, criteria: Sequence[object] = ()) -> tuple[int, ...]:
+    """The UIDs in the selected folder that match `criteria` (imapclient's search criteria,
+    ANDed in), ascending, by UID SEARCH over ranges of at most `UID_CHUNK` messages each.
 
     The ranges' bounds are the UIDs at every `UID_CHUNK`th message (a FETCH by sequence number,
     during which the server may not report expunges) and together cover every UID, so a message
@@ -73,12 +78,14 @@ def uids_of(context: MailboxContext) -> FolderUids:
             # `n:*` matches the highest UID even when it is below n, so the last range filters.
             found.update(
                 uid
-                for uid in client.search(["UID", f"{low}:{'*' if high is None else high}"])
+                for uid in client.search(
+                    ["UID", f"{low}:{'*' if high is None else high}", *criteria]
+                )
                 if uid >= low
             )
             if high is not None:
                 low = high + 1
-    return FolderUids(context.uid_validity, context.highest_modseq, tuple(sorted(found)))
+    return tuple(sorted(found))
 
 
 def flags_of(context: MailboxContext) -> FolderFlags:
@@ -112,11 +119,12 @@ def _fetch_flags(context: MailboxContext, since: int | None) -> dict[int, frozen
     data = client._raw_command_untagged(b"FETCH", arguments)  # noqa: SLF001
     fetched = parse_fetch_response(data, client.normalise_times, False)
     return {
-        int(items[b"UID"]): frozenset(
-            text
-            for text in (text_value(flag) for flag in items.get(b"FLAGS", ()))
-            if text.lower() != _RECENT
-        )
-        for items in fetched.values()
-        if b"UID" in items
+        int(items[b"UID"]): stored_flags(items) for items in fetched.values() if b"UID" in items
     }
+
+
+def stored_flags(data: Mapping[bytes, object]) -> frozenset[str]:
+    """The FLAGS of a FETCH answer as text, without `\\Recent`."""
+    flags = data.get(b"FLAGS")
+    texts = (text_value(flag) for flag in (flags if isinstance(flags, tuple | list) else ()))
+    return frozenset(text for text in texts if text.lower() != _RECENT)

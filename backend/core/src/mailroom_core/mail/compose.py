@@ -16,7 +16,7 @@ from email.message import EmailMessage
 from email.utils import format_datetime, quote
 from typing import TYPE_CHECKING, Final
 
-from mailroom_core.mail._mime import header_values
+from mailroom_core.mail._mime import header_values, well_formed
 from mailroom_core.mail.errors import MailError
 from mailroom_core.mail.recipients import Mailbox, deliverable_address
 from mailroom_core.mail.ref import MessageRef, format_ref, parse_ref
@@ -45,7 +45,6 @@ _NOT_BASE64: Final = ("multipart/", "message/")
 attachments, both go as opaque bytes."""
 _PHRASE: Final = re.compile(r"[A-Za-z0-9!#$%&'*+/=?^_`{|}~ -]+")
 """Atoms and the single spaces `clean_header` leaves: a display name that needs no quotes."""
-_SURROGATE: Final = re.compile("[\ud800-\udfff]")
 _SEPARATOR: Final = re.compile(rb"\r?\n\r?\n")
 _LINE_START: Final = re.compile(rb"(?<=\n)")
 _LAST_BREAK: Final = re.compile(rb"\r?\n\Z")
@@ -115,11 +114,6 @@ def _is_id(value: str) -> bool:
     return len(value) <= _MAX_ID and _ID.fullmatch(value) is not None
 
 
-def _well_formed(text: str) -> str:
-    """Without lone surrogates, which JSON can carry and UTF-8 cannot."""
-    return _SURROGATE.sub("�", text)
-
-
 def _words(name: str, words: Iterable[str]) -> bytes:
     """A header of ASCII words, folded only between them."""
     start = f"{name}:"
@@ -148,7 +142,7 @@ def _subject(subject: str) -> bytes:
 
 
 def _mailbox_words(field: str, mailbox: Mailbox) -> list[str]:
-    name = clean_header(_well_formed(mailbox.name or ""), 100)
+    name = clean_header(well_formed(mailbox.name or ""), 100)
     if not name:
         return [mailbox.address]
     if not _is_plain(name):
@@ -182,11 +176,11 @@ def _body(message: MessageInput) -> bytes:
     """The MIME headers and the body: the text as UTF-8 quoted-printable, then the attachments in
     base64, whatever they hold, so they arrive byte for byte."""
     body = EmailMessage(policy=_POLICY)
-    body.set_content(_well_formed(message.text), charset="utf-8", cte="quoted-printable")
+    body.set_content(well_formed(message.text), charset="utf-8", cte="quoted-printable")
     for attachment in message.attachments:
         main, sub = _part_type(attachment.content_type)
         # Not an encoded word when the package parses it back: see the module's docstring.
-        filename = clean_header(_well_formed(attachment.filename), 200).replace(
+        filename = clean_header(well_formed(attachment.filename), 200).replace(
             _ENCODED_WORD_START, "= ?"
         )
         body.add_attachment(
@@ -219,7 +213,7 @@ def compose(message: MessageInput, message_id: str | None = None) -> Composed:
     if not _is_id(chosen):
         raise MailError("invalid_argument", "Not a Message-ID.")
     to, cc, bcc = map(_deliverable, (message.to, message.cc, message.bcc))
-    subject = clean_header(_well_formed(message.subject), 998)
+    subject = clean_header(well_formed(message.subject), 998)
     in_reply_to = message.in_reply_to
     references = [value for value in message.references if _is_id(value)]
     addressed = b"".join(
