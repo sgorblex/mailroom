@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest'
 
-import { itemName, reconcileTray, trayPart, type TrayFile, type TrayItem } from './compose-form.ts'
+import {
+  inlinePart,
+  itemName,
+  plainToHtml,
+  reconcileInline,
+  reconcileTray,
+  shownImages,
+  trayPart,
+  uploadProblem,
+  type InlineItem,
+  type TrayFile,
+  type TrayItem,
+} from './compose-form.ts'
 
 const file = (id: string, name: string): TrayFile => ({ kind: 'file', id, file: new File(['x'], name) })
 const part = (name: string, number: string) => ({ name, type: 'application/pdf', size: 1, part: number })
@@ -46,5 +58,45 @@ describe('the tray after a save', () => {
   it('leaves what was added meanwhile for the next save', () => {
     const later = file('later', 'later.pdf')
     expect(named(reconcileTray([later], [], 'r2', []))).toEqual(['later.pdf'])
+  })
+})
+
+describe('inline images', () => {
+  const image = (contentId: string): InlineItem => ({ kind: 'file', id: contentId, file: new File(['x'], 'a.png'), contentId })
+
+  it('are the ones the HTML shows, and none in plain text', () => {
+    const inline = [image('a@m'), image('b@m')]
+    expect(shownImages('<p><img src="cid:b@m" alt="a.png"></p>', inline)).toEqual([inline[1]])
+    expect(shownImages(null, inline)).toEqual([])
+  })
+
+  it('become the parts they were saved as, matched by Content-ID', () => {
+    const kept = inlinePart({ ref: 'r1', part: '3', name: 'k.png', type: 'image/png', size: 1, content_id: 'k@m' })
+    const after = reconcileInline([image('a@m'), kept, image('later@m')], 'r2', [
+      { part: '2', name: 'a.png', type: 'image/png', size: 1, content_id: 'a@m' },
+      { part: '3', name: 'k.png', type: 'image/png', size: 1, content_id: 'k@m' },
+    ], null)
+    expect(after.map((item) => (item.kind === 'part' ? `${item.ref}:${item.part}` : item.id))).toEqual(['r2:2', 'r2:3', 'later@m'])
+    expect(after[0]).toMatchObject({ contentId: 'a@m' })
+  })
+
+  it('drop the parts of the version a save replaced that it did not show, not the forwarded ones', () => {
+    const deleted = inlinePart({ ref: 'r1', part: '3', name: 'd.png', type: 'image/png', size: 1, content_id: 'd@m' })
+    const forwarded = inlinePart({ ref: 'orig', part: '2', name: 'f.png', type: 'image/png', size: 1, content_id: 'f@m' })
+    const after = reconcileInline([deleted, forwarded], 'r2', [], 'orig')
+    expect(after).toEqual([forwarded])
+  })
+
+  it('count towards the upload limits', () => {
+    const big = new File([new Uint8Array(2 * 2 ** 20)], 'big.png')
+    expect(uploadProblem([image('a@m')], [big], 1)).toBe('size')
+    expect(uploadProblem(Array.from({ length: 10 }, (_, at) => image(String(at))), [big], 10)).toBe('count')
+    expect(uploadProblem([], [big], 10)).toBeNull()
+  })
+})
+
+describe('plain text as HTML', () => {
+  it('is a paragraph a line, escaped', () => {
+    expect(plainToHtml('a <b>\n\nc')).toBe('<p>a &lt;b&gt;</p><p></p><p>c</p>')
   })
 })

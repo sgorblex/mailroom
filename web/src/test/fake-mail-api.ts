@@ -15,6 +15,7 @@ import type {
   OrganizeGroup,
   SavedView,
   SendResult,
+  ShownPart,
   SourceFailure,
   ViewPage,
 } from '@/api/mail.ts'
@@ -64,6 +65,8 @@ export interface FakeMailState {
   attachmentMaxMb?: number
   /** The user's limit on To, Cc and Bcc together; 10 unless it says otherwise. */
   maxRecipients?: number
+  /** The inline parts of a message a forward carries, by its ref. */
+  inline?: Record<string, ShownPart[]>
   /** Drafts as `GET /drafts/{ref}` reads them, newest last. */
   drafts?: Draft[]
   /** `false`: the server lacks UIDPLUS. */
@@ -438,17 +441,40 @@ function unlistDraft(state: FakeMailState, draft: Draft): void {
 }
 
 /** The attachment a `keep` entry names: a part of another draft or of a message view. */
-function keptPart(state: FakeMailState, keep: { ref: string; part: string }): MessagePart | undefined {
-  const parts = state.drafts?.find((each) => each.ref === keep.ref)?.parts ?? state.views[keep.ref]?.attachments
+function keptPart(state: FakeMailState, keep: { ref: string; part: string; inline?: boolean }): MessagePart | undefined {
+  const draft = state.drafts?.find((each) => each.ref === keep.ref)
+  const parts = keep.inline === true ? (draft?.inline ?? state.inline?.[keep.ref]) : (draft?.parts ?? state.views[keep.ref]?.attachments)
   return parts?.find((part) => part.part === keep.part)
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+/** The text the server would send `html` with, near enough for a test. */
+export function fakeHtmlText(html: string): string {
+  return html
+    .replace(/<\/(p|div|li|blockquote)>/g, '\n')
+    .replace(/<br>/g, '\n')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .trim()
 }
 
 function holdsDraft(send: { state: string } | null | undefined): boolean {
   return send !== null && send !== undefined && send.state !== 'failed'
 }
 
+/** A save's fields, its `html` part among them. */
+function draftFieldsOf(form: FormData): DraftFields {
+  const html = form.get('html')
+  return { ...(JSON.parse(form.get('draft') as string) as Omit<DraftFields, 'html'>), html: typeof html === 'string' ? html : null }
+}
+
 function saveDraftAnswer(state: FakeMailState, form: FormData): Response {
-  const fields = JSON.parse(form.get('draft') as string) as DraftFields
+  const fields = draftFieldsOf(form)
   if (isOff(state, fields.account)) {
     return refuse(409, 'send_disabled')
   }
@@ -470,14 +496,25 @@ function saveDraftAnswer(state: FakeMailState, form: FormData): Response {
   if (fields.ref !== null && old === undefined) {
     return refuse(404, 'not_found')
   }
-  const kept = fields.keep.map((keep) => keptPart(state, keep))
-  if (kept.includes(undefined)) {
+  const keep = fields.keep.filter((each) => each.inline !== true)
+  const keepInline = fields.keep.filter((each) => each.inline === true)
+  const kept = keep.map((each) => keptPart(state, each))
+  const keptInline = keepInline.map((each) => keptPart(state, each) as ShownPart | undefined)
+  if (kept.includes(undefined) || keptInline.includes(undefined)) {
     return refuse(404, 'not_found')
   }
-  const files = form.getAll('files[]') as File[]
-  const parts = [...kept.filter((part) => part !== undefined), ...files.map((file) => ({ name: file.name, type: file.type, size: file.size, part: '' }))].map(
-    (part, index) => ({ ...part, part: String(index + 2) }),
-  )
+  const contentIds = fields.content_ids
+  const allFiles = form.getAll('files[]') as File[]
+  const uploaded = (file: File): MessagePart => ({ name: file.name, type: file.type, size: file.size, part: '' })
+  const files = allFiles.slice(contentIds.length)
+  const parts = [...kept.filter((part) => part !== undefined), ...files.map(uploaded)].map((part, index) => ({ ...part, part: String(index + 2) }))
+  const { html } = fields
+  const inline = [
+    ...keptInline.filter((part) => part !== undefined),
+    ...allFiles.slice(0, contentIds.length).map((file, index) => ({ ...uploaded(file), content_id: contentIds[index] ?? '' })),
+  ]
+    .filter((part) => html?.includes(`cid:${part.content_id}`) === true)
+    .map((part, index) => ({ ...part, part: String(parts.length + index + 2) }))
   nextUid += 1
   const ref = fakeRef(fields.account, 'Drafts', nextUid)
   const draft: Draft = {
@@ -489,11 +526,13 @@ function saveDraftAnswer(state: FakeMailState, form: FormData): Response {
     cc: fields.cc,
     bcc: fields.bcc,
     subject: fields.subject,
-    text: fields.text,
+    text: html === null ? fields.text : fakeHtmlText(html),
+    html,
     answers: fields.answers,
     forwards: fields.forwards,
     lossy: false,
     parts,
+    inline,
     send: null,
   }
   const autosave = state.autosave ?? true
@@ -505,9 +544,9 @@ function saveDraftAnswer(state: FakeMailState, form: FormData): Response {
   listDraft(state, draft, oldStays ? null : fields.ref)
   if (hidden) {
     state.unindexed = [...(state.unindexed ?? []), ref]
-    return json(201, { ref: null, parts: [], replaced: false, autosave })
+    return json(201, { ref: null, parts: [], inline: [], replaced: false, autosave })
   }
-  return json(201, { ref, parts, replaced: old !== undefined && !oldStays, autosave })
+  return json(201, { ref, parts, inline, replaced: old !== undefined && !oldStays, autosave })
 }
 
 function prefillAnswer(state: FakeMailState, body: { ref: string; mode: string }): Response {
@@ -532,12 +571,15 @@ function prefillAnswer(state: FakeMailState, body: { ref: string; mode: string }
       bcc: [],
       subject: url.searchParams.get('subject') ?? 'unsubscribe',
       text: url.searchParams.get('body') ?? '',
+      html: null,
       answers: null,
       forwards: null,
       attachments: [],
+      inline: [],
     })
   }
   const forward = body.mode === 'forward'
+  const shown = forward ? (state.inline?.[view.ref] ?? []) : []
   const sender = view.reply_to[0] ?? view.from
   return json(200, {
     account: view.account_id,
@@ -547,9 +589,13 @@ function prefillAnswer(state: FakeMailState, body: { ref: string; mode: string }
     bcc: [],
     subject: `${forward ? 'Fwd' : 'Re'}: ${view.subject}`,
     text: `\n\n> ${view.text.content}`,
+    html: forward
+      ? `<p></p><div>Forwarded message</div><p>${escapeHtml(view.text.content)}</p>${shown.map((part) => `<p><img src="cid:${part.content_id}"></p>`).join('')}`
+      : `<p></p><div>${escapeHtml(view.from?.address ?? '')} wrote:</div><blockquote type="cite"><p>${escapeHtml(view.text.content)}</p></blockquote>`,
     answers: forward ? null : view.ref,
     forwards: forward ? view.ref : null,
     attachments: forward ? view.attachments.map((part) => ({ ...part, ref: view.ref })) : [],
+    inline: shown.map((part) => ({ ...part, ref: view.ref })),
   })
 }
 
@@ -633,7 +679,11 @@ function composeRoutes(state: FakeMailState, url: URL, init?: RequestInit): Resp
     return prefillAnswer(state, JSON.parse(text) as { ref: string; mode: string })
   }
   if (path === '/api/v1/mail/drafts' && method === 'POST') {
-    return saveDraftAnswer(state, init?.body as FormData)
+    const form = init?.body as FormData
+    if (url.searchParams.get('convert') === 'text') {
+      return json(200, { text: fakeHtmlText(form.get('html') as string) })
+    }
+    return saveDraftAnswer(state, form)
   }
   if (path === '/api/v1/mail/drafts/find') {
     const composeId = url.searchParams.get('compose_id')
@@ -643,7 +693,7 @@ function composeRoutes(state: FakeMailState, url: URL, init?: RequestInit): Resp
         String(each.account) === url.searchParams.get('account') &&
         state.unindexed?.includes(each.ref) !== true,
     )
-    return draft === undefined ? notFound() : json(200, { ref: draft.ref, parts: draft.parts })
+    return draft === undefined ? notFound() : json(200, { ref: draft.ref, parts: draft.parts, inline: draft.inline })
   }
   let match = /^\/api\/v1\/mail\/sends\/([^/]+)$/.exec(path)
   if (match !== null) {
@@ -1169,7 +1219,7 @@ export function stubMailApi(state: FakeMailState): Mock {
     if (held !== undefined) {
       await held
     }
-    const refused = state.refuse?.[request]
+    const refused = state.refuse?.[`${request}${url.search}`] ?? state.refuse?.[request]
     if (refused !== undefined) {
       return json(refused.status, refused.body)
     }
@@ -1195,10 +1245,12 @@ export function fakeDraft(account: AccountId, uid: number, fields: Partial<Draft
     bcc: [],
     subject: `Draft ${String(uid)}`,
     text: `Text of draft ${String(uid)}`,
+    html: null,
     answers: null,
     forwards: null,
     lossy: false,
     parts: [],
+    inline: [],
     send: null,
     ...fields,
   }
@@ -1209,17 +1261,24 @@ export function savesOf(fetchMock: Mock): { fields: DraftFields; files: string[]
   return fetchMock.mock.calls
     .filter(([callPath, init]) => {
       const { pathname } = new URL(callPath as string, 'http://mailroom.test')
-      return pathname === '/api/v1/mail/drafts' && (init as RequestInit | undefined)?.method === 'POST'
+      return pathname === '/api/v1/mail/drafts' && (init as RequestInit | undefined)?.method === 'POST' && !(callPath as string).includes('convert=')
     })
     .map(([, init]) => {
       const { body, keepalive } = init as RequestInit
       const form = body as FormData
       return {
-        fields: JSON.parse(form.get('draft') as string) as DraftFields,
+        fields: draftFieldsOf(form),
         files: (form.getAll('files[]') as File[]).map((file) => file.name),
         keepalive: keepalive === true,
       }
     })
+}
+
+/** The HTML of each switch to plain text the server was asked for, in order. */
+export function plainTextsAsked(fetchMock: Mock): string[] {
+  return fetchMock.mock.calls
+    .filter(([callPath]) => new URL(callPath as string, 'http://mailroom.test').searchParams.get('convert') === 'text')
+    .map(([, init]) => ((init as RequestInit).body as FormData).get('html') as string)
 }
 
 /** The JSON bodies of the POST requests to `path`, in order. */

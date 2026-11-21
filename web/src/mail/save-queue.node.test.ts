@@ -8,6 +8,7 @@ import { debounceFor, SaveQueue } from './save-queue.ts'
 const answer = (ref: string | null, fields: Partial<SavedDraft> = {}): SavedDraft => ({
   ref,
   parts: [],
+  inline: [],
   replaced: true,
   autosave: true,
   ...fields,
@@ -122,14 +123,14 @@ describe('SaveQueue', () => {
       saves.push({ snapshot, ref, keepalive })
       return Promise.reject(new TypeError('Failed to fetch'))
     })
-    find.mockResolvedValueOnce({ ref: 'v9', parts: [] })
+    find.mockResolvedValueOnce({ ref: 'v9', parts: [], inline: [] })
     queue.touch()
     await drain(debounceFor(0))
     expect(queue.ref).toBe('v9')
     expect(queue.state).toBe('saved')
     expect(queue.dirty).toBe(false)
     expect(saves).toHaveLength(1)
-    expect(landed).toHaveBeenCalledWith('a', 'v9', [])
+    expect(landed).toHaveBeenCalledWith('a', 'v9', { ref: 'v9', parts: [], inline: [] })
   })
 
   it('saves over a version found after a lost answer before a send: it may be another writer\'s', async () => {
@@ -138,7 +139,7 @@ describe('SaveQueue', () => {
       saves.push({ snapshot, ref, keepalive })
       return Promise.reject(refusal(502, 'server_error'))
     })
-    find.mockResolvedValueOnce({ ref: 'R2', parts: [] })
+    find.mockResolvedValueOnce({ ref: 'R2', parts: [], inline: [] })
     queue.touch()
     const sendable = queue.flush(true)
     await drain()
@@ -150,7 +151,7 @@ describe('SaveQueue', () => {
   it('saves over such a version when the send comes after it was found', async () => {
     const { queue, saves, save, find } = harness('R1')
     save.mockImplementationOnce(() => Promise.reject(new TypeError('Failed to fetch')))
-    find.mockResolvedValueOnce({ ref: 'R2', parts: [] })
+    find.mockResolvedValueOnce({ ref: 'R2', parts: [], inline: [] })
     queue.touch()
     await drain(debounceFor(0))
     expect(queue.dirty).toBe(false)
@@ -165,7 +166,7 @@ describe('SaveQueue', () => {
   it('is not ready for a send while each save it finds lost its answer', async () => {
     const { queue, save, find } = harness('R1')
     save.mockRejectedValue(new TypeError('Failed to fetch'))
-    find.mockResolvedValueOnce({ ref: 'R2', parts: [] }).mockResolvedValueOnce({ ref: 'R3', parts: [] })
+    find.mockResolvedValueOnce({ ref: 'R2', parts: [], inline: [] }).mockResolvedValueOnce({ ref: 'R3', parts: [], inline: [] })
     queue.touch()
     const sendable = queue.flush(true)
     await drain()
@@ -176,7 +177,7 @@ describe('SaveQueue', () => {
   it('keeps the last good draft when a lost save did not land, and says so', async () => {
     const { queue, save, find } = harness('v0')
     save.mockRejectedValueOnce(new ApiRequestError(502, null, 'bad gateway'))
-    find.mockResolvedValueOnce({ ref: 'v0', parts: [] })
+    find.mockResolvedValueOnce({ ref: 'v0', parts: [], inline: [] })
     queue.touch()
     await drain(debounceFor(0))
     expect(queue.ref).toBe('v0')
@@ -190,7 +191,7 @@ describe('SaveQueue', () => {
     const { queue, save, find } = harness('v0')
     save.mockRejectedValueOnce(new TypeError('Failed to fetch'))
     find.mockRejectedValueOnce(new TypeError('Failed to fetch'))
-    find.mockResolvedValueOnce({ ref: 'v5', parts: [] })
+    find.mockResolvedValueOnce({ ref: 'v5', parts: [], inline: [] })
     queue.touch()
     await drain(debounceFor(0))
     expect(queue.state).toBe('failed')
@@ -274,7 +275,7 @@ describe('SaveQueue', () => {
   it('follows the draft when its ref went away, retrying once', async () => {
     const { queue, save, find, saves } = harness('v0')
     save.mockRejectedValueOnce(refusal(409, 'stale_reference'))
-    find.mockResolvedValueOnce({ ref: 'v3', parts: [] })
+    find.mockResolvedValueOnce({ ref: 'v3', parts: [], inline: [] })
     queue.touch()
     await drain(debounceFor(0))
     expect(saves).toEqual([{ snapshot: 'a', ref: 'v3', keepalive: false }])
@@ -295,7 +296,7 @@ describe('SaveQueue', () => {
 
   it('marks the form unsaved when it finds another version: what shows is what goes', async () => {
     const { queue, find, saves, lost } = harness('v0')
-    find.mockResolvedValueOnce({ ref: 'v3', parts: [] })
+    find.mockResolvedValueOnce({ ref: 'v3', parts: [], inline: [] })
     await queue.relocate()
     expect(queue.ref).toBe('v3')
     expect(queue.dirty).toBe(true)
@@ -315,7 +316,7 @@ describe('SaveQueue', () => {
   it('does not take the old version for a save answered without a ref', async () => {
     const { queue, save, find, landed } = harness('v0')
     save.mockResolvedValueOnce(answer(null, { replaced: false }))
-    find.mockResolvedValue({ ref: 'v0', parts: [] })
+    find.mockResolvedValue({ ref: 'v0', parts: [], inline: [] })
     queue.touch()
     const first = queue.flush(true)
     await drain(4_000)
@@ -323,12 +324,12 @@ describe('SaveQueue', () => {
     expect(queue.ref).toBe('v0')
     expect(landed).not.toHaveBeenCalled()
 
-    find.mockResolvedValue({ ref: 'v9', parts: [] })
+    find.mockResolvedValue({ ref: 'v9', parts: [], inline: [] })
     const second = queue.flush(true)
     await drain()
     expect(await second).toBe(true)
     expect(queue.ref).toBe('v9')
-    expect(landed).toHaveBeenCalledWith('a', 'v9', [])
+    expect(landed).toHaveBeenCalledWith('a', 'v9', { ref: 'v9', parts: [], inline: [] })
     expect(save).toHaveBeenCalledTimes(1)
   })
 
@@ -357,7 +358,7 @@ describe('SaveQueue', () => {
   it('lets a draft be left while it cannot find such a save: it is stored', async () => {
     const { queue, save, find } = harness('v0')
     save.mockResolvedValueOnce(answer(null, { replaced: false }))
-    find.mockResolvedValue({ ref: 'v0', parts: [] })
+    find.mockResolvedValue({ ref: 'v0', parts: [], inline: [] })
     queue.touch()
     const flushed = queue.flush()
     await drain(4_000)
@@ -370,7 +371,7 @@ describe('SaveQueue', () => {
   it('forgets such a save once a later one has a ref', async () => {
     const { queue, save, find, text } = harness('v0')
     save.mockResolvedValueOnce(answer(null, { replaced: false }))
-    find.mockResolvedValue({ ref: 'v0', parts: [] })
+    find.mockResolvedValue({ ref: 'v0', parts: [], inline: [] })
     queue.touch()
     const first = queue.flush(true)
     await drain(4_000)
@@ -392,11 +393,11 @@ describe('SaveQueue', () => {
     const { queue, save, find, landed } = harness()
     save.mockResolvedValueOnce(answer(null))
     find.mockResolvedValueOnce(null)
-    find.mockResolvedValueOnce({ ref: 'v4', parts: [] })
+    find.mockResolvedValueOnce({ ref: 'v4', parts: [], inline: [] })
     queue.touch()
     await drain(debounceFor(0) + 2_000)
     expect(queue.ref).toBe('v4')
-    expect(landed).toHaveBeenCalledWith('a', 'v4', [])
+    expect(landed).toHaveBeenCalledWith('a', 'v4', { ref: 'v4', parts: [], inline: [] })
     expect(queue.dirty).toBe(false)
   })
 
@@ -466,7 +467,7 @@ describe('SaveQueue', () => {
     find.mockRejectedValueOnce(new TypeError('Failed to fetch'))
     queue.touch()
     await drain(debounceFor(0))
-    find.mockResolvedValueOnce({ ref: 'v6', parts: [] })
+    find.mockResolvedValueOnce({ ref: 'v6', parts: [], inline: [] })
     expect(await queue.stop()).toBe('v6')
     queue.touch()
     await drain(10 * debounceFor(0))

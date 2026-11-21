@@ -118,7 +118,7 @@ mailroom-core             render, mail (IMAP, IDLE included), send, filters, cry
 ## Client scope
 
 Between **tier 2** and **tier 3** of [`REQUIREMENTS.md`](REQUIREMENTS.md) — *Mail client*: reading
-and triage plus composing (plain text, with the send mode limiting what agents send), over a **local index** with **live updates** (IMAP IDLE), first. Tier 3
+and triage plus composing (plain or rich text, with the send mode limiting what agents send), over a **local index** with **live updates** (IMAP IDLE), first. Tier 3
 features come later, one by one, when they earn their place.
 
 ## Reversed non-goals

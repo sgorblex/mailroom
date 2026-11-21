@@ -1,6 +1,6 @@
 """Drafts and sends: the prefill of a reply, a forward or an unsubscribe by mail, saving a draft
-with its uploads (multipart, bounded before it is read), finding, reading and deleting one,
-sending it and reading the send."""
+with its uploads (multipart, bounded before it is read) or converting its HTML to text, finding,
+reading and deleting one, sending it and reading the send."""
 
 from __future__ import annotations
 
@@ -48,6 +48,8 @@ _MAX_NAME: Final = 1024
 _COMPOSE_ID: Final = r"^[A-Za-z0-9_-]{1,64}$"
 _UPLOAD_TYPE: Final = "application/octet-stream"
 _MAX_CONTENT_ID: Final = 250
+_PLAIN_TEXT_BODY: Final = MAX_HTML_BYTES + 64 * 1024
+"""Of a conversion to plain text: its ``html`` part and the multipart framing."""
 
 
 def _mailboxes(mailboxes: Iterable[Mailbox]) -> list[MailAddress]:
@@ -81,6 +83,10 @@ class KeptShownPart(ShownPart):
 
 def _shown(parts: Iterable[InlinePart]) -> list[ShownPart]:
     return [ShownPart.of_inline(part) for part in parts]
+
+
+class PlainTextAnswer(BaseModel):
+    text: str
 
 
 class PrefillAnswer(BaseModel):
@@ -362,14 +368,44 @@ def prefill_draft(request: PrefillRequest, ctx: Context, user: CurrentUser) -> P
     return PrefillAnswer.of(service.prefill(ctx, user.id, request.ref, request.mode))
 
 
+async def _plain_text(request: Request, ctx: Context, user_id: int) -> PlainTextAnswer:
+    """The text the ``html`` part, alone in the body, would be sent with; saves nothing."""
+    limit = _PLAIN_TEXT_BODY
+    if _declared_over(request.headers.get("content-length", ""), limit):
+        raise _too_large()
+    with service.upload_place(ctx, user_id):
+        body = Request(request.scope, _at_most(request.receive, limit))
+        try:
+            async with body.form(max_files=0, max_fields=1, max_part_size=MAX_HTML_BYTES) as form:
+                html = form.get("html")
+        except HTTPException:
+            raise mail_refusal("invalid_argument", MESSAGES["invalid_argument"]) from None
+        if not isinstance(html, str):
+            raise mail_refusal("invalid_argument", MESSAGES["invalid_argument"])
+        return PlainTextAnswer(text=await run_in_threadpool(service.plain_text, html))
+
+
 @mail_router.post("/drafts", status_code=201)
-async def save_draft(request: Request, ctx: Context, user: CurrentUser) -> SavedDraftAnswer:
+async def save_draft(
+    request: Request,
+    ctx: Context,
+    user: CurrentUser,
+    response: Response,
+    convert: Annotated[Literal["text"] | None, Query()] = None,
+) -> SavedDraftAnswer | PlainTextAnswer:
     """Multipart, parsed here and not by a signature: FastAPI would read the whole body before
     the signed-in user is known, and a declared size is refused before any of it is read. So is
     a save past the user's few at a time, which the mail gates could only refuse once it was
     read. Files past the memory threshold spool to disk until the form closes, before the save,
     so that a file is not held twice while it runs. The HTML is a part of its own, raw: in the
-    JSON its escapes would let a part's size bind before the HTML cap, which counts its UTF-8."""
+    JSON its escapes would let a part's size bind before the HTML cap, which counts its UTF-8.
+
+    ``?convert=text`` saves nothing: 200 with the text the ``html`` part would be sent with, for
+    the composer's switch to plain text. It is this route, not one of its own, because the host's
+    proxy already lets a body this size through to it and to no other."""
+    if convert is not None:
+        response.status_code = 200
+        return await _plain_text(request, ctx, user.id)
     limit = await run_in_threadpool(service.upload_limit, ctx, user.id)
     if _declared_over(request.headers.get("content-length", ""), limit):
         raise _too_large()

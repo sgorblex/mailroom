@@ -259,6 +259,18 @@ def prefill(
         )
 
 
+def plain_text(html: str) -> str:
+    """The text a draft's HTML body would be sent with, for a switch to plain text:
+    ``invalid_argument`` when that is longer than a plain-text body may be, so the composer stays
+    in rich text rather than holding text no save would take."""
+    with _as_refusals():
+        core.check_fields(html=html)
+    text = core.html_text(html)
+    with _as_refusals():
+        core.check_fields(text=text)
+    return text
+
+
 NO_UNSUBSCRIBE_ADDRESS: Final = "This message offers no address to unsubscribe by mail."
 
 

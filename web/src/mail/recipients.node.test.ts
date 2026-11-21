@@ -69,11 +69,14 @@ describe('the attachment tray after a save', () => {
 })
 
 describe('a blank form', () => {
-  const blank: ComposeForm = { from: null, to: [], cc: [], bcc: [], subject: '', text: '', tray: [] }
+  const blank: ComposeForm = { from: null, to: [], cc: [], bcc: [], subject: '', text: '', html: '<p></p>', inline: [], tray: [] }
 
   it('has nothing typed or attached', () => {
     expect(isBlank(blank)).toBe(true)
     expect(isBlank({ ...blank, from: 'me@x.org' })).toBe(true)
     expect(isBlank({ ...blank, text: 'x' })).toBe(false)
+    const image = { kind: 'file' as const, id: 'i', file: new File(['x'], 'a.png'), contentId: 'a@mailroom' }
+    expect(isBlank({ ...blank, inline: [image] })).toBe(true)
+    expect(isBlank({ ...blank, html: '<p><img src="cid:a@mailroom"></p>', inline: [image] })).toBe(false)
   })
 })

@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { SendResult } from '@/api/mail.ts'
-import { bodiesTo, fakeDraft, type FakeMailState, HOME, messageItem, messageView, queriesTo, refusal, savesOf, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
+import { bodiesTo, fakeDraft, type FakeMailState, HOME, messageItem, messageView, plainTextsAsked, queriesTo, refusal, savesOf, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
 import { renderMailApp } from '@/test/mail-app.tsx'
 
 const inbox = [messageItem(WORK, 'INBOX', 2), messageItem(WORK, 'INBOX', 1)]
@@ -37,6 +37,8 @@ const compose = async (user: ReturnType<typeof userEvent.setup>) => {
 /** The visible notice; the live region says the same. Three polls of a send take 4 s, so wait past them. */
 const sentNotice = (text: string | RegExp = 'Sent.') => screen.findByText(text, { selector: 'p' }, { timeout: 6_000 })
 const field = (form: HTMLElement, name: string) => within(form).getByRole('textbox', { name })
+/** The body: a rich-text editor loads on its own, after the rest of the form, the first time at some length. */
+const body = (form: HTMLElement) => within(form).findByRole('textbox', { name: 'Message' }, { timeout: 10_000 })
 
 /** The compose live regions: the last of each kind, after the toast's and the toolbar's. */
 function live(kind: 'polite' | 'assertive'): HTMLElement | undefined {
@@ -88,7 +90,7 @@ describe('composing', () => {
     const form = await compose(user)
 
     await user.type(field(form, 'To'), 'ada@example.org,hal')
-    await user.type(field(form, 'Message'), 'Hello')
+    await user.type(await body(form), 'Hello')
     // Leaving the field for the body has committed what it could, the rest stays typed.
     expect(field(form, 'To')).toHaveValue('hal')
     expect(field(form, 'To')).toHaveAttribute('aria-invalid', 'true')
@@ -97,7 +99,7 @@ describe('composing', () => {
     await within(form).findByText('Saved', {}, { timeout: 5_000 })
     const [save] = savesOf(fetchMock)
     expect(save?.fields.to).toEqual([{ name: '', address: 'ada@example.org' }])
-    expect(save?.fields.text).toBe('Hello')
+    expect(save?.fields.html).toBe('<p>Hello</p>')
     expect(save?.fields.ref).toBeNull()
   })
 
@@ -124,16 +126,16 @@ describe('composing', () => {
     stubMailApi(state())
     renderMailApp('/mail')
     const form = await compose(user)
-    await user.type(field(form, 'Message'), 'Still here')
+    await user.type(await body(form), 'Still here')
 
     await user.click(await screen.findByRole('treeitem', { name: 'Sent' }))
     await screen.findByText('No messages in this folder.')
-    expect(field(await composer(), 'Message')).toHaveValue('Still here')
+    expect(await body(await composer())).toHaveTextContent('Still here')
     await user.click(screen.getByRole('link', { name: 'home' }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'home' })).toBeInTheDocument()
     })
-    expect(field(await composer(), 'Message')).toHaveValue('Still here')
+    expect(await body(await composer())).toHaveTextContent('Still here')
   })
 
   it('keeps the editor behind an opened message', async () => {
@@ -141,14 +143,14 @@ describe('composing', () => {
     stubMailApi(state())
     renderMailApp('/mail')
     const form = await compose(user)
-    await user.type(field(form, 'Message'), 'Back soon')
+    await user.type(await body(form), 'Back soon')
 
     await user.click(await screen.findByRole('link', { name: firstLink }))
     await screen.findByRole('heading', { name: 'Message 2' })
     expect(screen.queryByRole('form')).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Back to draft' }))
-    expect(field(await composer(), 'Message')).toHaveValue('Back soon')
-    expect(field(await composer(), 'Message')).toHaveFocus()
+    expect(await body(await composer())).toHaveTextContent('Back soon')
+    expect(await body(await composer())).toHaveFocus()
   })
 
   it('offers no compose action on an account in send mode off, and says why', async () => {
@@ -199,12 +201,12 @@ describe('composing', () => {
     expect(savesOf(fetchMock)).toHaveLength(0)
 
     form = await compose(user)
-    await user.type(field(form, 'Message'), 'Keep me')
+    await user.type(await body(form), 'Keep me')
     await user.click(within(form).getByRole('button', { name: 'Close' }))
     await waitFor(() => {
       expect(screen.queryByRole('form')).not.toBeInTheDocument()
     })
-    expect(savesOf(fetchMock).map((save) => save.fields.text)).toEqual(['Keep me'])
+    expect(savesOf(fetchMock).map((save) => save.fields.html)).toEqual(['<p>Keep me</p>'])
   })
 
   it('still saves under Strict Mode, whose trial unmount leaves an empty composer', async () => {
@@ -213,7 +215,7 @@ describe('composing', () => {
     stubMailApi(fake)
     renderMailApp('/mail', { strict: true })
     const form = await compose(user)
-    await user.type(field(form, 'Message'), 'Hello')
+    await user.type(await body(form), 'Hello')
     await within(form).findByText('Saved', {}, { timeout: 5_000 })
     expect(fake.drafts?.map((each) => each.text)).toEqual(['Hello'])
   })
@@ -223,8 +225,8 @@ describe('composing', () => {
     const fetchMock = stubMailApi(state())
     renderMailApp('/mail')
     const form = await compose(user)
-    await user.type(field(form, 'Message'), 'x')
-    await user.clear(field(form, 'Message'))
+    await user.type(await body(form), 'x')
+    await user.clear(await body(form))
     await user.click(within(form).getByRole('button', { name: 'Close' }))
     await waitFor(() => {
       expect(screen.queryByRole('form')).not.toBeInTheDocument()
@@ -240,9 +242,9 @@ describe('composing', () => {
     const fetchMock = stubMailApi(fake)
     renderMailApp('/mail')
     const form = await compose(user)
-    await user.type(field(form, 'Message'), 'x')
+    await user.type(await body(form), 'x')
     await firstSave(fetchMock)
-    await user.clear(field(form, 'Message'))
+    await user.clear(await body(form))
     await user.click(within(form).getByRole('button', { name: 'Close' }))
     saves.release()
     await waitFor(() => {
@@ -258,12 +260,12 @@ describe('composing', () => {
     stubMailApi(state({ refuse: { 'POST /api/v1/mail/drafts': refusal(429, 'busy') } }))
     renderMailApp('/mail')
     const form = await compose(user)
-    await user.type(field(form, 'Message'), 'Unsaved')
+    await user.type(await body(form), 'Unsaved')
     await user.click(within(form).getByRole('button', { name: 'Close' }))
 
     const dialog = await screen.findByRole('dialog', { name: 'Not saved.' })
     await user.click(within(dialog).getByRole('button', { name: 'Keep editing' }))
-    expect(field(form, 'Message')).toHaveValue('Unsaved')
+    expect(await body(form)).toHaveTextContent('Unsaved')
     expect(within(form).getByText(/Not saved\./)).toHaveTextContent('account is busy')
   })
 
@@ -273,7 +275,7 @@ describe('composing', () => {
     stubMailApi(fake)
     renderMailApp('/mail')
     const form = await compose(user)
-    await user.type(field(form, 'Message'), 'Unsaved')
+    await user.type(await body(form), 'Unsaved')
     await within(form).findByText(/Not saved\./, {}, { timeout: 5_000 })
     await waitFor(() => {
       expect(live('assertive')).toHaveTextContent('Not saved.')
@@ -297,7 +299,7 @@ describe('composing', () => {
     stubMailApi(fake)
     renderMailApp('/mail')
     const form = await compose(user)
-    await user.type(field(form, 'Message'), 'Stored')
+    await user.type(await body(form), 'Stored')
     await user.click(within(form).getByRole('button', { name: 'Close' }))
     await waitFor(
       () => {
@@ -317,7 +319,7 @@ describe('composing', () => {
     await screen.findByRole('heading', { name: 'Message 2' })
     await user.keyboard('c')
     const form = await composer()
-    await user.type(field(form, 'Message'), 'x')
+    await user.type(await body(form), 'x')
     await user.click(within(form).getByRole('button', { name: 'Delete draft' }))
     const dialog = await screen.findByRole('dialog', { name: 'Delete draft' })
 
@@ -334,14 +336,14 @@ describe('composing', () => {
     renderMailApp('/mail')
     const form = await compose(user)
     await user.upload(within(form).getByLabelText('Attach files'), new File(['x'], 'big.bin'))
-    await user.type(field(form, 'Message'), 'Bye')
+    await user.type(await body(form), 'Bye')
 
     fireEvent(window, new Event('pagehide'))
     await waitFor(() => {
       expect(savesOf(fetchMock)).toHaveLength(1)
     })
     expect(savesOf(fetchMock)[0]).toMatchObject({ files: [], keepalive: true })
-    expect(savesOf(fetchMock)[0]?.fields.text).toBe('Bye')
+    expect(savesOf(fetchMock)[0]?.fields.html).toBe('<p>Bye</p>')
     // Still open, so the file goes with the next save.
     await waitFor(
       () => {
@@ -355,7 +357,7 @@ describe('composing', () => {
     const draft = fakeDraft(WORK, 90, { text: 'Where I was' })
     stubMailApi(state({ drafts: [draft] }))
     renderMailApp(`/mail?compose=${draft.compose_id ?? ''}.1`)
-    expect(field(await composer('Draft'), 'Message')).toHaveValue('Where I was')
+    expect(await body(await composer('Draft'))).toHaveValue('Where I was')
   })
 
   it('names the open composer in the URL by its compose id, not by a ref', async () => {
@@ -382,9 +384,9 @@ describe('composing', () => {
     const fetchMock = stubMailApi(state({ autosave: false }))
     renderMailApp('/mail')
     const form = await compose(user)
-    await user.type(field(form, 'Message'), 'a')
+    await user.type(await body(form), 'a')
     await within(form).findByText(/saved only when you ask/, {}, { timeout: 5_000 })
-    await user.type(field(form, 'Message'), 'b')
+    await user.type(await body(form), 'b')
     const save = await within(form).findByRole('button', { name: 'Save draft' })
     await new Promise((resolve) => setTimeout(resolve, 2_500))
     expect(savesOf(fetchMock)).toHaveLength(1)
@@ -404,7 +406,7 @@ describe('replying and forwarding', () => {
 
     const form = await composer('Reply')
     expect(field(form, 'Subject')).toHaveValue('Re: Message 2')
-    expect(field(form, 'Message')).toHaveFocus()
+    expect(await body(form)).toHaveFocus()
     expect(within(form).getByRole('list', { name: 'To recipients' })).toHaveTextContent('sender2@example.org')
     expect(bodiesTo(fetchMock, '/api/v1/mail/drafts/prefill')).toEqual([{ ref: firstRef, mode: 'reply' }])
 
@@ -472,7 +474,7 @@ describe('replying and forwarding', () => {
     await screen.findByRole('heading', { name: 'home' })
     await user.keyboard('c')
     const form = await composer()
-    await user.type(field(form, 'Message'), 'From home')
+    await user.type(await body(form), 'From home')
     await user.click(within(form).getByRole('button', { name: 'Close' }))
     await waitFor(() => {
       expect(savesOf(fetchMock)[0]?.fields.account).toBe(HOME)
@@ -514,7 +516,7 @@ describe('attachments', () => {
     const form = await compose(user)
     await user.upload(within(form).getByLabelText('Attach files'), new File(['hello'], 'notes.txt', { type: 'text/plain' }))
     await within(form).findByText('Saved', {}, { timeout: 5_000 })
-    await user.type(field(form, 'Message'), 'x')
+    await user.type(await body(form), 'x')
     await within(form).findByText('Saved', {}, { timeout: 5_000 })
 
     const [one, two] = savesOf(fetchMock)
@@ -546,7 +548,7 @@ describe('attachments', () => {
     expect(within(form).getByText('notes.pdf')).toBeInTheDocument()
 
     fake.drafts = []
-    await user.type(field(form, 'Message'), ' more')
+    await user.type(await body(form), ' more')
     await within(form).findByText(/went with it/, {}, { timeout: 5_000 })
     await within(form).findByText('Saved', {}, { timeout: 5_000 })
     expect(savesOf(fetchMock).at(-1)?.fields.keep).toEqual([])
@@ -577,7 +579,7 @@ describe('drafts', () => {
     await user.click(await screen.findByRole('link', { name: /Half written/ }))
     const form = await composer('Draft')
     expect(field(form, 'Subject')).toHaveValue('Half written')
-    expect(field(form, 'Message')).toHaveValue('So far')
+    expect(await body(form)).toHaveValue('So far')
     expect(bodiesTo(fetchMock, '/api/v1/mail/messages/flag')).toEqual([])
   })
 
@@ -602,7 +604,7 @@ describe('drafts', () => {
     const fetchMock = stubMailApi(fake)
     renderMailApp(`/mail?compose=${draft.ref}`)
     const form = await composer('Draft')
-    await user.type(field(form, 'Message'), '!')
+    await user.type(await body(form), '!')
     await user.click(within(form).getByRole('button', { name: 'Close' }))
     await waitFor(() => {
       expect(savesOf(fetchMock)).toHaveLength(1)
@@ -645,9 +647,9 @@ describe('drafts', () => {
     const fetchMock = stubMailApi(withDraft())
     renderMailApp(`/mail?folder=Drafts&compose=${draft.ref}`)
     const form = await composer('Draft')
-    await user.type(field(form, 'Message'), ', and more')
+    await user.type(await body(form), ', and more')
     await within(form).findByText('Saved', {}, { timeout: 5_000 })
-    await user.type(field(await composer('Draft'), 'Message'), ' and again')
+    await user.type(await body(await composer('Draft')), ' and again')
     await waitFor(
       () => {
         expect(savesOf(fetchMock)).toHaveLength(2)
@@ -669,7 +671,7 @@ describe('drafts', () => {
     const form = await composer('Draft')
     expect(within(form).getByText(/Can't confirm delivery/)).toBeInTheDocument()
     expect(within(form).getByRole('button', { name: 'Send anyway' })).toBeInTheDocument()
-    expect(field(form, 'Message')).toBeEnabled()
+    expect(await body(form)).toBeEnabled()
     expect(within(form).queryByText(/can't be changed here/)).not.toBeInTheDocument()
   })
 
@@ -685,7 +687,7 @@ describe('drafts', () => {
     const form = await composer('Draft')
 
     expect(within(form).getByText(/can't be changed here/)).toBeInTheDocument()
-    expect(field(form, 'Message')).toHaveAttribute('readonly')
+    expect(await body(form)).toHaveAttribute('readonly')
     expect(field(form, 'Subject')).toHaveAttribute('readonly')
     expect(field(form, 'To')).toBeDisabled()
     expect(within(form).getByRole('button', { name: 'Open Sent' })).toBeInTheDocument()
@@ -694,7 +696,7 @@ describe('drafts', () => {
     await user.click(within(form).getByRole('button', { name: 'Keep draft' }))
     expect(within(form).queryByText(/Can't confirm/)).not.toBeInTheDocument()
     expect(within(form).getByText(/can't be changed here/)).toBeInTheDocument()
-    expect(field(form, 'Message')).toHaveAttribute('readonly')
+    expect(await body(form)).toHaveAttribute('readonly')
 
     await user.click(within(form).getByRole('button', { name: 'Send' }))
     await user.click(await within(form).findByRole('button', { name: 'Send anyway' }))
@@ -713,7 +715,7 @@ describe('drafts', () => {
     const form = await composer('Draft')
     expect(within(form).getByText(/can't be changed here/)).toBeInTheDocument()
     expect(within(form).getByText(/already sent/)).toBeInTheDocument()
-    expect(field(form, 'Message')).toHaveAttribute('readonly')
+    expect(await body(form)).toHaveAttribute('readonly')
     expect(within(form).getByRole('button', { name: 'Delete draft' })).toBeInTheDocument()
   })
 
@@ -721,7 +723,7 @@ describe('drafts', () => {
     const send = { send_id: 's1', state: 'failed' as const, code: 'server_error' }
     stubMailApi(withDraft({ compose_id: null, send }))
     renderMailApp(`/mail?compose=${draft.ref}`)
-    expect(field(await composer('Draft'), 'Message')).toBeEnabled()
+    expect(await body(await composer('Draft'))).toBeEnabled()
   })
 
   it('turn read-only when a send from here leaves one written elsewhere unknown', async () => {
@@ -735,7 +737,7 @@ describe('drafts', () => {
     await within(form).findByText(/Can't confirm/, {}, { timeout: 3_000 })
 
     await user.click(within(form).getByRole('button', { name: 'Keep draft' }))
-    expect(field(form, 'Message')).toHaveAttribute('readonly')
+    expect(await body(form)).toHaveAttribute('readonly')
     expect(savesOf(fetchMock)).toEqual([])
   })
 
@@ -746,10 +748,10 @@ describe('drafts', () => {
     stubMailApi(fake)
     renderMailApp(`/mail?compose=${draft.ref}`)
     const form = await composer('Draft')
-    await user.type(field(form, 'Message'), '!')
+    await user.type(await body(form), '!')
     await user.click(within(form).getByRole('button', { name: 'Send' }))
     await within(form).findByText(/Can't confirm/, {}, { timeout: 3_000 })
-    expect(field(form, 'Message')).toBeEnabled()
+    expect(await body(form)).toBeEnabled()
   })
 
   describe('written elsewhere, once a send from elsewhere took them', () => {
@@ -771,7 +773,7 @@ describe('drafts', () => {
       renderMailApp(`/mail?compose=${draft.ref}`)
       const form = await composer('Draft')
       fake.sends = { [draft.ref]: send(state) }
-      await user.type(field(form, 'Message'), '!')
+      await user.type(await body(form), '!')
       await within(form).findByText(/can't be changed here/, {}, { timeout: 5_000 })
       return { user, fetchMock, form }
     }
@@ -783,8 +785,8 @@ describe('drafts', () => {
       expect(within(form).getByText(/already sent/)).toBeInTheDocument()
       expect(within(form).getByText('Not saved.')).toBeInTheDocument()
       expect(live('assertive')).toHaveTextContent(/can't be changed here/)
-      expect(field(form, 'Message')).toHaveValue('So far!')
-      expect(field(form, 'Message')).toHaveAttribute('readonly')
+      expect(await body(form)).toHaveValue('So far!')
+      expect(await body(form)).toHaveAttribute('readonly')
       expect(field(form, 'Subject')).toHaveAttribute('readonly')
       expect(field(form, 'To')).toBeDisabled()
       expect(within(form).getByRole('button', { name: 'Send' })).toHaveAttribute('aria-disabled', 'true')
@@ -795,9 +797,9 @@ describe('drafts', () => {
     it('keep the refused text selectable while that send still runs', async () => {
       const { form } = await typeRefused(withDraft({ compose_id: null }), 'sending')
 
-      expect(field(form, 'Message')).toHaveValue('So far!')
-      expect(field(form, 'Message')).toBeEnabled()
-      expect(field(form, 'Message')).toHaveAttribute('readonly')
+      expect(await body(form)).toHaveValue('So far!')
+      expect(await body(form)).toBeEnabled()
+      expect(await body(form)).toHaveAttribute('readonly')
       expect(field(form, 'Subject')).toBeEnabled()
       expect(field(form, 'Subject')).toHaveAttribute('readonly')
       expect(field(form, 'To')).toBeDisabled()
@@ -812,7 +814,7 @@ describe('drafts', () => {
       fake.sends = { [draft.ref]: send('sent') }
       fake.drafts = []
 
-      await user.type(field(form, 'Message'), '!')
+      await user.type(await body(form), '!')
 
       await within(form).findByText(/can't be changed here/, {}, { timeout: 5_000 })
       expect(savesOf(fetchMock).map((save) => save.fields.ref)).toEqual([draft.ref])
@@ -864,7 +866,7 @@ describe('drafts', () => {
 
       await within(form).findByText(/already sent/, {}, { timeout: 4_000 })
 
-      expect(field(form, 'Message')).toHaveValue('So far!')
+      expect(await body(form)).toHaveValue('So far!')
       expect(screen.queryByText('Sent.')).not.toBeInTheDocument()
     })
 
@@ -876,7 +878,7 @@ describe('drafts', () => {
       const form = await composer('Draft')
       fake.sends = { [draft.ref]: send('sending') }
 
-      await user.type(field(form, 'Message'), '!')
+      await user.type(await body(form), '!')
       await user.click(within(form).getByRole('button', { name: 'Send' }))
       await within(form).findByText('Not saved.')
       await user.click(within(form).getByRole('button', { name: 'Delete draft' }))
@@ -893,7 +895,7 @@ describe('drafts', () => {
       }
 
       await within(form).findByText(/Not sent/, {}, { timeout: 4_000 })
-      expect(field(form, 'Message')).not.toHaveAttribute('readonly')
+      expect(await body(form)).not.toHaveAttribute('readonly')
       await waitFor(
         () => {
           expect(savesOf(fetchMock)).toHaveLength(2)
@@ -915,7 +917,7 @@ describe('drafts', () => {
       await user.click(within(form).getByRole('button', { name: 'Send' }))
 
       await within(form).findByText(/already sent/, {}, { timeout: 3_000 })
-      expect(field(form, 'Message')).toHaveAttribute('readonly')
+      expect(await body(form)).toHaveAttribute('readonly')
       expect(savesOf(fetchMock)).toEqual([])
     })
 
@@ -963,7 +965,7 @@ describe('drafts', () => {
       await user.click(within(form).getByRole('button', { name: 'Send' }))
 
       await within(form).findByText(/Can't confirm/, {}, { timeout: 3_000 })
-      expect(field(form, 'Message')).toHaveAttribute('readonly')
+      expect(await body(form)).toHaveAttribute('readonly')
       await new Promise((resolve) => setTimeout(resolve, 2_500))
       expect(savesOf(fetchMock)).toEqual([])
     })
@@ -987,7 +989,7 @@ describe('drafts', () => {
         },
         { timeout: 5_000 },
       )
-      expect(field(form, 'Message')).not.toHaveAttribute('readonly')
+      expect(await body(form)).not.toHaveAttribute('readonly')
     })
   })
 
@@ -1061,7 +1063,7 @@ describe('drafts', () => {
     const fetchMock = stubMailApi(fake)
     renderMailApp(`/mail?compose=${draft.ref}`)
     const form = await composer('Draft')
-    await user.type(field(form, 'Message'), ' and edited')
+    await user.type(await body(form), ' and edited')
     await user.click(within(form).getByRole('button', { name: 'Send' }))
 
     await within(form).findByText(/already sent/, {}, { timeout: 3_000 })
@@ -1077,11 +1079,228 @@ describe('drafts', () => {
   })
 })
 
+describe('rich text', () => {
+  /** The latest save, once the queue has settled on it. */
+  const savedLast = async (form: HTMLElement, fetchMock: ReturnType<typeof stubMailApi>) => {
+    await within(form).findByText('Saved', {}, { timeout: 5_000 })
+    return savesOf(fetchMock).at(-1)
+  }
+
+  it('formats from the toolbar and its shortcuts, and saves HTML', async () => {
+    const user = userEvent.setup()
+    const fetchMock = stubMailApi(state())
+    renderMailApp('/mail')
+    const form = await compose(user)
+    const editor = await body(form)
+    const toolbar = within(form).getByRole('toolbar', { name: 'Formatting' })
+
+    await user.click(within(toolbar).getByRole('button', { name: 'Bold' }))
+    expect(within(toolbar).getByRole('button', { name: 'Bold' })).toHaveAttribute('aria-pressed', 'true')
+    await user.type(editor, 'Loud')
+    await user.keyboard('{Control>}b{/Control}{Control>}i{/Control} soft')
+    await user.click(within(toolbar).getByRole('button', { name: 'Bulleted list' }))
+
+    const save = await savedLast(form, fetchMock)
+    expect(save?.fields.html).toBe('<ul><li><p><strong>Loud</strong><em> soft</em></p></li></ul>')
+    expect(save?.fields.text).toBe('')
+  })
+
+  it('links only to web and mail addresses', async () => {
+    const user = userEvent.setup()
+    const fetchMock = stubMailApi(state())
+    renderMailApp('/mail')
+    const form = await compose(user)
+    await user.type(await body(form), 'See ')
+
+    await user.keyboard('{Control>}k{/Control}')
+    const dialog = await screen.findByRole('dialog', { name: 'Link' })
+    const address = within(dialog).getByRole('textbox', { name: 'Web or mail address' })
+    await user.type(address, 'javascript:alert(1){Enter}')
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(/web address/)
+    await user.clear(address)
+    await user.type(address, 'example.org{Enter}')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    const save = await savedLast(form, fetchMock)
+    expect(save?.fields.html).toMatch(/^<p>See <a [^>]*href="https:\/\/example\.org"[^>]*>example\.org<\/a><\/p>$/)
+  })
+
+  it('switches to plain text with the server\'s conversion, after a warning, and back', async () => {
+    const user = userEvent.setup()
+    const fetchMock = stubMailApi(state())
+    renderMailApp('/mail')
+    const form = await compose(user)
+    await user.type(await body(form), 'Hello')
+
+    await user.click(within(form).getByRole('button', { name: 'Plain text' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Plain text' })
+    expect(dialog).toHaveTextContent(/formatting, links and images/)
+    await user.click(within(dialog).getByRole('button', { name: 'Switch to plain text' }))
+
+    await waitFor(() => {
+      expect(field(form, 'Message')).toHaveValue('Hello')
+    })
+    expect(plainTextsAsked(fetchMock)).toEqual(['<p>Hello</p>'])
+    expect(within(form).queryByRole('toolbar')).not.toBeInTheDocument()
+    const save = await savedLast(form, fetchMock)
+    expect(save?.fields).toMatchObject({ html: null, text: 'Hello' })
+
+    await user.type(field(form, 'Message'), '\n<b>')
+    await user.click(within(form).getByRole('button', { name: 'Rich text' }))
+    expect(await body(form)).toHaveTextContent('Hello<b>')
+    expect((await savedLast(form, fetchMock))?.fields.html).toBe('<p>Hello</p><p>&lt;b&gt;</p>')
+  })
+
+  it('quotes a reply\'s original in HTML, below where the reply is typed', async () => {
+    const user = userEvent.setup()
+    const fetchMock = stubMailApi(state())
+    renderMailApp(`/mail?message=${firstRef}`)
+    await user.click(await screen.findByRole('button', { name: 'Reply' }))
+    const form = await composer('Reply')
+    const editor = await body(form)
+    await waitFor(() => {
+      expect(editor).toHaveFocus()
+    })
+    expect(editor.querySelector('blockquote')).toHaveTextContent('Body of Message 2')
+
+    await user.keyboard('Thanks')
+    const save = await savedLast(form, fetchMock)
+    expect(save?.fields.html).toMatch(/^<p>Thanks<\/p><p>sender2@example.org wrote:<\/p><blockquote type="cite"><p>/)
+  })
+
+  it('takes pasted images in place as inline parts, uploaded once', async () => {
+    const user = userEvent.setup()
+    const fetchMock = stubMailApi(state())
+    renderMailApp('/mail')
+    const form = await compose(user)
+    const editor = await body(form)
+    await user.type(editor, 'Look')
+
+    const image = new File(['png'], 'shot.png', { type: 'image/png' })
+    fireEvent.paste(editor, { clipboardData: { files: [image], types: ['Files'], getData: () => '' } })
+    const shown = await within(editor).findByRole('img', { name: 'shot.png' })
+    expect(shown.getAttribute('src')).toMatch(/^data:image\/png;base64,/)
+
+    const first = await savedLast(form, fetchMock)
+    const [contentId] = first?.fields.content_ids ?? []
+    expect(contentId).toMatch(/@mailroom$/)
+    expect(first?.files).toEqual(['shot.png'])
+    expect(first?.fields.html).toContain(`<img src="cid:${contentId ?? ''}" alt="shot.png">`)
+    expect(within(form).queryByRole('button', { name: 'Remove shot.png' })).not.toBeInTheDocument()
+
+    await user.type(editor, '!')
+    await waitFor(
+      () => {
+        expect(savesOf(fetchMock)).toHaveLength(2)
+      },
+      { timeout: 5_000 },
+    )
+    const second = await savedLast(form, fetchMock)
+    expect(second?.files).toEqual([])
+    expect(second?.fields.content_ids).toEqual([])
+    expect(second?.fields.keep).toEqual([{ ref: second?.fields.ref, part: '2', inline: true }])
+  })
+
+  it('pastes text copied with a picture of it as the text', async () => {
+    const user = userEvent.setup()
+    stubMailApi(state())
+    renderMailApp('/mail')
+    const editor = await body(await compose(user))
+    const picture = new File(['png'], 'copied.png', { type: 'image/png' })
+    const getData = (type: string) => (type === 'text/html' ? '<p>Copied cells</p>' : 'Copied cells')
+    fireEvent.paste(editor, { clipboardData: { files: [picture], types: ['text/html', 'text/plain', 'Files'], getData } })
+    await waitFor(() => {
+      expect(editor).toHaveTextContent('Copied cells')
+    })
+    expect(within(editor).queryByRole('img')).not.toBeInTheDocument()
+  })
+
+  it('refuses a pasted image over the limits, and places nothing', async () => {
+    const user = userEvent.setup()
+    stubMailApi(state({ attachmentMaxMb: 1 }))
+    renderMailApp('/mail')
+    const form = await compose(user)
+    const editor = await body(form)
+    const big = new File([new ArrayBuffer(2 ** 21)], 'big.png', { type: 'image/png' })
+    fireEvent.paste(editor, { clipboardData: { files: [big], types: ['Files'], getData: () => '' } })
+    expect(await within(form).findByRole('alert')).toHaveTextContent('1 MB')
+    expect(within(editor).queryByRole('img')).not.toBeInTheDocument()
+  })
+
+  it('stays in rich text when the conversion to plain text fails', async () => {
+    const user = userEvent.setup()
+    stubMailApi(state({ refuse: { 'POST /api/v1/mail/drafts?convert=text': { status: 502, body: {} } } }))
+    renderMailApp('/mail')
+    const form = await compose(user)
+    await user.type(await body(form), 'Hello')
+
+    await user.click(within(form).getByRole('button', { name: 'Plain text' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Plain text' })
+    await user.click(within(dialog).getByRole('button', { name: 'Switch to plain text' }))
+    await waitFor(() => {
+      expect(within(form).getAllByRole('alert').map((each) => each.textContent)).toContain('Could not switch to plain text.')
+    })
+    expect(within(form).getByRole('toolbar', { name: 'Formatting' })).toBeInTheDocument()
+    expect(await body(form)).toHaveTextContent('Hello')
+  })
+
+  it('drops a deleted image\'s part once a save replaced its version, so an undo cannot break saves', async () => {
+    const user = userEvent.setup()
+    const pic = { part: '2', name: 'pic.png', type: 'image/png', size: 3, content_id: 'pic@m' }
+    const draft = fakeDraft(WORK, 41, { html: '<p>Hi<img src="cid:pic@m" alt="pic.png"></p>', text: 'Hi', inline: [pic] })
+    const fetchMock = stubMailApi(state({ drafts: [draft] }))
+    renderMailApp(`/mail?compose=${draft.ref}`)
+    const form = await composer('Draft')
+    const editor = await body(form)
+    await within(editor).findByRole('img', { name: 'pic.png' })
+
+    await user.click(editor)
+    await user.keyboard('{Control>}a{/Control}{Backspace}Bye')
+    await within(form).findByText('Saved', {}, { timeout: 5_000 })
+    await user.keyboard('{Control>}z{/Control}{Control>}z{/Control}{Control>}z{/Control}!')
+    await waitFor(
+      () => {
+        expect(savesOf(fetchMock).length).toBeGreaterThanOrEqual(2)
+      },
+      { timeout: 5_000 },
+    )
+    await within(form).findByText('Saved', {}, { timeout: 5_000 })
+    for (const save of savesOf(fetchMock)) {
+      expect(save.fields.keep).not.toContainEqual(expect.objectContaining({ ref: draft.ref, inline: true }))
+    }
+  })
+
+  it('carries a forward\'s inline images, shown from the original', async () => {
+    const user = userEvent.setup()
+    const fake = state()
+    fake.inline = { [firstRef]: [{ part: '4', name: 'logo.png', type: 'image/png', size: 3, content_id: 'logo@x' }] }
+    const fetchMock = stubMailApi(fake)
+    renderMailApp(`/mail?message=${firstRef}`)
+    await user.click(await screen.findByRole('button', { name: 'Forward' }))
+    const form = await composer('Forward')
+    const logo = (await body(form)).querySelector('img[src]')
+    expect(logo?.getAttribute('src')).toBe(`/api/v1/mail/messages/${encodeURIComponent(firstRef)}/parts/4`)
+
+    await user.type(field(form, 'To'), 'ada@example.org{Enter}')
+    await user.click(within(form).getByRole('button', { name: 'Send' }))
+    await sentNotice()
+    expect(savesOf(fetchMock)[0]?.fields.keep).toEqual([{ ref: firstRef, part: '4', inline: true }])
+  })
+
+  it('restore a saved HTML draft as it was written', async () => {
+    const draft = fakeDraft(WORK, 41, { html: '<p>Hi <strong>there</strong></p>', text: 'Hi there' })
+    stubMailApi(state({ drafts: [draft] }))
+    renderMailApp(`/mail?compose=${draft.ref}`)
+    const editor = await body(await composer('Draft'))
+    expect(editor.querySelector('strong')).toHaveTextContent('there')
+  })
+})
+
 describe('sending', () => {
   async function ready(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
     const form = await compose(user)
     await user.type(field(form, 'To'), 'ada@example.org{Enter}')
-    await user.type(field(form, 'Message'), 'Hello')
+    await user.type(await body(form), 'Hello')
     return form
   }
 
@@ -1130,7 +1349,7 @@ describe('sending', () => {
     renderMailApp('/mail')
     const form = await ready(user)
     await firstSave(fetchMock)
-    await user.type(field(form, 'Message'), ' world')
+    await user.type(await body(form), ' world')
     await user.click(within(form).getByRole('button', { name: 'Send' }))
     saves.release()
     await sentNotice()
@@ -1203,7 +1422,7 @@ describe('sending', () => {
     }
     fake.drafts = [{ ...saved, ref: 'ref-1-Drafts-900', text: 'From an agent' }]
 
-    await user.type(field(form, 'Message'), ' more')
+    await user.type(await body(form), ' more')
     await user.click(within(form).getByRole('button', { name: 'Send' }))
     await sentNotice()
     expect(fake.delivered?.map((each) => each.text)).toEqual(['Hello more'])
@@ -1217,7 +1436,7 @@ describe('sending', () => {
     const form = await ready(user)
     await within(form).findByText('Saved', {}, { timeout: 5_000 })
     fake.saveWithoutRef = true
-    await user.type(field(form, 'Message'), ' more')
+    await user.type(await body(form), ' more')
     await user.click(within(form).getByRole('button', { name: 'Send' }))
 
     const problem = await within(form).findByRole('alert', {}, { timeout: 6_000 })

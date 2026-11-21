@@ -1,5 +1,5 @@
 import { ApiRequestError } from '@/api/http.ts'
-import { holdingSend, type DraftSend, type FoundDraft, type MessagePart, type SavedDraft } from '@/api/mail.ts'
+import { holdingSend, type DraftSend, type FoundDraft, type SavedDraft } from '@/api/mail.ts'
 
 const BASE_DEBOUNCE_MS = 2_000
 /** Each save rewrites the whole message, attachments included. */
@@ -24,7 +24,7 @@ export interface SaveHooks<S> {
   save: (snapshot: S, ref: string | null, keepalive: boolean) => Promise<SavedDraft>
   find: () => Promise<FoundDraft | null>
   /** A version is the latest: `snapshot` is what it holds, `null` for one this client did not write. */
-  landed: (snapshot: S | null, ref: string, parts: MessagePart[]) => void
+  landed: (snapshot: S | null, ref: string, stored: Pick<FoundDraft, 'parts' | 'inline'>) => void
   /** The version `ref` is gone, and no other took its place. */
   lost: (ref: string) => void
   /** State to show changed. */
@@ -287,7 +287,7 @@ export class SaveQueue<S> {
     }
     this.ref = answer.ref
     this.unsettled = null
-    this.hooks.landed(snapshot, answer.ref, answer.parts)
+    this.hooks.landed(snapshot, answer.ref, answer)
   }
 
   /** What the server holds under this `compose_id` is the draft; nothing there, it is gone. */
@@ -295,7 +295,7 @@ export class SaveQueue<S> {
     const before = this.ref
     this.ref = found?.ref ?? null
     if (found !== null) {
-      this.hooks.landed(null, found.ref, found.parts)
+      this.hooks.landed(null, found.ref, found)
     } else if (before !== null) {
       this.hooks.lost(before)
     }
@@ -328,6 +328,6 @@ export class SaveQueue<S> {
     this.ref = found.ref
     this.savedVersion = Math.max(this.savedVersion, pending.version)
     this.unverified = !pending.answered
-    this.hooks.landed(pending.snapshot, found.ref, found.parts)
+    this.hooks.landed(pending.snapshot, found.ref, found)
   }
 }

@@ -224,6 +224,7 @@ def point_at(composer: Composer, stub: SmtpStub) -> None:
 def test_signed_out_browsers_are_refused_uncached(api_client: TestClient) -> None:
     refused = [
         api_client.post(f"{MAIL}/drafts/prefill", json={"ref": "x", "mode": "reply"}),
+        api_client.post(f"{MAIL}/drafts?convert=text", files=[("html", (None, "<p>x</p>"))]),
         api_client.post(f"{MAIL}/drafts", files=[("draft", (None, "{}"))]),
         api_client.get(f"{MAIL}/drafts/x"),
         api_client.get(f"{MAIL}/drafts/find", params={"account": 1, "compose_id": "b"}),
@@ -466,6 +467,32 @@ def test_an_html_draft_past_the_text_read_cap_reads_back_whole_and_sends(
     assert read["lossy"] is False
     assert read["html"] == f"<p>{wide}</p>\n"
     assert composer.sent(ref)["state"] == "sent"
+
+
+def test_an_html_body_converts_to_the_text_it_is_sent_with(composer: Composer) -> None:
+    def convert(html: str | bytes, name: str | None = None) -> Any:
+        return composer.client.post(
+            f"{MAIL}/drafts", params={"convert": "text"}, files=[("html", (name, html))]
+        )
+
+    converted = convert("<p>Hi <b>there</b></p><ul><li>one</li></ul><script>alert(1)</script>")
+    assert converted.status_code == 200, converted.text
+    text = converted.json()["text"]
+    assert "Hi there" in text
+    assert "one" in text
+    assert "alert" not in text
+    # 3 MiB of UTF-8 whose text stays within the plain-text cap: no other limit comes first.
+    padded = "<p>Hi</p>" + "<!-- é -->" * ((MAX_HTML_BYTES - 9) // 11)
+    assert convert(padded.encode()).json() == {"text": "Hi"}
+    assert composer.contents("Drafts") == []
+
+    assert detail(convert("x" * (MAX_HTML_BYTES + 1))) == (400, "invalid_argument")
+    assert detail(convert("x" * 100_001)) == (400, "invalid_argument")
+    assert detail(convert("<p>x</p>", "body.html")) == (400, "invalid_argument")
+    other = composer.client.post(
+        f"{MAIL}/drafts", params={"convert": "pdf"}, files=[("html", (None, "x"))]
+    )
+    assert other.status_code == 422
 
 
 def test_more_content_ids_than_files_are_refused(composer: Composer) -> None:

@@ -23,6 +23,14 @@ Object.assign(HTMLDialogElement.prototype, {
   },
 })
 
+// The rich-text editor (ProseMirror) measures the selection to keep it in view; jsdom lays nothing
+// out, and has no such measures of a range or a point.
+Object.assign(Range.prototype, {
+  getClientRects: () => Object.assign([], { item: () => null }),
+  getBoundingClientRect: () => new DOMRect(),
+})
+Object.assign(Document.prototype, { elementFromPoint: () => null })
+
 afterEach(() => {
   cleanup()
   // What a screen keeps in the browser (the folder tree's open levels) does not leak into the next test.

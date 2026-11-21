@@ -201,6 +201,12 @@ def _inline(message: MessageInput) -> dict[str, OutgoingAttachment]:
     return parts
 
 
+def html_text(html: str) -> str:
+    """The text part a message whose HTML body is `html` carries."""
+    cleaned = outgoing_html(well_formed(html), data_images=False).html
+    return html_to_text(cleaned, False, max_chars=2 * MAX_HTML_BYTES).text
+
+
 def _html_body(body: EmailMessage, html: str, message: MessageInput) -> None:
     """multipart/alternative of the text derived from the sanitised HTML and that HTML, wrapped
     in a multipart/related with the parts it shows in place, if any."""

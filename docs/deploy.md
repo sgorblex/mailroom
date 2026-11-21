@@ -32,10 +32,12 @@ Quadlet sketch: [`../deploy/quadlet/README.md`](../deploy/quadlet/README.md) —
 worker), Postgres outside it, TLS on the host's reverse proxy, which must append the client to
 `X-Forwarded-For` (login throttling keys on it). The web container's nginx logs paths without
 their query string, which can hold mail data (a folder name, a search the SPA keeps in its URL);
-the host's proxy must log the same way, or not at all. The web container's nginx allows a body of
-30 MB on `/api/v1/mail/drafts` alone, for a draft's attachments; the host's proxy must allow the
-same there, or it refuses them first. Its read timeout must also cover the whole upload: at 60 s,
-30 MB needs about 4 Mbit/s, and a slower client gets the proxy's 502 or 504 partway through.
+the host's proxy must log the same way, or not at all. The web container's own nginx (in the
+image) allows a body of 30 MiB (`client_max_body_size 30m`) on `/api/v1/mail/drafts` alone, for a
+draft's attachments and its HTML, and nginx's 1 MiB default elsewhere. The host's proxy must allow
+the same 30 MiB on that path, the one size it needs beyond its default, or it refuses them first.
+Its read timeout must also cover the whole upload: at 60 s, 30 MiB needs about 4 Mbit/s, and a
+slower client gets the proxy's 502 or 504 partway through.
 The live updates stream (`/api/v1/mail/events`, server-sent events) stays open while a tab is:
 the host's proxy must pass it unbuffered (it carries `X-Accel-Buffering: no`, which nginx
 honours; Caddy flushes `text/event-stream` by itself) with a read timeout above its 25 s

@@ -4,21 +4,21 @@ import { Paperclip, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button.tsx'
 
-import { isFile, itemName, itemSize, trayBytes, type TrayItem } from './compose-form.ts'
+import { itemName, itemSize, MAX_FILES, uploadProblem, type TrayItem } from './compose-form.ts'
 import { formatSize } from './format.ts'
 import { MAIL_NS } from './i18n.ts'
-
-const MAX_FILES = 10
-const MIB = 2 ** 20
 
 /** What the draft attaches: files to upload and parts it keeps. Limits are said before any upload. */
 export function AttachmentTray({
   items,
+  inline,
   maxMb,
   onAdd,
   onRemove,
 }: {
   items: TrayItem[]
+  /** The images the body shows, which count towards the limits too. */
+  inline: TrayItem[]
   maxMb: number
   onAdd: (files: File[]) => void
   onRemove: (item: TrayItem) => void
@@ -30,9 +30,10 @@ export function AttachmentTray({
   const input = useRef<HTMLInputElement>(null)
 
   function add(files: File[]): void {
-    if (items.filter(isFile).length + files.length > MAX_FILES) {
+    const problem = uploadProblem([...items, ...inline], files, maxMb)
+    if (problem === 'count') {
       setError(t('compose.tooManyFiles', { count: MAX_FILES }))
-    } else if (trayBytes(items) + files.reduce((total, file) => total + file.size, 0) > maxMb * MIB) {
+    } else if (problem === 'size') {
       setError(t('compose.attachmentsTooLarge', { limit: maxMb }))
     } else {
       setError(null)
