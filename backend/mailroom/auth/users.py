@@ -120,6 +120,16 @@ def set_mark_read_subfolders(db: Session, user: User, subfolders: bool) -> None:
     db.commit()
 
 
+INDEX_MAX_AGE_DAYS: Final = 36500
+"""The longest age limit of the mail index, a user's or the instance's (a hundred years)."""
+
+
+def set_index_max_age(db: Session, user: User, days: int | None) -> None:
+    """Keep ``user``'s own age limit of the mail index; None: none."""
+    user.index_max_age_days = days
+    db.commit()
+
+
 def reset_password(db: Session, user: User, password: str, *, by: User) -> None:
     """An admin sets ``user``'s password and signs them out everywhere. Not their own, which needs
     the current password like anyone else's."""

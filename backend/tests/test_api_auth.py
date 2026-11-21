@@ -26,6 +26,7 @@ SIGNED_IN = {
         "is_admin": False,
         "time_zone": None,
         "mark_read_subfolders": True,
+        "index_max_age_days": None,
     },
     "features": EVERY_FEATURE,
 }
@@ -234,6 +235,43 @@ def test_picking_what_mark_all_as_read_does_needs_a_session(api_client: TestClie
     response = api_client.put(
         "/api/v1/auth/me/mark-read-subfolders", json={"mark_read_subfolders": False}
     )
+    assert response.status_code == 401
+
+
+def test_the_user_limits_the_index_to_recent_mail(
+    user_client: TestClient, db_session: Session, user: User
+) -> None:
+    route = "/api/v1/auth/me/index-max-age"
+    response = user_client.put(route, json={"index_max_age_days": 365})
+    assert response.status_code == 200
+    assert response.json()["index_max_age_days"] == 365
+    assert user_client.get("/api/v1/auth/me").json()["user"]["index_max_age_days"] == 365
+    db_session.expire_all()
+    stored = db_session.get(User, user.id)
+    assert stored is not None
+    assert stored.index_max_age_days == 365
+
+    for body in (
+        {"index_max_age_days": 0},
+        {"index_max_age_days": 36501},
+        {"index_max_age_days": "30"},
+        {"index_max_age_days": 30.5},
+        {"index_max_age_days": 30, "other": 1},
+        {},
+    ):
+        assert user_client.put(route, json=body).status_code == 422, body
+    assert user_client.get("/api/v1/auth/me").json()["user"]["index_max_age_days"] == 365
+
+    cross_site = user_client.put(
+        route, json={"index_max_age_days": None}, headers={"Sec-Fetch-Site": "cross-site"}
+    )
+    assert cross_site.status_code == 403
+    assert user_client.put(route, json={"index_max_age_days": None}).status_code == 200
+    assert user_client.get("/api/v1/auth/me").json()["user"]["index_max_age_days"] is None
+
+
+def test_limiting_the_index_needs_a_session(api_client: TestClient) -> None:
+    response = api_client.put("/api/v1/auth/me/index-max-age", json={"index_max_age_days": 30})
     assert response.status_code == 401
 
 

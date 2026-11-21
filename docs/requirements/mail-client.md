@@ -9,8 +9,9 @@ creates, renames and deletes folders: Mailroom deletes mail only deliberately, a
 delete is the one in the mail client. Product scope:
 [`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Mail client*. Rendering and IMAP come from
 **mailroom-core** (`render` and `mail`, connections in `mail.imap`; 0.1.2 for slices A and B, the
-0.1.3 for slice C's compose, drafts and send), over IMAP directly: no index and no
-live updates yet.
+0.1.3 for slice C's compose, drafts and send), over IMAP directly. The [index](#index) is being
+built: its settings are in, its sync and reads are not, so every read is still live; no live
+updates yet.
 
 ## Slice A: read
 
@@ -1385,6 +1386,52 @@ but one*). Every attempt, a refused one included, is an audit record `unsubscrib
 message's folder, UID, `Message-ID`, sender and `list_id`, and once posted the URL's host and the
 status; the URL itself, and its query, are kept nowhere.
 
+## Index
+
+The mail index keeps each indexed folder's message metadata in the app's database, never a body
+([`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *Mail metadata at rest*). A
+folder off the index is read live, as before the index.
+
+- **Folders.** Each selectable folder of an account gets its row (`app.mail_index_folder`) the
+  first time the index sees it (its status below, a switch), switched on but for the folder in the
+  Junk role and, off Gmail, the virtual folders (`\All` or `\Flagged` special-use, or the `all`
+  or `flagged` role), whose mail other folders hold: these stay listed, off until switched on.
+  Trash is indexed. The user switches each one on or off per account. Off deletes the
+  folder's indexed messages and forgets its sync state; on leaves it `pending`, to be built.
+- **Gmail** (`X-GM-EXT-1`, never by host name): only All Mail (the `\All` folder) is indexed,
+  with each message's labels. INBOX and the label folders are read from it by label, so their
+  switch is All Mail's; Spam and Trash, which All Mail leaves out, stay live. A Gmail account
+  whose All Mail is not listed over IMAP indexes nothing.
+- **Age limit.** The user's own (`index_max_age_days`, 1-36500 days, null for none), capped by
+  the instance's `MAILROOM_INDEX_MAX_AGE_DAYS` (unset or not a whole number: no cap; clamped to
+  1-36500): the smaller of the two is in force. Older messages are not indexed and stay readable
+  live.
+
+Routes (under `/api/v1/mail`, as the rest of the [REST contract](#rest-contract)):
+
+- `GET /index/accounts/{account_id}`: lists the account's folders (with STATUS, one command per
+  folder), giving each one first seen its row, and answers `{"account_id", "gmail",
+  "max_age_days", "max_age_cap_days", "folders"}`: the age limit in force and the cap, then each
+  selectable folder in the listing's order as `{"path", "role", "indexed_as", "enabled", "total",
+  "state", "error", "indexed", "unread", "oldest_indexed", "last_synced_at"}`. `indexed_as` is
+  `folder` (indexed on its own), `label` (Gmail, read from All Mail: `enabled` and the sync fields
+  are All Mail's, `indexed` and `unread` null) or `live` (never indexed, `enabled` false).
+  `total` is the server's count (null when its STATUS failed); `state` is `pending`, `syncing`,
+  `ready` or `failed` (with `error`, a mailbox failure's code); `indexed` and `unread` count what
+  the index holds, so `indexed` out of `total` is a first sync's progress (short of it under an
+  age limit); `oldest_indexed` is the age limit's day the last sync kept to. `state` and the
+  fields after it are null while the folder is off. Errors as the folder listing's.
+- `PUT /index/accounts/{account_id}/folders`, `{"folder": "Archive", "enabled": false}` (a JSON
+  boolean; unknown fields 422; `INBOX` in any case): `{"account_id", "folder", "enabled"}`. A
+  folder the index has not seen yet is looked up on the server first: one it does not list is 404
+  `mailbox_missing`; on Gmail, any folder but All Mail is 409 `index_gmail_label`.
+- `PUT /api/v1/auth/me/index-max-age`, `{"index_max_age_days": 365}` (a JSON integer, or null):
+  sets the user's own limit; `auth/me`'s `user` carries it.
+
+Logged as `mail_index_folders` (the listing, as the other mail calls), `mail_index_folder_switched`
+(`user_id`, `account_id`, `enabled` and how many messages' rows went) and `index_max_age_changed`;
+never a folder's path.
+
 ## Mailbox quota
 
 `GET /api/v1/accounts/{id}/quota` (the signed-in user's own account; mounted in every edition)
@@ -1486,4 +1533,4 @@ that says how to read it. There is no REST route for threads yet.
 
 ## Later slices
 
-- Threaded list view, and the index with live updates ([`../REQUIREMENTS.md`](../REQUIREMENTS.md)).
+- Threaded list view, the index's sync and reads, and live updates ([`../REQUIREMENTS.md`](../REQUIREMENTS.md)).

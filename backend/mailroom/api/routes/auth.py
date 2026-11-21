@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import logging
+from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Request, Response
-from pydantic import BaseModel, ConfigDict, Field, StrictBool
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
 from mailroom.api.deps import CurrentUser, DbSession, SessionCookie
 from mailroom.auth.password import MAX_PASSWORD_LENGTH, password_matches
@@ -18,7 +19,13 @@ from mailroom.auth.sessions import (
     session_user,
 )
 from mailroom.auth.throttle import LoginThrottle, client_key
-from mailroom.auth.users import set_mark_read_subfolders, set_time_zone, user_by_username
+from mailroom.auth.users import (
+    INDEX_MAX_AGE_DAYS,
+    set_index_max_age,
+    set_mark_read_subfolders,
+    set_time_zone,
+    user_by_username,
+)
 from mailroom.config.features import Feature, Features
 from mailroom.models import User
 from mailroom_core.config import TimeZone
@@ -40,6 +47,9 @@ class UserOut(BaseModel):
     """An IANA name; null until the user sets one, and dates are then in UTC."""
     mark_read_subfolders: bool
     """What "mark all as read" on a folder with subfolders does first: true, them too."""
+    index_max_age_days: int | None
+    """The user's own age limit of the mail index, in days; null for none (the instance's cap
+    still applies)."""
 
     @classmethod
     def of(cls, user: User) -> UserOut:
@@ -48,6 +58,7 @@ class UserOut(BaseModel):
             is_admin=user.is_admin,
             time_zone=user.time_zone,
             mark_read_subfolders=user.mark_read_subfolders,
+            index_max_age_days=user.index_max_age_days,
         )
 
 
@@ -59,6 +70,12 @@ class MarkReadSubfoldersChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     mark_read_subfolders: StrictBool
+
+
+class IndexMaxAgeChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    index_max_age_days: Annotated[StrictInt, Field(ge=1, le=INDEX_MAX_AGE_DAYS)] | None
 
 
 class MeResponse(BaseModel):
@@ -121,6 +138,17 @@ def change_mark_read_subfolders(
     logger.info(
         "mark_read_subfolders_changed",
         extra={"event": "mark_read_subfolders_changed", "user_id": user.id},
+    )
+    return UserOut.of(user)
+
+
+@auth_router.put("/me/index-max-age")
+def change_index_max_age(body: IndexMaxAgeChange, db: DbSession, user: CurrentUser) -> UserOut:
+    """How far back the mail index keeps the user's mail, in days (null: no limit of their own);
+    ``MAILROOM_INDEX_MAX_AGE_DAYS`` caps it. The answer is the user."""
+    set_index_max_age(db, user, body.index_max_age_days)
+    logger.info(
+        "index_max_age_changed", extra={"event": "index_max_age_changed", "user_id": user.id}
     )
     return UserOut.of(user)
 
