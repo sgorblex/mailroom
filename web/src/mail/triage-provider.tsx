@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from 'react'
+import { useQueries, useQueryClient, type QueryObserverResult } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
@@ -7,7 +8,6 @@ import {
   archiveMessages,
   flagMessages,
   junkMessages,
-  listMailFolders,
   moveMessages,
   moveToAccount,
   trashMessages,
@@ -19,12 +19,13 @@ import { ApiRequestError } from '@/api/http.ts'
 import { useUnmountSignal } from '@/lib/use-unmount-signal.ts'
 
 import { MAIL_NS } from './i18n.ts'
+import { ALL_MESSAGES_KEY, foldersKey, foldersQuery } from './queries.ts'
 import { useToast } from './toast-context.ts'
 import { DoneMessage } from './toolbar.tsx'
 import {
   failureKey,
+  folderState,
   isSameFolder,
-  loadedFolders,
   roleFolder,
   TriageContext,
   type Action,
@@ -201,7 +202,15 @@ export function TriageProvider({
   const { t } = useTranslation(MAIL_NS)
   const toast = useToast()
   const unmountSignal = useUnmountSignal()
-  const [folders, foldersRef, setFolders] = useMirrored<Record<string, FolderState>>({})
+  const queryClient = useQueryClient()
+  // The accounts whose folders the screen asked for: their queries are kept and shared from here.
+  const [wanted, setWanted] = useState<readonly AccountId[]>([])
+  const combineFolders = useCallback(
+    (results: QueryObserverResult<MailFolder[]>[]): Record<string, FolderState> =>
+      Object.fromEntries(results.map((result, index) => [String(wanted[index]), folderState(result)])),
+    [wanted],
+  )
+  const folders = useQueries({ queries: wanted.map((account) => foldersQuery(account)), combine: combineFolders })
   const [removed, , setRemoved] = useMirrored<ReadonlySet<string>>(new Set())
   const [open, openRef, setOpenState] = useMirrored<Target | null>(null)
   const [scoped, scopedRef, setScoped] = useMirrored<Scope>(freshScope(sourceKey))
@@ -211,7 +220,10 @@ export function TriageProvider({
     busyRef.current = value
     setBusy(value)
   }, [])
-  const [reloads, setReloads] = useState(0)
+  // What the lists show was changed behind the screen's back: each reads itself again.
+  const reloadLists = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ALL_MESSAGES_KEY })
+  }, [queryClient])
   const [spamOffer, setSpamOffer] = useState<SpamOffer | null>(null)
   const dismissSpamOffer = useCallback(() => {
     setSpamOffer(null)
@@ -230,7 +242,6 @@ export function TriageProvider({
     visible.current = rows
   }, [])
   const visibleRows = useCallback(() => visible.current, [])
-  const folderRequests = useRef(new Map<AccountId, AbortController>())
 
   const scope = scoped.key === sourceKey ? scoped : freshScope(sourceKey)
 
@@ -248,55 +259,41 @@ export function TriageProvider({
     [setScoped],
   )
 
-  useEffect(() => {
-    const requests = folderRequests.current
-    return () => {
-      for (const controller of requests.values()) {
-        controller.abort()
-      }
-    }
-  }, [])
-
   const loadFolders = useCallback(
     (account: AccountId, fresh: boolean) => {
-      if (!fresh && foldersRef.current[account] !== undefined) {
-        return
+      setWanted((value) => (value.includes(account) ? value : [...value, account]))
+      if (fresh) {
+        // The request on its way is dropped for the new one.
+        void queryClient.invalidateQueries({ queryKey: foldersKey(account), refetchType: 'all' })
       }
-      folderRequests.current.get(account)?.abort()
-      const controller = new AbortController()
-      folderRequests.current.set(account, controller)
-      // A reload keeps showing the folders until it answers.
-      setFolders((value) => (value[account]?.kind === 'loaded' ? value : { ...value, [account]: { kind: 'loading' } }))
-      listMailFolders(account, controller.signal).then(
-        (list) => {
-          setFolders((value) => ({ ...value, [account]: { kind: 'loaded', value: list } }))
-        },
-        (error: unknown) => {
-          if (!controller.signal.aborted) {
-            setFolders((value) => ({ ...value, [account]: { kind: 'failed', error } }))
-          }
-        },
-      )
     },
-    [foldersRef, setFolders],
+    [queryClient],
+  )
+  /** An account's folders as last read, for the async code that reads them after an await. */
+  const loadedFoldersOf = useCallback(
+    (account: AccountId): MailFolder[] | undefined =>
+      queryClient.getQueryState(foldersKey(account))?.status === 'success'
+        ? queryClient.getQueryData<MailFolder[]>(foldersKey(account))
+        : undefined,
+    [queryClient],
   )
 
   const adjustFolder = useCallback(
     (account: AccountId, path: string, unread: number, total: number) => {
-      setFolders((value) => {
-        const state = value[account]
-        if (state?.kind !== 'loaded' || (unread === 0 && total === 0)) {
-          return value
-        }
-        const list = state.value.map((folder) =>
+      const list = loadedFoldersOf(account)
+      if (list === undefined || (unread === 0 && total === 0)) {
+        return
+      }
+      queryClient.setQueryData<MailFolder[]>(
+        foldersKey(account),
+        list.map((folder) =>
           isSameFolder(folder.path, path)
             ? { ...folder, unread: Math.max(0, folder.unread + unread), total: Math.max(0, folder.total + total) }
             : folder,
-        )
-        return { ...value, [account]: { kind: 'loaded', value: list } }
-      })
+        ),
+      )
     },
-    [setFolders],
+    [queryClient, loadedFoldersOf],
   )
 
   const overrides = scope.overrides
@@ -363,7 +360,7 @@ export function TriageProvider({
         loadFolders(account, true)
       }
       if (plan.kind === 'move') {
-        setReloads((value) => value + 1)
+        reloadLists()
       } else {
         updateScope(currentKey.current, (current) => {
           const overrides = new Map(current.overrides)
@@ -379,7 +376,7 @@ export function TriageProvider({
       }
       toast.show(failed ? { message: t('undo.failed'), tone: 'error' } : { message: t('undo.done') })
     },
-    [setBusyState, unmountSignal, loadFolders, updateScope, toast, t],
+    [setBusyState, unmountSignal, loadFolders, reloadLists, updateScope, toast, t],
   )
 
   const folderMarkedRead = useCallback(
@@ -392,9 +389,9 @@ export function TriageProvider({
       updateScope(currentKey.current, (current) => ({
         overrides: new Map([...current.overrides].filter(([ref, flags]) => flags.seen || !inFolder.has(ref))),
       }))
-      setReloads((value) => value + 1)
+      reloadLists()
     },
-    [updateScope],
+    [updateScope, reloadLists],
   )
 
   const run = useCallback(
@@ -410,7 +407,7 @@ export function TriageProvider({
       }
       // Messages already where the action would put them are left alone.
       const pending = targets.filter((target) => {
-        const where = destination(action, loadedFolders(foldersRef.current[target.account_id]))
+        const where = destination(action, loadedFoldersOf(target.account_id))
         return where === undefined || !isSameFolder(target.folder, where)
       })
       if (pending.length === 0) {
@@ -609,12 +606,12 @@ export function TriageProvider({
         adjustFolder(group.account, group.folder, -unread, -members.length)
         if (move.kind === 'moveToAccount') {
           adjustFolder(move.account, move.folder.path, unread, members.length)
-          const trash = roleFolder(loadedFolders(foldersRef.current[group.account]), 'trash')?.path
+          const trash = roleFolder(loadedFoldersOf(group.account), 'trash')?.path
           if (move.removal === 'trash' && trash !== undefined && !isSameFolder(trash, group.folder)) {
             adjustFolder(group.account, trash, unread, members.length)
           }
         } else {
-          const where = destination(move, loadedFolders(foldersRef.current[group.account]))
+          const where = destination(move, loadedFoldersOf(group.account))
           if (where !== undefined) {
             adjustFolder(group.account, where, unread, members.length)
           }
@@ -632,7 +629,7 @@ export function TriageProvider({
       undoAction,
       toast,
       t,
-      foldersRef,
+      loadedFoldersOf,
       overridesOf,
       openRef,
       unmountSignal,
@@ -682,9 +679,9 @@ export function TriageProvider({
         loadFolders(account, true)
       }
       updateScope(sourceKey, () => ({ bulk: null, matching: null, selection: NO_SELECTION, overrides: NO_OVERRIDES }))
-      setReloads((value) => value + 1)
+      reloadLists()
     },
-    [sourceKey, updateScope, loadFolders],
+    [sourceKey, updateScope, loadFolders, reloadLists],
   )
   const setOpen = useCallback(
     (target: Target | null) => {
@@ -735,7 +732,6 @@ export function TriageProvider({
     busy,
     outcome: scope.outcome,
     dismissOutcome,
-    reloads,
     folderMarkedRead,
     spamOffer,
     dismissSpamOffer,

@@ -1,7 +1,10 @@
 import { createContext, useContext, useEffect } from 'react'
+import { useQuery, type QueryObserverResult } from '@tanstack/react-query'
 
 import type { AccountId } from '@/api/accounts.ts'
 import type { FlagChange, FolderRole, MailAddress, MailFolder, MatchScope, MessageItem, MoveRemoval } from '@/api/mail.ts'
+
+import { foldersQuery } from './queries.ts'
 
 export interface Flags {
   seen: boolean
@@ -75,7 +78,6 @@ export type FolderState =
   | { kind: 'failed'; error: unknown }
   | { kind: 'loaded'; value: MailFolder[] }
 
-
 export interface Triage {
   /** The user's accounts, for a move to another of them. */
   accounts: readonly AccountId[]
@@ -109,8 +111,6 @@ export interface Triage {
   busy: boolean
   outcome: Outcome | null
   dismissOutcome: () => void
-  /** Counts the lists read again after an undo or a folder marked read: the list shown reads itself again when it changes. */
-  reloads: number
   /** Folders were marked read: their rows drop what this screen marked unread, and the list is read again. */
   folderMarkedRead: (account: AccountId, folders: readonly string[]) => void
   /** The filter offered after a report of spam, until dismissed, undone or another report replaces it. */
@@ -151,16 +151,45 @@ export function loadedFolders(state: FolderState | undefined): MailFolder[] | un
   return state?.kind === 'loaded' ? state.value : undefined
 }
 
-/** An account's folders from the shared store; `fresh` loads them again on mount (the sidebar's counts). */
+const LOADING: FolderState = { kind: 'loading' }
+const loadedStates = new WeakMap<MailFolder[], FolderState>()
+const failedStates = new WeakMap<Error, FolderState>()
+
+/**
+ * The folders query's result as the screen shows it, the same object while it is unchanged: a
+ * reload keeps showing the folders until it answers, a retry after a failure shows them loading.
+ */
+export function folderState({ status, fetchStatus, data, error }: QueryObserverResult<MailFolder[]>): FolderState {
+  if (status === 'success') {
+    let state = loadedStates.get(data)
+    if (state === undefined) {
+      state = { kind: 'loaded', value: data }
+      loadedStates.set(data, state)
+    }
+    return state
+  }
+  if (status === 'error' && fetchStatus === 'idle') {
+    let state = failedStates.get(error)
+    if (state === undefined) {
+      state = { kind: 'failed', error }
+      failedStates.set(error, state)
+    }
+    return state
+  }
+  return LOADING
+}
+
+/** An account's folders, kept in the shared store; `fresh` loads them again on mount (the sidebar's counts). */
 export function useAccountFolders(account: AccountId, fresh = false): { state: FolderState; retry: () => void } {
-  const { folders, loadFolders } = useTriage()
+  const { loadFolders } = useTriage()
+  const query = useQuery({ ...foldersQuery(account), refetchOnMount: fresh ? 'always' : false, retryOnMount: fresh })
   useEffect(() => {
-    loadFolders(account, fresh)
-  }, [account, fresh, loadFolders])
+    loadFolders(account, false)
+  }, [account, loadFolders])
   return {
-    state: folders[account] ?? { kind: 'loading' },
+    state: folderState(query),
     retry: () => {
-      loadFolders(account, true)
+      void query.refetch()
     },
   }
 }

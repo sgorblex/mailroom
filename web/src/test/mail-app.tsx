@@ -1,5 +1,6 @@
 import { StrictMode } from 'react'
 import { render } from '@testing-library/react'
+import { QueryClientProvider } from '@tanstack/react-query'
 import {
   createMemoryHistory,
   createRootRoute,
@@ -14,13 +15,14 @@ import { vi } from 'vitest'
 import type { Feature, User } from '@/api/auth.ts'
 import { AuthContext } from '@/auth/auth-context.ts'
 import { validateFilterDraftSearch } from '@/filters/draft-search.ts'
+import { createQueryClient } from '@/lib/query-client.ts'
 import { MailScreen } from '@/mail/mail-screen.tsx'
 import { validateMailSearch } from '@/mail/route-search.ts'
 
 /**
  * The mail screen at `path`, in a router of its own, with Accounts and a filter draft as
  * placeholders; its history to inspect. `strict` as `main.tsx` renders it; with `user`, signed in
- * as them (else no `AuthProvider`) on an instance with `features`.
+ * as them (else no `AuthProvider`) on an instance with `features`. A cache of its own, never retrying.
  */
 export function renderMailApp(
   path: string,
@@ -49,7 +51,11 @@ export function renderMailApp(
   // The router restores scroll positions, which jsdom does not implement.
   vi.stubGlobal('scrollTo', vi.fn())
   const reject = (): Promise<void> => Promise.reject(new Error('not in this test'))
-  const app = <RouterProvider router={router} />
+  const app = (
+    <QueryClientProvider client={createQueryClient()}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
+  )
   const ui =
     user === undefined ? (
       app

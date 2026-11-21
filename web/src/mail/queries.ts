@@ -1,0 +1,56 @@
+import type { QueryClient, UseQueryOptions } from '@tanstack/react-query'
+
+import type { AccountId } from '@/api/accounts.ts'
+import { listMailFolders, type MailFolder } from '@/api/mail.ts'
+
+/** The keys the mail screen's reads are cached under. */
+export const ACCOUNTS_KEY = ['accounts'] as const
+
+export function foldersKey(account: AccountId): readonly unknown[] {
+  return ['folders', account]
+}
+
+/** Every page of every list. */
+export const ALL_MESSAGES_KEY = ['messages'] as const
+
+/** A page of the list `source` names (a folder or a search, as the mail screen's `sourceKey`). */
+export function messagesKey(source: string, cursor: string | null): readonly unknown[] {
+  return ['messages', source, cursor]
+}
+
+export function messageKey(ref: string, offset: number, includeQuoted: boolean): readonly unknown[] {
+  return ['message', ref, offset, includeQuoted]
+}
+
+/**
+ * Read again each time it is shown, as before the cache: the screen's own flag changes and the rows
+ * it moved away are not written into it.
+ */
+export const READ_ON_MOUNT = { gcTime: 0 } as const
+
+/** An account's folders: read again only when a caller asks (`invalidateQueries`, or `refetchOnMount`). */
+export function foldersQuery(account: AccountId): UseQueryOptions<MailFolder[], Error, MailFolder[]> {
+  return {
+    queryKey: foldersKey(account),
+    queryFn: ({ signal }) => listMailFolders(account, signal),
+    refetchOnMount: false,
+    retryOnMount: false,
+  }
+}
+
+/** A page read through the cache on request ("Load more"), dropped once `signal` aborts (an unmount). */
+export function fetchPage<T>(
+  queryClient: QueryClient,
+  queryKey: readonly unknown[],
+  read: (signal: AbortSignal) => Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  signal.addEventListener(
+    'abort',
+    () => {
+      void queryClient.cancelQueries({ queryKey })
+    },
+    { once: true },
+  )
+  return queryClient.query({ queryKey, queryFn: ({ signal: querySignal }) => read(querySignal), staleTime: 0, ...READ_ON_MOUNT })
+}

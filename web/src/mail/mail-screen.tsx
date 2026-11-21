@@ -1,5 +1,6 @@
-import { useCallback, useMemo, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearch } from '@tanstack/react-router'
 
 import { AccountsContext } from '@/accounts/accounts-context.ts'
@@ -7,7 +8,6 @@ import { accountErrorMessage } from '@/accounts/messages.ts'
 import { type AccountId, listAccounts, type Account } from '@/api/accounts.ts'
 import { listMessages, searchMessages, type MatchScope, type SearchQuery } from '@/api/mail.ts'
 import { Button } from '@/components/ui/button.tsx'
-import { useLoad } from '@/lib/use-load.ts'
 import { cn } from '@/lib/utils.ts'
 
 import { CommandPalette } from './command-palette.tsx'
@@ -27,6 +27,7 @@ import { ComposeAnnouncer } from './send-status.tsx'
 import { useMailShortcuts, usePaletteShortcut } from './shortcuts.ts'
 import { storedSubfolders } from './subfolder-view.ts'
 import { MuteProvider } from './mute-provider.tsx'
+import { ACCOUNTS_KEY, messagesKey, READ_ON_MOUNT } from './queries.ts'
 import { ToastHost } from './toast.tsx'
 import { SpamFilterOffer } from './spam-filter-offer.tsx'
 import { OutcomeAnnouncer, Toolbar } from './toolbar.tsx'
@@ -43,13 +44,11 @@ const DEFAULT_FOLDER = 'INBOX'
 export function MailScreen(): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const search = useSearch({ from: '/mail' })
-  const { state: accounts, retry } = useLoad(listAccounts, (error) =>
-    accountErrorMessage(t, error, t('accounts.loadFailed')),
-  )
+  const accounts = useQuery({ queryKey: ACCOUNTS_KEY, queryFn: ({ signal }) => listAccounts(signal), ...READ_ON_MOUNT })
   const [sheet, setSheet] = useState(false)
   const [palette, setPalette] = useState(false)
 
-  if (accounts.kind === 'loading') {
+  if (accounts.status === 'pending') {
     return (
       <main className="flex-1 p-6">
         <p role="status" className="text-muted-foreground">
@@ -58,17 +57,23 @@ export function MailScreen(): ReactElement {
       </main>
     )
   }
-  if (accounts.kind === 'failed') {
+  if (accounts.status === 'error') {
     return (
       <main className="flex flex-1 flex-col items-start gap-3 p-6">
-        <p role="alert">{accounts.message}</p>
-        <Button variant="outline" size="sm" onClick={retry}>
+        <p role="alert">{accountErrorMessage(t, accounts.error, t('accounts.loadFailed'))}</p>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            void accounts.refetch()
+          }}
+        >
           {t('auth.retry')}
         </Button>
       </main>
     )
   }
-  const first = accounts.value[0]
+  const first = accounts.data[0]
   if (first === undefined) {
     return (
       <main className="flex-1 p-6">
@@ -85,16 +90,16 @@ export function MailScreen(): ReactElement {
   const accountId = search.account ?? first.id
   const folder = search.folder ?? DEFAULT_FOLDER
   const requested = search.sub ?? storedSubfolders(accountId, folder)
-  const accountIds = accounts.value.map((account) => account.id)
+  const accountIds = accounts.data.map((account) => account.id)
   const openSheet = (): void => {
     setSheet(true)
   }
   return (
-    <AccountsContext value={accounts.value}>
+    <AccountsContext value={accounts.data}>
       <ToastHost>
         <MuteProvider>
           <TriageProvider sourceKey={sourceKey(accountId, folder, requested, search.q)} accounts={accountIds}>
-            <ComposeProvider accounts={accounts.value} accountId={accountId}>
+            <ComposeProvider accounts={accounts.data} accountId={accountId}>
               <MailShortcuts
                 accountId={accountId}
                 onHelp={openSheet}
@@ -103,7 +108,7 @@ export function MailScreen(): ReactElement {
                 }}
               />
               <MailPanes
-                accounts={accounts.value}
+                accounts={accounts.data}
                 accountId={accountId}
                 folder={folder}
                 requested={requested}
@@ -118,7 +123,7 @@ export function MailScreen(): ReactElement {
               )}
               {palette && (
                 <CommandPalette
-                  accounts={accounts.value}
+                  accounts={accounts.data}
                   accountId={accountId}
                   onClose={() => {
                     setPalette(false)
@@ -289,18 +294,27 @@ function Listing({ accountId, folder, subfolders }: { accountId: AccountId; fold
   )
   // What the composer does changes these two folders' lists under the user's eyes.
   const { revision } = useCompose()
-  const { folders, reloads } = useTriage()
+  const { folders } = useTriage()
   const shownFolder = loadedFolders(folders[accountId])?.find((each) => isSameFolder(each.path, folder))
   const live = q === undefined && (shownFolder?.role === 'drafts' || shownFolder?.role === 'sent')
+  const queryClient = useQueryClient()
+  const readRevision = useRef(revision)
+  useEffect(() => {
+    if (readRevision.current !== revision) {
+      readRevision.current = revision
+      if (live) {
+        void queryClient.invalidateQueries({ queryKey: messagesKey(key, null) })
+      }
+    }
+  }, [revision, live, key, queryClient])
   return (
     <MessageList
       key={key}
+      source={key}
       loadPage={loadPage}
       match={match}
       searching={q !== undefined}
       subfolders={merged}
-      // An undo moves messages back: every list reads itself again.
-      reloadKey={`${live ? String(revision) : '-'}:${String(reloads)}`}
     />
   )
 }
