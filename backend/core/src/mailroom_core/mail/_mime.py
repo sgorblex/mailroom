@@ -30,6 +30,15 @@ def text_value(value: bytes | str | None) -> str:
         return value.decode("latin-1")
 
 
+_SURROGATE: Final = re.compile("[\ud800-\udfff]")
+
+
+def well_formed(text: str) -> str:
+    """`text` with each lone surrogate (JSON can carry one, and a UTF-7 word decode to one) as
+    U+FFFD: UTF-8, and so a database, holds none."""
+    return _SURROGATE.sub("\ufffd", text)
+
+
 _NOT_CHARSETS: Final = frozenset({"idna", "punycode", "raw_unicode_escape", "unicode_escape"})
 """Text codecs that are not charsets, and whose decoders fail on arbitrary bytes."""
 
