@@ -360,6 +360,40 @@ def test_dmarc_compares_an_internationalised_domain_in_its_idna_form() -> None:
     assert not authentication(headers, ("x@bucher.example",), "mx.google.com").dmarc_pass
 
 
+def test_dmarc_aligns_a_from_under_header_from_at_a_label_boundary() -> None:
+    def passes(sender: str, header_from: str) -> bool:
+        headers = parse_headers(
+            block(
+                f"From: {sender}",
+                f"Authentication-Results: mx.google.com; dmarc=pass header.from={header_from}",
+            )
+        )
+        return authentication(headers, (sender,), "mx.google.com").dmarc_pass
+
+    assert passes("x@github.com", "github.com")
+    assert passes("x@noreply.github.com", "github.com")
+    assert passes("x@a.b.GitHub.com", "github.com.")
+    # Never the parent of header.from, nor a mere suffix without a dot.
+    assert not passes("x@github.com", "noreply.github.com")
+    assert not passes("x@evilgithub.com", "github.com")
+    assert not passes("x@github.com.evil.example", "github.com")
+    # Neither side may be other than a host.
+    assert not passes("x@noreply.github.com", '"github.com>"')
+    assert not passes("x@a..github.com", "github.com")
+    # Compared in IDNA form, whichever form either side is written in.
+    assert passes("x@post.bücher.example", "xn--bcher-kva.example")
+    assert passes("x@post.xn--bcher-kva.example", "XN--bcher-kva.example")
+    assert not passes("x@xbücher.example", "xn--bcher-kva.example")
+    headers = parse_headers(
+        block(
+            "From: x@noreply.github.com",
+            "Authentication-Results: mx.google.com; dmarc=pass header.from=github.com",
+        )
+    )
+    verdict = authentication(headers, ("x@noreply.github.com",), "mx.google.com")
+    assert verdict.from_domain == "noreply.github.com"
+
+
 def test_dkim_is_the_first_result_when_no_signature_passed() -> None:
     headers = parse_headers(
         block(

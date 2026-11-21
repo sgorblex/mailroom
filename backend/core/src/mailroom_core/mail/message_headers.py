@@ -207,7 +207,7 @@ class Authentication:
     dmarc: str | None = None
     """As written: a `pass` counts only as `dmarc_pass` says."""
     dmarc_pass: bool = False
-    """DMARC passed for this message's one From: `header.from` is its domain."""
+    """DMARC passed for this message's one From: its domain is `header.from` or a subdomain."""
     from_domain: str | None = None
     """That From's domain, when `dmarc_pass`."""
 
@@ -220,7 +220,8 @@ def authentication(
 ) -> Authentication:
     """The `trusted_results` of `authserv_id`, read for `senders`, the From addresses. DMARC
     passes only for exactly one From (one field, one address, and a block not cut short) whose
-    domain is the result's `header.from`: a second From is what a reader may be shown instead."""
+    domain is the result's `header.from` or a subdomain of it (relaxed alignment, compared in IDNA
+    form): a second From is what a reader may be shown instead."""
     trusted = trusted_results(headers, authserv_id)
     if trusted is None:
         return NOT_VERIFIED
@@ -242,7 +243,8 @@ def authentication(
         and dmarc.result == "pass"
         and dmarc.header_from is not None
         and (from_host := ascii_host(domain or "")) is not None
-        and ascii_host(dmarc.header_from) == from_host
+        and (header_from := ascii_host(dmarc.header_from)) is not None
+        and (from_host == header_from or from_host.endswith(f".{header_from}"))
     )
     return Authentication(
         verified=True,

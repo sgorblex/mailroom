@@ -1236,8 +1236,10 @@ a failure too, with the app's code `password_missing`.
   (`header.d`) of the result `dkim` is, each an ASCII host name (IDNA), `null` when absent or not a
   valid host name.
   `dmarc_pass` is true only when `dmarc` is `pass` for a message with exactly one From (one field,
-  one address, and the header block not cut) whose domain is the result's `header.from`, that
-  domain then being `from_domain`.
+  one address, and the header block not cut) whose domain is the result's `header.from` or a
+  subdomain of it (DMARC relaxed alignment: `noreply.github.com` under `github.com`, never a parent
+  of `header.from` nor `evilgithub.com`), both compared in IDNA form, the From's domain then being
+  `from_domain`.
 - `remote_trusted` is true when `dmarc_pass` is and the user remembers `from.address`
   ([remote content senders](#remote-content-senders)): the client then asks for the HTML view
   with `remote=1` at once. The HTML route itself is unchanged: `remote` alone decides.
