@@ -186,6 +186,8 @@ First, fixes carried over from 0.14.0 testing:
       limit's first day, are days of the user's time zone, not UTC's.
 - [x] **Index dates keep their offset** — an index row keeps its Date header's UTC offset, so a
       message's date reads the same from the index as live.
+- [x] **Notification folders follow renames** — the desktop-notification folders follow a
+      renamed folder (and its subfolders) and drop a deleted one.
 
 #### 7. Compose
 

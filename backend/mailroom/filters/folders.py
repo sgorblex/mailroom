@@ -58,6 +58,11 @@ def _same(index: int, segment: str, other: str) -> bool:
     return segment == other or (index == 0 and segment.upper() == other.upper() == "INBOX")
 
 
+def segments(path: str, delimiter: str | None) -> list[str]:
+    """``path`` split by the account's ``delimiter``: one segment without one."""
+    return path.split(delimiter) if delimiter else [path]
+
+
 def under(path: Sequence[str], folder: Sequence[str]) -> bool:
     """Whether ``path`` is ``folder`` or a folder under it."""
     if not folder or len(path) < len(folder):

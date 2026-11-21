@@ -1706,8 +1706,13 @@ open: no push service, no service worker. They come from the [live updates](#liv
   "folders"}]}` for each of the user's accounts; `PUT
   /api/v1/mail/notifications/accounts/{account_id}` `{"folders": [...]}` (at most 200, `INBOX` in
   any case, kept once each) sets all of one account's at once and answers
-  `{"account_id", "folders"}`; another user's account is 404 `not_found`. A folder removed or
-  renamed stays in the choice and no longer notifies. Removing the account forgets its choice.
+  `{"account_id", "folders"}`; another user's account is 404 `not_found`. A folder renamed in
+  Mailroom ([Folder management](#folder-management)) stays chosen under its new path, its
+  subfolders too; one deleted in Mailroom leaves the choice with its subfolders. That database
+  step is best-effort, like a rename's rule sets: its failure is logged
+  (`folder_notifications_failed`, no paths) and the folder change stands; the web reads the
+  choice again after either. A folder renamed or removed outside Mailroom stays in the choice and
+  no longer notifies. Removing the account forgets its choice.
 - The Profile's *Desktop notifications* section asks the browser's permission only from its
   *Allow desktop notifications* button, never on load, or says the browser shows them, blocks
   them (to allow in its site settings) or cannot: no Notification API, or one whose constructor
