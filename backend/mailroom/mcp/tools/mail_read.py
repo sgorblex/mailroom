@@ -18,6 +18,7 @@ from pydantic import AfterValidator, AnyUrl, Field, StrictBool
 
 from mailroom.errors import Refusal
 from mailroom.mail import service
+from mailroom.mail.search_syntax import ParsedSearch, SearchSyntaxError, combined, parse_search
 from mailroom.mcp.tool import (
     MAILBOX_READ,
     AccountId,
@@ -138,6 +139,16 @@ class MessagesSearchArguments(Arguments):
     gmail_query: Criterion | None = Field(
         default=None, description="Gmail search syntax (X-GM-RAW), Gmail accounts only."
     )
+    query: Criterion | None = Field(
+        default=None,
+        description=(
+            "Mailroom's search syntax, all terms ANDed with the other arguments: from: to: "
+            "subject: is:unread is:read is:flagged is:to_sort has:attachment after:YYYY-MM-DD "
+            "(on or after) before:YYYY-MM-DD in:<folder path> account:<id or name>, double "
+            'quotes around a value with spaces (from:"Ada Lovelace"); other words search the '
+            "headers and body. A criterion given both here and as an argument must agree."
+        ),
+    )
     subfolders: StrictBool = Field(default=False, description=f'{SUBFOLDERS} Not with folder "*".')
     limit: Limit = 20
     cursor: Cursor | None = None
@@ -222,11 +233,13 @@ async def _messages_list(args: MessagesListArguments, call: ToolCall) -> types.C
     return _dated(page_text(page, empty, zone, tools=TOOL_NAMES, folders=args.subfolders), zone)
 
 
-async def _messages_search(args: MessagesSearchArguments, call: ToolCall) -> types.CallToolResult:
-    account = (
-        args.account_id if args.account_id is not None else await _only_account(call, every=True)
-    )
-    query = SearchQuery(
+_DISAGREE: Final = "The query and the other arguments give one criterion different values."
+
+
+def _searched(args: MessagesSearchArguments) -> ParsedSearch:
+    """The arguments' criteria and folder with ``query``'s; refused when they disagree or the
+    query does not parse."""
+    given = ParsedSearch(
         sender=args.sender,
         to=args.to,
         subject=args.subject,
@@ -235,7 +248,47 @@ async def _messages_search(args: MessagesSearchArguments, call: ToolCall) -> typ
         before=None if args.before is None else date.fromisoformat(args.before),
         unread=args.unread,
         flagged=args.flagged,
-        has_attachment=args.has_attachment,
+        has_attachment=args.has_attachment or None,
+        folder=args.folder if "folder" in args.model_fields_set else None,
+    )
+    if args.query is None:
+        return given
+    try:
+        return combined(given, parse_search(args.query), _DISAGREE)
+    except SearchSyntaxError as error:
+        raise Refusal("invalid", "invalid_argument", error.message) from None
+
+
+async def _searched_account(
+    args: MessagesSearchArguments, written: str | None, call: ToolCall
+) -> int | service.AllAccounts:
+    """``account_id``, or the query's ``account:``, which must name the same one when both are
+    given; else the user's only account."""
+    if written is None:
+        if args.account_id is not None:
+            return args.account_id
+        return await _only_account(call, every=True)
+    named = await call.thread(lambda: service.account_by_name(call.ctx, call.user_id, written))
+    if args.account_id is not None and args.account_id != named:
+        raise Refusal("invalid", "invalid_argument", _DISAGREE)
+    return named
+
+
+async def _messages_search(args: MessagesSearchArguments, call: ToolCall) -> types.CallToolResult:
+    searched = _searched(args)
+    account = await _searched_account(args, searched.account, call)
+    folder = searched.folder or args.folder
+    query = SearchQuery(
+        sender=searched.sender,
+        to=searched.to,
+        subject=searched.subject,
+        text=searched.text,
+        since=searched.since,
+        before=searched.before,
+        unread=searched.unread,
+        flagged=searched.flagged,
+        to_sort=searched.to_sort,
+        has_attachment=searched.has_attachment,
         gmail_query=args.gmail_query,
     )
     page, zone = await call.thread(
@@ -244,7 +297,7 @@ async def _messages_search(args: MessagesSearchArguments, call: ToolCall) -> typ
                 call.ctx,
                 call.user_id,
                 account,
-                args.folder,
+                folder,
                 query,
                 limit=args.limit,
                 cursor=args.cursor,
@@ -334,8 +387,8 @@ MAIL_READ_TOOLS: Final[tuple[Tool[Any], ...]] = (
         title="Search messages",
         description=(
             'Search one account or all ("*"), in one folder or all ("*": every folder except '
-            "Junk and Trash; All Mail on Gmail). All given criteria must match. Results newest "
-            "first, one line each."
+            "Junk and Trash; All Mail on Gmail), by arguments or a query in Mailroom's search "
+            "syntax. All given criteria must match. Results newest first, one line each."
         ),
         group="mail_read",
         arguments=MessagesSearchArguments,

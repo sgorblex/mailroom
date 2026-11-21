@@ -274,7 +274,7 @@ def test_a_folder_lists_and_searches_with_its_subfolders(mailbox: Mailbox) -> No
 def test_search_reads_the_fields_and_leaves_junk_out(mailbox: Mailbox) -> None:
     mailbox.seed(mime("Invoice March", sender="Shop <shop@example.org>"))
     mailbox.seed(mime("Invoice April", sender="Shop <shop@example.org>"), folder="Junk")
-    mailbox.seed(mime("Holiday plans", sender="Ada <ada@example.org>"), flags=("\\Seen",))
+    mailbox.seed(mime("Holiday plans", sender="Ada <ada@example.org>"), flags=("\\Seen", TO_SORT))
 
     inbox = mailbox.search(account=1, subject="invoice")
     assert [m["subject"] for m in inbox["messages"]] == ["Invoice March"]
@@ -284,6 +284,8 @@ def test_search_reads_the_fields_and_leaves_junk_out(mailbox: Mailbox) -> None:
     assert [m["subject"] for m in junk["messages"]] == ["Invoice April"]
     unread = mailbox.search(unread=True)
     assert [m["subject"] for m in unread["messages"]] == ["Invoice March"]
+    to_sort = mailbox.search(to_sort=True)
+    assert [m["subject"] for m in to_sort["messages"]] == ["Holiday plans"]
     # An empty field is no criterion, nor is null.
     assert len(mailbox.search(text="", subject=None)["messages"]) == 2
 

@@ -96,6 +96,34 @@ allow-popups-to-escape-sandbox"`, never `allow-scripts` or `allow-same-origin`. 
 top-level with `noopener noreferrer`. Security:
 [`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *HTML mail*.
 
+### Search syntax
+
+One line of terms sets a search's criteria, folder and account: `from:ada is:unread "Q1 report"`.
+Terms are separated by ASCII whitespace (space, tab, CR, LF, form feed, vertical tab) and all
+must match; any other space character, a no-break space included, is part of the term. A key and
+the values of `is:` and `has:` ignore case; double quotes keep spaces in a value and drop out of
+it (`from:"Ada Lovelace"`), with no escapes.
+
+| Term | Sets ([`POST /search`](#post-search)'s field) |
+| --- | --- |
+| `from:`, `to:`, `subject:` | `from`, `to`, `subject`: contains the value. |
+| `is:unread`, `is:read` | `unread` true, false. |
+| `is:flagged` | `flagged` true. |
+| `is:to_sort` | `to_sort` true: marked To sort. |
+| `has:attachment` | `has_attachment` true. |
+| `after:YYYY-MM-DD`, `before:YYYY-MM-DD` | `since` (that day on), `before` (up to that day, not included), compared as those fields are. |
+| `in:` | `folder`: a folder path as the server names it, or `*` for every folder. |
+| `account:` | `account`: an id, `*`, or an account's name, else its login, ignoring case (refused when no account or several have it). |
+| any other word | `text`, the words joined by one space, a key the syntax does not know included (`label:x`, a URL). |
+
+Refused, never quoting the query: a quote not closed (`unterminated_quote`), a key without a value
+(`empty_value`: `from:` alone, `from: ada`, `from:""`), an `is:` or `has:` value not above
+(`bad_value`), a date that is not a real `YYYY-MM-DD` (`bad_date`), and one criterion given two
+different values (`conflict`: `from:a from:b`, `is:read is:unread`). The backend's parser
+(`mailroom.mail.search_syntax`) and the web client's are held to the same vectors,
+`web/src/test/search-syntax-vectors.json`. MCP's `messages_search` takes it as `query`
+([`mcp.md`](mcp.md)).
+
 ## Slice B: organize
 
 Slice B lets the user change a message's flags and folder from the web client and the MCP tools.
@@ -1130,6 +1158,7 @@ same page shape.
 | `text` | Headers or body contain this. |
 | `since`, `before` | `YYYY-MM-DD` (a real calendar date; `since` inclusive, `before` exclusive), compared with the arrival date (INTERNALDATE), not the `Date` header. |
 | `unread`, `flagged` | Booleans. |
+| `to_sort` | Boolean: marked [To sort](../GLOSSARY.md) (`$MailroomSort`), or not; where the server keeps no keywords, no message is marked, so `true` matches nothing. |
 | `has_attachment` | `true` only (approximate: `multipart/mixed`; on Gmail, which ignores that header search, `has:attachment` through X-GM-RAW, over one account or all); `false` is ignored, not a criterion. |
 | `gmail_query` | Gmail search syntax (X-GM-RAW); Gmail accounts only, else `unsupported`. |
 | `subfolders` | `true`: the folder's subfolders too, as for the list (default `false`); with `folder` `*`, 400 `invalid_argument`. |

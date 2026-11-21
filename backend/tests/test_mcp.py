@@ -1147,7 +1147,7 @@ def test_a_ref_whose_folder_was_recreated_is_refused(
 def test_a_search_covers_criteria_accounts_and_folders(
     mcp: Mcp, token: str, mail: MailAccounts
 ) -> None:
-    a = mail.add("a")
+    a = mail.add("a", name="Work")
     b = mail.add("b")
     mail.seed(
         a, mime("invoice October", sender="Billing <billing@shop.example>"), flags=("\\Seen",)
@@ -1182,6 +1182,14 @@ def test_a_search_covers_criteria_accounts_and_folders(
     assert "only on Gmail" in mcp.error(
         token, "messages_search", account_id=1, gmail_query="has:attachment"
     )
+    # The query names the account by its name, the folder, and criteria.
+    queried = mcp.text(token, "messages_search", query="account:work in:* invoice is:read")
+    assert "invoice October" in queried
+    assert len(refs_in(queried)) == 1
+    assert "invoice from b" in mcp.text(
+        token, "messages_search", query=f"account:{b} has:attachment"
+    )
+    assert "No account of yours" in mcp.error(token, "messages_search", query="account:nobody")
     # Several accounts need naming; so does a list over all of them.
     assert "Name an account" in mcp.error(token, "messages_list")
     assert "Name an account" in mcp.error(token, "messages_search")

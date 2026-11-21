@@ -3,8 +3,9 @@ from __future__ import annotations
 import importlib.util
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
 import anyio
@@ -16,6 +17,7 @@ from mailroom.config.features import ALL_FEATURES, Features
 from mailroom.config.public_url import parse_public_url
 from mailroom.errors import Refusal
 from mailroom.mail.service import folder_segments
+from mailroom.mail.service import read as service_read
 from mailroom.mcp import groups
 from mailroom.mcp.app import instructions, tools_for
 from mailroom.mcp.envelope import untrusted, wrapped_result
@@ -617,3 +619,89 @@ def test_every_account_still_reaches_the_search() -> None:
     assert every.account_id == "*"
     one = mail_read.MessagesSearchArguments.model_validate({"account_id": "3"})
     assert one.account_id == 3
+
+
+def _search_with_query(monkeypatch: pytest.MonkeyPatch, **arguments: Any) -> dict[str, Any]:
+    """What ``messages_search`` asks the service with ``arguments``; account names resolve to
+    7."""
+    asked: dict[str, Any] = {}
+
+    def search(_ctx: Any, _user_id: int, account: Any, folder: str, query: Any, **_: Any) -> Page:
+        asked.update(account=account, folder=folder, query=query)
+        return Page((), None)
+
+    monkeypatch.setattr(mail_read.service, "search", search)
+    monkeypatch.setattr(mail_read.service, "account_by_name", lambda _ctx, _user_id, _name: 7)
+    tool = next(tool for tool in TOOLS if tool.name == "messages_search")
+    args = mail_read.MessagesSearchArguments.model_validate(arguments)
+    anyio.run(tool.run, args, ToolCall(cast("AppContext", _ZonedContext()), 1))
+    return asked
+
+
+def test_messages_search_takes_a_query_with_its_other_arguments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asked = _search_with_query(
+        monkeypatch,
+        query='from:ada is:to_sort in:Archive account:work after:2026-03-01 "Q1 report"',
+        unread=True,
+        account_id=7,
+    )
+    assert (asked["account"], asked["folder"]) == (7, "Archive")
+    query = asked["query"]
+    assert (query.sender, query.text, query.unread, query.to_sort) == (
+        "ada",
+        "Q1 report",
+        True,
+        True,
+    )
+    assert query.since == date(2026, 3, 1)
+    plain = _search_with_query(monkeypatch, query="invoice", account_id=3)
+    assert (plain["account"], plain["folder"], plain["query"].text) == (3, "INBOX", "invoice")
+    attached = _search_with_query(
+        monkeypatch, query="has:attachment", has_attachment=False, account_id=3
+    )
+    assert attached["query"].has_attachment is True
+
+
+def test_an_account_is_named_by_its_name_else_its_login(monkeypatch: pytest.MonkeyPatch) -> None:
+    configs = [
+        SimpleNamespace(id=1, name="Work", login="a@example.org"),
+        SimpleNamespace(id=2, name="work", login="b@example.org"),
+        SimpleNamespace(id=3, name=None, login="c@example.org"),
+    ]
+    loaded = SimpleNamespace(loaded=SimpleNamespace(settings=SimpleNamespace(account=configs)))
+    monkeypatch.setattr(service_read, "_accounts", lambda _ctx, _user_id: loaded)
+    ctx = cast("AppContext", object())
+    assert service_read.account_by_name(ctx, 1, "C@Example.org") == 3
+    assert service_read.account_by_name(ctx, 1, "*") == "*"
+    assert service_read.account_by_name(ctx, 1, "12") == 12
+    # Two accounts kept with one name from before names were unique.
+    with pytest.raises(Refusal) as several:
+        service_read.account_by_name(ctx, 1, "WORK")
+    assert (several.value.code, "More than one account" in several.value.message) == (
+        "invalid_argument",
+        True,
+    )
+    with pytest.raises(Refusal) as none:
+        service_read.account_by_name(ctx, 1, "home")
+    assert none.value.code == "not_found"
+
+
+@pytest.mark.parametrize(
+    ("arguments", "words"),
+    [
+        ({"query": "from:ada", "from": "bob", "account_id": 1}, "different values"),
+        ({"query": "in:Archive", "folder": "INBOX", "account_id": 1}, "different values"),
+        ({"query": "account:work", "account_id": 1}, "different values"),
+        ({"query": 'subject:"open', "account_id": 1}, "quote is not closed"),
+        ({"query": "after:2026-02-30", "account_id": 1}, "YYYY-MM-DD"),
+    ],
+)
+def test_messages_search_refuses_a_query_that_disagrees_or_does_not_parse(
+    monkeypatch: pytest.MonkeyPatch, arguments: dict[str, Any], words: str
+) -> None:
+    with pytest.raises(Refusal) as refused:
+        _search_with_query(monkeypatch, **arguments)
+    assert refused.value.code == "invalid_argument"
+    assert words in refused.value.message

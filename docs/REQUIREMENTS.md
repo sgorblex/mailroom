@@ -135,7 +135,9 @@ own writes, and lists, searches and counts read from it), kept fresh over IMAP I
 the folder being viewed, its changes pushed as server-sent events
 ([`requirements/mail-client.md`](requirements/mail-client.md) — *Live updates*), which the web
 client's counts, lists, flags and indexing line follow, and desktop notifications of new mail
-in the folders each user chooses (*Desktop notifications* there).
+in the folders each user chooses (*Desktop notifications* there). A
+[search syntax](requirements/mail-client.md#search-syntax) (`from:ada is:unread`) is taken by
+MCP's `messages_search`.
 Target is
 **between tier 2 and tier 3**: tiers 1 and 2 in full, on top of
 the index and live updates; tier 3 items arrive one at a time.

@@ -19,6 +19,7 @@ steps:
             - 'backend/alembic/**'
             - 'backend/mailroom/**'
             - 'backend/tests/**'
+            - 'web/src/test/search-syntax-vectors.json'
             - 'backend/core/**'
             - 'backend/pyproject.toml'
             - 'backend/uv.lock'
