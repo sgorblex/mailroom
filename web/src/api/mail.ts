@@ -42,7 +42,10 @@ const mailFolderSchema = z.object({
   delimiter: z.string().nullable(),
   /** `false` for a level that holds only folders (`\Noselect`): no messages, counts 0. */
   selectable: z.boolean(),
-  /** STATUS's, what a mark-read sends back; `null` for a `\Noselect` folder or one whose STATUS failed. */
+  /**
+   * STATUS's, what a mark-read sends back; `null` for a `\Noselect` folder, one whose STATUS failed
+   * and a Gmail label's counted from the index.
+   */
   uid_validity: z.number().nullable(),
   uid_next: z.number().nullable(),
 })
@@ -301,9 +304,10 @@ const folderMarkedReadSchema = z.object({ account_id: accountIdSchema, folder: z
 /**
  * Marks every unread message of `folder` read, up to `uidNext`: mail that arrived after the listing
  * the user confirmed from stays unread. A changed `uidValidity` is refused (`stale_reference`).
- * The count marked.
+ * Both `null` for a folder whose listing gave none (a Gmail label's counted from the index): the
+ * server reads them then, and refuses any other folder. The count marked.
  */
-export async function markFolderRead(accountId: AccountId, folder: string, uidValidity: number, uidNext: number): Promise<number> {
+export async function markFolderRead(accountId: AccountId, folder: string, uidValidity: number | null, uidNext: number | null): Promise<number> {
   const answer = await apiPostJson(
     `${accountPath(accountId)}/folders/mark-read`,
     { folder, uid_validity: uidValidity, uid_next: uidNext },

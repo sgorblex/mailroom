@@ -14,10 +14,11 @@ from mailroom.audit import WEB, AuditTrail, Origin
 from mailroom.errors import Refusal
 from mailroom.filters.folders import Rewritten, naming_rule_sets, rewrite_folder
 from mailroom.filters.transfers import rename_in_ledger
+from mailroom.mail.index import reads as index_reads
 from mailroom.mail.index import writes as index_writes
 from mailroom.mail.service._shared import _Accounts, _accounts, _run, _Stoppable, _usable
 from mailroom_core import mail as core
-from mailroom_core.mail import AuditItem, FolderChangedError
+from mailroom_core.mail import AuditItem, FolderChangedError, MailError
 from mailroom_core.render import clean_header
 
 if TYPE_CHECKING:
@@ -36,6 +37,7 @@ MAX_MESSAGE_COUNT: Final = 2**32 - 1
 """An IMAP count's bound: of the ``messages`` a folder's delete takes."""
 MAX_IN_USE_LISTED: Final = 10
 """The rule sets a folder delete's ``folder_in_use`` refusal names."""
+_UIDS_NEEDED: Final = "Give the UIDVALIDITY and UIDNEXT of the folder's listing."
 
 
 @dataclass(frozen=True, slots=True)
@@ -299,44 +301,81 @@ def mark_folder_read(
     account_id: int,
     folder: str,
     *,
-    uid_validity: int,
-    uid_next: int,
+    uid_validity: int | None,
+    uid_next: int | None,
     origin: Origin = WEB,
 ) -> int:
     """Marks read every unread message of ``folder`` below ``uid_next``, the UIDNEXT of the
     listing the user confirmed from (``uid_validity`` its UIDVALIDITY, ``stale_reference`` when
-    it changed): mailroom-core's ``mark_folder_read``. Returns how many it marked. Recorded once
-    for the folder as ``mark_folder_read`` with that count, refusals too; the mail index follows
-    (``mailroom.mail.index.writes``)."""
+    it changed): mailroom-core's ``mark_folder_read``. Without both, for a Gmail label's folder
+    (whose listing may have counted it from the index, without them) the folder's own STATUS
+    gives them now; any other folder, or only one of them, is ``invalid_argument``. Returns how
+    many it marked. Recorded once for the folder as ``mark_folder_read`` with that count,
+    refusals too; the mail index follows (``mailroom.mail.index.writes``)."""
     accounts = _accounts(ctx, user_id)
     _usable(ctx, user_id, accounts, account_id)
     trail = AuditTrail(ctx.session_maker, user_id, origin, "mark_folder_read")
-    with _logged_folder_call("mail_folder_marked_read", user_id, origin.via, account_id) as logged:
-        marked = _folder_write(
+
+    def work(connections: MailConnections) -> int:
+        validity, following = (
+            (uid_validity, uid_next)
+            if uid_validity is not None and uid_next is not None
+            else _label_uids(connections, account_id, folder, trail, uid_validity, uid_next)
+        )
+        return _marked_read(
             ctx,
             user_id,
-            accounts,
-            "mail_folder_marked_read",
-            account_id,
-            lambda connections: _marked_read(
-                ctx,
-                user_id,
-                lambda: core.mark_folder_read(
-                    connections,
-                    account_id,
-                    folder,
-                    uid_validity=uid_validity,
-                    uid_next=uid_next,
-                    note=trail.note,
-                ),
+            lambda: core.mark_folder_read(
+                connections,
                 account_id,
                 folder,
-                uid_validity=uid_validity,
-                uid_next=uid_next,
+                uid_validity=validity,
+                uid_next=following,
+                note=trail.note,
             ),
+            account_id,
+            folder,
+            uid_validity=validity,
+            uid_next=following,
         )
+
+    with _logged_folder_call("mail_folder_marked_read", user_id, origin.via, account_id) as logged:
+        marked = _folder_write(ctx, user_id, accounts, "mail_folder_marked_read", account_id, work)
         logged["messages"] = marked
         return marked
+
+
+def _label_uids(
+    connections: MailConnections,
+    account_id: int,
+    folder: str,
+    trail: AuditTrail,
+    uid_validity: int | None,
+    uid_next: int | None,
+) -> tuple[int, int]:
+    """The UIDVALIDITY and UIDNEXT of a Gmail label's folder, from its STATUS now:
+    ``invalid_argument`` for any other folder or when one of them was given, ``mailbox_missing``
+    for one not listed; a refusal is recorded on ``trail``."""
+    try:
+        if uid_validity is not None or uid_next is not None:
+            raise MailError("invalid_argument", _UIDS_NEEDED)
+        return _status_uids(connections, account_id, folder)
+    except Exception as error:
+        result = core.audit_result(error)
+        trail.note(AuditItem(account=account_id, folder=folder, messages=0, result=result))
+        raise
+
+
+def _status_uids(connections: MailConnections, account_id: int, folder: str) -> tuple[int, int]:
+    if not connections.capabilities(account_id).gmail:
+        raise MailError("invalid_argument", _UIDS_NEEDED)
+    listed = connections.folders(account_id, with_status=lambda f: f.path == folder)
+    here = next((f for f in listed if f.path == folder), None)
+    if here is None:
+        raise MailError("mailbox_missing")
+    if index_reads.gmail_label(here) is None or here.uid_validity is None or here.uid_next is None:
+        raise MailError("invalid_argument", _UIDS_NEEDED)
+    return here.uid_validity, here.uid_next
 
 
 def _marked_read(

@@ -5,11 +5,11 @@ a folder a read involves is not indexed and ready.
 A source is read from the index when its folder's row is on, ``ready`` and holds a UIDVALIDITY. A
 read of every folder leaves out a virtual one (All Mail, Flagged) off Gmail unless it is on. On
 Gmail (``X-GM-EXT-1``) INBOX and the label folders are All Mail's rows carrying their label
-(``gmail_label``), each with All Mail's ref; Spam and Trash stay live. Rows are ordered newest
-first by arrival, then folder and UID: the index's cursor (version 3) keeps that key, so mail
-indexed meanwhile never shifts a page. A folder indexed under an age limit holds only the mail
-since its day: once its rows run out, the rest of it is read live (``BEFORE`` that day), and the
-cursor then carries the live one.
+(``gmail_label``), each with All Mail's ref, and counted from its rows (``label_counts``);
+Spam and Trash stay live. Rows are ordered newest first by arrival, then folder and UID: the
+index's cursor (version 3) keeps that key, so mail indexed meanwhile never shifts a page. A
+folder indexed under an age limit holds only the mail since its day: once its rows run out, the
+rest of it is read live (``BEFORE`` that day), and the cursor then carries the live one.
 
 Grouped by conversation (``read_conversations``), a read gives each conversation once, at its
 latest matching row, with the rest of its rows in the source read: within one account, those of
@@ -922,3 +922,35 @@ def counted_folders(db: Session, user_id: int, account_id: int) -> dict[str, Fol
             highest_modseq=row.highest_modseq,
         )
     return counted
+
+
+def label_counts(
+    db: Session, user_id: int, account_id: int, path: str
+) -> dict[str, tuple[int, int]]:
+    """Total and unread messages per X-GM-LABELS label of the account's readable folder ``path``
+    (Gmail's All Mail), in one query: the counts of INBOX and of each label's folder
+    (``gmail_label``), which the index holds no row of its own for. A label no row carries is
+    left out."""
+    labelled = (
+        select(
+            func.unnest(MailIndexMessage.labels).label("label"),
+            not_(_has(MailIndexMessage.flags, _SEEN)).label("unread"),
+        )
+        .join(
+            MailIndexFolder,
+            and_(
+                MailIndexMessage.folder_id == MailIndexFolder.id,
+                MailIndexMessage.user_id == MailIndexFolder.user_id,
+            ),
+        )
+        .where(
+            *_ready(user_id),
+            MailIndexFolder.account_id == account_id,
+            MailIndexFolder.path == path,
+        )
+        .subquery()
+    )
+    query = select(labelled.c.label, func.count(), func.count().filter(labelled.c.unread)).group_by(
+        labelled.c.label
+    )
+    return {label: (total, unread) for label, total, unread in db.execute(query)}

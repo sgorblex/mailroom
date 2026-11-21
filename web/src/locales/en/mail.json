@@ -28,7 +28,6 @@
     "markReadSubtree": "Mark all as read, with subfolders",
     "markReadFolderOnly": "Mark all as read, this folder only",
     "noUnread": "No unread messages.",
-    "noUids": "The server didn't give this folder's UIDs; list it again.",
     "protected": "The inbox and folders with a role can't be renamed or deleted.",
     "holdsRole": "It holds a folder with a role.",
     "hasSubfolders": "Delete or move its subfolders first.",

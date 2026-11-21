@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import json
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, ClassVar, cast
@@ -19,7 +20,8 @@ from sqlalchemy import select
 from mailroom.auth.users import create_user
 from mailroom.mail.index import reads
 from mailroom.mail.index.reads import IndexCursor, IndexSource, decode_cursor, gmail_label
-from mailroom.mail.service import organize
+from mailroom.mail.service import folder_writes, organize
+from mailroom.mail.service import read as service_read
 from mailroom.models import MailIndexFolder
 from mailroom_core import mail as core
 from mailroom_core.mail import (
@@ -458,6 +460,158 @@ def test_a_move_whose_index_cannot_be_read_keeps_its_refs(
     [record] = [r for r in caplog.records if r.msg == "mail_index_read_failed"]
     assert record.__dict__["error"] == "RuntimeError"
     assert "the sender's text" not in caplog.text
+
+
+class _GmailFolders:
+    """A Gmail account's folders as LIST gives them, with Spam and Trash, many labels and a
+    STATUS for each folder asked of it, recorded."""
+
+    LABELS = 120
+
+    def __init__(self) -> None:
+        self.listed = [
+            *GMAIL,
+            folder("[Gmail]/Trash", "\\Trash", role="trash"),
+            *(folder(f"Label {n}") for n in range(self.LABELS)),
+        ]
+        self.status: list[str] = []
+
+    def capabilities(self, _account: int) -> Any:
+        return SimpleNamespace(gmail=True)
+
+    def folders(self, _account: int, *, with_status: Any = False) -> list[Folder]:
+        def counted(each: Folder) -> Folder:
+            self.status.append(each.path)
+            return replace(each, messages=9, unseen=9, uid_validity=3, uid_next=50)
+
+        return [
+            counted(each)
+            if each.selectable and (with_status is True or (with_status and with_status(each)))
+            else each
+            for each in self.listed
+        ]
+
+
+def _gmail_all_mail(db: Session, user: User) -> None:
+    every = ready(db, user, 1, ALL_MAIL, message_count=4, unread_count=2, uid_next=5)
+    db.add_all(
+        [
+            message(every, user.id, 1, labels=["\\Inbox", "Label 0"]),
+            message(every, user.id, 2, labels=["\\Inbox"], flags=["\\Seen"]),
+            message(every, user.id, 3, labels=["\\Sent", "Label 5"], flags=["\\Seen"]),
+            message(every, user.id, 4, labels=["Label 0"]),
+        ]
+    )
+    db.commit()
+
+
+def test_gmail_label_folders_are_counted_from_all_mail_without_status(
+    db_session: Session,
+    sessions: sessionmaker[Session],
+    user: User,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _gmail_all_mail(db_session, user)
+    gmail = _GmailFolders()
+    monkeypatch.setattr(service_read, "_accounts", lambda *_args: None)
+    monkeypatch.setattr(service_read, "_usable", lambda *_args: None)
+    monkeypatch.setattr(service_read, "_call", lambda *args: args[-1](gmail))
+    ctx = cast("Any", SimpleNamespace(session_maker=sessions))
+
+    listed = {f.path: f for f in service_read.folders(ctx, user.id, 1)}
+    # Only Spam and Trash, which All Mail leaves out, are asked their STATUS.
+    assert gmail.status == ["[Gmail]/Spam", "[Gmail]/Trash"]
+    counts = {path: (f.messages, f.unseen) for path, f in listed.items()}
+    assert counts["INBOX"] == (2, 1)
+    assert counts["Label 0"] == (2, 2)
+    assert counts["Label 5"] == (1, 0)
+    assert counts["Label 7"] == (0, 0)
+    assert counts["[Gmail]/Sent Mail"] == (1, 0)
+    assert counts["[Gmail]/Starred"] == (0, 0)
+    assert counts[ALL_MAIL] == (4, 2)
+    assert counts["[Gmail]/Spam"] == (9, 9)
+    assert "[Gmail]" not in listed
+    # A label's folder has no UIDs of its own: All Mail's are never copied onto it.
+    label = listed["Label 0"]
+    assert (label.uid_validity, label.uid_next, label.highest_modseq) == (None, None, None)
+    assert (listed[ALL_MAIL].uid_validity, listed[ALL_MAIL].uid_next) == (7, 5)
+
+    # With All Mail under an age limit, every folder is asked its STATUS again.
+    row = db_session.scalars(select(MailIndexFolder).where(MailIndexFolder.path == ALL_MAIL))
+    row.one().oldest_indexed = DAY.date()
+    db_session.commit()
+    gmail.status.clear()
+    service_read.folders(ctx, user.id, 1)
+    assert len(gmail.status) == sum(f.selectable for f in gmail.listed)
+
+
+def test_gmail_label_folders_are_asked_status_when_their_counts_cannot_be_read(
+    db_session: Session,
+    sessions: sessionmaker[Session],
+    user: User,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _gmail_all_mail(db_session, user)
+    gmail = _GmailFolders()
+    monkeypatch.setattr(service_read, "_accounts", lambda *_args: None)
+    monkeypatch.setattr(service_read, "_usable", lambda *_args: None)
+    monkeypatch.setattr(service_read, "_call", lambda *args: args[-1](gmail))
+
+    def broken(*_args: object) -> None:
+        raise RuntimeError
+
+    monkeypatch.setattr(service_read.index_reads, "label_counts", broken)
+    ctx = cast("Any", SimpleNamespace(session_maker=sessions))
+
+    listed = {f.path: f for f in service_read.folders(ctx, user.id, 1)}
+    assert (listed["INBOX"].messages, listed["Label 7"].unseen) == (9, 9)
+    assert (listed["Label 0"].uid_validity, listed["Label 0"].uid_next) == (3, 50)
+    assert (listed[ALL_MAIL].messages, listed[ALL_MAIL].uid_next) == (4, 5)
+    assert ALL_MAIL not in gmail.status
+
+
+def test_a_gmail_label_folder_is_marked_read_by_its_own_status(
+    db_session: Session,
+    sessions: sessionmaker[Session],
+    user: User,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _gmail_all_mail(db_session, user)
+    gmail = _GmailFolders()
+    monkeypatch.setattr(folder_writes, "_accounts", lambda *_args: None)
+    monkeypatch.setattr(folder_writes, "_usable", lambda *_args: None)
+    monkeypatch.setattr(folder_writes, "_run", lambda *args, **_kwargs: args[5](gmail))
+    marked: list[tuple[str, int, int]] = []
+
+    def mark(_connections: object, _account: int, path: str, **kwargs: Any) -> int:
+        marked.append((path, kwargs["uid_validity"], kwargs["uid_next"]))
+        return 2
+
+    monkeypatch.setattr(folder_writes.core, "mark_folder_read", mark)
+    ctx = cast("Any", SimpleNamespace(session_maker=sessions))
+
+    def mark_read(path: str, validity: int | None = None, following: int | None = None) -> int:
+        return folder_writes.mark_folder_read(
+            ctx, user.id, 1, path, uid_validity=validity, uid_next=following
+        )
+
+    assert mark_read("Label 0") == 2
+    assert gmail.status == ["Label 0"]
+    assert marked == [("Label 0", 3, 50)]
+    # A listing's own UIDs are sent as they are, and asked of no STATUS.
+    assert mark_read("Label 0", 3, 40) == 2
+    assert (gmail.status, marked[-1]) == (["Label 0"], ("Label 0", 3, 40))
+    # A folder counted by STATUS gave its UIDs: without them it is refused.
+    for path, code in (("[Gmail]/Spam", "invalid_argument"), ("Gone", "mailbox_missing")):
+        with pytest.raises(MailError) as refused:
+            mark_read(path)
+        assert refused.value.code == code
+    # One of them alone is refused, not half used.
+    for validity, following in ((3, None), (None, 50)):
+        with pytest.raises(MailError) as refused:
+            mark_read("Label 0", validity, following)
+        assert refused.value.code == "invalid_argument"
+    assert len(marked) == 2
 
 
 # Through the API, against the test Dovecot.

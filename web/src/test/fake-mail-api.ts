@@ -687,8 +687,8 @@ function folderRoutes(state: FakeMailState, url: URL, init?: RequestInit): Respo
     name?: string
     folder?: string
     messages?: number
-    uid_validity?: number
-    uid_next?: number
+    uid_validity?: number | null
+    uid_next?: number | null
   }
   const target = (): string => (body.parent == null ? String(body.name) : `${body.parent}/${String(body.name)}`)
   if (match[2] === undefined) {
@@ -710,7 +710,8 @@ function folderRoutes(state: FakeMailState, url: URL, init?: RequestInit): Respo
     }
     let marked = 0
     for (const item of state.messages[`${String(account)}/${from}`] ?? []) {
-      if (!item.flags.seen && uidOf(item) < Number(body.uid_next)) {
+      // Without UIDs (a Gmail label's folder counted from the index), the server's own STATUS bounds it.
+      if (!item.flags.seen && (body.uid_next == null || uidOf(item) < body.uid_next)) {
         item.flags = { ...item.flags, seen: true }
         marked += 1
       }

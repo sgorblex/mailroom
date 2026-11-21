@@ -514,15 +514,16 @@ describe('folder actions', () => {
       expect(markReads(fetchMock)).toEqual([{ folder: 'Box/Leaf', uid_validity: 11, uid_next: 2 }])
     })
 
-    it('says to list the folder again when its listing gave no UIDs', async () => {
+    it('marks a folder its listing gave no UIDs, sending none', async () => {
       const fake = state()
-      fake.folders[WORK]?.push({ path: 'News', role: null, unread: 3, total: 3, uid_validity: null, uid_next: null })
-      stubMailApi(fake)
+      fake.folders[WORK]?.push({ path: 'News', role: null, unread: 1, total: 1, uid_validity: null, uid_next: null })
+      fake.messages['1/News'] = [messageItem(WORK, 'News', 1, unseen)]
+      const fetchMock = stubMailApi(fake)
       renderMailApp('/mail')
 
-      expect(within(await menuOf('News, 3 unread')).getByRole('menuitem', { name: /Mark all as read/ })).toHaveTextContent(
-        "Mark all as readThe server didn't give this folder's UIDs; list it again.",
-      )
+      await userEvent.click(within(await menuOf('News, 1 unread')).getByRole('menuitem', { name: 'Mark all as read' }))
+      expect(await screen.findByText('Marked 1 message read in News.')).toBeInTheDocument()
+      expect(markReads(fetchMock)).toEqual([{ folder: 'News', uid_validity: null, uid_next: null }])
     })
   })
 })

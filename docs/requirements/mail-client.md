@@ -578,10 +578,15 @@ connection with no mailbox selected, every check there. Marking a folder read is
 - **Mark read** every unread message of a folder. The caller sends the `uid_validity` and
   `uid_next` of the listing the user confirmed from: only messages below that `uid_next` are
   marked, so mail that arrived since stays unread, and a changed UIDVALIDITY is refused with
-  `stale_reference`. The answer counts the messages marked. A folder marked read with its
-  subfolders is one call per folder, each with its own listing's values and its own audit
-  record; whether that is what the user gets first is theirs to choose (`mark_read_subfolders`,
-  [`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *Sign-in*).
+  `stale_reference`. A Gmail label's folder (INBOX included) counted from the [index](#index)
+  has no such values in its listing: the caller sends both `null`, and the server reads the
+  folder's own STATUS at that moment instead, so mail that arrived between the listing and the
+  call is marked too. Both `null` for a folder that is not a Gmail label's, or only one of them
+  `null`, is `invalid_argument`. The answer counts the messages marked. A folder marked read
+  with its subfolders is one call per folder, each with its own listing's values and its own
+  audit record; whether that is what the user gets first is theirs to choose
+  (`mark_read_subfolders`, [`nonfunctional-requirements.md`](nonfunctional-requirements.md) —
+  *Sign-in*).
 
 **On the web** the actions live in the sidebar's folder menus. What the server would refuse is
 disabled with the reason (INBOX and role folders, a folder holding one for a rename, a folder with
@@ -592,7 +597,8 @@ and asks "Delete “X” and its N messages for good? They do not go to Trash an
 recovered." (Cancel focused; the Gmail note on an account with All Mail). On `folder_changed` it
 shows the new count and asks again; on `folder_in_use` it lists the rule sets, each a link to
 its page. A deleted folder on screen gives way to the Inbox. **Mark all as read** is enabled
-while the folder has unread mail and its listing gave its UIDs (else it says to list it again);
+while the folder has unread mail, its listing's UIDs sent back as they came (`null` for a
+Gmail label's folder counted from the index);
 a second click while one is under way sends nothing more. A folder with subfolders a list of it
 would read (`with_subfolders`'s: none with a role kept apart, nor under one) offers it twice,
 "with subfolders" and "this folder only", the user's default first: the whole subtree unless they
@@ -631,10 +637,10 @@ for the folder: `folder`, and `messages`, the count marked). Its log lines, `mai
 Paths travel in the body, since they hold the delimiter. Unknown fields are 422; `parent` is
 required (`null` for the top level), so that a rename names where the folder goes; `folder` and
 `parent` are at most 1,000 characters and `name` 255; `messages` is a JSON integer, 0 or more;
-`uid_validity` and `uid_next` JSON integers from 1 to 2³². CSRF as for every state-changing
-route. Errors: 400 `invalid_argument`, 404 `not_found` (account) and `mailbox_missing`, 409
-`folder_exists`, `folder_changed`, `folder_in_use` and `stale_reference`, 422,
-429, 502, 504. A create, rename, delete or mark read that outlives the 30 s deadline answers
+`uid_validity` and `uid_next` JSON integers from 1 to 2³², or `null` (both required). CSRF as
+for every state-changing route. Errors: 400 `invalid_argument`, 404 `not_found` (account) and
+`mailbox_missing`, 409 `folder_exists`, `folder_changed`, `folder_in_use` and
+`stale_reference`, 422, 429, 502, 504. A create, rename, delete or mark read that outlives the 30 s deadline answers
 `timeout` while the server may finish it: the next listing shows the outcome, and a rename that
 finished late still points its rule sets at the new path.
 
@@ -1155,7 +1161,12 @@ here (STATUS; 0 for a folder whose STATUS failed). `uid_validity` and `uid_next`
 too, what a [mark read](#folder-management) sends back: `null` for an unselectable folder or one
 whose STATUS failed. A folder the [index](#index) holds whole (ready, no age limit) takes its
 counts, UIDVALIDITY and UIDNEXT from the index instead, as of its last sync and the app's own
-writes since (UIDNEXT past the highest UID it holds), and is not asked STATUS. Errors: 404 `not_found` (account), 409, 502, 504.
+writes since (UIDNEXT past the highest UID it holds), and is not asked STATUS. On Gmail, while
+the index holds All Mail so, INBOX and each label's folder (Sent, Drafts, Starred and Important
+by their labels) are not asked STATUS either: their counts are those of All Mail's indexed
+messages carrying their label, read in one query, and their `uid_validity` and `uid_next` are
+`null` (All Mail's are never theirs); Spam and Trash, which All Mail leaves out, are still asked,
+and so are the label folders when the index's counts cannot be read. Errors: 404 `not_found` (account), 409, 502, 504.
 
 ### `GET /accounts/{account_id}/messages?folder=INBOX&limit=25&cursor=&subfolders=false`
 
