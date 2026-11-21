@@ -1,7 +1,7 @@
 """The app's own rows about a user's accounts (schema ``app``), beside mailroom-core's: the Run
 filters switch, and forgetting all of it when an account or its user goes (the user's remembered
 remote-content senders, muted threads, ledger of copies moved between accounts, mail index and
-notification folders too)."""
+notification folders, and its folders in the saved views too)."""
 
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ from mailroom.models import (
     MutedThread,
     RemoteContentSender,
     RuleSet,
+    SavedView,
     TransferLedger,
 )
 from mailroom_core.store import forget_user
@@ -100,8 +101,20 @@ def forget_account(store: AccountStore, db: Session, user_id: int, account_id: i
             MailNotificationFolders.account_id == account_id,
         )
     )
+    _drop_from_views(db, user_id, account_id)
     db.commit()
     remove_account(store, account_id)
+
+
+def _drop_from_views(db: Session, user_id: int, account_id: int) -> None:
+    """Take the account's folders out of the user's saved views; a view left without one lists
+    nothing."""
+    for view in db.scalars(
+        select(SavedView).where(SavedView.user_id == user_id, SavedView.sources.is_not(None))
+    ):
+        kept = [source for source in view.sources or () if source[0] != account_id]
+        if len(kept) != len(view.sources or ()):
+            view.sources = kept
 
 
 def forget_user_accounts(db: Session, user_id: int) -> None:
@@ -116,4 +129,5 @@ def forget_user_accounts(db: Session, user_id: int) -> None:
     db.execute(delete(MailIndexFolder).where(MailIndexFolder.user_id == user_id))
     db.execute(delete(MailNotificationFolders).where(MailNotificationFolders.user_id == user_id))
     db.execute(delete(RemoteContentSender).where(RemoteContentSender.user_id == user_id))
+    db.execute(delete(SavedView).where(SavedView.user_id == user_id))
     forget_user(db.connection(), core_user_id(user_id))

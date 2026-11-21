@@ -3,9 +3,9 @@ the user's accounts too), archive, junk (report spam), trash and flag."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from mailroom.api.deps import Context, CurrentUser
 from mailroom.api.routes.mail._shared import BatchRef, mail_router
@@ -30,6 +30,18 @@ class ViewRefsRequest(RefsRequest):
     source_folder: Folder | None = None
     """The folder the user acted from (INBOX or a label's): a Gmail All Mail ref is acted on
     there, so that it leaves that view only. Ignored for other accounts."""
+    source_folders: Annotated[dict[BatchRef, Folder], Field(max_length=service.MAX_REFS)] | None = (
+        None
+    )
+    """Each ref's own folder it was listed under (a row's ``listed_folder``), over
+    ``source_folder``: a view or a search over several folders lists each Gmail row under its
+    label's. Every key is one of ``refs``."""
+
+    @model_validator(mode="after")
+    def _sources_of_refs(self) -> Self:
+        if self.source_folders is not None and not set(self.source_folders) <= set(self.refs):
+            raise ValueError("source_folders names a ref that refs does not")
+        return self
 
 
 class MoveRequest(ViewRefsRequest):
@@ -115,7 +127,12 @@ def organize_answer(result: OrganizeResult, *, copies_answer: bool = False) -> O
 def move(request: MoveRequest, ctx: Context, user: CurrentUser) -> OrganizeAnswer:
     return organize_answer(
         service.move(
-            ctx, user.id, request.refs, request.folder, source_folder=request.source_folder
+            ctx,
+            user.id,
+            request.refs,
+            request.folder,
+            source_folder=request.source_folder,
+            source_folders=request.source_folders,
         )
     )
 
@@ -135,21 +152,39 @@ def move_to_account(
 @mail_router.post("/messages/archive")
 def archive(request: ViewRefsRequest, ctx: Context, user: CurrentUser) -> OrganizeAnswer:
     return organize_answer(
-        service.archive(ctx, user.id, request.refs, source_folder=request.source_folder)
+        service.archive(
+            ctx,
+            user.id,
+            request.refs,
+            source_folder=request.source_folder,
+            source_folders=request.source_folders,
+        )
     )
 
 
 @mail_router.post("/messages/junk")
 def junk(request: ViewRefsRequest, ctx: Context, user: CurrentUser) -> OrganizeAnswer:
     return organize_answer(
-        service.junk(ctx, user.id, request.refs, source_folder=request.source_folder)
+        service.junk(
+            ctx,
+            user.id,
+            request.refs,
+            source_folder=request.source_folder,
+            source_folders=request.source_folders,
+        )
     )
 
 
 @mail_router.post("/messages/trash")
 def trash(request: ViewRefsRequest, ctx: Context, user: CurrentUser) -> OrganizeAnswer:
     return organize_answer(
-        service.trash(ctx, user.id, request.refs, source_folder=request.source_folder)
+        service.trash(
+            ctx,
+            user.id,
+            request.refs,
+            source_folder=request.source_folder,
+            source_folders=request.source_folders,
+        )
     )
 
 

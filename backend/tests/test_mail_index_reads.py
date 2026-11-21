@@ -223,13 +223,25 @@ def test_a_gmail_label_view_reads_all_mails_rows(db_session: Session, user: User
         ("Work", "\\Inbox"),
         ("INBOX", "Work"),
     )
+    assert source.listed == (("\\Inbox", "INBOX"), ("Work", "Work"))
     found = reads.read_rows(db_session, user.id, sources, None, limit=10)
     assert [summary.uid for summary, _ in found] == [2, 1]
     assert {summary.folder for summary, _ in found} == {ALL_MAIL}
+    # Each row says the folder it was listed under, where an action on it acts.
+    assert [cast("reads.ListedSummary", summary).listed_folder for summary, _ in found] == [
+        "Work",
+        "INBOX",
+    ]
+    key = found[0][1]
+    resumed = decode_cursor(reads.IndexCursor.index(sources, key, [], {}).encode())
+    assert resumed is not None
+    assert resumed.sources == tuple(sources)
 
     every_message = views(ALL_MAIL)
     assert every_message is not None
-    assert every_message[0].labels is None
+    assert (every_message[0].labels, every_message[0].listed) == (None, ())
+    [(whole, _), *_] = reads.read_rows(db_session, user.id, every_message, None, limit=10)
+    assert cast("reads.ListedSummary", whole).listed_folder is None
     assert views("INBOX", "[Gmail]/Spam") is None
     assert (
         reads.index_sources(
@@ -354,8 +366,12 @@ def test_a_move_from_a_gmail_view_takes_off_that_views_label_only(
     connections = box.connections()
     ref = {uid: format_ref(MessageRef(1, ALL_MAIL, 7, uid)) for uid in box.labels}
 
-    def acting(refs: Sequence[str], source_folder: str | None) -> list[str]:
-        return organize._from_label_views(ctx, user.id, connections, refs, source_folder)  # noqa: SLF001
+    def acting(
+        refs: Sequence[str], source_folder: str | None, own: dict[str, str] | None = None
+    ) -> list[str]:
+        return organize._from_label_views(  # noqa: SLF001
+            ctx, user.id, connections, refs, source_folder, own or {}
+        )
 
     def move(uid: int, source_folder: str | None) -> core.OrganizeResult:
         return core.move_messages(connections, acting([ref[uid]], source_folder), "Home")
@@ -394,6 +410,35 @@ def test_a_move_from_a_gmail_view_takes_off_that_views_label_only(
     ]
 
 
+def test_a_move_from_a_mixed_gmail_view_takes_off_each_rows_own_label(
+    db_session: Session, sessions: sessionmaker[Session], user: User
+) -> None:
+    box = _GmailMailbox({uid: {"\\Inbox", "Work"} for uid in (1, 2, 3)})
+    every = ready(db_session, user, 1, ALL_MAIL)
+    db_session.add_all(
+        message(every, user.id, uid, gm_msgid=100 + uid, labels=sorted(labels))
+        for uid, labels in box.labels.items()
+    )
+    db_session.commit()
+    ctx = cast("Any", SimpleNamespace(session_maker=sessions))
+    connections = box.connections()
+    ref = {uid: format_ref(MessageRef(1, ALL_MAIL, 7, uid)) for uid in box.labels}
+
+    # A view over INBOX and Work listed 1 under Work and 2 under INBOX; 3 has no folder of its
+    # own and takes the call's.
+    own = {ref[1]: "Work", ref[2]: "INBOX"}
+    acting = organize._from_label_views(  # noqa: SLF001
+        ctx, user.id, connections, [ref[1], ref[2], ref[3]], "Work", own
+    )
+    moved = core.move_messages(connections, acting, "Home")
+    assert sorted(group.folder for group in moved.groups) == ["INBOX", "Work"]
+    assert box.labels == {
+        1: {"\\Inbox", "Home"},
+        2: {"Work", "Home"},
+        3: {"\\Inbox", "Home"},
+    }
+
+
 def test_a_move_whose_index_cannot_be_read_keeps_its_refs(
     user: User, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -408,7 +453,7 @@ def test_a_move_whose_index_cannot_be_read_keeps_its_refs(
     ctx = cast("Any", SimpleNamespace(session_maker=session))
     refs = [format_ref(MessageRef(1, ALL_MAIL, 7, 1))]
     nowhere = cast("Any", None)
-    assert organize._from_label_views(ctx, user.id, nowhere, refs, "INBOX") == refs  # noqa: SLF001
+    assert organize._from_label_views(ctx, user.id, nowhere, refs, "INBOX", {}) == refs  # noqa: SLF001
     [record] = [r for r in caplog.records if r.msg == "mail_index_read_failed"]
     assert record.__dict__["error"] == "RuntimeError"
     assert "the sender's text" not in caplog.text

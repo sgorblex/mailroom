@@ -111,6 +111,9 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   applies), mail-derived and so untrusted, never written to a log line in clear, and read only
   scoped to their user (each message row carries its folder's user, enforced by its foreign key).
   They go with their account and their user, and a folder's with its switch turned off.
+- **Saved views** (`app.saved_view`, [`mail-client.md`](mail-client.md#views)): per user, a name
+  and folder paths or a search line the user wrote, kept plain and never logged; read only scoped
+  to their user, they go with it, and an account's removal drops its folders from them.
 - **Deletes only deliberately.** Trash moves to `\Trash`, as in mailroom-mcp, and nothing is
   expunged but what a move copied elsewhere and **a draft Mailroom wrote**, by `UID EXPUNGE` of
   exactly that UID ([`mail-client.md`](mail-client.md), *The own-draft exception*); a draft
@@ -564,9 +567,11 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   folders rather than repeat the call.
 - **Logs:** `mail_folders`, `mail_quota`, `mail_listed`, `mail_searched`, `mail_read`,
   `mail_thread_read` (MCP only), `mail_html_read`, `mail_attachment_read`, `mail_source_read`,
-  `mail_print_read`, `mail_filter_draft_read`, `mail_thread_key_read` (a mute), each with
-  `user_id`, `account_id`, `via`, `outcome` (`ok` or the code) and `duration_ms`; never a subject,
-  an address, a folder name or a body. `mail_moved`, `mail_archived`, `mail_junked`,
+  `mail_print_read`, `mail_filter_draft_read`, `mail_thread_key_read` (a mute),
+  `mail_view_listed` (a view's page, `account_id` `*`), each with `user_id`, `account_id`, `via`,
+  `outcome` (`ok` or the code) and `duration_ms`; never a subject, an address, a folder name or a
+  body. `view_created`, `view_changed`, `view_removed` and `views_reordered` carry `user_id` and
+  `view_id` (not for a reorder), never a view's name, search or folder. `mail_moved`, `mail_archived`, `mail_junked`,
   `mail_trashed` and `mail_flagged` carry `user_id`, `via`, `account_ids`, `ref_count`, `changed`
   (messages), `groups`, `failed_groups`, `codes` (the failed groups'), `outcome` (`ok`,
   `partial`, `refused`, `failed`, or the code of a refused call) and `duration_ms`: counts and
