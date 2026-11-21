@@ -110,7 +110,7 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   live on the server. Rows are plain (no column encryption: the database's own protection
   applies), mail-derived and so untrusted, never written to a log line in clear, and read only
   scoped to their user (each message row carries its folder's user, enforced by its foreign key).
-  They go with their account and their user.
+  They go with their account and their user, and a folder's with its switch turned off.
 - **Deletes only deliberately.** Trash moves to `\Trash`, as in mailroom-mcp, and nothing is
   expunged but what a move copied elsewhere and **a draft Mailroom wrote**, by `UID EXPUNGE` of
   exactly that UID ([`mail-client.md`](mail-client.md), *The own-draft exception*); a draft
@@ -293,7 +293,8 @@ bounded to one minor because the server relies on its handlers.
   letter or digit), an Argon2id password hash (passwords of 12-1024 characters), an admin flag,
   an optional time zone (`time_zone`, an IANA name; null means UTC), and what "mark all as read"
   on a folder with subfolders does first (`mark_read_subfolders`, true by default: them too;
-  revision `202611191200`). `mise run create-user`
+  revision `202611191200`), and how far back the mail index keeps their mail
+  (`index_max_age_days`, null for no limit of their own; revision `202611201300`). `mise run create-user`
   makes one; startup warns while there are none. An unknown username still checks a dummy hash, and
   both failures answer the same 401, so neither timing nor wording tells whether a user exists.
 - **Sessions** (`app.user_session`): one per signed-in browser, deleted with their user. The
@@ -336,6 +337,11 @@ bounded to one minor because the server relies on its handlers.
   read takes them too unless the user picks the other item
   ([`mail-client.md`](mail-client.md) — *Folder management*). `auth/me`'s `user` carries it;
   logged as `mark_read_subfolders_changed`. The web sets it on *Profile*.
+- **Own index age limit** (`PUT /api/v1/auth/me/index-max-age`, `{"index_max_age_days": 365}`,
+  a JSON integer from 1 to 36500, or null): messages older are not indexed, and stay readable
+  live; `MAILROOM_INDEX_MAX_AGE_DAYS` caps it for everyone
+  ([`mail-client.md`](mail-client.md) — *Index*). `auth/me`'s `user` carries it; logged as
+  `index_max_age_changed`.
 - **A session ending under the user:** any 401 from the API but a refused sign-in signs the web
   app out (`onSessionEnded` in `web/src/api/http.ts`), and the sign-in screen says the session
   has ended.
@@ -344,7 +350,8 @@ bounded to one minor because the server relies on its handlers.
 - **Logs:** `login_succeeded` (with `user_id`; `via="sso"` through SSO), `login_failed`,
   `logout`, `user_created`,
   `user_removed`, `password_reset` (with `user_id`, the admin, and `target_user_id`),
-  `password_changed`, `mark_read_subfolders_changed`, `password_change_failed`, `sso_refused` and `sso_failed` (with the
+  `password_changed`, `mark_read_subfolders_changed`, `index_max_age_changed`,
+  `password_change_failed`, `sso_refused` and `sso_failed` (with the
   `outcome`), `sso_not_linked`, `sso_identity_linked` (with `user_id` and `via`: `profile` or the
   link claim), `sso_identity_unlinked`; never a password, a token, or a username.
 
