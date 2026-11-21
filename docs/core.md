@@ -37,7 +37,7 @@ the tools answer with, and the app's MCP writes thin tools over it. The filter e
 | `crypto` | Sealed secrets |
 | `store` | `AccountStore` and core's migrations, in schema `core` |
 | `render` | Bodies to text, quotes, the untrusted-content envelope, `safe_html` |
-| `mail` | Connections (`mail.imap`), operations on a selected folder (`mail.selected`), IDLE (`mail.idle`), refs, read, organize, folders (`mail.folders`), messages parsed for the filters (`mail.parsed`), compose, drafts, the tools' text, audit items |
+| `mail` | Connections (`mail.imap`), operations on a selected folder (`mail.selected`), a folder's UIDs and flag changes (`mail.changes`), IDLE (`mail.idle`), refs, read, organize, folders (`mail.folders`), messages parsed for the filters (`mail.parsed`), compose, drafts, the tools' text, audit items |
 | `send` | SMTP and the send gate |
 | `filters` | The filter engine: criteria, actions, rules as data (specs), runs, the runner and IDLE monitor, reports |
 | `testing` | A pytest plugin (no-network guard, store and mail fixtures) the app's tests load too |
@@ -260,6 +260,22 @@ X-Original-To. Deliberate choices:
 - **Gmail attachments by X-GM-RAW:** Gmail ignores SEARCH HEADER, so on a Gmail account
   `has_attachment` becomes Gmail's own `has:attachment` (X-GM-RAW), grouped with any `gmail_query`
   into that one criterion.
+
+### Folder changes
+
+`mailroom_core.mail.changes` reads what a host keeping its own copy of a folder needs, under
+EXAMINE and changing nothing: `uids_of` (every UID, by UID SEARCH over ranges of at most
+`UID_CHUNK` messages, bounded by the UIDs at every `UID_CHUNK`th message, since imaplib refuses an
+answer line over 1 MB), `flags_of` (`UID FETCH 1:* (FLAGS)`, for a server without CONDSTORE) and
+`changed_flags_of` (`UID FETCH 1:* (FLAGS) (CHANGEDSINCE n)`: changed and new messages, never
+expunged ones, which a host finds by comparing UIDs; `unsupported` in a folder without
+mod-sequences). `MailConnections.folder_uids`, `folder_flags` and `changed_flags` run them in a
+session of their own. Each answer (`FolderUids`, `FolderFlags`) carries UIDVALIDITY and
+HIGHESTMODSEQ as the EXAMINE gave them, before the read, so a change in between shows again next
+time; flags leave out `\Recent`, which belongs to the session. A pooled connection sends
+`ENABLE CONDSTORE` when the server offers CONDSTORE and ENABLE (Dovecot reports no HIGHESTMODSEQ
+on a SELECT otherwise): `MailboxContext.highest_modseq` comes from SELECT or EXAMINE and
+`Folder.highest_modseq` from STATUS, None without CONDSTORE.
 
 ## Organize
 

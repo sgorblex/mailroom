@@ -30,6 +30,13 @@ from imapclient.exceptions import IMAPClientAbortError, IMAPClientError
 from imapclient.response_parser import parse_response
 
 from mailroom_core.config import ConfigError, CoreSettings, core_settings_or_issues, issues_text
+from mailroom_core.mail.changes import (
+    FolderFlags,
+    FolderUids,
+    changed_flags_of,
+    flags_of,
+    uids_of,
+)
 from mailroom_core.mail.errors import (
     MailError,
     MailErrorCode,
@@ -74,6 +81,7 @@ class Capabilities:
     move: bool
     uidplus: bool
     condstore: bool
+    """CONDSTORE (RFC 7162): HIGHESTMODSEQ, and flag changes fetched since a mod-sequence."""
     special_use: bool
     quota: bool
     """QUOTA (RFC 2087, RFC 9208): the account's usage and limits can be asked."""
@@ -112,6 +120,9 @@ class MailboxContext:
     keywords: bool = False
     """Whether keywords can be stored here: PERMANENTFLAGS holds `\\*` (never on EXAMINE, whose
     answer allows no change) and the server is not Gmail, which turns keywords into labels."""
+    highest_modseq: int | None = None
+    """HIGHESTMODSEQ from the SELECT or EXAMINE answer; None without CONDSTORE, or in a folder
+    the server keeps no mod-sequences for (NOMODSEQ)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,6 +153,8 @@ class Folder:
     unseen: int | None = None
     uid_validity: int | None = None
     uid_next: int | None = None
+    highest_modseq: int | None = None
+    """Asked only of a server with CONDSTORE; None too in a folder without mod-sequences."""
 
     @property
     def selectable(self) -> bool:
@@ -367,6 +380,21 @@ class MailConnections:
 
         return self._on_connection(account_id, run)
 
+    def folder_uids(self, account_id: int, path: str) -> FolderUids:
+        """Every UID in the folder (`changes.uids_of`), read under EXAMINE."""
+        return self.with_mailbox(account_id, path, True, uids_of)
+
+    def folder_flags(self, account_id: int, path: str) -> FolderFlags:
+        """Every message's flags in the folder (`changes.flags_of`), read under EXAMINE."""
+        return self.with_mailbox(account_id, path, True, flags_of)
+
+    def changed_flags(self, account_id: int, path: str, since: int) -> FolderFlags:
+        """The flags changed in the folder since the mod-sequence `since`
+        (`changes.changed_flags_of`), read under EXAMINE; `unsupported` without CONDSTORE."""
+        return self.with_mailbox(
+            account_id, path, True, lambda context: changed_flags_of(context, since)
+        )
+
     def quota(self, account_id: int) -> Quota | None:
         """The quota INBOX falls under (GETQUOTAROOT); None when the server has no QUOTA, answers
         NO to GETQUOTAROOT (a temporary refusal aside) or puts no limit on storage or message
@@ -552,8 +580,11 @@ class MailConnections:
     ) -> IMAPClient:
         client = self._open_unpooled(account_id, read_timeout=read)
         try:
-            # From the login's response, so this costs no round trip.
+            # Capabilities from the login's response; ENABLE CONDSTORE is one round trip more
+            # where offered.
             capabilities = _capabilities(client.capabilities())
+            if capabilities.condstore:
+                _enable_condstore(client)
         except Exception as error:
             _drop(client)
             raise mail_error(error, account_id) from None
@@ -628,6 +659,7 @@ class MailConnections:
                     uid_next=int(selected[b"UIDNEXT"]) if b"UIDNEXT" in selected else None,
                     account=account_id,
                     keywords=_keywords(client, selected),
+                    highest_modseq=_highest_modseq(selected),
                 )
             except Exception as error:
                 raise self._failure(account_id, state, slot, error, "lock", read_only) from None
@@ -861,6 +893,25 @@ def _keywords(client: IMAPClient, selected: Mapping[bytes, object]) -> bool:
     )
 
 
+def _enable_condstore(client: IMAPClient) -> None:
+    """ENABLE CONDSTORE (RFC 5161), without which Dovecot leaves HIGHESTMODSEQ out of a SELECT's
+    answer; a refusal leaves the folders without one, as on a server without CONDSTORE."""
+    if not client.has_capability("ENABLE"):
+        return
+    try:
+        client.enable("CONDSTORE")
+    except IMAPClientAbortError:
+        raise
+    except IMAPClientError:
+        _log.info("condstore_not_enabled", extra={"event": "condstore_not_enabled"})
+
+
+def _highest_modseq(selected: Mapping[bytes, object]) -> int | None:
+    # Absent without CONDSTORE and under NOMODSEQ; 0 would be no mod-sequence either.
+    value = selected.get(b"HIGHESTMODSEQ")
+    return value if isinstance(value, int) and value > 0 else None
+
+
 def _capabilities(raw: tuple[bytes, ...]) -> Capabilities:
     caps = {bytes(cap).upper() for cap in raw}
     return Capabilities(
@@ -1052,8 +1103,11 @@ def folders_from(listing: list[tuple[tuple[bytes, ...], bytes | None, str]]) -> 
 
 
 def _with_status(client: IMAPClient, folder: Folder) -> Folder:
+    items = ["MESSAGES", "UNSEEN", "UIDVALIDITY", "UIDNEXT"]
+    if client.has_capability("CONDSTORE"):
+        items.append("HIGHESTMODSEQ")
     try:
-        status = client.folder_status(folder.path, ["MESSAGES", "UNSEEN", "UIDVALIDITY", "UIDNEXT"])
+        status = client.folder_status(folder.path, items)
     except IMAPClientAbortError:
         raise
     except IMAPClientError:
@@ -1073,4 +1127,5 @@ def _with_status(client: IMAPClient, folder: Folder) -> Folder:
         unseen=count(b"UNSEEN"),
         uid_validity=count(b"UIDVALIDITY"),
         uid_next=count(b"UIDNEXT"),
+        highest_modseq=count(b"HIGHESTMODSEQ") or None,
     )

@@ -35,6 +35,14 @@ from mailroom_core.mail.bulk import (
     act_on_matching,
     count_matching,
 )
+from mailroom_core.mail.changes import (
+    UID_CHUNK,
+    FolderFlags,
+    FolderUids,
+    changed_flags_of,
+    flags_of,
+    uids_of,
+)
 from mailroom_core.mail.compose import (
     DRAFT_HEADER,
     Composed,
@@ -276,6 +284,7 @@ __all__ = [
     "REFUSALS",
     "SETTABLE_FLAGS",
     "TO_SORT",
+    "UID_CHUNK",
     "Addressed",
     "Attachment",
     "AttachmentSource",
@@ -305,7 +314,9 @@ __all__ = [
     "Folder",
     "FolderChange",
     "FolderChangedError",
+    "FolderFlags",
     "FolderRole",
+    "FolderUids",
     "GroupResult",
     "IdleChange",
     "IdleWatch",
@@ -368,6 +379,7 @@ __all__ = [
     "audit_result",
     "authentication",
     "body_text",
+    "changed_flags_of",
     "check_fields",
     "check_folder_name",
     "check_fresh",
@@ -399,6 +411,7 @@ __all__ = [
     "fetch_source",
     "fetch_sources",
     "find_drafts",
+    "flags_of",
     "folders_block",
     "format_ref",
     "forward_subject",
@@ -468,6 +481,7 @@ __all__ = [
     "trash_messages",
     "trusted_results",
     "try_remove_draft",
+    "uids_of",
     "with_subfolders",
     "without_headers",
 ]
