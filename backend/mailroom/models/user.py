@@ -36,6 +36,8 @@ class User(Base):
     # The mail index's age limit: messages that arrived in the last this many days are indexed;
     # None: no limit of the user's own (``MAILROOM_INDEX_MAX_AGE_DAYS`` still caps it).
     index_max_age_days: Mapped[int | None] = mapped_column(Integer)
+    # Whether the web's message lists group messages by conversation.
+    conversations: Mapped[bool] = mapped_column(Boolean, server_default=true())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

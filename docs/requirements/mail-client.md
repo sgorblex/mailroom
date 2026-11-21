@@ -1178,6 +1178,9 @@ mode a folder that cannot be read is reported in `failures`, as in a search, nev
   row read from the index names All Mail, listed under INBOX or a label's folder (the first of
   the read's that the message carries); `null` otherwise. Lists, searches and views give it.
 - A single folder that fails answers its error status instead of a page.
+- `group=thread` asks for the page [by conversation](#conversations); `conversations` is then
+  the list of them, one for each message, else null (and always without `group`). Any other
+  `group` is 422.
 
 ### `POST /search`
 
@@ -1203,6 +1206,7 @@ same page shape.
 | `gmail_query` | Gmail search syntax (X-GM-RAW); Gmail accounts only, else `unsupported`. |
 | `subfolders` | `true`: the folder's subfolders too, as for the list (default `false`); with `folder` `*`, 400 `invalid_argument`. |
 | `limit`, `cursor` | As for the list. |
+| `group` | `"thread"`: [by conversation](#conversations), as for the list; null or absent: not. |
 
 Every field is optional. The criteria and `cursor` take `null`, meaning absent; `account`,
 `folder` and `limit` do not (422). An unknown field is 422. With no criteria,
@@ -1713,7 +1717,63 @@ with none lists nothing).
   Mail, which label a folder is; a search's every folder): an account that cannot answer is a
   failure of the page for that folder. A cursor whose folder changed is 409 `stale_reference`.
   Each Gmail row names the folder it was listed under (`listed_folder`), which an action on it
-  sends back (`source_folders`), so it leaves that folder's label only. MCP has no views.
+  sends back (`source_folders`), so it leaves that folder's label only. `group=thread` groups it
+  [by conversation](#conversations), every folder of the view together. MCP has no views.
+
+## Conversations
+
+A list, a search or a view read from the [index](#index) can be grouped by conversation with
+`group=thread` (`POST /search`: `"group": "thread"`). A conversation is the source's messages
+(those matching the search) sharing a key within one account, which the index sets as it stores
+each message (`mailroom.mail.index.threads`): on Gmail its thread (`X-GM-THRID`); elsewhere the
+key of the message it answers, its References root, else its first In-Reply-To id, but only when
+the index already holds that message **in the same account** and both have the same subject
+once reply and forward prefixes (`Re:`, `Fwd:`, `Fw:`, `AW:`, `WG:`, `SV:`, `R:`, `I:`... also
+numbered or repeated), whitespace and case are set aside; else its own Message-ID. A message
+with no Message-ID is alone. References are the sender's to write: a stranger naming a
+conversation's Message-ID with a subject of their own gets a row of their own. A folder is
+indexed newest first, so a reply often lands before what it answers: once that is stored, its
+replies (and what was keyed under them) join its conversation. The page holds one message per
+conversation, its latest, newest first by it and paged on the index's cursor by it, and
+`conversations` beside `messages`, in the same order:
+
+```jsonc
+{
+  "count": 3,                    // its messages in the source, the user's own copies included
+  "unread": 1,                   // so is this, and the three below
+  "participants": ["Ada Lovelace", "bob@example.org"],  // senders, first written first, at most 4
+  "has_attachments": true,       // any of them
+  "flagged": false,              // any of them
+  "refs": ["WzIsMSwiSU5CT1gi…"], // newest first: what an action on the row takes
+  "listed_folders": {"WzIsMSwiSU5CT1gi…": "INBOX"},  // as each one's listed_folder
+  "latest_from_new_sender": false
+}
+```
+
+- `refs` leave out the user's own copies: messages in a folder with the role Sent or Drafts, and
+  on Gmail those labelled `\Sent` or `\Draft`, so archiving, moving, trashing or reporting a
+  conversation never takes what the user wrote; they are still counted and read with it (`GET
+  /messages/{ref}/thread`). A conversation of nothing else (the Sent folder listed) keeps them.
+  The folders' roles are asked of the server only for a conversation spread over several
+  folders that are not Gmail labels.
+- `latest_from_new_sender` is true when the latest message's sender address (any case) is
+  neither the sender nor a To or Cc recipient of any other of its messages (a copy of the latest
+  one, by Message-ID, is not another); false for a conversation of one, or a sender without an
+  address. The web asks before acting on such a conversation whole.
+
+A source read live (off the index, or a search of the text or with Gmail's syntax) is not
+grouped: `conversations` is null and the page is of messages, as without `group`. What an age
+limit leaves out of a folder, read live once its rows run out, comes one message to a
+conversation. Grouping changes no ref, and an action on a conversation's refs checks each one
+live, as any other.
+
+- `GET /messages/{ref}/thread?limit=30` (`limit` 1-50): the conversation the message belongs to,
+  read live as MCP's `thread_read` reads it (its folder and Sent, matched by Message-ID,
+  References and In-Reply-To; on Gmail its thread from All Mail), newest first, as a page without
+  a cursor. Errors as `GET /messages/{ref}`.
+- **Setting.** Each user's `conversations` (`app.user`, true by default) says whether the web
+  groups their lists: `PUT /api/v1/auth/me/conversations`, `{"conversations": false}` (a JSON
+  boolean), answers the user; `auth/me`'s `user` carries it; logged as `conversations_changed`.
 
 ## Mailbox quota
 
@@ -1812,7 +1872,7 @@ The same service layer backs the `mail_read` tool group
 `attachment_read`. The REST routes carry the structured shapes above; the tools return
 mailroom-core's text inside the untrusted envelope, its hints naming the app's tools, its dates
 in the user's time zone (named on the answer's last line), and a collapsed quote as a marker line
-that says how to read it. There is no REST route for threads yet.
+that says how to read it. The web reads a thread over REST ([Conversations](#conversations)).
 
 ## Later slices
 

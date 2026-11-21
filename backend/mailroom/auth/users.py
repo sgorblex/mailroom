@@ -120,6 +120,12 @@ def set_mark_read_subfolders(db: Session, user: User, subfolders: bool) -> None:
     db.commit()
 
 
+def set_conversations(db: Session, user: User, grouped: bool) -> None:
+    """Keep whether ``user``'s message lists are grouped by conversation."""
+    user.conversations = grouped
+    db.commit()
+
+
 INDEX_MAX_AGE_DAYS: Final = 36500
 """The longest age limit of the mail index, a user's or the instance's (a hundred years)."""
 

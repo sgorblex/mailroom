@@ -89,6 +89,10 @@ class MailIndexMessage(Base):
             postgresql_where=text("NOT ('\\Seen' = ANY (flags))"),
         ),
         Index("ix_mail_index_message_thread_key", "user_id", "thread_key"),
+        # A conversation's key: the message a new one answers, the replies stored before it.
+        Index("ix_mail_index_message_message_id", "user_id", "message_id"),
+        Index("ix_mail_index_message_references_root", "user_id", "references_root"),
+        Index("ix_mail_index_message_in_reply_to", "user_id", "in_reply_to"),
         Index(
             "ix_mail_index_message_gm_msgid",
             "folder_id",
@@ -135,6 +139,8 @@ class MailIndexMessage(Base):
     in_reply_to: Mapped[str | None] = mapped_column(Text)
     references_root: Mapped[str | None] = mapped_column(Text)
     thread_key: Mapped[str | None] = mapped_column(Text)
+    """The conversation's key (``mailroom.mail.index.threads``): Gmail's thread, else the key of
+    the message it answers when the index holds it with the same subject, else the Message-ID."""
     list_id: Mapped[str | None] = mapped_column(Text)
     gm_msgid: Mapped[int | None] = mapped_column(BigInteger)
     gm_thrid: Mapped[int | None] = mapped_column(BigInteger)

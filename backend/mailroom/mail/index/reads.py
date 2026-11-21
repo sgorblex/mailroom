@@ -11,6 +11,11 @@ indexed meanwhile never shifts a page. A folder indexed under an age limit holds
 since its day: once its rows run out, the rest of it is read live (``BEFORE`` that day), and the
 cursor then carries the live one.
 
+Grouped by conversation (``read_conversations``), a read gives each conversation once, at its
+latest matching row, with the rest of its rows in the source read: within one account, those of
+the same ``thread_key`` (``mailroom.mail.index.threads``), a row without one alone. Paged as rows
+are, by that latest row's key.
+
 Every query is the user's own (``user_id``). Rows are mail-derived and untrusted: nothing here logs
 them.
 """
@@ -20,7 +25,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, time, timedelta
 from typing import TYPE_CHECKING, Final
 
@@ -37,15 +42,23 @@ from sqlalchemy import (
     tuple_,
 )
 from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.orm import aliased
 
 from mailroom.mail.index import settings as index_settings
 from mailroom.models import MailIndexFolder, MailIndexMessage
 from mailroom_core import mail as core
-from mailroom_core.mail import TO_SORT, MailError, MessageRef, MessageSummary, PageFailure
+from mailroom_core.mail import (
+    TO_SORT,
+    MailError,
+    MessageRef,
+    MessageSummary,
+    Page,
+    PageFailure,
+)
 from mailroom_core.render import Address
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Callable, Iterable, Mapping, Sequence
 
     from sqlalchemy import ColumnElement
     from sqlalchemy.orm import InstrumentedAttribute, Session
@@ -280,12 +293,13 @@ def _has(column: InstrumentedAttribute[list[str]], flag: str) -> ColumnElement[b
     return literal(flag) == any_(column)
 
 
-def _criteria(query: SearchQuery | None) -> list[ColumnElement[bool]]:
-    """The query's criteria on the rows: substrings of From, To and the subject (any case), the
-    arrival day (UTC), the flags, an attachment."""
+def _criteria(
+    query: SearchQuery | None, message: type[MailIndexMessage] = MailIndexMessage
+) -> list[ColumnElement[bool]]:
+    """The query's criteria on the rows (``message``, or an alias of it): substrings of From, To
+    and the subject (any case), the arrival day (UTC), the flags, an attachment."""
     if query is None:
         return []
-    message = MailIndexMessage
     out: list[ColumnElement[bool]] = []
     for column, term in (
         (message.sender_text, query.sender),
@@ -316,6 +330,46 @@ type Key = tuple[datetime, int, int]
 """Arrival time, folder id and UID: a row's place, newest first."""
 
 
+def _of_sources(
+    user_id: int,
+    sources: Sequence[IndexSource],
+    query: SearchQuery | None,
+    message: type[MailIndexMessage] = MailIndexMessage,
+) -> list[ColumnElement[bool]]:
+    """The user's rows (``message``, or an alias of it) of ``sources`` (on Gmail, those carrying
+    one of a source's labels) matching ``query``."""
+    where = []
+    for source in sources:
+        own = message.folder_id == source.folder_id
+        if source.labels is not None:
+            own = and_(own, message.labels.overlap(literal(list(source.labels), ARRAY(Text))))
+        where.append(own)
+    return [message.user_id == user_id, or_(*where), *_criteria(query, message)]
+
+
+def _after(after: Key | None) -> list[ColumnElement[bool]]:
+    if after is None:
+        return []
+    message = MailIndexMessage
+    received, folder_id, uid = after
+    key = tuple_(message.received, message.folder_id, message.uid)
+    return [
+        key
+        < tuple_(
+            literal(received),
+            literal(folder_id, BigInteger),
+            literal(uid, BigInteger),
+        )
+    ]
+
+
+_NEWEST: Final = (
+    MailIndexMessage.received.desc(),
+    MailIndexMessage.folder_id.desc(),
+    MailIndexMessage.uid.desc(),
+)
+
+
 def read_rows(
     db: Session,
     user_id: int,
@@ -331,38 +385,26 @@ def read_rows(
         return []
     message = MailIndexMessage
     by_folder = {source.folder_id: source for source in sources}
-    where = []
-    for source in sources:
-        own = message.folder_id == source.folder_id
-        if source.labels is not None:
-            own = and_(own, message.labels.overlap(literal(list(source.labels), ARRAY(Text))))
-        where.append(own)
-    key = tuple_(message.received, message.folder_id, message.uid)
     statement = (
         select(message)
-        .where(message.user_id == user_id, or_(*where), *_criteria(query))
-        .order_by(message.received.desc(), message.folder_id.desc(), message.uid.desc())
+        .where(*_of_sources(user_id, sources, query), *_after(after))
+        .order_by(*_NEWEST)
         .limit(limit)
     )
-    if after is not None:
-        received, folder_id, uid = after
-        statement = statement.where(
-            key
-            < tuple_(
-                literal(received),
-                literal(folder_id, BigInteger),
-                literal(uid, BigInteger),
-            )
-        )
     return [
         (_summary(by_folder[row.folder_id], row), (row.received, row.folder_id, row.uid))
         for row in db.scalars(statement)
     ]
 
 
+def _listed_folder(source: IndexSource, row: MailIndexMessage) -> str | None:
+    """The folder ``row`` was listed under: the first of the source's labels it carries."""
+    carried = set(row.labels or ())
+    return next((path for label, path in source.listed if label in carried), None)
+
+
 def _summary(source: IndexSource, row: MailIndexMessage) -> MessageSummary:
     ref = MessageRef(source.account, source.folder, source.uid_validity, row.uid)
-    carried = set(row.labels or ())
     return ListedSummary(
         ref=core.format_ref(ref),
         account=source.account,
@@ -371,15 +413,281 @@ def _summary(source: IndexSource, row: MailIndexMessage) -> MessageSummary:
         uid_validity=source.uid_validity,
         date=row.date or row.received,
         received=row.received,
-        sender=tuple(
-            Address(name=person.get("name"), address=person.get("address")) for person in row.sender
-        ),
+        sender=_addresses(row.sender),
         subject=row.subject,
         flags=frozenset((*row.flags, *row.keywords)),
         has_attachments=row.has_attachments,
         preview=row.snippet,
         size=row.size,
-        listed_folder=next((path for label, path in source.listed if label in carried), None),
+        listed_folder=_listed_folder(source, row),
+    )
+
+
+MAX_PARTICIPANTS: Final = 4
+"""The senders a conversation names, in the order they first wrote."""
+
+
+_OWN_LABELS: Final = frozenset({"\\Sent", "\\Draft"})
+"""The Gmail labels of the user's own copies: what they sent, what they are writing."""
+_OWN_ROLES: Final = frozenset({"sent", "drafts"})
+
+
+@dataclass(frozen=True, slots=True)
+class Conversation:
+    """A conversation of a page: its messages in the source read (its latest is the page's
+    message), how many are unread, the first senders' display names and whether one has an
+    attachment or is flagged, all of them counted; the refs an action on it takes, newest
+    first, which leave out the user's own copies (``own_copy``) unless it holds nothing else;
+    the folder each of those was listed under where it is not its own (``ListedSummary``); and
+    whether its latest message's sender is new to it: neither the sender nor a recipient of
+    any other of its messages."""
+
+    count: int
+    unread: int
+    participants: tuple[str, ...]
+    has_attachments: bool
+    flagged: bool
+    refs: tuple[str, ...]
+    listed_folders: Mapping[str, str] = field(default_factory=dict)
+    latest_from_new_sender: bool = False
+
+    @classmethod
+    def single(cls, summary: MessageSummary) -> Conversation:
+        """A message alone: one the index cannot group (read live)."""
+        listed = summary.listed_folder if isinstance(summary, ListedSummary) else None
+        return cls(
+            count=1,
+            unread=0 if _SEEN in summary.flags else 1,
+            participants=_participants([summary.sender]),
+            has_attachments=summary.has_attachments,
+            flagged=_FLAGGED in summary.flags,
+            refs=(summary.ref,),
+            listed_folders={} if listed is None else {summary.ref: listed},
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationPage(Page):
+    """A page whose messages are each the latest of its conversation, ``conversations`` in the
+    same order."""
+
+    conversations: tuple[Conversation, ...] = ()
+
+
+def _participants(senders: Iterable[Sequence[Address]]) -> tuple[str, ...]:
+    names: dict[str, None] = {}
+    for sender in senders:
+        for person in sender[:1]:
+            name = (person.name or person.address or "").strip()
+            if name:
+                names.setdefault(name)
+    return tuple(names)[:MAX_PARTICIPANTS]
+
+
+def read_conversations(
+    db: Session,
+    user_id: int,
+    sources: Sequence[IndexSource],
+    query: SearchQuery | None,
+    *,
+    limit: int,
+    after: Key | None = None,
+    listing: Callable[[int], Sequence[Folder]] | None = None,
+) -> list[tuple[MessageSummary, Key, Conversation]]:
+    """Up to ``limit`` of the conversations among the sources' rows matching ``query``, within
+    one account each, newest first by their latest row, that row after ``after``: each as its
+    latest row's summary, that row's key, and the conversation of the matching rows. A row's
+    conversation is its ``thread_key`` (``mailroom.mail.index.threads``); a row without one is
+    alone. A row is a conversation's latest when no newer
+    matching row of its account has its key, which follows the newest-first index and stops at
+    ``limit``, rather than ranking every row of the sources. ``listing`` gives an account's
+    folders, asked only of a conversation across several folders not read by Gmail label, for
+    which of them are its Sent and Drafts (``own_copy``)."""
+    if not sources:
+        return []
+    message, folder = MailIndexMessage, MailIndexFolder
+    newer, newer_folder = aliased(MailIndexMessage), aliased(MailIndexFolder)
+    by_folder = {source.folder_id: source for source in sources}
+    later = (
+        select(newer.uid)
+        .join(
+            newer_folder,
+            and_(newer_folder.id == newer.folder_id, newer_folder.user_id == newer.user_id),
+        )
+        .where(
+            *_of_sources(user_id, sources, query, newer),
+            newer_folder.account_id == folder.account_id,
+            newer.thread_key == message.thread_key,
+            tuple_(newer.received, newer.folder_id, newer.uid)
+            > tuple_(message.received, message.folder_id, message.uid),
+        )
+    )
+    latest = db.execute(
+        select(message, folder.account_id)
+        .join(folder, and_(folder.id == message.folder_id, folder.user_id == message.user_id))
+        .where(*_of_sources(user_id, sources, query), *_after(after), ~later.exists())
+        .order_by(*_NEWEST)
+        .limit(limit)
+    ).all()
+    if not latest:
+        return []
+    threads = {(account, own.thread_key) for own, account in latest if own.thread_key is not None}
+    members: dict[tuple[int, str | None], list[MailIndexMessage]] = {key: [] for key in threads}
+    if threads:
+        rows = db.execute(
+            select(message, folder.account_id)
+            .join(folder, and_(folder.id == message.folder_id, folder.user_id == message.user_id))
+            .where(
+                *_of_sources(user_id, sources, query),
+                tuple_(folder.account_id, message.thread_key).in_(list(threads)),
+            )
+            .order_by(*_NEWEST)
+        )
+        for row, account in rows:
+            members[(account, row.thread_key)].append(row)
+    own_folders = _OwnFolders(sources, listing)
+    out: list[tuple[MessageSummary, Key, Conversation]] = []
+    for own, account in latest:
+        held = [own] if own.thread_key is None else members[(account, own.thread_key)]
+        if len({row.folder_id for row in held}) > 1:
+            theirs = [row for row in held if not own_copy(row, own_folders())]
+        else:
+            # One folder: all the user's own, or none of them.
+            theirs = [row for row in held if not own_copy(row, frozenset())]
+        acted = theirs or held
+        listed = {
+            _ref(by_folder[row.folder_id], row.uid): path
+            for row in acted
+            if (path := _listed_folder(by_folder[row.folder_id], row)) is not None
+        }
+        found = Conversation(
+            count=len(held),
+            unread=sum(_SEEN not in row.flags for row in held),
+            participants=_participants(_addresses(row.sender) for row in reversed(held)),
+            has_attachments=any(row.has_attachments for row in held),
+            flagged=any(_FLAGGED in row.flags for row in held),
+            refs=tuple(_ref(by_folder[row.folder_id], row.uid) for row in acted),
+            listed_folders=listed,
+            latest_from_new_sender=_new_sender(own, held),
+        )
+        place = (own.received, own.folder_id, own.uid)
+        out.append((_summary(by_folder[own.folder_id], own), place, found))
+    return out
+
+
+def own_copy(row: MailIndexMessage, own_folders: frozenset[int]) -> bool:
+    """A copy of the user's own: on Gmail, labelled Sent or Draft; elsewhere, in one of
+    ``own_folders`` (Sent and Drafts)."""
+    if row.labels:
+        return not _OWN_LABELS.isdisjoint(row.labels)
+    return row.folder_id in own_folders
+
+
+class _OwnFolders:
+    """The ids of the sources' Sent and Drafts folders, read once asked (``listing``); none known
+    without it, or when an account cannot say."""
+
+    def __init__(
+        self, sources: Sequence[IndexSource], listing: Callable[[int], Sequence[Folder]] | None
+    ) -> None:
+        self._sources, self._listing = sources, listing
+        self._ids: frozenset[int] | None = None
+
+    def __call__(self) -> frozenset[int]:
+        if self._ids is None:
+            ids: set[int] = set()
+            whole = [source for source in self._sources if source.labels is None]
+            for account in dict.fromkeys(source.account for source in whole):
+                try:
+                    listed = [] if self._listing is None else self._listing(account)
+                except MailError:
+                    listed = []
+                paths = {f.path for f in listed if f.role in _OWN_ROLES}
+                ids.update(s.folder_id for s in whole if s.account == account and s.folder in paths)
+            self._ids = frozenset(ids)
+        return self._ids
+
+
+def _people_of(row: MailIndexMessage) -> set[str]:
+    recipients = row.recipients or {}
+    people = [*row.sender, *recipients.get("to", ()), *recipients.get("cc", ())]
+    return {
+        address.strip().casefold()
+        for person in people
+        if isinstance(address := person.get("address"), str) and address.strip()
+    }
+
+
+def _new_sender(latest: MailIndexMessage, held: Sequence[MailIndexMessage]) -> bool:
+    """Whether ``latest``'s sender wrote or was written to in none of the other messages of
+    ``held`` (copies of ``latest`` itself, by Message-ID, are not others); False for a message
+    alone or without a sender's address."""
+    others = [
+        row
+        for row in held
+        if (row.folder_id, row.uid) != (latest.folder_id, latest.uid)
+        and (latest.message_id is None or row.message_id != latest.message_id)
+    ]
+    [sender, *_] = [*_addresses(latest.sender), None]
+    address = "" if sender is None else (sender.address or "").strip().casefold()
+    if not others or not address:
+        return False
+    return all(address not in _people_of(row) for row in others)
+
+
+def _ref(source: IndexSource, uid: int) -> str:
+    return core.format_ref(MessageRef(source.account, source.folder, source.uid_validity, uid))
+
+
+type Row = tuple[MessageSummary, Key, Conversation | None]
+"""A page's message, its key, and its conversation when grouped."""
+
+
+def read_page_rows(
+    db: Session,
+    user_id: int,
+    sources: Sequence[IndexSource],
+    query: SearchQuery | None,
+    *,
+    limit: int,
+    after: Key | None = None,
+    group: bool = False,
+    listing: Callable[[int], Sequence[Folder]] | None = None,
+) -> list[Row]:
+    """``read_rows``, or with ``group`` ``read_conversations`` (``listing`` as its)."""
+    out: list[Row] = []
+    if group:
+        out.extend(
+            read_conversations(
+                db, user_id, sources, query, limit=limit, after=after, listing=listing
+            )
+        )
+    else:
+        found = read_rows(db, user_id, sources, query, limit=limit, after=after)
+        out.extend((summary, key, None) for summary, key in found)
+    return out
+
+
+def page_of(
+    messages: Sequence[MessageSummary],
+    conversations: Sequence[Conversation] | None,
+    next_cursor: str | None,
+    failures: Sequence[PageFailure],
+) -> Page:
+    """A page of ``messages``; grouped (``ConversationPage``) with ``conversations``, one for
+    each message, the latest of it."""
+    if conversations is None:
+        return Page(tuple(messages), next_cursor, tuple(failures))
+    return ConversationPage(tuple(messages), next_cursor, tuple(failures), tuple(conversations))
+
+
+def _addresses(people: Sequence[Mapping[str, object]]) -> tuple[Address, ...]:
+    def text(value: object) -> str | None:
+        return value if isinstance(value, str) else None
+
+    return tuple(
+        Address(name=text(person.get("name")), address=text(person.get("address")))
+        for person in people
     )
 
 

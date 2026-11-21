@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import unicodedata
 from datetime import datetime
-from typing import TYPE_CHECKING, Annotated, Final
+from typing import TYPE_CHECKING, Annotated, Final, Literal
 from urllib.parse import quote
 
 from fastapi import Path, Query
@@ -75,6 +75,11 @@ _DOCUMENT: Final = (
 
 Cursor = Annotated[str | None, Query(max_length=service.MAX_CURSOR)]
 Limit = Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)]
+Group = Annotated[
+    Literal["thread"] | None,
+    Query(description="thread: by conversation, where the page is read from the mail index."),
+]
+THREAD_SIZE: Final = 30
 
 
 def _addresses(addresses: Iterable[Address]) -> list[MailAddress]:
@@ -148,17 +153,46 @@ class SourceFailure(BaseModel):
         return cls(account_id=failure.account, folder=failure.folder, code=failure.code)
 
 
+class ConversationItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    count: int
+    unread: int
+    participants: list[str]
+    """The first senders (a display name, else the address), in the order they first wrote, at
+    most four."""
+    has_attachments: bool
+    flagged: bool
+    refs: list[str]
+    """The messages an action on the conversation takes, newest first: every one in the source
+    read but the user's own copies (Sent and Drafts; on Gmail labelled so), unless it holds
+    nothing else."""
+    listed_folders: dict[str, str]
+    """The folder each of ``refs`` was listed under, where it is not its own (as a message's
+    ``listed_folder``)."""
+    latest_from_new_sender: bool
+    """Its latest message's sender neither wrote nor was written to in any other of its
+    messages; false for a conversation of one."""
+
+
 class MessagePage(BaseModel):
     messages: list[MessageItem]
     next_cursor: str | None
     failures: list[SourceFailure]
+    conversations: list[ConversationItem] | None = None
+    """With ``group=thread``, each message's conversation (the message is its latest); null when
+    the page is not grouped: not asked, or read live."""
 
     @classmethod
     def of(cls, page: Page) -> MessagePage:
+        grouped = page.conversations if isinstance(page, service.ConversationPage) else None
         return cls(
             messages=[MessageItem.of(summary) for summary in page.messages],
             next_cursor=page.next_cursor,
             failures=[SourceFailure.of(failure) for failure in page.failures],
+            conversations=None
+            if grouped is None
+            else [ConversationItem.model_validate(c) for c in grouped],
         )
 
 
@@ -330,9 +364,17 @@ def messages(
     limit: Limit = PAGE_SIZE,
     cursor: Cursor = None,
     subfolders: bool = False,
+    group: Group = None,
 ) -> MessagePage:
     page = service.list_messages(
-        ctx, user.id, account_id, folder, limit=limit, cursor=cursor, subfolders=subfolders
+        ctx,
+        user.id,
+        account_id,
+        folder,
+        limit=limit,
+        cursor=cursor,
+        subfolders=subfolders,
+        group=group == "thread",
     )
     return MessagePage.of(page)
 
@@ -340,6 +382,7 @@ def messages(
 class SearchRequest(MatchRequest):
     limit: Annotated[int, Field(ge=1, le=MAX_PAGE_SIZE)] = PAGE_SIZE
     cursor: Annotated[str | None, Field(max_length=service.MAX_CURSOR)] = None
+    group: Literal["thread"] | None = None
 
 
 @mail_router.post("/search")
@@ -353,8 +396,21 @@ def search(request: SearchRequest, ctx: Context, user: CurrentUser) -> MessagePa
         limit=request.limit,
         cursor=request.cursor,
         subfolders=request.subfolders,
+        group=request.group == "thread",
     )
     return MessagePage.of(page)
+
+
+@mail_router.get("/messages/{ref}/thread")
+def thread(
+    ref: Ref,
+    ctx: Context,
+    user: CurrentUser,
+    limit: Limit = THREAD_SIZE,
+) -> MessagePage:
+    """The conversation of the message ``ref`` names, newest first, read live: its folder and
+    Sent (on Gmail, its thread in All Mail)."""
+    return MessagePage.of(service.thread(ctx, user.id, ref, limit=limit))
 
 
 @mail_router.get("/messages/{ref}")

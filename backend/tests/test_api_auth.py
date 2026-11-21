@@ -27,6 +27,7 @@ SIGNED_IN = {
         "time_zone": None,
         "mark_read_subfolders": True,
         "index_max_age_days": None,
+        "conversations": True,
     },
     "features": EVERY_FEATURE,
 }
@@ -236,6 +237,23 @@ def test_picking_what_mark_all_as_read_does_needs_a_session(api_client: TestClie
         "/api/v1/auth/me/mark-read-subfolders", json={"mark_read_subfolders": False}
     )
     assert response.status_code == 401
+
+
+def test_the_user_picks_whether_lists_are_grouped_by_conversation(
+    user_client: TestClient, api_client: TestClient, db_session: Session, user: User
+) -> None:
+    route = "/api/v1/auth/me/conversations"
+    response = user_client.put(route, json={"conversations": False})
+    assert (response.status_code, response.json()["conversations"]) == (200, False)
+    db_session.expire_all()
+    stored = db_session.get(User, user.id)
+    assert stored is not None
+    assert stored.conversations is False
+    for body in ({"conversations": "false"}, {"conversations": None}, {}):
+        assert user_client.put(route, json=body).status_code == 422
+    assert user_client.put(route, json={"conversations": True}).json()["conversations"] is True
+    api_client.cookies.clear()
+    assert api_client.put(route, json={"conversations": False}).status_code == 401
 
 
 def test_the_user_limits_the_index_to_recent_mail(

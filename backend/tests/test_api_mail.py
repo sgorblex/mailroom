@@ -764,12 +764,12 @@ def test_refs_of_other_accounts_and_stale_refs_are_refused(
     client = mailbox.client
 
     stale = format_ref(MessageRef(1, "INBOX", message.uid_validity + 1, message.uid))
-    for path in ("", "/html", "/parts/2", "/filter-draft"):
+    for path in ("", "/html", "/parts/2", "/filter-draft", "/thread"):
         assert detail(client.get(f"{MAIL}/messages/{stale}{path}")) == (409, "stale_reference")
     assert detail(client.post(f"{MAIL}/messages/{stale}/mute")) == (409, "stale_reference")
 
     elsewhere = format_ref(MessageRef(2, "INBOX", message.uid_validity, message.uid))
-    for path in ("", "/html", "/parts/2", "/filter-draft"):
+    for path in ("", "/html", "/parts/2", "/filter-draft", "/thread"):
         response = client.get(f"{MAIL}/messages/{elsewhere}{path}")
         assert response.json() == {
             "detail": {"code": "not_found", "message": "No such message or part."}
@@ -782,10 +782,12 @@ def test_refs_of_other_accounts_and_stale_refs_are_refused(
     assert detail(api_client.get(f"{MAIL}/messages/{ref}")) == (404, "not_found")
     assert detail(api_client.post(f"{MAIL}/messages/{ref}/mute")) == (404, "not_found")
     assert detail(api_client.get(f"{MAIL}/accounts/1/folders")) == (404, "not_found")
+    assert detail(api_client.get(f"{MAIL}/messages/{ref}/thread")) == (404, "not_found")
     assert api_client.post(f"{MAIL}/search", json={}).json() == {
         "messages": [],
         "next_cursor": None,
         "failures": [],
+        "conversations": None,
     }
 
 

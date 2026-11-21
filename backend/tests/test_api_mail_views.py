@@ -316,3 +316,79 @@ def test_gmail_folders_are_read_from_all_mail_by_their_labels(
 
     whole, _, _ = view_sources(db_session, connections, user.id, [Source(1, "*")])
     assert [(s.folder, s.labels) for s in whole] == [(ALL_MAIL, None)]
+
+
+def test_folders_and_views_read_by_conversation(
+    user_client: TestClient, db_session: Session, user: User
+) -> None:
+    work = added(user_client, new_account("work"))
+    inbox = ready(db_session, user, work, "INBOX")
+    archive = ready(db_session, user, work, "Archive")
+    db_session.add_all(
+        [
+            message(inbox, user.id, 1, received=DAY, subject="plan", thread_key="<plan>"),
+            message(archive, user.id, 2, received=DAY + timedelta(hours=1), thread_key="<plan>"),
+            message(inbox, user.id, 3, received=DAY + timedelta(hours=2), subject="lunch"),
+            message(
+                inbox,
+                user.id,
+                4,
+                received=DAY + timedelta(hours=3),
+                subject="Re: plan",
+                thread_key="<plan>",
+                flags=["\\Seen"],
+            ),
+        ]
+    )
+    db_session.commit()
+    ref = {uid: format_ref(MessageRef(work, "INBOX", 7, uid)) for uid in (1, 3, 4)}
+
+    url = f"{MAIL}/accounts/{work}/messages"
+    flat = user_client.get(url, params={"folder": "INBOX"}).json()
+    assert (_subjects(flat), flat["conversations"]) == (["Re: plan", "lunch", "plan"], None)
+    first = user_client.get(url, params={"folder": "INBOX", "group": "thread", "limit": 1}).json()
+    assert _subjects(first) == ["Re: plan"]
+    assert first["conversations"] == [
+        {
+            "count": 2,
+            "unread": 1,
+            "participants": ["Ann"],
+            "has_attachments": False,
+            "flagged": False,
+            "refs": [ref[4], ref[1]],
+            "listed_folders": {},
+            # Ann wrote both.
+            "latest_from_new_sender": False,
+        }
+    ]
+    params = {"folder": "INBOX", "group": "thread", "cursor": first["next_cursor"]}
+    rest = user_client.get(url, params=params).json()
+    assert (_subjects(rest), rest["next_cursor"]) == (["lunch"], None)
+    assert [c["refs"] for c in rest["conversations"]] == [[ref[3]]]
+    assert user_client.get(url, params={"group": "flat"}).status_code == 422
+
+    searched = user_client.post(
+        f"{MAIL}/search",
+        json={"account": work, "folder": "INBOX", "unread": True, "group": "thread"},
+    ).json()
+    assert [(c["count"], c["refs"]) for c in searched["conversations"]] == [
+        (1, [ref[3]]),
+        (1, [ref[1]]),
+    ]
+
+    _, both = _create(
+        user_client,
+        name="Both",
+        sources=[
+            {"account_id": work, "folder": "INBOX"},
+            {"account_id": work, "folder": "Archive"},
+        ],
+    )
+    viewed = user_client.get(f"{VIEWS}/{both['id']}/messages", params={"group": "thread"}).json()
+    assert _subjects(viewed) == ["Re: plan", "lunch"]
+    assert viewed["conversations"][0]["refs"] == [
+        ref[4],
+        format_ref(MessageRef(work, "Archive", 7, 2)),
+        ref[1],
+    ]
+    assert viewed["not_indexed"] == []

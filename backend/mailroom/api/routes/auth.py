@@ -21,6 +21,7 @@ from mailroom.auth.sessions import (
 from mailroom.auth.throttle import LoginThrottle, client_key
 from mailroom.auth.users import (
     INDEX_MAX_AGE_DAYS,
+    set_conversations,
     set_index_max_age,
     set_mark_read_subfolders,
     set_time_zone,
@@ -50,6 +51,8 @@ class UserOut(BaseModel):
     index_max_age_days: int | None
     """The user's own age limit of the mail index, in days; null for none (the instance's cap
     still applies)."""
+    conversations: bool
+    """Whether the web's message lists are grouped by conversation."""
 
     @classmethod
     def of(cls, user: User) -> UserOut:
@@ -59,6 +62,7 @@ class UserOut(BaseModel):
             time_zone=user.time_zone,
             mark_read_subfolders=user.mark_read_subfolders,
             index_max_age_days=user.index_max_age_days,
+            conversations=user.conversations,
         )
 
 
@@ -70,6 +74,12 @@ class MarkReadSubfoldersChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     mark_read_subfolders: StrictBool
+
+
+class ConversationsChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    conversations: StrictBool
 
 
 class IndexMaxAgeChange(BaseModel):
@@ -138,6 +148,17 @@ def change_mark_read_subfolders(
     logger.info(
         "mark_read_subfolders_changed",
         extra={"event": "mark_read_subfolders_changed", "user_id": user.id},
+    )
+    return UserOut.of(user)
+
+
+@auth_router.put("/me/conversations")
+def change_conversations(body: ConversationsChange, db: DbSession, user: CurrentUser) -> UserOut:
+    """Whether the web groups the user's message lists by conversation. The answer is the
+    user."""
+    set_conversations(db, user, body.conversations)
+    logger.info(
+        "conversations_changed", extra={"event": "conversations_changed", "user_id": user.id}
     )
     return UserOut.of(user)
 
