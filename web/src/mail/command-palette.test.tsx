@@ -51,6 +51,14 @@ describe('the command palette', () => {
     const input = within(palette()).getByRole('combobox', { name: 'Go to or run' })
     expect(input).toHaveFocus()
     expect(input).toHaveAttribute('aria-expanded', 'true')
+    // Not offered for autofill by password managers.
+    expect(input).toHaveAttribute('type', 'search')
+    expect(input).toHaveAttribute('autocomplete', 'off')
+    for (const optOut of ['data-1p-ignore', 'data-bwignore']) {
+      expect(input).toHaveAttribute(optOut)
+    }
+    expect(input).toHaveAttribute('data-lpignore', 'true')
+    expect(input).toHaveAttribute('data-form-type', 'other')
     // Every account's folders, \Noselect ones left out, and the pages.
     await waitFor(() => {
       expect(options()).toContain('Inboxhome')
@@ -95,6 +103,18 @@ describe('the command palette', () => {
     expect(input).toHaveAttribute('aria-expanded', 'false')
     // Ctrl+K again closes it.
     await user.keyboard('{Control>}k{/Control}')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('closes on Escape with a query typed, rather than only clearing it', async () => {
+    const user = userEvent.setup()
+    stubMailApi(state())
+    renderMailApp('/mail')
+    await screen.findByRole('list', { name: 'Messages' })
+
+    await user.keyboard('{Control>}k{/Control}')
+    await user.type(within(palette()).getByRole('combobox'), 'inbox')
+    await user.keyboard('{Escape}')
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 

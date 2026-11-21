@@ -63,6 +63,12 @@ export function CommandPalette({
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+    // A search input would only clear the query on Escape: close the palette instead.
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      onClose()
+      return
+    }
     if (options.length === 0) {
       return
     }
@@ -91,9 +97,14 @@ export function CommandPalette({
     <Dialog label={t('palette.title')} onCancel={onClose}>
       <div className="flex w-[min(28rem,calc(100vw-4rem))] flex-col gap-2">
         <input
-          type="text"
+          // Not a credential field: keep password managers from offering to fill it.
+          type="search"
           role="combobox"
           data-palette
+          data-1p-ignore
+          data-lpignore="true"
+          data-bwignore
+          data-form-type="other"
           aria-label={t('palette.input')}
           aria-expanded={options.length > 0}
           aria-controls={listId}

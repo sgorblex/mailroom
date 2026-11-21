@@ -345,7 +345,8 @@ MCP `message_read` still never set `\Seen`.
   one of its words, case and accents aside; the best matches come first. With nothing typed, the
   last five choices come first (kept in this browser only; none when storage is refused), those
   that can still be chosen. It has its own key, as the shortcuts take none with Ctrl or Meta: it
-  works in the search fields, but not while typing in the composer nor over another dialog.
+  works in the search fields, but not while typing in the composer nor over another dialog. Its
+  input is marked as a search field that password managers should not offer to fill.
 
 ### REST routes
 
