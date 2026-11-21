@@ -10,6 +10,8 @@ import { buttonVariants } from '@/components/ui/button-variants.ts'
 import { Input } from '@/components/ui/input.tsx'
 
 import { useFiltersOffered } from './filter-draft.ts'
+import { SaveViewButton } from './saved-views.tsx'
+import { listQuery, type QuickFilter } from './route-search.ts'
 import { MAIL_NS } from './i18n.ts'
 import {
   accountTerm,
@@ -71,6 +73,7 @@ export function SearchForm({
   folder,
   subfolders,
   query,
+  only,
 }: {
   accounts: Account[]
   accountId: AccountId
@@ -78,6 +81,8 @@ export function SearchForm({
   /** The folder shown is listed with its subfolders: a search in it reads them too. */
   subfolders: boolean
   query: SearchQuery | undefined
+  /** The quick filters on: a search kept as a view keeps them as its own terms. */
+  only?: readonly QuickFilter[] | undefined
 }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const navigate = useNavigate()
@@ -254,11 +259,14 @@ export function SearchForm({
           </Link>
         )}
         {query !== undefined && (
+          // What the list shows: the search as narrowed by the quick filters on.
+          <SaveViewButton query={listQuery(accountId, folder, query, only) ?? query} className={filters ? undefined : 'ml-auto'} />
+        )}
+        {query !== undefined && (
           <Button
             type="button"
             variant="ghost"
             size="xs"
-            className={filters ? undefined : 'ml-auto'}
             onClick={() => {
               void navigate({ to: '/mail', search: (previous) => ({ account: accountId, folder, sub: previous.sub }) })
             }}

@@ -2,7 +2,17 @@ import { z } from 'zod'
 
 import { type AccountId, accountIdSchema } from './accounts.ts'
 import { getApiBaseUrl } from './api-base-url.ts'
-import { ApiRequestError, apiDelete, apiDeleteJson, apiGetJson, apiPostForm, apiPostJson, apiPutJson, reportSessionEnded } from './http.ts'
+import {
+  ApiRequestError,
+  apiDelete,
+  apiDeleteJson,
+  apiGetJson,
+  apiPatchJson,
+  apiPostForm,
+  apiPostJson,
+  apiPutJson,
+  reportSessionEnded,
+} from './http.ts'
 
 /** The REST contract of `docs/requirements/mail-client.md`. Refs and cursors are opaque strings. */
 
@@ -51,6 +61,11 @@ const messageItemSchema = z.object({
   has_attachments: z.boolean(),
   preview: z.string(),
   size: z.number(),
+  /**
+   * The folder the row was listed under when not its own: a Gmail row read from the index names
+   * All Mail, listed under INBOX or a label's folder, where an action on it acts (`sourceFolders`).
+   */
+  listed_folder: z.string().nullable().optional(),
 })
 export type MessageItem = z.infer<typeof messageItemSchema>
 
@@ -307,6 +322,63 @@ export function matchBody({ query, subfolders }: MatchScope): object {
     account: account === undefined || account === '*' ? account : Number(account),
     subfolders: subfolders ? true : undefined,
   }
+}
+
+const viewSourceSchema = z.object({ account_id: accountIdSchema, folder: z.string() })
+
+/** A saved view: folders of any of the user's accounts (`sources`), or a search line (`query`). */
+const savedViewSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  sources: z.array(viewSourceSchema).nullable(),
+  query: z.string().nullable(),
+  position: z.number(),
+})
+export type SavedView = z.infer<typeof savedViewSchema>
+
+const viewsSchema = z.object({ views: z.array(savedViewSchema) })
+
+export const ALL_INBOXES = 'all_inboxes'
+/** A saved view's id, or the built-in *All inboxes*. */
+export type ViewKey = number | typeof ALL_INBOXES
+
+const viewPageSchema = messagePageSchema.extend({
+  /** The view's folders left out, off the index or not ready; `*` for an account's every folder. */
+  not_indexed: z.array(viewSourceSchema),
+})
+export type ViewPage = z.infer<typeof viewPageSchema>
+
+const viewsPath = `${base}/views`
+
+/** The user's saved views, in their order; *All inboxes* is not among them. */
+export async function listViews(signal?: AbortSignal): Promise<SavedView[]> {
+  const answer = await apiGetJson(viewsPath, { init: { signal }, schema: viewsSchema })
+  return answer.views
+}
+
+/** Saves a search line (in the search syntax) as a view, last. */
+export function createView(name: string, query: string): Promise<SavedView> {
+  return apiPostJson(viewsPath, { name, query }, { schema: savedViewSchema })
+}
+
+export function renameView(id: number, name: string): Promise<SavedView> {
+  return apiPatchJson(`${viewsPath}/${String(id)}`, { name }, { schema: savedViewSchema })
+}
+
+export async function deleteView(id: number): Promise<void> {
+  await apiDelete(`${viewsPath}/${String(id)}`)
+}
+
+/** Puts the views in the order of `ids`, every one of them once; the views as ordered. */
+export async function reorderViews(ids: number[]): Promise<SavedView[]> {
+  const answer = await apiPutJson(`${viewsPath}/order`, { view_ids: ids }, { schema: viewsSchema })
+  return answer.views
+}
+
+/** A page of the view's messages, newest first, read from the index only. */
+export function viewMessages(view: ViewKey, cursor: string | null, signal?: AbortSignal): Promise<ViewPage> {
+  const path = withQuery(`${viewsPath}/${String(view)}/messages`, { cursor: cursor ?? undefined })
+  return apiGetJson(path, { init: { signal }, schema: viewPageSchema })
 }
 
 /** One window of the message's text from `offset`; reading never marks it seen. */
@@ -574,17 +646,31 @@ async function organize(route: string, body: object, signal?: AbortSignal): Prom
 }
 
 /**
+ * Where a Gmail All Mail ref is acted on, so it leaves that view only: `folder`, the folder shown,
+ * and for some refs their own (`each`, a row's `listed_folder`), over it.
+ */
+export interface SourceFolders {
+  folder?: string | undefined
+  each?: Readonly<Record<string, string>>
+}
+
+function sourceFields(source: SourceFolders | undefined): object {
+  const each = source?.each ?? {}
+  return { source_folder: source?.folder, source_folders: Object.keys(each).length > 0 ? each : undefined }
+}
+
+/**
  * Up to 50 refs, from any folders; a group's failure is in its result, and only a batch where no
- * group succeeded throws (the first failure's refusal). `sourceFolder`, here and on archive, junk
- * and trash: the folder shown, where a Gmail All Mail ref is acted on, so it leaves that view only.
+ * group succeeded throws (the first failure's refusal). `source`, here and on archive, junk and
+ * trash: where a Gmail All Mail ref is acted on (`SourceFolders`).
  */
 export function moveMessages(
   refs: string[],
   folder: string,
   signal?: AbortSignal,
-  sourceFolder?: string,
+  source?: SourceFolders,
 ): Promise<OrganizeGroup[]> {
-  return organize('move', { refs, folder, source_folder: sourceFolder }, signal)
+  return organize('move', { refs, folder, ...sourceFields(source) }, signal)
 }
 
 /** What becomes of the originals of a move to another account: their account's Trash, or deleted for good. */
@@ -605,18 +691,18 @@ export function moveToAccount(
   return organize('move-to-account', { refs, account, folder, removal }, signal)
 }
 
-export function archiveMessages(refs: string[], signal?: AbortSignal, sourceFolder?: string): Promise<OrganizeGroup[]> {
-  return organize('archive', { refs, source_folder: sourceFolder }, signal)
+export function archiveMessages(refs: string[], signal?: AbortSignal, source?: SourceFolders): Promise<OrganizeGroup[]> {
+  return organize('archive', { refs, ...sourceFields(source) }, signal)
 }
 
 /** Reports them as spam: moved to the account's Junk folder, which teaches its spam filter. */
-export function junkMessages(refs: string[], signal?: AbortSignal, sourceFolder?: string): Promise<OrganizeGroup[]> {
-  return organize('junk', { refs, source_folder: sourceFolder }, signal)
+export function junkMessages(refs: string[], signal?: AbortSignal, source?: SourceFolders): Promise<OrganizeGroup[]> {
+  return organize('junk', { refs, ...sourceFields(source) }, signal)
 }
 
 /** Moves them to Trash, never deleting them. */
-export function trashMessages(refs: string[], signal?: AbortSignal, sourceFolder?: string): Promise<OrganizeGroup[]> {
-  return organize('trash', { refs, source_folder: sourceFolder }, signal)
+export function trashMessages(refs: string[], signal?: AbortSignal, source?: SourceFolders): Promise<OrganizeGroup[]> {
+  return organize('trash', { refs, ...sourceFields(source) }, signal)
 }
 
 export function flagMessages(refs: string[], change: FlagChange, signal?: AbortSignal): Promise<OrganizeGroup[]> {

@@ -1,7 +1,7 @@
 import type { QueryClient, UseQueryOptions } from '@tanstack/react-query'
 
 import type { AccountId } from '@/api/accounts.ts'
-import { listMailFolders, type MailFolder } from '@/api/mail.ts'
+import { listMailFolders, listViews, type MailFolder, type SavedView } from '@/api/mail.ts'
 
 /** The keys the mail screen's reads are cached under. */
 export const ACCOUNTS_KEY = ['accounts'] as const
@@ -20,6 +20,9 @@ export const ALL_MESSAGES_KEY = ['messages'] as const
 export function messagesKey(source: string, cursor: string | null): readonly unknown[] {
   return ['messages', source, cursor]
 }
+
+/** The user's saved views. */
+export const VIEWS_KEY = ['mail-views'] as const
 
 /** Every account's mail index status. */
 export const INDEX_KEY = ['mail-index'] as const
@@ -57,6 +60,11 @@ export function foldersQuery(account: AccountId): UseQueryOptions<MailFolder[], 
     refetchOnMount: false,
     retryOnMount: false,
   }
+}
+
+/** The user's saved views, in their order. */
+export function viewsQuery(): UseQueryOptions<SavedView[], Error, SavedView[]> {
+  return { queryKey: VIEWS_KEY, queryFn: ({ signal }) => listViews(signal) }
 }
 
 /** A page read through the cache on request ("Load more"), dropped once `signal` aborts (an unmount). */

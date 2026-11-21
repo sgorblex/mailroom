@@ -38,7 +38,7 @@ export function MessageView({ messageRef }: { messageRef: string }): ReactElemen
   })
   const state = query.status
   const pending = state === 'pending' || (state === 'success' && query.data.includeQuoted !== includeQuoted)
-  const { setOpen, flagsOf, run, folders, loadFolders } = useTriage()
+  const { setOpen, flagsOf, run, folders, loadFolders, visibleRows } = useTriage()
   const { canCompose } = useCompose()
   const navigate = useNavigate()
   const marked = useRef(false)
@@ -59,7 +59,9 @@ export function MessageView({ messageRef }: { messageRef: string }): ReactElemen
     if (view === null) {
       return
     }
-    const target = { ref: view.ref, account_id: view.account_id, folder: view.folder, flags: view.flags, from: view.from }
+    // Acted on as its row in the list, under the folder it was listed under.
+    const listedFolder = visibleRows().find((row) => row.ref === view.ref)?.listed_folder
+    const target = { ref: view.ref, account_id: view.account_id, folder: view.folder, listed_folder: listedFolder, flags: view.flags, from: view.from }
     setOpen(target)
     loadFolders(view.account_id, false)
     if (accountFolders === undefined || accountFolders.kind === 'loading' || marked.current) {
@@ -79,7 +81,7 @@ export function MessageView({ messageRef }: { messageRef: string }): ReactElemen
     if (!view.flags.draft && !flagsOf(target).seen) {
       void run({ kind: 'flag', change: { seen: true } }, [target], { silent: true })
     }
-  }, [view, accountFolders, canCompose, navigate, loadFolders, setOpen, flagsOf, run])
+  }, [view, accountFolders, canCompose, navigate, loadFolders, setOpen, flagsOf, run, visibleRows])
   useEffect(
     () => () => {
       setOpen(null)

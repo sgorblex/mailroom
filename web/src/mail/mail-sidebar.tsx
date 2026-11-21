@@ -5,6 +5,7 @@ import { FolderPlus } from 'lucide-react'
 
 import { AccountName } from '@/accounts/account-name.tsx'
 import type { AccountId, Account } from '@/api/accounts.ts'
+import type { ViewKey } from '@/api/mail.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { cn } from '@/lib/utils.ts'
 
@@ -14,24 +15,27 @@ import { FolderTree } from './folder-tree-view.tsx'
 import { MAIL_NS } from './i18n.ts'
 import { MARK_READ_CONFIRM_ABOVE, markReadError, markScopeRead, type MarkReadOutcome, type MarkReadScope } from './mark-folder-read.ts'
 import { ACCOUNT_NOT_FOUND, mailErrorMessage } from './messages.ts'
+import { ViewsSection } from './saved-views.tsx'
 import { forgetStoredSubfolders, renameStoredSubfolders } from './subfolder-view.ts'
 import { isSameFolder, useAccountFolders, useTriage } from './triage-context.ts'
 
 /**
- * The user's accounts; the one shown lists its folders with their unread counts, and creates,
- * renames, deletes and marks them read. `folder` is the folder shown, `null` while a search is;
- * `subfolders`, whether it is listed with its subfolders.
+ * The user's views, then their accounts; the one shown lists its folders with their unread counts,
+ * and creates, renames, deletes and marks them read. `folder` is the folder shown, `null` while a
+ * search or a view (`view`) is; `subfolders`, whether it is listed with its subfolders.
  */
 export function MailSidebar({
   accounts,
   accountId,
   folder,
+  view,
   subfolders,
   className,
 }: {
   accounts: Account[]
   accountId: AccountId
   folder: string | null
+  view: ViewKey | null
   subfolders: boolean
   className?: string
 }): ReactElement {
@@ -41,6 +45,7 @@ export function MailSidebar({
       aria-label={t('folders.label')}
       className={cn('flex flex-col gap-4 p-3 lg:w-60 lg:shrink-0 lg:overflow-y-auto lg:border-r', className)}
     >
+      <ViewsSection accounts={accounts} accountId={accountId} current={view} />
       {accounts.map((account) =>
         account.id === accountId ? (
           <section key={account.id} aria-labelledby={`mail-account-${String(account.id)}`} className="flex flex-col gap-1">

@@ -140,7 +140,8 @@ in the folders each user chooses (*Desktop notifications* there). A
 `messages_search` and the web client's search box, which shows its terms as chips; quick filters
 (unread, starred, with attachments) narrow the list shown.
 [Views](requirements/mail-client.md#views) (*All inboxes* and the user's saved views: folders of any
-accounts, or a search) are read from the index, over REST so far.
+accounts, or a search) are read from the index and kept in the web sidebar, where a search is saved
+as one.
 Target is
 **between tier 2 and tier 3**: tiers 1 and 2 in full, on top of
 the index and live updates; tier 3 items arrive one at a time.
@@ -150,7 +151,7 @@ the index and live updates; tier 3 items arrive one at a time.
 | **1 — Read** | Accounts and folders with unread counts; message list (threaded or flat) with paging; read a message: headers, text and **sandboxed HTML** body, attachments (download), print (a printable page) and the `.eml` source (download), remote content blocked with a per-message reveal, or shown at once for a sender the user chose whose DMARC passed. Search. |
 | **2 — Triage and compose** | *Triage (slice B, in):* flag/unflag (a row's star too), mark To sort or sorted (a row's mark too), read/unread, move (to another of the user's accounts too, its originals to Trash or, on request, deleted for good once copied), archive, trash (never expunge), multi-select, keyboard shortcuts for triage. *Compose (slice C, in):* compose new, reply, reply-all, forward in plain text, with identity (`From`) choice, attachments and drafts always kept in the server's `\Drafts`. The **send mode** (mailroom-core's send gate) limits what agents may send; the user's own *Send* works unless the mode is `off`; the hourly limit and recipient cap bind both. No automatic retry delivers a send twice (only the user's *Send anyway*, after an unconfirmed delivery, can), and one whose delivery cannot be confirmed says so instead of retrying. |
 | **2+ — Index and live updates** | A **local index** of every account and folder (metadata plus rendered text) for fast cross-account search and lists; kept fresh by the worker over **IMAP IDLE** (and periodic resync), pushed to the browser (SSE or WebSocket). |
-| **3 — Later** | Rich-text compose, signatures, snooze and send-later, contacts and autocomplete from history, calendar invites, offline reading, PGP/S/MIME, unified inbox views, saved searches. |
+| **3 — Later** | Rich-text compose, signatures, snooze and send-later, contacts and autocomplete from history, calendar invites, offline reading, PGP/S/MIME; unified inbox views and saved searches are in ([views](requirements/mail-client.md#views)). |
 
 ## Filters UI
 

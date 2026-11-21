@@ -35,6 +35,15 @@ describe('the mail URL', () => {
     expect(validateMailSearch({ only: ['starred'] })).toEqual({})
     expect(validateMailSearch({ only: [] })).toEqual({})
   })
+
+  it('keeps a view as All inboxes or a saved view id', () => {
+    expect(validateMailSearch({ view: 'all_inboxes' })).toEqual({ view: 'all_inboxes' })
+    expect(validateMailSearch({ view: 7 })).toEqual({ view: 7 })
+    expect(validateMailSearch({ view: '7' })).toEqual({ view: 7 })
+    for (const view of ['inbox', '0', -1, 1.5]) {
+      expect(validateMailSearch({ view })).toEqual({})
+    }
+  })
 })
 
 describe('the search the list runs', () => {

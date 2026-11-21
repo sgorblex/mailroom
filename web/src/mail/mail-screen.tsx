@@ -6,7 +6,7 @@ import { Link, useSearch } from '@tanstack/react-router'
 import { AccountsContext } from '@/accounts/accounts-context.ts'
 import { accountErrorMessage } from '@/accounts/messages.ts'
 import { type AccountId, listAccounts, type Account } from '@/api/accounts.ts'
-import { listMessages, searchMessages, type MatchScope, type SearchQuery } from '@/api/mail.ts'
+import { ALL_INBOXES, listMessages, searchMessages, viewMessages, type MatchScope, type SearchQuery, type ViewKey } from '@/api/mail.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { cn } from '@/lib/utils.ts'
 
@@ -30,14 +30,16 @@ import { ComposeAnnouncer } from './send-status.tsx'
 import { useMailShortcuts, usePaletteShortcut } from './shortcuts.ts'
 import { storedSubfolders } from './subfolder-view.ts'
 import { MuteProvider } from './mute-provider.tsx'
-import { ACCOUNTS_KEY, messagesKey, READ_ON_MOUNT } from './queries.ts'
+import { ACCOUNTS_KEY, messagesKey, READ_ON_MOUNT, viewsQuery } from './queries.ts'
 import { ToastHost } from './toast.tsx'
 import { SpamFilterOffer } from './spam-filter-offer.tsx'
 import { OutcomeAnnouncer, Toolbar } from './toolbar.tsx'
 import { QuickFilters } from './quick-filters.tsx'
 import { listQuery } from './route-search.ts'
+import { NotIndexedNotice } from './saved-views.tsx'
 import { isSameFolder, loadedFolders, roleFolder, useTriage } from './triage-context.ts'
 import { TriageProvider } from './triage-provider.tsx'
+import { viewFolder, viewScopes, viewSource } from './views.ts'
 
 const DEFAULT_FOLDER = 'INBOX'
 
@@ -52,6 +54,7 @@ export function MailScreen(): ReactElement {
   const accounts = useQuery({ queryKey: ACCOUNTS_KEY, queryFn: ({ signal }) => listAccounts(signal), ...READ_ON_MOUNT })
   const [sheet, setSheet] = useState(false)
   const [palette, setPalette] = useState(false)
+  const savedViews = useQuery(viewsQuery()).data
 
   if (accounts.status === 'pending') {
     return (
@@ -105,8 +108,12 @@ export function MailScreen(): ReactElement {
       <ToastHost>
         <MuteProvider>
           <TriageProvider
-            sourceKey={sourceKey(accountId, folder, requested, listed)}
-            sourceFolder={shownFolder(folder, listed)}
+            sourceKey={search.view === undefined ? sourceKey(accountId, folder, requested, listed) : viewSource(search.view)}
+            sourceFolder={
+              search.view === undefined
+                ? shownFolder(folder, listed)
+                : viewFolder(search.view === ALL_INBOXES ? ALL_INBOXES : savedViews?.find((each) => each.id === search.view))
+            }
             accounts={accountIds}
           >
             <ComposeProvider accounts={accounts.data} accountId={accountId}>
@@ -170,14 +177,17 @@ function MailPanes({
   const { session, shown } = useCompose()
   const open = search.message
   const covered = open !== undefined || shown
-  useLiveViewing(search.q === undefined ? { account: accountId, folder } : null)
+  // A search or a view holds no folder's viewing interest.
+  const showsFolder = search.q === undefined && search.view === undefined
+  useLiveViewing(showsFolder ? { account: accountId, folder } : null)
   return (
     <main className="flex flex-1 flex-col border-t lg:h-0 lg:min-h-0 lg:flex-row">
       <h1 className="sr-only">{t('mail.title')}</h1>
       <MailSidebar
         accounts={accounts}
         accountId={accountId}
-        folder={search.q === undefined ? folder : null}
+        folder={showsFolder ? folder : null}
+        view={search.view ?? null}
         subfolders={subfolders}
         className={cn(covered && 'hidden lg:flex')}
       />
@@ -203,12 +213,17 @@ function MailPanes({
             folder={folder}
             subfolders={subfolders}
             query={search.q}
+            only={search.only}
           />
         </div>
         <Toolbar />
         <SpamFilterOffer />
         <div className={cn('flex flex-col gap-3', covered && 'hidden lg:flex')}>
-          <Listing accounts={accounts} accountId={accountId} folder={folder} subfolders={subfolders} />
+          {search.view === undefined ? (
+            <Listing accounts={accounts} accountId={accountId} folder={folder} subfolders={subfolders} />
+          ) : (
+            <ViewListing key={search.view} accounts={accounts} view={search.view} />
+          )}
         </div>
       </section>
       <section
@@ -367,6 +382,43 @@ function Listing({
         filtered={only !== undefined}
         subfolders={merged}
       />
+    </>
+  )
+}
+
+/**
+ * A view's messages, read from the index only: its folders left out are named above the list. A
+ * change to one of its folders reads its first page again, as does one of them getting ready.
+ */
+function ViewListing({ accounts, view }: { accounts: Account[]; view: ViewKey }): ReactElement {
+  const source = viewSource(view)
+  const loadPage = useCallback((cursor: string | null, signal: AbortSignal) => viewMessages(view, cursor, signal), [view])
+  const saved = useQuery(viewsQuery()).data
+  const shown = view === ALL_INBOXES ? ALL_INBOXES : saved?.find((each) => each.id === view)
+  const scopes = useMemo(() => (shown === undefined ? [] : viewScopes(shown, accounts)), [shown, accounts])
+  const { folders } = useTriage()
+  const queryClient = useQueryClient()
+  useLiveEvents((event) => {
+    if (event.type === 'sync' && event.state !== 'ready') {
+      return
+    }
+    const listed = loadedFolders(folders[event.account])
+    const allMail = roleFolder(listed, 'all')
+    // Without the account's folders, which name its All Mail, any of its changes may be the view's.
+    const reads = scopes.some((scope) =>
+      listed === undefined
+        ? scope.accounts.includes(event.account)
+        : scopeReads(scope, event.account, event.folder, allMail !== undefined && isSameFolder(allMail.path, event.folder)),
+    )
+    if (reads) {
+      void queryClient.invalidateQueries({ queryKey: messagesKey(source, null) })
+    }
+  })
+  return (
+    <>
+      <LiveNotice />
+      <NotIndexedNotice source={source} loadPage={loadPage} />
+      <MessageList source={source} loadPage={loadPage} searching={false} view />
     </>
   )
 }
