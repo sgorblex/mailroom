@@ -26,3 +26,56 @@ export function keptTail(previous: MessagePage | undefined, tail: Tail | null, n
   }
   return { rows, failures: tail?.failures ?? [], cursor: tail === null ? previous.next_cursor : tail.cursor }
 }
+
+/** A row kept on show though the list read again lacks it, and the ref of the row it follows (`null`: the top). */
+export interface Kept {
+  row: MessageItem
+  after: string | null
+}
+
+/**
+ * The rows of `shown` that `next` lacks but `keep` holds on to, each after the nearest row above
+ * it that is still on show (in `next`, or kept itself).
+ */
+export function keptRows(shown: readonly MessageItem[], next: readonly MessageItem[], keep: (row: MessageItem) => boolean): Kept[] {
+  const stays = new Set(next.map((row) => row.ref))
+  const kept: Kept[] = []
+  let above: string | null = null
+  for (const row of shown) {
+    if (stays.has(row.ref)) {
+      above = row.ref
+    } else if (keep(row)) {
+      kept.push({ row, after: above })
+      above = row.ref
+    }
+  }
+  return kept
+}
+
+/** `rows` with the `kept` ones they lack put back in place. */
+export function withKept(rows: readonly MessageItem[], kept: readonly Kept[]): MessageItem[] {
+  const present = new Set(rows.map((row) => row.ref))
+  const following = new Map<string | null, MessageItem[]>()
+  for (const { row, after } of kept) {
+    if (!present.has(row.ref)) {
+      following.set(after, [...(following.get(after) ?? []), row])
+    }
+  }
+  if (following.size === 0) {
+    return [...rows]
+  }
+  const out: MessageItem[] = []
+  const place = (row: MessageItem): void => {
+    out.push(row)
+    for (const next of following.get(row.ref) ?? []) {
+      place(next)
+    }
+  }
+  for (const row of following.get(null) ?? []) {
+    place(row)
+  }
+  for (const row of rows) {
+    place(row)
+  }
+  return out
+}

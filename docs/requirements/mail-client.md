@@ -24,6 +24,14 @@ notifications](#desktop-notifications).
   in the [search syntax](#search-syntax) or set in the form behind *More options*; a
   search shown offers *Create filter from this search* where the instance runs filters
   ([`filters.md`](filters.md#filter-drafts)).
+- **Quick filters** above the list, *Unread*, *Starred* and *With attachments*: toggle buttons
+  (`aria-pressed`) that narrow the folder or search shown as `is:unread`, `is:flagged` and
+  `has:attachment` would, over any criterion of the search itself (a list of a folder becomes a
+  search of that folder, its subfolders included when they are listed with it, while the folder
+  stays the one open and the search box empty). The URL carries them (`only`); another folder or
+  a new search starts without them. A row the user changed so it no longer matches (opened, and
+  so read, under *Unread*; unstarred under *Starred*) stays in place, live updates reading the
+  list again too, until the folder, the search or the filters change; `j` and `k` go on from it.
 - **Message view:** headers, the text body (quotes and signatures collapsed), attachments and a
   calendar note; a **standalone HTML view** when the message has an HTML body; attachment download.
 - **Sender checks** in the message view's headers, from the read's `sender_mismatch`, `sent_to` and

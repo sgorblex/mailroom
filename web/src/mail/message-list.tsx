@@ -21,12 +21,12 @@ import { addressLabel, formatListDate } from './format.ts'
 import { MAIL_NS } from './i18n.ts'
 import { endMessageDrag, startMessageDrag } from './message-drag.ts'
 import { ACCOUNT_NOT_FOUND, mailCodeMessage, mailErrorMessage } from './messages.ts'
-import { keptTail, type Tail } from './list-tail.ts'
+import { keptRows, keptTail, withKept, type Kept, type Tail } from './list-tail.ts'
 import { fetchPage, messagesKey, READ_ON_MOUNT } from './queries.ts'
 import { SelectMatching } from './select-matching.tsx'
 import { TOAST_RETURN_ID } from './toast.tsx'
 import { useTriageActions } from './triage-actions.ts'
-import { useTriage, type Target } from './triage-context.ts'
+import { useTriage, type Flags, type Target } from './triage-context.ts'
 
 type More = { kind: 'idle' } | { kind: 'loading' } | { kind: 'failed'; message: string }
 
@@ -35,13 +35,15 @@ type More = { kind: 'idle' } | { kind: 'loading' } | { kind: 'failed'; message: 
  * next one with the cursor the last page gave. Mounted anew (by key) for each source. Each row
  * names where it is: its account and folder in a search, its folder in a folder's subfolders.
  * Invalidating its first page (`messagesKey`) reads the list again, keeping it on show meanwhile:
- * new rows come in at the top, and the rows loaded below it stay.
+ * new rows come in at the top, and the rows loaded below it stay. Under quick filters, a row this
+ * screen changed so it no longer matches stays too, until the source changes.
  */
 export function MessageList({
   source,
   loadPage,
   match,
   searching,
+  filtered = false,
   subfolders = false,
 }: {
   /** Names the list, for its pages' query keys. */
@@ -50,6 +52,8 @@ export function MessageList({
   /** What the list shows as a search, for acting on every message it matches; without it, only loaded rows are. */
   match?: MatchScope
   searching: boolean
+  /** Narrowed by quick filters: an empty list is no match, not an empty folder. */
+  filtered?: boolean
   /** Read with its subfolders. */
   subfolders?: boolean
 }): ReactElement {
@@ -62,11 +66,28 @@ export function MessageList({
   })
   const [tail, setTail] = useState<Tail | null>(null)
   const [more, setMore] = useState<More>({ kind: 'idle' })
+  const triage = useTriage()
+  const { removed, setVisible, refreshed, flagsOf } = triage
+  // Under quick filters, a row this screen changed so it no longer matches (read on opening it
+  // under Unread) stays on show, read again too, until the source changes.
+  const [kept, setKept] = useState<readonly Kept[]>([])
+  const shown = (page: MessagePage | undefined, rows: Tail | null): MessageItem[] =>
+    withKept([...(page?.messages ?? []), ...(rows?.rows ?? [])], kept)
   // The first page read again: what was loaded after it stays below it.
   const [read, setRead] = useState({ at: first.dataUpdatedAt, page: first.data })
   if (read.at !== first.dataUpdatedAt) {
+    const nextTail = keptTail(read.page, tail, first.data)
     setRead({ at: first.dataUpdatedAt, page: first.data })
-    setTail(keptTail(read.page, tail, first.data))
+    setTail(nextTail)
+    if (filtered) {
+      setKept(
+        keptRows(
+          shown(read.page, tail).filter((message) => !removed.has(message.ref)),
+          shown(first.data, nextTail),
+          (message) => changedHere(message, flagsOf(message)),
+        ),
+      )
+    }
   }
   const latestFirst = useRef(first.data)
   useEffect(() => {
@@ -77,11 +98,9 @@ export function MessageList({
     setMenu(null)
   }, [])
   const unmountSignal = useUnmountSignal()
-  const triage = useTriage()
-  const { removed, setVisible, refreshed } = triage
   const page = first.status === 'success' ? first.data : null
   // Rows moved away since are gone in place.
-  const messages = (page === null ? [] : [...page.messages, ...(tail?.rows ?? [])]).filter((message) => !removed.has(message.ref))
+  const messages = (page === null ? [] : shown(page, tail)).filter((message) => !removed.has(message.ref))
   useEffect(() => {
     setVisible(messages)
   })
@@ -158,7 +177,7 @@ export function MessageList({
       {/* Every loaded row moved away is not an empty folder while there is more to load. */}
       {messages.length === 0 ? (
         nextCursor === null && (
-          <p className="text-sm text-muted-foreground">{searching ? t('list.noMatches') : t('list.empty')}</p>
+          <p className="text-sm text-muted-foreground">{searching || filtered ? t('list.noMatches') : t('list.empty')}</p>
         )
       ) : (
         <>
@@ -320,6 +339,11 @@ function MessageMenu({
       onClose={onClose}
     />
   )
+}
+
+/** This screen changed a flag of `message` since it was read. */
+function changedHere(message: MessageItem, flags: Flags): boolean {
+  return flags.seen !== message.flags.seen || flags.flagged !== message.flags.flagged || flags.to_sort !== message.flags.to_sort
 }
 
 /** Each source once: a later page reports the same failing source again. */

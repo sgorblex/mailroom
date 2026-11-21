@@ -34,6 +34,8 @@ import { ACCOUNTS_KEY, messagesKey, READ_ON_MOUNT } from './queries.ts'
 import { ToastHost } from './toast.tsx'
 import { SpamFilterOffer } from './spam-filter-offer.tsx'
 import { OutcomeAnnouncer, Toolbar } from './toolbar.tsx'
+import { QuickFilters } from './quick-filters.tsx'
+import { listQuery } from './route-search.ts'
 import { isSameFolder, loadedFolders, roleFolder, useTriage } from './triage-context.ts'
 import { TriageProvider } from './triage-provider.tsx'
 
@@ -94,6 +96,7 @@ export function MailScreen(): ReactElement {
   const folder = search.folder ?? DEFAULT_FOLDER
   const requested = search.sub ?? storedSubfolders(accountId, folder)
   const accountIds = accounts.data.map((account) => account.id)
+  const listed = listQuery(accountId, folder, search.q, search.only)
   const openSheet = (): void => {
     setSheet(true)
   }
@@ -102,8 +105,8 @@ export function MailScreen(): ReactElement {
       <ToastHost>
         <MuteProvider>
           <TriageProvider
-            sourceKey={sourceKey(accountId, folder, requested, search.q)}
-            sourceFolder={shownFolder(folder, search.q)}
+            sourceKey={sourceKey(accountId, folder, requested, listed)}
+            sourceFolder={shownFolder(folder, listed)}
             accounts={accountIds}
           >
             <ComposeProvider accounts={accounts.data} accountId={accountId}>
@@ -287,7 +290,7 @@ function sourceKey(accountId: AccountId, folder: string, subfolders: boolean, q:
   return `search:${searchesSubfolders(accountId, folder, subfolders, q) ? '1' : '0'}:${JSON.stringify(q)}`
 }
 
-/** The folder's messages, or the search's when there is one; a new source starts over. */
+/** The folder's messages, or the search's when there is one, narrowed by the quick filters; a new source starts over. */
 function Listing({
   accounts,
   accountId,
@@ -299,9 +302,10 @@ function Listing({
   folder: string
   subfolders: boolean
 }): ReactElement {
-  const { q } = useSearch({ from: '/mail' })
-  const key = sourceKey(accountId, folder, subfolders, q)
-  const searchKey = q === undefined ? null : JSON.stringify(q)
+  const { q, only } = useSearch({ from: '/mail' })
+  const listed = listQuery(accountId, folder, q, only)
+  const key = sourceKey(accountId, folder, subfolders, listed)
+  const searchKey = listed === undefined ? null : JSON.stringify(listed)
   const query = useMemo(() => (searchKey === null ? null : (JSON.parse(searchKey) as SearchQuery)), [searchKey])
   const merged = query === null ? subfolders : searchesSubfolders(accountId, folder, subfolders, query)
   const loadPage = useCallback(
@@ -351,6 +355,7 @@ function Listing({
   })
   return (
     <>
+      <QuickFilters only={only} />
       <LiveNotice />
       {scope !== null && <IndexingNotice scope={scope} />}
       <MessageList
@@ -359,6 +364,7 @@ function Listing({
         loadPage={loadPage}
         match={match}
         searching={q !== undefined}
+        filtered={only !== undefined}
         subfolders={merged}
       />
     </>
