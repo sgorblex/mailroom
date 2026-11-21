@@ -129,6 +129,9 @@
     "dragging_one": "{{count}} messaggio",
     "dragging_other": "{{count}} messaggi"
   },
+  "quick": {
+    "label": "Mostra solo"
+  },
   "search": {
     "label": "Cerca nella posta",
     "text": "Termini di ricerca",

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { validateMailSearch } from './route-search.ts'
+import { listQuery, validateMailSearch } from './route-search.ts'
 
 describe('the mail URL', () => {
   it('takes the account as its id, a positive integer, whether the router parsed it or not', () => {
@@ -24,6 +24,33 @@ describe('the mail URL', () => {
   it('keeps a flag set false only for unread, which the syntax writes as is:read', () => {
     expect(validateMailSearch({ q: { unread: false, flagged: false, has_attachment: true } })).toEqual({
       q: { unread: false, has_attachment: true },
+    })
+  })
+
+  it('keeps the quick filters it knows, once each and in their own order', () => {
+    expect(validateMailSearch({ only: ['has_attachment', 'unread', 'unread', 'starred'] })).toEqual({
+      only: ['unread', 'has_attachment'],
+    })
+    expect(validateMailSearch({ only: 'flagged' })).toEqual({ only: ['flagged'] })
+    expect(validateMailSearch({ only: ['starred'] })).toEqual({})
+    expect(validateMailSearch({ only: [] })).toEqual({})
+  })
+})
+
+describe('the search the list runs', () => {
+  it('is the folder as a search, or the search, with each quick filter set', () => {
+    expect(listQuery(3, 'INBOX', undefined, undefined)).toBeUndefined()
+    expect(listQuery(3, 'INBOX', { from: 'ana' }, undefined)).toEqual({ from: 'ana' })
+    expect(listQuery(3, 'Archive', undefined, ['unread', 'has_attachment'])).toEqual({
+      account: '3',
+      folder: 'Archive',
+      unread: true,
+      has_attachment: true,
+    })
+    expect(listQuery(3, 'INBOX', { account: '*', unread: false }, ['unread', 'flagged'])).toEqual({
+      account: '*',
+      unread: true,
+      flagged: true,
     })
   })
 })

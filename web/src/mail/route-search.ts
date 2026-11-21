@@ -1,11 +1,15 @@
 import type { AccountId } from '@/api/accounts.ts'
 import { SEARCH_FLAG_FIELDS, SEARCH_TEXT_FIELDS, type SearchQuery } from '@/api/mail.ts'
 
+/** The quick filters above the list, each a search criterion set to true. */
+export const QUICK_FILTERS = ['unread', 'flagged', 'has_attachment'] as const
+export type QuickFilter = (typeof QUICK_FILTERS)[number]
+
 /**
  * Where the mail screen is, kept in the URL so a reload or a shared link lands in the same place:
  * the account and folder shown, whether with its subfolders (`sub`; absent, as this browser last
- * listed it), the open message (its ref), a search in place of the folder, and the composer:
- * `compose-session.ts` says what `compose` holds.
+ * listed it), the open message (its ref), a search in place of the folder, the quick filters
+ * narrowing either (`only`), and the composer: `compose-session.ts` says what `compose` holds.
  * Kept out of the screen's own chunk: the router validates it before the screen loads.
  */
 export interface MailSearch {
@@ -14,6 +18,7 @@ export interface MailSearch {
   sub?: boolean
   message?: string
   q?: SearchQuery
+  only?: QuickFilter[]
   compose?: string
 }
 
@@ -56,12 +61,40 @@ export function searchQuery(value: unknown): SearchQuery | undefined {
   return query
 }
 
+/** The quick filters named, once each and in their own order; `undefined` for none. */
+export function quickFilters(value: unknown): QuickFilter[] | undefined {
+  const named = Array.isArray(value) ? value : [value]
+  const only = QUICK_FILTERS.filter((filter) => named.includes(filter))
+  return only.length > 0 ? only : undefined
+}
+
+/**
+ * The search the list runs: the URL's, or the folder shown as one, narrowed by the quick filters;
+ * `undefined` for the folder itself.
+ */
+export function listQuery(
+  account: AccountId,
+  folder: string,
+  q: SearchQuery | undefined,
+  only: readonly QuickFilter[] | undefined,
+): SearchQuery | undefined {
+  if (only === undefined || only.length === 0) {
+    return q
+  }
+  const query: SearchQuery = q === undefined ? { account: String(account), folder } : { ...q }
+  for (const filter of only) {
+    query[filter] = true
+  }
+  return query
+}
+
 export function validateMailSearch(raw: Record<string, unknown>): MailSearch {
   const search: MailSearch = {}
   const account = accountId(raw['account'])
   const folder = text(raw['folder'])
   const message = text(raw['message'])
   const q = searchQuery(raw['q'])
+  const only = quickFilters(raw['only'])
   const compose = text(raw['compose'])
   if (account !== undefined) {
     search.account = account
@@ -77,6 +110,9 @@ export function validateMailSearch(raw: Record<string, unknown>): MailSearch {
   }
   if (q !== undefined) {
     search.q = q
+  }
+  if (only !== undefined) {
+    search.only = only
   }
   if (compose !== undefined) {
     search.compose = compose

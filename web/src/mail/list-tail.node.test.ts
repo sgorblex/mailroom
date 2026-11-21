@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { MessageItem, MessagePage } from '@/api/mail.ts'
 
-import { keptTail, type Tail } from './list-tail.ts'
+import { keptRows, keptTail, withKept, type Tail } from './list-tail.ts'
 
 const row = (uid: number): MessageItem => ({
   ref: `r${String(uid)}`,
@@ -46,5 +46,33 @@ describe('keptTail', () => {
   it('starts over when the first page holds none of what was shown, or on a first read', () => {
     expect(keptTail(page([10, 9], 'c9'), null, page([20, 19], 'c19'))).toBeNull()
     expect(keptTail(undefined, null, page([10]))).toBeNull()
+  })
+})
+
+describe('keptRows and withKept', () => {
+  const uids = (rows: MessageItem[]): string[] => rows.map((each) => each.ref)
+
+  it('keep the rows a read again lacks in their place, each after the row above it', () => {
+    const shown = [10, 9, 8, 7, 6].map(row)
+    const next = [11, 10, 8, 6].map(row)
+    const kept = keptRows(shown, next, (each) => each.ref === 'r9' || each.ref === 'r7')
+    expect(kept.map((each) => [each.row.ref, each.after])).toEqual([
+      ['r9', 'r10'],
+      ['r7', 'r8'],
+    ])
+    expect(uids(withKept(next, kept))).toEqual(['r11', 'r10', 'r9', 'r8', 'r7', 'r6'])
+  })
+
+  it('chain kept rows, put one with nothing above it at the top, and drop what is not kept', () => {
+    const shown = [10, 9, 8, 7].map(row)
+    const next = [7].map(row)
+    const kept = keptRows(shown, next, (each) => each.ref !== 'r9')
+    expect(uids(withKept(next, kept))).toEqual(['r10', 'r8', 'r7'])
+  })
+
+  it('give a row back to the list once it holds it again', () => {
+    const kept = keptRows([row(10), row(9)], [row(10)], () => true)
+    expect(uids(withKept([row(10), row(9)], kept))).toEqual(['r10', 'r9'])
+    expect(uids(withKept([row(10)], []))).toEqual(['r10'])
   })
 })

@@ -163,7 +163,7 @@ released and checked in production before the next one starts. Batch 15 is the r
 - [ ] **Unified folders and saved searches** (after *Index and live updates*) — a folder made of
       any folders of any of the user's accounts (*All inboxes* first), and a search kept as a
       folder; one mechanism for both.
-- [ ] **Unread only and quick filters** — one-click views of the list (unread, flagged, with
+- [x] **Unread only and quick filters** — one-click views of the list (unread, flagged, with
       attachments), which are preset searches: both, the same mechanism.
 - [x] **Search syntax** — `from:`, `to:`, `has:attachment`, `is:unread`, `before:` and the like
       in the search box, with chips; MCP's `messages_search` takes it as `query`.
