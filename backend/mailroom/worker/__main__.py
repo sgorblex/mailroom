@@ -1,11 +1,11 @@
 """Run the worker: `python -m mailroom.worker`. It never migrates; it waits for the API to.
 
-Only filters need it: without them in ``MAILROOM_FEATURES`` it logs why and exits 0 before it
-touches the database, and an unknown feature name makes it exit 1.
+The mail client (its index's sync) and filters need it: with neither in ``MAILROOM_FEATURES`` it
+logs why and exits 0 before it touches the database, and an unknown feature name makes it exit 1.
 
 One worker runs at a time (it holds a database lock while it runs): a second one exits. At
 start, jobs a stopped worker left running are marked failed, and their runs closed as
-interrupted. Beside procrastinate's job loop, a thread runs the IDLE supervisor
+interrupted. Beside procrastinate's job loop, with filters, a thread runs the IDLE supervisor
 (``mailroom.worker.idle``). On SIGTERM or SIGINT procrastinate gives the jobs in progress
 `SHUTDOWN_SECONDS` to finish, then aborts them; the watches are then stopped too, and the
 worker's mail connections logged out, and it exits 0. A worker that stops without being asked
@@ -103,8 +103,8 @@ def main() -> None:
         logger.error("%s", exc)
         sys.exit(1)
     logger.info("%s: %s", FEATURES_ENV, features.description)
-    if not features.filters:
-        logger.info("No enabled feature needs the worker (filters is off); exiting.")
+    if not (features.mail or features.filters):
+        logger.info("No enabled feature needs the worker (mail and filters are off); exiting.")
         return
     database_url = get_sync_database_url()
     engine = wait_for_sync_database(database_url)
@@ -123,14 +123,17 @@ def main() -> None:
             close_interrupted_runs(db)
         logger.info("Worker starting.")
         stop = threading.Event()
-        supervisor = IdleSupervisor(context.sessions, context.mailboxes)
-        watching = threading.Thread(target=supervisor.run, args=(stop,), name="idle-supervisor")
-        watching.start()
+        watching = None
+        if features.filters:
+            supervisor = IdleSupervisor(context.sessions, context.mailboxes)
+            watching = threading.Thread(target=supervisor.run, args=(stop,), name="idle-supervisor")
+            watching.start()
         try:
             asked = asyncio.run(run_jobs())
         finally:
             stop.set()
-            watching.join()
+            if watching is not None:
+                watching.join()
             context.mailboxes.close()
     if not asked:
         logger.error("The worker stopped without being asked (its database went away?); exiting 1.")

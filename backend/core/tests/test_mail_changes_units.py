@@ -21,9 +21,16 @@ from mailroom_core.mail import (
 class _Client:
     """Messages by sequence number (their UIDs); records each FETCH and SEARCH."""
 
-    def __init__(self, uids: list[int], flags: dict[int, tuple[bytes, ...]] | None = None) -> None:
+    def __init__(
+        self,
+        uids: list[int],
+        flags: dict[int, tuple[bytes, ...]] | None = None,
+        labels: dict[int, tuple[bytes, ...]] | None = None,
+    ) -> None:
         self.uids = uids
         self.flags = flags or {}
+        self.labels = labels
+        """Gmail's, when given: the server is then Gmail."""
         self.use_uid = True
         self.normalise_times = False
         self.expunged: set[int] = set()
@@ -41,12 +48,22 @@ class _Client:
         self.uids = [uid for uid in self.uids if uid not in self.expunged]
         return bounds
 
+    def has_capability(self, name: str) -> bool:
+        return self.labels is not None and name == "X-GM-EXT-1"
+
     def _raw_command_untagged(self, command: bytes, args: list[bytes]) -> list[bytes]:
         self.calls.append((command.decode(), *(arg.decode() for arg in args)))
+
+        def labelled(uid: int) -> bytes:
+            if self.labels is None:
+                return b""
+            return b" X-GM-LABELS (%s)" % b" ".join(self.labels.get(uid, ()))
+
         return [
             *self.unsolicited,
             *(
-                b"%d (UID %d FLAGS (%s))" % (seq, uid, b" ".join(self.flags.get(uid, ())))
+                b"%d (UID %d FLAGS (%s)%s)"
+                % (seq, uid, b" ".join(self.flags.get(uid, ())), labelled(uid))
                 for seq, uid in enumerate(self.uids, 1)
             ),
         ]
@@ -133,6 +150,18 @@ def test_an_unsolicited_fetch_without_a_uid_is_left_out() -> None:
     client.unsolicited = [b"2 (FLAGS (\\Flagged) MODSEQ (41))"]
 
     assert flags_of(_context(client)).flags == {5: frozenset({"\\Seen"}), 9: frozenset()}
+
+
+def test_on_gmail_labels_come_with_the_flags() -> None:
+    client = _Client([1, 2], {1: (b"\\Seen",)}, {1: (b"\\Inbox", b"Work"), 2: ()})
+
+    changed = changed_flags_of(_context(client), 12)
+
+    assert changed.flags == {1: frozenset({"\\Seen"}), 2: frozenset()}
+    assert changed.labels == {1: ("\\Inbox", "Work"), 2: ()}
+    assert client.calls == [("FETCH", "1:*", "(FLAGS X-GM-LABELS)", "(CHANGEDSINCE 12)")]
+    assert changed_flags_of(_context(client), 40).labels == {}
+    assert flags_of(_context(_Client([1]))).labels is None
 
 
 def test_changes_since_pass_changedsince_and_skip_an_up_to_date_folder() -> None:

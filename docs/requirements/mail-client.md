@@ -10,7 +10,7 @@ delete is the one in the mail client. Product scope:
 [`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Mail client*. Rendering and IMAP come from
 **mailroom-core** (`render` and `mail`, connections in `mail.imap`; 0.1.2 for slices A and B, the
 0.1.3 for slice C's compose, drafts and send), over IMAP directly. The [index](#index) is being
-built: its settings are in, its sync and reads are not, so every read is still live; no live
+built: its settings and sync are in, its reads are not, so every read is still live; no live
 updates yet.
 
 ## Slice A: read
@@ -1406,6 +1406,16 @@ folder off the index is read live, as before the index.
   the instance's `MAILROOM_INDEX_MAX_AGE_DAYS` (unset or not a whole number: no cap; clamped to
   1-36500): the smaller of the two is in force. Older messages are not indexed and stay readable
   live.
+- **Sync.** The worker keeps the index (with the mail client; it runs without filters too). Every 5
+  minutes it lists each account's folders, giving a new one its row and dropping the rows of one
+  gone or renamed, and syncs each folder on the index that is not ready or was synced 5 minutes
+  ago: a first sync fetches newest first in throttled batches (so `indexed` grows towards
+  `total`), taking turns with the user's other folders and accounts; a resync adds new mail,
+  drops what was expunged or is now older than the age limit, and brings flags up to date
+  (CONDSTORE where the server has it), on Gmail the labels with them. A message that cannot be
+  read into the index is skipped and stays readable live. A folder whose UIDVALIDITY changed is
+  built again. The sync never changes mail. Details:
+  [`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *Mail index sync*.
 - **Web.** The *Profile* page's *Index* section (with the mail client) sets the age limit (empty:
   none) and, per account, lists the folders as a checklist: each one's switch (a Gmail label's and
   a live folder's disabled; a label reads from All Mail while All Mail is on, else live) and a line
