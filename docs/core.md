@@ -377,7 +377,8 @@ names the new refs, so a host raising it alone still shows them; its audit items
 
 `mailroom_core.mail.transfer.move_to_account(connections, refs, account, folder, removal=,
 max_bytes=, refuse_each=False)` moves messages to a folder of another account the connections serve, into an
-`OrganizeResult` whose groups name `destination_account` and give the new refs there:
+`OrganizeResult` whose groups name `destination_account` and give the new refs there (with
+`removal="trash"`, `trash` too: the source's Trash the originals went to):
 
 - **Refused before anything is written:** a target account that is a source's own (that is a
   move), unknown, or whose folder `move_target` refuses (never Drafts or Sent; Inbox and Gmail's

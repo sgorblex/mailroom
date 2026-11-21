@@ -82,6 +82,7 @@ def test_moves_a_message_with_its_flags_and_date_and_trashes_the_original(
     assert result.outcome == "ok"
     [group] = result.groups
     assert (group.count, group.destination, group.destination_account) == (1, "INBOX", 2)
+    assert group.trash == "Trash"
     assert group.new_refs is not None
     assert organize_text(result).startswith("1/INBOX: moved 1 to 2/INBOX. New refs: ")
     [copy] = folder_contents(imap_server, target, "INBOX")

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Final, cast
 
 from mailroom.audit import WEB, AuditTrail, Origin
 from mailroom.errors import Refusal, mail_refusal
+from mailroom.mail.index import writes as index_writes
 from mailroom.mail.service._shared import (
     _Accounts,
     _accounts,
@@ -55,7 +56,9 @@ def _organize(
     ``action`` (the result's items, each under its own account), recorded by the thread that did
     the work. A call cut at the deadline (``deadline`` seconds, else the pool's) writes no group
     after the cut (``_Stoppable``); the ones done before it stay done, and are recorded once that
-    thread finishes."""
+    thread finishes. The mail index is brought in step with the result
+    (``mailroom.mail.index.writes``) once the call answered, outside its deadline; by that thread
+    when the deadline cut the call, as no one waits for it then."""
     via = origin.via
     trail = AuditTrail(ctx.session_maker, user_id, origin, action)
     accounts = _accounts(ctx, user_id)
@@ -67,6 +70,27 @@ def _organize(
     result: OrganizeResult | None = None
     outcome: str = "ok"
     stop = threading.Event()
+    handing = threading.Lock()
+    handed: list[OrganizeResult] = []
+    """The work's result, once handed back in time: the caller brings the index in step."""
+
+    def index(done: OrganizeResult) -> None:
+        index_writes.organized(ctx.session_maker, user_id, done.items, done.groups, refs=refs)
+
+    def act(connections: MailConnections) -> OrganizeResult:
+        done = work(cast("MailConnections", _Stoppable(connections, stop)), accounts)
+        trail.notes(done.items)
+        with handing:
+            if not stop.is_set():
+                handed.append(done)
+                return done
+        index(done)
+        return done
+
+    def cut() -> None:
+        with handing:
+            stop.set()
+
     try:
         result = _run(
             ctx,
@@ -74,10 +98,8 @@ def _organize(
             accounts,
             event,
             used,
-            lambda connections: _recorded(
-                trail, work(cast("MailConnections", _Stoppable(connections, stop)), accounts)
-            ),
-            on_deadline=stop.set,
+            act,
+            on_deadline=cut,
             deadline=deadline,
         )
         outcome = result.outcome
@@ -86,6 +108,9 @@ def _organize(
         outcome = refusal.code
         raise
     finally:
+        if handed:
+            # Also when the deadline passed just after the work handed its result back.
+            index(handed[0])
         groups = () if result is None else result.groups
         logger.info(
             event,
@@ -265,9 +290,3 @@ def flag(
             connections, refs, seen=seen, flagged=flagged, to_sort=to_sort
         ),
     )
-
-
-def _recorded(trail: AuditTrail, result: OrganizeResult) -> OrganizeResult:
-    """``result``, its items in ``trail``."""
-    trail.notes(result.items)
-    return result
