@@ -72,9 +72,14 @@ function ToastCard({ toast, onClose }: { toast: Toast; onClose: () => void }): R
 
   /** Closes it, putting focus back where it was (else on the message list) rather than on the page. */
   function closeFromInside(): void {
-    const back = returnTo.current?.isConnected === true ? returnTo.current : document.getElementById(TOAST_RETURN_ID)?.querySelector('a')
-    if (back instanceof HTMLElement) {
-      back.focus()
+    const back = returnTo.current
+    if (back?.isConnected === true) {
+      if (back instanceof HTMLElement) {
+        back.focus()
+      }
+    } else {
+      // The list's first row in the page, which its virtualised scroll may hold above the view: not scrolled to.
+      document.getElementById(TOAST_RETURN_ID)?.querySelector('a')?.focus({ preventScroll: true })
     }
     onClose()
   }

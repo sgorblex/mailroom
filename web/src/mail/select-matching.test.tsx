@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { bodiesTo, type FakeMailState, messageItem, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
+import { scrollListToEnd } from '@/test/fake-virtualizer.ts'
 import { renderMailApp } from '@/test/mail-app.tsx'
 
 // More than a page: the list has more to load.
@@ -260,7 +261,7 @@ describe('select all matching', () => {
     renderMailApp('/mail')
 
     await selectMatching()
-    await userEvent.click(screen.getByRole('button', { name: 'Load more' }))
+    scrollListToEnd()
     const list = screen.getByRole('list', { name: 'Messages' })
     const link = await within(list).findByRole('link', { name: /Message 75Preview/ })
     expect(within(list).getByRole('checkbox', { name: 'Select Message 75' })).toBeChecked()

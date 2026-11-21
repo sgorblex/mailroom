@@ -171,8 +171,8 @@ released and checked in production before the next one starts. Batch 15 is the r
       subject in the list, now stored with the index.
 - [x] **Conversations in the list** — messages grouped by thread, not only on open: a row per
       conversation, read as a thread, acted on whole; the Profile turns it off.
-- [ ] **Large folders** — a virtualised list, so a folder of tens of thousands of messages stays
-      smooth.
+- [x] **Large folders** — a virtualised list, so a folder of tens of thousands of messages stays
+      smooth: its pages are read as it is scrolled.
 - [x] **Desktop notifications** (after *Index and live updates*) — new mail, per folder.
 
 ### Milestone D: Writing and sending

@@ -75,7 +75,7 @@ export function viewsQuery(): UseQueryOptions<SavedView[], Error, SavedView[]> {
   return { queryKey: VIEWS_KEY, queryFn: ({ signal }) => listViews(signal) }
 }
 
-/** A page read through the cache on request ("Load more"), dropped once `signal` aborts (an unmount). */
+/** A page read through the cache on request (the list scrolled near its end), dropped once `signal` aborts (an unmount). */
 export function fetchPage<T>(
   queryClient: QueryClient,
   queryKey: readonly unknown[],

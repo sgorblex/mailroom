@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearch } from '@tanstack/react-router'
+import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual'
 import { Bookmark, Forward, Paperclip, Reply, Star } from 'lucide-react'
 
 import { AccountName } from '@/accounts/account-name.tsx'
@@ -31,14 +32,22 @@ import { useTriage, type Flags, type Target } from './triage-context.ts'
 
 type More = { kind: 'idle' } | { kind: 'loading' } | { kind: 'failed'; message: string }
 
+/** A row's height before it is measured: a sender, a subject and an opening. */
+const ROW_ESTIMATE = 76
+
+/** How many rows short of the last loaded one the view may come before the next page is read. */
+const READ_AHEAD = 10
+
 /**
- * A folder's messages or a search's, newest first, a page at a time: "Load more" asks for the
- * next one with the cursor the last page gave. Mounted anew (by key) for each source. Each row
- * names where it is: its account and folder in a search, its folder in a folder's subfolders. A
- * page grouped by conversation shows each one as a row (`listRow`), which actions take whole.
- * Invalidating its first page (`messagesKey`) reads the list again, keeping it on show meanwhile:
- * new rows come in at the top, and the rows loaded below it stay. Under quick filters, a row this
- * screen changed so it no longer matches stays too, until the source changes.
+ * A folder's messages or a search's, newest first, a page at a time, in a virtualised list (only
+ * the rows in view and a few around them are in the page): the next page is read, with the
+ * cursor the last page gave, as the view nears the last row loaded. Mounted anew (by key) for each
+ * source. Each row names where it is: its account and folder in a search, its folder in a folder's
+ * subfolders. A page grouped by conversation shows each one as a row (`listRow`), which actions
+ * take whole. Invalidating its first page (`messagesKey`) reads the list again, keeping it on show
+ * meanwhile: new rows come in at the top, and the rows loaded below it stay, as do the rows in
+ * view unless it was at the very top. Under quick filters, a row this screen changed so it no
+ * longer matches stays too, until the source changes.
  */
 export function MessageList({
   source,
@@ -123,6 +132,87 @@ export function MessageList({
     },
     [setVisible],
   )
+  const nextCursor = page === null ? null : tail === null ? page.next_cursor : tail.cursor
+
+  const scroller = useRef<HTMLDivElement>(null)
+  // The app is not built with React Compiler, which this warns of: nothing here is memoised.
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const virtualizer = useVirtualizer({
+    count: messages.length,
+    getScrollElement: () => scroller.current,
+    estimateSize: () => ROW_ESTIMATE,
+    getItemKey: (index) => messages[index]?.ref ?? index,
+    overscan: 5,
+    // A row whose menu is open stays rendered, scrolled out of view too: the menu gives focus back to it.
+    rangeExtractor: (range) => {
+      const shown = defaultRangeExtractor(range)
+      const held = menu === null ? -1 : messages.findIndex((message) => message.ref === menu.row.ref)
+      return held === -1 || shown.includes(held) ? shown : [...shown, held].sort((a, b) => a - b)
+    },
+  })
+  const rows = virtualizer.getVirtualItems()
+  // The row at the top of the view stays there as rows come in or go above it.
+  const anchor = useRef<{ ref: string; within: number; first: string | undefined; count: number } | null>(null)
+  useLayoutEffect(() => {
+    const offset = virtualizer.scrollOffset ?? 0
+    const held = anchor.current
+    if (held !== null && (held.first !== messages[0]?.ref || held.count !== messages.length)) {
+      const item = virtualizer.measurementsCache.find((each) => each.key === held.ref)
+      if (item !== undefined && item.start + held.within !== offset) {
+        virtualizer.scrollToOffset(item.start + held.within)
+      }
+    }
+    // At the very top, new mail shows.
+    const top = offset > 0 ? virtualizer.getVirtualItemForOffset(offset) : undefined
+    anchor.current =
+      top === undefined ? null : { ref: String(top.key), within: offset - top.start, first: messages[0]?.ref, count: messages.length }
+  })
+  // The view nearing the last row loaded reads the next page; a failed one waits for Try again.
+  const lastInView = virtualizer.range?.endIndex ?? -1
+  useEffect(() => {
+    if (nextCursor !== null && more.kind === 'idle' && lastInView >= messages.length - 1 - READ_AHEAD) {
+      void loadMore(nextCursor)
+    }
+  })
+  // The open row comes into view when it changes (j and k), or once the list is read.
+  const search = useSearch({ from: '/mail' })
+  const current = search.thread ?? search.message
+  const latestMessages = useRef(messages)
+  useEffect(() => {
+    latestMessages.current = messages
+  })
+  const loaded = page !== null
+  useEffect(() => {
+    const index = latestMessages.current.findIndex((message) => message.ref === current)
+    if (index !== -1) {
+      virtualizer.scrollToIndex(index, { align: 'auto' })
+    }
+  }, [current, loaded, virtualizer])
+  // Shift+click on a checkbox sets every row from the one clicked before to this one.
+  const lastChecked = useRef<string | null>(null)
+
+  async function loadMore(cursor: string): Promise<void> {
+    setMore({ kind: 'loading' })
+    const signal = unmountSignal()
+    try {
+      const next = await fetchPage(queryClient, messagesKey(source, cursor), (querySignal) => loadPage(cursor, querySignal), signal)
+      setTail((value) =>
+        // The first page read again meanwhile no longer goes on at `cursor`: the page is stale.
+        (value === null ? latestFirst.current?.next_cursor : value.cursor) !== cursor
+          ? value
+          : {
+              rows: [...(value?.rows ?? []), ...next.messages],
+              failures: [...(value?.failures ?? []), ...next.failures],
+              cursor: next.next_cursor,
+            },
+      )
+      setMore({ kind: 'idle' })
+    } catch (error) {
+      if (!signal.aborted) {
+        setMore({ kind: 'failed', message: mailErrorMessage(t, error, t('list.loadFailed'), ACCOUNT_NOT_FOUND) })
+      }
+    }
+  }
 
   if (first.status === 'pending') {
     return (
@@ -151,99 +241,113 @@ export function MessageList({
   }
 
   const failures = uniqueFailures([...first.data.failures, ...(tail?.failures ?? [])])
-  const nextCursor = tail === null ? first.data.next_cursor : tail.cursor
   // Every loaded row selected, and more to load: the rest of what the list matches can be.
   const allLoaded = messages.length > 0 && messages.every((message) => triage.selection.has(message.ref))
   const offerMatching = match !== undefined && (triage.matching !== null || (allLoaded && nextCursor !== null))
 
-  async function loadMore(cursor: string): Promise<void> {
-    setMore({ kind: 'loading' })
-    const signal = unmountSignal()
-    try {
-      const next = await fetchPage(queryClient, messagesKey(source, cursor), (querySignal) => loadPage(cursor, querySignal), signal)
-      setTail((value) =>
-        // The first page read again meanwhile no longer goes on at `cursor`: the page is stale.
-        (value === null ? latestFirst.current?.next_cursor : value.cursor) !== cursor
-          ? value
-          : {
-              rows: [...(value?.rows ?? []), ...next.messages],
-              failures: [...(value?.failures ?? []), ...next.failures],
-              cursor: next.next_cursor,
-            },
-      )
-      setMore({ kind: 'idle' })
-    } catch (error) {
-      if (!signal.aborted) {
-        setMore({ kind: 'failed', message: mailErrorMessage(t, error, t('list.loadFailed'), ACCOUNT_NOT_FOUND) })
-      }
-    }
-  }
-
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
       {failures.length > 0 && <Failures failures={failures} />}
       {/* Every loaded row moved away is not an empty folder while there is more to load. */}
       {messages.length === 0 ? (
-        nextCursor === null && (
+        nextCursor === null ? (
           <p className="text-sm text-muted-foreground">
             {searching || filtered ? t('list.noMatches') : view ? t('views.empty') : t('list.empty')}
           </p>
+        ) : (
+          more.kind === 'loading' && (
+            <p role="status" className="text-sm text-muted-foreground">
+              {t('list.loadingMore')}
+            </p>
+          )
         )
       ) : (
         <>
           <SelectAll messages={messages} />
           {offerMatching && <SelectMatching loaded={messages.length} scope={match} />}
-          <ul id={TOAST_RETURN_ID} aria-label={searching ? t('list.results') : t('list.messages')} className="flex flex-col divide-y rounded-lg border">
-            {messages.map((message) => (
-              // The row's link is what takes focus: its menu key and a right-click reach it from here.
-              // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
-              <li
-                key={message.ref}
-                className="group/row flex items-start"
-                // Dragged onto a folder, it moves the selection when it is in it (as every row is while
-                // every matching message is selected), else itself alone.
-                draggable
-                onDragStart={(event) => {
-                  const inSelection = triage.matching !== null || triage.selection.has(message.ref)
-                  const targets = inSelection ? [...triage.selection.values()] : [message]
-                  startMessageDrag(event.dataTransfer, targets, t('list.dragging', { count: targets.length }))
-                }}
-                onDragEnd={endMessageDrag}
-                onContextMenu={(event) => {
-                  const anchor = event.currentTarget.querySelector('a')
-                  // Shift+right-click keeps the browser's own menu.
-                  if (event.shiftKey || anchor === null) {
-                    return
-                  }
-                  event.preventDefault()
-                  setMenu({ row: message, anchor, point: { x: event.clientX, y: event.clientY } })
-                }}
-                onKeyDown={(event) => {
-                  const anchor = event.currentTarget.querySelector('a')
-                  if (anchor !== null && (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey))) {
-                    event.preventDefault()
-                    const rect = anchor.getBoundingClientRect()
-                    setMenu({ row: message, anchor, point: { x: rect.left, y: rect.bottom } })
-                  }
-                }}
-              >
-                <input
-                  type="checkbox"
-                  name="message"
-                  value={message.ref}
-                  aria-label={t('triage.select', { subject: message.subject === '' ? t('message.noSubject') : message.subject })}
-                  className="m-3 mr-0 size-4 shrink-0 accent-primary"
-                  checked={triage.matching !== null || triage.selection.has(message.ref)}
-                  onChange={(event) => {
-                    triage.select([message], event.target.checked)
-                  }}
-                />
-                <StarToggle message={message} />
-                <ToSortToggle message={message} />
-                <MessageRow message={message} source={searching || view ? 'account' : subfolders ? 'folder' : null} />
-              </li>
-            ))}
-          </ul>
+          {/* Its own scroll: a phone's page around it scrolls too, so it stops short of the screen. */}
+          <div ref={scroller} className="max-h-[75dvh] min-h-0 overflow-y-auto rounded-lg border lg:max-h-none lg:flex-1">
+            <ul
+              id={TOAST_RETURN_ID}
+              aria-label={searching ? t('list.results') : t('list.messages')}
+              className="relative divide-y"
+              style={{ height: virtualizer.getTotalSize() }}
+            >
+              {rows.map((row) => {
+                const message = messages[row.index]
+                if (message === undefined) {
+                  return null
+                }
+                return (
+                  // The row's link is what takes focus: its menu key and a right-click reach it from here.
+                  // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
+                  <li
+                    key={row.key}
+                    ref={virtualizer.measureElement}
+                    data-index={row.index}
+                    // Only the rows in view are in the page: each says where it stands in the list.
+                    aria-posinset={row.index + 1}
+                    aria-setsize={nextCursor === null ? messages.length : -1}
+                    className="group/row absolute top-0 left-0 flex w-full items-start"
+                    style={{ transform: `translateY(${String(row.start)}px)` }}
+                    // Dragged onto a folder, it moves the selection when it is in it (as every row is while
+                    // every matching message is selected), else itself alone.
+                    draggable
+                    onDragStart={(event) => {
+                      const inSelection = triage.matching !== null || triage.selection.has(message.ref)
+                      const targets = inSelection ? [...triage.selection.values()] : [message]
+                      startMessageDrag(event.dataTransfer, targets, t('list.dragging', { count: targets.length }))
+                    }}
+                    onDragEnd={endMessageDrag}
+                    onContextMenu={(event) => {
+                      const anchor = event.currentTarget.querySelector('a')
+                      // Shift+right-click keeps the browser's own menu.
+                      if (event.shiftKey || anchor === null) {
+                        return
+                      }
+                      event.preventDefault()
+                      setMenu({ row: message, anchor, point: { x: event.clientX, y: event.clientY } })
+                    }}
+                    onKeyDown={(event) => {
+                      const anchor = event.currentTarget.querySelector('a')
+                      if (anchor !== null && (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey))) {
+                        event.preventDefault()
+                        const rect = anchor.getBoundingClientRect()
+                        setMenu({ row: message, anchor, point: { x: rect.left, y: rect.bottom } })
+                      }
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      name="message"
+                      value={message.ref}
+                      aria-label={t('triage.select', { subject: message.subject === '' ? t('message.noSubject') : message.subject })}
+                      className="m-3 mr-0 size-4 shrink-0 accent-primary"
+                      checked={triage.matching !== null || triage.selection.has(message.ref)}
+                      onChange={(event) => {
+                        const from = event.nativeEvent instanceof MouseEvent && event.nativeEvent.shiftKey
+                          ? messages.findIndex((each) => each.ref === lastChecked.current)
+                          : -1
+                        lastChecked.current = message.ref
+                        triage.select(
+                          from === -1 ? [message] : messages.slice(Math.min(from, row.index), Math.max(from, row.index) + 1),
+                          event.target.checked,
+                        )
+                      }}
+                    />
+                    <StarToggle message={message} />
+                    <ToSortToggle message={message} />
+                    <MessageRow message={message} source={searching || view ? 'account' : subfolders ? 'folder' : null} />
+                  </li>
+                )
+              })}
+            </ul>
+            {more.kind === 'loading' && (
+              <p role="status" className="p-3 text-center text-sm text-muted-foreground">
+                {t('list.loadingMore')}
+              </p>
+            )}
+          </div>
         </>
       )}
       {menu !== null && (
@@ -255,25 +359,21 @@ export function MessageList({
           onClose={closeMenu}
         />
       )}
-      {more.kind === 'failed' && (
-        <p role="alert" className="text-sm text-destructive">
-          {more.message}
-        </p>
-      )}
-      {nextCursor !== null && (
-        <Button
-          variant="outline"
-          size="sm"
-          className="self-center"
-          aria-disabled={more.kind === 'loading'}
-          onClick={() => {
-            if (more.kind !== 'loading') {
+      {more.kind === 'failed' && nextCursor !== null && (
+        <div className="flex items-center gap-3">
+          <p role="alert" className="text-sm text-destructive">
+            {more.message}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
               void loadMore(nextCursor)
-            }
-          }}
-        >
-          {more.kind === 'loading' ? t('list.loadingMore') : t('list.loadMore')}
-        </Button>
+            }}
+          >
+            {t('auth.retry')}
+          </Button>
+        </div>
       )}
     </div>
   )

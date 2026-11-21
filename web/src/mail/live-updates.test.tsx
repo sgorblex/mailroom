@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { FakeEventSource, stubEventSource } from '@/test/fake-event-source.ts'
 import { HOME, indexFolder, messageItem, messageView, queriesTo, stubMailApi, WORK, type FakeMailState } from '@/test/fake-mail-api.ts'
+import { listView, scrollListToEnd } from '@/test/fake-virtualizer.ts'
 import { renderMailApp } from '@/test/mail-app.tsx'
 
 const inbox = Array.from({ length: 30 }, (_, index) => messageItem(WORK, 'INBOX', 100 - index))
@@ -105,7 +106,7 @@ describe('live updates', () => {
     renderMailApp(`/mail?message=${inbox[3]?.ref ?? ''}`)
 
     const list = await messagesList()
-    await userEvent.click(screen.getByRole('button', { name: 'Load more' }))
+    scrollListToEnd()
     await within(list).findByText('Message 71')
     await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 99' }))
     const source = await opened()
@@ -119,6 +120,43 @@ describe('live updates', () => {
     expect(screen.getByRole('article')).toHaveTextContent('Body of Message 97')
   })
 
+  it('keeps the rows in view where they are as new mail comes in above them, but at the very top', async () => {
+    stubEventSource()
+    const fake = state()
+    stubMailApi(fake)
+    renderMailApp('/mail')
+
+    const list = await messagesList()
+    const source = await opened()
+    fake.messages['1/INBOX'] = [messageItem(WORK, 'INBOX', 101), ...inbox]
+    send(source, 'new_mail', { account: WORK, folder: 'INBOX', count: 1, messages: [] })
+    await within(list).findByText('Message 101')
+    expect(listView()?.startIndex).toBe(0)
+
+    scrollListToEnd()
+    await within(list).findByText('Message 71')
+    const top = listView()?.startIndex ?? 0
+    fake.messages['1/INBOX'] = [messageItem(WORK, 'INBOX', 103), messageItem(WORK, 'INBOX', 102), ...(fake.messages['1/INBOX'] ?? [])]
+    send(source, 'new_mail', { account: WORK, folder: 'INBOX', count: 2, messages: [] })
+    await within(list).findByText('Message 103')
+    expect(listView()?.startIndex).toBe(top + 2)
+  })
+
+  it('brings the open row into view, and follows it as j moves on', async () => {
+    stubEventSource()
+    stubMailApi(state())
+    renderMailApp(`/mail?message=${inbox[20]?.ref ?? ''}`)
+
+    await messagesList()
+    await waitFor(() => {
+      expect(listView()?.endIndex).toBe(20)
+    })
+    await userEvent.keyboard('j')
+    await waitFor(() => {
+      expect(listView()?.endIndex).toBe(21)
+    })
+  })
+
   it('drops the rows gone from the first page, and keeps those new mail pushed below it', async () => {
     stubEventSource()
     const fake = state()
@@ -126,7 +164,7 @@ describe('live updates', () => {
     renderMailApp('/mail')
 
     const list = await messagesList()
-    await userEvent.click(screen.getByRole('button', { name: 'Load more' }))
+    scrollListToEnd()
     await within(list).findByText('Message 71')
     const source = await opened()
 
@@ -135,7 +173,6 @@ describe('live updates', () => {
     send(source, 'folder_changed', { account: WORK, folder: 'INBOX', unread: 0, total: 30 })
     await within(list).findByText('Message 101')
     expect(subjects(list)).toEqual(['Message 101', ...inbox.filter((item) => item.subject !== 'Message 99').map((item) => item.subject)])
-    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument()
   })
 
   it('drops a page loaded below while the first page was read again', async () => {
@@ -159,11 +196,11 @@ describe('live updates', () => {
     const list = await messagesList()
     const source = await opened()
     holdNext = true
-    await userEvent.click(screen.getByRole('button', { name: 'Load more' }))
+    scrollListToEnd()
     await waitFor(() => {
       expect(release).toBeDefined()
     })
-    // 99 expunged elsewhere while Load more waits: the first page now reaches one row further.
+    // 99 expunged elsewhere while the next page is read: the first page now reaches one row further.
     const kept = inbox.filter((item) => item.subject !== 'Message 99')
     fake.messages['1/INBOX'] = kept
     send(source, 'folder_changed', { account: WORK, folder: 'INBOX', unread: 0, total: 29 })
@@ -172,10 +209,10 @@ describe('live updates', () => {
       release?.()
       await Promise.resolve()
     })
+    // The stale page is dropped, and the next one read from where the first page now ends: no row twice.
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Load more' })).not.toHaveAttribute('aria-disabled', 'true')
+      expect(subjects(list)).toEqual(kept.map((item) => item.subject))
     })
-    expect(subjects(list)).toEqual(kept.slice(0, 25).map((item) => item.subject))
   })
 
   it("shows flags changed elsewhere on the rows and the open message's toolbar", async () => {
