@@ -531,6 +531,24 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
 - Every answer under `/api/v1/mail/` carries `Cache-Control: private, no-store`, whatever its
   status: a refusal, a 422, the 401 of a missing session and the cross-site 403 too (a middleware
   outside the cross-site check, `mailroom.api.routes.mail.NotStored`).
+- **Live updates** ([`mail-client.md`](mail-client.md), *Live updates*; `mailroom.mail.events`):
+  each API process opens one psycopg async connection at startup, LISTENs on `mailroom_index`
+  and closes it at shutdown (a lost one is opened again after 5 s; what was announced meanwhile
+  is not replayed). A notification carries ids only; for a user with a stream open on that
+  process the hub reads the folder's row and new rows in a thread, after the commit that
+  announced them, and puts the events on each of that user's streams' queues. A stream is an
+  asyncio task, not a thread, and holds no database connection while it waits: its interest's
+  writes (open, each heartbeat, close) commit at once. The stream registers with the hub when
+  its body starts, so a browser gone before that leaves nothing behind, and each heartbeat checks
+  its session again: signed out or expired, the stream ends and drops its interest. Limits: 10 streams per user per process
+  (one more is 429), a queue of 100 events per stream (a stream behind by that much is closed,
+  `mail_events_dropped`), a heartbeat comment every 25 s, which keeps a proxy's read timeout
+  from closing a quiet stream (it must exceed 25 s) and renews the interest. `X-Accel-Buffering:
+  no` keeps nginx from buffering the stream; a host proxy that buffers responses must not buffer
+  `text/event-stream` ([`../deploy.md`](../deploy.md)). Uvicorn gives open requests 5 s at a
+  stop (`--timeout-graceful-shutdown`), since a stream never ends by itself. Logs:
+  `mail_events_dropped` and `mail_events_read_failed` (`user_id`, the error's type) and
+  `mail_interest_failed` (`user_id`, the error's type); never a folder, a sender or a subject.
 - **Organize calls** (move, archive, trash, flag) check every ref before connecting: a malformed
   one, or one of an account that is not the user's (404) or cannot log in (`password_missing`
   409, `secrets_key_missing` 503), refuses the batch and nothing is written. A call cut at the
@@ -660,6 +678,9 @@ keeps it, with `mail`:
   All Mail has a row, so only it is synced.
 - The API queues `sync_folder` too, in its own transaction, for a folder one of its writes left
   unsure ([`mail-client.md`](mail-client.md) — *Index*, the app's own writes).
+- Each commit of a job that changed the folder's rows (removed, flags, a batch stored) or its
+  state (`syncing`, `ready`, `failed`) calls `pg_notify` on `mailroom_index` in that transaction,
+  so the API's live updates hear of it once it commits.
 
 ### Filters
 

@@ -44,6 +44,7 @@ from mailroom.context import app_context
 from mailroom.database_connectivity import CONNECTIVITY_ERRORS
 from mailroom.errors import Refusal
 from mailroom.mail.connections import mail_ssl_context
+from mailroom.mail.events import EventHub, listen_connection
 from mailroom.mail.pool import MailPool
 from mailroom.mail.sends import SendRunner
 from mailroom.mail.service import KeywordFailures, Quotas
@@ -182,6 +183,17 @@ def _external_verifier(
     return verifier, owned
 
 
+def _event_hub(application: FastAPI) -> EventHub | None:
+    """The live updates' hub, listening from now on, with the mail client and a database."""
+    features: Features = application.state.features
+    if not features.mail or application.state.session_maker is None:
+        return None
+    url = mailroom_database.libpq_database_url(mailroom_database.get_sync_database_url())
+    hub = EventHub(lambda: application.state.session_maker, listen_connection(url))
+    hub.start()
+    return hub
+
+
 @asynccontextmanager
 async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
     configure_logging()
@@ -197,6 +209,8 @@ async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
     application.state.mail_pool = MailPool()
     application.state.send_runner = SendRunner() if features.mail_layer else None
     application.state.sso = sso_from_env(application.state.public_url)
+    hub = _event_hub(application)
+    application.state.mail_events = hub
     mcp_settings: McpSettings | None = application.state.mcp_settings
     verifier: TokenVerifier | None = application.state.mcp_verifier
     mcp_provider = None
@@ -210,6 +224,9 @@ async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
         async with nullcontext() if mcp is None else mcp.running(mcp_settings, verifier):
             yield
     finally:
+        if hub is not None:
+            await hub.close()
+        application.state.mail_events = None
         runner: SendRunner | None = application.state.send_runner
         if runner is not None:
             runner.close()
@@ -279,6 +296,7 @@ def create_application(
     application.state.mcp_settings = mcp_settings
     application.state.mcp_verifier = mcp_verifier
     application.state.mcp_oidc_transport = mcp_oidc_transport
+    application.state.mail_events = None
     mcp = McpEndpoint(lambda: app_context(application.state)) if features.mcp else None
     application.state.mcp = mcp
     application.add_exception_handler(Refusal, _refusal_answer)
