@@ -306,6 +306,38 @@ def test_a_resync_takes_new_mail_flag_changes_and_expunges(
     assert row.highest_modseq is not None
 
 
+def test_a_sync_announces_its_changes_with_the_range_of_new_mail(
+    db_session: Session,
+    mailboxes: Mailboxes,
+    imap_server: ImapTestServer,
+    login: str,
+    user: User,
+    account: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    announced: list[tuple[int, tuple[int, int] | None]] = []
+
+    def notify(_db: Session, _user: int, _account: int, folder_id: int, *, new: Any = None) -> None:
+        announced.append((folder_id, new))
+
+    monkeypatch.setattr(index_sync, "notify", notify)
+    first = seed(imap_server, login, "INBOX", mime("a"))
+    inbox = synced(db_session, mailboxes, user, account)
+    # A first sync: the state and the rows change, and nothing is new mail.
+    assert announced
+    assert {new for _, new in announced} == {None}
+    announced.clear()
+    assert not run_folder_sync(db_session, mailboxes, user.id, account, inbox.id)
+    assert announced == []
+
+    fresh = [seed(imap_server, login, "INBOX", mime(s)) for s in "bc"]
+    with raw_client(imap_server, login) as client:
+        client.select_folder("INBOX")
+        client.add_flags([first], ["\\Seen"])
+    assert not run_folder_sync(db_session, mailboxes, user.id, account, inbox.id)
+    assert announced == [(inbox.id, None), (inbox.id, (fresh[0], fresh[1]))]
+
+
 def test_a_watched_inbox_queues_its_sync_on_new_mail_and_flag_changes(
     monkeypatch: pytest.MonkeyPatch,
     db_session: Session,

@@ -1421,12 +1421,16 @@ folder off the index is read live, as before the index.
   drops what was expunged or is now older than the age limit, and brings flags up to date
   (CONDSTORE where the server has it), on Gmail the labels with them. A message that cannot be
   read into the index is skipped and stays readable live. A folder whose UIDVALIDITY changed is
-  built again. The sync never changes mail. Details:
+  built again. The sync never changes mail. Each commit that changed a folder's rows or state is
+  announced as the app's own writes are (below), a batch of new mail with the range of its UIDs
+  (`"new": [low, high]`: those from the folder's UIDNEXT at its last pass on, so never on a first
+  sync or a rebuild). Details:
   [`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *Mail index sync*.
 - **Freshness.** Besides the 5-minute turn, the worker watches through IMAP IDLE, per account,
   INBOX when it is on the index (on Gmail All Mail, which INBOX is a label of) and the indexed
   folder a browser viewed last, while that browser's interest lasts (`app.mail_view_interest`,
-  each row with its expiry; the API writes them): new mail, a flag changed or a message expunged
+  each row with its expiry; the API holds them for its event streams, [Live
+  updates](#live-updates)): new mail, a flag changed or a message expunged
   there, by any client, syncs that folder at once (one sync waiting per folder). A folder a
   `new_mail` rule set watches shares that watch. Details:
   [`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *Filters* (the IDLE
@@ -1514,6 +1518,46 @@ Routes (under `/api/v1/mail`, as the rest of the [REST contract](#rest-contract)
 Logged as `mail_index_folders` (the listing, as the other mail calls), `mail_index_folder_switched`
 (`user_id`, `account_id`, `enabled` and how many messages' rows went) and `index_max_age_changed`;
 never a folder's path.
+
+## Live updates
+
+The index's changes reach the signed-in user's open browsers as server-sent events, while a
+Mailroom tab is open: no push service.
+
+- `GET /api/v1/mail/events?account=3&folder=Archive` (a user session, as every mail route; 401
+  without) answers `200 text/event-stream` with `Cache-Control: private, no-store` and
+  `X-Accel-Buffering: no`, and stays open until the browser goes or its session ends (checked at
+  each heartbeat): a comment `: open` first, a comment `: heartbeat` every 25 s, and the events.
+  `account` and `folder` (both, or neither; `INBOX` in any case) name the folder the browser
+  views: while the stream lasts it holds that folder's viewing interest
+  (`app.mail_view_interest`, 90 s past each heartbeat, announced on `mailroom_interest`), so the
+  worker watches it over IDLE ([Index](#index), *Freshness*), and its close deletes it unless
+  another of the user's streams on that API process views the same folder. A folder that is not
+  one of the user's own on the index is not held, and the stream works as without one. Viewing
+  another folder is a new stream.
+- Events, each the user's own, their data JSON (mail-derived text raw, never HTML):
+  - `folder_changed` `{"account", "folder", "unread", "total"}`: an indexed folder's rows changed
+    (new mail, flags, expunges, the app's own writes) or its sync was queued; its counts as the
+    index holds them. On Gmail the folder is All Mail: INBOX and the label folders read from it
+    change with it.
+  - `sync` `{"account", "folder", "state", "progress"}`: while a folder is not `ready`
+    (`progress`, the messages it holds: the index status's `indexed`), and once as it becomes
+    `ready`.
+  - `new_mail` `{"account", "folder", "count", "messages"}`: a sync stored new mail still unread
+    (above, *Sync*); `count` of it and, for the newest 3, `{"ref", "sender", "subject"}` (the
+    sender's name, else address; each text cut at 200 characters), for the user's own browser to
+    notify. On Gmail, only All Mail's messages labelled `\Inbox`, as INBOX's, with All Mail's
+    refs.
+- Refusals: 400 `invalid_interest` for `account` without `folder` or the other way round; 503
+  `events_unavailable` without the database; 429 `too_many_streams` past 10 open streams of one
+  user on one API process. A stream that falls 100 events behind is closed. Events are not
+  replayed: a browser that connects again (EventSource does by itself) reads what it shows
+  again.
+- How: the worker's sync and the API's own writes announce each folder change on Postgres's
+  `mailroom_index` (ids only, and the new mail's UID range), delivered at their commit; each API
+  process LISTENs on one connection of its own and, for a user with a stream open there, reads
+  the folder's row and the new rows to build the events
+  ([`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *Mail client*).
 
 ## Mailbox quota
 

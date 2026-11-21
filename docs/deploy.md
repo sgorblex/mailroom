@@ -36,6 +36,10 @@ the host's proxy must log the same way, or not at all. The web container's nginx
 30 MB on `/api/v1/mail/drafts` alone, for a draft's attachments; the host's proxy must allow the
 same there, or it refuses them first. Its read timeout must also cover the whole upload: at 60 s,
 30 MB needs about 4 Mbit/s, and a slower client gets the proxy's 502 or 504 partway through.
+The live updates stream (`/api/v1/mail/events`, server-sent events) stays open while a tab is:
+the host's proxy must pass it unbuffered (it carries `X-Accel-Buffering: no`, which nginx
+honours; Caddy flushes `text/event-stream` by itself) with a read timeout above its 25 s
+heartbeat. The API container's uvicorn gives open requests 5 s at a stop, then ends them.
 Operator environment, `MAILROOM_SECRETS_KEY` included:
 [`../deploy/quadlet/mailroom-api.env.example`](../deploy/quadlet/mailroom-api.env.example).
 `MAILROOM_FEATURES` chooses what the instance runs ([`REQUIREMENTS.md`](REQUIREMENTS.md) —

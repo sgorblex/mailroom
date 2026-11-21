@@ -41,6 +41,8 @@ def main() -> None:
         reload=True,
         access_log=False,
         log_level="info",
+        # Open live updates streams would hold a reload until the browser leaves.
+        timeout_graceful_shutdown=5,
     )
 
 
