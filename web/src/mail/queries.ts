@@ -33,6 +33,9 @@ export function indexWaitingKey(account: AccountId): readonly unknown[] {
   return [...indexStatusKey(account), 'waiting']
 }
 
+/** Each account's folders whose new mail shows as a desktop notification. */
+export const NOTIFICATIONS_KEY = ['mail-notifications'] as const
+
 /** How often an index status is read again while a folder's first sync is under way. */
 export const INDEXING_POLL_MS = 15_000
 

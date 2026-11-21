@@ -172,7 +172,7 @@ released and checked in production before the next one starts. Batch 15 is the r
 - [ ] **Conversations in the list** — messages grouped by thread, not only on open.
 - [ ] **Large folders** — a virtualised list, so a folder of tens of thousands of messages stays
       smooth.
-- [ ] **Desktop notifications** (after *Index and live updates*) — new mail, per folder.
+- [x] **Desktop notifications** (after *Index and live updates*) — new mail, per folder.
 
 ### Milestone D: Writing and sending
 
