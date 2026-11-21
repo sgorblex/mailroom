@@ -44,6 +44,20 @@ export function indexScope(
 }
 
 /**
+ * Whether a list of `scope` reads `account`'s `folder`: one of its folders (with its subfolders),
+ * any for every folder, and any for All Mail (`allMail`), which Gmail's labels are read from.
+ */
+export function scopeReads(scope: IndexScope, account: AccountId, folder: string, allMail: boolean): boolean {
+  return (
+    scope.accounts.includes(account) &&
+    (scope.folder === '*' ||
+      allMail ||
+      isSameFolder(folder, scope.folder) ||
+      (scope.subfolders && scope.delimiter !== null && folder.startsWith(scope.folder + scope.delimiter)))
+  )
+}
+
+/**
  * The indexed folders `status` reads for `scope`, by path: a Gmail label is All Mail's; every
  * folder (`*`) is the `\All` folder where there is one, else all but Junk and Trash, as a search.
  */

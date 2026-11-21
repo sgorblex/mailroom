@@ -17,8 +17,9 @@ import { ComposeProvider } from './compose-provider.tsx'
 import { Composer } from './composer.tsx'
 import { findNode, folderTree, hasListedSubfolders } from './folder-tree.ts'
 import { MAIL_NS } from './i18n.ts'
-import { indexScope } from './index-progress.ts'
+import { indexScope, scopeReads } from './index-progress.ts'
 import { IndexingNotice } from './indexing-notice.tsx'
+import { useLiveEvents, useLiveStatus, useLiveViewing } from './live-context.ts'
 import { MailSidebar } from './mail-sidebar.tsx'
 import { MessageList } from './message-list.tsx'
 import { MessageView } from './message-view.tsx'
@@ -33,7 +34,7 @@ import { ACCOUNTS_KEY, messagesKey, READ_ON_MOUNT } from './queries.ts'
 import { ToastHost } from './toast.tsx'
 import { SpamFilterOffer } from './spam-filter-offer.tsx'
 import { OutcomeAnnouncer, Toolbar } from './toolbar.tsx'
-import { isSameFolder, loadedFolders, useTriage } from './triage-context.ts'
+import { isSameFolder, loadedFolders, roleFolder, useTriage } from './triage-context.ts'
 import { TriageProvider } from './triage-provider.tsx'
 
 const DEFAULT_FOLDER = 'INBOX'
@@ -166,6 +167,7 @@ function MailPanes({
   const { session, shown } = useCompose()
   const open = search.message
   const covered = open !== undefined || shown
+  useLiveViewing(search.q === undefined ? { account: accountId, folder } : null)
   return (
     <main className="flex flex-1 flex-col border-t lg:h-0 lg:min-h-0 lg:flex-row">
       <h1 className="sr-only">{t('mail.title')}</h1>
@@ -336,8 +338,20 @@ function Listing({
       }
     }
   }, [revision, live, key, queryClient])
+  // A change to a folder the list reads reads its first page again; a search the index never
+  // answers (a body's text) is not run again by itself.
+  useLiveEvents((event) => {
+    if (event.type === 'sync' || scope === null) {
+      return
+    }
+    const allMail = roleFolder(loadedFolders(folders[event.account]), 'all')
+    if (scopeReads(scope, event.account, event.folder, allMail !== undefined && isSameFolder(allMail.path, event.folder))) {
+      void queryClient.invalidateQueries({ queryKey: messagesKey(key, null) })
+    }
+  })
   return (
     <>
+      <LiveNotice />
       {scope !== null && <IndexingNotice scope={scope} />}
       <MessageList
         key={key}
@@ -349,4 +363,14 @@ function Listing({
       />
     </>
   )
+}
+
+/** A quiet line while the live updates stream is down and being opened again. */
+function LiveNotice(): ReactElement | null {
+  const { t } = useTranslation(MAIL_NS)
+  return useLiveStatus() === 'reconnecting' ? (
+    <p role="status" className="text-xs text-muted-foreground">
+      {t('list.reconnecting')}
+    </p>
+  ) : null
 }

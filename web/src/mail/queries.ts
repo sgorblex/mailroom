@@ -6,8 +6,11 @@ import { listMailFolders, type MailFolder } from '@/api/mail.ts'
 /** The keys the mail screen's reads are cached under. */
 export const ACCOUNTS_KEY = ['accounts'] as const
 
+/** Every account's folders. */
+export const ALL_FOLDERS_KEY = ['folders'] as const
+
 export function foldersKey(account: AccountId): readonly unknown[] {
-  return ['folders', account]
+  return [...ALL_FOLDERS_KEY, account]
 }
 
 /** Every page of every list. */
