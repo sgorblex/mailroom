@@ -608,10 +608,12 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   encodes the account, the folder name and the UID: an access log does see that.
 - **Drafts and sends** ([`mail-client.md`](mail-client.md), *Slice C*):
   - **Limits:** the user's `send_per_hour` and `max_recipients`, 50 addresses per field, a body of
-    100,000 characters, a subject of 998, 10 new files and the user's `attachment_max_mb` (at most
+    100,000 characters or of 3 MiB of UTF-8 in HTML (a save's own `html` part), a subject
+    of 998, 10 new files and the user's `attachment_max_mb` (at most
     25) in total, a 2 MiB original read for quoting. `python-multipart` parses the one multipart
     route (`POST /drafts`); the web image's nginx allows `client_max_body_size 30m` on that exact
-    location (repeating its security headers) and the host's proxy needs the same, and the route
+    location (repeating its security headers) and the host's proxy needs the same (attachments
+    plus 5 MiB for the fields fit it), and the route
     refuses early from `Content-Length`, then at the user's limit as the body arrives, once the
     user is known: FastAPI's own multipart handling reads the body first. A user's fourth save at
     once is `busy` before its body is read, since the mail gates come only after that. Files past

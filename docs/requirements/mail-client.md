@@ -654,8 +654,9 @@ Slice C lets the user write mail in the web client and lets agents do the same t
 tools. It is the one slice that sends mail, so its rules are the strictest: read
 [Send rules](#send-rules) before changing any of it. Behaviour is mailroom-core's `mail.compose`,
 `mail.reply`, `mail.attachments`, `mail.drafts` and `send` modules, themselves the behaviour of
-mailroom-mcp's `draft` and `send` tools. Web composing is **plain text**; rich text is tier 3
-([`../REQUIREMENTS.md`](../REQUIREMENTS.md)).
+mailroom-mcp's `draft` and `send` tools. A message is **plain text or HTML** (rich text, tier 2 in
+[`../REQUIREMENTS.md`](../REQUIREMENTS.md)): the routes and the MCP tools take HTML with inline
+images; the web composer still writes plain text.
 
 ### Compose
 
@@ -669,10 +670,13 @@ mailroom-mcp's `draft` and `send` tools. Web composing is **plain text**; rich t
   `References`) continue the thread, and the body quotes the original, its date in the user's
   time zone (UTC until they set one), as a forward's header block has it. The original is read up to
   2 MiB and its text is then cut to 20,000 characters, in a quote and in a forward alike; a longer
-  one is cut, never refused.
+  one is cut, never refused. In HTML the quote is the attribution line, then a
+  `<blockquote type="cite">` of the original's HTML, sanitised as a send is (its text when it has
+  none, or when its HTML is over 1 MiB), without its images.
 - **Forward** has an empty recipient list and the subject with one `Fwd: `. The body holds a
-  "Forwarded message" block with the original's headers and text, and the original's
-  attachments are offered as `keep` entries (the user can drop each). Reply and reply all set
+  "Forwarded message" block with the original's headers and text (in HTML, its sanitised HTML with
+  its `cid:` images, whose inline parts are offered as `keep` entries with `inline: true`), and the
+  original's attachments are offered as `keep` entries (the user can drop each). Reply and reply all set
   `\Answered` on the original once sent; a forward sets the `$Forwarded` keyword, where the
   server keeps keywords (not Gmail), and a failure to set it is the note
   `original_not_marked_forwarded`. No agent can set `$Forwarded` through `messages_flag`. The
@@ -697,10 +701,19 @@ mailroom-mcp's `draft` and `send` tools. Web composing is **plain text**; rich t
   an ASCII local part, a domain that is ASCII or punycode. Anything else is 422
   `recipient_refused` before a connection is made. Autosave saves only the recipients the user
   has committed (a chip), so an address half typed cannot fail a save.
+- **HTML:** a draft's `html`, when given, is its body (in a save, a multipart part of its own):
+  it is sanitised on the server (mailroom-core's `render.outgoing_html`: no scripts, event
+  handlers, forms, frames, objects or style sheets, links only `http(s)` and `mailto`, images
+  only the message's own `cid:` parts, a `data:` image turned into one) and sent as
+  multipart/alternative, its text part made from it on the server
+  (`text` is then not used), inside a multipart/related with the inline images it shows. An inline
+  image is a new upload whose `content_ids` entry names its Content-ID, or a kept part with
+  `inline: true` (the draft's own, or a forwarded message's); one the HTML does not show is left
+  out.
 - **Attachments** are new uploads (`files[]`) or parts of existing messages (`keep`: `ref` and
   `part`); an agent never passes file content (MCP). Only attachment and calendar parts of a
-  message can be kept; inline images and the body parts cannot. Limits are in
-  [Limits](#limits).
+  message can be kept as attachments, inline parts only as inline parts, never the body parts.
+  Limits are in [Limits](#limits).
 - **Headers** are one line: CR and LF are stripped from every header value built from user input
   or mail (subject, names, addresses), so a header cannot be injected.
 
@@ -729,13 +742,15 @@ composer to server.
   key needs only the ref, so this holds once the draft is gone too, which is how a delivered one
   normally ends. An own draft has no such limit, as its key survives a save.
 - **Fields:** the draft keeps `From`, To, Cc, Bcc (Bcc is kept in the draft and in the Sent copy,
-  never on the wire), subject, the plain text and the attachments. A header
+  never on the wire), subject, the plain text or the HTML with its inline images, and the
+  attachments. A header
   `X-Mailroom-Draft: 1` marks a draft Mailroom wrote; when the draft answers a message it reads
   `X-Mailroom-Draft: 1; answers=<ref>`, when it forwards one `X-Mailroom-Draft: 1; forwards=<ref>`.
   The header is stripped before the message is sent.
-- **`lossy`:** a draft written elsewhere may hold what the plain-text editor cannot keep (an HTML
-  body, inline images, formatting). `GET /drafts/{ref}` then answers `lossy: true` and the
-  composer warns that saving keeps only the plain text and the attachments. Only a save does
+- **`lossy`:** a draft written elsewhere may hold what a save cannot keep (an HTML body, inline
+  images, formatting): only Mailroom's own HTML drafts are read back with their HTML.
+  `GET /drafts/{ref}` then answers `lossy: true` and the composer warns that saving keeps only the
+  plain text and the attachments. Only a save does
   that: a draft that is sent without being edited goes out exactly as stored (an HTML body
   included, which is also what `draft_send` does), under the key its ref gives when it has no
   `compose_id`.
@@ -933,13 +948,17 @@ set on their *Profile* page ([`../REQUIREMENTS.md`](../REQUIREMENTS.md)).
 | Recipients of one message | the user's `max_recipients` (default 10), over To, Cc and Bcc |
 | Sends per hour | the user's `send_per_hour` (default 20), across their accounts; counted when claimed |
 | Body text | 100,000 characters |
+| Body HTML | 3 MiB of UTF-8 (`MAX_HTML_BYTES`), its `data:` images included, an agent's quoted or forwarded original too; the same cap in a save's `html` part, which is raw UTF-8; over MCP the 1 MiB request comes first |
+| The `draft` part of a save | 1 MiB, the HTML not in it (`400 invalid_argument` beyond) |
+| MCP request | 1 MiB (the app's MCP endpoint) |
 | Subject | 998 characters |
-| New files per draft | 10 |
+| New files per draft | 10, inline images included |
 | Attachments, in total (uploads and kept parts) | the user's `attachment_max_mb` (default 10), at most 25 MB |
-| Upload request | 30 MB at `/api/v1/mail/drafts` (nginx), refused early on `Content-Length` |
+| Upload request | attachments plus 5 MiB (the `html` and `draft` parts, the framing): 30 MiB at most at `/api/v1/mail/drafts`, the web image's nginx limit there, which the host's proxy must allow too; refused early on `Content-Length` |
 | Save requests at once | 3 per user, in each API process; one more is 429 `busy` before its body is read |
 | Original read for quoting | 2 MiB |
 | Text quoted or forwarded | 20,000 characters (the original's text is cut to this) |
+| HTML quoted or forwarded | 1 MiB of the original's HTML; a longer one goes as its text |
 | Existing parts kept (`keep`) in a save | 50 (422 beyond it) |
 | Attachments on an MCP tool | 10 (`attachments`, by ref and part) |
 | Send rows kept | keyed: at least 30 days; key-less: a day; pruned on the user's next send |
@@ -949,7 +968,8 @@ Over a field's cap, or over the recipient cap, is 400 `invalid_argument` (a send
 recipient too: "Name at least one recipient."); over the attachment total or the upload size, 413
 `too_large`; over the hourly limit, 429 `rate_limited`, whose message gives the time the next send
 is possible.
-The host's reverse proxy needs the same 30 MB limit on that route ([`../deploy.md`](../deploy.md)).
+The host's reverse proxy needs the same 30 MiB limit on that route, and no other beyond its
+default ([`../deploy.md`](../deploy.md)).
 
 One race stays open by choice: the check that a send holds a draft written elsewhere is not atomic
 with that send's claim, so a send landing during a save's APPEND can leave an own version with a
@@ -965,9 +985,9 @@ CSRF check apply. Bodies are JSON except `POST /drafts`. Unknown fields are 422.
 | Route | Body | Answers |
 | --- | --- | --- |
 | `POST /drafts/prefill` | `{"ref", "mode": "reply" \| "reply_all" \| "forward" \| "unsubscribe"}` | 200 the fields below; writes nothing |
-| `POST /drafts` | multipart: `draft` (JSON) and `files[]` | 201 `{ref, parts, replaced, autosave}` |
-| `GET /drafts/{ref}` | | 200 the draft's fields, `lossy`, `parts`, `send` |
-| `GET /drafts/find?account=&compose_id=` | | 200 `{ref, parts}` of the newest version; 404 `not_found` |
+| `POST /drafts` | multipart: `draft` (JSON), `html` (optional, the HTML body as is) and `files[]` | 201 `{ref, parts, inline, replaced, autosave}` |
+| `GET /drafts/{ref}` | | 200 the draft's fields, `lossy`, `parts`, `inline`, `send` |
+| `GET /drafts/find?account=&compose_id=` | | 200 `{ref, parts, inline}` of the newest version; 404 `not_found` |
 | `DELETE /drafts/{ref}` | | 200 `{removed}` |
 | `POST /drafts/{ref}/send` | `{"confirm_resend": false}` (optional) | 202 `{send_id}`; 200 already sent; 409; 429 |
 | `GET /sends/{id}` | | 200 the send's result |
@@ -975,7 +995,8 @@ CSRF check apply. Bodies are JSON except `POST /drafts`. Unknown fields are 422.
 The static route `GET /drafts/find` is matched before `GET /drafts/{ref}`.
 
 ```jsonc
-// POST /drafts: the `draft` part (to, cc, bcc are lists of Address; text is plain text)
+// POST /drafts: the `draft` part (to, cc, bcc are lists of Address; text is plain text). The HTML
+// body is the `html` part, raw and not JSON: escaping could otherwise make it outgrow its part.
 {
   "account": 1,
   "compose_id": "6f1c0a2e-…",                  // UUID; required
@@ -986,11 +1007,14 @@ The static route `GET /drafts/find` is matched before `GET /drafts/{ref}`.
   "to": [ { "name": "", "address": "ada@example.org" } ],
   "cc": [], "bcc": [],
   "subject": "Re: Notes on the engine",
-  "text": "Thanks, …",
-  "keep": [ { "ref": "WzIsMSwiSU5CT1gi…", "part": "2" } ]   // parts of existing messages, or of the draft itself
+  "text": "Thanks, …",                          // unused with an html part, e.g. <p>Thanks, <img src="cid:a1@mailroom"></p>
+  "content_ids": ["a1@mailroom", null],          // per files[] in order: the Content-ID of an inline image, null for an attachment
+  "keep": [ { "ref": "WzIsMSwiSU5CT1gi…", "part": "2" },     // parts of existing messages, or of the draft itself
+            { "ref": "WzIsMSwiSU5CT1gi…", "part": "1.2", "inline": true } ]   // an inline part the HTML shows
 }
 // 201
 { "ref": "WzIsMSwiSU5CT1gi…", "parts": [ { "part": "2", "name": "notes.pdf", "type": "application/pdf", "size": 40211 } ],
+  "inline": [ { "part": "1.2", "name": "", "type": "image/png", "size": 5120, "content_id": "a1@mailroom" } ],
   "replaced": true, "autosave": true }
 ```
 
@@ -998,17 +1022,26 @@ The static route `GET /drafts/find` is matched before `GET /drafts/{ref}`.
   when the server did not report where the draft landed and a search by `Message-ID` found
   nothing yet (the client then calls `GET /drafts/find`). `parts` lists the attachments of the
   saved version, as the message view's `attachments`: after a save, the client keeps its
-  attachment tray from `parts`, with `keep` entries that name the draft's own parts. `replaced`
-  is true when the previous version was removed.
+  attachment tray from `parts`, with `keep` entries that name the draft's own parts. `inline`
+  lists the inline parts its HTML shows, each with the `content_id` its `cid:` URLs name, kept the
+  same way with `inline: true`. `replaced` is true when the previous version was removed.
+- `content_ids` is at most as long as `files[]` (else 400 `invalid_argument`); a file past its end
+  is an attachment. A Content-ID is at most 250 characters; one with characters a header cannot
+  carry as they are (a `?`, a space) is left out with its image.
 - A draft with no recipient is a valid draft; a send needs at least one.
-- `POST /drafts/prefill` answers `{account, from, to, cc, bcc, subject, text, answers, forwards,
-  attachments}`, the fields of the draft it would start (`answers` the ref for a reply, `forwards`
-  the ref for a forward, else null; `attachments`, for a
-  forward, the original's `{ref, part, name, type, size}` that the composer offers as `keep`), `from` the
+- `POST /drafts/prefill` answers `{account, from, to, cc, bcc, subject, text, html, answers,
+  forwards, attachments, inline}`, the fields of the draft it would start (`html` the same body in
+  HTML, an empty paragraph above the quote or the forwarded message, null for an unsubscribe;
+  `answers` the ref for a reply, `forwards` the ref for a forward, else null; `attachments`, for a
+  forward, the original's `{ref, part, name, type, size}` that the composer offers as `keep`;
+  `inline`, for a forward, the original's inline parts its `html` shows, the same with
+  `content_id`, to keep with `inline: true`), `from` the
   identity address chosen as above. A recipient of the original that is not
   [deliverable](#compose) is left out, since it would refuse every save of the draft.
-- `GET /drafts/{ref}` answers `{ref, account, compose_id, from, to, cc, bcc, subject, text, answers,
-  forwards, lossy, parts, send}`: `compose_id` is `null` for a draft not written by Mailroom; `send` is
+- `GET /drafts/{ref}` answers `{ref, account, compose_id, from, to, cc, bcc, subject, text, html,
+  answers, forwards, lossy, parts, inline, send}`: `html` is the HTML of a draft Mailroom wrote with
+  one, sanitised again as it is read, else null (`text` is then its text part); `compose_id` is
+  `null` for a draft not written by Mailroom; `send` is
   `null`, or `{send_id, state, code}` of the send of this draft, so reopening shows an `unknown`
   banner. `bcc` is shown to its owner.
 - `DELETE /drafts/{ref}` answers `{"removed": "expunged" | "trashed"}`.
@@ -1033,7 +1066,8 @@ The static route `GET /drafts/find` is matched before `GET /drafts/{ref}`.
 The `mail_draft` and `mail_send` groups ([`mcp.md`](mcp.md)) are the same service functions
 behind the same gate, with the agent as the one acting: the send mode limits them as in the
 [table above](#send-mode-and-who-is-acting), and the hourly limit and recipient cap bind them.
-Attachments are named by `ref` and `part` only: an agent never passes file content.
+Attachments are named by `ref` and `part` only: an agent never passes file content. A body is
+`text` or `html`, sanitised as the web's is, its text part made from it.
 
 ## REST contract
 

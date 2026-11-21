@@ -5,6 +5,7 @@ mailbox user and sends to addresses nobody else uses, so the Mailpit counts are 
 
 from __future__ import annotations
 
+import base64
 import inspect
 import json
 import logging
@@ -28,7 +29,7 @@ from mailroom.mail import service
 from mailroom.mail.pool import USER_UPLOADS
 from mailroom.mail.sends import SendRunner
 from mailroom_core import send as gate
-from mailroom_core.mail import MailError, MessageRef, format_ref, parse_ref
+from mailroom_core.mail import MAX_HTML_BYTES, MailError, MessageRef, format_ref, parse_ref
 from mailroom_core.store import SEND_CEILING
 from mailroom_core.testing import (
     HANG_UP,
@@ -61,6 +62,7 @@ MAIL = "/api/v1/mail"
 ME = "me@example.org"
 ALIAS = "alias@example.org"
 PDF = b"%PDF-1.4\n1 0 obj << >> endobj\ntrailer << >>\n%%EOF\n"
+PNG = b"\x89PNG\r\n\x1a\nfake"
 
 pytestmark = pytest.mark.integration
 
@@ -106,8 +108,11 @@ class Composer:
         return folder_contents(self.server, self.login, folder)
 
     def post_draft(self, *, files: tuple[tuple[str, bytes, str], ...] = (), **fields: Any) -> Any:
+        html = fields.pop("html", None)
         draft = {"account": 1, "compose_id": str(uuid.uuid4()), **fields}
         parts: list[Any] = [("draft", (None, json.dumps(draft)))]
+        if html is not None:
+            parts.append(("html", (None, html.encode())))
         parts += [("files[]", file) for file in files]
         return self.client.post(f"{MAIL}/drafts", files=parts)
 
@@ -331,6 +336,156 @@ def test_a_forward_offers_the_attachments(composer: Composer) -> None:
     assert (flags["forwarded"], flags["answered"]) == (True, False)
 
 
+def related(html: str) -> str:
+    """An HTML message showing one inline image, ``cid:logo@x``."""
+    return (
+        f"From: Shop <shop@example.org>\r\nTo: {ME}\r\nSubject: News\r\n"
+        "Date: Wed, 1 Oct 2026 12:00:00 +0000\r\nMIME-Version: 1.0\r\n"
+        'Content-Type: multipart/related; boundary="rel1"\r\n\r\n'
+        "--rel1\r\nContent-Type: text/html; charset=utf-8\r\n"
+        f"Content-Transfer-Encoding: quoted-printable\r\n\r\n{html.replace('=', '=3D')}\r\n"
+        "--rel1\r\nContent-Type: image/png\r\nContent-ID: <logo@x>\r\n"
+        f"Content-Transfer-Encoding: base64\r\n\r\n{base64.b64encode(PNG).decode()}\r\n"
+        "--rel1--\r\n"
+    )
+
+
+def test_a_prefill_gives_the_quote_and_the_forward_in_html_too(composer: Composer) -> None:
+    ref = composer.seed(
+        related('<p>Sale <b>today</b><img src="cid:logo@x"><script>alert(1)</script></p>')
+    )
+
+    def started(mode: str) -> Any:
+        return composer.client.post(
+            f"{MAIL}/drafts/prefill", json={"ref": ref, "mode": mode}
+        ).json()
+
+    reply = started("reply")
+    assert reply["html"].startswith("<p></p><div>On 2026-10-01 12:00, Shop")
+    assert '<blockquote type="cite"><p>Sale <b>today</b>' in reply["html"]
+    assert "script" not in reply["html"]
+    assert "cid:" not in reply["html"]
+    assert reply["inline"] == []
+
+    forward = started("forward")
+    assert "---------- Forwarded message" in forward["html"]
+    assert '<img src="cid:logo@x">' in forward["html"]
+    [shown] = forward["inline"]
+    assert (shown["ref"], shown["content_id"], shown["type"]) == (ref, "logo@x", "image/png")
+
+    plain = composer.seed(mime("Notes", text="Hello <there>"))
+    quoted = composer.client.post(
+        f"{MAIL}/drafts/prefill", json={"ref": plain, "mode": "reply"}
+    ).json()
+    assert '<blockquote type="cite"><div>Hello &lt;there&gt;</div></blockquote>' in quoted["html"]
+
+    # The forward keeps the original's image as an inline part of its own.
+    to = stranger()
+    saved = composer.save(
+        to=[address(to)],
+        forwards=ref,
+        html=f"<p>Look</p>{forward['html']}",
+        keep=[{"ref": ref, "part": shown["part"], "inline": True}],
+    )
+    assert saved["parts"] == []
+    assert [part["content_id"] for part in saved["inline"]] == ["logo@x"]
+    assert composer.sent(saved["ref"])["state"] == "sent"
+    smtp = SmtpTestServer.from_env()
+    assert smtp is not None
+    [delivered] = smtp.delivered_to(to)
+    wire = parsed(delivered.raw)
+    assert wire.get_content_type() == "multipart/related"
+    [image] = [part for part in wire.walk() if part["Content-ID"] == "<logo@x>"]
+    assert image.get_content() == PNG
+
+
+def test_an_html_draft_keeps_its_html_and_its_inline_images(composer: Composer) -> None:
+    compose_id = str(uuid.uuid4())
+    html = (
+        '<p>Hi <b>there</b> <a href="javascript:alert(1)">x</a></p>'
+        '<img src="cid:logo@x"><img src="https://tracker.example/p.gif">'
+        "<script>alert(1)</script>"
+    )
+    first = composer.save(
+        compose_id=compose_id,
+        to=[address("ada@example.org")],
+        subject="Rich",
+        text="ignored",
+        html=html,
+        content_ids=["logo@x", None],
+        files=(("logo.png", PNG, "image/png"), ("notes.pdf", PDF, "application/pdf")),
+    )
+    assert [part["name"] for part in first["parts"]] == ["notes.pdf"]
+    [inline] = first["inline"]
+    assert inline["content_id"] == "logo@x"
+
+    draft = composer.read(first["ref"])
+    assert draft["lossy"] is False
+    assert "Hi there" in draft["text"]
+    assert "ignored" not in draft["text"]
+    assert "<b>there</b>" in draft["html"]
+    assert '<img src="cid:logo@x">' in draft["html"]
+    for gone in ("script", "javascript", "tracker.example"):
+        assert gone not in draft["html"]
+    assert draft["inline"] == first["inline"]
+
+    found = composer.client.get(
+        f"{MAIL}/drafts/find", params={"account": 1, "compose_id": compose_id}
+    ).json()
+    assert found["inline"] == first["inline"]
+
+    second = composer.save(
+        compose_id=compose_id,
+        ref=first["ref"],
+        to=[address("ada@example.org")],
+        subject="Rich",
+        html=draft["html"].replace("Hi", "Hello"),
+        keep=[
+            {"ref": first["ref"], "part": inline["part"], "inline": True},
+            {"ref": first["ref"], "part": first["parts"][0]["part"]},
+        ],
+    )
+    again = composer.read(second["ref"])
+    assert "Hello <b>there</b>" in again["html"]
+    assert [part["content_id"] for part in again["inline"]] == ["logo@x"]
+    assert [part["name"] for part in again["parts"]] == ["notes.pdf"]
+
+    # Text alone makes it a plain-text draft again.
+    plain = composer.save(compose_id=compose_id, ref=second["ref"], text="Plain now")
+    assert (composer.read(plain["ref"])["html"], plain["inline"]) == (None, [])
+
+
+def test_an_html_draft_past_the_text_read_cap_reads_back_whole_and_sends(
+    composer: Composer,
+) -> None:
+    wide = '"é' * 1_000_000  # 3 MB of UTF-8, which JSON would have grown to 4 MB
+    ref = composer.save(to=[address("ada@example.org")], subject="Wide", html=f"<p>{wide}</p>")[
+        "ref"
+    ]
+    read = composer.read(ref)
+    assert read["lossy"] is False
+    assert read["html"] == f"<p>{wide}</p>\n"
+    assert composer.sent(ref)["state"] == "sent"
+
+
+def test_more_content_ids_than_files_are_refused(composer: Composer) -> None:
+    refused = composer.post_draft(
+        html="<p>x</p>", content_ids=["a@x", "b@x"], files=(("a.png", PNG, "image/png"),)
+    )
+    assert detail(refused) == (400, "invalid_argument")
+    assert composer.post_draft(content_ids=["x" * 251]).status_code == 422
+    assert detail(composer.post_draft(html="x" * (MAX_HTML_BYTES + 1))) == (400, "invalid_argument")
+    as_file = composer.client.post(
+        f"{MAIL}/drafts",
+        files=[
+            ("draft", (None, json.dumps({"account": 1, "compose_id": "c"}))),
+            ("html", ("body.html", b"<p>x</p>", "text/html")),
+        ],
+    )
+    assert detail(as_file) == (400, "invalid_argument")
+    assert composer.contents("Drafts") == []
+
+
 def test_a_forward_starts_from_the_identity_the_message_arrived_at(composer: Composer) -> None:
     ref = composer.seed(mime("Notes", to=f"Alias <{ALIAS}>", text="Hello"))
     started = composer.client.post(
@@ -370,6 +525,7 @@ def test_an_unsubscribe_by_mail_starts_a_draft_to_the_lists_one_address(
         "id=42",
         None,
     )
+    assert (started["html"], started["inline"]) == (None, [])
     assert composer.contents("Drafts") == []
 
     plain = composer.seed(mime("No list", text="Hello"))
@@ -439,7 +595,7 @@ def test_saving_replaces_the_previous_version(composer: Composer) -> None:
         f"{MAIL}/drafts/find", params={"account": 1, "compose_id": compose_id}
     )
     assert found.status_code == 200
-    assert found.json() == {"ref": second["ref"], "parts": second["parts"]}
+    assert found.json() == {"ref": second["ref"], "parts": second["parts"], "inline": []}
     assert detail(
         composer.client.get(
             f"{MAIL}/drafts/find", params={"account": 1, "compose_id": str(uuid.uuid4())}
@@ -885,7 +1041,7 @@ def test_a_body_that_declares_nothing_is_cut_at_the_limit(
 
     def chunks() -> Iterator[bytes]:
         yield head
-        for _ in range(8):
+        for _ in range(12):
             yield b"x" * (512 * 1024)
 
     response = composer.client.post(
@@ -911,7 +1067,7 @@ def test_the_attachment_cap_is_clamped_and_listed(
     assert account["max_recipients"] == 3
     ctx = app_context(composer.application.state)
     assert ctx is not None
-    assert service.upload_limit(ctx, user.id) == (25 + 2) * 1024 * 1024
+    assert service.upload_limit(ctx, user.id) == (25 + 5) * 1024 * 1024
 
 
 def test_sending_delivers_files_and_removes_the_draft(

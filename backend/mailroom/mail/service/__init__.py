@@ -29,6 +29,7 @@ from mailroom.mail.index.reads import Conversation, ConversationPage, ListedSumm
 from mailroom.mail.service._shared import MAX_CURSOR, MAX_FOLDER, MAX_REF_LENGTH, MAX_TERM
 from mailroom.mail.service.bulk import BULK_BATCH, BULK_MAX, act_on_matching, count_matching
 from mailroom.mail.service.compose import (
+    DRAFT_FIELD_BYTES,
     DRAFT_GONE,
     DRAFT_NOT_EDITABLE,
     SEND_HOLDS_THE_DRAFT,
@@ -102,6 +103,7 @@ __all__ = [
     "ALL_ACCOUNTS",
     "BULK_BATCH",
     "BULK_MAX",
+    "DRAFT_FIELD_BYTES",
     "DRAFT_GONE",
     "DRAFT_NOT_EDITABLE",
     "MAX_CURSOR",

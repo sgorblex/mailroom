@@ -27,9 +27,11 @@ from mailroom.mcp.tools.outgoing import (
     AccountId,
     Addresses,
     Attachments,
+    Html,
     Sender,
     Subject,
     Text,
+    check_body,
     keep_of,
     recipients,
     who,
@@ -60,7 +62,8 @@ class DraftCreateArguments(Arguments):
     to: Addresses | None = None
     cc: Addresses | None = None
     bcc: Addresses | None = None
-    text: Text
+    text: Text | None = None
+    html: Html | None = None
     attachments: Attachments | None = None
     reply_to: RefText | None = Field(
         default=None, description="Ref of the message this draft answers."
@@ -81,6 +84,7 @@ class DraftUpdateArguments(Arguments):
     cc: Addresses | None = None
     bcc: Addresses | None = None
     text: Text | None = None
+    html: Html | None = None
     attachments: Attachments | None = None
 
 
@@ -126,6 +130,8 @@ async def _saved(call: ToolCall, saved: SavedDraft) -> str:
 
 
 async def _draft_create(args: DraftCreateArguments, call: ToolCall) -> types.CallToolResult:
+    check_body(args.text, args.html)
+    text = args.text or ""
     to, cc, bcc = recipients(args.to), recipients(args.cc), recipients(args.bcc)
     keep = keep_of(args.attachments)
     if args.reply_to is None:
@@ -138,7 +144,8 @@ async def _draft_create(args: DraftCreateArguments, call: ToolCall) -> types.Cal
             cc=cc or (),
             bcc=bcc or (),
             subject=args.subject or "",
-            text=args.text,
+            text=text,
+            html=args.html,
             keep=keep,
         )
     else:
@@ -163,7 +170,10 @@ async def _draft_create(args: DraftCreateArguments, call: ToolCall) -> types.Cal
             cc=prefilled.cc if cc is None else cc,
             bcc=bcc or (),
             subject=prefilled.subject if args.subject is None else args.subject,
-            text=f"{args.text}{prefilled.text}" if args.quote else args.text,
+            text=f"{text}{prefilled.text}" if args.quote else text,
+            html=f"{args.html}{prefilled.html or ''}"
+            if args.html is not None and args.quote
+            else args.html,
             keep=keep,
         )
     saved = await call.thread(
@@ -173,6 +183,7 @@ async def _draft_create(args: DraftCreateArguments, call: ToolCall) -> types.Cal
 
 
 async def _draft_update(args: DraftUpdateArguments, call: ToolCall) -> types.CallToolResult:
+    check_body(args.text, args.html, required=False)
     to, cc, bcc = recipients(args.to), recipients(args.cc), recipients(args.bcc)
     try:
         current = await call.thread(
@@ -193,6 +204,9 @@ async def _draft_update(args: DraftUpdateArguments, call: ToolCall) -> types.Cal
         keep = [(ref, part.part) for part in draft.attachments]
     else:
         keep = keep_of(args.attachments)
+    # New text replaces the HTML; else the HTML stays, or is replaced, with the draft's images.
+    html = draft.html if args.html is None and args.text is None else args.html
+    keep_inline = [(format_ref(draft.ref), part.info.part) for part in draft.inline] if html else []
     fields = DraftFields(
         account=draft.ref.account,
         compose_id=draft.compose_id or _compose_id(),
@@ -205,7 +219,9 @@ async def _draft_update(args: DraftUpdateArguments, call: ToolCall) -> types.Cal
         bcc=draft.bcc if bcc is None else bcc,
         subject=draft.subject if args.subject is None else args.subject,
         text=draft.text if args.text is None else args.text,
+        html=html,
         keep=keep,
+        keep_inline=keep_inline,
     )
     saved = await call.thread(
         lambda: service.save_draft(call.ctx, call.user_id, fields, origin=call.origin)
@@ -217,12 +233,18 @@ async def _draft_update(args: DraftUpdateArguments, call: ToolCall) -> types.Cal
         previous = " The previous version could not be removed from Drafts."
     else:
         previous = f" The previous version was {gone}."
-    lossy = (
-        " The previous version had HTML or more text than is read; this one keeps its plain "
-        "text only."
-        if draft.lossy
-        else ""
-    )
+    if not draft.lossy:
+        lossy = ""
+    elif draft.html is None:
+        lossy = (
+            " The previous version had HTML or more text than is read; this one keeps its plain "
+            "text only."
+        )
+    else:
+        lossy = (
+            " The previous version had an invite with no name, or more than is read; this one "
+            "leaves those out."
+        )
     return text_result(f"{await _saved(call, saved)}{previous}{lossy}")
 
 
@@ -253,8 +275,9 @@ MAIL_DRAFT_TOOLS: Final[tuple[Tool[Any], ...]] = (
         description=(
             "Change a draft in Drafts: any field given replaces the old one, the rest is kept "
             "(attachments too, unless `attachments` is given). The draft gets a new ref; the old "
-            "one stops working. A draft written elsewhere keeps only its plain text. Refused "
-            "once the draft was sent or may have been."
+            "one stops working. New `text` replaces an HTML body; `html` replaces either. A draft "
+            "written elsewhere keeps only its plain text. Refused once the draft was sent or may "
+            "have been."
         ),
         group="mail_draft",
         arguments=DraftUpdateArguments,

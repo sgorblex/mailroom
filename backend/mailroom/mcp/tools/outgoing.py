@@ -19,6 +19,7 @@ from mailroom.mcp.tool import Arguments
 from mailroom.mcp.tools.mail_read import RefText  # noqa: TC001 -- Pydantic reads it at runtime
 from mailroom_core.mail import (
     MAX_ADDRESSES,
+    MAX_HTML_BYTES,
     MAX_SUBJECT_CHARS,
     MAX_TEXT_CHARS,
     MAX_UPLOADS,
@@ -50,6 +51,19 @@ Addresses = Annotated[
 ]
 Subject = Annotated[str, Field(max_length=MAX_SUBJECT_CHARS)]
 Text = Annotated[str, Field(max_length=MAX_TEXT_CHARS, description="The message, plain text.")]
+Html = Annotated[
+    str,
+    Field(
+        # A character takes at least a byte: the bound before core counts the UTF-8.
+        max_length=MAX_HTML_BYTES,
+        description=(
+            "The message as HTML, instead of text: its plain-text part is made from it. It is "
+            "sanitised: no scripts, forms, frames or style sheets, links only http(s) and "
+            "mailto, no remote images (a data: image is sent inside the message). With a quoted "
+            "or forwarded original, at most 3 MiB of UTF-8."
+        ),
+    ),
+]
 Sender = Annotated[
     str,
     Field(
@@ -81,6 +95,16 @@ Attachments = Annotated[
         description="Attachments of existing messages to attach, by ref and part: never content.",
     ),
 ]
+
+
+def check_body(text: str | None, html: str | None, *, required: bool = True) -> None:
+    """Refuses both a text and an HTML body, and with ``required`` neither."""
+    if text is not None and html is not None:
+        raise mail_refusal(
+            "invalid_argument", "Give text or html, not both: html makes its own text."
+        )
+    if required and text is None and html is None:
+        raise mail_refusal("invalid_argument", "Give the message as text or as html.")
 
 
 def keep_of(attachments: Sequence[AttachmentRef] | None) -> list[tuple[str, str]]:
