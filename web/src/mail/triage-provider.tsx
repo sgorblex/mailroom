@@ -14,6 +14,7 @@ import {
   type FlagChange,
   type MailFolder,
   type OrganizeGroup,
+  type SourceFolders,
 } from '@/api/mail.ts'
 import { ApiRequestError } from '@/api/http.ts'
 import { useUnmountSignal } from '@/lib/use-unmount-signal.ts'
@@ -99,24 +100,32 @@ function destination(action: Action, folders: MailFolder[] | undefined): string 
   }
 }
 
-/** `action` on `refs`, listed from `sourceFolder` (the folder shown; `undefined` over every folder). */
+/**
+ * `action` on `targets`, listed from `sourceFolder` (the folder shown; `undefined` over every
+ * folder), each row under its own `listed_folder` where it names one (a view's, a search's).
+ */
 function request(
   action: Action,
-  refs: string[],
+  targets: Target[],
   signal: AbortSignal,
   sourceFolder: string | undefined,
 ): Promise<OrganizeGroup[]> {
+  const refs = targets.map((target) => target.ref)
+  const source: SourceFolders = {
+    folder: sourceFolder,
+    each: Object.fromEntries(targets.flatMap((target) => (target.listed_folder == null ? [] : [[target.ref, target.listed_folder]]))),
+  }
   switch (action.kind) {
     case 'move':
-      return moveMessages(refs, action.folder.path, signal, sourceFolder)
+      return moveMessages(refs, action.folder.path, signal, source)
     case 'moveToAccount':
       return moveToAccount(refs, action.account, action.folder.path, action.removal, signal)
     case 'archive':
-      return archiveMessages(refs, signal, sourceFolder)
+      return archiveMessages(refs, signal, source)
     case 'junk':
-      return junkMessages(refs, signal, sourceFolder)
+      return junkMessages(refs, signal, source)
     case 'trash':
-      return trashMessages(refs, signal, sourceFolder)
+      return trashMessages(refs, signal, source)
     case 'flag':
       return flagMessages(refs, action.change, signal)
   }
@@ -486,12 +495,7 @@ export function TriageProvider({
         for (const batch of batches(pending)) {
           let groups: OrganizeGroup[]
           try {
-            groups = await request(
-              action,
-              batch.map((target) => target.ref),
-              signal,
-              sourceFolder,
-            )
+            groups = await request(action, batch, signal, sourceFolder)
           } catch (error) {
             if (signal.aborted) {
               return

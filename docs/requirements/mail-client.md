@@ -32,6 +32,20 @@ notifications](#desktop-notifications).
   a new search starts without them. A row the user changed so it no longer matches (opened, and
   so read, under *Unread*; unstarred under *Starred*) stays in place, live updates reading the
   list again too, until the folder, the search or the filters change; `j` and `k` go on from it.
+- **Views** at the top of the sidebar: *All inboxes* and the user's saved [views](#views), in
+  their order, each with the unread count of its folders when every one is listed already (none
+  for a search). Opening one (`view` in the URL) lists it as a folder is listed, each row naming
+  its account and folder, with selection, the row and toolbar actions and live updates (a change
+  to one of its folders, or one getting ready, reads it again). Its actions send each row's
+  `listed_folder` as its own source folder (`source_folders`), so a Gmail row (an All Mail ref)
+  is acted on in the label folder it was listed under and leaves that one only, in a view of
+  different folders too; `source_folder` is INBOX for *All inboxes*, a search's folder, or the
+  folder a view's folders all share. No quick filters, and selecting every matching
+  message stays a folder's or a search's. The folders it leaves out, off the index, are named
+  above the list. A search shown offers *Save as view* (named in a dialog, then opened), which
+  keeps the line as the list shows it, the quick filters on included (`from:ada` with *Unread*
+  on saves `from:ada is:unread`), refused for one with words or Gmail search, which the index cannot answer; each saved view's
+  menu (its ⋯ button) renames it, moves it up or down, or deletes it (its mail stays).
 - **Message view:** headers, the text body (quotes and signatures collapsed), attachments and a
   calendar note; a **standalone HTML view** when the message has an HTML body; attachment download.
 - **Sender checks** in the message view's headers, from the read's `sender_mismatch`, `sent_to` and

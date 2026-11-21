@@ -160,9 +160,9 @@ released and checked in production before the next one starts. Batch 15 is the r
 
 - [x] **Index and live updates** — schema, initial sync, IDLE-driven refresh, push to the browser;
       lists and search move to the index.
-- [ ] **Unified folders and saved searches** (after *Index and live updates*) — a folder made of
+- [x] **Unified folders and saved searches** (after *Index and live updates*) — a folder made of
       any folders of any of the user's accounts (*All inboxes* first), and a search kept as a
-      folder; one mechanism for both. Server side in (`/api/v1/mail/views`); the sidebar next.
+      folder; one mechanism for both: views (`/api/v1/mail/views`, the web sidebar).
 - [x] **Unread only and quick filters** — one-click views of the list (unread, flagged, with
       attachments), which are preset searches: both, the same mechanism.
 - [x] **Search syntax** — `from:`, `to:`, `has:attachment`, `is:unread`, `before:` and the like

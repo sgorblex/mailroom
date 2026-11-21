@@ -13,8 +13,10 @@ import type {
   MessageView,
   MutedThread,
   OrganizeGroup,
+  SavedView,
   SendResult,
   SourceFailure,
+  ViewPage,
 } from '@/api/mail.ts'
 
 type Defaulted = 'delimiter' | 'selectable' | 'uid_validity' | 'uid_next'
@@ -112,6 +114,13 @@ export interface FakeMailState {
   indexMaxAgeCap?: number | null
   /** Each account's folders whose new mail notifies, which `PUT /mail/notifications/accounts/{id}` sets; INBOX unless it says otherwise. */
   notifications?: Record<string, string[]>
+  /** The user's saved views, which the view routes keep; none unless it says otherwise. */
+  savedViews?: SavedView[]
+  /**
+   * A view's first page by key (`all_inboxes` or the id), else its folders' messages merged
+   * (*All inboxes*: every account's INBOX; a search: `searchResult`), nothing left out.
+   */
+  viewPages?: Record<string, ViewPage>
 }
 
 /** The statuses of the mail codes the organize routes answer (`docs/requirements/mail-client.md`). */
@@ -855,6 +864,77 @@ function filterRoutes(state: FakeMailState, path: string, init?: RequestInit): R
   return json(200, ruleSet)
 }
 
+/** The view routes over `state.savedViews`, as `docs/requirements/mail-client.md` (*Views*) words them. */
+function viewRoutes(state: FakeMailState, url: URL, init?: RequestInit): Response | null {
+  const match = /^\/api\/v1\/mail\/views(?:\/([^/]+))?(\/messages)?$/.exec(url.pathname)
+  if (match === null) {
+    return null
+  }
+  const views = (state.savedViews ??= [])
+  const method = init?.method ?? 'GET'
+  const body = typeof init?.body === 'string' ? (JSON.parse(init.body) as Record<string, unknown>) : {}
+  const numbered = (kept: SavedView[]): SavedView[] => {
+    state.savedViews = kept.map((view, position) => ({ ...view, position }))
+    return state.savedViews
+  }
+  const taken = (name: unknown, id?: number): boolean => views.some((view) => view.name === name && view.id !== id)
+  const [, key, messages] = match
+  if (key === undefined) {
+    if (method === 'POST') {
+      if (taken(body['name'])) {
+        return refuse(409, 'view_name_taken')
+      }
+      const view: SavedView = {
+        id: Math.max(0, ...views.map((each) => each.id)) + 1,
+        name: String(body['name']),
+        sources: (body['sources'] as SavedView['sources'] | undefined) ?? null,
+        query: (body['query'] as string | undefined) ?? null,
+        position: views.length,
+      }
+      views.push(view)
+      return json(201, view)
+    }
+    return json(200, { views })
+  }
+  if (key === 'order' && method === 'PUT') {
+    const ids = body['view_ids'] as number[]
+    return json(200, { views: numbered(ids.map((id) => views.find((view) => view.id === id)).filter((view) => view !== undefined)) })
+  }
+  const view = views.find((each) => String(each.id) === key)
+  if (messages !== undefined) {
+    const page = state.viewPages?.[key]
+    if (page !== undefined) {
+      return json(200, page)
+    }
+    if (key !== 'all_inboxes' && view === undefined) {
+      return notFound()
+    }
+    if (view?.query != null) {
+      return json(200, { ...(state.searchResult ?? { messages: [], next_cursor: null, failures: [] }), not_indexed: [] })
+    }
+    const sources = view?.sources ?? state.accounts.map((account) => ({ account_id: account, folder: 'INBOX' }))
+    const rows = sources
+      .flatMap((source) => state.messages[`${String(source.account_id)}/${source.folder}`] ?? [])
+      .sort((a, b) => uidOf(b) - uidOf(a))
+    return json(200, { messages: rows, next_cursor: null, failures: [], not_indexed: [] })
+  }
+  if (view === undefined) {
+    return notFound()
+  }
+  if (method === 'PATCH') {
+    if (taken(body['name'], view.id)) {
+      return refuse(409, 'view_name_taken')
+    }
+    view.name = String(body['name'])
+    return json(200, view)
+  }
+  if (method === 'DELETE') {
+    numbered(views.filter((each) => each !== view))
+    return new Response(null, { status: 204 })
+  }
+  return null
+}
+
 /**
  * A fake mail API over `state`: `/api/v1/accounts`, the `/api/v1/mail` routes and the index's age limit. A cursor is
  * `"before:<uid>"`, the uid of the last item shown, as opaque to the client as the real ones and,
@@ -890,7 +970,7 @@ export function stubMailApi(state: FakeMailState): Mock {
         }),
       )
     }
-    const indexed = indexRoutes(state, url, init) ?? notificationRoutes(state, url, init)
+    const indexed = indexRoutes(state, url, init) ?? notificationRoutes(state, url, init) ?? viewRoutes(state, url, init)
     if (indexed !== null) {
       return indexed
     }

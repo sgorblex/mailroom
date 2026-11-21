@@ -45,6 +45,7 @@ export function MessageList({
   searching,
   filtered = false,
   subfolders = false,
+  view = false,
 }: {
   /** Names the list, for its pages' query keys. */
   source: string
@@ -56,6 +57,8 @@ export function MessageList({
   filtered?: boolean
   /** Read with its subfolders. */
   subfolders?: boolean
+  /** A view's list: its rows name their account and folder, and it is no folder. */
+  view?: boolean
 }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const queryClient = useQueryClient()
@@ -127,7 +130,7 @@ export function MessageList({
     return (
       <div className="flex flex-col items-start gap-3">
         <p role="alert" className="text-sm">
-          {mailErrorMessage(t, first.error, t('list.loadFailed'), ACCOUNT_NOT_FOUND)}
+          {mailErrorMessage(t, first.error, t('list.loadFailed'), view ? 'views.notFound' : ACCOUNT_NOT_FOUND)}
         </p>
         <Button
           variant="outline"
@@ -177,7 +180,9 @@ export function MessageList({
       {/* Every loaded row moved away is not an empty folder while there is more to load. */}
       {messages.length === 0 ? (
         nextCursor === null && (
-          <p className="text-sm text-muted-foreground">{searching || filtered ? t('list.noMatches') : t('list.empty')}</p>
+          <p className="text-sm text-muted-foreground">
+            {searching || filtered ? t('list.noMatches') : view ? t('views.empty') : t('list.empty')}
+          </p>
         )
       ) : (
         <>
@@ -230,7 +235,7 @@ export function MessageList({
                 />
                 <StarToggle message={message} />
                 <ToSortToggle message={message} />
-                <MessageRow message={message} source={searching ? 'account' : subfolders ? 'folder' : null} />
+                <MessageRow message={message} source={searching || view ? 'account' : subfolders ? 'folder' : null} />
               </li>
             ))}
           </ul>

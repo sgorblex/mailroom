@@ -13,10 +13,11 @@ export interface Flags {
 }
 
 /**
- * What an action needs of a message: where it is, and its flags as the list or view read them;
- * its sender, where known, for the filter Report spam offers.
+ * What an action needs of a message: where it is (and the folder its row was listed under, where
+ * an action on a Gmail row acts), and its flags as the list or view read them; its sender, where
+ * known, for the filter Report spam offers.
  */
-export type Target = Pick<MessageItem, 'ref' | 'account_id' | 'folder'> & { flags: Flags; from?: MailAddress | null }
+export type Target = Pick<MessageItem, 'ref' | 'account_id' | 'folder' | 'listed_folder'> & { flags: Flags; from?: MailAddress | null }
 
 export type Action =
   | { kind: 'archive' }
