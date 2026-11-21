@@ -16,7 +16,7 @@ from mailroom.mail.index import sync as index_sync
 from mailroom.models import MailIndexMessage
 from mailroom_core.mail import IndexedMessage, MessageRef, Source, format_ref
 from mailroom_core.render import Address
-from tests.test_mail_index_reads import ALL_MAIL, GMAIL, folder, ready, unasked
+from tests.test_mail_index_reads import ALL_MAIL, GMAIL, UTC_ZONE, folder, ready, unasked
 from tests.test_mail_index_rows import message
 
 if TYPE_CHECKING:
@@ -158,7 +158,7 @@ def test_a_sender_new_to_a_conversation_is_flagged(db_session: Session, user: Us
         db_session, user.id, [Source(1, "INBOX")], gmail=unasked, listing=unasked
     )
     assert sources is not None
-    found = reads.read_conversations(db_session, user.id, sources, None, limit=10)
+    found = reads.read_conversations(db_session, user.id, sources, None, zone=UTC_ZONE, limit=10)
     flagged = {summary.uid: (c.count, c.latest_from_new_sender) for summary, _, c in found}
     # The forged reply with its own subject is a row of its own; the one copying the subject
     # joins, and its sender, Eve, is new to the conversation. Bob, in Cc of lunch, is not.
@@ -202,7 +202,9 @@ def test_a_conversations_refs_leave_out_the_users_own_copies(
     wanted = [Source(1, "INBOX"), Source(1, "Sent"), Source(1, "Drafts")]
     sources = reads.index_sources(db_session, user.id, wanted, gmail=unasked, listing=unasked)
     assert sources is not None
-    found = reads.read_conversations(db_session, user.id, sources, None, limit=10, listing=listing)
+    found = reads.read_conversations(
+        db_session, user.id, sources, None, zone=UTC_ZONE, limit=10, listing=listing
+    )
     by_key = {summary.uid: c for summary, _, c in found if summary.folder != "INBOX"}
     mine = found[0][2]  # <b>: only the user's own, all kept
     assert (mine.count, mine.refs) == (
@@ -221,7 +223,9 @@ def test_a_conversations_refs_leave_out_the_users_own_copies(
         listing=lambda _: GMAIL,
     )
     assert gmail is not None
-    [(latest, _, labelled)] = reads.read_conversations(db_session, user.id, gmail, None, limit=10)
+    [(latest, _, labelled)] = reads.read_conversations(
+        db_session, user.id, gmail, None, zone=UTC_ZONE, limit=10
+    )
     inbox_ref = format_ref(MessageRef(2, ALL_MAIL, 7, 1))
     assert (latest.uid, labelled.count, labelled.refs) == (3, 3, (inbox_ref,))
     assert labelled.listed_folders == {inbox_ref: "INBOX"}

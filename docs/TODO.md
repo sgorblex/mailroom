@@ -177,11 +177,13 @@ released and checked in production before the next one starts. Batch 15 is the r
 
 ### Milestone D: Writing and sending
 
-First, a fix carried over from 0.14.0 testing:
+First, fixes carried over from 0.14.0 testing:
 
 - [x] **Gmail folder counts from the index** — a Gmail account's label folders are counted from
       All Mail's indexed rows and their labels in one query, instead of a STATUS per label (a
       folder list with 122 labels took over 20 s).
+- [x] **Index dates in the user's time zone** — `after:`/`before:` on the index, and the age
+      limit's first day, are days of the user's time zone, not UTC's.
 
 #### 7. Compose
 

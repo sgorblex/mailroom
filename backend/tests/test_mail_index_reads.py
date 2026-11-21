@@ -10,20 +10,23 @@ import base64
 import json
 from contextlib import contextmanager
 from dataclasses import replace
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, ClassVar, cast
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import select
 
 from mailroom.auth.users import create_user
 from mailroom.mail.index import reads
+from mailroom.mail.index import sync as index_sync
 from mailroom.mail.index.reads import IndexCursor, IndexSource, decode_cursor, gmail_label
 from mailroom.mail.service import folder_writes, organize
 from mailroom.mail.service import read as service_read
 from mailroom.models import MailIndexFolder
 from mailroom_core import mail as core
+from mailroom_core.config import TimeZoneName
 from mailroom_core.mail import (
     MESSAGES,
     TO_SORT,
@@ -55,6 +58,7 @@ if TYPE_CHECKING:
 MAIL = "/api/v1/mail"
 DAY = datetime(2026, 11, 20, tzinfo=UTC)
 ALL_MAIL = "[Gmail]/All Mail"
+UTC_ZONE = TimeZoneName("UTC")
 
 
 @pytest.fixture(autouse=True)
@@ -180,7 +184,9 @@ def test_a_search_finds_the_users_own_rows(db_session: Session, user: User) -> N
     assert sources is not None
 
     def uids(query: SearchQuery | None, **options: Any) -> list[int]:
-        found = reads.read_rows(db_session, user.id, sources, query, limit=10, **options)
+        found = reads.read_rows(
+            db_session, user.id, sources, query, zone=UTC_ZONE, limit=10, **options
+        )
         return [summary.uid for summary, _ in found]
 
     assert uids(None) == [3, 2, 1]
@@ -194,11 +200,87 @@ def test_a_search_finds_the_users_own_rows(db_session: Session, user: User) -> N
     assert uids(SearchQuery(since=DAY.date(), before=DAY.date() + timedelta(days=1))) == [3, 2, 1]
     assert uids(SearchQuery(before=DAY.date())) == []
 
-    first = reads.read_rows(db_session, user.id, sources, None, limit=2)
+    first = reads.read_rows(db_session, user.id, sources, None, zone=UTC_ZONE, limit=2)
     assert uids(None, after=first[-1][1]) == [1]
-    [(summary, _)] = reads.read_rows(db_session, user.id, sources, None, limit=1)
+    [(summary, _)] = reads.read_rows(db_session, user.id, sources, None, zone=UTC_ZONE, limit=1)
     assert summary.ref == format_ref(MessageRef(1, "INBOX", 7, 3))
     assert summary.flags == frozenset({TO_SORT})
+
+
+def test_a_searchs_days_are_the_users(db_session: Session, user: User) -> None:
+    """Around midnight in Berlin (UTC+1 in November) a day starts an hour before UTC's."""
+    inbox = ready(db_session, user, 1, "INBOX")
+    db_session.add_all(
+        [
+            message(inbox, user.id, 1, received=DAY - timedelta(minutes=30)),  # 00:30 in Berlin
+            message(inbox, user.id, 2, received=DAY + timedelta(hours=23, minutes=30)),
+        ]
+    )
+    db_session.commit()
+    sources = reads.index_sources(
+        db_session, user.id, [Source(1, "INBOX")], gmail=unasked, listing=unasked
+    )
+    assert sources is not None
+    day = SearchQuery(since=DAY.date(), before=DAY.date() + timedelta(days=1))
+
+    def uids(zone: str) -> list[int]:
+        found = reads.read_rows(
+            db_session, user.id, sources, day, zone=TimeZoneName(zone), limit=10
+        )
+        return [summary.uid for summary, _ in found]
+
+    assert uids("UTC") == [2]
+    assert uids("Europe/Berlin") == [1]
+
+
+def test_the_live_tail_keeps_the_users_days() -> None:
+    """Under an age limit from DAY (the server's, UTC's), a search from DAY in Berlin starts an
+    hour before the index's first row: the tail asks the server from the day before and keeps
+    only what arrived from the user's midnight on. In New York the day starts after the
+    server's, so the index holds it all."""
+    source = IndexSource(1, "INBOX", 5, 7, None, DAY.date(), ("INBOX",))
+    berlin, new_york = TimeZoneName("Europe/Berlin"), TimeZoneName("America/New_York")
+    since = SearchQuery(since=DAY.date())
+    assert reads.tail_of([source], since, berlin) == [(1, "INBOX", DAY.date())]
+    assert reads.tail_of([source], since, UTC_ZONE) == []
+    assert reads.tail_of([source], since, new_york) == []
+    assert reads.tail_of([source], SearchQuery(since=DAY.date() - timedelta(days=1)), new_york)
+    assert reads.tail_of([source], None, berlin) == [(1, "INBOX", DAY.date())]
+
+    day = DAY.date()
+    widened = reads.tail_query(SearchQuery(subject="x", since=day, before=day))
+    assert widened == SearchQuery(
+        subject="x", since=day - timedelta(days=1), before=day + timedelta(days=1)
+    )
+    assert reads.tail_query(None) is None
+    assert reads.tail_query(SearchQuery(since=date.min)) == SearchQuery(since=date.min)
+
+    def arrived(at: datetime | None) -> core.MessageSummary:
+        return core.MessageSummary(
+            ref=format_ref(MessageRef(1, "INBOX", 7, 1)),
+            account=1,
+            folder="INBOX",
+            uid=1,
+            uid_validity=7,
+            date=at,
+            received=at,
+            sender=(),
+            subject="",
+            flags=frozenset(),
+            has_attachments=False,
+            preview=None,
+            size=1,
+        )
+
+    evening = arrived(DAY - timedelta(minutes=30))  # 23:30 UTC, 00:30 in Berlin
+    earlier = arrived(DAY - timedelta(minutes=90))  # 22:30 UTC, 23:30 in Berlin the day before
+    assert reads.in_days(evening, since, berlin)
+    assert not reads.in_days(earlier, since, berlin)
+    assert not reads.in_days(evening, since, UTC_ZONE)
+    assert not reads.in_days(evening, SearchQuery(before=DAY.date()), berlin)
+    assert reads.in_days(earlier, SearchQuery(before=DAY.date()), berlin)
+    assert reads.in_days(arrived(None), since, berlin)
+    assert reads.in_days(earlier, None, berlin)
 
 
 def test_a_gmail_label_view_reads_all_mails_rows(db_session: Session, user: User) -> None:
@@ -227,7 +309,7 @@ def test_a_gmail_label_view_reads_all_mails_rows(db_session: Session, user: User
         ("INBOX", "Work"),
     )
     assert source.listed == (("\\Inbox", "INBOX"), ("Work", "Work"))
-    found = reads.read_rows(db_session, user.id, sources, None, limit=10)
+    found = reads.read_rows(db_session, user.id, sources, None, zone=UTC_ZONE, limit=10)
     assert [summary.uid for summary, _ in found] == [2, 1]
     assert {summary.folder for summary, _ in found} == {ALL_MAIL}
     # Each row says the folder it was listed under, where an action on it acts.
@@ -243,7 +325,9 @@ def test_a_gmail_label_view_reads_all_mails_rows(db_session: Session, user: User
     every_message = views(ALL_MAIL)
     assert every_message is not None
     assert (every_message[0].labels, every_message[0].listed) == (None, ())
-    [(whole, _), *_] = reads.read_rows(db_session, user.id, every_message, None, limit=10)
+    [(whole, _), *_] = reads.read_rows(
+        db_session, user.id, every_message, None, zone=UTC_ZONE, limit=10
+    )
     assert cast("reads.ListedSummary", whole).listed_folder is None
     assert views("INBOX", "[Gmail]/Spam") is None
     assert (
@@ -813,6 +897,103 @@ def test_the_age_limit_leaves_older_mail_to_a_live_read(
     assert recent["next_cursor"] is None
 
 
+def searched(client: TestClient, request: dict[str, Any]) -> list[str]:
+    """The subjects of every page of a search, one message to a page."""
+    subjects: list[str] = []
+    cursor: str | None = None
+    while True:
+        response = client.post(f"{MAIL}/search", json={**request, "limit": 1, "cursor": cursor})
+        assert response.status_code == 200, response.text
+        page = response.json()
+        assert page["failures"] == []
+        subjects += [m["subject"] for m in page["messages"]]
+        cursor = page["next_cursor"]
+        if cursor is None:
+            return subjects
+
+
+def _age_limited(
+    db: Session, mailboxes: Mailboxes, user: User, account: int, zone: str, oldest: date
+) -> None:
+    user.index_max_age_days = 30
+    user.time_zone = zone
+    db.commit()
+    assert synced(db, mailboxes, user, account).oldest_indexed == oldest
+
+
+def test_a_search_from_the_age_limits_day_reads_the_users_first_hours_live(
+    user_client: TestClient,
+    db_session: Session,
+    mailboxes: Mailboxes,
+    imap_server: ImapTestServer,
+    login: str,
+    user: User,
+    mail_account: int,
+) -> None:
+    """East of the server (Berlin, UTC+1 or +2), the user's day starts before the server's: mail
+    of the user's first hour or two of the age limit's day is not indexed (SINCE is the server's
+    day), so the live tail finds it, once, and leaves out what came before the user's day."""
+    zone = "Europe/Berlin"
+    oldest = index_sync.since_day(30, datetime.now(UTC), TimeZoneName(zone))
+    assert oldest is not None
+    midnight = datetime.combine(oldest, time(), ZoneInfo(zone)).astimezone(UTC)
+    server_day = datetime.combine(oldest, time(), UTC)
+    for subject, at in (
+        ("indexed", server_day + timedelta(hours=9)),
+        ("the user's first hour", midnight + timedelta(minutes=30)),  # 23:30 UTC in winter
+        ("before the user's day", midnight - timedelta(minutes=30)),  # 22:30 UTC in winter
+        ("long before", server_day - timedelta(days=10)),
+    ):
+        seed(imap_server, login, "INBOX", mime(subject), (), at)
+    _age_limited(db_session, mailboxes, user, mail_account, zone, oldest)
+
+    request = {"account": mail_account, "folder": "INBOX", "since": oldest.isoformat()}
+    assert searched(user_client, request) == ["indexed", "the user's first hour"]
+    whole = user_client.post(f"{MAIL}/search", json={**request, "limit": 5}).json()
+    assert [m["subject"] for m in whole["messages"]] == ["indexed", "the user's first hour"]
+    assert whole["next_cursor"] is None
+    # The user's day before the age limit's ends where the index's rows begin.
+    before = {**request, "since": (oldest - timedelta(days=1)).isoformat()}
+    before["before"] = oldest.isoformat()
+    assert searched(user_client, before) == ["before the user's day"]
+
+
+def test_a_search_from_the_age_limits_day_west_of_the_server_stays_on_the_index(
+    user_client: TestClient,
+    db_session: Session,
+    mailboxes: Mailboxes,
+    imap_server: ImapTestServer,
+    login: str,
+    user: User,
+    mail_account: int,
+) -> None:
+    """West of the server (New York), the user's day starts after the server's: the index holds
+    all of it, and what the server dates that day but the user the day before is left out; a
+    search from earlier reads the tail live without what came before the user's own day."""
+    zone = "America/New_York"
+    oldest = index_sync.since_day(30, datetime.now(UTC), TimeZoneName(zone))
+    assert oldest is not None
+    midnight = datetime.combine(oldest, time(), ZoneInfo(zone)).astimezone(UTC)
+    server_day = datetime.combine(oldest, time(), UTC)
+    for subject, at in (
+        ("the user's day", midnight + timedelta(minutes=30)),
+        ("indexed, the user's day before", server_day + timedelta(hours=1)),
+        ("the server's day before", server_day - timedelta(minutes=30)),
+        ("two of the user's days before", server_day - timedelta(hours=23)),
+    ):
+        seed(imap_server, login, "INBOX", mime(subject), (), at)
+    _age_limited(db_session, mailboxes, user, mail_account, zone, oldest)
+
+    request = {"account": mail_account, "folder": "INBOX", "since": oldest.isoformat()}
+    assert searched(user_client, request) == ["the user's day"]
+    earlier = {**request, "since": (oldest - timedelta(days=1)).isoformat()}
+    assert searched(user_client, earlier) == [
+        "the user's day",
+        "indexed, the user's day before",
+        "the server's day before",
+    ]
+
+
 def test_a_folder_switched_off_between_pages_starts_over(
     user_client: TestClient,
     db_session: Session,
@@ -994,7 +1175,9 @@ def test_a_read_by_conversation_groups_each_accounts_rows(
     def listing(_account: int) -> list[Folder]:
         return [folder("INBOX", role="inbox"), folder("Sent", "\\Sent", role="sent")]
 
-    found = reads.read_conversations(db_session, user.id, sources, None, limit=10, listing=listing)
+    found = reads.read_conversations(
+        db_session, user.id, sources, None, zone=UTC_ZONE, limit=10, listing=listing
+    )
     assert [(summary.account, summary.uid) for summary, _, _ in found] == [
         (2, 1),
         (1, 4),
@@ -1017,11 +1200,24 @@ def test_a_read_by_conversation_groups_each_accounts_rows(
     assert [conversation.count for _, _, conversation in found] == [1, 1, 1, 3]
 
     following = reads.read_conversations(
-        db_session, user.id, sources, None, limit=10, after=found[1][1], listing=listing
+        db_session,
+        user.id,
+        sources,
+        None,
+        zone=UTC_ZONE,
+        limit=10,
+        after=found[1][1],
+        listing=listing,
     )
     assert [summary.uid for summary, _, _ in following] == [3, 2]
     unread = reads.read_conversations(
-        db_session, user.id, sources, SearchQuery(unread=True), limit=10, listing=listing
+        db_session,
+        user.id,
+        sources,
+        SearchQuery(unread=True),
+        zone=UTC_ZONE,
+        limit=10,
+        listing=listing,
     )
     assert [(summary.uid, c.count, c.unread) for summary, _, c in unread][-1] == (2, 1, 1)
 

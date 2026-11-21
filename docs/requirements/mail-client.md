@@ -1234,7 +1234,7 @@ same page shape.
 | `from`, `to` | Address or name contains this. |
 | `subject` | Subject contains this. |
 | `text` | Headers or body contain this. |
-| `since`, `before` | `YYYY-MM-DD` (a real calendar date; `since` inclusive, `before` exclusive), compared with the arrival date (INTERNALDATE), not the `Date` header. |
+| `since`, `before` | `YYYY-MM-DD` (a real calendar date; `since` inclusive, `before` exclusive), compared with the arrival date (INTERNALDATE), not the `Date` header: a day of the user's time zone when read from the [index](#index) (with the live read of what its age limit leaves out), the server's day when read live (IMAP `SINCE` and `BEFORE` compare dates only, as the server dates its mail). |
 | `unread`, `flagged` | Booleans. |
 | `to_sort` | Boolean: marked [To sort](../GLOSSARY.md) (`$MailroomSort`), or not; where the server keeps no keywords, no message is marked, so `true` matches nothing. |
 | `has_attachment` | `true` only (approximate: `multipart/mixed`; on Gmail, which ignores that header search, `has:attachment` through X-GM-RAW, over one account or all); `false` is ignored, not a criterion. |
@@ -1521,8 +1521,8 @@ folder off the index is read live, as before the index.
   whose All Mail is not listed over IMAP indexes nothing.
 - **Age limit.** The user's own (`index_max_age_days`, 1-36500 days, null for none), capped by
   the instance's `MAILROOM_INDEX_MAX_AGE_DAYS` (unset or not a whole number: no cap; clamped to
-  1-36500): the smaller of the two is in force. Older messages are not indexed and stay readable
-  live.
+  1-36500): the smaller of the two is in force, counted back from today in the user's time zone.
+  Older messages are not indexed and stay readable live.
 - **Sync.** The worker keeps the index (with the mail client; it runs without filters too). Every 5
   minutes it lists each account's folders, giving a new one its row and dropping the rows of one
   gone or renamed, and syncs each folder on the index that is not ready or was synced 5 minutes
@@ -1569,10 +1569,14 @@ folder off the index is read live, as before the index.
   keep their shape and order (newest first by arrival, then folder and UID), with a cursor of
   version 3 that keeps that place. On the index `from`, `to` and `subject` match a substring of
   the sender's and To's names and addresses and of the subject, in any case; `since` and `before`
-  compare the arrival day in UTC; `has_attachment` is the message's structure (an attachment
+  compare the arrival time with the start of that day in the user's time zone (UTC until they
+  set one); `has_attachment` is the message's structure (an attachment
   part), not the `multipart/mixed` approximation. A folder indexed under an age limit holds only
-  the mail since its day: once a list or search has shown that, it goes on live, `BEFORE` that
-  day, unless the search's own `since` leaves nothing there. On Gmail, INBOX and the label folders
+  the mail since its day (the server's, taken as UTC's): once a list or search has shown that, it
+  goes on live, `BEFORE` that day, unless the search's own `since` starts no earlier than that
+  day. That live read keeps the user's days too: it asks the server a day more on each side of
+  `since` and `before` and keeps what arrived within them, so a search from the age limit's own
+  day by a user east of UTC still finds, once, the mail of their first hours of it. On Gmail, INBOX and the label folders
   are read from All Mail's rows by label (INBOX `\Inbox`, Sent `\Sent`, Drafts `\Draft`,
   Starred `\Starred`, Important `\Important`, any other the folder's path), each message with
   its **All Mail ref** and the folder it was listed under (`listed_folder`). A move, archive,

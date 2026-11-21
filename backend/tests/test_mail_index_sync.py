@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
@@ -23,6 +23,7 @@ from mailroom.worker import index as worker_index
 from mailroom.worker.app import PROCRASTINATE_SCHEMA
 from mailroom.worker.context import WorkerContext
 from mailroom.worker.index import account_folders_due, run_folder_sync
+from mailroom_core.config import TimeZoneName
 from mailroom_core.mail import Folder, FolderFlags, IndexedMessage, IndexPlan, MailError
 from mailroom_core.testing import mime, raw_client, seed
 from tests.test_api_accounts import added, new_account
@@ -550,6 +551,29 @@ def test_a_resync_brings_gmail_labels_up_to_date(
     assert not run(db_session, server, user, work, folder_id)
     db_session.expire_all()
     assert db_session.scalars(select(MailIndexMessage.labels)).all() == [["Work"]]
+
+
+def test_the_age_limit_counts_days_in_the_users_time_zone(
+    user_client: TestClient, db_session: Session, user: User, server: FakeServer
+) -> None:
+    """At 23:30 UTC it is already the next day in Berlin, so the age limit starts a day later."""
+    late = datetime(2026, 11, 20, 23, 30, tzinfo=UTC)
+    assert index_sync.since_day(30, late, TimeZoneName("UTC")) == date(2026, 10, 21)
+    assert index_sync.since_day(30, late, TimeZoneName("Europe/Berlin")) == date(2026, 10, 22)
+    assert index_sync.since_day(None, late, TimeZoneName("Europe/Berlin")) is None
+
+    work = add_account(user_client)
+    folder_id = indexed(db_session, user.id, work, uids=())
+    user.index_max_age_days = 30
+    user.time_zone = "Europe/Berlin"
+    db_session.commit()
+    assert not index_sync.sync_folder(
+        db_session, server.connections(), user.id, work, folder_id, now=late
+    )
+    row = db_session.get(MailIndexFolder, folder_id)
+    assert row is not None
+    db_session.refresh(row)
+    assert row.oldest_indexed == date(2026, 10, 22)
 
 
 def test_a_message_that_cannot_be_read_holds_up_no_other(

@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Final
 
+from mailroom.auth.users import time_zone_of
 from mailroom.errors import mail_refusal
 from mailroom.mail.connections import PasswordMissing
 from mailroom.mail.index import reads as index_reads
@@ -91,6 +92,7 @@ def view_messages(
                 user_id,
                 picked,
                 query,
+                zone=time_zone_of(db, user_id),
                 limit=limit + 1,
                 after=after,
                 group=group,
