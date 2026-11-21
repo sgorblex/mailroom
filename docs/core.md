@@ -229,7 +229,8 @@ X-Original-To. Deliberate choices:
 - **Checks a read makes, given the message's `AccountConfig`** (`read_message(account=…)`):
   `authentication` (`message_headers.authentication`) reads `trusted_results` only, and is
   `NOT_VERIFIED` without an `authserv_id` or a field of it; its DMARC counts (`dmarc_pass`) only for
-  exactly one From, in one field of a block not cut, whose domain is `header.from`; `spf_domain`
+  exactly one From, in one field of a block not cut, whose domain is `header.from` or a subdomain of
+  it at a label boundary (relaxed alignment, compared in IDNA form with `ascii_host`); `spf_domain`
   (`smtp.mailfrom`'s) and `dkim_domain` (the `header.d` of the result `dkim` is) are ASCII host
   names, None when the text is none. `sent_to` (`identity.sent_to`, which `from_identity` answers
   with too) is the identity in To, Cc, then the delivery addresses. `sender_mismatch`
