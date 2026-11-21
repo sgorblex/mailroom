@@ -347,6 +347,10 @@ MCP `message_read` still never set `\Seen`.
   that can still be chosen. It has its own key, as the shortcuts take none with Ctrl or Meta: it
   works in the search fields, but not while typing in the composer nor over another dialog. Its
   input is marked as a search field that password managers should not offer to fill.
+- **Cache:** what the screen reads (accounts, folders, list pages, messages) goes through an
+  in-memory cache (TanStack Query), never persisted and dropped at sign-out; lists and messages are
+  still read again each time they are shown, and an account's folders whenever the sidebar mounts.
+  The cache reads nothing on its own: no retry of a failed read, no new read on focus or reconnect.
 
 ### REST routes
 

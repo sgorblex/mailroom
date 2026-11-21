@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, ShieldAlert, ShieldCheck, ShieldQuestionMark, TriangleAlert } from 'lucide-react'
 
@@ -7,7 +8,6 @@ import { readMessage, type MailAddress, type MessageView as MessageData } from '
 import { useTimeZone } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { formatDateTime } from '@/lib/format.ts'
-import { useLoad } from '@/lib/use-load.ts'
 import { useUnmountSignal } from '@/lib/use-unmount-signal.ts'
 
 import { Attachments } from './attachments.tsx'
@@ -17,6 +17,7 @@ import { HtmlBody, type RemoteChoice } from './html-body.tsx'
 import { MAIL_NS } from './i18n.ts'
 import { MailingListRow } from './mailing-list.tsx'
 import { mailErrorMessage } from './messages.ts'
+import { fetchPage, messageKey, READ_ON_MOUNT } from './queries.ts'
 import { ReplyActions } from './reply-actions.tsx'
 import { authenticationState, recipientSummary, resultText } from './sender-checks.ts'
 import { isSameFolder, loadedFolders, roleFolder, useTriage } from './triage-context.ts'
@@ -29,20 +30,19 @@ export function MessageView({ messageRef }: { messageRef: string }): ReactElemen
   const [remote, setRemote] = useState<RemoteChoice>('blocked')
   // Each view says which choice it was read with: until the new one answers, the old one stays,
   // and nothing may page it with the new choice.
-  const load = useCallback(
-    async (signal: AbortSignal) => ({
-      view: await readMessage(messageRef, { includeQuoted }, signal),
-      includeQuoted,
-    }),
-    [messageRef, includeQuoted],
-  )
-  const { state, retry } = useLoad(load, (error) => mailErrorMessage(t, error, t('message.loadFailed')))
-  const pending = state.kind === 'loading' || (state.kind === 'loaded' && state.value.includeQuoted !== includeQuoted)
+  const query = useQuery({
+    queryKey: messageKey(messageRef, 0, includeQuoted),
+    queryFn: async ({ signal }) => ({ view: await readMessage(messageRef, { includeQuoted }, signal), includeQuoted }),
+    placeholderData: keepPreviousData,
+    ...READ_ON_MOUNT,
+  })
+  const state = query.status
+  const pending = state === 'pending' || (state === 'success' && query.data.includeQuoted !== includeQuoted)
   const { setOpen, flagsOf, run, folders, loadFolders } = useTriage()
   const { canCompose } = useCompose()
   const navigate = useNavigate()
   const marked = useRef(false)
-  const view = state.kind === 'loaded' ? state.value.view : null
+  const view = state === 'success' ? query.data.view : null
   const accountFolders = view === null ? undefined : folders[view.account_id]
   // The user's own mail: no server checked who sent it on the way in.
   const own =
@@ -97,31 +97,37 @@ export function MessageView({ messageRef }: { messageRef: string }): ReactElemen
         <ArrowLeft aria-hidden="true" className="size-4" />
         {t('message.back')}
       </Link>
-      {state.kind === 'loading' && (
+      {state === 'pending' && (
         <p role="status" className="text-sm text-muted-foreground">
           {t('message.loading')}
         </p>
       )}
-      {state.kind === 'failed' && (
+      {state === 'error' && (
         <div className="flex flex-col items-start gap-3">
           <p role="alert" className="text-sm">
-            {state.message}
+            {mailErrorMessage(t, query.error, t('message.loadFailed'))}
           </p>
-          <Button variant="outline" size="sm" onClick={retry}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              void query.refetch()
+            }}
+          >
             {t('auth.retry')}
           </Button>
         </div>
       )}
-      {state.kind === 'loaded' && (
+      {state === 'success' && (
         <LoadedMessage
-          view={state.value.view}
+          view={query.data.view}
           own={own}
-          includeQuoted={state.value.includeQuoted}
+          includeQuoted={query.data.includeQuoted}
           pending={pending}
           onToggleQuoted={() => {
-            setIncludeQuoted(!state.value.includeQuoted)
+            setIncludeQuoted(!query.data.includeQuoted)
           }}
-          remote={state.value.view.remote_trusted ? 'sender' : remote}
+          remote={query.data.view.remote_trusted ? 'sender' : remote}
           onChooseRemote={setRemote}
         />
       )}
@@ -369,6 +375,7 @@ function TextBody({
   const [later, setLater] = useState<{ content: string; next: number | null }[]>([])
   const [more, setMore] = useState<More>({ kind: 'idle' })
   const unmountSignal = useUnmountSignal()
+  const queryClient = useQueryClient()
   const content = [view.text.content, ...later.map((window) => window.content)].join('')
   const next = later.length === 0 ? view.text.next_offset : (later[later.length - 1]?.next ?? null)
 
@@ -376,7 +383,12 @@ function TextBody({
     setMore({ kind: 'loading' })
     const signal = unmountSignal()
     try {
-      const window = await readMessage(view.ref, { offset, includeQuoted }, signal)
+      const window = await fetchPage(
+        queryClient,
+        messageKey(view.ref, offset, includeQuoted),
+        (querySignal) => readMessage(view.ref, { offset, includeQuoted }, querySignal),
+        signal,
+      )
       setLater((value) => [...value, { content: window.text.content, next: window.text.next_offset }])
       setMore({ kind: 'idle' })
     } catch (error) {
