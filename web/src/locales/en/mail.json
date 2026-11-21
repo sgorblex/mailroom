@@ -127,7 +127,28 @@
     "hasAttachments": "Has attachments",
     "menu": "Actions for {{subject}}",
     "dragging_one": "{{count}} message",
-    "dragging_other": "{{count}} messages"
+    "dragging_other": "{{count}} messages",
+    "conversation_one": "{{count}} message in the conversation",
+    "conversation_other": "{{count}} messages in the conversation"
+  },
+  "conversation": {
+    "label": "Conversation",
+    "loading": "Loading the conversation…",
+    "loadFailed": "Could not load the conversation.",
+    "count_one": "{{count}} message in this conversation",
+    "count_other": "{{count}} messages in this conversation",
+    "newSender": {
+      "title": "A sender new to this conversation",
+      "one_one": "This conversation has {{count}} message, and the newest is from a sender new to it, who neither wrote nor was written to in it before.",
+      "one_other": "This conversation has {{count}} messages, and the newest is from a sender new to it, who neither wrote nor was written to in it before.",
+      "several_one": "{{count}} of these conversations ends with a message from a sender new to it.",
+      "several_other": "{{count}} of these conversations end with a message from a sender new to them.",
+      "whole_one": "All {{count}} message",
+      "whole_other": "All {{count}} messages",
+      "wholeSeveral": "The whole conversations",
+      "shown": "Only the message shown",
+      "shownSeveral": "Only their newest messages"
+    }
   },
   "quick": {
     "label": "Show only"

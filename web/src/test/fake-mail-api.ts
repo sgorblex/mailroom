@@ -108,6 +108,10 @@ export interface FakeMailState {
   mutedBy?: Record<string, number>
   /** Each account's folders as the index settings list them; an account without is 404 there. */
   index?: Record<string, { gmail?: boolean; folders: IndexFolder[] }>
+  /** Ref → its conversation, for `group=thread` and `GET /messages/{ref}/thread`; a message without one is alone. */
+  threads?: Record<string, string>
+  /** The conversations (by their latest ref) whose latest sender is new to them (`latest_from_new_sender`); none unless it says otherwise. */
+  newSenders?: string[]
   /** The user's own age limit of the index, which `PUT /auth/me/index-max-age` sets; none unless it says otherwise. */
   indexMaxAgeDays?: number | null
   /** The instance's cap on it; none unless it says otherwise. */
@@ -169,6 +173,29 @@ export function messageItem(account: AccountId, folder: string, uid: number, fie
     preview: `Preview of ${String(uid)}`,
     size: 1000,
     ...fields,
+  }
+}
+
+/** `rows` (newest first) by conversation (`threads`): each one's latest, and the conversations, as `group=thread` answers. */
+function byConversation(state: FakeMailState, rows: MessageItem[]): Pick<MessagePage, 'messages' | 'conversations'> {
+  const groups = new Map<string, MessageItem[]>()
+  for (const item of rows) {
+    const key = state.threads?.[item.ref] ?? item.ref
+    groups.set(key, [...(groups.get(key) ?? []), item])
+  }
+  const all = [...groups.values()]
+  return {
+    messages: all.flatMap((items) => items.slice(0, 1)),
+    conversations: all.map((items) => ({
+      count: items.length,
+      unread: items.filter((item) => !item.flags.seen).length,
+      participants: [...new Set(items.toReversed().map((item) => item.from.name || item.from.address))].slice(0, 4),
+      has_attachments: items.some((item) => item.has_attachments),
+      flagged: items.some((item) => item.flags.flagged),
+      refs: items.map((item) => item.ref),
+      listed_folders: Object.fromEntries(items.flatMap((item) => (item.listed_folder == null ? [] : [[item.ref, item.listed_folder]]))),
+      latest_from_new_sender: items.length > 1 && (state.newSenders ?? []).includes(items[0]?.ref ?? ''),
+    })),
   }
 }
 
@@ -732,7 +759,7 @@ function indexRoutes(state: FakeMailState, url: URL, init?: RequestInit): Respon
   if (url.pathname === '/api/v1/auth/me/index-max-age' && init?.method === 'PUT') {
     const { index_max_age_days } = JSON.parse(init.body as string) as { index_max_age_days: number | null }
     state.indexMaxAgeDays = index_max_age_days
-    return json(200, { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days })
+    return json(200, { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days, conversations: true })
   }
   const match = /^\/api\/v1\/mail\/index\/accounts\/(\d+)(\/folders)?$/.exec(url.pathname)
   if (match === null) {
@@ -909,14 +936,16 @@ function viewRoutes(state: FakeMailState, url: URL, init?: RequestInit): Respons
     if (key !== 'all_inboxes' && view === undefined) {
       return notFound()
     }
+    const grouped = url.searchParams.get('group') === 'thread'
     if (view?.query != null) {
-      return json(200, { ...(state.searchResult ?? { messages: [], next_cursor: null, failures: [] }), not_indexed: [] })
+      const result = state.searchResult ?? { messages: [], next_cursor: null, failures: [] }
+      return json(200, { ...result, ...(grouped ? byConversation(state, result.messages) : {}), not_indexed: [] })
     }
     const sources = view?.sources ?? state.accounts.map((account) => ({ account_id: account, folder: 'INBOX' }))
     const rows = sources
       .flatMap((source) => state.messages[`${String(source.account_id)}/${source.folder}`] ?? [])
       .sort((a, b) => uidOf(b) - uidOf(a))
-    return json(200, { messages: rows, next_cursor: null, failures: [], not_indexed: [] })
+    return json(200, { messages: rows, ...(grouped ? byConversation(state, rows) : {}), next_cursor: null, failures: [], not_indexed: [] })
   }
   if (view === undefined) {
     return notFound()
@@ -1007,13 +1036,17 @@ export function stubMailApi(state: FakeMailState): Mock {
       const limit = Number(query.get('limit') ?? '25')
       const cursor = query.get('cursor')
       const before = cursor === null ? Number.POSITIVE_INFINITY : Number(cursor.slice('before:'.length))
-      const rest = all.filter((item) => uidOf(item) < before)
+      const after = all.filter((item) => uidOf(item) < before)
+      // By conversation: a page of their latest messages.
+      const grouped = query.get('group') === 'thread' ? byConversation(state, after) : null
+      const rest = grouped?.messages ?? after
       const shown = rest.slice(0, limit)
       const last = shown[shown.length - 1]
       return json(200, {
         messages: shown,
         next_cursor: rest.length > limit && last !== undefined ? `before:${String(uidOf(last))}` : null,
         failures: [],
+        ...(grouped === null ? {} : { conversations: grouped.conversations?.slice(0, limit) }),
       })
     }
     const filtersAnswer = filterRoutes(state, path, init)
@@ -1093,7 +1126,19 @@ export function stubMailApi(state: FakeMailState): Mock {
       return json(200, { outcome: 'ok', status: 200, list_id: view.headers.mailing_list?.id ?? null })
     }
     if (path === '/api/v1/mail/search') {
-      return json(200, state.searchResult ?? { messages: [], next_cursor: null, failures: [] })
+      const result = state.searchResult ?? { messages: [], next_cursor: null, failures: [] }
+      const { group } = JSON.parse(init?.body as string) as { group?: string }
+      return json(200, group === 'thread' ? { ...result, ...byConversation(state, result.messages) } : result)
+    }
+    match = /^\/api\/v1\/mail\/messages\/([^/]+)\/thread$/.exec(path)
+    if (match !== null) {
+      const ref = decodeURIComponent(match[1] ?? '')
+      const key = state.threads?.[ref] ?? ref
+      const rows = Object.values(state.messages)
+        .flat()
+        .filter((item) => (state.threads?.[item.ref] ?? item.ref) === key)
+        .sort((a, b) => uidOf(b) - uidOf(a))
+      return rows.length === 0 ? notFound() : json(200, { messages: rows, next_cursor: null, failures: [] })
     }
     match = /^\/api\/v1\/mail\/messages\/([^/]+)\/html$/.exec(path)
     if (match !== null) {

@@ -39,6 +39,25 @@ describe('keptTail', () => {
     expect(tail?.cursor).toBe('c6')
   })
 
+  it('drops a conversation loaded below once the first page holds it, as its newer message', () => {
+    const conversation = (uid: number, refs: number[]): MessageItem => ({
+      ...row(uid),
+      conversation: {
+        count: refs.length,
+        unread: 0,
+        participants: [],
+        has_attachments: false,
+        flagged: false,
+        refs: refs.map((each) => `r${String(each)}`),
+        listed_folders: {},
+        latest_from_new_sender: false,
+      },
+    })
+    const later: Tail = { rows: [conversation(7, [7, 3]), row(6)], failures: [], cursor: 'c6' }
+    const next: MessagePage = { ...page([10, 9, 8], 'c8'), messages: [conversation(11, [11, 7, 3]), row(10), row(8)] }
+    expect(refs(keptTail(page([10, 9, 8], 'c8'), later, next))).toEqual(['r6'])
+  })
+
   it("needs none when the first page reaches past what was loaded", () => {
     expect(keptTail(page([10, 9], 'c9'), null, page([10, 9, 8], 'c8'))).toBeNull()
   })

@@ -8,7 +8,7 @@ import { renderSignedIn } from '@/test/signed-in.tsx'
 
 import { IndexSettings } from './index-settings.tsx'
 
-const ALICE: User = { username: 'alice', is_admin: false, time_zone: 'UTC', mark_read_subfolders: true, index_max_age_days: null }
+const ALICE: User = { username: 'alice', is_admin: false, time_zone: 'UTC', mark_read_subfolders: true, index_max_age_days: null, conversations: true }
 const STATUS_PATH = `/api/v1/mail/index/accounts/${String(WORK)}`
 const FOLDERS_PATH = `${STATUS_PATH}/folders`
 

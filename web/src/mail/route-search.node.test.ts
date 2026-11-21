@@ -36,6 +36,11 @@ describe('the mail URL', () => {
     expect(validateMailSearch({ only: [] })).toEqual({})
   })
 
+  it('keeps the conversation an open message was opened in, with the message only', () => {
+    expect(validateMailSearch({ message: 'b', thread: 'a' })).toEqual({ message: 'b', thread: 'a' })
+    expect(validateMailSearch({ thread: 'a' })).toEqual({})
+  })
+
   it('keeps a view as All inboxes or a saved view id', () => {
     expect(validateMailSearch({ view: 'all_inboxes' })).toEqual({ view: 'all_inboxes' })
     expect(validateMailSearch({ view: 7 })).toEqual({ view: 7 })

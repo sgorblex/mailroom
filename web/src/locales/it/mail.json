@@ -127,7 +127,28 @@
     "hasAttachments": "Con allegati",
     "menu": "Azioni per {{subject}}",
     "dragging_one": "{{count}} messaggio",
-    "dragging_other": "{{count}} messaggi"
+    "dragging_other": "{{count}} messaggi",
+    "conversation_one": "{{count}} messaggio nella conversazione",
+    "conversation_other": "{{count}} messaggi nella conversazione"
+  },
+  "conversation": {
+    "label": "Conversazione",
+    "loading": "Caricamento della conversazione…",
+    "loadFailed": "Impossibile caricare la conversazione.",
+    "count_one": "{{count}} messaggio in questa conversazione",
+    "count_other": "{{count}} messaggi in questa conversazione",
+    "newSender": {
+      "title": "Un mittente nuovo per questa conversazione",
+      "one_one": "Questa conversazione ha {{count}} messaggio, e il più recente è di un mittente nuovo, che finora non vi aveva scritto né ricevuto messaggi.",
+      "one_other": "Questa conversazione ha {{count}} messaggi, e il più recente è di un mittente nuovo, che finora non vi aveva scritto né ricevuto messaggi.",
+      "several_one": "{{count}} di queste conversazioni finisce con un messaggio di un mittente nuovo per la conversazione.",
+      "several_other": "{{count}} di queste conversazioni finiscono con un messaggio di un mittente nuovo per la conversazione.",
+      "whole_one": "Tutto il {{count}} messaggio",
+      "whole_other": "Tutti i {{count}} messaggi",
+      "wholeSeveral": "Le conversazioni intere",
+      "shown": "Solo il messaggio mostrato",
+      "shownSeveral": "Solo i loro messaggi più recenti"
+    }
   },
   "quick": {
     "label": "Mostra solo"

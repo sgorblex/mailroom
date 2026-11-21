@@ -259,6 +259,14 @@
     "saved": "Salvato.",
     "saveFailed": "Impossibile salvare questa scelta."
   },
+  "conversations": {
+    "title": "Conversazioni",
+    "group": "Raggruppa i messaggi per conversazione",
+    "intro": "Ogni conversazione è allora una riga negli elenchi dei messaggi, con quanti messaggi ha e chi li ha scritti; quello che fai alla riga vale per ogni suo messaggio. Sono raggruppati solo gli elenchi letti dall'indice della posta.",
+    "save": "Salva",
+    "saved": "Salvato.",
+    "saveFailed": "Impossibile salvare questa scelta."
+  },
   "remoteSenders": {
     "title": "Immagini remote",
     "intro": "I mittenti di cui mostri sempre le immagini remote. Un mittente conta solo se il suo messaggio ha superato DMARC sul server di autenticazione dell'account.",

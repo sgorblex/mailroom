@@ -19,8 +19,9 @@ import {
 import { ApiRequestError } from '@/api/http.ts'
 import { useUnmountSignal } from '@/lib/use-unmount-signal.ts'
 
+import { asksFirst, isConversation, listedFolderOf, mixedFlags, newSenderIn, refsOf, shownOnly } from './conversations.ts'
 import { MAIL_NS } from './i18n.ts'
-import { ALL_MESSAGES_KEY, foldersKey, foldersQuery } from './queries.ts'
+import { ALL_MESSAGES_KEY, ALL_THREADS_KEY, foldersKey, foldersQuery } from './queries.ts'
 import { useToast } from './toast-context.ts'
 import { DoneMessage } from './toolbar.tsx'
 import {
@@ -36,6 +37,7 @@ import {
   type FolderState,
   type Matching,
   type MatchingAction,
+  type NewSender,
   type Outcome,
   type SpamOffer,
   type Target,
@@ -61,6 +63,7 @@ interface Scope {
   accountPickerInto: Destination | null
   matching: Matching | null
   bulk: MatchingAction | null
+  newSender: NewSender | null
 }
 
 const NO_SELECTION: ReadonlyMap<string, Target> = new Map()
@@ -78,6 +81,7 @@ function freshScope(key: string): Scope {
     accountPickerInto: null,
     matching: null,
     bulk: null,
+    newSender: null,
   }
 }
 
@@ -101,12 +105,13 @@ function destination(action: Action, folders: MailFolder[] | undefined): string 
 }
 
 /**
- * `action` on `targets`, listed from `sourceFolder` (the folder shown; `undefined` over every
- * folder), each row under its own `listed_folder` where it names one (a view's, a search's).
+ * `action` on the messages `targets` name, listed from `sourceFolder` (the folder shown;
+ * `undefined` over every folder), each under its own `listed_folder` where it names one (a
+ * view's, a search's).
  */
 function request(
   action: Action,
-  targets: Target[],
+  targets: Pick<Target, 'ref' | 'listed_folder'>[],
   signal: AbortSignal,
   sourceFolder: string | undefined,
 ): Promise<OrganizeGroup[]> {
@@ -256,10 +261,20 @@ export function TriageProvider({
     setScoped((previous) => (previous.key === sourceKey ? previous : freshScope(sourceKey)))
   }, [sourceKey, setScoped])
   const visible = useRef<Target[]>([])
+  const visibleListeners = useRef(new Set<(rows: Target[]) => void>())
   const setVisible = useCallback((rows: Target[]) => {
     visible.current = rows
+    for (const listener of visibleListeners.current) {
+      listener(rows)
+    }
   }, [])
   const visibleRows = useCallback(() => visible.current, [])
+  const subscribeVisible = useCallback((listener: (rows: Target[]) => void) => {
+    visibleListeners.current.add(listener)
+    return () => {
+      visibleListeners.current.delete(listener)
+    }
+  }, [])
 
   const scope = scoped.key === sourceKey ? scoped : freshScope(sourceKey)
 
@@ -431,7 +446,7 @@ export function TriageProvider({
     [scopedRef, openRef, updateScope],
   )
 
-  const run = useCallback(
+  const act = useCallback(
     async (action: Action, targets: Target[], options: { silent?: boolean } = {}) => {
       const silent = options.silent === true
       if (!silent && busyRef.current) {
@@ -478,7 +493,11 @@ export function TriageProvider({
       // outcome is worded as that refusal.
       let refusal: unknown = null
       let refusedBatches = 0
-      const batchCount = Math.ceil(pending.length / BATCH)
+      // Each message to act on with its row: a conversation's row takes every message of it.
+      const items = pending.flatMap((target) => refsOf(target).map((ref) => ({ ref, target })))
+      const batchCount = Math.ceil(items.length / BATCH)
+      // The conversations a group of which failed: what became of each of their messages is not known.
+      const unsure = new Set<Target>()
       // How to take it back: `null` once a group's messages cannot be found where they went.
       let undo: Undo | null =
         action.kind === 'flag'
@@ -492,21 +511,39 @@ export function TriageProvider({
             return
           }
         }
-        for (const batch of batches(pending)) {
+        for (const batch of batches(items)) {
+          const rows = [...new Set(batch.map((item) => item.target))]
           let groups: OrganizeGroup[]
           try {
-            groups = await request(action, batch, signal, sourceFolder)
+            groups = await request(
+              action,
+              batch.map((item) => ({ ref: item.ref, listed_folder: listedFolderOf(item.target, item.ref) })),
+              signal,
+              sourceFolder,
+            )
           } catch (error) {
             if (signal.aborted) {
               return
             }
             refusedBatches += 1
             refusal ??= error
-            failures.push(...refusedGroups(batch, error))
+            failures.push(...refusedGroups(rows, error))
+            for (const row of rows.filter(isConversation)) {
+              unsure.add(row)
+            }
             continue
           }
           for (const group of groups) {
+            const conversations = rows.filter((row) => isConversation(row) && row.account_id === group.account)
             if (group.error !== null || !group.ok) {
+              // A conversation's messages already where the action puts them are left alone, as rows are above.
+              const where = destination(action, loadedFoldersOf(group.account))
+              if (conversations.length > 0 && where !== undefined && isSameFolder(group.folder, where)) {
+                continue
+              }
+              for (const row of conversations) {
+                unsure.add(row)
+              }
               const inBoth = action.kind === 'moveToAccount' ? (group.new_refs?.length ?? 0) - group.count : 0
               failures.push({
                 account: group.account,
@@ -520,7 +557,9 @@ export function TriageProvider({
               continue
             }
             count += group.count
-            const members = batch.filter((target) => target.account_id === group.account && target.folder === group.folder)
+            const members = rows.filter(
+              (target) => !isConversation(target) && target.account_id === group.account && target.folder === group.folder,
+            )
             if (action.kind === 'flag') {
               applyFlags(group, members, action.change)
             } else {
@@ -528,6 +567,14 @@ export function TriageProvider({
               undo = undoMove(undo, group)
             }
           }
+        }
+        const whole = pending.filter((target) => isConversation(target) && !unsure.has(target))
+        if (whole.length > 0) {
+          applyConversations(whole, action)
+        }
+        if (count > 0) {
+          // An open conversation's messages show their flags and folders as read before.
+          void queryClient.invalidateQueries({ queryKey: ALL_THREADS_KEY })
         }
       } finally {
         if (silent) {
@@ -653,11 +700,66 @@ export function TriageProvider({
             adjustFolder(group.account, where, unread, members.length)
           }
         }
+        closeOpen(refs)
+      }
+
+      /** The open message is gone from where it was read: the pane closes. */
+      function closeOpen(refs: ReadonlySet<string>): void {
         const current = openRef.current
         if (current !== null && refs.has(current.ref)) {
           setOpenState(() => null)
-          void navigate({ to: '/mail', search: (previous) => ({ ...previous, message: undefined }) })
+          void navigate({ to: '/mail', search: (previous) => ({ ...previous, message: undefined, thread: undefined }) })
         }
+      }
+
+      /**
+       * Conversations every message of which the action reached: their rows change as one, and
+       * their accounts' folder counts are read again, as which folders their messages were in is
+       * not known here. A flag change is taken back message by message only where the row said
+       * each one's flag.
+       */
+      function applyConversations(rows: Target[], done: Action): void {
+        const accounts = new Set(rows.map((row) => row.account_id))
+        if (done.kind === 'moveToAccount') {
+          accounts.add(done.account)
+        }
+        for (const account of accounts) {
+          loadFolders(account, true)
+        }
+        if (done.kind !== 'flag') {
+          const refs = new Set(rows.flatMap((row) => [row.ref, ...refsOf(row)]))
+          setRemoved((value) => new Set([...value, ...refs]))
+          updateScope(key, (current) => ({
+            selection: new Map([...current.selection].filter(([ref]) => !refs.has(ref))),
+          }))
+          closeOpen(refs)
+          return
+        }
+        const { change } = done
+        const changed = overridesOf(key)
+        const next = new Map(changed)
+        for (const row of rows) {
+          const before = changed.get(row.ref) ?? row.flags
+          next.set(row.ref, {
+            seen: change.seen ?? before.seen,
+            flagged: change.flagged ?? before.flagged,
+            to_sort: change.to_sort ?? before.to_sort,
+          })
+          const mixed = mixedFlags(row)
+          if (mixed.some((flag) => change[flag] !== undefined)) {
+            undo = null
+          } else if (undo?.kind === 'flag') {
+            undo.before.push([row.ref, before])
+            const back = restoring(change, before)
+            if (Object.keys(back).length > 0) {
+              undo.restores.push({ change: back, refs: [...refsOf(row)] })
+            }
+            if (!undo.accounts.includes(row.account_id)) {
+              undo.accounts.push(row.account_id)
+            }
+          }
+        }
+        updateScope(key, () => ({ overrides: next }))
       }
     },
     [
@@ -675,7 +777,9 @@ export function TriageProvider({
       setRemoved,
       setOpenState,
       adjustFolder,
+      loadFolders,
       navigate,
+      queryClient,
     ],
   )
 
@@ -748,6 +852,29 @@ export function TriageProvider({
     [sourceKey, updateScope],
   )
 
+  // A conversation of several whose newest sender is new to it is not moved whole unasked.
+  const run = useCallback(
+    async (action: Action, targets: Target[], options: { silent?: boolean } = {}) => {
+      if (options.silent !== true && !busyRef.current && asksFirst(action, targets)) {
+        updateScope(sourceKey, () => ({ newSender: { action, targets } }))
+        return
+      }
+      await act(action, targets, options)
+    },
+    [act, sourceKey, updateScope],
+  )
+  const answerNewSender = useCallback(
+    (choice: 'whole' | 'shown' | null) => {
+      const asked = scope.newSender
+      updateScope(sourceKey, () => ({ newSender: null }))
+      if (asked === null || choice === null) {
+        return
+      }
+      void act(asked.action, choice === 'whole' ? asked.targets : asked.targets.map((target) => (newSenderIn(target) ? shownOnly(target) : target)))
+    },
+    [act, scope.newSender, sourceKey, updateScope],
+  )
+
   const value: Triage = {
     accounts,
     folders,
@@ -766,6 +893,7 @@ export function TriageProvider({
     setOpen,
     setVisible,
     visibleRows,
+    subscribeVisible,
     targets: scope.selection.size > 0 ? [...scope.selection.values()] : open === null ? [] : [open],
     busy,
     outcome: scope.outcome,
@@ -775,6 +903,8 @@ export function TriageProvider({
     spamOffer,
     dismissSpamOffer,
     run,
+    newSender: scope.newSender,
+    answerNewSender,
     picker: scope.picker,
     setPicker,
     accountPicker: scope.accountPicker,

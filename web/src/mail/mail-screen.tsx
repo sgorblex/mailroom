@@ -7,11 +7,13 @@ import { AccountsContext } from '@/accounts/accounts-context.ts'
 import { accountErrorMessage } from '@/accounts/messages.ts'
 import { type AccountId, listAccounts, type Account } from '@/api/accounts.ts'
 import { ALL_INBOXES, listMessages, searchMessages, viewMessages, type MatchScope, type SearchQuery, type ViewKey } from '@/api/mail.ts'
+import { useConversations } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { cn } from '@/lib/utils.ts'
 
 import { CommandPalette } from './command-palette.tsx'
 import { ComposeBar } from './compose-bar.tsx'
+import { ConversationView } from './conversation-view.tsx'
 import { useCompose } from './compose-context.ts'
 import { ComposeProvider } from './compose-provider.tsx'
 import { Composer } from './composer.tsx'
@@ -25,6 +27,7 @@ import { MessageList } from './message-list.tsx'
 import { MessageView } from './message-view.tsx'
 import { SearchForm } from './search-form.tsx'
 import { BulkHost } from './select-matching.tsx'
+import { NewSenderHost } from './new-sender-dialog.tsx'
 import { ShortcutSheet, ShortcutSheetButton } from './shortcut-sheet.tsx'
 import { ComposeAnnouncer } from './send-status.tsx'
 import { useMailShortcuts, usePaletteShortcut } from './shortcuts.ts'
@@ -55,6 +58,7 @@ export function MailScreen(): ReactElement {
   const [sheet, setSheet] = useState(false)
   const [palette, setPalette] = useState(false)
   const savedViews = useQuery(viewsQuery()).data
+  const grouped = useConversations()
 
   if (accounts.status === 'pending') {
     return (
@@ -108,7 +112,10 @@ export function MailScreen(): ReactElement {
       <ToastHost>
         <MuteProvider>
           <TriageProvider
-            sourceKey={search.view === undefined ? sourceKey(accountId, folder, requested, listed) : viewSource(search.view)}
+            sourceKey={grouping(
+              search.view === undefined ? sourceKey(accountId, folder, requested, listed) : viewSource(search.view),
+              grouped,
+            )}
             sourceFolder={
               search.view === undefined
                 ? shownFolder(folder, listed)
@@ -242,13 +249,16 @@ function MailPanes({
         {!shown &&
           (open === undefined ? (
             <p className="m-auto text-sm text-muted-foreground">{t('message.none')}</p>
-          ) : (
+          ) : search.thread === undefined ? (
             <MessageView key={open} messageRef={open} />
+          ) : (
+            <ConversationView key={search.thread} threadRef={search.thread} messageRef={open} />
           ))}
       </section>
       <OutcomeAnnouncer />
       <ComposeAnnouncer />
       <BulkHost />
+      <NewSenderHost />
     </main>
   )
 }
@@ -305,7 +315,15 @@ function sourceKey(accountId: AccountId, folder: string, subfolders: boolean, q:
   return `search:${searchesSubfolders(accountId, folder, subfolders, q) ? '1' : '0'}:${JSON.stringify(q)}`
 }
 
-/** The folder's messages, or the search's when there is one, narrowed by the quick filters; a new source starts over. */
+/** The list `source` names, by conversation when `grouped`: its pages are not the same. */
+function grouping(source: string, grouped: boolean): string {
+  return grouped ? `${source}:thread` : source
+}
+
+/**
+ * The folder's messages, or the search's when there is one, narrowed by the quick filters, by
+ * conversation when the user groups them; a new source starts over.
+ */
 function Listing({
   accounts,
   accountId,
@@ -319,16 +337,17 @@ function Listing({
 }): ReactElement {
   const { q, only } = useSearch({ from: '/mail' })
   const listed = listQuery(accountId, folder, q, only)
-  const key = sourceKey(accountId, folder, subfolders, listed)
+  const grouped = useConversations()
+  const key = grouping(sourceKey(accountId, folder, subfolders, listed), grouped)
   const searchKey = listed === undefined ? null : JSON.stringify(listed)
   const query = useMemo(() => (searchKey === null ? null : (JSON.parse(searchKey) as SearchQuery)), [searchKey])
   const merged = query === null ? subfolders : searchesSubfolders(accountId, folder, subfolders, query)
   const loadPage = useCallback(
     (cursor: string | null, signal: AbortSignal) =>
       query === null
-        ? listMessages(accountId, { folder, subfolders: merged, cursor }, signal)
-        : searchMessages(query, { subfolders: merged, cursor }, signal),
-    [accountId, folder, query, merged],
+        ? listMessages(accountId, { folder, subfolders: merged, cursor, grouped }, signal)
+        : searchMessages(query, { subfolders: merged, cursor, grouped }, signal),
+    [accountId, folder, query, merged, grouped],
   )
   // What "select all matching" acts on: the search, or the folder as a search with no criteria.
   const match = useMemo<MatchScope>(
@@ -391,8 +410,12 @@ function Listing({
  * change to one of its folders reads its first page again, as does one of them getting ready.
  */
 function ViewListing({ accounts, view }: { accounts: Account[]; view: ViewKey }): ReactElement {
-  const source = viewSource(view)
-  const loadPage = useCallback((cursor: string | null, signal: AbortSignal) => viewMessages(view, cursor, signal), [view])
+  const grouped = useConversations()
+  const source = grouping(viewSource(view), grouped)
+  const loadPage = useCallback(
+    (cursor: string | null, signal: AbortSignal) => viewMessages(view, cursor, signal, grouped),
+    [view, grouped],
+  )
   const saved = useQuery(viewsQuery()).data
   const shown = view === ALL_INBOXES ? ALL_INBOXES : saved?.find((each) => each.id === view)
   const scopes = useMemo(() => (shown === undefined ? [] : viewScopes(shown, accounts)), [shown, accounts])

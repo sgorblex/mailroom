@@ -10,8 +10,9 @@ export interface Tail {
 /**
  * What stays below the first page read again (`next`) of what was shown below and in the one it
  * replaces: the rows after the last one `next` still holds. Those before it that `next` lacks are
- * gone; those after it were pushed down by new mail, or loaded later. When `next` holds none of
- * them, the list starts over.
+ * gone; those after it were pushed down by new mail, or loaded later, but for a conversation
+ * `next` holds already (its row is its newest message, which a reply changes). When `next` holds
+ * none of them, the list starts over.
  */
 export function keptTail(previous: MessagePage | undefined, tail: Tail | null, next: MessagePage | undefined): Tail | null {
   if (previous === undefined || next === undefined) {
@@ -19,8 +20,9 @@ export function keptTail(previous: MessagePage | undefined, tail: Tail | null, n
   }
   const shown = [...previous.messages, ...(tail?.rows ?? [])]
   const fresh = new Set(next.messages.map((message) => message.ref))
+  const grouped = new Set(next.messages.flatMap((message) => message.conversation?.refs ?? []))
   const last = shown.findLastIndex((message) => fresh.has(message.ref))
-  const rows = last === -1 ? [] : shown.slice(last + 1)
+  const rows = last === -1 ? [] : shown.slice(last + 1).filter((message) => !grouped.has(message.ref))
   if (rows.length === 0) {
     return null
   }

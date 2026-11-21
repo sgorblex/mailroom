@@ -115,7 +115,8 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   sender, so a message joins a conversation on the index only when the user's index already
   holds the message it answers, in the same account, with the same subject without its prefixes
   (Gmail's own thread id stands); an action on a conversation never takes the user's own Sent
-  and Drafts copies ([`mail-client.md`](mail-client.md#conversations)). Revision `202611211500`
+  and Drafts copies, and the web asks before trashing, archiving, moving or reporting whole one
+  whose newest sender is new to it ([`mail-client.md`](mail-client.md#conversations)). Revision `202611211500`
   indexes the rows by Message-ID, References root and In-Reply-To, and sets the keys stored
   before by that rule.
 - **Saved views** (`app.saved_view`, [`mail-client.md`](mail-client.md#views)): per user, a name

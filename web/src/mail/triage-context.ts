@@ -15,9 +15,13 @@ export interface Flags {
 /**
  * What an action needs of a message: where it is (and the folder its row was listed under, where
  * an action on a Gmail row acts), and its flags as the list or view read them; its sender, where
- * known, for the filter Report spam offers.
+ * known, for the filter Report spam offers. A row of a grouped list stands for its
+ * `conversation`: an action takes every message of it.
  */
-export type Target = Pick<MessageItem, 'ref' | 'account_id' | 'folder' | 'listed_folder'> & { flags: Flags; from?: MailAddress | null }
+export type Target = Pick<MessageItem, 'ref' | 'account_id' | 'folder' | 'listed_folder' | 'conversation'> & {
+  flags: Flags
+  from?: MailAddress | null
+}
 
 export type Action =
   | { kind: 'archive' }
@@ -69,6 +73,16 @@ export interface SpamOffer {
   address: string
 }
 
+/**
+ * A trash, archive, move or spam report of rows standing for conversations of several messages
+ * whose newest sender is new to them (`latest_from_new_sender`), waiting for the user to say what
+ * it takes.
+ */
+export interface NewSender {
+  action: Action
+  targets: Target[]
+}
+
 /** What the last action did, for the toolbar to word. */
 export type Outcome =
   | { kind: 'done'; action: Action; count: number; failures: Failure[] }
@@ -107,6 +121,8 @@ export interface Triage {
   /** The list tells the rows it shows, in order, for moving through them by keyboard. */
   setVisible: (rows: Target[]) => void
   visibleRows: () => Target[]
+  /** Calls `listener` with the rows each time the list tells them; answers the unsubscribe. */
+  subscribeVisible: (listener: (rows: Target[]) => void) => () => void
   /** What the toolbar acts on: the selection, else the open message. */
   targets: Target[]
   busy: boolean
@@ -122,8 +138,16 @@ export interface Triage {
   /** The filter offered after a report of spam, until dismissed, undone or another report replaces it. */
   spamOffer: SpamOffer | null
   dismissSpamOffer: () => void
-  /** Runs an action on `targets`; `silent` (marking read on open) neither waits for nor reports anything. */
+  /**
+   * Runs an action on `targets`; `silent` (marking read on open) neither waits for nor reports
+   * anything. A move-like one on a conversation whose newest sender is new to it asks first
+   * (`newSender`).
+   */
   run: (action: Action, targets: Target[], options?: { silent?: boolean }) => Promise<void>
+  /** The action asking whether it takes such conversations whole, or `null`. */
+  newSender: NewSender | null
+  /** `whole`: every message of them; `shown`: of each such conversation the message shown only; `null`: nothing. */
+  answerNewSender: (choice: 'whole' | 'shown' | null) => void
   picker: boolean
   setPicker: (open: boolean) => void
   /** The picker of a move to another account; opening one picker closes the other. */

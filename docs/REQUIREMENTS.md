@@ -142,7 +142,8 @@ in the folders each user chooses (*Desktop notifications* there). A
 [Views](requirements/mail-client.md#views) (*All inboxes* and the user's saved views: folders of any
 accounts, or a search) are read from the index and kept in the web sidebar, where a search is saved
 as one. A list, search or view read from the index can come
-[grouped by conversation](requirements/mail-client.md#conversations), over REST so far.
+[grouped by conversation](requirements/mail-client.md#conversations), as the web shows it unless the
+user turns that off: a conversation is a row, read as a thread and acted on whole.
 Target is
 **between tier 2 and tier 3**: tiers 1 and 2 in full, on top of
 the index and live updates; tier 3 items arrive one at a time.

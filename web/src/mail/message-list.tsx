@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils.ts'
 
 import { listedActions, unavailableReason, type ActionContext } from './action-registry.ts'
 import { useCompose } from './compose-context.ts'
+import { isConversation, listRow, opened } from './conversations.ts'
 import { useDraftFilter } from './filter-draft.ts'
 import { useMuting } from './mute-context.ts'
 import { addressLabel, formatListDate } from './format.ts'
@@ -33,7 +34,8 @@ type More = { kind: 'idle' } | { kind: 'loading' } | { kind: 'failed'; message: 
 /**
  * A folder's messages or a search's, newest first, a page at a time: "Load more" asks for the
  * next one with the cursor the last page gave. Mounted anew (by key) for each source. Each row
- * names where it is: its account and folder in a search, its folder in a folder's subfolders.
+ * names where it is: its account and folder in a search, its folder in a folder's subfolders. A
+ * page grouped by conversation shows each one as a row (`listRow`), which actions take whole.
  * Invalidating its first page (`messagesKey`) reads the list again, keeping it on show meanwhile:
  * new rows come in at the top, and the rows loaded below it stay. Under quick filters, a row this
  * screen changed so it no longer matches stays too, until the source changes.
@@ -87,7 +89,10 @@ export function MessageList({
         keptRows(
           shown(read.page, tail).filter((message) => !removed.has(message.ref)),
           shown(first.data, nextTail),
-          (message) => changedHere(message, flagsOf(message)),
+          (message) => {
+            const row = listRow(message)
+            return changedHere(row, flagsOf(row))
+          },
         ),
       )
     }
@@ -103,13 +108,13 @@ export function MessageList({
   const unmountSignal = useUnmountSignal()
   const page = first.status === 'success' ? first.data : null
   // Rows moved away since are gone in place.
-  const messages = (page === null ? [] : shown(page, tail)).filter((message) => !removed.has(message.ref))
+  const messages = (page === null ? [] : shown(page, tail)).filter((message) => !removed.has(message.ref)).map(listRow)
   useEffect(() => {
     setVisible(messages)
   })
   useEffect(() => {
     if (page !== null) {
-      refreshed(source, page.messages)
+      refreshed(source, page.messages.map(listRow))
     }
   }, [page, source, refreshed])
   useEffect(
@@ -488,33 +493,46 @@ function ToSortToggle({ message }: { message: MessageItem }): ReactElement {
   )
 }
 
+/**
+ * A message's row, or a conversation's: its first writers, how many messages it has, and its
+ * latest message's subject, date and opening.
+ */
 function MessageRow({ message, source }: { message: MessageItem; source: 'account' | 'folder' | null }): ReactElement {
   const { t, i18n } = useTranslation(MAIL_NS)
   const timeZone = useTimeZone()
   const accountLabel = useAccountLabel()
-  const { message: open } = useSearch({ from: '/mail' })
+  const search = useSearch({ from: '/mail' })
+  // A conversation stays the current row while another of its messages is read.
+  const current = message.ref === (search.thread ?? search.message)
   const flags = useTriage().flagsOf(message)
   const unread = !flags.seen
   const subject = message.subject === '' ? t('message.noSubject') : message.subject
-  const sender = addressLabel(message.from)
+  const conversation = isConversation(message) ? message.conversation : undefined
+  const sender = conversation === undefined ? addressLabel(message.from) : conversation.participants.join(', ')
   return (
     <Link
       to="/mail"
-      search={(previous) => ({ ...previous, message: message.ref })}
-      aria-current={message.ref === open ? 'true' : undefined}
+      search={(previous) => ({ ...previous, ...opened(message) })}
+      aria-current={current ? 'true' : undefined}
       aria-haspopup="menu"
       aria-keyshortcuts="Shift+F10"
       // The row drags its messages, not the link's URL.
       draggable={false}
       className={cn(
         'flex min-w-0 flex-1 flex-col gap-0.5 p-3 text-sm hover:bg-accent',
-        message.ref === open && 'bg-accent',
+        current && 'bg-accent',
       )}
     >
       <span className="flex items-baseline gap-2">
         <span className={cn('min-w-0 flex-1 truncate', unread && 'font-semibold')}>
           {sender === '' ? t('message.noSender') : sender}
         </span>
+        {conversation !== undefined && (
+          <span className="shrink-0 rounded-full bg-muted px-1.5 text-xs text-muted-foreground tabular-nums">
+            <span aria-hidden="true">{conversation.count}</span>
+            <span className="sr-only">{t('list.conversation', { count: conversation.count })}</span>
+          </span>
+        )}
         {/* Shown by the row's toggles; said here too for whoever goes through the links. */}
         {flags.flagged && <span className="sr-only">{t('list.flagged')}</span>}
         {flags.to_sort && <span className="sr-only">{t('list.toSort')}</span>}
@@ -524,7 +542,7 @@ function MessageRow({ message, source }: { message: MessageItem; source: 'accoun
         {message.flags.forwarded && (
           <Forward role="img" aria-label={t('list.forwarded')} className="size-3.5 shrink-0 self-center text-muted-foreground" />
         )}
-        {message.has_attachments && (
+        {(conversation?.has_attachments ?? message.has_attachments) && (
           <Paperclip role="img" aria-label={t('list.hasAttachments')} className="size-3.5 shrink-0 self-center" />
         )}
         <span className="shrink-0 text-xs text-muted-foreground tabular-nums">

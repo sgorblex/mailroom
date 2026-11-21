@@ -7,6 +7,7 @@ import { useFeature, useMailLayer } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Input } from '@/components/ui/input.tsx'
 import { ConnectedApps } from '@/profile/connected-apps.tsx'
+import { ConversationsForm } from '@/profile/conversations-form.tsx'
 import { IndexSettings } from '@/profile/index-settings.tsx'
 import { LimitsForm } from '@/profile/limits-form.tsx'
 import { LinkedSignIn } from '@/profile/linked-sign-in.tsx'
@@ -145,6 +146,7 @@ export function ProfileScreen(): ReactElement {
       </form>
       <TimeZoneForm />
       {mail && <MarkReadForm />}
+      {mail && <ConversationsForm />}
       {mail && <RemoteSenders />}
       {mail && <IndexSettings />}
       {mail && <NotificationSettings />}
