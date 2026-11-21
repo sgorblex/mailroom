@@ -100,7 +100,8 @@ features.
 
 - An instance chooses its [features](GLOSSARY.md) with `MAILROOM_FEATURES`, any of `mail` (the
   [mail client](#mail-client)), `mcp` (the [MCP server](#mcp-server)) and `filters` (the
-  [filters](#filters-ui) and the worker that runs them), comma separated. **Unset means all
+  [filters](#filters-ui) and the worker that runs them; the worker also keeps the mail client's
+  index), comma separated. **Unset means all
   three**, so a deployment that never set it keeps everything; **empty means none**, the base
   only. A name that is no feature stops the API and the worker from starting.
 - **The base is always there:** users and sign-in (password and SSO), accounts and their sealed
@@ -128,8 +129,8 @@ slice B (tier 2 triage: move, archive, trash, flag, multi-select, shortcuts; RES
 and `mail_send` MCP tools) and folder management (create, rename and delete, the folders as a
 tree in the sidebar; REST, web and the `mail_folders` MCP tools), as specified in
 [`requirements/mail-client.md`](requirements/mail-client.md), are in; slice C was also tried by hand in production (a send to oneself, Gmail drafts, a 25 MB
-attachment through the host's proxy). Gaps: the index (its settings are in: which folders,
-how far back; sync and reads are not) and live updates.
+attachment through the host's proxy). Gaps: the index (its settings and the worker's sync are
+in; reads are not) and live updates.
 Target is
 **between tier 2 and tier 3**: tiers 1 and 2 in full, on top of
 the index and live updates; tier 3 items arrive one at a time.

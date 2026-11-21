@@ -36,15 +36,25 @@ def _no_database(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(worker_main, "get_sync_database_url", reached)
 
 
-def test_without_filters_it_exits_before_the_database(
+def test_without_mail_and_filters_it_exits_before_the_database(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    monkeypatch.setenv("MAILROOM_FEATURES", "mail,mcp")
+    monkeypatch.setenv("MAILROOM_FEATURES", "mcp")
     caplog.set_level(logging.INFO, logger="mailroom.worker")
     worker_main.main()
     messages = [record.getMessage() for record in caplog.records]
-    assert "MAILROOM_FEATURES: mail, mcp" in messages
-    assert "No enabled feature needs the worker (filters is off); exiting." in messages
+    assert "MAILROOM_FEATURES: mcp" in messages
+    assert "No enabled feature needs the worker (mail and filters are off); exiting." in messages
+
+
+@pytest.mark.parametrize("features", ["mail", "filters"])
+def test_mail_or_filters_goes_on_to_the_database(
+    monkeypatch: pytest.MonkeyPatch, features: str
+) -> None:
+    """Mail alone needs it for the index's sync."""
+    monkeypatch.setenv("MAILROOM_FEATURES", features)
+    with pytest.raises(DatabaseReachedError):
+        worker_main.main()
 
 
 def test_an_unknown_feature_exits_1(
@@ -105,11 +115,8 @@ def test_jobs_that_stop_on_their_own_are_no_asked_stop(monkeypatch: pytest.Monke
     assert asyncio.run(worker_main.run_jobs()) is False
 
 
-def test_a_worker_that_stops_on_its_own_exits_1(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    """So ``Restart=on-failure`` starts it again."""
-    monkeypatch.delenv("MAILROOM_FEATURES", raising=False)
+def _started_worker(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``main`` past the database, its job loop and IDLE supervisor stood in for."""
     monkeypatch.setattr(worker_main, "get_sync_database_url", lambda: "postgresql://x/y")
     monkeypatch.setattr(worker_main, "wait_for_sync_database", lambda _url: _Disposable())
     monkeypatch.setattr(worker_main, "wait_for_head", lambda _engine: None)
@@ -127,6 +134,14 @@ def test_a_worker_that_stops_on_its_own_exits_1(
     monkeypatch.setattr(worker_main, "close_interrupted_runs", lambda _db: [])
     monkeypatch.setattr(worker_main, "IdleSupervisor", _IdleSupervisor)
 
+
+def test_a_worker_that_stops_on_its_own_exits_1(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """So ``Restart=on-failure`` starts it again."""
+    monkeypatch.delenv("MAILROOM_FEATURES", raising=False)
+    _started_worker(monkeypatch)
+
     async def stopped_on_its_own() -> bool:
         return False
 
@@ -135,6 +150,21 @@ def test_a_worker_that_stops_on_its_own_exits_1(
         worker_main.main()
     assert exited.value.code == 1
     assert any("without being asked" in record.getMessage() for record in caplog.records)
+
+
+def test_with_mail_alone_no_folder_is_watched(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The IDLE supervisor serves filters only."""
+    monkeypatch.setenv("MAILROOM_FEATURES", "mail")
+    _started_worker(monkeypatch)
+    started: list[object] = []
+    monkeypatch.setattr(worker_main, "IdleSupervisor", lambda *args: started.append(args))
+
+    async def asked_to_stop() -> bool:
+        return True
+
+    monkeypatch.setattr(worker_main, "run_jobs", asked_to_stop)
+    worker_main.main()
+    assert started == []
 
 
 class _Disposable:

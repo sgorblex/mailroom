@@ -7,7 +7,7 @@ Engineering baseline for Mailroom. Product scope: [`../REQUIREMENTS.md`](../REQU
 | Area | Choice |
 | --- | --- |
 | Backend | Python 3.14+ (dev pin 3.15 via mise), FastAPI, SQLAlchemy 2 (sync) + psycopg 3, Alembic, uv; PyJWT and httpx for OIDC; dnspython and lxml for account autoconfiguration |
-| Worker | procrastinate (psycopg 3) on the app's database, `python -m mailroom.worker`; it also watches folders over IMAP IDLE |
+| Worker | procrastinate (psycopg 3) on the app's database, `python -m mailroom.worker`; it also watches folders over IMAP IDLE and syncs the mail index |
 | Web | React 19, Vite, TanStack Router (code-based routes), TanStack Query (in-memory cache of the mail screen's reads), Tailwind 4 + shadcn (`web/components.json`), Downshift (headless combobox: the command palette), i18next, Zod at the API boundary, ESLint `strictTypeChecked` (no Prettier) |
 | Database | PostgreSQL 18 |
 | Tests | pytest (+ xdist, one database per worker cloned from the migrated `mailroom_test`), Vitest (`node` and `jsdom` projects) |
@@ -168,8 +168,10 @@ What they are: [`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Editions*. Code:
   picker use it); `SendRunner` exists only with `mail` or `mcp` (`AppContext.send_runner` is
   None otherwise). The base always mounts sign-in, SSO, users, accounts and
   linked identities.
-- **The worker** reads it first, before the database: without `filters` it logs why and exits 0,
-  and an unknown name exits 1.
+- **The worker** reads it first, before the database: with neither `mail` (the index's sync) nor
+  `filters` it logs why and exits 0, and an unknown name exits 1. Its IDLE supervisor, rule set
+  runs and scheduled dispatcher need `filters`; the index's jobs need `mail` (each job checks
+  again when it runs).
 - **The web app** takes the features from `/api/v1/auth/me` (all of them from an older API that
   does not name them) and keeps them across sign-in and sign-out. The nav, Profile's connected
   apps, an account's *Run filters* switch and its send mode (shown with `mail` or `mcp`) follow
@@ -465,7 +467,7 @@ bounded to one minor because the server relies on its handlers.
   connection of its own, each reply bounded by its 10 s probe timeout), the folder picker's
   listing and the dry run use the API's mail pool, with its gates and deadline
   ([Mail client](#mail-client); a dry run's is 30 s, *Filters* below); the worker's runs and IDLE
-  watches use the worker's own pool (below). TLS is verified against the system CAs plus
+  watches and the index's sync use the worker's own pool (below). TLS is verified against the system CAs plus
   `MAILROOM_MAIL_CA_FILE` (the dev mail CA in dev). A failure carries mailroom-core's mail error
   code and fixed message (`auth_failed`, `unreachable`, `timeout`, `busy`, `mailbox_missing`,
   `server_error`, …; an `unreachable` whose certificate did not verify ends with core's fixed
@@ -618,6 +620,41 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   exist; the web's *Activity* page (`/activity`, with mail, MCP or filters) reads it. MCP's
   `audit_list` lists the same ([`mcp.md`](mcp.md)).
 
+### Mail index sync
+
+What the index is: [`mail-client.md`](mail-client.md) — *Index*. The worker ([Filters](#filters))
+keeps it, with `mail`:
+
+- `dispatch_index`, a periodic task every 5 minutes, queues `sync_account(user_id, account_id)`
+  for every account of every user (`queueing_lock` `index_account:<user id>:<account id>`). That
+  job lists the account's folders (no STATUS), gives each one first seen its row and deletes the
+  rows of folders no longer listed (a rename is a folder gone and one first seen), then queues
+  `sync_folder(user_id, account_id, folder_id)` (`queueing_lock` `index_folder:<folder id>`) for
+  each folder on the index that is not `ready` or was last synced 5 minutes ago (4 minutes early:
+  a folder's job starts behind the account's listing and its other folders' jobs, yet is due at
+  the next turn). Both take the mailbox's `lock`, so one folder of an account syncs at a time,
+  between its rule set runs.
+- A folder's job surveys it under EXAMINE (UIDVALIDITY, UIDNEXT, HIGHESTMODSEQ and the UIDs since
+  the age limit's day, SINCE), deletes the rows whose UIDs it no longer lists (expunged, or older
+  than the limit), and fetches the UIDs the index lacks newest first, 500 a batch, half a second
+  between batches, each batch committed (the folder's counts with it, the first sync's progress).
+  A batch that fails other than on the mailbox is fetched again one message at a time; a message
+  that still fails is skipped (its UID and the exception's type logged), stays readable live, and
+  holds up no other. It fetches at most 20 batches, then queues the next job behind every other
+  one, so one large mailbox takes turns with the others.
+- The job that fetched all that was missing compares the flags: those changed since the stored
+  HIGHESTMODSEQ where the folder has mod-sequences (CONDSTORE `CHANGEDSINCE`), else every
+  message's (`UID FETCH 1:* (FLAGS)`); on Gmail each message's labels with them (`X-GM-LABELS`,
+  whose changes Gmail counts as mod-sequence changes), so a message archived or labelled elsewhere
+  leaves or joins its views. It then stores UIDNEXT, HIGHESTMODSEQ and the age limit's day, and
+  marks the folder `ready` with `last_synced_at`. A UIDVALIDITY that changed drops the folder's
+  rows and builds them again (`syncing`).
+- Each write locks the folder's row and stops if the user switched it off meanwhile. A mailbox
+  failure marks the folder `failed` with its code (or the app's `password_missing` /
+  `secrets_key_missing`), anything unexpected with `failed`, its exception's type logged; the
+  next turn tries again. The sync never changes mail: every read is under EXAMINE. On Gmail only
+  All Mail has a row, so only it is synced.
+
 ### Filters
 
 What they do and the route list: [`filters.md`](filters.md). How:
@@ -710,6 +747,8 @@ What they do and the route list: [`filters.md`](filters.md). How:
     itself, backing off from 5 s to 5 min. New mail (an EXISTS), and every (re)connection of a
     watch (for mail that came while unwatched), queues the folder's `new_mail` runs; the IDLE
     connection itself never acts. Filter edits need no restart: each run loads them.
+  - The **mail index's sync** runs in this worker too, with `mail` and without filters:
+    [Mail index sync](#mail-index-sync).
   - Jobs run 4 at a time (synchronous tasks, each on a thread); besides being notified of new jobs,
     the worker looks for them every second, so a run held back by its mailbox's lock starts within
     a second of the lock freeing. One worker process (below): a second would watch every folder
@@ -725,7 +764,10 @@ What they do and the route list: [`filters.md`](filters.md). How:
   `error` repeats the failure. `error` is `<code>: <message>`.
 - **Logs:** `rule_set_added`, `rule_set_changed`, `rule_set_removed`, `filter_added`,
   `filter_changed`, `filter_removed`, `filters_reordered`, `dry_run` (with `outcome`),
-  `run_requested` and `run_filters_changed` (with `account_id`); from the worker `run_queued` and
+  `run_requested` and `run_filters_changed` (with `account_id`); from the worker
+  `mail_index_synced` (when a job changed anything: with `account_id`, `folder_id`, `rebuilt`,
+  `fetched`, `removed`, `flags_changed` and `more`), `mail_index_sync_failed` (with `error`, the code),
+  `mail_index_listing_failed` and `mail_index_folders_gone` (never a folder's path), `run_queued` and
   `rule_set_run` (with `account_id`, `trigger` and `outcome`: `ok`, the error's code, or `gone`) and
   `match_count_failed`, `thread_join_failed` and `ledger_write_failed` (with `error`, the
   exception's type), `rule_set_turned_off` (with `reason`, its code);

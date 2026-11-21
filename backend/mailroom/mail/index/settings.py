@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
     from mailroom.context import AppContext
-    from mailroom_core.mail import Folder
+    from mailroom_core.mail import Folder, MailConnections
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +153,29 @@ def _first_sight(
     if fresh:
         db.execute(insert(MailIndexFolder).values(fresh).on_conflict_do_nothing())
     db.commit()
+
+
+def discover_folders(
+    db: Session, connections: MailConnections, user_id: int, account_id: int
+) -> int:
+    """Bring the account's rows in step with its folder listing (without STATUS): a row for each
+    indexable folder first seen, as ``index_status`` gives it, and none for a folder no longer
+    listed (deleted, or renamed: its new name is a folder first seen), its messages' rows going
+    with it. Commits; returns how many rows went."""
+    gmail = connections.capabilities(account_id).gmail
+    listed = [folder for folder in connections.folders(account_id) if folder.selectable]
+    kinds = _kinds(gmail, listed)
+    _first_sight(db, user_id, account_id, gmail, kinds)
+    indexable = [folder.path for folder, kind in kinds if kind == "folder"]
+    gone = db.execute(
+        delete(MailIndexFolder).where(
+            MailIndexFolder.user_id == user_id,
+            MailIndexFolder.account_id == account_id,
+            MailIndexFolder.path.not_in(indexable),
+        )
+    )
+    db.commit()
+    return cast("CursorResult[Any]", gone).rowcount
 
 
 def _rows(db: Session, user_id: int, account_id: int) -> dict[str, MailIndexFolder]:

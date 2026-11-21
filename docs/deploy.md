@@ -9,7 +9,7 @@ and deploy*).
 
 | Image | Built from | Runs |
 | --- | --- | --- |
-| `mailroom-api` | `backend/Containerfile` (context: repository root) | uvicorn on 8000, non-root, migrates at startup; `/healthz` for the healthcheck. Also the worker (`python -m mailroom.worker`, one instance: it runs the filters and watches folders over IMAP IDLE), which never migrates |
+| `mailroom-api` | `backend/Containerfile` (context: repository root) | uvicorn on 8000, non-root, migrates at startup; `/healthz` for the healthcheck. Also the worker (`python -m mailroom.worker`, one instance: it runs the filters, watches folders over IMAP IDLE and syncs the mail index), which never migrates |
 | `mailroom-web` | `web/Containerfile` (context: `web/`) | nginx on 8080, non-root, serves the SPA (`/connect` included), proxies `/api/`, `/mcp`, `/oauth/`, `/.well-known/oauth-` and `/.well-known/openid-configuration` to `127.0.0.1:8000`, sets the SPA's CSP |
 
 **Never name an image `mailroom`**: in the production registry, `mailroom` holds the retired
@@ -39,10 +39,11 @@ same there, or it refuses them first. Its read timeout must also cover the whole
 Operator environment, `MAILROOM_SECRETS_KEY` included:
 [`../deploy/quadlet/mailroom-api.env.example`](../deploy/quadlet/mailroom-api.env.example).
 `MAILROOM_FEATURES` chooses what the instance runs ([`REQUIREMENTS.md`](REQUIREMENTS.md) —
-*Editions*); unset, everything. Only filters need the worker: without them it exits 0 at start, so
-its unit may be left out, and it restarts only on failure. A worker that loses its database (a
+*Editions*); unset, everything. Only the mail client (its index's sync) and filters need the
+worker: without both it exits 0 at start, so its unit may be left out, and it restarts only on
+failure. A worker that loses its database (a
 PostgreSQL restart) exits 1, so `Restart=on-failure` starts it again; only a stop it was asked for
-(SIGTERM, SIGINT) exits 0. After adding `filters`, start the worker
+(SIGTERM, SIGINT) exits 0. After adding `mail` or `filters`, start the worker
 unit (`systemctl start mailroom-worker`), or install it if it was left out.
 
 ## MCP server and OAuth
