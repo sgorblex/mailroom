@@ -14,6 +14,7 @@ from mailroom.models.filters import (
     RuleSet,
     TransferLedger,
 )
+from mailroom.models.mail_index import MailIndexFolder, MailIndexMessage
 from mailroom.models.remote_content import RemoteContentSender
 from mailroom.models.sso import ExternalIdentity, Intent, SsoLoginState
 from mailroom.models.user import User, UserSession
@@ -27,6 +28,8 @@ __all__ = [
     "FilterMatchDay",
     "FilterRun",
     "Intent",
+    "MailIndexFolder",
+    "MailIndexMessage",
     "MutedThread",
     "RemoteContentSender",
     "RuleSet",

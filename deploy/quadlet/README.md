@@ -29,4 +29,5 @@ The MCP server and SSO need `MAILROOM_PUBLIC_URL`, and the reverse proxy must pa
 `Host` through: setup, and the Authentik runbook, in [`docs/deploy.md`](../../docs/deploy.md) —
 *MCP server and OAuth*.
 
-Postgres is provided outside the pod (the host's shared `postgres`): database and role `mailroom`.
+Postgres is provided outside the pod (the host's shared `postgres`): database and role `mailroom`. The
+role needs `CREATE` on the database, for the `pg_trgm` extension its migrations add.
