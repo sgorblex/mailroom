@@ -165,9 +165,8 @@ released and checked in production before the next one starts. Batch 15 is the r
       folder; one mechanism for both.
 - [ ] **Unread only and quick filters** — one-click views of the list (unread, flagged, with
       attachments), which are preset searches: both, the same mechanism.
-- [ ] **Search syntax** — `from:`, `to:`, `has:attachment`, `is:unread`, `before:` and the like
-      in the search box, with chips to build them. The grammar, its parser and MCP's `query` are
-      in; the web's parser and chips next.
+- [x] **Search syntax** — `from:`, `to:`, `has:attachment`, `is:unread`, `before:` and the like
+      in the search box, with chips; MCP's `messages_search` takes it as `query`.
 - [x] **Snippets** (after *Index and live updates*) — the opening of each message's text under its
       subject in the list, now stored with the index.
 - [ ] **Conversations in the list** — messages grouped by thread, not only on open.

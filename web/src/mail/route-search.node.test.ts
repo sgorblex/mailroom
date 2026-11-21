@@ -20,4 +20,10 @@ describe('the mail URL', () => {
     expect(validateMailSearch({ q: { account: '*' } })).toEqual({ q: { account: '*' } })
     expect(validateMailSearch({ q: { account: 'work', from: 'ana' } })).toEqual({ q: { from: 'ana' } })
   })
+
+  it('keeps a flag set false only for unread, which the syntax writes as is:read', () => {
+    expect(validateMailSearch({ q: { unread: false, flagged: false, has_attachment: true } })).toEqual({
+      q: { unread: false, has_attachment: true },
+    })
+  })
 })

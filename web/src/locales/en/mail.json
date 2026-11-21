@@ -131,8 +131,8 @@
   },
   "search": {
     "label": "Search mail",
-    "text": "Words",
-    "placeholder": "Search mail",
+    "text": "Search terms",
+    "placeholder": "Search mail, as from:ada is:unread",
     "submit": "Search",
     "moreOptions": "More options",
     "fewerOptions": "Fewer options",
@@ -152,9 +152,23 @@
     "unread": "Unread",
     "flagged": "Starred",
     "has_attachment": "With attachments",
+    "to_sort": "To sort",
     "gmail_query": "Gmail search",
     "gmailHint": "Gmail's own search syntax, for Gmail accounts only.",
-    "withSubfolders": "{{folder}} and its subfolders"
+    "withSubfolders": "{{folder}} and its subfolders",
+    "read": "Read",
+    "terms": "Terms of this search",
+    "chip": "{{name}}: {{value}}",
+    "removeTerm": "Remove {{term}}",
+    "errors": {
+      "unterminated_quote": "A quote is not closed.",
+      "empty_value": "{{key}}: needs a value.",
+      "bad_value": "{{key}}: takes {{options}}.",
+      "bad_date": "{{key}}: takes a date as YYYY-MM-DD.",
+      "conflict": "Two terms ask for different values of the same criterion.",
+      "unknown_account": "No account of yours has that name.",
+      "ambiguous_account": "More than one account has that name: choose it under More options."
+    }
   },
   "message": {
     "label": "Message",

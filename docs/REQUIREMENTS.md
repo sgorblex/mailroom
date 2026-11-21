@@ -137,7 +137,7 @@ the folder being viewed, its changes pushed as server-sent events
 client's counts, lists, flags and indexing line follow, and desktop notifications of new mail
 in the folders each user chooses (*Desktop notifications* there). A
 [search syntax](requirements/mail-client.md#search-syntax) (`from:ada is:unread`) is taken by
-MCP's `messages_search`.
+MCP's `messages_search` and the web client's search box, which shows its terms as chips.
 Target is
 **between tier 2 and tier 3**: tiers 1 and 2 in full, on top of
 the index and live updates; tier 3 items arrive one at a time.

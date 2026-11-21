@@ -309,7 +309,7 @@ describe('MailScreen', () => {
     expect(within(tree).getByTitle('Show this folder only')).toBeInTheDocument()
 
     // A search in the folder reads its subfolders too; one in every folder does not.
-    await userEvent.type(screen.getByRole('searchbox', { name: 'Words' }), 'notes')
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search terms' }), 'notes')
     await userEvent.click(screen.getByRole('button', { name: 'More options' }))
     expect(screen.getByLabelText('Folder')).toHaveDisplayValue('Inbox and its subfolders')
     await userEvent.click(screen.getByRole('button', { name: 'Search' }))
@@ -704,7 +704,7 @@ describe('MailScreen', () => {
     )
     renderMailApp('/mail')
 
-    await userEvent.type(await screen.findByRole('searchbox', { name: 'Words' }), 'invoice')
+    await userEvent.type(await screen.findByRole('searchbox', { name: 'Search terms' }), 'invoice')
     await userEvent.click(screen.getByRole('button', { name: 'More options' }))
     await userEvent.selectOptions(screen.getByLabelText('Account'), 'All accounts')
     await userEvent.selectOptions(screen.getByLabelText('Folder'), 'All folders (not Junk or Trash)')
