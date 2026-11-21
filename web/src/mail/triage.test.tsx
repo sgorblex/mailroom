@@ -119,12 +119,30 @@ describe('triage', () => {
     expect(within(list).queryByRole('link', { name: /Message 10Preview/ })).not.toBeInTheDocument()
     expect(within(list).queryByRole('link', { name: /Message 9Preview/ })).not.toBeInTheDocument()
     expect(within(list).getAllByRole('listitem')).toHaveLength(3)
-    expect(bodiesTo(fetchMock, '/api/v1/mail/messages/archive')).toEqual([{ refs: [unread?.ref, second?.ref] }])
+    expect(bodiesTo(fetchMock, '/api/v1/mail/messages/archive')).toEqual([
+      { refs: [unread?.ref, second?.ref], source_folder: 'INBOX' },
+    ])
     const folders = screen.getByRole('tree', { name: 'Folders of work' })
     expect(within(folders).getByRole('treeitem', { name: 'Inbox, 2 unread' })).toBeInTheDocument()
     expect(within(folders).getByRole('treeitem', { name: 'Archive, 1 unread' })).toBeInTheDocument()
     // Only the first load of the list and of the folders: nothing was read again.
     expect(fetchMock.mock.calls.filter(([path]) => String(path).includes('/folders'))).toHaveLength(1)
+  })
+
+  it.each([
+    ['folder=Archive', { source_folder: 'Archive' }],
+    [`q=${encodeURIComponent(JSON.stringify({ folder: 'Projects', subject: 'x' }))}`, { source_folder: 'Projects' }],
+    [`q=${encodeURIComponent(JSON.stringify({ subject: 'x' }))}`, { source_folder: 'INBOX' }],
+    [`q=${encodeURIComponent(JSON.stringify({ folder: '*', subject: 'x' }))}`, {}],
+  ])('names the folder shown with %s, none over every folder', async (shown, named) => {
+    const fetchMock = stubMailApi(state())
+    renderMailApp(`/mail?${shown}&message=${String(second?.ref)}`)
+
+    await screen.findByRole('region', { name: 'Message body' })
+    await userEvent.click(within(await actions()).getByRole('button', { name: 'Move to Trash' }))
+    await waitFor(() => {
+      expect(bodiesTo(fetchMock, '/api/v1/mail/messages/trash')).toEqual([{ refs: [second?.ref], ...named }])
+    })
   })
 
   it('trashes the open message when nothing is selected, and closes it', async () => {
@@ -135,7 +153,7 @@ describe('triage', () => {
     expect(await actions()).toHaveTextContent('This message')
     await userEvent.click(screen.getByRole('button', { name: 'Move to Trash' }))
     await reported('polite', 'Moved 1 message to Trash.')
-    expect(bodiesTo(fetchMock, '/api/v1/mail/messages/trash')).toEqual([{ refs: [second?.ref] }])
+    expect(bodiesTo(fetchMock, '/api/v1/mail/messages/trash')).toEqual([{ refs: [second?.ref], source_folder: 'INBOX' }])
     await waitFor(() => {
       expect(history.location.search).not.toContain('message=')
     })
@@ -178,7 +196,9 @@ describe('triage', () => {
 
     await reported('polite', 'Moved 1 message to Projects.')
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(bodiesTo(fetchMock, '/api/v1/mail/messages/move')).toEqual([{ refs: [third?.ref], folder: 'Projects' }])
+    expect(bodiesTo(fetchMock, '/api/v1/mail/messages/move')).toEqual([
+      { refs: [third?.ref], folder: 'Projects', source_folder: 'INBOX' },
+    ])
     expect(within(list).queryByRole('link', { name: /Message 8Preview/ })).not.toBeInTheDocument()
   })
 
@@ -670,7 +690,7 @@ describe('message context menu', () => {
     await userEvent.click(within(menu).getByRole('menuitem', { name: 'Archive' }))
 
     await reported('polite', 'Archived 1 message.')
-    expect(bodiesTo(fetchMock, '/api/v1/mail/messages/archive')).toEqual([{ refs: [third?.ref] }])
+    expect(bodiesTo(fetchMock, '/api/v1/mail/messages/archive')).toEqual([{ refs: [third?.ref], source_folder: 'INBOX' }])
     expect(within(list).getByRole('checkbox', { name: 'Select Message 10' })).toBeChecked()
   })
 
@@ -761,8 +781,8 @@ describe('keyboard shortcuts', () => {
   })
 
   it.each([
-    ['e', '/api/v1/mail/messages/archive', { refs: [second?.ref] }],
-    ['#', '/api/v1/mail/messages/trash', { refs: [second?.ref] }],
+    ['e', '/api/v1/mail/messages/archive', { refs: [second?.ref], source_folder: 'INBOX' }],
+    ['#', '/api/v1/mail/messages/trash', { refs: [second?.ref], source_folder: 'INBOX' }],
     ['s', '/api/v1/mail/messages/flag', { refs: [second?.ref], flagged: true }],
     ['t', '/api/v1/mail/messages/flag', { refs: [second?.ref], to_sort: true }],
     ['u', '/api/v1/mail/messages/flag', { refs: [second?.ref], seen: false }],
@@ -818,7 +838,7 @@ describe('keyboard shortcuts', () => {
     Object.defineProperty(event, 'getModifierState', { value: (key: string) => altGraph && key === 'AltGraph' })
     fireEvent(document.body, event)
     await waitFor(() => {
-      expect(bodiesTo(fetchMock, TRASH)).toEqual([{ refs: [second?.ref] }])
+      expect(bodiesTo(fetchMock, TRASH)).toEqual([{ refs: [second?.ref], source_folder: 'INBOX' }])
     })
   })
 
@@ -830,7 +850,7 @@ describe('keyboard shortcuts', () => {
 
     await userEvent.keyboard('e')
     await waitFor(() => {
-      expect(bodiesTo(fetchMock, '/api/v1/mail/messages/archive')).toEqual([{ refs: [second?.ref] }])
+      expect(bodiesTo(fetchMock, '/api/v1/mail/messages/archive')).toEqual([{ refs: [second?.ref], source_folder: 'INBOX' }])
     })
   })
 
@@ -860,7 +880,7 @@ describe('keyboard shortcuts', () => {
     // The same key pressed, not held, does act: the check above would have seen it.
     fireEvent.keyDown(document.body, { key: 'e' })
     await new Promise((resolve) => setTimeout(resolve, 0))
-    expect(bodiesTo(fetchMock, '/api/v1/mail/messages/archive')).toEqual([{ refs: [second?.ref] }])
+    expect(bodiesTo(fetchMock, '/api/v1/mail/messages/archive')).toEqual([{ refs: [second?.ref], source_folder: 'INBOX' }])
   })
 })
 

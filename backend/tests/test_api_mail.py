@@ -1834,9 +1834,13 @@ def test_archive_moves_to_the_archive_folder_or_is_unsupported(
     create_archive(mailbox)
     mailbox.seed(mime("keep"))
     [ref] = mailbox.refs()
-    [group] = mailbox.organize("archive", refs=[ref])
+    # The folder acted from matters on Gmail only.
+    [group] = mailbox.organize("archive", refs=[ref], source_folder="Archive")
     assert (group["ok"], group["count"], len(group["new_refs"])) == (True, 1, 1)
     assert subjects(mailbox, "Archive") == ["keep"]
+    for action, body in (("archive", {"source_folder": ""}), ("flag", {"source_folder": "INBOX"})):
+        refused = mailbox.client.post(f"{MAIL}/messages/{action}", json={"refs": [ref], **body})
+        assert refused.status_code == 422, action
 
     # A server with no folder in the archive role.
     real = MailConnections.folders

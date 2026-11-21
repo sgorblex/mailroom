@@ -27,6 +27,7 @@ from mailroom_core.mail.selected import (
     CopiedNotRemovedError,
     abandon_read_back,
     check_movable,
+    copy_uids,
     fetch_envelopes,
     move_target,
     move_uids,
@@ -130,21 +131,36 @@ class _Group:
 def move_messages(connections: MailConnections, refs: Sequence[str], folder: str) -> OrganizeResult:
     """Moves to `folder`, an existing selectable folder of each ref's account (INBOX in any
     case), never Drafts or Sent. Into Junk teaches the spam filter `spam`, out of Junk (except
-    into Trash) `ham`."""
+    into Trash) `ham`. Out of Gmail's All Mail, which keeps every message, it only copies (adds
+    the folder's label, the others staying), but into Trash or Spam."""
     groups = _groups(connections, refs)
     folders_of = _folder_lookup(connections)
 
     def act(group: _Group, note: Note) -> GroupResult:
         folders = folders_of(group.account)
         target = move_target(group.folder, folder, folders, account=group.account)
+        if target.role not in ("trash", "junk") and _gmail_all_mail(connections, folders, group):
+            junk = _junk(folders, group.folder, target)
+            return _move(connections, group, target.path, junk, note, copy_only=True)
         return _move_to(connections, group, folders, target, note)
 
     return _each_group(groups, act)
 
 
 def archive_messages(connections: MailConnections, refs: Sequence[str]) -> OrganizeResult:
-    """Moves to each account's folder with role `archive`, as `move_messages` would."""
+    """Moves to each account's folder with role `archive`, as `move_messages` would. Out of
+    Gmail's All Mail there is nothing to archive: refused (`invalid_argument`), nothing done."""
     return _move_to_role(connections, refs, "archive", "Archive")
+
+
+def _gmail_all_mail(connections: MailConnections, folders: Sequence[Folder], group: _Group) -> bool:
+    """Whether the group is in Gmail's All Mail (`\\All` on an `X-GM-EXT-1` server)."""
+    source = next((f for f in folders if f.path == group.folder), None)
+    return (
+        source is not None
+        and source.role == "all"
+        and connections.capabilities(group.account).gmail
+    )
 
 
 def junk_messages(connections: MailConnections, refs: Sequence[str]) -> OrganizeResult:
@@ -163,6 +179,11 @@ def _move_to_role(
 
     def act(group: _Group, note: Note) -> GroupResult:
         folders = folders_of(group.account)
+        if role == "archive" and _gmail_all_mail(connections, folders, group):
+            raise MailError(
+                "invalid_argument",
+                "They are in All Mail, which keeps every message: archiving changes nothing.",
+            )
         found = special_folder_in(folders, role)
         if found is None or not found.selectable:
             raise MailError("unsupported", f"Account {group.account} has no {name} folder.")
@@ -429,15 +450,18 @@ def _move(
     note: Note,
     *,
     removed: Removal | None = None,
+    copy_only: bool = False,
 ) -> GroupResult:
     """Moves the group's messages to `destination` with `move_uids` and notes each one. When
     the copy succeeded and the removal did not, the group fails with the copies' refs and an
-    error saying not to repeat the move."""
+    error saying not to repeat the move. `copy_only`: copies them (`copy_uids`), noted as
+    `copied`, as they stay where they are."""
 
     def run(context: MailboxContext) -> GroupResult:
         for ref in group.refs:
             check_fresh(ref, context.uid_validity)
-        check_movable(context)
+        if not copy_only:
+            check_movable(context)
         envelopes = _envelopes(context, group)
         uids = sorted(envelopes)
 
@@ -468,7 +492,7 @@ def _move(
             )
 
         try:
-            moved = move_uids(context, uids, destination)
+            moved = (copy_uids if copy_only else move_uids)(context, uids, destination)
         except CopiedNotRemovedError as failure:
             # The copies exist: a failure, but one that must not be repeated.
             note_all(failure.code, copied=True)
@@ -494,7 +518,7 @@ def _move(
             mapped = mail_error(error, group.account)
             note_all(mapped.code)
             raise mapped from None
-        note_all("ok")
+        note_all("ok", copied=True if copy_only else None)
         return GroupResult(
             group.account,
             group.folder,

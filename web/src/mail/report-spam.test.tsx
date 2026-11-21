@@ -81,7 +81,7 @@ describe('report spam', () => {
     await waitFor(() => {
       expect(toast()).toHaveTextContent('Reported 1 message as spam.')
     })
-    expect(bodiesTo(fetchMock, '/api/v1/mail/messages/junk')).toEqual([{ refs: [spam?.ref] }])
+    expect(bodiesTo(fetchMock, '/api/v1/mail/messages/junk')).toEqual([{ refs: [spam?.ref], source_folder: 'INBOX' }])
     expect(within(list).queryByRole('link', { name: /Message 9Preview/ })).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'Undo' }))

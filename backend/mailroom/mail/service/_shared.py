@@ -267,10 +267,21 @@ class _Stoppable:
 
         return self._connections.with_connection(account_id, checked)
 
-    def folders(self, account_id: int, *, with_status: bool = False) -> list[Folder]:
+    def folders(
+        self, account_id: int, *, with_status: bool | Callable[[Folder], bool] = False
+    ) -> list[Folder]:
         if not self._confirming:
             self._check()
         return self._connections.folders(account_id, with_status=with_status)
 
     def __getattr__(self, name: str) -> object:
         return getattr(self._connections, name)
+
+
+def _index_read_failed(user_id: int, exc: Exception) -> None:
+    """Log that the mail index could not be read, the call going on live (or unchanged)."""
+    # Its text may quote anything, mail included: the log names its type only.
+    logger.warning(
+        "mail_index_read_failed",
+        extra={"event": "mail_index_read_failed", "user_id": user_id, "error": type(exc).__name__},
+    )

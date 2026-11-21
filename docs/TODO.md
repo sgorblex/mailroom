@@ -167,8 +167,8 @@ released and checked in production before the next one starts. Batch 15 is the r
       attachments), which are preset searches: both, the same mechanism.
 - [ ] **Search syntax** — `from:`, `to:`, `has:attachment`, `is:unread`, `before:` and the like
       in the search box, with chips to build them.
-- [ ] **Snippets** (after *Index and live updates*) — the opening of each message's text under its
-      subject in the list.
+- [x] **Snippets** (after *Index and live updates*) — the opening of each message's text under its
+      subject in the list, now stored with the index.
 - [ ] **Conversations in the list** — messages grouped by thread, not only on open.
 - [ ] **Large folders** — a virtualised list, so a folder of tens of thousands of messages stays
       smooth.

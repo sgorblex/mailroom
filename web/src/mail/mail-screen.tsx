@@ -98,7 +98,11 @@ export function MailScreen(): ReactElement {
     <AccountsContext value={accounts.data}>
       <ToastHost>
         <MuteProvider>
-          <TriageProvider sourceKey={sourceKey(accountId, folder, requested, search.q)} accounts={accountIds}>
+          <TriageProvider
+            sourceKey={sourceKey(accountId, folder, requested, search.q)}
+            sourceFolder={shownFolder(folder, search.q)}
+            accounts={accountIds}
+          >
             <ComposeProvider accounts={accounts.data} accountId={accountId}>
               <MailShortcuts
                 accountId={accountId}
@@ -263,6 +267,12 @@ function useListedSubfolders(accountId: AccountId, folder: string, requested: bo
  */
 function searchesSubfolders(accountId: AccountId, folder: string, subfolders: boolean, q: SearchQuery): boolean {
   return subfolders && q.account === String(accountId) && q.folder !== undefined && isSameFolder(q.folder, folder)
+}
+
+/** The folder the list shows: the one open, or the search's (INBOX by default); `undefined` over every folder. */
+function shownFolder(folder: string, q: SearchQuery | undefined): string | undefined {
+  const shown = q === undefined ? folder : (q.folder ?? DEFAULT_FOLDER)
+  return shown === '*' ? undefined : shown
 }
 
 /** Names the list shown: a folder, or a search (`q` is a new object on every navigation). */
