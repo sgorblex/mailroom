@@ -298,7 +298,9 @@ X-GM-MSGID and X-GM-THRID; then the previews as a page makes them (`preview_of`)
 (decoded, flattened, capped; at most `index.INDEX_ADDRESSES` per address field) with each lone
 surrogate as U+FFFD,
 so a database takes it, and stays the sender's. `IndexedMessage.thread_key` is Gmail's thread id,
-else the References root, else In-Reply-To, else the Message-ID. `gmail_uid` finds a message's UID
+else the References root, else In-Reply-To, else the Message-ID: what the header says, which the
+app's index keys a conversation by only once it checks the message answered (`mail-client.md`,
+*Conversations*). `gmail_uid` finds a message's UID
 in a label's folder by X-GM-MSGID (`unsupported` off Gmail), for acting there on an All Mail row;
 `folder_index_plan`, `indexed_messages` and `gmail_label_ref` run them on `MailConnections`;
 `gmail_label_refs` finds several messages of one label's folder in one session (a host acting

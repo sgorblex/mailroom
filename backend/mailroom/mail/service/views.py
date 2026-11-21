@@ -54,12 +54,14 @@ def view_messages(
     *,
     limit: int = 25,
     cursor: str | None = None,
+    group: bool = False,
     via: Via = "web",
 ) -> ViewPage:
     """The messages of ``sources`` (a folder ``ALL_FOLDERS``: every folder of its account, as a
     search reads them) matching ``query``, newest first, from the index only. Sources of an
     account that is not the user's are left out. A source the server must be asked about and
-    cannot be is a failure of the page; a cursor whose folder changed is ``stale_reference``."""
+    cannot be is a failure of the page; a cursor whose folder changed is ``stale_reference``.
+    ``group``: by conversation (a ``ConversationPage``)."""
     if not index_reads.readable(query):
         raise mail_refusal("invalid_argument", TEXT_REFUSED)
     accounts = _accounts(ctx, user_id)
@@ -84,16 +86,29 @@ def view_messages(
             else:
                 picked, failures, not_indexed = view_sources(db, connections, user_id, mine)
                 after = None
-            rows = index_reads.read_rows(db, user_id, picked, query, limit=limit + 1, after=after)
-        messages = tuple(summary for summary, _ in rows[:limit])
+            rows = index_reads.read_page_rows(
+                db,
+                user_id,
+                picked,
+                query,
+                limit=limit + 1,
+                after=after,
+                group=group,
+                listing=connections.folders,
+            )
+        kept = rows[:limit]
+        conversations = [c for _, _, c in kept if c is not None] if group else None
         following = None
         if len(rows) > limit:
             key = rows[limit - 1][1]
             following = index_reads.IndexCursor.index(picked, key, failures, HOST_CODES).encode()
-        return ViewPage(Page(messages, following, tuple(failures)), tuple(not_indexed))
+        page = index_reads.page_of(
+            [summary for summary, _, _ in kept], conversations, following, failures
+        )
+        return ViewPage(page, tuple(not_indexed))
 
     if not used and resumed is None:
-        return ViewPage(Page((), None, ()), ())
+        return ViewPage(index_reads.page_of((), [] if group else None, None, ()), ())
     viewed = _call(ctx, user_id, accounts, "mail_view_listed", via, "*", read, on=used)
     return replace(viewed, page=_with_password_failures(ctx, user_id, viewed.page))
 

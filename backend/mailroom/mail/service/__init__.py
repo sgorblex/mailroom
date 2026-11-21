@@ -25,7 +25,7 @@ matches), ``folder_writes`` (creating, renaming and deleting folders, marking on
 ``service.X``.
 """
 
-from mailroom.mail.index.reads import ListedSummary
+from mailroom.mail.index.reads import Conversation, ConversationPage, ListedSummary
 from mailroom.mail.service._shared import MAX_CURSOR, MAX_FOLDER, MAX_REF_LENGTH, MAX_TERM
 from mailroom.mail.service.bulk import BULK_BATCH, BULK_MAX, act_on_matching, count_matching
 from mailroom.mail.service.compose import (
@@ -114,6 +114,8 @@ __all__ = [
     "SEND_HOLDS_THE_DRAFT",
     "TEXT_REFUSED",
     "AllAccounts",
+    "Conversation",
+    "ConversationPage",
     "Dispatched",
     "DraftFields",
     "DraftView",

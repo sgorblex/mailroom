@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from mailroom.api.deps import Context, CurrentUser, DbSession
 from mailroom.api.routes.mail._shared import mail_router
 from mailroom.api.routes.mail.folders import FolderPath
-from mailroom.api.routes.mail.read import PAGE_SIZE, Cursor, Limit, MessagePage
+from mailroom.api.routes.mail.read import PAGE_SIZE, Cursor, Group, Limit, MessagePage
 from mailroom.mail import saved_views, service
 from mailroom.models import SavedView
 from mailroom_core.config import MAX_SAFE_INTEGER
@@ -166,15 +166,19 @@ def view_messages(
     user: CurrentUser,
     limit: Limit = PAGE_SIZE,
     cursor: Cursor = None,
+    group: Group = None,
 ) -> ViewPage:
     """The view's messages, newest first, from the mail index only."""
     view = saved_views.owned_view(db, user.id, view_id) if isinstance(view_id, int) else None
     sources, query = saved_views.reading(ctx, user.id, view)
-    read = service.view_messages(ctx, user.id, sources, query, limit=limit, cursor=cursor)
+    read = service.view_messages(
+        ctx, user.id, sources, query, limit=limit, cursor=cursor, group=group == "thread"
+    )
     page = MessagePage.of(read.page)
     return ViewPage(
         messages=page.messages,
         next_cursor=page.next_cursor,
         failures=page.failures,
+        conversations=page.conversations,
         not_indexed=[NotIndexed(account_id=s.account, folder=s.folder) for s in read.not_indexed],
     )

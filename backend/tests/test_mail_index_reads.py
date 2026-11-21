@@ -33,6 +33,7 @@ from mailroom_core.mail import (
     Source,
     format_ref,
 )
+from mailroom_core.render import Address
 from mailroom_core.testing import MimeAttachment, create_folders, mime, seed
 from tests.conftest import PASSWORD
 from tests.test_mail_index_rows import message
@@ -631,6 +632,22 @@ def test_the_age_limit_leaves_older_mail_to_a_live_read(
     assert subjects == ["new", "older than the limit", "old"]
     assert set(cursors) == {3}
 
+    # Grouped, the page that crosses into the live tail and the one after it pair each message
+    # with its conversation, the live ones alone.
+    grouped: list[Any] = []
+    params = {"folder": "INBOX", "limit": 2, "group": "thread"}
+    while True:
+        page = user_client.get(url, params=params).json()
+        assert len(page["conversations"]) == len(page["messages"])
+        grouped += [
+            (m["subject"], c["count"])
+            for m, c in zip(page["messages"], page["conversations"], strict=True)
+        ]
+        if page["next_cursor"] is None:
+            break
+        params["cursor"] = page["next_cursor"]
+    assert grouped == [("new", 1), ("older than the limit", 1), ("old", 1)]
+
     whole = user_client.get(url, params={"folder": "INBOX", "limit": 5}).json()
     assert [m["subject"] for m in whole["messages"]] == subjects
     assert whole["next_cursor"] is None
@@ -764,3 +781,176 @@ def test_an_index_cursor_of_another_account_is_refused(
     )
     assert refused.status_code == 409, refused.text
     assert refused.json()["detail"]["code"] == "stale_reference"
+
+
+def test_a_read_by_conversation_groups_each_accounts_rows(
+    db_session: Session, user: User, admin: User
+) -> None:
+    inbox = ready(db_session, user, 1, "INBOX")
+    sent = ready(db_session, user, 1, "Sent")
+    home = ready(db_session, user, 2, "INBOX", uid_validity=9)
+    theirs = ready(db_session, admin, 1, "INBOX")
+
+    def person(name: str | None, address: str) -> list[dict[str, Any]]:
+        return [{"name": name, "address": address}]
+
+    def at(hours: int) -> datetime:
+        return DAY + timedelta(hours=hours)
+
+    db_session.add_all(
+        [
+            message(inbox, user.id, 1, received=at(1), thread_key="<root>", flags=["\\Seen"]),
+            message(
+                sent,
+                user.id,
+                1,
+                received=at(2),
+                thread_key="<root>",
+                sender=person(None, "me@example.org"),
+                flags=["\\Seen", "\\Flagged"],
+            ),
+            message(
+                inbox,
+                user.id,
+                2,
+                received=at(3),
+                thread_key="<root>",
+                sender=person("Bob", "bob@example.org"),
+                has_attachments=True,
+            ),
+            message(inbox, user.id, 3, received=at(4)),
+            message(inbox, user.id, 4, received=at(5), thread_key="<other>"),
+            message(home, user.id, 1, received=at(6), thread_key="<root>"),
+            message(theirs, admin.id, 5, received=at(7), thread_key="<root>"),
+        ]
+    )
+    db_session.commit()
+    sources = reads.index_sources(
+        db_session,
+        user.id,
+        [Source(1, "INBOX"), Source(1, "Sent"), Source(2, "INBOX")],
+        gmail=unasked,
+        listing=unasked,
+    )
+    assert sources is not None
+
+    def ref(account: int, path: str, uid: int, validity: int = 7) -> str:
+        return format_ref(MessageRef(account, path, validity, uid))
+
+    def listing(_account: int) -> list[Folder]:
+        return [folder("INBOX", role="inbox"), folder("Sent", "\\Sent", role="sent")]
+
+    found = reads.read_conversations(db_session, user.id, sources, None, limit=10, listing=listing)
+    assert [(summary.account, summary.uid) for summary, _, _ in found] == [
+        (2, 1),
+        (1, 4),
+        (1, 3),
+        (1, 2),
+    ]
+    root = found[-1][2]
+    assert root == reads.Conversation(
+        count=3,
+        unread=1,
+        participants=("Ann", "me@example.org", "Bob"),
+        has_attachments=True,
+        flagged=True,
+        # The user's own copy in Sent is counted, but no action takes it.
+        refs=(ref(1, "INBOX", 2), ref(1, "INBOX", 1)),
+        latest_from_new_sender=True,
+    )
+    # The same root in another account is another conversation; a row without one is alone.
+    assert found[0][2].refs == (ref(2, "INBOX", 1, 9),)
+    assert [conversation.count for _, _, conversation in found] == [1, 1, 1, 3]
+
+    following = reads.read_conversations(
+        db_session, user.id, sources, None, limit=10, after=found[1][1], listing=listing
+    )
+    assert [summary.uid for summary, _, _ in following] == [3, 2]
+    unread = reads.read_conversations(
+        db_session, user.id, sources, SearchQuery(unread=True), limit=10, listing=listing
+    )
+    assert [(summary.uid, c.count, c.unread) for summary, _, c in unread][-1] == (2, 1, 1)
+
+
+def test_a_conversation_names_its_first_senders_once() -> None:
+    def summary(uid: int, name: str | None, address: str, *flags: str) -> core.MessageSummary:
+        return core.MessageSummary(
+            ref=format_ref(MessageRef(1, "INBOX", 7, uid)),
+            account=1,
+            folder="INBOX",
+            uid=uid,
+            uid_validity=7,
+            date=DAY,
+            received=DAY,
+            sender=(Address(name=name, address=address),),
+            subject="",
+            flags=frozenset(flags),
+            has_attachments=False,
+            preview=None,
+            size=1,
+        )
+
+    alone = reads.Conversation.single(summary(3, None, "ann@example.org", "\\Flagged"))
+    assert (alone.count, alone.unread, alone.flagged, alone.participants) == (
+        1,
+        1,
+        True,
+        ("ann@example.org",),
+    )
+    senders = [(Address(name=name, address=None),) for name in "ABACDEF"]
+    assert reads._participants(senders) == ("A", "B", "C", "D")  # noqa: SLF001
+
+
+def test_a_folder_is_grouped_by_conversation_once_on_the_index(
+    user_client: TestClient,
+    db_session: Session,
+    mailboxes: Mailboxes,
+    imap_server: ImapTestServer,
+    login: str,
+    user: User,
+    mail_account: int,
+) -> None:
+    start = datetime.now(UTC) - timedelta(hours=1)
+    root = "<plan@example.org>"
+    seeded: list[tuple[str, str]] = [
+        ("INBOX", mime("plan", message_id=root)),
+        ("Sent", mime("Re: plan", sender="Ale <ale@example.test>", in_reply_to=root)),
+        ("INBOX", mime("lunch")),
+        (
+            "INBOX",
+            mime(
+                "Re: plan",
+                sender="Bob <bob@example.org>",
+                in_reply_to="<reply@example.org>",
+                references=f"{root} <reply@example.org>",
+            ),
+        ),
+    ]
+    for minute, (path, raw) in enumerate(seeded):
+        seed(imap_server, login, path, raw, (), start + timedelta(minutes=minute))
+    url = f"{MAIL}/accounts/{mail_account}/messages"
+    params = {"folder": "INBOX", "group": "thread"}
+
+    live = user_client.get(url, params=params).json()
+    assert [m["subject"] for m in live["messages"]] == ["Re: plan", "lunch", "plan"]
+    assert live["conversations"] is None
+
+    synced(db_session, mailboxes, user, mail_account)
+    grouped = user_client.get(url, params=params).json()
+    assert [m["subject"] for m in grouped["messages"]] == ["Re: plan", "lunch"]
+    latest = grouped["messages"][0]["ref"]
+    plan = grouped["conversations"][0]
+    assert (plan["count"], plan["unread"], plan["participants"]) == (
+        2,
+        2,
+        ["Maria Rossi", "Bob"],
+    )
+    assert plan["refs"][0] == latest
+
+    thread = user_client.get(f"{MAIL}/messages/{latest}/thread")
+    assert thread.status_code == 200, thread.text
+    assert [m["subject"] for m in thread.json()["messages"]] == ["Re: plan", "Re: plan", "plan"]
+    assert {m["folder"] for m in thread.json()["messages"]} == {"INBOX", "Sent"}
+    assert (
+        user_client.get(f"{MAIL}/messages/{latest}/thread", params={"limit": 0}).status_code == 422
+    )

@@ -19,6 +19,7 @@ from mailroom.accounts.service import require_subkey
 from mailroom.errors import Refusal, mail_refusal
 from mailroom.mail.connections import PASSWORD_MISSING, PASSWORD_MISSING_TEXT, PasswordMissing
 from mailroom.mail.index import reads as index_reads
+from mailroom.mail.index.reads import Conversation
 from mailroom.mail.service._shared import (
     _accounts,
     _call,
@@ -156,12 +157,14 @@ def list_messages(
     limit: int = 25,
     cursor: str | None = None,
     subfolders: bool = False,
+    group: bool = False,
     via: Via = "web",
 ) -> Page:
     """One folder, newest first. A folder that cannot be read is refused with its error, not
     reported in the page. With ``subfolders``, the folder and its subfolders merged
     (mailroom-core's ``read_folders``): each one that cannot be read is a failure of the page.
-    Read from the index when every folder is indexed and ready (``_from_index``), else live."""
+    Read from the index when every folder is indexed and ready (``_from_index``), else live.
+    ``group``: by conversation, when read from the index (a ``ConversationPage``)."""
     accounts = _accounts(ctx, user_id)
     _usable(ctx, user_id, accounts, account_id)
 
@@ -171,7 +174,15 @@ def list_messages(
             return [Source(account_id, path) for path in paths]
 
         indexed = _from_index(
-            ctx, connections, user_id, [account_id], sources, None, limit=limit, cursor=cursor
+            ctx,
+            connections,
+            user_id,
+            [account_id],
+            sources,
+            None,
+            limit=limit,
+            cursor=cursor,
+            group=group,
         )
         if indexed is not None:
             return indexed
@@ -196,6 +207,7 @@ def search(
     limit: int = 25,
     cursor: str | None = None,
     subfolders: bool = False,
+    group: bool = False,
     via: Via = "web",
 ) -> Page:
     """``query`` over one account or all (``ALL_ACCOUNTS``), in one folder (with
@@ -207,7 +219,7 @@ def search(
     again (nor checking its password), until paging ends. Over one account and one folder, its
     error is refused, as for a list, unless it reads subfolders too. Without ``text`` and
     ``gmail_query``, read from the index when every folder is indexed and ready
-    (``_from_index``), else live."""
+    (``_from_index``), else live; ``group`` as for a list."""
     check_search(folder, query, subfolders=subfolders)
     accounts = _accounts(ctx, user_id)
     skipped: list[PageFailure] = []
@@ -234,7 +246,7 @@ def search(
                 usable.append(account_id)
         if not usable:
             before = [f for f in carried if f.folder is None]
-            return Page((), None, (*before, *skipped))
+            return index_reads.page_of((), [] if group else None, None, [*before, *skipped])
         page = _call(
             ctx,
             user_id,
@@ -260,6 +272,7 @@ def search(
                     query=query,
                     limit=limit,
                     every_folder=folder == ALL_FOLDERS,
+                    group=group,
                 ),
             ),
             on=usable,
@@ -283,6 +296,7 @@ def search(
             limit=limit,
             cursor=cursor,
             every_folder=folder == ALL_FOLDERS,
+            group=group,
         )
         if indexed is not None:
             return indexed
@@ -318,7 +332,7 @@ def _with_password_failures(ctx: AppContext, user_id: int, page: Page) -> Page:
     ``PasswordMissing`` included, as a server error of the source."""
     if not page.failures:
         return page
-    return Page(page.messages, page.next_cursor, password_checked(ctx, user_id, page.failures))
+    return replace(page, failures=password_checked(ctx, user_id, page.failures))
 
 
 def password_checked(
@@ -536,6 +550,7 @@ def _from_index(
     failures: Sequence[PageFailure] = (),
     read_live: _LiveRead | None = None,
     every_folder: bool = False,
+    group: bool = False,
 ) -> Page | None:
     """A list (``query`` None) or a search of the ``sources`` of ``accounts`` read from the mail
     index (``mailroom.mail.index.reads``); None to read it live: the query needs a body's text or
@@ -544,7 +559,8 @@ def _from_index(
     (``_tail_page``); one whose folder is no longer readable, or changed, is
     ``stale_reference``. ``failures``: accounts failed before a folder was chosen, carried on as
     a live search carries them. ``every_folder``: the sources are a read of all folders
-    (``index_reads.index_sources``)."""
+    (``index_reads.index_sources``). ``group``: a page of conversations
+    (``index_reads.ConversationPage``), what is read live each message alone."""
     if not index_reads.readable(query):
         return None
     resumed = index_reads.decode_cursor(cursor)
@@ -563,6 +579,7 @@ def _from_index(
             limit,
             cursor=resumed.live,
             failures=[*before, *failures],
+            conversations=() if group else None,
         )
     if resumed is None:
         if not _indexed(ctx, user_id, accounts):
@@ -579,26 +596,54 @@ def _from_index(
             )
             if picked is None:
                 return None
-            rows = index_reads.read_rows(db, user_id, picked, query, limit=limit + 1)
+            rows = index_reads.read_page_rows(
+                db,
+                user_id,
+                picked,
+                query,
+                limit=limit + 1,
+                group=group,
+                listing=connections.folders,
+            )
         carried = list(failures)
     else:
         with ctx.session_maker() as db:
             picked = index_reads.resumed_sources(db, user_id, resumed, accounts)
-            rows = index_reads.read_rows(
-                db, user_id, picked, query, limit=limit + 1, after=resumed.key
+            rows = index_reads.read_page_rows(
+                db,
+                user_id,
+                picked,
+                query,
+                limit=limit + 1,
+                after=resumed.key,
+                group=group,
+                listing=connections.folders,
             )
         carried = [*resumed.failures(HOST_CODES), *failures]
-    messages = tuple(summary for summary, _ in rows[:limit])
+    messages = tuple(summary for summary, _, _ in rows[:limit])
+    conversations = _conversations(rows[:limit]) if group else None
     if len(rows) > limit:
         following = index_reads.IndexCursor.index(picked, rows[limit - 1][1], carried, HOST_CODES)
-        return Page(messages, following.encode(), tuple(carried))
+        return index_reads.page_of(messages, conversations, following.encode(), carried)
     tail = index_reads.tail_of(picked, query)
     if not tail:
-        return Page(messages, None, tuple(carried))
+        return index_reads.page_of(messages, conversations, None, carried)
     remaining = limit - len(messages)
     return _tail_page(
-        connections, live, tail, query, messages, remaining, cursor=None, failures=carried
+        connections,
+        live,
+        tail,
+        query,
+        messages,
+        remaining,
+        cursor=None,
+        failures=carried,
+        conversations=conversations,
     )
+
+
+def _conversations(rows: Sequence[index_reads.Row]) -> tuple[Conversation, ...]:
+    return tuple(conversation for _, _, conversation in rows if conversation is not None)
 
 
 def _indexed(ctx: AppContext, user_id: int, accounts: Sequence[int]) -> bool:
@@ -633,14 +678,16 @@ def _tail_page(
     *,
     cursor: str | None,
     failures: Sequence[PageFailure],
+    conversations: Sequence[Conversation] | None = None,
 ) -> Page:
     """``messages`` from the index, then up to ``remaining`` more read live from the ``tail``:
     the folders whose mail before their age-limit day the index leaves out (``BEFORE`` that
     day), from ``cursor``, the live read's; ``failures`` as ``read_page``'s
-    ``account_failures``."""
+    ``account_failures``. With ``conversations`` (those of ``messages``), a page of
+    conversations, each message read live alone."""
     if remaining <= 0:
         start = index_reads.IndexCursor.tail_from(tail, None, failures, HOST_CODES)
-        return Page(tuple(messages), start.encode(), tuple(failures))
+        return index_reads.page_of(messages, conversations, start.encode(), failures)
     criteria: dict[Source, Criteria] = {}
     for account, path, day in tail:
         own = _live_criteria(connections, account, query)
@@ -648,8 +695,16 @@ def _tail_page(
     page = live(list(criteria), criteria, limit=remaining, cursor=cursor, account_failures=failures)
     after = page.next_cursor
     following = index_reads.IndexCursor.tail_from(tail, after, (), HOST_CODES)
-    return Page(
-        (*messages, *page.messages), None if after is None else following.encode(), page.failures
+    grouped = (
+        None
+        if conversations is None
+        else [*conversations, *(Conversation.single(summary) for summary in page.messages)]
+    )
+    return index_reads.page_of(
+        [*messages, *page.messages],
+        grouped,
+        None if after is None else following.encode(),
+        page.failures,
     )
 
 

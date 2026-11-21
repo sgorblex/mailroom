@@ -29,6 +29,7 @@ from sqlalchemy import BigInteger, any_, bindparam, delete, or_, select
 from sqlalchemy.dialects.postgresql import ARRAY
 
 from mailroom.mail.connections import PASSWORD_MISSING, PasswordMissing
+from mailroom.mail.index import threads
 from mailroom.mail.index.rows import apply_flags, count_rows, flag_kinds, upsert_rows
 from mailroom.mail.index.settings import effective_max_age
 from mailroom.mail.index.writes import notify
@@ -321,7 +322,7 @@ def _stored_batch(
     if row is None or row.uid_validity != found.uid_validity:
         db.rollback()
         return "off"
-    _store(db, user_id, folder_id, messages)
+    _store(db, user_id, account_id, folder_id, messages)
     count_rows(db, row)
     start = found.new_from
     new = [message.uid for message in messages if start is not None and message.uid >= start]
@@ -432,7 +433,9 @@ def _text(addresses: Sequence[Address]) -> str:
     return " ".join(part for a in addresses for part in (a.name, a.address) if part)
 
 
-def _row(user_id: int, folder_id: int, message: IndexedMessage) -> dict[str, Any]:
+def _row(
+    user_id: int, folder_id: int, message: IndexedMessage, thread_key: str | None
+) -> dict[str, Any]:
     system, keywords = flag_kinds(message.flags)
     return {
         "folder_id": folder_id,
@@ -453,7 +456,7 @@ def _row(user_id: int, folder_id: int, message: IndexedMessage) -> dict[str, Any
         "message_id": message.message_id,
         "in_reply_to": message.in_reply_to,
         "references_root": message.references_root,
-        "thread_key": message.thread_key,
+        "thread_key": thread_key,
         "list_id": message.list_id,
         "gm_msgid": message.gmail_message_id,
         "gm_thrid": message.gmail_thread_id,
@@ -461,5 +464,14 @@ def _row(user_id: int, folder_id: int, message: IndexedMessage) -> dict[str, Any
     }
 
 
-def _store(db: Session, user_id: int, folder_id: int, messages: Sequence[IndexedMessage]) -> None:
-    upsert_rows(db, [_row(user_id, folder_id, message) for message in messages])
+def _store(
+    db: Session,
+    user_id: int,
+    account_id: int,
+    folder_id: int,
+    messages: Sequence[IndexedMessage],
+) -> None:
+    """``messages`` stored as rows, each keyed to its conversation (``threads``)."""
+    keys = threads.thread_keys(db, user_id, account_id, messages)
+    upsert_rows(db, [_row(user_id, folder_id, m, keys[m.uid]) for m in messages])
+    threads.rejoin(db, user_id, account_id, [(m, keys[m.uid]) for m in messages])
