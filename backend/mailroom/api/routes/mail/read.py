@@ -113,6 +113,10 @@ class MessageItem(BaseModel):
     has_attachments: bool
     preview: str
     size: int
+    listed_folder: str | None = None
+    """The folder the row was listed under when not its own: on Gmail, a row read from the index
+    names All Mail, listed under INBOX or a label's folder. Sent back as the ref's
+    ``source_folders`` entry, an action acts there."""
 
     @classmethod
     def of(cls, summary: MessageSummary) -> MessageItem:
@@ -128,6 +132,9 @@ class MessageItem(BaseModel):
             has_attachments=summary.has_attachments,
             preview=summary.preview or "",
             size=summary.size,
+            listed_folder=summary.listed_folder
+            if isinstance(summary, service.ListedSummary)
+            else None,
         )
 
 

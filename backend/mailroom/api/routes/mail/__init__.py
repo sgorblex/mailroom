@@ -4,14 +4,15 @@ nothing; the organize routes (move, archive, junk, trash, flag), which change fo
 the bulk ones, which count and act on every message a search matches; creating, renaming and
 deleting folders; drafts and sends; the senders whose remote content is shown without
 asking; one-click unsubscribing; muted threads; the mail index's settings; the live
-updates' event stream; and the folders desktop notifications come from. Only the signed-in
-user's accounts.
+updates' event stream; the folders desktop notifications come from; and the saved views. Only
+the signed-in user's accounts.
 
 The package is split by concern: ``folders`` (the listing, and creating, renaming and deleting
 folders), ``read``, ``organize``, ``bulk``, ``drafts`` (sends with them), ``remote_senders``,
-``unsubscribe``, ``mute``, ``index``, ``events`` and ``notifications``, each registering its
-routes on ``mail_router``, which ``_shared`` holds with what more than one of them uses. The
-order they are imported in is the order the routes are listed in, the OpenAPI document's."""
+``unsubscribe``, ``mute``, ``index``, ``events``, ``notifications`` and ``views``, each
+registering its routes on ``mail_router``, which ``_shared`` holds with what more than one of
+them uses. The order they are imported in is the order the routes are listed in, the OpenAPI
+document's."""
 
 # isort: off
 from mailroom.api.routes.mail import (  # noqa: F401 -- each registers its routes on mail_router
@@ -26,6 +27,7 @@ from mailroom.api.routes.mail import (  # noqa: F401 -- each registers its route
     index,
     events,
     notifications,
+    views,
 )
 
 # isort: on

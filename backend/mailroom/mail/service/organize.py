@@ -57,6 +57,7 @@ def _organize(
     target: int | None = None,
     deadline: float | None = None,
     source_folder: str | None = None,
+    source_folders: Mapping[str, str] | None = None,
 ) -> OrganizeResult:
     """``work`` on the batch ``refs`` once each ref is checked (``_ref_accounts``), and the
     ``target`` account it writes to besides theirs, logged with its accounts, counts and failure
@@ -68,7 +69,8 @@ def _organize(
     (``mailroom.mail.index.writes``) once the call answered, outside its deadline; by that thread
     when the deadline cut the call, as no one waits for it then. ``source_folder``: the folder the
     user acted from, where a Gmail label view's refs are acted on (``_from_label_views``);
-    ``work`` is given the refs it acts on."""
+    ``source_folders``: one per ref, over ``source_folder``, for rows a view or a search over
+    several folders listed each under its own; ``work`` is given the refs it acts on."""
     via = origin.via
     trail = AuditTrail(ctx.session_maker, user_id, origin, action)
     accounts = _accounts(ctx, user_id)
@@ -90,7 +92,9 @@ def _organize(
 
     def act(connections: MailConnections) -> OrganizeResult:
         stoppable = cast("MailConnections", _Stoppable(connections, stop))
-        acting = _from_label_views(ctx, user_id, stoppable, refs, source_folder)
+        acting = _from_label_views(
+            ctx, user_id, stoppable, refs, source_folder, source_folders or {}
+        )
         done = work(stoppable, accounts, acting)
         trail.notes(done.items)
         with handing:
@@ -150,12 +154,13 @@ def move(
     folder: str,
     *,
     source_folder: str | None = None,
+    source_folders: Mapping[str, str] | None = None,
     origin: Origin = WEB,
 ) -> OrganizeResult:
     """Moves the messages ``refs`` name (1 to ``MAX_REFS``, any folders and accounts) to
     ``folder`` of each one's account, never Drafts or Sent: mailroom-core's ``move_messages``,
-    one result per source folder. ``source_folder``: the folder the user acted from
-    (``_from_label_views``)."""
+    one result per source folder. ``source_folder``: the folder the user acted from, and
+    ``source_folders`` each ref's, over it (``_from_label_views``)."""
     return _organize(
         ctx,
         user_id,
@@ -165,6 +170,7 @@ def move(
         refs,
         lambda connections, _, acting: core.move_messages(connections, acting, folder),
         source_folder=source_folder,
+        source_folders=source_folders,
     )
 
 
@@ -242,10 +248,11 @@ def archive(
     refs: Sequence[str],
     *,
     source_folder: str | None = None,
+    source_folders: Mapping[str, str] | None = None,
     origin: Origin = WEB,
 ) -> OrganizeResult:
     """Moves them to each account's folder with role ``archive``: ``unsupported`` for an
-    account's group when it has none. ``source_folder`` as ``move``'s."""
+    account's group when it has none. ``source_folder`` and ``source_folders`` as ``move``'s."""
     return _organize(
         ctx,
         user_id,
@@ -255,6 +262,7 @@ def archive(
         refs,
         lambda connections, _, acting: core.archive_messages(connections, acting),
         source_folder=source_folder,
+        source_folders=source_folders,
     )
 
 
@@ -264,11 +272,12 @@ def junk(
     refs: Sequence[str],
     *,
     source_folder: str | None = None,
+    source_folders: Mapping[str, str] | None = None,
     origin: Origin = WEB,
 ) -> OrganizeResult:
     """Reports them as spam: moves them to each account's folder with role ``junk``, teaching
     the spam filter; ``unsupported`` for an account's group when it has none. ``source_folder``
-    as ``move``'s."""
+    and ``source_folders`` as ``move``'s."""
     return _organize(
         ctx,
         user_id,
@@ -278,6 +287,7 @@ def junk(
         refs,
         lambda connections, _, acting: core.junk_messages(connections, acting),
         source_folder=source_folder,
+        source_folders=source_folders,
     )
 
 
@@ -287,10 +297,11 @@ def trash(
     refs: Sequence[str],
     *,
     source_folder: str | None = None,
+    source_folders: Mapping[str, str] | None = None,
     origin: Origin = WEB,
 ) -> OrganizeResult:
     """Moves them to each account's Trash; never a permanent delete, so a group already in Trash
-    is refused. ``source_folder`` as ``move``'s."""
+    is refused. ``source_folder`` and ``source_folders`` as ``move``'s."""
     return _organize(
         ctx,
         user_id,
@@ -300,6 +311,7 @@ def trash(
         refs,
         lambda connections, _, acting: core.trash_messages(connections, acting),
         source_folder=source_folder,
+        source_folders=source_folders,
     )
 
 
@@ -338,35 +350,47 @@ def _from_label_views(
     connections: MailConnections,
     refs: Sequence[str],
     source_folder: str | None,
+    source_folders: Mapping[str, str],
 ) -> list[str]:
     """``refs`` with each one naming an indexed Gmail All Mail row (the ref a label view lists)
-    replaced by the message's ref in ``source_folder``, the folder of the view acted from (INBOX
-    or a label's), found by its X-GM-MSGID, one session per account: acted on there, it leaves
-    that view only, its other labels staying. Without ``source_folder``, or from All Mail
-    itself, the refs stay as given; so does one whose message ``source_folder`` does not hold,
-    and so do they all when the index cannot be read."""
-    if source_folder is None:
-        return list(refs)
-    path = "INBOX" if source_folder.upper() == "INBOX" else source_folder
+    replaced by the message's ref in the folder it was acted on from: its own in
+    ``source_folders``, else ``source_folder``, the folder of the view (INBOX or a label's),
+    found by its X-GM-MSGID, one session per account and folder: acted on there, it leaves that
+    view only, its other labels staying. Without a source folder, or from All Mail itself, a ref
+    stays as given; so does one whose message its source folder does not hold, and so do they
+    all when the index cannot be read."""
     parsed = [core.parse_ref(text) for text in refs]
+    paths: list[str | None] = []
+    for text in refs:
+        source = source_folders.get(text, source_folder)
+        paths.append(None if source is None else "INBOX" if source.upper() == "INBOX" else source)
+    elsewhere = [
+        ref
+        for ref, path in zip(parsed, paths, strict=True)
+        if path is not None and ref.folder != path
+    ]
+    if not elsewhere:
+        return list(refs)
     try:
         with ctx.session_maker() as db:
-            found = index_reads.gmail_ids(db, user_id, [r for r in parsed if r.folder != path])
+            found = index_reads.gmail_ids(db, user_id, elsewhere)
     except Exception as exc:
         _index_read_failed(user_id, exc)
         return list(refs)
-    wanted: dict[int, list[int]] = {}
-    for ref, gmail_id in found.items():
-        wanted.setdefault(ref.account, []).append(gmail_id)
-    resolved: dict[int, Mapping[int, MessageRef]] = {}
-    for account, gmail_ids in wanted.items():
-        try:
-            resolved[account] = core.gmail_label_refs(connections, account, path, gmail_ids)
-        except MailError:
-            resolved[account] = {}
-    acting: list[str] = []
-    for text, ref in zip(refs, parsed, strict=True):
+    wanted: dict[tuple[int, str], list[int]] = {}
+    for ref, path in zip(parsed, paths, strict=True):
         known = found.get(ref)
-        moved = None if known is None else resolved[ref.account].get(known)
+        if known is not None and path is not None:
+            wanted.setdefault((ref.account, path), []).append(known)
+    resolved: dict[tuple[int, str], Mapping[int, MessageRef]] = {}
+    for (account, path), gmail_ids in wanted.items():
+        try:
+            resolved[account, path] = core.gmail_label_refs(connections, account, path, gmail_ids)
+        except MailError:
+            resolved[account, path] = {}
+    acting: list[str] = []
+    for text, ref, path in zip(refs, parsed, paths, strict=True):
+        known = found.get(ref)
+        moved = None if known is None or path is None else resolved[ref.account, path].get(known)
         acting.append(text if moved is None else core.format_ref(moved))
     return acting

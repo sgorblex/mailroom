@@ -410,7 +410,7 @@ JSON bodies (unknown fields are 422), CSRF as for every state-changing route.
 
 | Route | Body |
 | --- | --- |
-| `POST /messages/move` | `{"refs": ["…"], "folder": "Archive/2025", "source_folder": "INBOX"}` |
+| `POST /messages/move` | `{"refs": ["…"], "folder": "Archive/2025", "source_folder": "INBOX", "source_folders": {"…": "Work"}}` |
 | `POST /messages/move-to-account` | `{"refs": ["…"], "account": "home", "folder": "INBOX", "removal": "trash"}` (`removal`: `trash` or `delete`) |
 | `POST /messages/archive` | `{"refs": ["…"]}` |
 | `POST /messages/junk` | `{"refs": ["…"]}` |
@@ -419,8 +419,10 @@ JSON bodies (unknown fields are 422), CSRF as for every state-changing route.
 
 `refs` holds 1 to 50 strings of at most 4096 characters. `source_folder` (move, archive, junk
 and trash; optional) is the folder the user acted from, where a Gmail All Mail ref is acted on
-([Index](#index), *Reads*); the web sends the folder it shows, none over every folder. Answer,
-`200`:
+([Index](#index), *Reads*); the web sends the folder it shows, none over every folder.
+`source_folders` (same routes; optional) gives a ref its own, over `source_folder`: each key one
+of `refs`, else 422. The web sends each row's `listed_folder` there, so a row of a view or a
+search over several folders is acted on in the label folder it was listed under. Answer, `200`:
 
 ```jsonc
 {
@@ -1142,7 +1144,8 @@ mode a folder that cannot be read is reported in `failures`, as in a search, nev
       "flags": { "seen": false, "flagged": false, "answered": false, "forwarded": false, "draft": false, "to_sort": false },
       "has_attachments": true,
       "preview": "Dear Charles, the notes are attached…",
-      "size": 48213
+      "size": 48213,
+      "listed_folder": null
     }
   ],
   "next_cursor": "WzIsW1sxLCJJTkJP…",   // null when there is no more
@@ -1157,6 +1160,9 @@ mode a folder that cannot be read is reported in `failures`, as in a search, nev
   message size in bytes.
 - `from` is the first sender (`name` and `address` `""` when there is none); `subject` is `""`
   when absent.
+- `listed_folder` is the folder the row was listed under when it is not the row's own: a Gmail
+  row read from the index names All Mail, listed under INBOX or a label's folder (the first of
+  the read's that the message carries); `null` otherwise. Lists, searches and views give it.
 - A single folder that fails answers its error status instead of a page.
 
 ### `POST /search`
@@ -1516,8 +1522,10 @@ folder off the index is read live, as before the index.
   day, unless the search's own `since` leaves nothing there. On Gmail, INBOX and the label folders
   are read from All Mail's rows by label (INBOX `\Inbox`, Sent `\Sent`, Drafts `\Draft`,
   Starred `\Starred`, Important `\Important`, any other the folder's path), each message with
-  its **All Mail ref**. A move, archive, trash or spam report of such a ref with `source_folder`
-  (the view acted from: INBOX or a label's folder) acts on the message in that folder, found by
+  its **All Mail ref** and the folder it was listed under (`listed_folder`). A move, archive,
+  trash or spam report of such a ref with a source folder (its `source_folders` entry, else
+  `source_folder`, the view acted from: INBOX or a label's folder) acts on the message in that
+  folder, found by
   its X-GM-MSGID (`UID SEARCH X-GM-MSGID`), so exactly that view's label comes off and the others
   stay; one that folder does not hold, or with no index to tell its id, is acted on as given.
   From All Mail itself (`source_folder` All Mail's, or none), a move only adds the destination's
@@ -1658,6 +1666,40 @@ open: no push service, no service worker. They come from the [live updates](#liv
   own while focused. Without BroadcastChannel only the tab's own counts. Clicking one focuses the
   tab and opens the message in its folder (the summary, the folder). The choice is read when an
   event first needs it, and again after a minute.
+
+## Views
+
+A view is a list of the user's mail kept in the sidebar: some folders of any of their accounts,
+or a search in the [search syntax](#search-syntax), read from the [index](#index) only. *All
+inboxes* is built in: INBOX of every account (on Gmail, All Mail's rows labelled INBOX). The
+others are the user's saved views (`app.saved_view`: name, folders or search, position), theirs
+alone and gone with them; removing an account takes its folders out of every view (one left
+with none lists nothing).
+
+- `GET /api/v1/mail/views` gives `{"views": [{"id", "name", "sources", "query", "position"}]}`
+  in the user's order, *All inboxes* not among them; `sources` is `[{"account_id", "folder"}]`
+  (`INBOX` in capitals) or null for a search, `query` the search's line or null.
+- `POST /api/v1/mail/views` `{"name", "sources"}` or `{"name", "query"}` (exactly one) creates
+  one, last, `201`; `PATCH /api/v1/mail/views/{id}` renames it (`name`) or gives it other folders
+  or another search, which it then is; `DELETE` removes it, `204`, the rest closing up; `PUT
+  /api/v1/mail/views/order` `{"view_ids": [...]}`, every view once, orders them (else 400
+  `invalid_order`). A name is 1-100 characters, trimmed, one per user (else 409
+  `view_name_taken`); 1-100 folders, of the user's own accounts (else 404 `not_found`); at most
+  100 views (else 400 `too_many_views`). A search must parse and must not search the text (bare
+  words), which the index cannot answer (400 `invalid_argument`). Another user's view is 404.
+- `GET /api/v1/mail/views/{id}/messages?limit=25&cursor=` (`id` `all_inboxes` for the built-in)
+  answers as [a list](#get-accountsaccount_idmessagesfolderinboxlimit25cursorsubfoldersfalse),
+  plus `not_indexed`: the view's folders off the index or not ready, left out, on the first page
+  (`folder` `*`: an account's every folder). Its folders' rows are merged newest first on the
+  index's cursor; nothing is read live, not even what an age limit leaves out. A search reads
+  `in:`'s folder (`*`: every folder, as a search's), else INBOX, of `account:`'s account, else of
+  every account, as `POST /search` does; an `account:` that no longer names one is 404
+  `not_found`, a line that no longer parses (the syntax changed since) 400 `invalid_argument`.
+  The server is asked only what the index cannot say (which folder is Gmail's All
+  Mail, which label a folder is; a search's every folder): an account that cannot answer is a
+  failure of the page for that folder. A cursor whose folder changed is 409 `stale_reference`.
+  Each Gmail row names the folder it was listed under (`listed_folder`), which an action on it
+  sends back (`source_folders`), so it leaves that folder's label only. MCP has no views.
 
 ## Mailbox quota
 

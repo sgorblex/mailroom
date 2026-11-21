@@ -139,6 +139,8 @@ in the folders each user chooses (*Desktop notifications* there). A
 [search syntax](requirements/mail-client.md#search-syntax) (`from:ada is:unread`) is taken by MCP's
 `messages_search` and the web client's search box, which shows its terms as chips; quick filters
 (unread, starred, with attachments) narrow the list shown.
+[Views](requirements/mail-client.md#views) (*All inboxes* and the user's saved views: folders of any
+accounts, or a search) are read from the index, over REST so far.
 Target is
 **between tier 2 and tier 3**: tiers 1 and 2 in full, on top of
 the index and live updates; tier 3 items arrive one at a time.

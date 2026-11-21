@@ -107,6 +107,9 @@ class IndexSource:
     """The folder's age-limit day: what arrived before it is read live."""
     live: tuple[str, ...]
     """The folders read live once the rows run out: the label folders, else this one."""
+    listed: tuple[tuple[str, str], ...] = ()
+    """With ``labels``, each label and the folder it lists, in the order the read named them: a
+    row is listed under the first whose label it carries (``ListedSummary``)."""
 
     def json(self) -> list[object]:
         labels = None if self.labels is None else list(self.labels)
@@ -117,7 +120,17 @@ class IndexSource:
             self.folder_id,
             labels,
             list(self.live),
+            [list(pair) for pair in self.listed],
         ]
+
+
+@dataclass(frozen=True, slots=True)
+class ListedSummary(MessageSummary):
+    """A summary of a Gmail All Mail row read for a label's folder."""
+
+    listed_folder: str | None = None
+    """The folder it was listed under (INBOX or a label's), where an action on the row from
+    that list acts (``service.organize``)."""
 
 
 def _ready(user_id: int) -> list[ColumnElement[bool]]:
@@ -149,18 +162,22 @@ def index_sources(
     gmail: Callable[[int], bool],
     listing: Callable[[int], Sequence[Folder]],
     every_folder: bool = False,
+    rows: Mapping[tuple[int, str], MailIndexFolder] | None = None,
 ) -> list[IndexSource] | None:
     """``sources`` as the index reads them, None unless every one is indexed and ready.
     ``gmail`` and ``listing`` are asked only of an account with a readable row and a source
     without one of its own (a Gmail label's folder), or, with ``every_folder`` (``sources`` are
-    a read of all folders), of each account with a readable row (``_every_folder``)."""
+    a read of all folders), of each account with a readable row (``every_folder_sources``).
+    ``rows``: ``ready_rows`` of the sources' accounts when the caller has read them already."""
     if not sources:
         return None
-    rows = ready_rows(db, user_id, [source.account for source in sources])
+    if rows is None:
+        rows = ready_rows(db, user_id, [source.account for source in sources])
     indexed = {account for account, _ in rows}
     if every_folder:
-        sources = _every_folder(db, user_id, sources, indexed, gmail=gmail, listing=listing)
+        sources = every_folder_sources(db, user_id, sources, indexed, gmail=gmail, listing=listing)
     picked: dict[int, tuple[MailIndexFolder, set[str] | None, list[str]]] = {}
+    listed: dict[int, dict[str, str]] = {}
     for source in sources:
         path = "INBOX" if source.folder.upper() == "INBOX" else source.folder
         row = rows.get((source.account, path))
@@ -180,6 +197,7 @@ def index_sources(
             picked[row.id] = (row, None, live)
         else:
             labels.add(label)
+            listed.setdefault(row.id, {}).setdefault(label, source.folder)
         live.append(source.folder)
     return [
         IndexSource(
@@ -190,12 +208,13 @@ def index_sources(
             labels=None if labels is None else tuple(sorted(labels)),
             oldest=row.oldest_indexed,
             live=tuple(dict.fromkeys(live)),
+            listed=() if labels is None else tuple(listed.get(row.id, {}).items()),
         )
         for row, labels, live in picked.values()
     ]
 
 
-def _every_folder(
+def every_folder_sources(
     db: Session,
     user_id: int,
     sources: Sequence[Source],
@@ -343,7 +362,8 @@ def read_rows(
 
 def _summary(source: IndexSource, row: MailIndexMessage) -> MessageSummary:
     ref = MessageRef(source.account, source.folder, source.uid_validity, row.uid)
-    return MessageSummary(
+    carried = set(row.labels or ())
+    return ListedSummary(
         ref=core.format_ref(ref),
         account=source.account,
         folder=source.folder,
@@ -359,6 +379,7 @@ def _summary(source: IndexSource, row: MailIndexMessage) -> MessageSummary:
         has_attachments=row.has_attachments,
         preview=row.snippet,
         size=row.size,
+        listed_folder=next((path for label, path in source.listed if label in carried), None),
     )
 
 
@@ -507,12 +528,16 @@ def _cursor(value: list[object]) -> IndexCursor:
 
 
 def _source(value: object) -> IndexSource:
-    if not isinstance(value, list) or len(value) != 6:
+    # A cursor given before rows named the folder they were listed under has no `listed`.
+    if not isinstance(value, list) or len(value) not in (6, 7):
         raise TypeError
-    account, folder, uid_validity, folder_id, labels, live = value
+    account, folder, uid_validity, folder_id, labels, live, *more = value
+    listed = more[0] if more else []
     if labels is not None and not isinstance(labels, list):
         raise TypeError
-    if not isinstance(live, list):
+    if not isinstance(live, list) or not isinstance(listed, list):
+        raise TypeError
+    if not all(isinstance(pair, list) and len(pair) == 2 for pair in listed):
         raise TypeError
     return IndexSource(
         account=_integer(account),
@@ -522,6 +547,7 @@ def _source(value: object) -> IndexSource:
         labels=None if labels is None else tuple(_text(label) for label in labels),
         oldest=None,
         live=tuple(_text(path) for path in live),
+        listed=tuple((_text(label), _text(path)) for label, path in listed),
     )
 
 

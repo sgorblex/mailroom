@@ -19,6 +19,7 @@ from mailroom.models.notifications import MailNotificationFolders
 from mailroom.models.remote_content import RemoteContentSender
 from mailroom.models.sso import ExternalIdentity, Intent, SsoLoginState
 from mailroom.models.user import User, UserSession
+from mailroom.models.views import SavedView
 
 __all__ = [
     "AccountFilterSettings",
@@ -36,6 +37,7 @@ __all__ = [
     "MutedThread",
     "RemoteContentSender",
     "RuleSet",
+    "SavedView",
     "SsoLoginState",
     "TransferLedger",
     "User",

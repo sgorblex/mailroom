@@ -19,11 +19,13 @@ only counts and codes.
 
 The package is split by concern: ``read``, ``organize``, ``bulk`` (every message a search
 matches), ``folder_writes`` (creating, renaming and deleting folders, marking one read;
-``folders`` is the listing, re-exported here), ``compose`` (drafts with it) and ``send``, with
-what more than one of them uses in ``_shared``. This facade re-exports what the front ends call,
-so they keep calling ``service.X``.
+``folders`` is the listing, re-exported here), ``compose`` (drafts with it), ``send`` and
+``views`` (a view's messages, from the index only), with what more than one of them uses in
+``_shared``. This facade re-exports what the front ends call, so they keep calling
+``service.X``.
 """
 
+from mailroom.mail.index.reads import ListedSummary
 from mailroom.mail.service._shared import MAX_CURSOR, MAX_FOLDER, MAX_REF_LENGTH, MAX_TERM
 from mailroom.mail.service.bulk import BULK_BATCH, BULK_MAX, act_on_matching, count_matching
 from mailroom.mail.service.compose import (
@@ -94,6 +96,7 @@ from mailroom.mail.service.send import (
     send_message,
     send_reply,
 )
+from mailroom.mail.service.views import TEXT_REFUSED, ViewPage, view_messages
 
 __all__ = [
     "ALL_ACCOUNTS",
@@ -109,16 +112,19 @@ __all__ = [
     "MAX_REF_LENGTH",
     "MAX_TERM",
     "SEND_HOLDS_THE_DRAFT",
+    "TEXT_REFUSED",
     "AllAccounts",
     "Dispatched",
     "DraftFields",
     "DraftView",
     "FolderRenamed",
     "KeywordFailures",
+    "ListedSummary",
     "Prefill",
     "Printable",
     "Quotas",
     "SendView",
+    "ViewPage",
     "account_by_name",
     "account_ids",
     "account_keywords",
@@ -162,4 +168,5 @@ __all__ = [
     "trash",
     "upload_limit",
     "upload_place",
+    "view_messages",
 ]
