@@ -140,3 +140,17 @@ class MailIndexMessage(Base):
     gm_thrid: Mapped[int | None] = mapped_column(BigInteger)
     labels: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default="{}")
     """X-GM-LABELS (``\\Inbox``, ``\\Sent``, the user's labels); empty off Gmail."""
+
+
+class MailViewInterest(Base):
+    """A folder one of the user's browsers is viewing, until ``expires_at``: the worker watches
+    it through IDLE while the row lasts (``mailroom.worker.idle``). The API writes the rows and
+    announces each on ``INTEREST_CHANNEL``; the worker deletes the expired ones."""
+
+    __tablename__ = "mail_view_interest"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey(User.id, ondelete="CASCADE"), primary_key=True)
+    account_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    folder: Mapped[str] = mapped_column(Text, primary_key=True)
+    """As the server names it, like ``MailIndexFolder.path``."""
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

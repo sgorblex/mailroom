@@ -6,6 +6,7 @@ changes (CONDSTORE or every message's), expunges, a UIDVALIDITY change and the a
 from __future__ import annotations
 
 import logging
+import threading
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
@@ -17,8 +18,8 @@ from mailroom.mail.connections import PASSWORD_MISSING
 from mailroom.mail.index import discover_folders, due_folders
 from mailroom.mail.index import sync as index_sync
 from mailroom.models import MailIndexFolder, MailIndexMessage
+from mailroom.worker import idle, tasks
 from mailroom.worker import index as worker_index
-from mailroom.worker import tasks
 from mailroom.worker.app import PROCRASTINATE_SCHEMA
 from mailroom.worker.context import WorkerContext
 from mailroom.worker.index import account_folders_due, run_folder_sync
@@ -303,6 +304,51 @@ def test_a_resync_takes_new_mail_flag_changes_and_expunges(
     row = folder_row(db_session, user, "INBOX")
     assert (row.message_count, row.unread_count) == (3, 2)
     assert row.highest_modseq is not None
+
+
+def test_a_watched_inbox_queues_its_sync_on_new_mail_and_flag_changes(
+    monkeypatch: pytest.MonkeyPatch,
+    db_session: Session,
+    sessions: sessionmaker[Session],
+    mailboxes: Mailboxes,
+    imap_server: ImapTestServer,
+    login: str,
+    user: User,
+    account: int,
+) -> None:
+    """The IDLE supervisor's watch on the indexed INBOX: a sync once it connects, then on each
+    change the server announces."""
+    first = seed(imap_server, login, "INBOX", mime("a"))
+    account_folders_due(db_session, mailboxes, user.id, account, NOW)
+    inbox_id = folder_row(db_session, user, "INBOX").id
+    queued: list[int] = []
+    heard = threading.Condition()
+
+    def queue_folder_sync(_db: Session, _user: int, _account: int, folder_id: int) -> bool:
+        with heard:
+            queued.append(folder_id)
+            heard.notify_all()
+        return True
+
+    def wait_for(count: int) -> None:
+        with heard:
+            assert heard.wait_for(lambda: len(queued) >= count, 20)
+
+    monkeypatch.setattr(idle, "queue_folder_sync", queue_folder_sync)
+    supervisor = idle.IdleSupervisor(sessions, mailboxes, rules=False)
+    try:
+        supervisor.reconcile()
+        assert supervisor.watched == {idle.WatchedFolder(user.id, account, "INBOX")}
+        wait_for(1)
+        seed(imap_server, login, "INBOX", mime("b"))
+        wait_for(2)
+        with raw_client(imap_server, login) as client:
+            client.select_folder("INBOX")
+            client.add_flags([first], ["\\Seen"])
+        wait_for(3)
+    finally:
+        supervisor.stop_all()
+    assert set(queued) == {inbox_id}
 
 
 def test_a_new_uidvalidity_rebuilds_the_folder(

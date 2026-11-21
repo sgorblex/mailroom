@@ -12,7 +12,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 
 from mailroom.auth.users import create_user
-from mailroom.models import MailIndexFolder, MailIndexMessage
+from mailroom.models import MailIndexFolder, MailIndexMessage, MailViewInterest
 from mailroom_core.store import CORE_MIGRATIONS
 from tests.conftest import PASSWORD
 from tests.test_filter_runner import add_account
@@ -72,9 +72,16 @@ def test_index_rows_go_with_their_account(
     indexed(db_session, user.id, work, uids=(1, 2))
     indexed(db_session, user.id, work, "Archive")
     indexed(db_session, user.id, home, "INBOX")
+    expires = datetime(2100, 1, 1, tzinfo=UTC)
+    db_session.add_all(
+        MailViewInterest(user_id=user.id, account_id=account, folder="INBOX", expires_at=expires)
+        for account in (work, home)
+    )
+    db_session.commit()
 
     assert user_client.delete(f"/api/v1/accounts/{work}").status_code == 204
     assert rows(db_session) == [(home, "INBOX", 1)]
+    assert db_session.scalars(select(MailViewInterest.account_id)).all() == [home]
 
 
 def test_index_rows_go_with_their_user(
