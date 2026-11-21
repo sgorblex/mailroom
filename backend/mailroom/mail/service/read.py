@@ -919,6 +919,26 @@ def account_ids(ctx: AppContext, user_id: int) -> Sequence[int]:
     return _accounts(ctx, user_id).ids()
 
 
+def account_by_name(ctx: AppContext, user_id: int, written: str) -> int | AllAccounts:
+    """The account a search query's ``account:`` names: ``*``, an id (its digits; whether it is
+    the user's is the search's to check), or the one account whose name, else login, it is,
+    ignoring case. ``not_found`` when none is, ``invalid_argument`` when several are."""
+    if written == ALL_ACCOUNTS:
+        return ALL_ACCOUNTS
+    if written.isascii() and written.isdigit():
+        return int(written)
+    wanted = written.casefold()
+    configs = _accounts(ctx, user_id).loaded.settings.account
+    found = [a.id for a in configs if (a.name or "").casefold() == wanted]
+    found = found or [a.id for a in configs if a.login.casefold() == wanted]
+    if len(found) == 1:
+        return found[0]
+    if not found:
+        raise Refusal("not_found", "not_found", "No account of yours has that name.", coded=True)
+    message = "More than one account has that name: name it by its id."
+    raise Refusal("invalid", "invalid_argument", message)
+
+
 def attachment(
     ctx: AppContext, user_id: int, ref: str, part: str, *, via: Via = "web"
 ) -> Attachment:

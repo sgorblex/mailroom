@@ -20,11 +20,15 @@ bare verbs. The `mail_read` tools take mailroom-mcp's `list`, `search`, `read`, 
 with one account it may be left out, and
 `messages_search` takes `"*"` for every account; both take `subfolders`, the folder's subfolders
 merged in as the REST list's `subfolders` reads them, refused with `folder="*"`, each line then
-naming its folder after the ref) and return mailroom-core's text, its hints naming the app's
-tools (`message_read`, `thread_read`, `attachment_read`): one line per message, dates in the
-user's time zone (UTC until they set one), each answer ending with the line that names it
-(`Dates are in Europe/Rome.`), a collapsed quote as a marker line naming `include_quoted`,
-everything mail-derived inside the envelope. `message_read` writes the REST read's checks after
+naming its folder after the ref; `messages_search` also takes `query`, a line in the
+[search syntax](mail-client.md#search-syntax), its terms and the other arguments all applying,
+refused with `invalid_argument` when it does not parse or gives a criterion, the folder or the
+account another value than an argument does; its `account:` may name an account by name) and
+return mailroom-core's text, its hints naming the app's tools (`message_read`, `thread_read`,
+`attachment_read`): one line per message, dates in the user's time zone (UTC until they set
+one), each answer ending with the line that names it (`Dates are in Europe/Rome.`), a collapsed
+quote as a marker line naming `include_quoted`, everything mail-derived inside the envelope.
+`message_read` writes the REST read's checks after
 the envelope, as Mailroom's own lines holding no text of the message: `Sent to:` the identity it
 arrived at; a `Sender warning:` that the From display name names another address or domain than
 the From address shown, quoting neither; and `Authentication:` the account's server's `spf`,

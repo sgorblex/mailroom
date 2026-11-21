@@ -98,6 +98,7 @@ class MatchRequest(BaseModel):
     before: date | None = None
     unread: bool | None = None
     flagged: bool | None = None
+    to_sort: bool | None = None
     has_attachment: bool | None = None
     gmail_query: Annotated[str | None, Field(max_length=service.MAX_TERM)] = None
     subfolders: bool = False
@@ -112,6 +113,7 @@ class MatchRequest(BaseModel):
             before=self.before,
             unread=self.unread,
             flagged=self.flagged,
+            to_sort=self.to_sort,
             has_attachment=self.has_attachment,
             gmail_query=_term(self.gmail_query),
         )
