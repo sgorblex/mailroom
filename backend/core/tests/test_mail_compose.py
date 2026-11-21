@@ -22,6 +22,7 @@ from mailroom_core.mail import (
     format_ref,
     forward_subject,
     forwarded_original,
+    forwarded_original_html,
     from_identity,
     is_own_draft,
     list_messages,
@@ -181,6 +182,17 @@ def test_attaches_a_calendar_part_but_not_what_html_shows_in_place(imap_server, 
     assert read_attachment(mail, ref, "1.2", max_bytes=1024).size > 0
     with pytest.raises(MailError, match="not an attachment"):
         attachments_from(mail, [AttachmentSource(ref, "1.2")], 1024)
+    [image] = attachments_from(mail, [AttachmentSource(ref, "1.2", inline=True)], 1024)
+    assert (image.content_id, image.filename, image.content) == ("one@x", "", b"\x89PNG\r\n\x1a\n")
+    with pytest.raises(MailError, match="not an inline part"):
+        attachments_from(mail, [AttachmentSource(ref, "2", inline=True)], 1024)
+
+    assert original_message(mail, ref).html is None
+    original = original_message(mail, ref, with_html=True)
+    assert original.html is not None
+    assert original.html.strip() == "<img src=cid:one@x>"
+    assert [(p.info.part, p.content_id) for p in original.inline] == [("1.2", "one@x")]
+    assert forwarded_original_html(original, "UTC").endswith('<img src="cid:one@x">')
 
 
 def test_reads_at_most_the_start_of_a_very_long_original(imap_server, harness) -> None:
@@ -198,7 +210,19 @@ def test_answers_an_html_message_as_text(imap_server, harness) -> None:
     user = imap_server.unique_user("html")
     seed(imap_server, user, "INBOX", mime("h", html="<p>Hello <b>there</b></p>"))
     mail = harness(test_account(1, user, imap_server))
-    assert original_message(mail, only_ref(mail)).text == "Hello there"
+    original = original_message(mail, only_ref(mail), with_html=True)
+    assert original.text == "Hello there"
+    assert original.html == "<p>Hello <b>there</b></p>"
+
+
+def test_quotes_an_html_original_too_long_to_cut_as_text(imap_server, harness) -> None:
+    user = imap_server.unique_user("bightml")
+    paragraph = "<p>" + "word " * 200 + "</p>"
+    seed(imap_server, user, "INBOX", mime("h", html=paragraph * 1100))
+    mail = harness(test_account(1, user, imap_server))
+    original = original_message(mail, only_ref(mail), with_html=True)
+    assert original.html is None
+    assert original.text.startswith("word word")
 
 
 def test_drafts_a_threaded_reply_from_the_alias_the_original_went_to(imap_server, harness) -> None:

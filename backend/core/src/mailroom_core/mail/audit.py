@@ -189,7 +189,8 @@ def outgoing_item(
     folder: str | None = None,
     message_id: str | None = None,
 ) -> AuditItem:
-    """The record of an outgoing message: who it is from and to in clear, the subject hashed."""
+    """The record of an outgoing message: who it is from and to in clear, the subject hashed, and
+    how many files it attaches (its HTML's inline parts are not counted)."""
     return AuditItem(
         account=account,
         folder=folder,
@@ -201,7 +202,7 @@ def outgoing_item(
             bcc=tuple(m.address for m in message.bcc),
         ),
         subject_sha256=subject_sha256(message.subject),
-        attachments=len(message.attachments),
+        attachments=sum(a.content_id is None for a in message.attachments),
         result=result,
     )
 

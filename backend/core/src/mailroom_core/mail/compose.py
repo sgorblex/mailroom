@@ -18,9 +18,10 @@ from typing import TYPE_CHECKING, Final
 
 from mailroom_core.mail._mime import header_values, well_formed
 from mailroom_core.mail.errors import MailError
+from mailroom_core.mail.outgoing import MAX_HTML_BYTES
 from mailroom_core.mail.recipients import Mailbox, deliverable_address
 from mailroom_core.mail.ref import MessageRef, format_ref, parse_ref
-from mailroom_core.render import clean_header
+from mailroom_core.render import clean_header, html_to_text, outgoing_html
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
@@ -45,6 +46,9 @@ _NOT_BASE64: Final = ("multipart/", "message/")
 attachments, both go as opaque bytes."""
 _PHRASE: Final = re.compile(r"[A-Za-z0-9!#$%&'*+/=?^_`{|}~ -]+")
 """Atoms and the single spaces `clean_header` leaves: a display name that needs no quotes."""
+_CONTENT_ID: Final = re.compile(r"[\w!#$&'*+./=@^`{|}~-]{1,250}", re.ASCII)
+"""A Content-ID that goes in a header as it is: no `?`, so never an encoded word, and nothing a
+`cid:` URL would need to escape, `%` included: the URL is unquoted when read."""
 _SEPARATOR: Final = re.compile(rb"\r?\n\r?\n")
 _LINE_START: Final = re.compile(rb"(?<=\n)")
 _LAST_BREAK: Final = re.compile(rb"\r?\n\Z")
@@ -60,11 +64,15 @@ class OutgoingAttachment:
     filename: str
     content_type: str
     content: bytes
+    content_id: str | None = None
+    """Set on an inline part: what the HTML shows as `cid:<content_id>` (angle brackets
+    optional). It goes with an inline disposition, only while the HTML refers to it."""
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class MessageInput:
-    """What a message is composed from: identity, recipients, subject, text and attachments."""
+    """What a message is composed from: identity, recipients, subject, text or HTML, and
+    attachments."""
 
     sender: Mailbox
     """The From identity (`from_identity`)."""
@@ -73,6 +81,9 @@ class MessageInput:
     bcc: tuple[Mailbox, ...] = ()
     subject: str
     text: str
+    html: str | None = None
+    """The body as HTML, sanitised when composed (`render.outgoing_html`); the text part is then
+    derived from it and `text` is not used."""
     in_reply_to: str | None = None
     """The Message-ID answered; with `references`, the thread so far."""
     references: tuple[str, ...] = ()
@@ -172,17 +183,78 @@ def _part_type(declared: str) -> tuple[str, str]:
     return main, sub
 
 
-def _body(message: MessageInput) -> bytes:
-    """The MIME headers and the body: the text as UTF-8 quoted-printable, then the attachments in
-    base64, whatever they hold, so they arrive byte for byte."""
-    body = EmailMessage(policy=_POLICY)
-    body.set_content(well_formed(message.text), charset="utf-8", cte="quoted-printable")
+def _filename(name: str) -> str:
+    # Not an encoded word when the package parses it back: see the module's docstring.
+    return clean_header(well_formed(name), 200).replace(_ENCODED_WORD_START, "= ?")
+
+
+def _inline(message: MessageInput) -> dict[str, OutgoingAttachment]:
+    """The inline parts by Content-ID; one that could not go in a header as it is has nothing
+    the HTML may show, and is left out."""
+    parts = {}
     for attachment in message.attachments:
-        main, sub = _part_type(attachment.content_type)
-        # Not an encoded word when the package parses it back: see the module's docstring.
-        filename = clean_header(well_formed(attachment.filename), 200).replace(
-            _ENCODED_WORD_START, "= ?"
+        if attachment.content_id is None:
+            continue
+        cid = attachment.content_id.strip().removeprefix("<").removesuffix(">")
+        if _CONTENT_ID.fullmatch(cid):
+            parts[cid] = attachment
+    return parts
+
+
+def _html_body(body: EmailMessage, html: str, message: MessageInput) -> None:
+    """multipart/alternative of the text derived from the sanitised HTML and that HTML, wrapped
+    in a multipart/related with the parts it shows in place, if any."""
+    inline = _inline(message)
+    cleaned = outgoing_html(well_formed(html), content_ids=inline)
+    parts = [
+        *((cid, a.content_type, a.content, a.filename) for cid, a in inline.items()),
+        *((i.content_id, i.content_type, i.content, "") for i in cleaned.images),
+    ]
+    shown = [part for part in parts if part[0] in cleaned.content_ids]
+    # The package converts only the other way round: related into alternative, not this.
+    alternative = EmailMessage(policy=_POLICY) if shown else body
+    alternative.set_content(
+        # Room for the entities sanitising writes out, as drafts.MAX_DRAFT_HTML_BYTES has.
+        html_to_text(cleaned.html, False, max_chars=2 * MAX_HTML_BYTES).text,
+        charset="utf-8",
+        cte="quoted-printable",
+    )
+    alternative.add_alternative(
+        cleaned.html, subtype="html", charset="utf-8", cte="quoted-printable"
+    )
+    if not shown:
+        return
+    body["MIME-Version"] = "1.0"
+    body.make_related()
+    # RFC 2387: the type of the root part, which is the first.
+    body.set_param("type", "multipart/alternative")
+    body.attach(alternative)
+    for cid, declared, content, name in shown:
+        main, sub = _part_type(declared)
+        body.add_related(
+            content,
+            maintype=main,
+            subtype=sub,
+            cid=f"<{cid}>",
+            disposition="inline",
+            filename=_filename(name) or None,
         )
+
+
+def _body(message: MessageInput) -> bytes:
+    """The MIME headers and the body: the text as UTF-8 quoted-printable, or with `html` the
+    alternatives and their inline parts (`_html_body`), then the attachments in base64, whatever
+    they hold, so they arrive byte for byte. Inline parts go only with HTML that shows them."""
+    body = EmailMessage(policy=_POLICY)
+    if message.html is None:
+        body.set_content(well_formed(message.text), charset="utf-8", cte="quoted-printable")
+    else:
+        _html_body(body, message.html, message)
+    for attachment in message.attachments:
+        if attachment.content_id is not None:
+            continue
+        main, sub = _part_type(attachment.content_type)
+        filename = _filename(attachment.filename)
         body.add_attachment(
             attachment.content,
             maintype=main,

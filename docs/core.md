@@ -24,6 +24,7 @@ the tools answer with, and the app's MCP writes thin tools over it. The filter e
 | HTML to text | Our own port of the `html-to-text` subset the TypeScript server used, with an iterative walk and chunked output, over `lxml.html` (BSD-3) parsed from UTF-8 bytes with `huge_tree`. Not an HTML5 tree builder: lexbor, html5ever and html5lib are quadratic on deeply nested markup, lxml is linear and bounds the depth. |
 | Quotes | A vendored port of `email-reply-parser` 2.3.9 (crisp-oss, MIT), with its multi-language quote headers and signatures. Not PyPI's `email_reply_parser`, which knows English only. |
 | HTML for display | `nh3` (MIT, ammonia) over markup normalised by lxml, for the app's message view: tag, attribute and CSS-property allowlists, `url()` dropped from styles, remote `src` removed, `cid:` images inlined as `data:`. The app shows the result in a sandboxed iframe under its own CSP. |
+| HTML to send | The same allowlists through nh3 (`render.outgoing_html`), with nothing that reaches out: links only `http(s)` and `mailto`, images only `cid:` parts the message carries, a raster `data:` image turned into such a part, any other image left out, element and all. Its allowlists and lxml pass are `safe_html`'s, in one private module (`render._html_policy`). |
 | Crypto | `cryptography`: AES-256-GCM, HKDF. |
 | Validation | pydantic v2, for the config and the settings; TOML through `tomllib`. |
 | Store | Postgres through SQLAlchemy 2 (Core, synchronous) on psycopg 3, and Alembic. |
@@ -36,7 +37,7 @@ the tools answer with, and the app's MCP writes thin tools over it. The filter e
 | `config` | The settings document: accounts (with an optional name, colour and authentication server, `authserv_id`), identities, send modes, limits (`CoreSettings`) |
 | `crypto` | Sealed secrets |
 | `store` | `AccountStore` and core's migrations, in schema `core` |
-| `render` | Bodies to text, quotes, the untrusted-content envelope, `safe_html` |
+| `render` | Bodies to text, quotes, the untrusted-content envelope, `safe_html`, `outgoing_html` |
 | `mail` | Connections (`mail.imap`), operations on a selected folder (`mail.selected`), a folder's UIDs and flag changes (`mail.changes`), what an index keeps per message (`mail.index`), IDLE (`mail.idle`), refs, read, organize, folders (`mail.folders`), messages parsed for the filters (`mail.parsed`), compose, drafts, the tools' text, audit items |
 | `send` | SMTP and the send gate |
 | `filters` | The filter engine: criteria, actions, rules as data (specs), runs, the runner and IDLE monitor, reports |
@@ -486,7 +487,25 @@ encoded word, so the message's own headers are written by hand. Deliberate choic
 - `deliverable_address` refuses an address over 254 characters once punycoded, the most SMTP can
   carry: a header word is never split, so a longer one could pass the limit of a line.
 - `attachments_from` takes attachment and calendar parts, not what the HTML shows in place, which
-  core does not list as attachments.
+  core does not list as attachments, unless the source says `inline`: then it takes only such a
+  part, with its Content-ID, for a forward or a draft's next version that keeps that HTML.
+- **HTML bodies.** With `MessageInput.html`, the body is multipart/alternative of a text part,
+  `html_to_text` over the sanitised HTML (`text` is not used), and that HTML; wrapped in a
+  multipart/related, `type="multipart/alternative"`, with the inline parts it shows, if any; then
+  multipart/mixed with the attachments. An `OutgoingAttachment` with a `content_id` is an inline
+  part: written with an inline disposition and its Content-ID only while the HTML refers to it,
+  never without HTML. A Content-ID that could not go in a header as it is, or that a `cid:` URL
+  would escape (a `?`, a `%`, a space, past 250 characters) refers to nothing, so its image is dropped rather than the message refused.
+  `check_fields` caps the HTML at `MAX_HTML_BYTES`, 3 MiB of UTF-8 (the other fields are in
+  UTF-16 units); its `data:` images count there, not against the attachment cap. The text part's
+  `html_to_text` takes twice that (`max_chars`), so it reads any such body whole. An audit item counts the attachments
+  alone, not the inline parts.
+- `quoted_original_html` puts the original's HTML, sanitised as a send would (its text, escaped,
+  when it has none or more than `MAX_QUOTED_HTML_BYTES`, since HTML cannot be cut), in a
+  `<blockquote type="cite">` under the attribution line, without its images.
+  `forwarded_original_html` keeps the `cid:` images of `Original.inline`, which the forward
+  carries as inline sources. `original_message` reads the HTML for them only `with_html`: a text
+  reply or forward does without that second fetch.
 
 **`from` resolution:** an explicit `from` must be one of the account's identities, else the call
 fails and lists the valid ones. A reply or forward without one matches the original's `To`, then
@@ -509,8 +528,13 @@ choices:
 - `find_drafts` searches by `<compose_id@`, so a change of identity between versions does not hide
   any, and checks each match's ENVELOPE: a server's search can go by words (Dovecot's does).
 - Each save answers `autosave`, false without UIDPLUS, where every version would land in Trash.
-- `lossy` also covers a draft with an HTML alternative, inline images or an invite with no name,
-  none of which a save keeps. A named `.ics` is an attachment, and lists as one.
+- A draft Mailroom wrote keeps its HTML: `Draft.html` is sanitised again on the way out (the
+  mark is only as trustworthy as whoever wrote the draft) and `Draft.inline` lists the parts it
+  shows, which the next save keeps as `inline` sources. `lossy` covers another client's HTML or
+  inline images, an invite with no name, none of which a save keeps, and text or HTML past
+  `MAX_DRAFT_BYTES`; a Mailroom HTML draft's parts are read up to `MAX_DRAFT_HTML_BYTES`, twice
+  the longest HTML `check_fields` admits (room for the entities sanitising writes out), so that one
+  reads back whole. A named `.ics` is an attachment, and lists as one.
   `Draft.answers` is dropped when it names another account: the header is only as trustworthy as
   whoever wrote the draft.
 - `remove_draft` tags a failed removal `removed: "failed"`, for an expunge and for a move to Trash,
@@ -576,8 +600,10 @@ sending, and `settle_draft` and `mark_original` do what follows a sent draft or 
   that address is checked against the account's identities, and the field goes out as stored.
 - A draft with no Message-ID, which Mailroom never writes, gets one when sent: it could not be
   found again in Sent, and would audit as nothing.
-- A stored draft may reach 1.5 times `attachment_max_mb` plus 2 MiB, not `attachment_max_mb`, or a
-  draft with attachments near the cap, which base64 grows by 37%, could be saved and never sent.
+- A stored draft may reach 1.5 times `attachment_max_mb` plus 2 MiB, plus room for an HTML body
+  at `MAX_HTML_BYTES` (its HTML and derived text in quoted-printable, its pasted images within
+  those bytes), not `attachment_max_mb`, or a draft with attachments near the cap, which
+  base64 grows by 37%, could be saved and never sent.
 
 ## Filters
 

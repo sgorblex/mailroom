@@ -1,6 +1,7 @@
 """`src/mail/compose.test.ts`, the input caps of `src/mcp/tools/outgoing.ts`, and what the audit
 records of an outgoing message."""
 
+import base64
 import email
 import json
 import re
@@ -17,12 +18,14 @@ from mailroom_core.config import AccountConfig, Limits
 from mailroom_core.mail import (
     DRAFT_HEADER,
     MAX_ADDRESSES,
+    MAX_HTML_BYTES,
     MAX_ORIGINAL_BYTES,
     MAX_SUBJECT_CHARS,
     MAX_TEXT_CHARS,
     MAX_UPLOADS,
     Addressed,
     AuditItem,
+    InlinePart,
     Mailbox,
     MailError,
     MessageInput,
@@ -42,6 +45,7 @@ from mailroom_core.mail import (
     format_ref,
     forward_subject,
     forwarded_original,
+    forwarded_original_html,
     from_identity,
     is_own_draft,
     mailbox_text,
@@ -50,6 +54,7 @@ from mailroom_core.mail import (
     outgoing_item,
     parse_ref,
     quoted_original,
+    quoted_original_html,
     recipient_list,
     reply_recipients,
     reply_subject,
@@ -59,6 +64,7 @@ from mailroom_core.mail import (
 )
 from mailroom_core.mail._mime import header_values
 from mailroom_core.mail.compose import crlf_lines
+from mailroom_core.render import PartInfo
 
 if TYPE_CHECKING:
     from email.message import EmailMessage
@@ -422,6 +428,85 @@ class TestCompose:
         }
 
 
+PNG = b"\x89PNG\r\n\x1a\nfake"
+PNG_BASE64 = base64.b64encode(PNG).decode()
+
+
+def tree(part: EmailMessage, depth: int = 0) -> list[str]:
+    """The MIME tree as indented content types."""
+    lines = [f"{'  ' * depth}{part.get_content_type()}"]
+    if part.is_multipart():
+        for child in part.iter_parts():
+            lines += tree(cast("EmailMessage", child), depth + 1)
+    return lines
+
+
+class TestHtmlBody:
+    def test_sends_text_derived_from_the_sanitised_html_as_its_alternative(self) -> None:
+        html = "<p>Hello <b>there</b><script>alert(1)</script></p><blockquote>q</blockquote>"
+        reread = parsed(compose(replace(BASE, text="ignored", html=html)).wire)
+        assert tree(reread) == ["multipart/alternative", "  text/plain", "  text/html"]
+        text, rich = reread.iter_parts()
+        assert text.get_content().replace("\r\n", "\n") == "Hello there\n\n> q\n"
+        assert rich.get_content().strip() == "<p>Hello <b>there</b></p><blockquote>q</blockquote>"
+        assert reread["MIME-Version"] == "1.0"
+
+    def test_wraps_the_alternative_in_related_parts_the_html_shows(self) -> None:
+        message = replace(
+            BASE,
+            html=f"<p><img src='cid:one@x'><img src='data:image/png;base64,{PNG_BASE64}'></p>",
+            attachments=(
+                OutgoingAttachment("a.pdf", "application/pdf", b"%PDF"),
+                OutgoingAttachment("one.png", "image/png", PNG, content_id="<one@x>"),
+                OutgoingAttachment("unused.png", "image/png", PNG, content_id="unused@x"),
+            ),
+        )
+        reread = parsed(compose(message).wire)
+        assert tree(reread) == [
+            "multipart/mixed",
+            "  multipart/related",
+            "    multipart/alternative",
+            "      text/plain",
+            "      text/html",
+            "    image/png",
+            "    image/png",
+            "  application/pdf",
+        ]
+        related = next(reread.iter_parts())
+        assert related.get_param("type") == "multipart/alternative"
+        _alternative, one, pasted = related.iter_parts()
+        assert one["Content-ID"] == "<one@x>"
+        assert one.get_content_disposition() == "inline"
+        assert one.get_filename() == "one.png"
+        assert one.get_content() == PNG
+        assert pasted.get_content() == PNG
+        assert pasted.get_filename() is None
+        html = related.get_body(("html",)).get_content()
+        cid = pasted["Content-ID"].strip("<>")
+        assert f'src="cid:{cid}"' in html.replace("=\r\n", "")
+        assert "data:" not in html
+        [attachment] = reread.iter_attachments()
+        assert attachment.get_filename() == "a.pdf"
+
+    def test_leaves_out_inline_parts_nothing_shows(self) -> None:
+        inline = OutgoingAttachment("i.png", "image/png", PNG, content_id="one@x")
+        plain = parsed(compose(replace(BASE, attachments=(inline,))).wire)
+        assert tree(plain) == ["text/plain"]
+        unseen = parsed(compose(replace(BASE, html="<p>no image</p>", attachments=(inline,))).wire)
+        assert tree(unseen) == ["multipart/alternative", "  text/plain", "  text/html"]
+
+    def test_an_inline_part_whose_content_id_cannot_go_in_a_header_shows_nothing(self) -> None:
+        for cid in ("=?utf-8?q?x?=", "a b@x", "a\r\nX-Evil: 1", "<>", "x" * 251, "a%41@x"):
+            message = replace(
+                BASE,
+                html=f'<img src="cid:{cid}">',
+                attachments=(OutgoingAttachment("i.png", "image/png", PNG, content_id=cid),),
+            )
+            raw = compose(message).wire
+            assert b"X-Evil" not in raw
+            assert tree(parsed(raw)) == ["multipart/alternative", "  text/plain", "  text/html"]
+
+
 class TestDraftMark:
     ANSWERED = format_ref(MessageRef(1, "INBOX", 7, 42))
 
@@ -649,6 +734,41 @@ class TestRepliesAndForwards:
         ]
         assert "Cc:" not in forwarded_original(replace(ORIGINAL, cc=()), "UTC")
 
+    def test_quotes_the_originals_sanitised_html_in_a_cite_blockquote(self) -> None:
+        rich = replace(
+            ORIGINAL,
+            sender=(Mailbox("ana@x.org", "Ana <b>"),),
+            html="<p onclick='x()'>Shall <b>we</b>?<img src='cid:i@x'></p><script>1</script>",
+            inline=(InlinePart(PartInfo(part="2", type="image/png", size=4), "i@x"),),
+        )
+        assert quoted_original_html(rich, "UTC") == (
+            "<div>On 2026-10-03 12:12, Ana &lt;b&gt; &lt;ana@x.org&gt; wrote:</div>"
+            '<blockquote type="cite"><p>Shall <b>we</b>?</p></blockquote>'
+        )
+        assert quoted_original_html(ORIGINAL, "UTC").endswith(
+            '<blockquote type="cite"><div>Shall we?<br><br>Ana</div></blockquote>'
+        )
+        assert "&lt;script&gt;" in quoted_original_html(
+            replace(ORIGINAL, text="<script>x</script>"), "UTC"
+        )
+
+    def test_forwards_the_originals_html_keeping_its_inline_images(self) -> None:
+        rich = replace(
+            ORIGINAL,
+            cc=(),
+            html="<p>Shall we?<img src='cid:i@x'><img src='cid:other@x'></p>",
+            inline=(InlinePart(PartInfo(part="2", type="image/png", size=4), "i@x"),),
+        )
+        assert forwarded_original_html(rich, "UTC") == (
+            "<div>---------- Forwarded message ---------<br>From: Ana &lt;ana@x.org&gt;<br>"
+            "Date: 2026-10-03 12:12<br>Subject: Plans<br>"
+            "To: me@example.test, bo@x.org</div><br>"
+            '<p>Shall we?<img src="cid:i@x"></p>'
+        )
+        assert forwarded_original_html(ORIGINAL, "UTC").endswith(
+            "<br><div>Shall we?<br><br>Ana</div>"
+        )
+
     def test_reads_less_of_an_original_than_a_read_does(self) -> None:
         assert MAX_ORIGINAL_BYTES == 2 * 1024 * 1024
 
@@ -666,12 +786,16 @@ class TestCaps:
             bcc=["a"] * MAX_ADDRESSES,
             subject="s" * MAX_SUBJECT_CHARS,
             text="t" * MAX_TEXT_CHARS,
+            html="h" * MAX_HTML_BYTES,
         )
+        check_fields(html="é" * (MAX_HTML_BYTES // 2))  # the cap is in UTF-8 bytes
         for over in (
             {"bcc": ["a"] * (MAX_ADDRESSES + 1)},
             {"subject": "s" * (MAX_SUBJECT_CHARS + 1)},
             {"text": "t" * (MAX_TEXT_CHARS + 1)},
             {"text": "😀" * (MAX_TEXT_CHARS // 2 + 1)},
+            {"html": "h" * (MAX_HTML_BYTES + 1)},
+            {"html": "é" * (MAX_HTML_BYTES // 2 + 1)},
         ):
             with pytest.raises(MailError) as raised:
                 check_fields(**over)  # type: ignore[arg-type]
@@ -690,7 +814,8 @@ class TestCaps:
 
 class TestAudit:
     def test_records_an_outgoing_message_without_its_content(self) -> None:
-        message = replace(BASE, attachments=(OutgoingAttachment("a", "text/plain", b"x"),))
+        inline = OutgoingAttachment("i.png", "image/png", PNG, content_id="i@x")
+        message = replace(BASE, attachments=(OutgoingAttachment("a", "text/plain", b"x"), inline))
         item = outgoing_item(1, message, "ok", folder="Drafts", message_id="<m@x.org>")
         record = item.record
         assert record["from"] == "me@example.test"

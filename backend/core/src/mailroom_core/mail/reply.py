@@ -1,20 +1,22 @@
 """Answering and forwarding a message (`src/mail/reply.ts`): what is read from the original, and
-what an answer takes from it. All of it is the sender's text: `quoted_original` and
-`forwarded_original` go in a message the owner sends, not to a model unwrapped."""
+what an answer takes from it. All of it is the sender's text: `quoted_original`,
+`forwarded_original` and their HTML forms go in a message the owner sends, not to a model
+unwrapped."""
 
 import re
 from dataclasses import dataclass, field
+from html import escape
 from typing import TYPE_CHECKING, Final
 
 from mailroom_core.mail._mime import aware_date, header_fields, header_text, header_values
 from mailroom_core.mail.download import body_text, part_content
 from mailroom_core.mail.identity import Addressed
 from mailroom_core.mail.message_headers import delivery_addresses
-from mailroom_core.mail.read import fetch_structure, fetched_headers
+from mailroom_core.mail.read import clearly_over, fetch_structure, fetched_headers
 from mailroom_core.mail.recipients import envelope_mailboxes, mailbox_text
 from mailroom_core.mail.ref import MessageRef, check_fresh
 from mailroom_core.mail.selected import store_flags, store_forwarded
-from mailroom_core.render import clean_header, format_date, render_body
+from mailroom_core.render import clean_header, format_date, outgoing_html, render_body
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -23,10 +25,13 @@ if TYPE_CHECKING:
     from mailroom_core.config import AccountConfig
     from mailroom_core.mail.imap import MailboxContext, MailConnections
     from mailroom_core.mail.recipients import Mailbox
+    from mailroom_core.mail.structure import InlinePart
     from mailroom_core.render import PartInfo
 
 MAX_ORIGINAL_BYTES: Final = 2 * 1024 * 1024
 """Of an original's body: less than a read, since only its start is quoted."""
+MAX_QUOTED_HTML_BYTES: Final = 1024 * 1024
+"""Of an original's HTML: a longer one is quoted as text, since HTML cannot be cut."""
 _MAX_REFERENCES: Final = 20
 """References kept when answering: the most recent ones, as the thread read uses them too."""
 _MAX_QUOTED_CHARS: Final = 20_000
@@ -52,7 +57,12 @@ class Original:
     addressed: Addressed = field(default_factory=Addressed)
     text: str = ""
     """Its text, quotes included, as a read renders it; empty when it has none."""
+    html: str | None = None
+    """Its HTML as the sender wrote it, unsanitised; None when it has none, a longer one than
+    `MAX_QUOTED_HTML_BYTES`, or was not asked for (`original_message`'s `with_html`)."""
     attachments: tuple[PartInfo, ...] = ()
+    inline: tuple[InlinePart, ...] = ()
+    """The parts its HTML shows in place, which a forward carries as inline `AttachmentSource`s."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,9 +90,12 @@ def references_in(headers: bytes) -> tuple[str, ...]:
     return _found(_MESSAGE_ID, header_values(headers, "references"))
 
 
-def original_message(connections: MailConnections, ref: MessageRef) -> Original:
+def original_message(
+    connections: MailConnections, ref: MessageRef, *, with_html: bool = False
+) -> Original:
     """Reads the message a reply or forward is built on, under EXAMINE, at most
-    `MAX_ORIGINAL_BYTES` of its body."""
+    `MAX_ORIGINAL_BYTES` of its body; with `with_html`, its HTML too, for
+    `quoted_original_html` or `forwarded_original_html`."""
 
     def run(context: MailboxContext) -> Original:
         check_fresh(ref, context.uid_validity)
@@ -91,6 +104,7 @@ def original_message(connections: MailConnections, ref: MessageRef) -> Original:
         data, structure = fetch_structure(client, ref.uid, ["ENVELOPE", fields])
         headers = fetched_headers(data)
         text = ""
+        content = b""
         fmt = structure.body_format
         if structure.body is not None and fmt is not None:
             content = part_content(client, ref.uid, structure.body, MAX_ORIGINAL_BYTES)
@@ -98,6 +112,13 @@ def original_message(connections: MailConnections, ref: MessageRef) -> Original:
             text = render_body(
                 decoded, fmt, include_quoted=True, offset=0, max_chars=_MAX_QUOTED_CHARS
             ).text
+        html: str | None = None
+        part = structure.html if with_html else None
+        if part is not None and not clearly_over(part, MAX_QUOTED_HTML_BYTES):
+            if part is not structure.body:
+                content = part_content(client, ref.uid, part, MAX_QUOTED_HTML_BYTES + 1)
+            if len(content) <= MAX_QUOTED_HTML_BYTES:
+                html = body_text(content, part, complete=True)
         envelope = data.get(b"ENVELOPE")
         to = envelope_mailboxes(getattr(envelope, "to", None))
         cc = envelope_mailboxes(getattr(envelope, "cc", None))
@@ -118,7 +139,9 @@ def original_message(connections: MailConnections, ref: MessageRef) -> Original:
                 delivered=delivery_addresses(header_fields(headers)),
             ),
             text=text,
+            html=html,
             attachments=structure.attachments,
+            inline=structure.inline,
         )
 
     return connections.with_mailbox(ref.account, ref.folder, True, run)
@@ -190,28 +213,60 @@ def _sender(original: Original) -> str:
     return mailbox_text(original.sender[0]) if original.sender else "someone"
 
 
-def quoted_original(original: Original, time_zone: str) -> str:
-    """The original under an answer: an attribution line, then every line quoted with `> `."""
-    quoted = "\n".join(f"> {line}" if line else ">" for line in original.text.split("\n"))
-    return f"On {format_date(original.date, time_zone)}, {_sender(original)} wrote:\n{quoted}"
+def _attribution(original: Original, time_zone: str) -> str:
+    return f"On {format_date(original.date, time_zone)}, {_sender(original)} wrote:"
 
 
-def forwarded_original(original: Original, time_zone: str) -> str:
-    """The original as a forward shows it inline: its main headers, then its text."""
-
+def _forward_header(original: Original, time_zone: str) -> tuple[str, ...]:
     def listed(mailboxes: Iterable[Mailbox]) -> str:
         return ", ".join(mailbox_text(mailbox) for mailbox in mailboxes)
 
     cc = (f"Cc: {listed(original.cc)}",) if original.cc else ()
-    return "\n".join(
-        (
-            "---------- Forwarded message ---------",
-            f"From: {_sender(original)}",
-            f"Date: {format_date(original.date, time_zone)}",
-            f"Subject: {clean_header(original.subject, 998)}",
-            f"To: {listed(original.to)}",
-            *cc,
-            "",
-            original.text,
-        )
+    return (
+        "---------- Forwarded message ---------",
+        f"From: {_sender(original)}",
+        f"Date: {format_date(original.date, time_zone)}",
+        f"Subject: {clean_header(original.subject, 998)}",
+        f"To: {listed(original.to)}",
+        *cc,
     )
+
+
+def _text_html(text: str) -> str:
+    return "<div>" + "<br>".join(escape(line) for line in text.split("\n")) + "</div>"
+
+
+def _original_html(original: Original, content_ids: Iterable[str]) -> str:
+    """Its HTML sanitised as a send would (`render.outgoing_html`), else its text as HTML."""
+    if original.html is None:
+        return _text_html(original.text)
+    return outgoing_html(original.html, content_ids=content_ids, data_images=False).html
+
+
+def quoted_original(original: Original, time_zone: str) -> str:
+    """The original under an answer: an attribution line, then every line quoted with `> `."""
+    quoted = "\n".join(f"> {line}" if line else ">" for line in original.text.split("\n"))
+    return f"{_attribution(original, time_zone)}\n{quoted}"
+
+
+def quoted_original_html(original: Original, time_zone: str) -> str:
+    """`quoted_original` in HTML: the attribution line, then the original's HTML (its text when
+    it has none) in a `<blockquote type="cite">`. Its images are left out: an answer does not
+    carry its inline parts."""
+    return (
+        f"<div>{escape(_attribution(original, time_zone))}</div>"
+        f'<blockquote type="cite">{_original_html(original, ())}</blockquote>'
+    )
+
+
+def forwarded_original(original: Original, time_zone: str) -> str:
+    """The original as a forward shows it inline: its main headers, then its text."""
+    return "\n".join((*_forward_header(original, time_zone), "", original.text))
+
+
+def forwarded_original_html(original: Original, time_zone: str) -> str:
+    """`forwarded_original` in HTML: its headers, then its HTML (its text when it has none),
+    whose images show its `inline` parts, which the forward is to carry."""
+    header = _text_html("\n".join(_forward_header(original, time_zone)))
+    inline = [part.content_id for part in original.inline]
+    return f"{header}<br>{_original_html(original, inline)}"

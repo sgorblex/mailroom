@@ -26,6 +26,9 @@ class AttachmentSource:
 
     ref: MessageRef
     part: str
+    inline: bool = False
+    """The part is one the message's HTML shows in place (`Structure.inline`), carried as such
+    with its Content-ID: for a forward or a draft's next version that keeps that HTML."""
 
 
 def attachments_from(
@@ -36,9 +39,9 @@ def attachments_from(
     used: int = 0,
 ) -> tuple[OutgoingAttachment, ...]:
     """The parts to attach, read from their mailboxes. Each must be an attachment or the calendar
-    part of its message (not its body, nor what its HTML shows in place), and together with the
-    `used` bytes the message carries already they stay under `cap_bytes`: `too_large` beyond. A
-    host checks that each ref's account is the caller's, as for any ref."""
+    part of its message (not its body), or with `inline` one its HTML shows in place, and
+    together with the `used` bytes the message carries already they stay under `cap_bytes`:
+    `too_large` beyond. A host checks that each ref's account is the caller's, as for any ref."""
     attachments: list[OutgoingAttachment] = []
     for source in sources:
         room = cap_bytes - used - sum(len(attachment.content) for attachment in attachments)
@@ -57,15 +60,25 @@ def _read(
         check_fresh(ref, context.uid_validity)
         _data, structure = fetch_structure(context.client, ref.uid, [])
         calendar = () if structure.calendar is None else (structure.calendar,)
-        info = next((p for p in (*structure.attachments, *calendar) if p.part == part), None)
+        attached = (*structure.attachments, *calendar)
+        candidates = structure.inline_parts if source.inline else attached
+        info = next((p for p in candidates if p.part == part), None)
         leaf = structure.parts.get(part)
         if info is None or leaf is None:
-            raise MailError("not_found", f"Part {part} is not an attachment of that message.")
+            kind = "an inline part" if source.inline else "an attachment"
+            raise MailError("not_found", f"Part {part} is not {kind} of that message.")
         if clearly_over(leaf, room):
             raise attachments_too_large(cap_bytes)
         content = part_content(context.client, ref.uid, leaf, room + 1)
         if len(content) > room:
             raise attachments_too_large(cap_bytes)
+        if source.inline:
+            return OutgoingAttachment(
+                filename=info.name or "",
+                content_type=content_type(content, info.type, info.name),
+                content=content,
+                content_id=leaf.content_id,
+            )
         return OutgoingAttachment(
             filename=info.name or f"part-{part}",
             content_type=content_type(content, info.type, info.name),

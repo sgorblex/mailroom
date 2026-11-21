@@ -2,6 +2,7 @@
 `src/mcp/tools/send-tools.it.test.ts` (their result text belongs to the tool layers). Mailpit
 adds a Bcc header of its own for a recipient in no other, so `SmtpStub` shows the wire copy."""
 
+import base64
 import re
 from email import message_from_bytes, policy
 from typing import TYPE_CHECKING, Any, cast
@@ -727,9 +728,45 @@ def test_a_draft_with_attachments_at_the_cap_is_sendable(
     )
 
 
-def test_a_draft_past_what_it_could_hold_is_refused_not_cut(
-    live: Callable[..., Live], imap_server: ImapTestServer, user: str
+def test_a_draft_with_attachments_at_the_cap_and_a_pasted_image_is_sendable(
+    live: Callable[..., Live],
+    imap_server: ImapTestServer,
+    smtp_server: SmtpTestServer,
+    user: str,
 ) -> None:
+    to = f"{user}-to@example.org"
+    limits = Limits(attachment_max_mb=1.0)
+    account = direct(imap_server, user)
+    gate = live(account, limits=limits)
+    image = bytes(range(256)) * 5000
+    pasted = f"data:image/png;base64,{base64.b64encode(image).decode()}"
+    wide = "é" * 100_000
+    saved = save_draft(
+        gate.mail,
+        account,
+        from_user(
+            user,
+            [to],
+            html=f"<p>{wide}<img src='{pasted}'></p>",
+            attachments=(OutgoingAttachment("big.bin", "application/x-big", bytes(1024 * 1024)),),
+        ),
+        cap=1024 * 1024,
+        note=lambda _item: None,
+    )
+    assert saved.ref is not None
+    gate.send_draft(account, saved.ref)
+    delivered = parsed(smtp_server.delivered_to(to)[0].raw)
+    shown = [part.get_content() for part in delivered.walk() if part["Content-ID"] is not None]
+    assert shown == [image]
+
+
+def test_a_draft_past_what_it_could_hold_is_refused_not_cut(
+    live: Callable[..., Live],
+    imap_server: ImapTestServer,
+    user: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(gate_module, "_HTML_SOURCE", 0)
     limits = Limits(attachment_max_mb=0.5)
     account = direct(imap_server, user)
     gate = live(account, limits=limits)
