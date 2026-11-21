@@ -13,8 +13,8 @@
     "unread_other": "{{count}} unread",
     "expand": "Expand",
     "collapse": "Collapse",
-    "includeSubfolders": "Include subfolders",
-    "onlyThisFolder": "This folder only",
+    "showSubfolders": "Show subfolders' mail here",
+    "showThisFolderOnly": "Show this folder only",
     "withSubfolders": "{{name}}, with subfolders"
   },
   "folderActions": {
