@@ -21,6 +21,7 @@ import { addressLabel, formatListDate } from './format.ts'
 import { MAIL_NS } from './i18n.ts'
 import { endMessageDrag, startMessageDrag } from './message-drag.ts'
 import { ACCOUNT_NOT_FOUND, mailCodeMessage, mailErrorMessage } from './messages.ts'
+import { keptTail, type Tail } from './list-tail.ts'
 import { fetchPage, messagesKey, READ_ON_MOUNT } from './queries.ts'
 import { SelectMatching } from './select-matching.tsx'
 import { TOAST_RETURN_ID } from './toast.tsx'
@@ -33,7 +34,8 @@ type More = { kind: 'idle' } | { kind: 'loading' } | { kind: 'failed'; message: 
  * A folder's messages or a search's, newest first, a page at a time: "Load more" asks for the
  * next one with the cursor the last page gave. Mounted anew (by key) for each source. Each row
  * names where it is: its account and folder in a search, its folder in a folder's subfolders.
- * Invalidating its first page (`messagesKey`) reads the list again, keeping it on show meanwhile.
+ * Invalidating its first page (`messagesKey`) reads the list again, keeping it on show meanwhile:
+ * new rows come in at the top, and the rows loaded below it stay.
  */
 export function MessageList({
   source,
@@ -58,27 +60,36 @@ export function MessageList({
     queryFn: ({ signal }) => loadPage(null, signal),
     ...READ_ON_MOUNT,
   })
-  const [later, setLater] = useState<MessagePage[]>([])
+  const [tail, setTail] = useState<Tail | null>(null)
   const [more, setMore] = useState<More>({ kind: 'idle' })
-  // The first page read again: the pages after it start over.
-  const [readAt, setReadAt] = useState(first.dataUpdatedAt)
-  if (readAt !== first.dataUpdatedAt) {
-    setReadAt(first.dataUpdatedAt)
-    setLater([])
+  // The first page read again: what was loaded after it stays below it.
+  const [read, setRead] = useState({ at: first.dataUpdatedAt, page: first.data })
+  if (read.at !== first.dataUpdatedAt) {
+    setRead({ at: first.dataUpdatedAt, page: first.data })
+    setTail(keptTail(read.page, tail, first.data))
   }
+  const latestFirst = useRef(first.data)
+  useEffect(() => {
+    latestFirst.current = first.data
+  })
   const [menu, setMenu] = useState<{ row: MessageItem; anchor: HTMLElement; point: MenuPoint } | null>(null)
   const closeMenu = useCallback(() => {
     setMenu(null)
   }, [])
   const unmountSignal = useUnmountSignal()
   const triage = useTriage()
-  const { removed, setVisible } = triage
-  const loaded = first.status === 'success' ? [first.data, ...later] : []
+  const { removed, setVisible, refreshed } = triage
+  const page = first.status === 'success' ? first.data : null
   // Rows moved away since are gone in place.
-  const messages = loaded.flatMap((page) => page.messages).filter((message) => !removed.has(message.ref))
+  const messages = (page === null ? [] : [...page.messages, ...(tail?.rows ?? [])]).filter((message) => !removed.has(message.ref))
   useEffect(() => {
     setVisible(messages)
   })
+  useEffect(() => {
+    if (page !== null) {
+      refreshed(source, page.messages)
+    }
+  }, [page, source, refreshed])
   useEffect(
     () => () => {
       setVisible([])
@@ -112,8 +123,8 @@ export function MessageList({
     )
   }
 
-  const failures = uniqueFailures(loaded.flatMap((page) => page.failures))
-  const nextCursor = loaded[loaded.length - 1]?.next_cursor ?? null
+  const failures = uniqueFailures([...first.data.failures, ...(tail?.failures ?? [])])
+  const nextCursor = tail === null ? first.data.next_cursor : tail.cursor
   // Every loaded row selected, and more to load: the rest of what the list matches can be.
   const allLoaded = messages.length > 0 && messages.every((message) => triage.selection.has(message.ref))
   const offerMatching = match !== undefined && (triage.matching !== null || (allLoaded && nextCursor !== null))
@@ -122,8 +133,17 @@ export function MessageList({
     setMore({ kind: 'loading' })
     const signal = unmountSignal()
     try {
-      const page = await fetchPage(queryClient, messagesKey(source, cursor), (querySignal) => loadPage(cursor, querySignal), signal)
-      setLater((value) => [...value, page])
+      const next = await fetchPage(queryClient, messagesKey(source, cursor), (querySignal) => loadPage(cursor, querySignal), signal)
+      setTail((value) =>
+        // The first page read again meanwhile no longer goes on at `cursor`: the page is stale.
+        (value === null ? latestFirst.current?.next_cursor : value.cursor) !== cursor
+          ? value
+          : {
+              rows: [...(value?.rows ?? []), ...next.messages],
+              failures: [...(value?.failures ?? []), ...next.failures],
+              cursor: next.next_cursor,
+            },
+      )
       setMore({ kind: 'idle' })
     } catch (error) {
       if (!signal.aborted) {

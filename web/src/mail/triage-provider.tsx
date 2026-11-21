@@ -403,6 +403,25 @@ export function TriageProvider({
     [updateScope, reloadLists],
   )
 
+  const refreshed = useCallback(
+    (key: string, rows: readonly Target[]) => {
+      const current = scopedRef.current
+      const shown = openRef.current?.ref
+      const fresh = rows.filter((row) => row.ref === shown || (current.key === key && current.overrides.has(row.ref)))
+      if (fresh.length === 0) {
+        return
+      }
+      updateScope(key, (scope) => {
+        const overrides = new Map(scope.overrides)
+        for (const { ref, flags } of fresh) {
+          overrides.set(ref, { seen: flags.seen, flagged: flags.flagged, to_sort: flags.to_sort })
+        }
+        return { overrides }
+      })
+    },
+    [scopedRef, openRef, updateScope],
+  )
+
   const run = useCallback(
     async (action: Action, targets: Target[], options: { silent?: boolean } = {}) => {
       const silent = options.silent === true
@@ -748,6 +767,7 @@ export function TriageProvider({
     outcome: scope.outcome,
     dismissOutcome,
     folderMarkedRead,
+    refreshed,
     spamOffer,
     dismissSpamOffer,
     run,

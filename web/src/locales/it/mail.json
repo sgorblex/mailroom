@@ -113,6 +113,7 @@
     "indexing_other": "Indicizzazione: finora {{count, number}} messaggi",
     "indexingOf_one": "Indicizzazione: {{indexed, number}} di {{count, number}} messaggio",
     "indexingOf_other": "Indicizzazione: {{indexed, number}} di {{count, number}} messaggi",
+    "reconnecting": "Riconnessione agli aggiornamenti in tempo reale…",
     "loadMore": "Carica altri",
     "loadingMore": "Caricamento…",
     "partial": "Non è stato possibile leggere parte della posta:",

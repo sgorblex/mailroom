@@ -158,7 +158,7 @@ released and checked in production before the next one starts. Batch 15 is the r
 
 #### 6. Index and what it unlocks
 
-- [ ] **Index and live updates** — schema, initial sync, IDLE-driven refresh, push to the browser;
+- [x] **Index and live updates** — schema, initial sync, IDLE-driven refresh, push to the browser;
       lists and search move to the index.
 - [ ] **Unified folders and saved searches** (after *Index and live updates*) — a folder made of
       any folders of any of the user's accounts (*All inboxes* first), and a search kept as a

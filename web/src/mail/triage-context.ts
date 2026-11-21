@@ -111,6 +111,11 @@ export interface Triage {
   busy: boolean
   outcome: Outcome | null
   dismissOutcome: () => void
+  /**
+   * The list `source` read `rows` again: their flags as read now replace what this screen changed,
+   * and the open message's (whose view was read before) when it is one of them.
+   */
+  refreshed: (source: string, rows: readonly Target[]) => void
   /** Folders were marked read: their rows drop what this screen marked unread, and the list is read again. */
   folderMarkedRead: (account: AccountId, folders: readonly string[]) => void
   /** The filter offered after a report of spam, until dismissed, undone or another report replaces it. */
