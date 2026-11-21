@@ -114,6 +114,25 @@ def test_every_folder_but_junk_is_indexed_from_first_sight(
     assert db_session.scalar(count) == len(status["folders"])
 
 
+def test_a_page_following_a_first_sync_counts_only_the_folders_waiting(
+    mailbox: Mailbox, db_session: Session, user: User
+) -> None:
+    """``totals=waiting``: STATUS of the folders waiting for or in their sync only, and no row
+    for a folder first seen (the Profile page's read gives it)."""
+    create_folders(mailbox.server, mailbox.login, "Projects")
+    mailbox.seed("Subject: one\r\n\r\nbody\r\n")
+    assert _by_path(mailbox.get("/index/accounts/1", totals="waiting"))["INBOX"]["enabled"] is False
+    assert db_session.scalar(select(func.count()).select_from(MailIndexFolder)) == 0
+
+    mailbox.get("/index/accounts/1")
+    _row(db_session, user, "Projects").state = "ready"
+    db_session.commit()
+    folders = _by_path(mailbox.get("/index/accounts/1", totals="waiting"))
+    assert (folders["INBOX"]["state"], folders["INBOX"]["total"]) == ("pending", 1)
+    assert (folders["Projects"]["state"], folders["Projects"]["total"]) == ("ready", None)
+    assert mailbox.client.get(f"{STATUS}?totals=some").status_code == 422
+
+
 def test_switching_a_folder_off_deletes_its_rows(
     mailbox: Mailbox, db_session: Session, user: User
 ) -> None:
