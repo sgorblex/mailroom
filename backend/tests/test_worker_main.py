@@ -152,19 +152,32 @@ def test_a_worker_that_stops_on_its_own_exits_1(
     assert any("without being asked" in record.getMessage() for record in caplog.records)
 
 
-def test_with_mail_alone_no_folder_is_watched(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The IDLE supervisor serves filters only."""
-    monkeypatch.setenv("MAILROOM_FEATURES", "mail")
+@pytest.mark.parametrize(
+    ("features", "rules", "index"),
+    [("mail", False, True), ("filters", True, False), ("mail,filters", True, True)],
+)
+def test_the_supervisor_watches_what_the_features_need(
+    monkeypatch: pytest.MonkeyPatch, features: str, *, rules: bool, index: bool
+) -> None:
+    """The rule sets' folders with filters, the index's with the mail client."""
+    monkeypatch.setenv("MAILROOM_FEATURES", features)
     _started_worker(monkeypatch)
-    started: list[object] = []
-    monkeypatch.setattr(worker_main, "IdleSupervisor", lambda *args: started.append(args))
+    started: list[dict[str, object]] = []
+
+    class Supervisor(_IdleSupervisor):
+        def __init__(self, *_args: object, **kwargs: object) -> None:
+            started.append(kwargs)
+
+    monkeypatch.setattr(worker_main, "IdleSupervisor", Supervisor)
 
     async def asked_to_stop() -> bool:
         return True
 
     monkeypatch.setattr(worker_main, "run_jobs", asked_to_stop)
     worker_main.main()
-    assert started == []
+    [kwargs] = started
+    assert (kwargs["rules"], kwargs["index"]) == (rules, index)
+    assert callable(kwargs["listen"])
 
 
 class _Disposable:
@@ -173,7 +186,7 @@ class _Disposable:
 
 
 class _IdleSupervisor:
-    def __init__(self, *_args: object) -> None:
+    def __init__(self, *_args: object, **_kwargs: object) -> None:
         pass
 
     def run(self, stop: threading.Event) -> None:

@@ -16,6 +16,7 @@ from mailroom.models import (
     AccountFilterSettings,
     FilterRun,
     MailIndexFolder,
+    MailViewInterest,
     MutedThread,
     RemoteContentSender,
     RuleSet,
@@ -67,7 +68,7 @@ def forget_account(store: AccountStore, db: Session, user_id: int, account_id: i
     forget_target(db, user_id, account_id)
     # Its rule sets go too, with their filters and runs, the runs on it of the rule sets for all
     # accounts (their reports name its mail), its muted threads and its index, whose messages go
-    # with their folders.
+    # with their folders, with the folders its browsers view.
     db.execute(delete(RuleSet).where(RuleSet.user_id == user_id, RuleSet.account_id == account_id))
     db.execute(
         delete(FilterRun).where(
@@ -85,6 +86,11 @@ def forget_account(store: AccountStore, db: Session, user_id: int, account_id: i
     db.execute(
         delete(MailIndexFolder).where(
             MailIndexFolder.user_id == user_id, MailIndexFolder.account_id == account_id
+        )
+    )
+    db.execute(
+        delete(MailViewInterest).where(
+            MailViewInterest.user_id == user_id, MailViewInterest.account_id == account_id
         )
     )
     db.commit()

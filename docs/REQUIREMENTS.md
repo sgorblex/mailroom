@@ -131,7 +131,8 @@ and `mail_send` MCP tools) and folder management (create, rename and delete, the
 tree in the sidebar; REST, web and the `mail_folders` MCP tools), as specified in
 [`requirements/mail-client.md`](requirements/mail-client.md), are in; slice C was also tried by hand in production (a send to oneself, Gmail drafts, a 25 MB
 attachment through the host's proxy). The index is in (settings, the worker's sync, the app's
-own writes, and lists, searches and counts read from it). Gaps: live updates.
+own writes, and lists, searches and counts read from it), kept fresh over IMAP IDLE on INBOX and
+the folder being viewed. Gaps: live updates in the browser.
 Target is
 **between tier 2 and tier 3**: tiers 1 and 2 in full, on top of
 the index and live updates; tier 3 items arrive one at a time.

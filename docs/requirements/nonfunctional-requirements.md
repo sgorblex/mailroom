@@ -169,9 +169,9 @@ What they are: [`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Editions*. Code:
   None otherwise). The base always mounts sign-in, SSO, users, accounts and
   linked identities.
 - **The worker** reads it first, before the database: with neither `mail` (the index's sync) nor
-  `filters` it logs why and exits 0, and an unknown name exits 1. Its IDLE supervisor, rule set
-  runs and scheduled dispatcher need `filters`; the index's jobs need `mail` (each job checks
-  again when it runs).
+  `filters` it logs why and exits 0, and an unknown name exits 1. Its rule set runs, scheduled
+  dispatcher and the rule sets' IDLE watches need `filters`; the index's jobs and IDLE watches
+  need `mail` (each job checks again when it runs).
 - **The web app** takes the features from `/api/v1/auth/me` (all of them from an older API that
   does not name them) and keeps them across sign-in and sign-out. The nav, Profile's connected
   apps, an account's *Run filters* switch and its send mode (shown with `mail` or `mcp`) follow
@@ -467,7 +467,11 @@ bounded to one minor because the server relies on its handlers.
   connection of its own, each reply bounded by its 10 s probe timeout), the folder picker's
   listing and the dry run use the API's mail pool, with its gates and deadline
   ([Mail client](#mail-client); a dry run's is 30 s, *Filters* below); the worker's runs and IDLE
-  watches and the index's sync use the worker's own pool (below). TLS is verified against the system CAs plus
+  watches and the index's sync use the worker's own pool (below). **Connection budget per
+  account:** the API's pool (2), the worker's pool (1), one IDLE connection per folder of its
+  `new_mail` rule sets, and at most 2 for the index (INBOX or Gmail's All Mail, and the folder
+  viewed last), a folder both watch counting once; a server that caps an account's connections
+  (Gmail 15, Dovecot's default 10 per user and IP) leaves room for the user's other clients. TLS is verified against the system CAs plus
   `MAILROOM_MAIL_CA_FILE` (the dev mail CA in dev). A failure carries mailroom-core's mail error
   code and fixed message (`auth_failed`, `unreachable`, `timeout`, `busy`, `mailbox_missing`,
   `server_error`, …; an `unreachable` whose certificate did not verify ends with core's fixed
@@ -732,23 +736,36 @@ What they do and the route list: [`filters.md`](filters.md). How:
     `scheduled` rule set whose last scheduled run was queued at least `interval_minutes` ago
     (30 s early, for the minute's start), or never.
   - The **IDLE supervisor**, a thread of the worker process, keeps one mailroom-core `IdleWatch`
-    per (user, account, folder) of the runnable `new_mail` rule sets, on mailroom-core's
-    connections (implicit TLS or STARTTLS as the account says) from the worker's own mail pool
-    (`Mailboxes`: one connection per account, 15 s to connect, 120 s per reply, 60 s to wait for
-    the account's connection; no gates, no deadline).
-    The folder's name is its segments joined with the delimiter the server reports, looked up on
-    the pool's connection under a lease held only for that and for building the watch, so the pool
-    logs that connection out once unused; the watch itself idles on a connection of its own,
-    outside the pool, selected read-only. Every 30 s the supervisor starts and stops watches to
-    match the rule sets and Run filters, restarts one whose account's IMAP server (host, port, TLS
-    mode), login or password changed, and starts again one that died (its first connection
-    failed, or the server refused
-    the login, has no such folder or cannot IDLE: mailroom-core's code and fixed message): at
-    once, then after 30 s, doubling up to 30 min while it keeps failing without reaching its
-    folder; each new reason is logged once. A watch that loses its connection reconnects by
-    itself, backing off from 5 s to 5 min. New mail (an EXISTS), and every (re)connection of a
-    watch (for mail that came while unwatched), queues the folder's `new_mail` runs; the IDLE
-    connection itself never acts. Filter edits need no restart: each run loads them.
+    per (user, account, folder) it wants: with `filters` each folder of the runnable `new_mail`
+    rule sets; with `mail` the index's, at most 2 per account: INBOX when it is on the index (on
+    Gmail, where All Mail is the account's only row, All Mail) and the indexed folder a browser
+    viewed last (`app.mail_view_interest`: user, account, folder, `expires_at`, written by the
+    API; a Gmail label is All Mail's, and a folder off the index has nothing to keep fresh). A
+    folder both want has one watch doing both. Watches run on mailroom-core's connections
+    (implicit TLS or STARTTLS as the account says) from the worker's own mail pool (`Mailboxes`:
+    one connection per account, 15 s to connect, 120 s per reply, 60 s to wait for the account's
+    connection; no gates, no deadline).
+    A rule set's folder is its segments joined with the delimiter the server reports, looked up
+    on the pool's connection under a lease held only for that and for building the watch, so the
+    pool logs that connection out once unused; the watch itself idles on a connection of its own,
+    outside the pool, selected read-only. The supervisor learns each account's delimiter from its
+    watches, so a rule set's folder of several segments shares the index's watch from then on
+    (renamed, not restarted). Every 30 s, and at once on each notification on Postgres's
+    `mailroom_interest` channel (the API announces a viewing interest there; the supervisor
+    LISTENs on a psycopg connection of its own, opened again 30 s after it is lost), the
+    supervisor deletes the expired interests and starts and stops watches to match the rule sets,
+    Run filters and the index, restarts one whose account's IMAP server (host, port, TLS mode),
+    login or password changed, and starts again one that died (its first connection failed, or
+    the server refused the login, has no such folder or cannot IDLE: mailroom-core's code and
+    fixed message): at once, then after 30 s, doubling up to 30 min while it keeps failing
+    without reaching its folder; each new reason is logged once. A watch that loses its
+    connection reconnects by itself, backing off from 5 s to 5 min. New mail (an EXISTS), and
+    every (re)connection of a watch (for what came while unwatched), queues the folder's
+    `new_mail` runs; any change (EXISTS, any FETCH, of flags or only of a MODSEQ or Gmail
+    labels, EXPUNGE) and every (re)connection queues the indexed folder's `sync_folder` (one
+    waiting per folder: its `queueing_lock`). The IDLE connection itself never acts. Filter edits
+    need no restart: each run loads them, and a watched folder's reactions follow the rule sets
+    and the index without one. The index's other folders keep the 5-minute resync.
   - The **mail index's sync** runs in this worker too, with `mail` and without filters:
     [Mail index sync](#mail-index-sync).
   - Jobs run 4 at a time (synchronous tasks, each on a thread); besides being notified of new jobs,
