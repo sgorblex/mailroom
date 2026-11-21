@@ -6,7 +6,7 @@ import { renderSignedIn } from '@/test/signed-in.tsx'
 
 import { UsersScreen } from './users-screen.tsx'
 
-const ROOT = { username: 'root', is_admin: true, time_zone: null, mark_read_subfolders: true }
+const ROOT = { username: 'root', is_admin: true, time_zone: null, mark_read_subfolders: true, index_max_age_days: null }
 const CREATED = '2026-10-17T10:00:00Z'
 
 function json(status: number, body: unknown): Response {
@@ -61,7 +61,7 @@ afterEach(() => {
 describe('UsersScreen', () => {
   it('tells a user who is not an admin that only admins manage users', () => {
     const fetchMock = stubApi()
-    renderSignedIn(<UsersScreen />, { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true })
+    renderSignedIn(<UsersScreen />, { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null })
     expect(screen.getByRole('alert')).toHaveTextContent('Only admins manage users.')
     expect(fetchMock).not.toHaveBeenCalled()
   })

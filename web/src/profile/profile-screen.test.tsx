@@ -6,7 +6,7 @@ import { renderSignedIn } from '@/test/signed-in.tsx'
 
 import { ProfileScreen } from './profile-screen.tsx'
 
-const ALICE = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true }
+const ALICE = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null }
 const CURRENT = 'correct horse battery staple'
 const NEXT = 'a brand new passphrase'
 
@@ -16,7 +16,7 @@ const REMOTE_SENDERS_PATH = '/api/v1/mail/remote-senders'
 
 /**
  * Anything but the password change: the default limits, no connected apps (the MCP server off),
- * no remote content senders, and nothing else found (the linked sign-ins section's requests).
+ * no remote content senders, no accounts to index, and nothing else found (the linked sign-ins section's requests).
  */
 function otherSections(path: string): Promise<Response> {
   if (path === LIMITS_PATH) {
@@ -25,6 +25,9 @@ function otherSections(path: string): Promise<Response> {
   }
   if (path === REMOTE_SENDERS_PATH) {
     return Promise.resolve(new Response('{"senders":[]}', { status: 200 }))
+  }
+  if (path === '/api/v1/accounts') {
+    return Promise.resolve(new Response('[]', { status: 200 }))
   }
   if (path === '/api/v1/oauth/grants') {
     return Promise.resolve(new Response('{"auth":"off","grants":[],"groups":[]}', { status: 200 }))

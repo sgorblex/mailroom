@@ -5,6 +5,7 @@ import type { Filter, RuleSet } from '@/api/filters.ts'
 import type {
   Draft,
   DraftFields,
+  IndexFolder,
   MailFolder,
   MessageItem,
   MessagePage,
@@ -103,6 +104,12 @@ export interface FakeMailState {
   conversations?: string[][]
   /** The muted thread each muted message's mute answered, by ref. */
   mutedBy?: Record<string, number>
+  /** Each account's folders as the index settings list them; an account without is 404 there. */
+  index?: Record<string, { gmail?: boolean; folders: IndexFolder[] }>
+  /** The user's own age limit of the index, which `PUT /auth/me/index-max-age` sets; none unless it says otherwise. */
+  indexMaxAgeDays?: number | null
+  /** The instance's cap on it; none unless it says otherwise. */
+  indexMaxAgeCap?: number | null
 }
 
 /** The statuses of the mail codes the organize routes answer (`docs/requirements/mail-client.md`). */
@@ -691,6 +698,58 @@ function folderRoutes(state: FakeMailState, url: URL, init?: RequestInit): Respo
   return json(200, { account_id: account, folder: from, messages: folder.total })
 }
 
+/** A folder off the index, as the index settings list it. */
+export function indexFolder(path: string, fields: Partial<IndexFolder> = {}): IndexFolder {
+  return {
+    path,
+    role: null,
+    indexed_as: 'folder',
+    enabled: false,
+    total: 0,
+    state: null,
+    error: null,
+    indexed: null,
+    unread: null,
+    oldest_indexed: null,
+    last_synced_at: null,
+    ...fields,
+  }
+}
+
+/** The index settings' routes and the user's age limit over `state.index`; `null` for another path. */
+function indexRoutes(state: FakeMailState, url: URL, init?: RequestInit): Response | null {
+  if (url.pathname === '/api/v1/auth/me/index-max-age' && init?.method === 'PUT') {
+    const { index_max_age_days } = JSON.parse(init.body as string) as { index_max_age_days: number | null }
+    state.indexMaxAgeDays = index_max_age_days
+    return json(200, { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days })
+  }
+  const match = /^\/api\/v1\/mail\/index\/accounts\/(\d+)(\/folders)?$/.exec(url.pathname)
+  if (match === null) {
+    return null
+  }
+  const index = state.index?.[match[1] ?? '']
+  if (index === undefined) {
+    return notFound()
+  }
+  if (match[2] === undefined) {
+    const limits = [state.indexMaxAgeDays ?? null, state.indexMaxAgeCap ?? null].filter((days) => days !== null)
+    return json(200, {
+      account_id: Number(match[1]),
+      gmail: index.gmail ?? false,
+      max_age_days: limits.length === 0 ? null : Math.min(...limits),
+      max_age_cap_days: state.indexMaxAgeCap ?? null,
+      folders: index.folders,
+    })
+  }
+  const { folder, enabled } = JSON.parse(init?.body as string) as { folder: string; enabled: boolean }
+  const switched = (each: IndexFolder): IndexFolder =>
+    enabled
+      ? { ...each, enabled, state: 'pending', indexed: 0, unread: 0 }
+      : indexFolder(each.path, { role: each.role, indexed_as: each.indexed_as, total: each.total })
+  index.folders = index.folders.map((each) => (each.path === folder ? switched(each) : each))
+  return json(200, { account_id: Number(match[1]), folder, enabled })
+}
+
 /** Counting and acting on `state.matching`, as the bulk routes do: refused unless `expected` is the count. */
 function matchingRoutes(state: FakeMailState, bulk: boolean, body: { expected?: number; action?: { kind: string } }): Response {
   const found = state.matching ?? { total: 0 }
@@ -773,7 +832,7 @@ function filterRoutes(state: FakeMailState, path: string, init?: RequestInit): R
 }
 
 /**
- * A fake mail API over `state`: `/api/v1/accounts` and the `/api/v1/mail` routes. A cursor is
+ * A fake mail API over `state`: `/api/v1/accounts`, the `/api/v1/mail` routes and the index's age limit. A cursor is
  * `"before:<uid>"`, the uid of the last item shown, as opaque to the client as the real ones and,
  * like mailroom-core's, it goes on below that uid whether or not that message is still there.
  */
@@ -806,6 +865,10 @@ export function stubMailApi(state: FakeMailState): Mock {
           }
         }),
       )
+    }
+    const indexed = indexRoutes(state, url, init)
+    if (indexed !== null) {
+      return indexed
     }
     const composed = composeRoutes(state, url, init)
     if (composed !== null) {

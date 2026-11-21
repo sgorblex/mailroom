@@ -8,7 +8,7 @@ import { createQueryClient } from '@/lib/query-client.ts'
 import { AuthContext, type AuthContextValue, type AuthState } from './auth-context.ts'
 import { ClearOnSignOut } from './clear-on-sign-out.ts'
 
-const ALICE = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true }
+const ALICE = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null }
 
 function signedAs(state: AuthState): AuthContextValue {
   const reject = (): Promise<void> => Promise.reject(new Error('not in this test'))
@@ -19,6 +19,7 @@ function signedAs(state: AuthState): AuthContextValue {
     signOut: reject,
     changeTimeZone: reject,
     changeMarkReadSubfolders: reject,
+    changeIndexMaxAge: reject,
     recheck: vi.fn(),
   }
 }

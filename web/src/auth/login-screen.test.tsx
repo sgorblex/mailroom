@@ -32,6 +32,7 @@ function renderSignedOut(): void {
         signOut: reject,
         changeTimeZone: reject,
         changeMarkReadSubfolders: reject,
+        changeIndexMaxAge: reject,
         recheck: vi.fn(),
       }}
     >

@@ -4,12 +4,14 @@ import { apiGetJson, apiPostJson, apiPutJson } from './http.ts'
 /**
  * `time_zone`: an IANA name, `null` until the user (or their first sign-in) sets one.
  * `mark_read_subfolders`: what "Mark all as read" on a folder with subfolders does first: `true`, them too.
+ * `index_max_age_days`: the user's own age limit of the mail index, in days; `null` for none (the instance's cap still holds).
  */
 export const userSchema = z.object({
   username: z.string(),
   is_admin: z.boolean(),
   time_zone: z.string().nullable(),
   mark_read_subfolders: z.boolean(),
+  index_max_age_days: z.number().nullable(),
 })
 export type User = z.infer<typeof userSchema>
 
@@ -65,4 +67,9 @@ export function changeTimeZone(timeZone: string | null): Promise<User> {
 /** Whether "Mark all as read" on a folder with subfolders marks them too, unless the user picks the other item. */
 export function changeMarkReadSubfolders(subfolders: boolean): Promise<User> {
   return apiPutJson('/api/v1/auth/me/mark-read-subfolders', { mark_read_subfolders: subfolders }, { schema: userSchema })
+}
+
+/** How far back the mail index keeps the user's mail, in days; `null`: no limit of their own. */
+export function changeIndexMaxAge(days: number | null): Promise<User> {
+  return apiPutJson('/api/v1/auth/me/index-max-age', { index_max_age_days: days }, { schema: userSchema })
 }
