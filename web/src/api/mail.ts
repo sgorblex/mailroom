@@ -67,17 +67,53 @@ const messageItemSchema = z.object({
    */
   listed_folder: z.string().nullable().optional(),
 })
-export type MessageItem = z.infer<typeof messageItemSchema>
+/** A listed message; in a page grouped by conversation, `conversation` is the one it stands for. */
+export type MessageItem = z.infer<typeof messageItemSchema> & { conversation?: Conversation }
 
 const failureSchema = z.object({ account_id: accountIdSchema, folder: z.string().nullable(), code: z.string() })
 export type SourceFailure = z.infer<typeof failureSchema>
 
-const messagePageSchema = z.object({
+/** A page's message as the conversation it stands for, its latest message (`group=thread`). */
+const conversationSchema = z.object({
+  count: z.number(),
+  unread: z.number(),
+  /** The first senders' names, first written first, at most four. */
+  participants: z.array(z.string()),
+  has_attachments: z.boolean(),
+  flagged: z.boolean(),
+  /**
+   * What an action on it takes, newest first: every message of it in the source read but the
+   * user's own copies (Sent, Drafts), unless it holds nothing else.
+   */
+  refs: z.array(z.string()),
+  /** The folder each of `refs` was listed under, where not its own (as a message's `listed_folder`). */
+  listed_folders: z.record(z.string(), z.string()).default({}),
+  /** Its latest sender neither wrote nor was written to in its other messages. */
+  latest_from_new_sender: z.boolean().default(false),
+})
+export type Conversation = z.infer<typeof conversationSchema>
+
+const pageFields = z.object({
   messages: z.array(messageItemSchema),
   next_cursor: z.string().nullable(),
   failures: z.array(failureSchema),
+  /** One for each message when the page is grouped, else null (or absent). */
+  conversations: z.array(conversationSchema).nullable().default(null),
 })
-export type MessagePage = z.infer<typeof messagePageSchema>
+
+/** Each message of a grouped page carries its conversation (`conversation`), so rows loaded later keep it. */
+function withConversations<T extends z.infer<typeof pageFields>>(
+  page: T,
+): Omit<T, 'messages'> & { messages: (MessageItem & { conversation?: Conversation })[] } {
+  const { conversations } = page
+  return conversations === null
+    ? page
+    : { ...page, messages: page.messages.map((message, index) => ({ ...message, conversation: conversations[index] })) }
+}
+
+const messagePageSchema = pageFields.transform(withConversations)
+/** A page, grouped when `conversations` is there (and not null). */
+export type MessagePage = Omit<z.infer<typeof messagePageSchema>, 'conversations'> & { conversations?: Conversation[] | null }
 
 const partSchema = z.object({ part: z.string(), name: z.string(), type: z.string(), size: z.number() })
 export type MessagePart = z.infer<typeof partSchema>
@@ -279,7 +315,7 @@ export async function markFolderRead(accountId: AccountId, folder: string, uidVa
 /** A folder's messages; with `subfolders`, its subfolders' too, merged newest first. */
 export function listMessages(
   accountId: AccountId,
-  options: { folder: string; subfolders?: boolean; cursor?: string | null; limit?: number },
+  options: { folder: string; subfolders?: boolean; cursor?: string | null; limit?: number; grouped?: boolean },
   signal?: AbortSignal,
 ): Promise<MessagePage> {
   const path = withQuery(`${accountPath(accountId)}/messages`, {
@@ -287,6 +323,7 @@ export function listMessages(
     subfolders: options.subfolders === true ? true : undefined,
     limit: options.limit,
     cursor: options.cursor ?? undefined,
+    group: options.grouped === true ? 'thread' : undefined,
   })
   return apiGetJson(path, { init: { signal }, schema: messagePageSchema })
 }
@@ -294,13 +331,14 @@ export function listMessages(
 /** With `subfolders`, the query's one folder is searched with its subfolders. */
 export function searchMessages(
   query: SearchQuery,
-  options: { subfolders?: boolean; cursor?: string | null; limit?: number } = {},
+  options: { subfolders?: boolean; cursor?: string | null; limit?: number; grouped?: boolean } = {},
   signal?: AbortSignal,
 ): Promise<MessagePage> {
   const body = {
     ...matchBody({ query, subfolders: options.subfolders === true }),
     limit: options.limit,
     cursor: options.cursor ?? undefined,
+    group: options.grouped === true ? 'thread' : undefined,
   }
   return apiPostJson(`${base}/search`, body, { init: { signal }, schema: messagePageSchema })
 }
@@ -342,11 +380,13 @@ export const ALL_INBOXES = 'all_inboxes'
 /** A saved view's id, or the built-in *All inboxes*. */
 export type ViewKey = number | typeof ALL_INBOXES
 
-const viewPageSchema = messagePageSchema.extend({
-  /** The view's folders left out, off the index or not ready; `*` for an account's every folder. */
-  not_indexed: z.array(viewSourceSchema),
-})
-export type ViewPage = z.infer<typeof viewPageSchema>
+const viewPageSchema = pageFields
+  .extend({
+    /** The view's folders left out, off the index or not ready; `*` for an account's every folder. */
+    not_indexed: z.array(viewSourceSchema),
+  })
+  .transform(withConversations)
+export type ViewPage = Omit<z.infer<typeof viewPageSchema>, 'conversations'> & { conversations?: Conversation[] | null }
 
 const viewsPath = `${base}/views`
 
@@ -375,10 +415,18 @@ export async function reorderViews(ids: number[]): Promise<SavedView[]> {
   return answer.views
 }
 
-/** A page of the view's messages, newest first, read from the index only. */
-export function viewMessages(view: ViewKey, cursor: string | null, signal?: AbortSignal): Promise<ViewPage> {
-  const path = withQuery(`${viewsPath}/${String(view)}/messages`, { cursor: cursor ?? undefined })
+/** A page of the view's messages, newest first, read from the index only; `grouped`, by conversation. */
+export function viewMessages(view: ViewKey, cursor: string | null, signal?: AbortSignal, grouped = false): Promise<ViewPage> {
+  const path = withQuery(`${viewsPath}/${String(view)}/messages`, {
+    cursor: cursor ?? undefined,
+    group: grouped ? 'thread' : undefined,
+  })
   return apiGetJson(path, { init: { signal }, schema: viewPageSchema })
+}
+
+/** The conversation of the message `ref` names, newest first, read live: its folder and Sent (on Gmail, its thread). */
+export function readThread(ref: string, signal?: AbortSignal): Promise<MessagePage> {
+  return apiGetJson(`${messagePath(ref)}/thread`, { init: { signal }, schema: messagePageSchema })
 }
 
 /** One window of the message's text from `offset`; reading never marks it seen. */

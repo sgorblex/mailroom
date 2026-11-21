@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react'
 
 import {
+  changeConversations as saveConversations,
   changeIndexMaxAge as saveIndexMaxAge,
   changeMarkReadSubfolders as saveMarkReadSubfolders,
   changeTimeZone as saveTimeZone,
@@ -103,6 +104,13 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
     [updateUser],
   )
 
+  const changeConversations = useCallback(
+    async (conversations: boolean) => {
+      updateUser(await saveConversations(conversations))
+    },
+    [updateUser],
+  )
+
   const signIn = useCallback(async (username: string, password: string) => {
     const user = await login(username, password)
     setState({ status: 'signed-in', user })
@@ -119,8 +127,8 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
   }, [])
 
   const value = useMemo<AuthContextValue>(
-    () => ({ ...state, features, signIn, signOut, changeTimeZone, changeMarkReadSubfolders, changeIndexMaxAge, recheck }),
-    [state, features, signIn, signOut, changeTimeZone, changeMarkReadSubfolders, changeIndexMaxAge, recheck],
+    () => ({ ...state, features, signIn, signOut, changeTimeZone, changeMarkReadSubfolders, changeIndexMaxAge, changeConversations, recheck }),
+    [state, features, signIn, signOut, changeTimeZone, changeMarkReadSubfolders, changeIndexMaxAge, changeConversations, recheck],
   )
   return <AuthContext value={value}>{children}</AuthContext>
 }

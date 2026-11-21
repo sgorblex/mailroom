@@ -22,6 +22,8 @@ export type AuthContextValue = AuthState & {
   changeMarkReadSubfolders: (subfolders: boolean) => Promise<void>
   /** Saves the user's own age limit of the mail index (`null`: none); rejects with the API error. */
   changeIndexMaxAge: (days: number | null) => Promise<void>
+  /** Saves whether the message lists are grouped by conversation; rejects with the API error. */
+  changeConversations: (conversations: boolean) => Promise<void>
   /** Ask the API again, after it could not be reached. */
   recheck: () => void
 }
@@ -54,6 +56,15 @@ export function useMailLayer(): boolean {
 export function useMarkReadSubfolders(): boolean {
   const auth = useContext(AuthContext)
   return auth?.status === 'signed-in' ? auth.user.mark_read_subfolders : true
+}
+
+/**
+ * Whether the message lists are grouped by conversation: the signed-in user's choice, else
+ * (outside an `AuthProvider`) `false`.
+ */
+export function useConversations(): boolean {
+  const auth = useContext(AuthContext)
+  return auth?.status === 'signed-in' ? auth.user.conversations : false
 }
 
 /**

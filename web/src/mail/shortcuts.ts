@@ -5,6 +5,7 @@ import type { AccountId } from '@/api/accounts.ts'
 
 import { MAIL_ACTIONS, shortcutAction, type ActionContext, type MailAction } from './action-registry.ts'
 import { useCompose, type Compose } from './compose-context.ts'
+import { opened } from './conversations.ts'
 import { NO_TRIAGE_ACTIONS, useTriageActions, type TriageActions } from './triage-actions.ts'
 import { useTriage, type Triage } from './triage-context.ts'
 
@@ -136,7 +137,9 @@ export function useMailShortcuts(accountId: AccountId, onHelp: () => void): void
   const compose = useCompose()
   const navigate = useNavigate()
   // The message in the URL is the current one at once; the open view is set only once it loads.
-  const { message } = useSearch({ from: '/mail' })
+  // The row of an open conversation is its own while another of its messages is read.
+  const { message: shownMessage, thread } = useSearch({ from: '/mail' })
+  const message = thread ?? shownMessage
   const latest = useRef({ triage, actions, navigate, message, compose, accountId, onHelp })
   useEffect(() => {
     latest.current = { triage, actions, navigate, message, compose, accountId, onHelp }
@@ -151,7 +154,7 @@ export function useMailShortcuts(accountId: AccountId, onHelp: () => void): void
       if (next === undefined) {
         return false
       }
-      void go({ to: '/mail', search: (previous) => ({ ...previous, message: next.ref }) })
+      void go({ to: '/mail', search: (previous) => ({ ...previous, ...opened(next) }) })
       return true
     }
 

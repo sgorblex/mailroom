@@ -20,10 +20,14 @@ import { mailErrorMessage } from './messages.ts'
 import { fetchPage, messageKey, READ_ON_MOUNT } from './queries.ts'
 import { ReplyActions } from './reply-actions.tsx'
 import { authenticationState, recipientSummary, resultText } from './sender-checks.ts'
-import { isSameFolder, loadedFolders, roleFolder, useTriage } from './triage-context.ts'
+import { isSameFolder, loadedFolders, roleFolder, useTriage, type Target } from './triage-context.ts'
 
-/** One message, mounted anew (by key) for each: its view choices are never carried over. */
-export function MessageView({ messageRef }: { messageRef: string }): ReactElement {
+/**
+ * One message, mounted anew (by key) for each: its view choices are never carried over. Read as
+ * the latest message of `conversation` (a row of the list), it stands for that row: the toolbar
+ * acts on the whole conversation, and opening it marks every message of it read.
+ */
+export function MessageView({ messageRef, conversation }: { messageRef: string; conversation?: Target }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const [includeQuoted, setIncludeQuoted] = useState(false)
   // The remote images choice lives as long as this message's view, whatever is shown in it.
@@ -41,7 +45,8 @@ export function MessageView({ messageRef }: { messageRef: string }): ReactElemen
   const { setOpen, flagsOf, run, folders, loadFolders, visibleRows } = useTriage()
   const { canCompose } = useCompose()
   const navigate = useNavigate()
-  const marked = useRef(false)
+  // What opening it marked read: nothing yet, the message alone (`ran`: a request went), or its conversation.
+  const marked = useRef<{ whole: boolean; ran: boolean } | null>(null)
   const view = state === 'success' ? query.data.view : null
   const accountFolders = view === null ? undefined : folders[view.account_id]
   // The user's own mail: no server checked who sent it on the way in.
@@ -61,27 +66,45 @@ export function MessageView({ messageRef }: { messageRef: string }): ReactElemen
     }
     // Acted on as its row in the list, under the folder it was listed under.
     const listedFolder = visibleRows().find((row) => row.ref === view.ref)?.listed_folder
-    const target = { ref: view.ref, account_id: view.account_id, folder: view.folder, listed_folder: listedFolder, flags: view.flags, from: view.from }
+    const single = {
+      ref: view.ref,
+      account_id: view.account_id,
+      folder: view.folder,
+      listed_folder: listedFolder,
+      flags: view.flags,
+      from: view.from,
+    }
+    const target = conversation?.ref === view.ref ? conversation : single
     setOpen(target)
     loadFolders(view.account_id, false)
-    if (accountFolders === undefined || accountFolders.kind === 'loading' || marked.current) {
+    if (accountFolders === undefined || accountFolders.kind === 'loading' || marked.current?.whole === true) {
+      return
+    }
+    if (marked.current !== null) {
+      // The list's row came after the message was read alone (a link followed into the screen):
+      // the rest of its conversation is marked read now, unless the message was marked unread since.
+      if (target === conversation && (marked.current.ran ? flagsOf(single).seen : !flagsOf(target).seen)) {
+        marked.current = { whole: true, ran: true }
+        void run({ kind: 'flag', change: { seen: true } }, [target], { silent: true })
+      }
       return
     }
     // Decided on the first load only: marked unread while open, it stays so.
-    marked.current = true
+    const unread = !view.flags.draft && !flagsOf(target).seen
+    marked.current = { whole: target === conversation, ran: unread }
     const drafts = roleFolder(loadedFolders(accountFolders), 'drafts')
     if (drafts !== undefined && isSameFolder(drafts.path, view.folder) && canCompose(view.account_id)) {
       void navigate({
         to: '/mail',
-        search: (previous) => ({ ...previous, message: undefined, compose: view.ref }),
+        search: (previous) => ({ ...previous, message: undefined, thread: undefined, compose: view.ref }),
         replace: true,
       })
       return
     }
-    if (!view.flags.draft && !flagsOf(target).seen) {
+    if (unread) {
       void run({ kind: 'flag', change: { seen: true } }, [target], { silent: true })
     }
-  }, [view, accountFolders, canCompose, navigate, loadFolders, setOpen, flagsOf, run, visibleRows])
+  }, [view, conversation, accountFolders, canCompose, navigate, loadFolders, setOpen, flagsOf, run, visibleRows])
   useEffect(
     () => () => {
       setOpen(null)
@@ -93,7 +116,7 @@ export function MessageView({ messageRef }: { messageRef: string }): ReactElemen
     <article className="flex flex-1 flex-col gap-4" aria-busy={pending}>
       <Link
         to="/mail"
-        search={(previous) => ({ ...previous, message: undefined })}
+        search={(previous) => ({ ...previous, message: undefined, thread: undefined })}
         className="flex items-center gap-1 self-start text-sm text-muted-foreground hover:text-foreground lg:hidden"
       >
         <ArrowLeft aria-hidden="true" className="size-4" />

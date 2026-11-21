@@ -46,6 +46,25 @@ notifications](#desktop-notifications).
   keeps the line as the list shows it, the quick filters on included (`from:ada` with *Unread*
   on saves `from:ada is:unread`), refused for one with words or Gmail search, which the index cannot answer; each saved view's
   menu (its ⋯ button) renames it, moves it up or down, or deletes it (its mail stays).
+- **Conversations** in the list, when the user groups them (the Profile's *Conversations*, on by
+  default; [below](#conversations)): a folder, search or view read from the index shows each
+  conversation of several messages as one row, its latest message's, with its first writers in
+  place of the sender, how many messages it has, unread while one of them is, starred when one
+  is, and the paperclip when one has an attachment. Opening it (`thread` in the URL, beside
+  `message`) shows its messages, read live and oldest first, above the latest one; each opens in
+  turn below them, the row staying the current one; they are read again after an action and when
+  one of their accounts' folders changes. Opened, the conversation's every message is marked
+  read, also when followed by a link and the list shows its row only after the message loaded.
+  A row loaded further down that a newer message brought into the first page goes from below. A row's actions (its checkbox, star, To sort, menu, a drag, the toolbar and keys on
+  it or on its latest message open) act on every message of it, each ref checked as any other;
+  their rows go or change together, but for the user's own Sent and Drafts copies, which only
+  show in the thread. Trash, archive, a move or a spam report of a conversation of several whose
+  newest sender is new to it (`latest_from_new_sender`) asks first, in a dialog naming its count:
+  *All N messages*, *Only the message shown* (its latest, alone) or *Cancel*, focused (with
+  several such rows: the whole conversations or only their newest messages). Each Gmail message
+  of it goes from the label folder it was listed under (`listed_folders`). Undo takes back a move as always, and a flag change where the
+  row said each message's flag (not a read mark over a partly read conversation, nor a star or To
+  sort mark on one starred or marked in part). A source read live is listed message by message.
 - **Message view:** headers, the text body (quotes and signatures collapsed), attachments and a
   calendar note; a **standalone HTML view** when the message has an HTML body; attachment download.
 - **Sender checks** in the message view's headers, from the read's `sender_mismatch`, `sent_to` and
@@ -1772,8 +1791,9 @@ live, as any other.
   References and In-Reply-To; on Gmail its thread from All Mail), newest first, as a page without
   a cursor. Errors as `GET /messages/{ref}`.
 - **Setting.** Each user's `conversations` (`app.user`, true by default) says whether the web
-  groups their lists: `PUT /api/v1/auth/me/conversations`, `{"conversations": false}` (a JSON
-  boolean), answers the user; `auth/me`'s `user` carries it; logged as `conversations_changed`.
+  groups their lists ([*Conversations*](#slice-a-read) there):
+  `PUT /api/v1/auth/me/conversations`, `{"conversations": false}` (a JSON boolean), answers the
+  user; `auth/me`'s `user` carries it; logged as `conversations_changed`.
 
 ## Mailbox quota
 

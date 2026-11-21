@@ -8,7 +8,8 @@ export type QuickFilter = (typeof QUICK_FILTERS)[number]
 /**
  * Where the mail screen is, kept in the URL so a reload or a shared link lands in the same place:
  * the account and folder shown, whether with its subfolders (`sub`; absent, as this browser last
- * listed it), the open message (its ref), a search or a view (`view`) in place of the folder, the
+ * listed it), the open message (its ref) and, when it was opened as a conversation's row, that
+ * row's ref (`thread`), a search or a view (`view`) in place of the folder, the
  * quick filters narrowing a folder or a search (`only`), and the composer: `compose-session.ts` says what `compose` holds.
  * Kept out of the screen's own chunk: the router validates it before the screen loads.
  */
@@ -17,6 +18,7 @@ export interface MailSearch {
   folder?: string
   sub?: boolean
   message?: string
+  thread?: string
   q?: SearchQuery
   view?: ViewKey
   only?: QuickFilter[]
@@ -104,6 +106,7 @@ export function validateMailSearch(raw: Record<string, unknown>): MailSearch {
   const account = accountId(raw['account'])
   const folder = text(raw['folder'])
   const message = text(raw['message'])
+  const thread = text(raw['thread'])
   const q = searchQuery(raw['q'])
   const view = viewKey(raw['view'])
   const only = quickFilters(raw['only'])
@@ -119,6 +122,9 @@ export function validateMailSearch(raw: Record<string, unknown>): MailSearch {
   }
   if (message !== undefined) {
     search.message = message
+  }
+  if (thread !== undefined && message !== undefined) {
+    search.thread = thread
   }
   if (q !== undefined) {
     search.q = q

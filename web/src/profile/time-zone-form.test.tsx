@@ -14,7 +14,7 @@ function stubApi(status: number): ReturnType<typeof vi.fn> {
       return Promise.resolve(new Response('{"detail":"Unknown time zone"}', { status }))
     }
     const { time_zone } = JSON.parse(init?.body as string) as { time_zone: string }
-    const user = { username: 'alice', is_admin: false, time_zone, mark_read_subfolders: true, index_max_age_days: null }
+    const user = { username: 'alice', is_admin: false, time_zone, mark_read_subfolders: true, index_max_age_days: null, conversations: true }
     return Promise.resolve(new Response(JSON.stringify(user), { status: 200 }))
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -28,7 +28,7 @@ afterEach(() => {
 describe('TimeZoneForm', () => {
   it('starts from the saved zone and saves the one picked', async () => {
     const fetchMock = stubApi(200)
-    renderSignedIn(<TimeZoneForm />, { username: 'alice', is_admin: false, time_zone: 'Europe/Rome', mark_read_subfolders: true, index_max_age_days: null })
+    renderSignedIn(<TimeZoneForm />, { username: 'alice', is_admin: false, time_zone: 'Europe/Rome', mark_read_subfolders: true, index_max_age_days: null, conversations: true })
     const picker = screen.getByRole('combobox', { name: 'Time zone' })
     expect(picker).toHaveValue('Europe/Rome')
     expect(picker).toHaveAccessibleDescription('Mailroom writes your dates in this time zone.')
@@ -45,13 +45,13 @@ describe('TimeZoneForm', () => {
 
   it("starts from the browser's zone when none is saved", () => {
     stubApi(200)
-    renderSignedIn(<TimeZoneForm />, { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null })
+    renderSignedIn(<TimeZoneForm />, { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null, conversations: true })
     expect(screen.getByRole('combobox', { name: 'Time zone' })).toHaveValue(Intl.DateTimeFormat().resolvedOptions().timeZone)
   })
 
   it('says when the zone could not be saved', async () => {
     stubApi(500)
-    renderSignedIn(<TimeZoneForm />, { username: 'alice', is_admin: false, time_zone: 'UTC', mark_read_subfolders: true, index_max_age_days: null })
+    renderSignedIn(<TimeZoneForm />, { username: 'alice', is_admin: false, time_zone: 'UTC', mark_read_subfolders: true, index_max_age_days: null, conversations: true })
     await userEvent.click(screen.getByRole('button', { name: 'Save time zone' }))
     expect(await screen.findByRole('alert')).toBeInTheDocument()
   })

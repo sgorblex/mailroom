@@ -7,7 +7,7 @@ import { renderSignedIn } from '@/test/signed-in.tsx'
 import { MarkReadForm } from './mark-read-form.tsx'
 
 const PATH = '/api/v1/auth/me/mark-read-subfolders'
-const ALICE = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null }
+const ALICE = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null, conversations: true }
 
 function stubApi(status: number): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn((_path: string, init?: RequestInit) => {

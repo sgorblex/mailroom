@@ -259,6 +259,14 @@
     "saved": "Saved.",
     "saveFailed": "Could not save this choice."
   },
+  "conversations": {
+    "title": "Conversations",
+    "group": "Group messages by conversation",
+    "intro": "Each conversation is then one row in the message lists, with how many messages it has and who wrote them; what you do to the row is done to every message of it. Only lists read from the mail index are grouped.",
+    "save": "Save",
+    "saved": "Saved.",
+    "saveFailed": "Could not save this choice."
+  },
   "remoteSenders": {
     "title": "Remote images",
     "intro": "Senders whose remote images you always show. A sender counts only when its message passed DMARC at the account's authentication server.",

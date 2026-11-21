@@ -50,7 +50,7 @@ function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status })
 }
 
-const ALICE = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null }
+const ALICE = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null, conversations: true }
 
 /**
  * A fake API: `/me` answers from `signedIn`, naming `features` unless left out; login accepts
@@ -64,7 +64,7 @@ function stubApi(
   refuseZone = false,
 ): ReturnType<typeof vi.fn> {
   let signedIn = initiallySignedIn
-  let user: { username: string; is_admin: boolean; time_zone: string | null; mark_read_subfolders: boolean; index_max_age_days: number | null } = { ...ALICE, time_zone: timeZone }
+  let user: { username: string; is_admin: boolean; time_zone: string | null; mark_read_subfolders: boolean; index_max_age_days: number | null; conversations: boolean } = { ...ALICE, time_zone: timeZone }
   const fetchMock = vi.fn((path: string, init?: RequestInit) => {
       if (path === '/api/v1/auth/me') {
         return Promise.resolve(json(200, { user: signedIn ? user : null, features }))

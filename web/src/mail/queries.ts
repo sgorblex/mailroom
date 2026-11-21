@@ -42,6 +42,14 @@ export const NOTIFICATIONS_KEY = ['mail-notifications'] as const
 /** How often an index status is read again while a folder's first sync is under way. */
 export const INDEXING_POLL_MS = 15_000
 
+/** Every open conversation's messages: under the lists' key, so what reads the lists again reads them too. */
+export const ALL_THREADS_KEY = [...ALL_MESSAGES_KEY, 'thread'] as const
+
+/** The conversation of the message `ref` names, read live. */
+export function threadKey(ref: string): readonly unknown[] {
+  return [...ALL_THREADS_KEY, ref]
+}
+
 export function messageKey(ref: string, offset: number, includeQuoted: boolean): readonly unknown[] {
   return ['message', ref, offset, includeQuoted]
 }

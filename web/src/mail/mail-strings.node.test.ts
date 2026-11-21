@@ -95,3 +95,15 @@ describe('format', () => {
     expect(formatListDate('en', lateYesterday, 'UTC', now)).toBe('Oct 30, 2026')
   })
 })
+
+describe('the conversation strings', () => {
+  it('exist in both languages, and ask about a new sender in Italian', () => {
+    expect(keys(it_.conversation).sort()).toEqual(keys(en.conversation).sort())
+    const t = i18n.getFixedT('it', MAIL_NS)
+    expect(t('conversation.newSender.one', { count: 3 })).toBe(
+      'Questa conversazione ha 3 messaggi, e il più recente è di un mittente nuovo, che finora non vi aveva scritto né ricevuto messaggi.',
+    )
+    expect(t('conversation.newSender.whole', { count: 3 })).toBe('Tutti i 3 messaggi')
+    expect(t('conversation.newSender.shown')).toBe('Solo il messaggio mostrato')
+  })
+})
