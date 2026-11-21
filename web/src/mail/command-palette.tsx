@@ -1,4 +1,5 @@
-import { useContext, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactElement } from 'react'
+import { useContext, useEffect, useId, useState, type ReactElement } from 'react'
+import { useCombobox } from 'downshift'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 
@@ -38,23 +39,14 @@ export function CommandPalette({
   const { t } = useTranslation(MAIL_NS)
   const items = usePaletteItems(accounts, accountId)
   const [query, setQuery] = useState('')
-  const [active, setActive] = useState(0)
+  const [highlighted, setHighlighted] = useState(0)
   // Read once: choosing an item, the only change to them, closes the palette.
   const [recents] = useState(storedRecents)
-  const listId = useId()
-  const list = useRef<HTMLUListElement>(null)
+  const groupId = useId()
 
   const groups = paletteGroups(items, query, recents)
   const options = groups.flatMap((group) => group.items)
-  const current = Math.min(active, options.length - 1)
-  const optionId = (index: number): string => `${listId}-${String(index)}`
-
-  useEffect(() => {
-    // jsdom has no scrollIntoView.
-    const option: Partial<Pick<Element, 'scrollIntoView'>> | null =
-      list.current?.querySelector('[aria-selected="true"]') ?? null
-    option?.scrollIntoView?.({ block: 'nearest' })
-  }, [current])
+  const last = options.length - 1
 
   function choose(item: PaletteItem): void {
     storeRecent(item.id)
@@ -62,91 +54,91 @@ export function CommandPalette({
     item.run()
   }
 
-  function onKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
-    // A search input would only clear the query on Escape: close the palette instead.
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      onClose()
-      return
-    }
-    if (options.length === 0) {
-      return
-    }
-    const last = options.length - 1
-    const moves: Record<string, number> = {
-      ArrowDown: current === last ? 0 : current + 1,
-      ArrowUp: current <= 0 ? last : current - 1,
-      PageDown: last,
-      PageUp: 0,
-    }
-    const next = moves[event.key]
-    if (next !== undefined) {
-      event.preventDefault()
-      setActive(next)
-    } else if (event.key === 'Enter') {
-      event.preventDefault()
-      const item = options[current]
-      if (item !== undefined) {
-        choose(item)
+  const { getInputProps, getMenuProps, getItemProps, highlightedIndex } = useCombobox<PaletteItem>({
+    items: options,
+    itemToString: (item) => item?.label ?? '',
+    itemToKey: (item) => item?.id,
+    isOpen: options.length > 0,
+    inputValue: query,
+    selectedItem: null,
+    highlightedIndex: Math.min(highlighted, last),
+    defaultHighlightedIndex: 0,
+    onInputValueChange: ({ inputValue }) => {
+      setQuery(inputValue)
+    },
+    onHighlightedIndexChange: ({ highlightedIndex: next }) => {
+      setHighlighted(next)
+    },
+    onSelectedItemChange: ({ selectedItem }) => {
+      if (selectedItem !== null) {
+        choose(selectedItem)
       }
-    }
-  }
+    },
+    stateReducer: (state, { type, changes }) => {
+      switch (type) {
+        case useCombobox.stateChangeTypes.InputKeyDownPageUp:
+          return { ...changes, highlightedIndex: 0 }
+        case useCombobox.stateChangeTypes.InputKeyDownPageDown:
+          return { ...changes, highlightedIndex: last }
+        // Focus stays in the dialog: leaving the input, clicking it or moving the pointer off
+        // the list neither chooses nor drops the highlighted option.
+        case useCombobox.stateChangeTypes.InputBlur:
+        case useCombobox.stateChangeTypes.InputClick:
+        case useCombobox.stateChangeTypes.MenuMouseLeave:
+          return state
+        default:
+          return changes
+      }
+    },
+  })
 
   const starts = groups.map((_, at) => groups.slice(0, at).reduce((sum, group) => sum + group.items.length, 0))
   return (
-    <Dialog label={t('palette.title')} onCancel={onClose}>
-      <div className="flex w-[min(28rem,calc(100vw-4rem))] flex-col gap-2">
+    <Dialog label={t('palette.title')} onCancel={onClose} size="lg">
+      <div className="flex w-full flex-col gap-2">
         <input
+          {...getInputProps({
+            'aria-label': t('palette.input'),
+            onKeyDown: (event) => {
+              // Escape closes the palette rather than clearing the query.
+              if (event.key === 'Escape') {
+                Object.assign(event.nativeEvent, { preventDownshiftDefault: true })
+                event.preventDefault()
+                onClose()
+              }
+              // Home and End move the caret in the query, as in any text field.
+              if (event.key === 'Home' || event.key === 'End') {
+                Object.assign(event.nativeEvent, { preventDownshiftDefault: true })
+              }
+            },
+          })}
           // Not a credential field: keep password managers from offering to fill it.
           type="search"
-          role="combobox"
           data-palette
           data-1p-ignore
           data-lpignore="true"
           data-bwignore
           data-form-type="other"
-          aria-label={t('palette.input')}
-          aria-expanded={options.length > 0}
-          aria-controls={listId}
-          aria-autocomplete="list"
-          aria-activedescendant={options.length > 0 ? optionId(current) : undefined}
           placeholder={t('palette.placeholder')}
-          autoComplete="off"
           spellCheck={false}
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value)
-            setActive(0)
-          }}
-          onKeyDown={onKeyDown}
           className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
         />
-        <ul ref={list} id={listId} role="listbox" aria-label={t('palette.results')} className="max-h-80 overflow-y-auto">
+        <ul {...getMenuProps({ 'aria-label': t('palette.results') })} className="max-h-80 overflow-y-auto">
           {groups.map((group, groupAt) => (
             <li key={group.name} role="presentation">
-              <div id={`${listId}-${group.name}`} role="presentation" className="px-2 pt-2 text-xs font-medium text-muted-foreground">
+              <div id={`${groupId}-${group.name}`} role="presentation" className="px-2 pt-2 text-xs font-medium text-muted-foreground">
                 {t(`palette.${group.name}`)}
               </div>
-              <ul role="group" aria-labelledby={`${listId}-${group.name}`}>
+              <ul role="group" aria-labelledby={`${groupId}-${group.name}`}>
                 {group.items.map((item, itemAt) => {
-                  const at = (starts[groupAt] ?? 0) + itemAt
+                  const index = (starts[groupAt] ?? 0) + itemAt
                   return (
-                    // The combobox takes the keys: focus stays in it.
-                    // eslint-disable-next-line jsx-a11y/click-events-have-key-events
                     <li
                       key={item.id}
-                      id={optionId(at)}
-                      role="option"
-                      aria-selected={at === current}
-                      onMouseMove={() => {
-                        setActive(at)
-                      }}
-                      onClick={() => {
-                        choose(item)
-                      }}
+                      {...getItemProps({ item, index })}
                       className={cn(
                         'flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm',
-                        at === current && 'bg-accent text-accent-foreground',
+                        index === highlightedIndex && 'bg-accent text-accent-foreground',
                       )}
                     >
                       <span className="min-w-0 flex-1 truncate">{item.label}</span>
