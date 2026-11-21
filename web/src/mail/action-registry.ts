@@ -27,6 +27,7 @@ import { messagePrintUrl, messageSourceUrl, type PrefillMode } from '@/api/mail.
 
 import type { Compose } from './compose-context.ts'
 import type { Muting } from './mute-context.ts'
+import { selectedQuote } from './quote-selection.ts'
 import { movableInto, type TriageActions } from './triage-actions.ts'
 import { isSameFolder, type Destination, type Target } from './triage-context.ts'
 
@@ -91,7 +92,8 @@ function answer(id: string, mode: PrefillMode, label: string, icon: LucideIcon, 
       message !== null && !compose.canCompose(message.account_id) ? 'compose.offHint' : null,
     run: ({ message, compose }) => {
       if (message !== null) {
-        compose.start({ kind: mode, account: message.account_id, ref: message.ref })
+        const quote = mode === 'forward' ? null : selectedQuote(message.ref)
+        compose.start({ kind: mode, account: message.account_id, ref: message.ref, ...(quote === null ? {} : { quote }) })
       }
     },
   }

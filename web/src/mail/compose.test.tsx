@@ -448,6 +448,37 @@ describe('replying and forwarding', () => {
     expect(savesOf(fetchMock)[0]?.fields.forwards).toBe(firstRef)
   })
 
+  it('quotes only the text selected in the message, by button or shortcut', async () => {
+    const user = userEvent.setup()
+    const fetchMock = stubMailApi(state())
+    renderMailApp(`/mail?message=${firstRef}`)
+    const select = (element: HTMLElement, end: number): void => {
+      const node = element.firstChild
+      if (node !== null) {
+        document.getSelection()?.setBaseAndExtent(node, 0, node, end)
+      }
+    }
+
+    select(await screen.findByText('Body of Message 2'), 7)
+    await user.click(screen.getByRole('button', { name: 'Reply' }))
+    const form = await composer('Reply')
+    expect((await body(form)).querySelector('blockquote')).toHaveTextContent(/^Body of$/)
+    await user.click(within(form).getByRole('button', { name: 'Close' }))
+
+    select(await screen.findByText('Body of Message 2'), 4)
+    await user.keyboard('a')
+    await user.click(within(await composer('Reply all')).getByRole('button', { name: 'Close' }))
+
+    select(await screen.findByRole('heading', { name: 'Message 2' }), 3)
+    await user.keyboard('r')
+    await composer('Reply')
+    expect(bodiesTo(fetchMock, '/api/v1/mail/drafts/prefill')).toEqual([
+      { ref: firstRef, mode: 'reply', quote: 'Body of' },
+      { ref: firstRef, mode: 'reply_all', quote: 'Body' },
+      { ref: firstRef, mode: 'reply' },
+    ])
+  })
+
   it('has shortcuts for each, none while a composer is open', async () => {
     const user = userEvent.setup()
     const fetchMock = stubMailApi(state())

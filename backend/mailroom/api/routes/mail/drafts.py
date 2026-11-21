@@ -61,6 +61,8 @@ class PrefillRequest(BaseModel):
 
     ref: BatchRef
     mode: Literal["reply", "reply_all", "forward", "unsubscribe"]
+    quote: Annotated[str | None, Field(max_length=service.MAX_QUOTE_CHARS)] = None
+    """The text selected in the message, which a reply quotes instead of all of it."""
 
 
 class KeptPart(MessagePart):
@@ -365,7 +367,8 @@ async def _attachment(upload: UploadFile, content_id: str | None) -> OutgoingAtt
 
 @mail_router.post("/drafts/prefill")
 def prefill_draft(request: PrefillRequest, ctx: Context, user: CurrentUser) -> PrefillAnswer:
-    return PrefillAnswer.of(service.prefill(ctx, user.id, request.ref, request.mode))
+    prefilled = service.prefill(ctx, user.id, request.ref, request.mode, quote=request.quote)
+    return PrefillAnswer.of(prefilled)
 
 
 async def _plain_text(request: Request, ctx: Context, user_id: int) -> PlainTextAnswer:

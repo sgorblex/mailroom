@@ -84,7 +84,7 @@ export async function loadStart(
       return draftStart(await readDraft(found.ref, signal), source.composeId, accountOf(source.account))
     }
     default: {
-      const prefill = await prefillDraft(source.ref, source.kind, signal)
+      const prefill = await prefillDraft(source.ref, source.kind, source.quote ?? null, signal)
       return {
         account: prefill.account,
         composeId,

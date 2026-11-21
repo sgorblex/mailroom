@@ -51,6 +51,10 @@ export function ReplyActions({ account, messageRef }: { account: AccountId; mess
             aria-keyshortcuts={action.shortcut}
             aria-disabled={!allowed}
             aria-describedby={allowed ? undefined : hintId}
+            // Keeps the text selected in the message, which a reply quotes.
+            onMouseDown={(event) => {
+              event.preventDefault()
+            }}
             onClick={() => {
               if (allowed) {
                 action.run(context)

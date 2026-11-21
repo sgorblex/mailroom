@@ -400,6 +400,30 @@ def test_a_prefill_gives_the_quote_and_the_forward_in_html_too(composer: Compose
     assert image.get_content() == PNG
 
 
+def test_a_reply_quotes_only_the_selected_text(composer: Composer) -> None:
+    ref = composer.seed(related("<p>Sale <b>today</b> and <i>tomorrow</i></p>"))
+
+    def started(mode: str, quote: str | None) -> Any:
+        answer = composer.client.post(
+            f"{MAIL}/drafts/prefill", json={"ref": ref, "mode": mode, "quote": quote}
+        )
+        assert answer.status_code == 200, answer.text
+        return answer.json()
+
+    reply = started("reply_all", "Sale today\r\n<and>")
+    assert reply["text"].startswith("\n\nOn 2026-10-01 12:00, Shop")
+    assert reply["text"].endswith(" wrote:\n> Sale today\n> <and>")
+    assert reply["html"].endswith(
+        '<blockquote type="cite"><div>Sale today<br>&lt;and&gt;</div></blockquote>'
+    )
+    assert "tomorrow" not in reply["html"]
+    assert "tomorrow" in started("reply", " \n")["html"]
+    assert "tomorrow" in started("forward", "Sale")["html"]
+
+    too_long = {"ref": ref, "mode": "reply", "quote": "x" * (service.MAX_QUOTE_CHARS + 1)}
+    assert composer.client.post(f"{MAIL}/drafts/prefill", json=too_long).status_code == 422
+
+
 def test_an_html_draft_keeps_its_html_and_its_inline_images(composer: Composer) -> None:
     compose_id = str(uuid.uuid4())
     html = (

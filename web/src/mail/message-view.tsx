@@ -434,7 +434,9 @@ function TextBody({
       {content === '' ? (
         <p className="text-sm text-muted-foreground">{t('message.noText')}</p>
       ) : (
-        <div className="text-sm leading-relaxed break-words whitespace-pre-wrap">{content}</div>
+        <div data-quote-source={view.ref} className="text-sm leading-relaxed break-words whitespace-pre-wrap">
+          {content}
+        </div>
       )}
       {more.kind === 'failed' && (
         <p role="alert" className="text-sm text-destructive">

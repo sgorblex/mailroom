@@ -4,7 +4,8 @@ import type { PrefillMode } from '@/api/mail.ts'
 /** What a composer starts from. */
 export type ComposeSource =
   | { kind: 'new'; account: AccountId }
-  | { kind: PrefillMode; account: AccountId; ref: string }
+  /** `quote`: the text selected in the message, which a reply quotes instead of all of it. */
+  | { kind: PrefillMode; account: AccountId; ref: string; quote?: string }
   | { kind: 'draft'; ref: string }
   /** A composer open before a reload: the draft saved under its `compose_id`, if any. */
   | { kind: 'recover'; account: AccountId; composeId: string }

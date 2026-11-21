@@ -206,6 +206,7 @@ from mailroom_core.mail.recipients import (
 from mailroom_core.mail.ref import MessageRef, check_fresh, format_ref, parse_ref
 from mailroom_core.mail.reply import (
     MAX_ORIGINAL_BYTES,
+    MAX_QUOTED_CHARS,
     MAX_QUOTED_HTML_BYTES,
     Original,
     ReplyRecipients,
@@ -298,6 +299,7 @@ __all__ = [
     "MAX_HTML_BYTES",
     "MAX_LISTED_FOLDERS",
     "MAX_ORIGINAL_BYTES",
+    "MAX_QUOTED_CHARS",
     "MAX_QUOTED_HTML_BYTES",
     "MAX_REFS",
     "MAX_SUBJECT_CHARS",
