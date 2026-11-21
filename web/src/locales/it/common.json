@@ -301,6 +301,24 @@
     "since": "dal {{day}}",
     "synced": "aggiornata {{when}}"
   },
+  "desktopNotifications": {
+    "title": "Notifiche sul desktop",
+    "intro": "Finché una scheda di Mailroom è aperta, la nuova posta nelle cartelle selezionate qui sotto appare come notifica del browser, con solo mittente e oggetto; non per la cartella che la scheda mostra mentre la stai usando.",
+    "allow": "Consenti le notifiche sul desktop",
+    "granted": "Questo browser mostra le notifiche di Mailroom.",
+    "denied": "Questo browser blocca le notifiche di Mailroom: consentile nelle sue impostazioni per questo sito.",
+    "unsupported": "Questo browser non può mostrare notifiche.",
+    "folders": "Cartelle di {{account}} che notificano",
+    "indexedOnly": "Notificano solo le cartelle nell'indice: attivane una in Indice.",
+    "noFolders": "Nessuna cartella di questo account è nell'indice.",
+    "loading": "Caricamento delle cartelle…",
+    "loadFailed": "Impossibile caricare le cartelle di questo account.",
+    "saveFailed": "Impossibile cambiare questa cartella.",
+    "unknownSender": "(mittente sconosciuto)",
+    "noSubject": "(nessun oggetto)",
+    "summary_one": "{{count}} nuovo messaggio",
+    "summary_other": "{{count}} nuovi messaggi"
+  },
   "limits": {
     "title": "Limiti della posta",
     "intro": "Valgono per la tua posta qui e dalle app collegate, su tutti i tuoi account. Solo tu li cambi, qui: un'app collegata non può.",

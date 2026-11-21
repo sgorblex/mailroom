@@ -301,6 +301,24 @@
     "since": "since {{day}}",
     "synced": "updated {{when}}"
   },
+  "desktopNotifications": {
+    "title": "Desktop notifications",
+    "intro": "While a Mailroom tab is open, new mail in the folders checked below shows as a notification from your browser, with its sender and subject only; not for the folder the tab shows while you are on it.",
+    "allow": "Allow desktop notifications",
+    "granted": "This browser shows Mailroom's notifications.",
+    "denied": "This browser blocks Mailroom's notifications: allow them in its settings for this site.",
+    "unsupported": "This browser cannot show notifications.",
+    "folders": "Folders of {{account}} that notify",
+    "indexedOnly": "Only folders on the index notify: switch one on under Index.",
+    "noFolders": "No folder of this account is on the index.",
+    "loading": "Loading the folders…",
+    "loadFailed": "Could not load this account's folders.",
+    "saveFailed": "Could not change this folder.",
+    "unknownSender": "(unknown sender)",
+    "noSubject": "(no subject)",
+    "summary_one": "{{count}} new message",
+    "summary_other": "{{count}} new messages"
+  },
   "limits": {
     "title": "Mail limits",
     "intro": "They hold for your mail here and through connected apps, across all your accounts. Only you change them, here: a connected app cannot.",

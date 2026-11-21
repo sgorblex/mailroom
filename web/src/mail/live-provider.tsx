@@ -3,6 +3,7 @@ import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 
 import { LIVE_EVENT_TYPES, mailEventsUrl, parseLiveEvent, type IndexStatus, type LiveEvent, type MailFolder } from '@/api/mail.ts'
 
+import { DesktopNotifications } from './desktop-notifications.tsx'
 import { LiveUpdatesContext, type LiveStatus, type LiveUpdates, type Viewing } from './live-context.ts'
 import { ALL_FOLDERS_KEY, ALL_MESSAGES_KEY, foldersKey, INDEX_KEY, indexStatusKey } from './queries.ts'
 import { isSameFolder } from './triage-context.ts'
@@ -48,7 +49,8 @@ function applyEvent(queryClient: QueryClient, event: LiveEvent): void {
  * The signed-in user's live updates stream: one EventSource to `/mail/events`, opened again
  * with the folder the mail screen views when it changes, and after a failure with a backoff.
  * Events are not replayed, so what the screen shows is read again once it reconnects, and the
- * folders' counts once it is opened again for another folder.
+ * folders' counts once it is opened again for another folder. New mail shows as desktop
+ * notifications (`DesktopNotifications`).
  */
 export function LiveUpdatesProvider({ children }: { children: ReactNode }): ReactElement {
   const queryClient = useQueryClient()
@@ -121,5 +123,10 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }): Reac
   }, [viewing, queryClient])
 
   const value = useMemo<LiveUpdates>(() => ({ status, setViewing, subscribe }), [status, setViewing, subscribe])
-  return <LiveUpdatesContext value={value}>{children}</LiveUpdatesContext>
+  return (
+    <LiveUpdatesContext value={value}>
+      <DesktopNotifications viewing={viewing} />
+      {children}
+    </LiveUpdatesContext>
+  )
 }

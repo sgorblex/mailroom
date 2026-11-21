@@ -549,6 +549,11 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   stop (`--timeout-graceful-shutdown`), since a stream never ends by itself. Logs:
   `mail_events_dropped` and `mail_events_read_failed` (`user_id`, the error's type) and
   `mail_interest_failed` (`user_id`, the error's type); never a folder, a sender or a subject.
+- **Desktop notifications** ([`mail-client.md`](mail-client.md), *Desktop notifications*) are
+  the browser's own, shown by the page from the user's own stream: no push service, nothing sent
+  elsewhere. A notification's text is the sender and subject alone, as plain text. The browser's
+  permission is asked only from the Profile's button. Changing the folders logs
+  `notification_folders_changed` (`user_id`, `account_id`, how many folders), never a path.
 - **Organize calls** (move, archive, trash, flag) check every ref before connecting: a malformed
   one, or one of an account that is not the user's (404) or cannot log in (`password_missing`
   409, `secrets_key_missing` 503), refuses the batch and nothing is written. A call cut at the
