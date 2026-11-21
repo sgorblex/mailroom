@@ -4,6 +4,7 @@ account's folders, watching a folder through IDLE, messages parsed from their so
 filter engine, and messages composed to be written (`src/mail/`, `src/mcp/tools/` minus the tool
 plumbing). Synchronous: an async host calls it from a worker thread."""
 
+from mailroom_core.mail._mime import aware_date
 from mailroom_core.mail.attachments import AttachmentSource, attachments_from
 from mailroom_core.mail.audit import (
     REFUSALS,
@@ -395,6 +396,7 @@ __all__ = [
     "audit_outcome",
     "audit_result",
     "authentication",
+    "aware_date",
     "body_text",
     "changed_flags_of",
     "check_fields",

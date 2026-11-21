@@ -104,10 +104,10 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   appear in logs, errors or API responses. See *Mail accounts* below.
 - **Mail metadata at rest.** The mail index (`app.mail_index_folder`, `app.mail_index_message`)
   keeps, per message of an indexed folder, what lists and search show without asking the server:
-  From, To and Cc, subject, Date and arrival time, flags and keywords, size, whether it has
-  attachments, Message-ID, In-Reply-To, References root, thread key, List-Id, the snippet a list
-  shows and on Gmail its labels and ids. Never a body or an attachment: a search for text stays
-  live on the server. Rows are plain (no column encryption: the database's own protection
+  From, To and Cc, subject, Date (with its UTC offset) and arrival time, flags and keywords, size,
+  whether it has attachments, Message-ID, In-Reply-To, References root, thread key, List-Id, the
+  snippet a list shows and on Gmail its labels and ids. Never a body or an attachment: a search for
+  text stays live on the server. Rows are plain (no column encryption: the database's own protection
   applies), mail-derived and so untrusted, never written to a log line in clear, and read only
   scoped to their user (each message row carries its folder's user, enforced by its foreign key).
   They go with their account and their user, and a folder's with its switch turned off.

@@ -14,6 +14,7 @@ from sqlalchemy import (
     Identity,
     Index,
     Integer,
+    SmallInteger,
     Text,
     UniqueConstraint,
     text,
@@ -120,6 +121,8 @@ class MailIndexMessage(Base):
     """INTERNALDATE, the arrival time."""
     date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     """The Date header."""
+    date_offset: Mapped[int | None] = mapped_column(SmallInteger)
+    """The Date header's UTC offset, in minutes, which a read gives ``date`` in; None: UTC."""
     sender: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
     """From, as ``[{"name", "address"}]``."""
     recipients: Mapped[dict[str, Any]] = mapped_column(JSONB)

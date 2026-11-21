@@ -29,7 +29,7 @@ import base64
 import binascii
 import json
 from dataclasses import dataclass, field, replace
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta, timezone
 from typing import TYPE_CHECKING, Final
 from zoneinfo import ZoneInfo
 
@@ -414,6 +414,13 @@ def _listed_folder(source: IndexSource, row: MailIndexMessage) -> str | None:
     return next((path for label, path in source.listed if label in carried), None)
 
 
+def _header_date(row: MailIndexMessage) -> datetime | None:
+    """The row's Date header in its own UTC offset, as a live read gives it; UTC without one."""
+    if row.date is None:
+        return None
+    return core.aware_date(row.date.astimezone(timezone(timedelta(minutes=row.date_offset or 0))))
+
+
 def _summary(source: IndexSource, row: MailIndexMessage) -> MessageSummary:
     ref = MessageRef(source.account, source.folder, source.uid_validity, row.uid)
     return ListedSummary(
@@ -422,7 +429,7 @@ def _summary(source: IndexSource, row: MailIndexMessage) -> MessageSummary:
         folder=source.folder,
         uid=row.uid,
         uid_validity=source.uid_validity,
-        date=row.date or row.received,
+        date=_header_date(row) or row.received,
         received=row.received,
         sender=_addresses(row.sender),
         subject=row.subject,

@@ -1570,13 +1570,15 @@ folder off the index is read live, as before the index.
   version 3 that keeps that place. On the index `from`, `to` and `subject` match a substring of
   the sender's and To's names and addresses and of the subject, in any case; `since` and `before`
   compare the arrival time with the start of that day in the user's time zone (UTC until they
-  set one); `has_attachment` is the message's structure (an attachment
-  part), not the `multipart/mixed` approximation. A folder indexed under an age limit holds only
-  the mail since its day (the server's, taken as UTC's): once a list or search has shown that, it
-  goes on live, `BEFORE` that day, unless the search's own `since` starts no earlier than that
-  day. That live read keeps the user's days too: it asks the server a day more on each side of
-  `since` and `before` and keeps what arrived within them, so a search from the age limit's own
-  day by a user east of UTC still finds, once, the mail of their first hours of it. On Gmail, INBOX and the label folders
+  set one); `has_attachment` is the message's structure (an attachment part), not the
+  `multipart/mixed` approximation. A message's `date` keeps its Date header's UTC offset, as a
+  live read gives it (a row indexed before this release has no offset and reads in UTC until its
+  folder is indexed again). A folder indexed under an age limit holds only the mail since its
+  day (the server's, taken as UTC's): once a list or search has shown that, it goes on live,
+  `BEFORE` that day, unless the search's own `since` starts no earlier than that day. That live
+  read keeps the user's days too: it asks the server a day more on each side of `since` and
+  `before` and keeps what arrived within them, so a search from the age limit's own day by a
+  user east of UTC still finds, once, the mail of their first hours of it. On Gmail, INBOX and the label folders
   are read from All Mail's rows by label (INBOX `\Inbox`, Sent `\Sent`, Drafts `\Draft`,
   Starred `\Starred`, Important `\Important`, any other the folder's path), each message with
   its **All Mail ref** and the folder it was listed under (`listed_folder`). A move, archive,

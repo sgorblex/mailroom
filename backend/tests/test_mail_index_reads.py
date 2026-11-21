@@ -1,8 +1,9 @@
 """Lists, searches and folder counts read from the mail index (``mailroom.mail.index.reads`` and
 the mail service): the index's cursor, Gmail's label views, the rows a search finds (only the
 user's own), a move out of a label view, and, against the test Dovecot (``IMAP_TEST_HOST``;
-skipped without it), the API's pages compared with the live ones, counts, the live read of what
-the age limit leaves out and a folder switched off between pages."""
+skipped without it), the API's pages compared with the live ones, dates in their header's
+offset, counts, the live read of what the age limit leaves out and a folder switched off between
+pages."""
 
 from __future__ import annotations
 
@@ -24,7 +25,7 @@ from mailroom.mail.index import sync as index_sync
 from mailroom.mail.index.reads import IndexCursor, IndexSource, decode_cursor, gmail_label
 from mailroom.mail.service import folder_writes, organize
 from mailroom.mail.service import read as service_read
-from mailroom.models import MailIndexFolder
+from mailroom.models import MailIndexFolder, MailIndexMessage
 from mailroom_core import mail as core
 from mailroom_core.config import TimeZoneName
 from mailroom_core.mail import (
@@ -281,6 +282,32 @@ def test_the_live_tail_keeps_the_users_days() -> None:
     assert reads.in_days(earlier, SearchQuery(before=DAY.date()), berlin)
     assert reads.in_days(arrived(None), since, berlin)
     assert reads.in_days(earlier, None, berlin)
+
+
+def test_a_rows_date_is_given_in_its_headers_offset(db_session: Session, user: User) -> None:
+    inbox = ready(db_session, user, 1, "INBOX")
+    sent = DAY + timedelta(hours=9)
+    db_session.add_all(
+        [
+            message(inbox, user.id, 1, received=sent, date=sent, date_offset=-330),
+            message(inbox, user.id, 2, received=sent, date=sent, date_offset=None),
+            message(inbox, user.id, 3, received=sent, date=sent, date_offset=0),
+            message(inbox, user.id, 4, received=sent),
+        ]
+    )
+    db_session.commit()
+    sources = reads.index_sources(
+        db_session, user.id, [Source(1, "INBOX")], gmail=unasked, listing=unasked
+    )
+    assert sources is not None
+    found = reads.read_rows(db_session, user.id, sources, None, zone=UTC_ZONE, limit=10)
+    dates = {summary.uid: summary.date for summary, _ in found}
+    assert all(moment == sent for moment in dates.values())
+    assert dates[1] is not None
+    assert dates[1].isoformat() == "2026-11-20T03:30:00-05:30"
+    assert {uid: moment.tzinfo for uid, moment in dates.items() if uid != 1} == dict.fromkeys(
+        (2, 3, 4), UTC
+    )
 
 
 def test_a_gmail_label_view_reads_all_mails_rows(db_session: Session, user: User) -> None:
@@ -815,6 +842,40 @@ def test_lists_and_searches_read_from_the_index_as_live(
         indexed, versions = every_page(user_client, request)
         assert indexed == messages, request
         assert all(version == 3 for version in versions), request
+
+
+def test_an_index_rows_date_keeps_the_offset_a_live_read_gives(
+    user_client: TestClient,
+    db_session: Session,
+    mailboxes: Mailboxes,
+    imap_server: ImapTestServer,
+    login: str,
+    user: User,
+    mail_account: int,
+) -> None:
+    dates = {
+        "east": "Fri, 20 Nov 2026 10:15:00 +0200",
+        "west": "Fri, 20 Nov 2026 03:45:00 -0530",
+        "greenwich": "Fri, 20 Nov 2026 08:15:00 +0000",
+    }
+    for subject, date_header in dates.items():
+        seed(imap_server, login, "INBOX", mime(subject, date=date_header))
+    request = {"account_id": mail_account, "folder": "INBOX"}
+    live, _ = every_page(user_client, request)
+
+    synced(db_session, mailboxes, user, mail_account)
+    offsets = db_session.scalars(
+        select(MailIndexMessage.date_offset).order_by(MailIndexMessage.uid)
+    ).all()
+    assert offsets == [120, -330, 0]
+    indexed, versions = every_page(user_client, request)
+    assert versions == [3]
+    assert indexed == live
+    assert {m["subject"]: m["date"] for m in indexed} == {
+        "east": "2026-11-20T10:15:00+02:00",
+        "west": "2026-11-20T03:45:00-05:30",
+        "greenwich": "2026-11-20T08:15:00Z",
+    }
 
 
 def test_folder_counts_come_from_the_index(
