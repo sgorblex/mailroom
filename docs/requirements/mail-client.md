@@ -685,9 +685,9 @@ mailroom-mcp's `draft` and `send` tools. Web composing is **plain text**; rich t
   draft, by the user, through the send gate. The one-click kind is
   [its own route](#one-click-unsubscribe).
 - **Identity:** the composer's `From` is a choice among the account's
-  [identities](../GLOSSARY.md). A reply or reply all preselects the identity the original was
-  addressed to, else the account's default; an unsubscribe by mail the identity the message
-  arrived at (`sent_to`), else the default; a new message and a forward use the default.
+  [identities](../GLOSSARY.md). A reply, reply all, forward or unsubscribe by mail preselects
+  the identity the message arrived at (`sent_to`), else the account's default, as MCP's reply and
+  forward do; a new message uses the default.
   An address outside the identities is `invalid_argument`. The accounts API gives the web
   client each account's `identities` (`address`, `name`, `default`), its `send_mode`,
   `attachment_max_mb` (the user's limit, at most 25) and `max_recipients`, so the composer can say

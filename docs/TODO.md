@@ -188,6 +188,8 @@ First, fixes carried over from 0.14.0 testing:
       message's date reads the same from the index as live.
 - [x] **Notification folders follow renames** — the desktop-notification folders follow a
       renamed folder (and its subfolders) and drop a deleted one.
+- [x] **Forward from the right address** — the web's forward starts from the identity the message
+      arrived at, as a reply and MCP's forward do.
 
 #### 7. Compose
 
