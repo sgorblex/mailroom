@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { bodiesTo, type FakeMailState, HOME, messageItem, messageView, queriesTo, refusal, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
 import { onSessionEnded } from '@/api/http.ts'
+import { scrollListToEnd } from '@/test/fake-virtualizer.ts'
 import { renderMailApp } from '@/test/mail-app.tsx'
 
 import { HTML_SANDBOX } from './html-body.tsx'
@@ -138,15 +139,17 @@ describe('MailScreen', () => {
     ])
   })
 
-  it('loads the next page with the cursor the last one gave, until there is none', async () => {
+  it('reads the next page with the cursor the last one gave as the list nears its end, until there is none', async () => {
     const fetchMock = stubMailApi(state())
     renderMailApp('/mail')
 
     const list = await messagesList()
-    await userEvent.click(screen.getByRole('button', { name: 'Load more' }))
+    expect(queriesTo(fetchMock, '/api/v1/mail/accounts/1/messages')).toHaveLength(1)
+    scrollListToEnd()
     expect(await within(list).findByRole('link', { name: /Message 71/ })).toBeInTheDocument()
     expect(within(list).getAllByRole('listitem')).toHaveLength(30)
-    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument()
+    expect(within(list).getAllByRole('listitem').at(-1)).toHaveAttribute('aria-setsize', '30')
+    scrollListToEnd()
     const cursors = queriesTo(fetchMock, '/api/v1/mail/accounts/1/messages').map((query) => query.get('cursor'))
     expect(cursors).toEqual([null, 'before:76'])
   })
@@ -158,10 +161,14 @@ describe('MailScreen', () => {
 
     const list = await messagesList()
     fake.refuse = { 'GET /api/v1/mail/accounts/1/messages': refusal(504, 'timeout') }
-    await userEvent.click(screen.getByRole('button', { name: 'Load more' }))
+    scrollListToEnd()
     expect(await within(await listRegion()).findByRole('alert')).toHaveTextContent('The mail server did not answer in time.')
     expect(within(list).getAllByRole('listitem')).toHaveLength(25)
-    expect(screen.getByRole('button', { name: 'Load more' })).toBeInTheDocument()
+
+    delete fake.refuse
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await within(list).findByRole('link', { name: /Message 71/ })).toBeInTheDocument()
+    expect(within(await listRegion()).queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('shows more of a long text from next_offset, with the quoted choice it was read with', async () => {

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { bodiesTo, type FakeMailState, HOME, messageItem, messageView, refusal, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
+import { scrollListToEnd } from '@/test/fake-virtualizer.ts'
 import { renderMailApp } from '@/test/mail-app.tsx'
 
 const UNREAD = { seen: false, flagged: false, answered: false, forwarded: false, draft: false, to_sort: false }
@@ -104,6 +105,26 @@ describe('triage', () => {
     await userEvent.click(all)
     expect(within(list).queryAllByRole('checkbox', { checked: true })).toHaveLength(0)
     expect(screen.queryByRole('group', { name: 'Message actions' })).not.toBeInTheDocument()
+  })
+
+  it('selects every row between two checkboxes with Shift+click, and unselects them so', async () => {
+    stubMailApi(state())
+    renderMailApp('/mail')
+
+    const list = await messagesList()
+    const user = userEvent.setup()
+    await user.click(within(list).getByRole('checkbox', { name: 'Select Message 9' }))
+    await user.keyboard('{Shift>}')
+    await user.click(within(list).getByRole('checkbox', { name: 'Select Message 7' }))
+    await user.keyboard('{/Shift}')
+    expect(await actions()).toHaveTextContent('3 selected')
+    expect(within(list).getByRole('checkbox', { name: 'Select Message 8' })).toBeChecked()
+
+    await user.keyboard('{Shift>}')
+    await user.click(within(list).getByRole('checkbox', { name: 'Select Message 8' }))
+    await user.keyboard('{/Shift}')
+    expect(await actions()).toHaveTextContent('1 selected')
+    expect(within(list).getByRole('checkbox', { name: 'Select Message 9' })).toBeChecked()
   })
 
   it('archives the selection: its rows go and the counts follow, without a reload', async () => {
@@ -548,7 +569,7 @@ describe('triage', () => {
     expect(rowLink(again, 'Message 9')).not.toHaveAccessibleName(/Unread:/)
   })
 
-  it('keeps Load more, without calling the folder empty, once every loaded row moved away', async () => {
+  it('reads on, without calling the folder empty, once every loaded row moved away', async () => {
     const long = Array.from({ length: 26 }, (_, index) => messageItem(WORK, 'INBOX', 100 - index))
     stubMailApi(state({ messages: { '1/INBOX': long } }))
     renderMailApp('/mail')
@@ -558,9 +579,6 @@ describe('triage', () => {
     await userEvent.click(within(await actions()).getByRole('button', { name: 'Archive' }))
     await reported('polite', 'Archived 25 messages.')
     expect(screen.queryByText('No messages in this folder.')).not.toBeInTheDocument()
-    expect(screen.queryByRole('checkbox', { name: 'Select all' })).not.toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole('button', { name: 'Load more' }))
     expect(rowLink(await messagesList(), 'Message 75')).toBeInTheDocument()
   })
 
@@ -574,7 +592,7 @@ describe('triage', () => {
     await userEvent.click(within(await actions()).getByRole('button', { name: 'Archive' }))
     await reported('polite', 'Archived 1 message.')
 
-    await userEvent.click(screen.getByRole('button', { name: 'Load more' }))
+    scrollListToEnd()
     expect(await within(list).findByRole('link', { name: /Message 75Preview/ })).toBeInTheDocument()
     const subjects = within(list)
       .getAllByRole('link')

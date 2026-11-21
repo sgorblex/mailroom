@@ -225,7 +225,8 @@ function MailPanes({
         </div>
         <Toolbar />
         <SpamFilterOffer />
-        <div className={cn('flex flex-col gap-3', covered && 'hidden lg:flex')}>
+        {/* Takes what height the pane has left, the list scrolling within it. */}
+        <div className={cn('flex flex-col gap-3 lg:min-h-64 lg:flex-1', covered && 'hidden lg:flex')}>
           {search.view === undefined ? (
             <Listing accounts={accounts} accountId={accountId} folder={folder} subfolders={subfolders} />
           ) : (

@@ -8,7 +8,7 @@ Engineering baseline for Mailroom. Product scope: [`../REQUIREMENTS.md`](../REQU
 | --- | --- |
 | Backend | Python 3.14+ (dev pin 3.15 via mise), FastAPI, SQLAlchemy 2 (sync) + psycopg 3, Alembic, uv; PyJWT and httpx for OIDC; dnspython and lxml for account autoconfiguration |
 | Worker | procrastinate (psycopg 3) on the app's database, `python -m mailroom.worker`; it also watches folders over IMAP IDLE and syncs the mail index |
-| Web | React 19, Vite, TanStack Router (code-based routes), TanStack Query (in-memory cache of the mail screen's reads), Tailwind 4 + shadcn (`web/components.json`), Downshift (headless combobox: the command palette), i18next, Zod at the API boundary, ESLint `strictTypeChecked` (no Prettier) |
+| Web | React 19, Vite, TanStack Router (code-based routes), TanStack Query (in-memory cache of the mail screen's reads), TanStack Virtual (the message list), Tailwind 4 + shadcn (`web/components.json`), Downshift (headless combobox: the command palette), i18next, Zod at the API boundary, ESLint `strictTypeChecked` (no Prettier) |
 | Database | PostgreSQL 18 |
 | Tests | pytest (+ xdist, one database per worker cloned from the migrated `mailroom_test`), Vitest (`node` and `jsdom` projects) |
 | Containers | Podman, `mailroom-api` and `mailroom-web` images; Quadlet for deploy |
@@ -897,7 +897,9 @@ clear (hash them, as mailroom-mcp's audit does).
   detached steps. Both test Dovecots take `dev/dovecot-test.conf`'s overrides (the special-use
   folders, a login limit above what the parallel workers open).
 - **Web:** Vitest; `*.node.test.ts(x)` in bare Node, everything else in jsdom with
-  `src/test/setup.ts`. Test by accessible role and label.
+  `src/test/setup.ts`, which stands `src/test/fake-virtualizer.ts` in for TanStack Virtual (jsdom
+  lays nothing out): every row is rendered, and `scrollListToEnd` reads the next page. Test by
+  accessible role and label.
 - **Editions:** the shared test apps pass `features=ALL_FEATURES`, so a developer's
   `MAILROOM_FEATURES` does not change the suite; `tests/test_editions.py` builds the others.
 - **OIDC** tests run against `mailroom.dev.fake_idp` (also `mise run dev-idp`) through

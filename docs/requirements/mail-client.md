@@ -18,8 +18,12 @@ notifications](#desktop-notifications).
 ## Slice A: read
 
 - **Folders** per account, with their role and unread/total counts.
-- **Message list** of one folder, newest first, 25 at a time with a "load more"; optionally with
-  its subfolders merged in (`subfolders`, below).
+- **Message list** of one folder, newest first, read 25 at a time as it is scrolled: a
+  virtualised list (only the rows in view and a few around them are in the page), whose next
+  page is read as the view comes within ten rows of the last one loaded, so a folder of tens of
+  thousands of messages stays smooth; a page that fails says so, with *Try again*. The same list
+  shows searches, views and conversations. Optionally with its subfolders merged in
+  (`subfolders`, below).
 - **Search** over one account or all, with the search fields of mailroom-mcp's `search`, typed
   in the [search syntax](#search-syntax) or set in the form behind *More options*; a
   search shown offers *Create filter from this search* where the instance runs filters
@@ -308,7 +312,8 @@ MCP `message_read` still never set `\Seen`.
 
 ### Web client
 
-- **Multi-select:** a checkbox per row, and a select-all for the loaded page.
+- **Multi-select:** a checkbox per row (Shift+click sets every row from the one clicked before
+  to this one, as this one now is), and a select-all for the loaded rows.
 - **Select all matching:** once every loaded row is selected and the list or search has more, a
   line above the list says so and, from [`POST /messages/count`](#every-message-a-search-matches),
   offers to select all the messages it matches (a folder's list being a search with no criteria);
@@ -395,7 +400,7 @@ MCP `message_read` still never set `\Seen`.
 
 | Key | Action |
 | --- | --- |
-| `j` / `k` | Next / previous message |
+| `j` / `k` | Next / previous message, scrolled into view |
 | `x` | Toggle selection of the current message |
 | `Escape` | Close the picker, else clear the selection |
 | `?` | Show the shortcut sheet |
@@ -1659,8 +1664,10 @@ Mailroom tab is open: no push service.
   `new_mail` for a folder the list reads (with its subfolders, every folder of an all-folders
   search, any on Gmail through All Mail) read its first page again: new rows come in at the top and
   the rows loaded below stay (those new mail pushed off the first page too; those gone from it are
-  dropped; a Load more answered after it for a cursor it no longer ends at is dropped too), as do
-  the scroll position, the selection and the open message; the rows read again carry their flags as
+  dropped; a next page answered after it for a cursor it no longer ends at is dropped too, and
+  read again from where the list now ends), as do the selection, the open message and the rows in
+  view, which stay where they are unless the list is scrolled to its very top, where new mail
+  shows; the rows read again carry their flags as
   changed elsewhere, the open message's too. A search the index never answers (a body's text,
   Gmail's syntax) is not read again. `sync` moves the indexing line (*Index*) on, and takes it away
   once the folder is ready.
