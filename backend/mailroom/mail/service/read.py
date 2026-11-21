@@ -121,16 +121,22 @@ def _counted(folder: Folder, held: Folder | None) -> Folder:
 
 
 def indexable_folders(
-    ctx: AppContext, user_id: int, account_id: int, *, via: Via = "web"
+    ctx: AppContext,
+    user_id: int,
+    account_id: int,
+    *,
+    via: Via = "web",
+    counted: Callable[[Folder], bool] | None = None,
 ) -> tuple[bool, list[Folder]]:
     """Whether the account's server is Gmail (``X-GM-EXT-1``), and its selectable folders with
-    their counts: what the mail index's folders follow."""
+    their counts (with ``counted``, those of the folders it holds true of only): what the mail
+    index's folders follow."""
     accounts = _accounts(ctx, user_id)
     _usable(ctx, user_id, accounts, account_id)
 
     def read(connections: MailConnections) -> tuple[bool, list[Folder]]:
         gmail = connections.capabilities(account_id).gmail
-        listed = connections.folders(account_id, with_status=True)
+        listed = connections.folders(account_id, with_status=counted or True)
         return gmail, [folder for folder in listed if folder.selectable]
 
     return _call(ctx, user_id, accounts, "mail_index_folders", via, account_id, read)

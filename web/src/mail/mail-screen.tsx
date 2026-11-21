@@ -17,6 +17,8 @@ import { ComposeProvider } from './compose-provider.tsx'
 import { Composer } from './composer.tsx'
 import { findNode, folderTree, hasListedSubfolders } from './folder-tree.ts'
 import { MAIL_NS } from './i18n.ts'
+import { indexScope } from './index-progress.ts'
+import { IndexingNotice } from './indexing-notice.tsx'
 import { MailSidebar } from './mail-sidebar.tsx'
 import { MessageList } from './message-list.tsx'
 import { MessageView } from './message-view.tsx'
@@ -201,7 +203,7 @@ function MailPanes({
         <Toolbar />
         <SpamFilterOffer />
         <div className={cn('flex flex-col gap-3', covered && 'hidden lg:flex')}>
-          <Listing accountId={accountId} folder={folder} subfolders={subfolders} />
+          <Listing accounts={accounts} accountId={accountId} folder={folder} subfolders={subfolders} />
         </div>
       </section>
       <section
@@ -284,7 +286,17 @@ function sourceKey(accountId: AccountId, folder: string, subfolders: boolean, q:
 }
 
 /** The folder's messages, or the search's when there is one; a new source starts over. */
-function Listing({ accountId, folder, subfolders }: { accountId: AccountId; folder: string; subfolders: boolean }): ReactElement {
+function Listing({
+  accounts,
+  accountId,
+  folder,
+  subfolders,
+}: {
+  accounts: Account[]
+  accountId: AccountId
+  folder: string
+  subfolders: boolean
+}): ReactElement {
   const { q } = useSearch({ from: '/mail' })
   const key = sourceKey(accountId, folder, subfolders, q)
   const searchKey = q === undefined ? null : JSON.stringify(q)
@@ -305,7 +317,14 @@ function Listing({ accountId, folder, subfolders }: { accountId: AccountId; fold
   // What the composer does changes these two folders' lists under the user's eyes.
   const { revision } = useCompose()
   const { folders } = useTriage()
-  const shownFolder = loadedFolders(folders[accountId])?.find((each) => isSameFolder(each.path, folder))
+  const accountFolders = loadedFolders(folders[accountId])
+  const shownFolder = accountFolders?.find((each) => isSameFolder(each.path, folder))
+  const delimiter = (shownFolder ?? accountFolders?.[0])?.delimiter ?? null
+  const accountIds = useMemo(() => accounts.map((account) => account.id), [accounts])
+  const scope = useMemo(
+    () => indexScope(accountIds, accountId, folder, merged, delimiter, query),
+    [accountIds, accountId, folder, merged, delimiter, query],
+  )
   const live = q === undefined && (shownFolder?.role === 'drafts' || shownFolder?.role === 'sent')
   const queryClient = useQueryClient()
   const readRevision = useRef(revision)
@@ -318,13 +337,16 @@ function Listing({ accountId, folder, subfolders }: { accountId: AccountId; fold
     }
   }, [revision, live, key, queryClient])
   return (
-    <MessageList
-      key={key}
-      source={key}
-      loadPage={loadPage}
-      match={match}
-      searching={q !== undefined}
-      subfolders={merged}
-    />
+    <>
+      {scope !== null && <IndexingNotice scope={scope} />}
+      <MessageList
+        key={key}
+        source={key}
+        loadPage={loadPage}
+        match={match}
+        searching={q !== undefined}
+        subfolders={merged}
+      />
+    </>
   )
 }
