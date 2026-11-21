@@ -1438,6 +1438,9 @@ def test_the_organize_tools_are_registered_and_bounded(mcp: Mcp, token: str) -> 
         refs = tools[name]["inputSchema"]["properties"]["refs"]
         assert (refs["minItems"], refs["maxItems"], refs["items"]["maxLength"]) == (1, 50, 4096)
         assert refs["description"] == "Message refs (up to 50, any folders)."
+        source = tools[name]["inputSchema"]["properties"].get("source_folder")
+        assert (source is None) == (name == "messages_flag")
+    assert "Invalid arguments" in mcp.error(token, "messages_trash", refs=["x"], source_folder="")
     assert "Invalid arguments" in mcp.error(token, "messages_trash", refs=[])
     assert "Invalid arguments" in mcp.error(token, "messages_trash", refs=["x"] * 51)
     assert "Invalid arguments" in mcp.error(token, "messages_flag", refs=["x"], seen="yes")

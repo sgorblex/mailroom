@@ -191,6 +191,23 @@ def gmail_label_ref(
     return connections.with_mailbox(account, folder, True, find)
 
 
+def gmail_label_refs(
+    connections: MailConnections, account: int, folder: str, gmail_message_ids: Sequence[int]
+) -> dict[int, MessageRef]:
+    """`gmail_label_ref` of several messages in one label's folder, in one session (one UID
+    SEARCH each): the refs by Gmail id, those the label is not on left out."""
+
+    def find(context: MailboxContext) -> dict[int, MessageRef]:
+        found: dict[int, MessageRef] = {}
+        for gmail_id in dict.fromkeys(gmail_message_ids):
+            uid = gmail_uid(context, gmail_id)
+            if uid is not None:
+                found[gmail_id] = MessageRef(account, folder, context.uid_validity, uid)
+        return found
+
+    return connections.with_mailbox(account, folder, True, find)
+
+
 def _indexed(context: MailboxContext, candidate: _Candidate, snippet: str | None) -> IndexedMessage:
     data = candidate.data
     envelope = data.get(b"ENVELOPE")

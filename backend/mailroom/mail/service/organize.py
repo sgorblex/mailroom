@@ -10,10 +10,12 @@ from typing import TYPE_CHECKING, Final, cast
 
 from mailroom.audit import WEB, AuditTrail, Origin
 from mailroom.errors import Refusal, mail_refusal
+from mailroom.mail.index import reads as index_reads
 from mailroom.mail.index import writes as index_writes
 from mailroom.mail.service._shared import (
     _Accounts,
     _accounts,
+    _index_read_failed,
     _ref_accounts,
     _run,
     _Stoppable,
@@ -23,10 +25,15 @@ from mailroom_core import mail as core
 from mailroom_core.mail import MailError
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
     from mailroom.context import AppContext
-    from mailroom_core.mail import MailConnections, OrganizeResult, TransferRemoval
+    from mailroom_core.mail import (
+        MailConnections,
+        MessageRef,
+        OrganizeResult,
+        TransferRemoval,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -45,10 +52,11 @@ def _organize(
     action: str,
     origin: Origin,
     refs: Sequence[str],
-    work: Callable[[MailConnections, _Accounts], OrganizeResult],
+    work: Callable[[MailConnections, _Accounts, Sequence[str]], OrganizeResult],
     *,
     target: int | None = None,
     deadline: float | None = None,
+    source_folder: str | None = None,
 ) -> OrganizeResult:
     """``work`` on the batch ``refs`` once each ref is checked (``_ref_accounts``), and the
     ``target`` account it writes to besides theirs, logged with its accounts, counts and failure
@@ -58,7 +66,9 @@ def _organize(
     after the cut (``_Stoppable``); the ones done before it stay done, and are recorded once that
     thread finishes. The mail index is brought in step with the result
     (``mailroom.mail.index.writes``) once the call answered, outside its deadline; by that thread
-    when the deadline cut the call, as no one waits for it then."""
+    when the deadline cut the call, as no one waits for it then. ``source_folder``: the folder the
+    user acted from, where a Gmail label view's refs are acted on (``_from_label_views``);
+    ``work`` is given the refs it acts on."""
     via = origin.via
     trail = AuditTrail(ctx.session_maker, user_id, origin, action)
     accounts = _accounts(ctx, user_id)
@@ -71,20 +81,23 @@ def _organize(
     outcome: str = "ok"
     stop = threading.Event()
     handing = threading.Lock()
-    handed: list[OrganizeResult] = []
-    """The work's result, once handed back in time: the caller brings the index in step."""
+    handed: list[tuple[OrganizeResult, list[str]]] = []
+    """The work's result and the refs it acted on, once handed back in time: the caller brings
+    the index in step."""
 
-    def index(done: OrganizeResult) -> None:
-        index_writes.organized(ctx.session_maker, user_id, done.items, done.groups, refs=refs)
+    def index(done: OrganizeResult, acting: Sequence[str]) -> None:
+        index_writes.organized(ctx.session_maker, user_id, done.items, done.groups, refs=acting)
 
     def act(connections: MailConnections) -> OrganizeResult:
-        done = work(cast("MailConnections", _Stoppable(connections, stop)), accounts)
+        stoppable = cast("MailConnections", _Stoppable(connections, stop))
+        acting = _from_label_views(ctx, user_id, stoppable, refs, source_folder)
+        done = work(stoppable, accounts, acting)
         trail.notes(done.items)
         with handing:
             if not stop.is_set():
-                handed.append(done)
+                handed.append((done, acting))
                 return done
-        index(done)
+        index(done, acting)
         return done
 
     def cut() -> None:
@@ -110,7 +123,7 @@ def _organize(
     finally:
         if handed:
             # Also when the deadline passed just after the work handed its result back.
-            index(handed[0])
+            index(*handed[0])
         groups = () if result is None else result.groups
         logger.info(
             event,
@@ -131,11 +144,18 @@ def _organize(
 
 
 def move(
-    ctx: AppContext, user_id: int, refs: Sequence[str], folder: str, *, origin: Origin = WEB
+    ctx: AppContext,
+    user_id: int,
+    refs: Sequence[str],
+    folder: str,
+    *,
+    source_folder: str | None = None,
+    origin: Origin = WEB,
 ) -> OrganizeResult:
     """Moves the messages ``refs`` name (1 to ``MAX_REFS``, any folders and accounts) to
     ``folder`` of each one's account, never Drafts or Sent: mailroom-core's ``move_messages``,
-    one result per source folder."""
+    one result per source folder. ``source_folder``: the folder the user acted from
+    (``_from_label_views``)."""
     return _organize(
         ctx,
         user_id,
@@ -143,7 +163,8 @@ def move(
         "move",
         origin,
         refs,
-        lambda connections, _: core.move_messages(connections, refs, folder),
+        lambda connections, _, acting: core.move_messages(connections, acting, folder),
+        source_folder=source_folder,
     )
 
 
@@ -170,8 +191,8 @@ def move_to_account(
             "move_to_account",
             origin,
             refs,
-            lambda connections, accounts: core.move_to_account(
-                connections, refs, account, folder, removal=removal, max_bytes=accounts.move_cap
+            lambda connections, accounts, acting: core.move_to_account(
+                connections, acting, account, folder, removal=removal, max_bytes=accounts.move_cap
             ),
             target=account,
             deadline=MOVE_TO_ACCOUNT_SECONDS,
@@ -216,10 +237,15 @@ def _record_refused(
 
 
 def archive(
-    ctx: AppContext, user_id: int, refs: Sequence[str], *, origin: Origin = WEB
+    ctx: AppContext,
+    user_id: int,
+    refs: Sequence[str],
+    *,
+    source_folder: str | None = None,
+    origin: Origin = WEB,
 ) -> OrganizeResult:
     """Moves them to each account's folder with role ``archive``: ``unsupported`` for an
-    account's group when it has none."""
+    account's group when it has none. ``source_folder`` as ``move``'s."""
     return _organize(
         ctx,
         user_id,
@@ -227,15 +253,22 @@ def archive(
         "archive",
         origin,
         refs,
-        lambda connections, _: core.archive_messages(connections, refs),
+        lambda connections, _, acting: core.archive_messages(connections, acting),
+        source_folder=source_folder,
     )
 
 
 def junk(
-    ctx: AppContext, user_id: int, refs: Sequence[str], *, origin: Origin = WEB
+    ctx: AppContext,
+    user_id: int,
+    refs: Sequence[str],
+    *,
+    source_folder: str | None = None,
+    origin: Origin = WEB,
 ) -> OrganizeResult:
     """Reports them as spam: moves them to each account's folder with role ``junk``, teaching
-    the spam filter; ``unsupported`` for an account's group when it has none."""
+    the spam filter; ``unsupported`` for an account's group when it has none. ``source_folder``
+    as ``move``'s."""
     return _organize(
         ctx,
         user_id,
@@ -243,15 +276,21 @@ def junk(
         "junk",
         origin,
         refs,
-        lambda connections, _: core.junk_messages(connections, refs),
+        lambda connections, _, acting: core.junk_messages(connections, acting),
+        source_folder=source_folder,
     )
 
 
 def trash(
-    ctx: AppContext, user_id: int, refs: Sequence[str], *, origin: Origin = WEB
+    ctx: AppContext,
+    user_id: int,
+    refs: Sequence[str],
+    *,
+    source_folder: str | None = None,
+    origin: Origin = WEB,
 ) -> OrganizeResult:
     """Moves them to each account's Trash; never a permanent delete, so a group already in Trash
-    is refused."""
+    is refused. ``source_folder`` as ``move``'s."""
     return _organize(
         ctx,
         user_id,
@@ -259,7 +298,8 @@ def trash(
         "trash",
         origin,
         refs,
-        lambda connections, _: core.trash_messages(connections, refs),
+        lambda connections, _, acting: core.trash_messages(connections, acting),
+        source_folder=source_folder,
     )
 
 
@@ -286,7 +326,47 @@ def flag(
         "flag",
         origin,
         refs,
-        lambda connections, _: core.set_flags(
-            connections, refs, seen=seen, flagged=flagged, to_sort=to_sort
+        lambda connections, _, acting: core.set_flags(
+            connections, acting, seen=seen, flagged=flagged, to_sort=to_sort
         ),
     )
+
+
+def _from_label_views(
+    ctx: AppContext,
+    user_id: int,
+    connections: MailConnections,
+    refs: Sequence[str],
+    source_folder: str | None,
+) -> list[str]:
+    """``refs`` with each one naming an indexed Gmail All Mail row (the ref a label view lists)
+    replaced by the message's ref in ``source_folder``, the folder of the view acted from (INBOX
+    or a label's), found by its X-GM-MSGID, one session per account: acted on there, it leaves
+    that view only, its other labels staying. Without ``source_folder``, or from All Mail
+    itself, the refs stay as given; so does one whose message ``source_folder`` does not hold,
+    and so do they all when the index cannot be read."""
+    if source_folder is None:
+        return list(refs)
+    path = "INBOX" if source_folder.upper() == "INBOX" else source_folder
+    parsed = [core.parse_ref(text) for text in refs]
+    try:
+        with ctx.session_maker() as db:
+            found = index_reads.gmail_ids(db, user_id, [r for r in parsed if r.folder != path])
+    except Exception as exc:
+        _index_read_failed(user_id, exc)
+        return list(refs)
+    wanted: dict[int, list[int]] = {}
+    for ref, gmail_id in found.items():
+        wanted.setdefault(ref.account, []).append(gmail_id)
+    resolved: dict[int, Mapping[int, MessageRef]] = {}
+    for account, gmail_ids in wanted.items():
+        try:
+            resolved[account] = core.gmail_label_refs(connections, account, path, gmail_ids)
+        except MailError:
+            resolved[account] = {}
+    acting: list[str] = []
+    for text, ref in zip(refs, parsed, strict=True):
+        known = found.get(ref)
+        moved = None if known is None else resolved[ref.account].get(known)
+        acting.append(text if moved is None else core.format_ref(moved))
+    return acting

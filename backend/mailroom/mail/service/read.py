@@ -10,16 +10,19 @@ import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, wait
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from functools import partial
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Literal, cast
 
 from mailroom.accounts.service import require_subkey
 from mailroom.errors import Refusal, mail_refusal
 from mailroom.mail.connections import PASSWORD_MISSING, PASSWORD_MISSING_TEXT, PasswordMissing
+from mailroom.mail.index import reads as index_reads
 from mailroom.mail.service._shared import (
     _accounts,
     _call,
+    _index_read_failed,
     _message_ref,
     _missing_password,
     _run,
@@ -29,7 +32,8 @@ from mailroom_core import mail as core
 from mailroom_core.mail import MESSAGES, MailError, Page, PageFailure, SearchQuery, Source
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Mapping, Sequence
+    from datetime import date
 
     from mailroom.accounts.service import Via
     from mailroom.context import AppContext
@@ -42,6 +46,7 @@ if TYPE_CHECKING:
         MailConnections,
         MailErrorCode,
         MessageRef,
+        MessageSummary,
         MessageView,
         Quota,
         RawMessage,
@@ -83,20 +88,36 @@ def folders(
     via: Via = "web",
 ) -> list[Folder]:
     """The account's selectable folders in mailroom-core's order (special-use first, then the rest
-    by path), with their counts (STATUS: one command per folder) unless ``counts`` is off.
-    ``every``: the ``\\Noselect`` ones too (a tree's parents, without counts)."""
+    by path), with their counts unless ``counts`` is off: a folder the index holds whole
+    (ready, no age limit) has the index's counts, UIDVALIDITY and UIDNEXT
+    (``counted_folders``), each other one STATUS's (one command per folder). ``every``: the
+    ``\\Noselect`` ones too (a tree's parents, without counts)."""
     accounts = _accounts(ctx, user_id)
     _usable(ctx, user_id, accounts, account_id)
-    listed = _call(
-        ctx,
-        user_id,
-        accounts,
-        "mail_folders",
-        via,
-        account_id,
-        lambda connections: connections.folders(account_id, with_status=counts),
-    )
+    held = _index_counts(ctx, user_id, account_id) if counts else {}
+
+    def read(connections: MailConnections) -> list[Folder]:
+        if not held:
+            return connections.folders(account_id, with_status=counts)
+        listed = connections.folders(account_id, with_status=lambda f: f.path not in held)
+        return [_counted(folder, held.get(folder.path)) for folder in listed]
+
+    listed = _call(ctx, user_id, accounts, "mail_folders", via, account_id, read)
     return listed if every else [folder for folder in listed if folder.selectable]
+
+
+def _counted(folder: Folder, held: Folder | None) -> Folder:
+    """``folder`` with the index's counts ``held``, if any."""
+    if held is None or not folder.selectable:
+        return folder
+    return replace(
+        folder,
+        messages=held.messages,
+        unseen=held.unseen,
+        uid_validity=held.uid_validity,
+        uid_next=held.uid_next,
+        highest_modseq=held.highest_modseq,
+    )
 
 
 def indexable_folders(
@@ -133,20 +154,26 @@ def list_messages(
 ) -> Page:
     """One folder, newest first. A folder that cannot be read is refused with its error, not
     reported in the page. With ``subfolders``, the folder and its subfolders merged
-    (mailroom-core's ``read_folders``): each one that cannot be read is a failure of the page."""
+    (mailroom-core's ``read_folders``): each one that cannot be read is a failure of the page.
+    Read from the index when every folder is indexed and ready (``_from_index``), else live."""
     accounts = _accounts(ctx, user_id)
     _usable(ctx, user_id, accounts, account_id)
-    page = _call(
-        ctx,
-        user_id,
-        accounts,
-        "mail_listed",
-        via,
-        account_id,
-        lambda connections: core.list_messages(
+
+    def read(connections: MailConnections) -> Page:
+        def sources() -> list[Source]:
+            paths = core.read_folders(connections, account_id, folder, subfolders=subfolders)
+            return [Source(account_id, path) for path in paths]
+
+        indexed = _from_index(
+            ctx, connections, user_id, [account_id], sources, None, limit=limit, cursor=cursor
+        )
+        if indexed is not None:
+            return indexed
+        return core.list_messages(
             connections, account_id, folder, limit=limit, cursor=cursor, subfolders=subfolders
-        ),
-    )
+        )
+
+    page = _call(ctx, user_id, accounts, "mail_listed", via, account_id, read)
     page = _with_password_failures(ctx, user_id, page)
     if not subfolders:
         _first_failure(page)
@@ -172,13 +199,19 @@ def search(
     without a usable password: code ``password_missing``; one too slow: ``timeout``) and the
     others still answer, however many there are; later pages report it again without asking it
     again (nor checking its password), until paging ends. Over one account and one folder, its
-    error is refused, as for a list, unless it reads subfolders too."""
+    error is refused, as for a list, unless it reads subfolders too. Without ``text`` and
+    ``gmail_query``, read from the index when every folder is indexed and ready
+    (``_from_index``), else live."""
     check_search(folder, query, subfolders=subfolders)
     accounts = _accounts(ctx, user_id)
     skipped: list[PageFailure] = []
     if account == ALL_ACCOUNTS:
         try:
-            carried = [] if cursor is None else core.cursor_failures(cursor, HOST_CODES)
+            resumed = index_reads.decode_cursor(cursor)
+            if resumed is not None:
+                carried = resumed.failures(HOST_CODES)
+            else:
+                carried = [] if cursor is None else core.cursor_failures(cursor, HOST_CODES)
         except MailError as error:
             raise mail_refusal(error.code, error.message) from None
         failed_before = {f.account for f in carried if f.folder is None}
@@ -212,28 +245,46 @@ def search(
                 cursor=cursor,
                 subfolders=subfolders,
                 skipped=skipped,
+                index=partial(
+                    _from_index,
+                    ctx,
+                    connections,
+                    user_id,
+                    usable,
+                    query=query,
+                    limit=limit,
+                    every_folder=folder == ALL_FOLDERS,
+                ),
             ),
             on=usable,
         )
         return _with_password_failures(ctx, user_id, page)
     _usable(ctx, user_id, accounts, account)
-    page = _call(
-        ctx,
-        user_id,
-        accounts,
-        "mail_searched",
-        via,
-        account,
-        lambda connections: core.search_messages(
+    one = account
+
+    def read(connections: MailConnections) -> Page:
+        def sources() -> list[Source]:
+            paths, _ = core.search_sources(connections, one, folder, query, subfolders=subfolders)
+            return [Source(one, path) for path in paths]
+
+        indexed = _from_index(
+            ctx,
             connections,
-            [account],
-            folder,
+            user_id,
+            [one],
+            sources,
             query,
             limit=limit,
             cursor=cursor,
-            subfolders=subfolders,
-        ),
-    )
+            every_folder=folder == ALL_FOLDERS,
+        )
+        if indexed is not None:
+            return indexed
+        return core.search_messages(
+            connections, [one], folder, query, limit=limit, cursor=cursor, subfolders=subfolders
+        )
+
+    page = _call(ctx, user_id, accounts, "mail_searched", via, account, read)
     page = _with_password_failures(ctx, user_id, page)
     if folder != ALL_FOLDERS and not subfolders:
         _first_failure(page)
@@ -355,6 +406,7 @@ def _search_accounts(
     cursor: str | None,
     subfolders: bool = False,
     skipped: Sequence[PageFailure] = (),
+    index: Callable[..., Page | None] | None = None,
 ) -> Page:
     """mailroom-core's ``search_messages`` over several accounts, with a deadline per account:
     their folders are found side by side, ``SOURCES_SECONDS`` at most, and the accounts still
@@ -363,8 +415,34 @@ def _search_accounts(
     failure too, whatever the number of accounts. An account that failed before its folders were
     found, on an earlier page, is not asked again: the cursor carries it, and each page reports
     it. ``skipped`` are the accounts the caller did not pass, failed with the app's own codes
-    (``HOST_CODES``): the cursor carries them likewise."""
+    (``HOST_CODES``): the cursor carries them likewise. ``index``: ``_from_index`` for these
+    accounts and query, given the sources, the cursor, the failures and the live read: a page
+    from the index when it can answer for every folder found; a cursor of the index's goes on
+    there, without finding the folders again."""
     started = time.monotonic()
+
+    def read_live(
+        sources: Sequence[Source],
+        criteria: Mapping[Source, Criteria] | Mapping[int, Criteria],
+        *,
+        limit: int,
+        cursor: str | None,
+        account_failures: Sequence[PageFailure],
+    ) -> Page:
+        return _cut_read(
+            connections,
+            started,
+            sources,
+            criteria,
+            limit=limit,
+            cursor=cursor,
+            account_failures=account_failures,
+        )
+
+    if index is not None and index_reads.decode_cursor(cursor) is not None:
+        indexed = index(list, cursor=cursor, failures=skipped, read_live=read_live)
+        if indexed is not None:
+            return indexed
     failures = list(skipped)
     sources: list[Source] = []
     criteria: dict[int, Criteria] = {}
@@ -395,6 +473,25 @@ def _search_accounts(
                 extra={"event": "mail_search_sources_failed", "account_id": account},
             )
             failures.append(PageFailure(account, None, "server_error", MESSAGES["server_error"]))
+    if index is not None and cursor is None:
+        indexed = index(lambda: sources, cursor=None, failures=failures, read_live=read_live)
+        if indexed is not None:
+            return indexed
+    return read_live(sources, criteria, limit=limit, cursor=cursor, account_failures=failures)
+
+
+def _cut_read(
+    connections: MailConnections,
+    started: float,
+    sources: Sequence[Source],
+    criteria: Mapping[Source, Criteria] | Mapping[int, Criteria],
+    *,
+    limit: int,
+    cursor: str | None,
+    account_failures: Sequence[PageFailure],
+) -> Page:
+    """mailroom-core's ``read_page``, cutting the accounts still reading a mailbox
+    ``ACCOUNT_SECONDS`` after ``started`` (``_Reading``)."""
     reading = _Reading(connections)
     timer = threading.Timer(
         max(0.0, started + ACCOUNT_SECONDS - time.monotonic()), reading.cut_reading
@@ -408,11 +505,157 @@ def _search_accounts(
             criteria,
             limit=limit,
             cursor=cursor,
-            account_failures=failures,
+            account_failures=account_failures,
             host_codes=HOST_CODES,
         )
     finally:
         timer.cancel()
+
+
+type _LiveRead = Callable[..., Page]
+"""``read_page`` on the call's connections with ``HOST_CODES``: sources and criteria, then
+``limit``, ``cursor`` and ``account_failures`` by keyword."""
+
+
+def _from_index(
+    ctx: AppContext,
+    connections: MailConnections,
+    user_id: int,
+    accounts: Sequence[int],
+    sources: Callable[[], list[Source]],
+    query: SearchQuery | None,
+    *,
+    limit: int,
+    cursor: str | None,
+    failures: Sequence[PageFailure] = (),
+    read_live: _LiveRead | None = None,
+    every_folder: bool = False,
+) -> Page | None:
+    """A list (``query`` None) or a search of the ``sources`` of ``accounts`` read from the mail
+    index (``mailroom.mail.index.reads``); None to read it live: the query needs a body's text or
+    Gmail's syntax, ``cursor`` is a live one, or a source is not indexed and ready. A cursor of
+    the index's goes on in the index, or in the live read of what its age limit leaves out
+    (``_tail_page``); one whose folder is no longer readable, or changed, is
+    ``stale_reference``. ``failures``: accounts failed before a folder was chosen, carried on as
+    a live search carries them. ``every_folder``: the sources are a read of all folders
+    (``index_reads.index_sources``)."""
+    if not index_reads.readable(query):
+        return None
+    resumed = index_reads.decode_cursor(cursor)
+    if cursor is not None and resumed is None:
+        return None
+    live: _LiveRead = read_live or partial(core.read_page, connections, host_codes=HOST_CODES)
+    if resumed is not None and resumed.mode == index_reads.TAIL:
+        tail = [entry for entry in resumed.tail if entry[0] in accounts]
+        before = [] if resumed.live is not None else resumed.failures(HOST_CODES)
+        return _tail_page(
+            connections,
+            live,
+            tail,
+            query,
+            (),
+            limit,
+            cursor=resumed.live,
+            failures=[*before, *failures],
+        )
+    if resumed is None:
+        if not _indexed(ctx, user_id, accounts):
+            return None
+        wanted = sources()
+        with ctx.session_maker() as db:
+            picked = index_reads.index_sources(
+                db,
+                user_id,
+                wanted,
+                gmail=lambda account: connections.capabilities(account).gmail,
+                listing=connections.folders,
+                every_folder=every_folder,
+            )
+            if picked is None:
+                return None
+            rows = index_reads.read_rows(db, user_id, picked, query, limit=limit + 1)
+        carried = list(failures)
+    else:
+        with ctx.session_maker() as db:
+            picked = index_reads.resumed_sources(db, user_id, resumed, accounts)
+            rows = index_reads.read_rows(
+                db, user_id, picked, query, limit=limit + 1, after=resumed.key
+            )
+        carried = [*resumed.failures(HOST_CODES), *failures]
+    messages = tuple(summary for summary, _ in rows[:limit])
+    if len(rows) > limit:
+        following = index_reads.IndexCursor.index(picked, rows[limit - 1][1], carried, HOST_CODES)
+        return Page(messages, following.encode(), tuple(carried))
+    tail = index_reads.tail_of(picked, query)
+    if not tail:
+        return Page(messages, None, tuple(carried))
+    remaining = limit - len(messages)
+    return _tail_page(
+        connections, live, tail, query, messages, remaining, cursor=None, failures=carried
+    )
+
+
+def _indexed(ctx: AppContext, user_id: int, accounts: Sequence[int]) -> bool:
+    """Whether the index holds a readable folder of ``accounts``; False when it cannot be read
+    (``_index_read_failed``), so that a read goes live."""
+    try:
+        with ctx.session_maker() as db:
+            return bool(index_reads.ready_rows(db, user_id, accounts))
+    except Exception as exc:
+        _index_read_failed(user_id, exc)
+        return False
+
+
+def _index_counts(ctx: AppContext, user_id: int, account_id: int) -> dict[str, Folder]:
+    """The folders whose counts the index gives (``counted_folders``); none when it cannot be
+    read (``_index_read_failed``), so that STATUS gives them all."""
+    try:
+        with ctx.session_maker() as db:
+            return index_reads.counted_folders(db, user_id, account_id)
+    except Exception as exc:
+        _index_read_failed(user_id, exc)
+        return {}
+
+
+def _tail_page(
+    connections: MailConnections,
+    live: _LiveRead,
+    tail: Sequence[tuple[int, str, date]],
+    query: SearchQuery | None,
+    messages: Sequence[MessageSummary],
+    remaining: int,
+    *,
+    cursor: str | None,
+    failures: Sequence[PageFailure],
+) -> Page:
+    """``messages`` from the index, then up to ``remaining`` more read live from the ``tail``:
+    the folders whose mail before their age-limit day the index leaves out (``BEFORE`` that
+    day), from ``cursor``, the live read's; ``failures`` as ``read_page``'s
+    ``account_failures``."""
+    if remaining <= 0:
+        start = index_reads.IndexCursor.tail_from(tail, None, failures, HOST_CODES)
+        return Page(tuple(messages), start.encode(), tuple(failures))
+    criteria: dict[Source, Criteria] = {}
+    for account, path, day in tail:
+        own = _live_criteria(connections, account, query)
+        criteria[Source(account, path)] = [*own, "BEFORE", day]
+    page = live(list(criteria), criteria, limit=remaining, cursor=cursor, account_failures=failures)
+    after = page.next_cursor
+    following = index_reads.IndexCursor.tail_from(tail, after, (), HOST_CODES)
+    return Page(
+        (*messages, *page.messages), None if after is None else following.encode(), page.failures
+    )
+
+
+def _live_criteria(
+    connections: MailConnections, account: int, query: SearchQuery | None
+) -> list[object]:
+    """``query``'s criteria as a live search of ``account`` sends them; none for a list."""
+    if query is None:
+        return []
+    gmail = query.has_attachment is True and connections.capabilities(account).gmail
+    criteria = query.criteria(gmail=gmail)
+    return [] if criteria == ["ALL"] else criteria
 
 
 def read_headers(

@@ -99,18 +99,24 @@ function destination(action: Action, folders: MailFolder[] | undefined): string 
   }
 }
 
-function request(action: Action, refs: string[], signal: AbortSignal): Promise<OrganizeGroup[]> {
+/** `action` on `refs`, listed from `sourceFolder` (the folder shown; `undefined` over every folder). */
+function request(
+  action: Action,
+  refs: string[],
+  signal: AbortSignal,
+  sourceFolder: string | undefined,
+): Promise<OrganizeGroup[]> {
   switch (action.kind) {
     case 'move':
-      return moveMessages(refs, action.folder.path, signal)
+      return moveMessages(refs, action.folder.path, signal, sourceFolder)
     case 'moveToAccount':
       return moveToAccount(refs, action.account, action.folder.path, action.removal, signal)
     case 'archive':
-      return archiveMessages(refs, signal)
+      return archiveMessages(refs, signal, sourceFolder)
     case 'junk':
-      return junkMessages(refs, signal)
+      return junkMessages(refs, signal, sourceFolder)
     case 'trash':
-      return trashMessages(refs, signal)
+      return trashMessages(refs, signal, sourceFolder)
     case 'flag':
       return flagMessages(refs, action.change, signal)
   }
@@ -188,13 +194,16 @@ function useMirrored<T>(initial: T): [T, RefObject<T>, (update: (value: T) => T)
  * The mail screen's shared triage state: folder lists with their counts, the selection, the
  * open message, and what actions changed (rows moved away, flags), so the list, the sidebar and
  * the toolbar update in place. `sourceKey` names the list shown; a new one clears the selection.
+ * `sourceFolder` is the folder it shows (`undefined` over every folder), which actions name.
  */
 export function TriageProvider({
   sourceKey,
+  sourceFolder,
   accounts = NO_ACCOUNTS,
   children,
 }: {
   sourceKey: string
+  sourceFolder?: string
   accounts?: readonly AccountId[]
   children: ReactNode
 }): ReactElement {
@@ -458,7 +467,12 @@ export function TriageProvider({
         for (const batch of batches(pending)) {
           let groups: OrganizeGroup[]
           try {
-            groups = await request(action, batch.map((target) => target.ref), signal)
+            groups = await request(
+              action,
+              batch.map((target) => target.ref),
+              signal,
+              sourceFolder,
+            )
           } catch (error) {
             if (signal.aborted) {
               return
@@ -625,6 +639,7 @@ export function TriageProvider({
     },
     [
       sourceKey,
+      sourceFolder,
       setBusyState,
       undoAction,
       toast,

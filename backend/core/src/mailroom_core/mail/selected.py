@@ -392,8 +392,7 @@ def move_uids(context: MailboxContext, uids: Sequence[int], destination: str) ->
     if client.has_capability("MOVE"):
         client.move(wanted, destination)
         return _moved(destination, responses.pop("COPYUID", None), len(wanted))
-    client.copy(wanted, destination)
-    moved = _moved(destination, responses.pop("COPYUID", None), len(wanted))
+    moved = copy_uids(context, wanted, destination)
     try:
         client.add_flags(wanted, [_DELETED], silent=True)
         client.uid_expunge(wanted)
@@ -403,6 +402,18 @@ def move_uids(context: MailboxContext, uids: Sequence[int], destination: str) ->
             code = "server_error"  # something was written
         raise CopiedNotRemovedError(code, moved) from None
     return moved
+
+
+def copy_uids(context: MailboxContext, uids: Sequence[int], destination: str) -> Moved:
+    """Copies `uids` to `destination`, leaving them where they are (on Gmail, adds the
+    destination's label)."""
+    if not uids:
+        return Moved(destination, None)
+    client = context.client
+    responses = client._imap.untagged_responses  # noqa: SLF001
+    responses.pop("COPYUID", None)
+    client.copy(list(uids), destination)
+    return _moved(destination, responses.pop("COPYUID", None), len(uids))
 
 
 def store_flags(
