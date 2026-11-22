@@ -245,6 +245,13 @@ First, fixes carried over from 0.14.0 testing:
       pane beside the message, not only some of them there and the rest elsewhere.
 - [ ] **Layout and density** — the reading pane on the right, below the list or off; compact or
       comfortable rows.
+- [ ] **A message list wide enough to read** — on a laptop the list column is too narrow to tell
+      messages apart, and the checkbox, star and To sort icons take part of it. The columns
+      resizable (widths kept per user), the folder pane collapsible or hidden until hovered, the
+      row's icons shown on hover or selection only (or folded into one menu), and a compact mode
+      putting sender, subject and date on one line.
+- [ ] **Undo where it is seen** — the Undo send toast is easy to miss where it is now: centred at
+      the bottom of the window, larger, with the seconds left.
 - [ ] **Profile layout** — the Profile uses the width of a desktop screen, its sections side by
       side in a grid instead of one narrow column.
 - [ ] **Index folder picker** — the folders the index keeps chosen in a tree, one account at a
@@ -257,6 +264,9 @@ First, fixes carried over from 0.14.0 testing:
       another's folders; All inboxes and the views stay above it.
 - [ ] **Dark mode for HTML mail** — the sandboxed frame's colours adapted to a dark theme, off
       for a message with one click.
+- [ ] **HTML first** — a message with an HTML version opens in it, not in its text version (with
+      *Dark mode for HTML mail*); the Text/HTML switch stays, and a switch away is remembered per
+      sender.
 - [ ] **Calendar invites** — an `.ics` invite shown as a card, with Accept, Tentative and Decline.
 - [ ] **Mobile and installable** — a layout pass for phones, and a web app manifest (with
       *Theme and design pass*).
