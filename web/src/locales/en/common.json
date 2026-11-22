@@ -494,5 +494,8 @@
       "label": "Read the activity",
       "description": "The record of what was done to your mail."
     }
+  },
+  "deployBanner": {
+    "text": "{{env}}: a test instance, not your real Mailroom."
   }
 }

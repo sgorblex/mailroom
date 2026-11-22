@@ -6,10 +6,21 @@ import { useAuth } from '@/auth/auth-context.ts'
 import { LoginScreen } from '@/auth/login-screen.tsx'
 import { navPages, type NavPath } from '@/auth/nav-pages.ts'
 import { Button } from '@/components/ui/button.tsx'
+import { DeployBanner } from '@/components/deploy-banner.tsx'
 import { LiveUpdatesProvider } from '@/mail/live-provider.tsx'
 
-/** Every page sits behind sign-in; the nav shows only the instance's features. */
+/** Every page sits behind sign-in, under the deploy banner; the nav shows only the instance's
+ * features. */
 export function RootLayout(): ReactElement {
+  return (
+    <>
+      <DeployBanner />
+      <SignedInLayout />
+    </>
+  )
+}
+
+function SignedInLayout(): ReactElement {
   const { t } = useTranslation()
   const auth = useAuth()
 
