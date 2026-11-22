@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button.tsx'
 import { mailAction, unavailableReason, type ActionContext } from './action-registry.ts'
 import { useCompose } from './compose-context.ts'
 import { MAIL_NS } from './i18n.ts'
-import { HeldNotices, SentNotice } from './send-status.tsx'
+import { HeldNotices, ScheduledNotice, SentNotice } from './send-status.tsx'
 import { NO_TRIAGE_ACTIONS } from './triage-actions.ts'
 
 const COMPOSE = mailAction('compose')
@@ -75,6 +75,7 @@ export function ComposeBar({ accountId }: { accountId: AccountId }): ReactElemen
       )}
       <HeldNotices />
       <SentNotice />
+      <ScheduledNotice />
     </div>
   )
 }

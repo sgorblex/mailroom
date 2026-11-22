@@ -548,7 +548,31 @@
     "unsavedQuestion": "Non è stato possibile salvare le ultime modifiche. Chiudendo ora andranno perse; l'ultima versione salvata resta in Bozze.",
     "keepEditing": "Continua a scrivere",
     "closeAnyway": "Chiudi comunque",
-    "cancel": "Annulla"
+    "cancel": "Annulla",
+    "sendLater": "Invia più tardi",
+    "scheduling": "Programmazione…",
+    "scheduledFor": "Programmato per {{when}}. Fino ad allora resta nelle Bozze.",
+    "notScheduled": "Non programmato. Il messaggio è rimasto nelle Bozze.",
+    "alreadyScheduled": "Questa bozza è già programmata. Annulla prima quell'invio in Programmati.",
+    "sendStarted": "Questa bozza è in invio, o è già stata inviata.",
+    "heldScheduled": "Programmata per {{when}}. Modificare questa bozza annulla l'invio programmato.",
+    "heldCancelling": "Annullamento dell'invio programmato…",
+    "heldCancelled": "L'invio programmato è stato annullato: ora è una bozza normale.",
+    "heldTaken": "Questa bozza è già in invio: le modifiche qui non vengono salvate.",
+    "heldCancelFailed": "Impossibile annullare l'invio programmato, quindi le modifiche non sono ancora salvate. Modifica di nuovo la bozza per riprovare.",
+    "laterZone": "Gli orari sono nel fuso {{zone}}.",
+    "later": {
+      "laterToday": "Più tardi oggi",
+      "tomorrowMorning": "Domani mattina",
+      "mondayMorning": "Lunedì mattina"
+    },
+    "laterPick": "Scegli data e ora",
+    "laterDate": "Data",
+    "laterTime": "Ora",
+    "laterSchedule": "Programma",
+    "laterInvalid": "Scegli una data e un'ora.",
+    "laterPast": "Scegli un orario non ancora passato.",
+    "laterTooFar": "Un invio si può programmare al massimo un anno avanti."
   },
   "shortcuts": {
     "title": "Scorciatoie da tastiera",
@@ -578,5 +602,23 @@
     "folders": "Cartelle",
     "accounts": "Account",
     "pages": "Pagine"
+  },
+  "scheduled": {
+    "title": "Programmati",
+    "count_one": "{{count}} programmato",
+    "count_other": "{{count}} programmati",
+    "loading": "Caricamento degli invii programmati…",
+    "loadFailed": "Impossibile elencare gli invii programmati.",
+    "empty": "Nessun invio programmato.",
+    "at": "Invio {{when}}",
+    "byApp": "Programmato da {{app}}",
+    "byAgent": "Programmato da un agente",
+    "to": "A {{recipients}}, da {{account}}",
+    "edit": "Modifica",
+    "editLabel": "Modifica «{{subject}}»",
+    "cancel": "Annulla invio",
+    "cancelLabel": "Annulla l'invio di «{{subject}}»",
+    "cancelled": "Annullato. Il messaggio è rimasto nelle Bozze.",
+    "close": "Chiudi"
   }
 }

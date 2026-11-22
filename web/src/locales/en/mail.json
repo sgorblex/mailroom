@@ -548,7 +548,31 @@
     "unsavedQuestion": "The latest changes could not be saved. If you close now, they are lost; the last saved version stays in Drafts.",
     "keepEditing": "Keep editing",
     "closeAnyway": "Close anyway",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "sendLater": "Send later",
+    "scheduling": "Scheduling…",
+    "scheduledFor": "Scheduled for {{when}}. It stays in Drafts until then.",
+    "notScheduled": "Not scheduled. The message stayed in Drafts.",
+    "alreadyScheduled": "This draft is scheduled already. Cancel that in Scheduled first.",
+    "sendStarted": "This draft is being sent, or was sent already.",
+    "heldScheduled": "Scheduled for {{when}}. Changing this draft cancels the scheduled send.",
+    "heldCancelling": "Cancelling the scheduled send…",
+    "heldCancelled": "The scheduled send was cancelled: this is a normal draft now.",
+    "heldTaken": "This draft is already being sent: changes here are not saved.",
+    "heldCancelFailed": "The scheduled send could not be cancelled, so your changes are not saved yet. Change the draft again to retry.",
+    "laterZone": "Times are in {{zone}}.",
+    "later": {
+      "laterToday": "Later today",
+      "tomorrowMorning": "Tomorrow morning",
+      "mondayMorning": "Monday morning"
+    },
+    "laterPick": "Pick a date and time",
+    "laterDate": "Date",
+    "laterTime": "Time",
+    "laterSchedule": "Schedule",
+    "laterInvalid": "Pick a date and a time.",
+    "laterPast": "Pick a time that is still to come.",
+    "laterTooFar": "A send can be scheduled up to a year ahead."
   },
   "shortcuts": {
     "title": "Keyboard shortcuts",
@@ -578,5 +602,23 @@
     "folders": "Folders",
     "accounts": "Accounts",
     "pages": "Pages"
+  },
+  "scheduled": {
+    "title": "Scheduled",
+    "count_one": "{{count}} scheduled",
+    "count_other": "{{count}} scheduled",
+    "loading": "Loading scheduled sends…",
+    "loadFailed": "Could not list the scheduled sends.",
+    "empty": "Nothing is scheduled.",
+    "at": "Sends {{when}}",
+    "byApp": "Scheduled by {{app}}",
+    "byAgent": "Scheduled by an agent",
+    "to": "To {{recipients}}, from {{account}}",
+    "edit": "Edit",
+    "editLabel": "Edit “{{subject}}”",
+    "cancel": "Cancel send",
+    "cancelLabel": "Cancel sending “{{subject}}”",
+    "cancelled": "Cancelled. The message stayed in Drafts.",
+    "close": "Close"
   }
 }

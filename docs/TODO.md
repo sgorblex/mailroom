@@ -205,7 +205,8 @@ First, fixes carried over from 0.14.0 testing:
 
 - [x] **Undo send** — a sent message is held for a few seconds, with Undo, before it goes to the
       mail server.
-- [ ] **Send later and snooze** — a time to send a message or bring one back, run by the worker.
+- [x] **Send later** — a time to send a message, run by the worker.
+- [ ] **Snooze** — a time to bring a message back, run by the worker.
 - [ ] **Vacation auto-reply** — on and off, with dates, once per sender, through the send gate.
 
 #### 9. HTML and templated mail

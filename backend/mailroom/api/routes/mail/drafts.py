@@ -1,7 +1,7 @@
 """Drafts and sends: the prefill of a reply, a forward or an unsubscribe by mail, saving a draft
 with its uploads (multipart, bounded before it is read) or converting its HTML to text, finding,
-reading and deleting one, sending it (held for an Undo, if asked) and reading the send, or the
-held send."""
+reading and deleting one, sending it (held for an Undo, if asked) or scheduling it for later, and
+reading the send, or the held sends."""
 
 from __future__ import annotations
 
@@ -11,7 +11,14 @@ from typing import TYPE_CHECKING, Annotated, Final, Literal
 from fastapi import Path, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import Response
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    ValidationError,
+)
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 from starlette.exceptions import HTTPException
@@ -250,6 +257,8 @@ class DraftAnswer(BaseModel):
     parts: list[MessagePart]
     inline: list[ShownPart]
     send: DraftSend | None
+    scheduled: ScheduledAnswer | None = None
+    """Its held send still to go (send later, or Undo's), on ``GET /drafts/{ref}``."""
 
     @classmethod
     def of(cls, view: service.DraftView) -> DraftAnswer:
@@ -289,6 +298,12 @@ class SendRequest(BaseModel):
     """Hold the send for the user's Undo delay (``undo_send_seconds``) first, unless that is 0."""
 
 
+class ScheduleRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    send_at: AwareDatetime
+
+
 class SendAccepted(BaseModel):
     send_id: str
 
@@ -297,11 +312,17 @@ class ScheduledAnswer(BaseModel):
     scheduled_id: str
     account: int
     ref: str
+    subject: str
+    recipients: list[str]
     send_at: datetime
     remaining_ms: int
     """How long until ``send_at`` as the server answers, by its clock, not the client's."""
     state: str
     code: str | None
+    by: Literal["user", "agent"]
+    """Who scheduled it: the user, or an agent through MCP."""
+    app: str | None
+    """An agent's connected app: its name, or its client id when it gave none."""
 
     @classmethod
     def of(cls, view: service.ScheduledView) -> ScheduledAnswer:
@@ -310,11 +331,19 @@ class ScheduledAnswer(BaseModel):
             scheduled_id=view.scheduled_id,
             account=view.account,
             ref=view.ref,
+            subject=view.subject,
+            recipients=list(view.recipients),
             send_at=view.send_at,
             remaining_ms=max(0, round(remaining.total_seconds() * 1000)),
             state=view.state,
             code=view.code,
+            by=view.by,
+            app=view.app,
         )
+
+
+class ScheduledList(BaseModel):
+    scheduled: list[ScheduledAnswer]
 
 
 class SendAnswer(BaseModel):
@@ -475,7 +504,11 @@ def find_draft(
 
 @mail_router.get("/drafts/{ref}")
 def read_draft(ref: Ref, ctx: Context, user: CurrentUser) -> DraftAnswer:
-    return DraftAnswer.of(service.read_draft(ctx, user.id, ref))
+    answer = DraftAnswer.of(service.read_draft(ctx, user.id, ref))
+    held = service.scheduled_for(ctx, user.id, answer.ref)
+    if held is not None:
+        answer.scheduled = ScheduledAnswer.of(held)
+    return answer
 
 
 @mail_router.delete("/drafts/{ref}")
@@ -509,6 +542,14 @@ def send_draft(
     return SendAnswer.of(send)
 
 
+@mail_router.post("/drafts/{ref}/schedule", status_code=201)
+def schedule_draft(
+    ref: Ref, request: ScheduleRequest, ctx: Context, user: CurrentUser
+) -> ScheduledAnswer:
+    """Send later: the draft held for the worker to send at ``send_at``, still to come."""
+    return ScheduledAnswer.of(service.schedule_later(ctx, user.id, ref, request.send_at))
+
+
 @mail_router.get("/sends")
 def read_compose_send(
     account: Annotated[int, Query(ge=1, le=MAX_SAFE_INTEGER)],
@@ -525,6 +566,14 @@ def read_send(
     send_id: Annotated[str, Path(max_length=64)], ctx: Context, user: CurrentUser
 ) -> SendAnswer:
     return SendAnswer.of(service.read_send(ctx, user.id, send_id))
+
+
+@mail_router.get("/scheduled")
+def list_scheduled(ctx: Context, user: CurrentUser) -> ScheduledList:
+    """The user's held sends, soonest first, failed ones included until cancelled."""
+    return ScheduledList(
+        scheduled=[ScheduledAnswer.of(view) for view in service.list_scheduled(ctx, user.id)]
+    )
 
 
 @mail_router.get("/scheduled/{scheduled_id}")

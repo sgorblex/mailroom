@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import { useTranslation } from 'react-i18next'
+import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 
 import type { AccountId, Account } from '@/api/accounts.ts'
 import { ApiRequestError } from '@/api/http.ts'
 import { cancelScheduled, type ScheduledSend } from '@/api/mail.ts'
-import { useUndoSendSeconds } from '@/auth/auth-context.ts'
+import { useTimeZone, useUndoSendSeconds } from '@/auth/auth-context.ts'
+import { formatDateTime } from '@/lib/format.ts'
 
 import { ComposeContext, type Announcement, type Compose, type EditorHandle, type HeldNotice, type SendNotice } from './compose-context.ts'
 import { composeKey, sourceFromParam, type ComposeSession, type ComposeSource } from './compose-session.ts'
 import { MAIL_NS } from './i18n.ts'
 import { heldEndMessage, sentMessage } from './messages.ts'
+import { SCHEDULED_KEY } from './queries.ts'
 import { followHeld } from './send-flow.ts'
 import { useTriage } from './triage-context.ts'
 
@@ -32,9 +35,11 @@ export function ComposeProvider({
   accountId: AccountId
   children: ReactNode
 }): ReactElement {
-  const { t } = useTranslation(MAIL_NS)
+  const { t, i18n } = useTranslation(MAIL_NS)
   const search = useSearch({ from: '/mail' })
   const undoSeconds = useUndoSendSeconds()
+  const timeZone = useTimeZone()
+  const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { loadFolders } = useTriage()
   const [session, setSession] = useState<ComposeSession | null>(null)
@@ -45,6 +50,7 @@ export function ComposeProvider({
   const [notice, setNotice] = useState<SendNotice | null>(null)
   const [announcement, setAnnouncement] = useState<Announcement | null>(null)
   const [held, setHeld] = useState<HeldNotice[]>([])
+  const [scheduled, setScheduled] = useState<ScheduledSend | null>(null)
   const handle = useRef<EditorHandle | null>(null)
   const nextId = useRef(1)
   const starting = useRef(false)
@@ -252,6 +258,21 @@ export function ComposeProvider({
     [changeHeld],
   )
 
+  const finishScheduled = useCallback(
+    (send: ScheduledSend) => {
+      setNotice(null)
+      setScheduled(send)
+      setAnnouncement({ text: t('compose.scheduledFor', { when: formatDateTime(i18n.language, send.send_at, timeZone) }), urgent: false })
+      void queryClient.invalidateQueries({ queryKey: SCHEDULED_KEY })
+      close()
+    },
+    [close, i18n.language, queryClient, t, timeZone],
+  )
+
+  const dismissScheduled = useCallback(() => {
+    setScheduled(null)
+  }, [])
+
   // A param opens a composer: a draft from the list, or the one open before a reload.
   const param = search.compose
   useEffect(() => {
@@ -294,6 +315,9 @@ export function ComposeProvider({
       held,
       undoSend,
       dismissHeld,
+      finishScheduled,
+      scheduled,
+      dismissScheduled,
       announcement,
       announce: setAnnouncement,
     }),
@@ -318,6 +342,9 @@ export function ComposeProvider({
       held,
       undoSend,
       dismissHeld,
+      finishScheduled,
+      scheduled,
+      dismissScheduled,
       announcement,
     ],
   )

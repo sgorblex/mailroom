@@ -1,6 +1,6 @@
 import { accountSignatures, type AccountId, type Account, type IdentitySignature } from '@/api/accounts.ts'
 import { ApiRequestError } from '@/api/http.ts'
-import { deleteDraft, findDraft, prefillDraft, readDraft, saveDraft, type Draft, type DraftSend } from '@/api/mail.ts'
+import { cancelScheduled, deleteDraft, findDraft, prefillDraft, readDraft, saveDraft, type Draft, type DraftSend, type ScheduledSend } from '@/api/mail.ts'
 
 import {
   inlinePart,
@@ -30,6 +30,8 @@ export interface ComposeStart {
   form: ComposeForm
   lossy: boolean
   send: Draft['send']
+  /** Its held send still to go, opened from Drafts: the first change cancels it. */
+  scheduled: ScheduledSend | null
   /** The account's identities with their signatures, to swap one for another when From changes. */
   signatures: IdentitySignature[]
 }
@@ -62,6 +64,7 @@ function draftStart(draft: Draft, composeId: string, account: Account | undefine
     },
     lossy: draft.lossy,
     send: draft.send,
+    scheduled: draft.scheduled,
     signatures,
   }
 }
@@ -96,6 +99,7 @@ export async function loadStart(
         form: { ...BLANK_FORM, html: newMessageHtml(signature) },
         lossy: false,
         send: null,
+        scheduled: null,
         signatures,
       }
     }
@@ -137,10 +141,22 @@ export async function loadStart(
         },
         lossy: false,
         send: null,
+        scheduled: null,
         signatures,
       }
     }
   }
+}
+
+/**
+ * The held send of a draft opened from Drafts: `held` until the user's first change, which cancels
+ * it before anything is saved (`cancelling`), leaving a plain draft (`cancelled`); `taken` when
+ * the worker had it already, so nothing here is saved over it; `cancelFailed` when the cancel did
+ * not get through, the change kept unsaved until the next one tries again.
+ */
+export interface HeldSchedule {
+  state: 'held' | 'cancelling' | 'cancelled' | 'taken' | 'cancelFailed'
+  sendAt: string
 }
 
 export interface DraftView {
@@ -157,6 +173,7 @@ export interface DraftView {
   elsewhere: boolean
   /** The send the server refused the form's edits for: what is on screen is not what is stored. */
   refusedBy: DraftSend | null
+  schedule: HeldSchedule | null
 }
 
 /** One open draft: the form as typed and the saves that follow it. */
@@ -168,10 +185,16 @@ export class DraftModel {
   private sending = false
   private attachmentsLost = false
   private readonly writtenElsewhere: string | null
+  private readonly scheduledId: string | null
+  private schedule: HeldSchedule | null
+  private cancelling: Promise<void> | null = null
 
   constructor(start: ComposeStart, onSaved: () => void) {
     this.form = start.form
     this.writtenElsewhere = start.elsewhere ? start.ref : null
+    const held = start.scheduled
+    this.scheduledId = held?.scheduled_id ?? null
+    this.schedule = held === null ? null : { state: held.state === 'held' ? 'held' : 'taken', sendAt: held.send_at }
     this.queue = new SaveQueue<ComposeForm>(
       {
         snapshot: (textOnly) => {
@@ -247,7 +270,40 @@ export class DraftModel {
 
   update(change: Partial<ComposeForm>): void {
     this.form = { ...this.form, ...change }
-    this.queue.touch()
+    const state = this.schedule?.state
+    if (state === undefined || state === 'cancelled') {
+      this.queue.touch()
+      return
+    }
+    if (state === 'held' || state === 'cancelFailed') {
+      this.cancelling = this.cancelHeld()
+    }
+    this.refresh()
+  }
+
+  /** The held send cancelled before the first save, which follows only once it is. */
+  private async cancelHeld(): Promise<void> {
+    const { schedule, scheduledId } = this
+    if (schedule === null || scheduledId === null) {
+      return
+    }
+    this.schedule = { ...schedule, state: 'cancelling' }
+    let state: HeldSchedule['state'] = 'cancelled'
+    try {
+      await cancelScheduled(scheduledId)
+    } catch (error) {
+      // Gone already (cancelled elsewhere, or sent, when the server refuses the save itself).
+      if (!(error instanceof ApiRequestError && error.code === 'not_found')) {
+        state = error instanceof ApiRequestError && error.code === 'send_started' ? 'taken' : 'cancelFailed'
+      }
+    }
+    this.schedule = { ...schedule, state }
+    this.cancelling = null
+    if (state === 'cancelled') {
+      this.queue.touch()
+    } else {
+      this.refresh()
+    }
   }
 
   /** A send is under way: the draft cannot be left or changed. */
@@ -262,6 +318,14 @@ export class DraftModel {
   /** Saves what is unsaved, to stop editing; false when the draft must stay open. */
   async leave(): Promise<boolean> {
     if (this.sending) {
+      return false
+    }
+    // Awaited only when there is one: Strict Mode's trial unmount must stop the queue at once.
+    if (this.cancelling !== null) {
+      await this.cancelling
+    }
+    // Changes the held send's cancel kept from being saved would be lost.
+    if (this.schedule?.state === 'cancelFailed') {
       return false
     }
     if (this.queue.ref === null && isBlank(this.form)) {
@@ -306,6 +370,7 @@ export class DraftModel {
       attachmentsLost: this.attachmentsLost,
       elsewhere,
       refusedBy: holding,
+      schedule: this.schedule,
     }
   }
 

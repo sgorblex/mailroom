@@ -851,6 +851,26 @@ export const SEND_STATES = ['sending', 'sent', 'failed', 'unknown'] as const
 const draftSendSchema = z.object({ send_id: z.string(), state: z.enum(SEND_STATES), code: z.string().nullable() })
 export type DraftSend = z.infer<typeof draftSendSchema>
 
+/** A draft held for the worker to send at `send_at`: `held` until it takes it, `failed` with `code` when that ended before a delivery. */
+const scheduledSchema = z.object({
+  scheduled_id: z.string(),
+  account: accountIdSchema,
+  ref: z.string(),
+  subject: z.string(),
+  /** The draft's addresses (To, Cc, Bcc) as it was scheduled. */
+  recipients: z.array(z.string()),
+  send_at: z.string(),
+  /** How long until `send_at` as the server answered, by its clock. */
+  remaining_ms: z.number().int().nonnegative(),
+  state: z.enum(['held', 'sending', 'failed']),
+  code: z.string().nullable(),
+  /** Who scheduled it: the user, or an agent through MCP. */
+  by: z.enum(['user', 'agent']),
+  /** An agent's connected app: its name, or its client id when it gave none. */
+  app: z.string().nullable(),
+})
+export type ScheduledSend = z.infer<typeof scheduledSchema>
+
 const draftSchema = composeFieldsSchema.extend({
   ref: z.string(),
   compose_id: z.string().nullable(),
@@ -858,6 +878,8 @@ const draftSchema = composeFieldsSchema.extend({
   parts: z.array(partSchema),
   inline: z.array(shownPartSchema),
   send: draftSendSchema.nullable(),
+  /** Its held send still to go (send later, or an Undo's), which the user's first change cancels. */
+  scheduled: scheduledSchema.nullable(),
 })
 export type Draft = z.infer<typeof draftSchema>
 
@@ -979,19 +1001,6 @@ export async function deleteDraft(ref: string): Promise<void> {
 }
 
 /** Starts the send (an id to follow), or the result when this draft's key is already sent. */
-/** A draft held for the worker to send at `send_at`: `held` until it takes it, `failed` with `code` when that ended before a delivery. */
-const scheduledSchema = z.object({
-  scheduled_id: z.string(),
-  account: accountIdSchema,
-  ref: z.string(),
-  send_at: z.string(),
-  /** How long until `send_at` as the server answered, by its clock. */
-  remaining_ms: z.number().int().nonnegative(),
-  state: z.enum(['held', 'sending', 'failed']),
-  code: z.string().nullable(),
-})
-export type ScheduledSend = z.infer<typeof scheduledSchema>
-
 /**
  * `undoable`: held for the user's Undo delay first, answered with the held send, unless a send of
  * the draft began already.
@@ -1017,6 +1026,20 @@ export function readSend(sendId: string, signal?: AbortSignal): Promise<SendResu
 export function readComposeSend(account: AccountId, composeId: string, signal?: AbortSignal): Promise<SendResult> {
   const query = new URLSearchParams({ account: String(account), compose_id: composeId })
   return apiGetJson(`${base}/sends?${query.toString()}`, { init: { signal }, schema: sendResultSchema })
+}
+
+/** Send later: the draft `ref` held for the worker to send at `sendAt`, which must still be to come. */
+export function scheduleDraft(ref: string, sendAt: Date): Promise<ScheduledSend> {
+  return apiPostJson(`${draftPath(ref)}/schedule`, { send_at: sendAt.toISOString() }, { schema: scheduledSchema })
+}
+
+/** The user's held sends, soonest first, failed ones included until cancelled. */
+export async function listScheduled(signal?: AbortSignal): Promise<ScheduledSend[]> {
+  const list = await apiGetJson(`${base}/scheduled`, {
+    init: { signal },
+    schema: z.object({ scheduled: z.array(scheduledSchema) }),
+  })
+  return list.scheduled
 }
 
 /** A held send; `not_found` once it went or was cancelled. */

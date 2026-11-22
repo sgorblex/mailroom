@@ -99,7 +99,9 @@ from mailroom.mail.service.scheduled import (
     hold_send,
     list_scheduled,
     read_scheduled,
+    schedule_later,
     schedule_send,
+    scheduled_for,
 )
 from mailroom.mail.service.send import (
     Dispatched,
@@ -185,7 +187,9 @@ __all__ = [
     "read_send",
     "rename_folder",
     "save_draft",
+    "schedule_later",
     "schedule_send",
+    "scheduled_for",
     "search",
     "send_draft",
     "send_forward",

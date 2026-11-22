@@ -21,6 +21,9 @@ export function messagesKey(source: string, cursor: string | null): readonly unk
   return ['messages', source, cursor]
 }
 
+/** The user's held sends: the Scheduled list. */
+export const SCHEDULED_KEY = ['mail-scheduled'] as const
+
 /** The user's saved views. */
 export const VIEWS_KEY = ['mail-views'] as const
 

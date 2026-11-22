@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from sqlalchemy import select
 
@@ -46,3 +46,24 @@ def user_grants(db: Session, user_id: int) -> list[ConnectedApp]:
         )
         for grant, client in rows
     ]
+
+
+GRANT_REVOKED: Final = "grant_revoked"
+NOT_APPROVED: Final = "not_approved"
+
+
+def grant_refusal(db: Session, user_id: int, grant_id: str, group: str) -> str | None:
+    """Why ``user_id``'s grant ``grant_id`` (as a token's claim has it) no longer lets its app
+    act with tool group ``group``: ``grant_revoked`` once it is gone, ``not_approved`` once the
+    user took the group back; None while it does. For what an agent asked for earlier and the
+    worker does now (a held send)."""
+    tool_groups = None
+    if grant_id.isascii() and grant_id.isdigit() and len(grant_id) <= 18:
+        tool_groups = db.scalar(
+            select(OAuthGrant.tool_groups).where(
+                OAuthGrant.id == int(grant_id), OAuthGrant.user_id == user_id
+            )
+        )
+    if tool_groups is None:
+        return GRANT_REVOKED
+    return None if group in tool_groups else NOT_APPROVED

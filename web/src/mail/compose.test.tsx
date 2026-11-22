@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { User } from '@/api/auth.ts'
-import type { SendResult } from '@/api/mail.ts'
+import type { ScheduledSend, SendResult } from '@/api/mail.ts'
 import { bodiesTo, fakeDraft, type FakeMailState, HOME, messageItem, messageView, plainTextsAsked, queriesTo, refusal, savesOf, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
 import { renderMailApp } from '@/test/mail-app.tsx'
 
@@ -716,6 +716,90 @@ describe('drafts', () => {
     renderMailApp(`/mail?folder=Drafts&message=${item.ref}`)
     await screen.findByRole('heading', { name: 'Half written' })
     expect(screen.queryByRole('form')).not.toBeInTheDocument()
+  })
+
+  describe('with a send held for later', () => {
+    const SCHEDULED = '9'
+    const heldLater = (fake: FakeMailState, fields: Partial<ScheduledSend> = {}): FakeMailState => {
+      const sendAt = new Date(Date.now() + 86_400_000).toISOString()
+      fake.scheduled = {
+        [SCHEDULED]: {
+          scheduled_id: SCHEDULED,
+          account: WORK,
+          ref: draft.ref,
+          subject: draft.subject,
+          recipients: ['ada@example.org'],
+          send_at: sendAt,
+          remaining_ms: 86_400_000,
+          state: 'held',
+          code: null,
+          by: 'user',
+          app: null,
+          polls: 0,
+          ...fields,
+        },
+      }
+      return fake
+    }
+    const calls = (fetchMock: ReturnType<typeof stubMailApi>) =>
+      fetchMock.mock.calls.map(([path, init]) => `${(init as RequestInit | undefined)?.method ?? 'GET'} ${new URL(String(path), 'http://mailroom.test').pathname}`)
+
+    it('say so, and the first change cancels it before anything is saved', async () => {
+      const user = userEvent.setup()
+      const fake = heldLater(withDraft())
+      const fetchMock = stubMailApi(fake)
+      renderMailApp(`/mail?folder=Drafts&compose=${draft.ref}`)
+      const form = await composer('Draft')
+      expect(await within(form).findByText(/^Scheduled for .+\. Changing this draft cancels the scheduled send\.$/)).toBeInTheDocument()
+
+      await user.type(field(form, 'Subject'), ' now')
+
+      expect(await within(form).findByText('The scheduled send was cancelled: this is a normal draft now.')).toBeInTheDocument()
+      expect(fake.scheduled).toEqual({})
+      await user.click(within(form).getByRole('button', { name: 'Close' }))
+      await waitFor(() => {
+        expect(screen.queryByRole('form')).not.toBeInTheDocument()
+      })
+      const sequence = calls(fetchMock)
+      const cancelled = sequence.indexOf(`DELETE /api/v1/mail/scheduled/${SCHEDULED}`)
+      expect(cancelled).toBeGreaterThan(-1)
+      expect(sequence.filter((call) => call.startsWith('DELETE /api/v1/mail/scheduled/'))).toHaveLength(1)
+      expect(sequence.indexOf(SAVE)).toBeGreaterThan(cancelled)
+      expect(savesOf(fetchMock).at(-1)?.fields.subject).toBe('Half written now')
+    })
+
+    it('save nothing over it once the worker took it', async () => {
+      const user = userEvent.setup()
+      const fake = heldLater(withDraft())
+      const fetchMock = stubMailApi(fake)
+      renderMailApp(`/mail?folder=Drafts&compose=${draft.ref}`)
+      const form = await composer('Draft')
+      await within(form).findByText(/^Scheduled for /)
+      const held = fake.scheduled?.[SCHEDULED]
+      if (held !== undefined) {
+        held.state = 'sending'
+      }
+
+      await user.type(field(form, 'Subject'), '!')
+
+      expect(await within(form).findByRole('alert')).toHaveTextContent('This draft is already being sent: changes here are not saved.')
+      expect(field(form, 'Subject')).toHaveAttribute('readonly')
+      await user.click(within(form).getByRole('button', { name: 'Close' }))
+      await waitFor(() => {
+        expect(screen.queryByRole('form')).not.toBeInTheDocument()
+      })
+      expect(savesOf(fetchMock)).toEqual([])
+      expect(fake.drafts?.map((each) => each.subject)).toEqual(['Half written'])
+    })
+
+    it('name the app that scheduled it in the Scheduled list', async () => {
+      const user = userEvent.setup()
+      stubMailApi(heldLater(withDraft(), { by: 'agent', app: 'Helper' }))
+      renderMailApp('/mail')
+      await user.click(await screen.findByRole('button', { name: /Scheduled.*1 scheduled/ }))
+      const list = await screen.findByRole('dialog', { name: 'Scheduled' })
+      expect(within(list).getByText('Scheduled by Helper')).toBeInTheDocument()
+    })
   })
 
   it('warn when they hold what plain text cannot', async () => {
@@ -1978,6 +2062,75 @@ describe('sending', () => {
       await sentNotice()
       expect(sendBodies(fetchMock)).toEqual([{}])
       expect(fake.scheduled).toBeUndefined()
+    })
+  })
+
+  describe('later', () => {
+    const schedulesOf = (fetchMock: ReturnType<typeof stubMailApi>) =>
+      fetchMock.mock.calls
+        .filter(([path]) => String(path).endsWith('/schedule'))
+        .map(([, init]) => JSON.parse((init as RequestInit).body as string) as { send_at: string })
+
+    it('schedules the saved draft, lists it under Scheduled, and Edit opens it again', async () => {
+      const user = userEvent.setup()
+      const fake = state()
+      const fetchMock = stubMailApi(fake)
+      renderMailApp('/mail')
+      const form = await ready(user)
+      await user.click(within(form).getByRole('button', { name: 'Send later' }))
+      const dialog = await screen.findByRole('dialog', { name: 'Send later' })
+
+      await user.click(within(dialog).getByRole('button', { name: /^Tomorrow morning/ }))
+
+      expect(await screen.findByText(/^Scheduled for /, { selector: 'p' })).toBeInTheDocument()
+      expect(screen.queryByRole('form')).not.toBeInTheDocument()
+      const [scheduled] = schedulesOf(fetchMock)
+      expect(new Date(scheduled?.send_at ?? '').getTime()).toBeGreaterThan(Date.now())
+      expect(savesOf(fetchMock)).toHaveLength(1)
+      expect(Object.keys(fake.scheduled ?? {})).toHaveLength(1)
+      expect(fake.delivered).toBeUndefined()
+
+      await user.click(await screen.findByRole('button', { name: /Scheduled.*1 scheduled/ }))
+      const list = await screen.findByRole('dialog', { name: 'Scheduled' })
+      expect(within(list).getByText('To ada@example.org, from work')).toBeInTheDocument()
+      await user.click(within(list).getByRole('button', { name: 'Edit “(no subject)”' }))
+
+      const reopened = await composer('Draft')
+      await waitFor(() => {
+        expect(within(reopened).getByRole('textbox', { name: 'Message' })).toHaveTextContent('Hello')
+      })
+      expect(fake.scheduled).toEqual({})
+      expect(fake.drafts).toHaveLength(1)
+    })
+
+    it('refuses a time already past, and a cancel from the list leaves the draft', async () => {
+      const user = userEvent.setup()
+      const fake = state()
+      const fetchMock = stubMailApi(fake)
+      renderMailApp('/mail')
+      const form = await ready(user)
+      await user.click(within(form).getByRole('button', { name: 'Send later' }))
+      const dialog = await screen.findByRole('dialog', { name: 'Send later' })
+      fireEvent.change(within(dialog).getByLabelText('Date'), { target: { value: '2020-01-01' } })
+      await user.click(within(dialog).getByRole('button', { name: 'Schedule' }))
+      expect(within(dialog).getByRole('alert')).toHaveTextContent('Pick a time that is still to come.')
+      expect(schedulesOf(fetchMock)).toEqual([])
+
+      fireEvent.change(within(dialog).getByLabelText('Date'), { target: { value: '2099-01-01' } })
+      await user.click(within(dialog).getByRole('button', { name: 'Schedule' }))
+      expect(within(dialog).getByRole('alert')).toHaveTextContent('up to a year ahead')
+      await user.click(within(dialog).getByRole('button', { name: /^Monday morning|^Tomorrow morning/ }))
+      await screen.findByText(/^Scheduled for /, { selector: 'p' })
+
+      await user.click(await screen.findByRole('button', { name: /Scheduled.*1 scheduled/ }))
+      const list = await screen.findByRole('dialog', { name: 'Scheduled' })
+      await user.click(within(list).getByRole('button', { name: 'Cancel sending “(no subject)”' }))
+
+      expect(await within(list).findByText('Cancelled. The message stayed in Drafts.')).toBeInTheDocument()
+      expect(await within(list).findByText('Nothing is scheduled.')).toBeInTheDocument()
+      expect(fake.scheduled).toEqual({})
+      expect(fake.drafts).toHaveLength(1)
+      expect(fake.delivered).toBeUndefined()
     })
   })
 })

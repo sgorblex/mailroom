@@ -36,6 +36,7 @@ notifications](#desktop-notifications).
   a new search starts without them. A row the user changed so it no longer matches (opened, and
   so read, under *Unread*; unstarred under *Starred*) stays in place, live updates reading the
   list again too, until the folder, the search or the filters change; `j` and `k` go on from it.
+- **Scheduled** below the views in the sidebar: the user's [scheduled sends](#send-later).
 - **Views** at the top of the sidebar: *All inboxes* and the user's saved [views](#views), in
   their order, each with the unread count of its folders when every one is listed already (none
   for a search). Opening one (`view` in the URL) lists it as a folder is listed, each row naming
@@ -938,8 +939,9 @@ user next sends, so a direct send's `GET /sends/{id}` is `not_found` after a day
 - A deploy or restart during a send leaves it `unknown` by design.
 - **Held sends** (one mechanism for undo send and send later): scheduling a draft checks it as
   Send would (the draft, its recipients, an account in send mode `off`) and writes an
-  `app.scheduled_send` row (user, account, the draft's ref and send key, who scheduled it,
-  `send_at`, state) with the worker's job `send_draft`, deferred to `send_at`, in the same
+  `app.scheduled_send` row (user, account, the draft's ref and send key, its subject and
+  addresses for the Scheduled list, who scheduled it, `send_at`, state) with the worker's job
+  `send_draft`, deferred to `send_at`, in the same
   transaction; `send_at` carries its offset, a year ahead at most, and a moment past sends at
   once. A draft has one held send
   at a time (`already_scheduled`), and none once a send of it began (`send_started`). At
@@ -978,6 +980,31 @@ user next sends, so a direct send's `GET /sends/{id}` is `not_found` after a day
   row gone with no send was cancelled elsewhere. A draft written elsewhere and sent as it is has no
   `compose_id` to follow it by, so it goes at once. The hold lives on the server: a closed tab or a
   restart does not stop it.
+- **Send later:** <a id="send-later"></a>the composer's **Send later** saves the draft, checks it
+  as Send does, and offers *Later today* (18:00, until 17:00), *Tomorrow morning* and *Monday
+  morning* (08:00; Monday unless tomorrow is Monday) and a date and time of the user's own, all in
+  the user's time zone (the browser's while they have none), still to come and a year ahead at
+  most. `POST /drafts/{ref}/schedule` (`{"send_at"}`, an ISO 8601 time with its offset, still to
+  come; else 400 `invalid_argument`, and 422 without the offset) holds it as a held send
+  as the user and answers 201 with it; the composer closes on *Scheduled for …*, the draft staying
+  in Drafts. The sidebar's **Scheduled** entry, with how many there are, lists the user's held
+  sends of every account (`GET /scheduled`, soonest first, the ones that failed included with why,
+  and an Undo's while it waits): the subject, the addresses, the account and when it goes, with
+  **Edit** (cancels it and opens the draft in the composer) and **Cancel send** (cancels it, the
+  draft left in Drafts); one the worker has taken shows *Sending…* with neither. Editing the
+  draft any other way before it goes makes it another version, so the held send then fails and
+  stays listed, with why, until cancelled. A draft with a held send still to go, opened from
+  Drafts, says *Scheduled for …* in the composer (`GET /drafts/{ref}` gives it as `scheduled`):
+  the user's first change cancels the held send (`DELETE /scheduled/{id}`) before anything is
+  saved, and the composer then says the schedule was cancelled and it is a normal draft. When the
+  worker took it first (`send_started`, or a `sending` one opened), the composer says the draft is
+  being sent and turns read-only, saving nothing over it; a cancel that did not get through keeps
+  the change unsaved until the next change tries again. An agent schedules with `draft_send`'s
+  `send_at` ([`mcp.md`](mcp.md)), sent then as the agent, so the send mode applies to it as to
+  `draft_send`, at scheduling and when it goes. Its held send keeps the connected app and grant
+  that scheduled it (`client_id`, `grant_id`): the list shows *Scheduled by* the app, the send is
+  audited as the app, and once the grant is revoked or no longer approves `mail_send` the held
+  send fails (`grant_revoked`, `not_approved`; refused and audited, the draft kept).
 - **The result** (`GET /sends/{id}`): `state`; `code` (the refusal's code for `failed`, else
   `null`); `filed` (the Sent copy was stored; `null` until known, and known only after `sent`, together with
   the notes); `rejected` (recipients the
@@ -1009,6 +1036,13 @@ In meaning (the strings are in the `mail` namespace, English and Italian, the sa
 - **Undo send:** "Sending…" with **Undo** while the delay runs; "Not sent: the draft is open
   again." after Undo; "Too late to undo: the message is being sent." when the worker took it
   first; then "Sent" as above, or why it was not sent with *Open draft*.
+- **Send later:** "Send later", its choices and "Times are in …"; "Scheduled for … It stays in
+  Drafts until then."; a time past or too far ahead is refused in the dialog; `already_scheduled`
+  ("This draft is scheduled already…") and `send_started` in words of their own. The Scheduled
+  list: "Sends …", "Sending…", or why it was not sent; "Scheduled by …" for an agent's;
+  "Cancelled. The message stayed in Drafts." A draft opened with its held send: "Scheduled for …
+  Changing this draft cancels the scheduled send.", then "The scheduled send was cancelled: this
+  is a normal draft now.", or "This draft is already being sent: changes here are not saved.".
 - **Already sent:** a first answer of `200` means an earlier delivery spent the key, and this click
   delivered nothing, whatever the draft now holds, so it never says "Sent". The composer stays
   open on the banner a reopened draft of a `sent` key shows; Send stays blocked there and what is
@@ -1103,13 +1137,15 @@ CSRF check apply. Bodies are JSON except `POST /drafts`. Unknown fields are 422.
 | `POST /addresses` | `{"q", "limit"?}` (`q` 1–200 characters, `limit` 1–10, default 10) | 200 `{addresses: [{name, address, sent}]}` ([suggestions](#address-suggestions)); writes nothing |
 | `POST /drafts` | multipart: `draft` (JSON), `html` (optional, the HTML body as is) and `files[]` | 201 `{ref, parts, inline, replaced, autosave}` |
 | `POST /drafts?convert=text` | multipart: `html` alone | 200 `{text}`: the text part `html` would be sent with; writes nothing |
-| `GET /drafts/{ref}` | | 200 the draft's fields, `lossy`, `parts`, `inline`, `send` |
+| `GET /drafts/{ref}` | | 200 the draft's fields, `lossy`, `parts`, `inline`, `send`, `scheduled` |
 | `GET /drafts/find?account=&compose_id=` | | 200 `{ref, parts, inline}` of the newest version; 404 `not_found` |
 | `DELETE /drafts/{ref}` | | 200 `{removed}` |
 | `POST /drafts/{ref}/send` | `{"confirm_resend": false, "undoable": false}` (optional) | 202 `{send_id}`, or the held send for `undoable` ([undo send](#undo-send)); 200 already sent; 409; 429 |
 | `GET /sends/{id}` | | 200 the send's result |
 | `GET /sends?account=&compose_id=` | | 200 the result of the send of that draft's key; 404 `not_found` |
-| `GET /scheduled/{id}` | | 200 the held send `{scheduled_id, account, ref, send_at, remaining_ms, state, code}`; 404 `not_found` once it went or was cancelled |
+| `POST /drafts/{ref}/schedule` | `{"send_at"}` | 201 the held send ([send later](#send-later)); 400 `invalid_argument` for a time past or over a year ahead; 409 `already_scheduled`, `send_started` |
+| `GET /scheduled` | | 200 `{scheduled: [...]}`, the user's held sends, soonest first |
+| `GET /scheduled/{id}` | | 200 the held send `{scheduled_id, account, ref, subject, recipients, send_at, remaining_ms, state, code, by, app}` (`by` `user` or `agent`, `app` an agent's connected app); 404 `not_found` once it went or was cancelled |
 | `DELETE /scheduled/{id}` | | 200 the held send it was, the draft left in Drafts; 409 `send_started`; 404 |
 
 The static route `GET /drafts/find` is matched before `GET /drafts/{ref}`.
@@ -1160,11 +1196,12 @@ The static route `GET /drafts/find` is matched before `GET /drafts/{ref}`.
   identity address chosen as above. A recipient of the original that is not
   [deliverable](#compose) is left out, since it would refuse every save of the draft.
 - `GET /drafts/{ref}` answers `{ref, account, compose_id, from, to, cc, bcc, subject, text, html,
-  answers, forwards, lossy, parts, inline, send}`: `html` is the HTML of a draft Mailroom wrote with
+  answers, forwards, lossy, parts, inline, send, scheduled}`: `html` is the HTML of a draft Mailroom wrote with
   one, sanitised again as it is read, else null (`text` is then its text part); `compose_id` is
   `null` for a draft not written by Mailroom; `send` is
   `null`, or `{send_id, state, code}` of the send of this draft, so reopening shows an `unknown`
-  banner. `bcc` is shown to its owner.
+  banner; `scheduled` is `null`, or its held send still to go (`held` or `sending`, as
+  `GET /scheduled/{id}` answers it, [send later](#send-later)). `bcc` is shown to its owner.
 - `DELETE /drafts/{ref}` answers `{"removed": "expunged" | "trashed"}`.
 - `GET /sends/{id}` answers `{send_id, state, code, filed, rejected, notes, note_codes, settled}`
   ([send state machine](#send-state-machine)); `POST /drafts/{ref}/send` answers `202` with

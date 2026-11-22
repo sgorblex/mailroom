@@ -11,10 +11,12 @@ from typing import TYPE_CHECKING, Any
 import pytest
 from sqlalchemy import select, text
 
+from mailroom.audit import Origin
 from mailroom.context import app_context
 from mailroom.errors import Refusal
 from mailroom.mail import service
 from mailroom.models import ScheduledSend
+from mailroom.oauth.models import OAuthClient, OAuthGrant
 from mailroom.worker.app import PROCRASTINATE_SCHEMA
 from mailroom.worker.sends import send_scheduled
 from mailroom.worker.tasks import (
@@ -372,6 +374,125 @@ def test_scheduling_is_checked_and_another_users_send_is_not_found(
     with pytest.raises(Refusal) as nonsense:
         service.cancel_scheduled(ctx, user.id, "1e3")
     assert nonsense.value.code == "not_found"
+
+
+def test_send_later_is_scheduled_and_listed_by_its_routes(
+    composer: Composer, user: User, admin: User, smtp_server: SmtpTestServer
+) -> None:
+    to = stranger()
+    ref = draft_to(composer, to)
+    send_at = (datetime.now(UTC) + timedelta(days=1)).replace(microsecond=0)
+    schedule = f"{MAIL}/drafts/{ref}/schedule"
+
+    created = composer.client.post(schedule, json={"send_at": send_at.isoformat()})
+
+    assert created.status_code == 201, created.text
+    held = created.json()
+    assert (held["state"], held["ref"], held["subject"], held["recipients"]) == (
+        "held",
+        ref,
+        "Later",
+        [to],
+    )
+    assert (held["by"], held["app"]) == ("user", None)
+    assert steady(composer.read(ref)["scheduled"]) == steady(held)
+    assert datetime.fromisoformat(held["send_at"]) == send_at
+    [listed] = composer.client.get(f"{MAIL}/scheduled").json()["scheduled"]
+    assert steady(listed) == steady(held)
+    assert smtp_server.delivered_to(to) == []
+    again = composer.client.post(schedule, json={"send_at": send_at.isoformat()})
+    assert (again.status_code, again.json()["detail"]["code"]) == (409, "already_scheduled")
+    # Send, while it waits for tomorrow: not an Undo of that send, which would send nothing now.
+    assert detail(composer.post_send(ref, undoable=True)) == (409, "already_scheduled")
+    assert len(composer.client.get(f"{MAIL}/scheduled").json()["scheduled"]) == 1
+    assert service.list_scheduled(context(composer), admin.id) == []
+
+    assert composer.client.delete(f"{MAIL}/scheduled/{held['scheduled_id']}").status_code == 200
+    assert composer.client.get(f"{MAIL}/scheduled").json() == {"scheduled": []}
+    assert composer.read(ref)["scheduled"] is None
+    past = (datetime.now(UTC) - timedelta(minutes=1)).isoformat()
+    refused = composer.client.post(schedule, json={"send_at": past})
+    assert (refused.status_code, refused.json()["detail"]["code"]) == (400, "invalid_argument")
+    naive = composer.client.post(schedule, json={"send_at": "2030-01-01T09:00:00"})
+    assert naive.status_code == 422
+    assert composer.client.post(schedule, json={}).status_code == 422
+
+
+def agent_origin(db: Session, user: User, groups: list[str]) -> tuple[Origin, OAuthGrant]:
+    """A connected app named Helper, approved by ``user`` for ``groups``, as an MCP call has it."""
+    client = OAuthClient(
+        client_id=f"https://{uuid.uuid4().hex}.example/client.json",
+        kind="cimd",
+        client_name="Helper",
+        redirect_uris=[],
+        metadata_={},
+    )
+    db.add(client)
+    db.flush()
+    grant = OAuthGrant(
+        user_id=user.id,
+        client_id=client.client_id,
+        resource="https://mailroom.example/mcp",
+        scopes=[],
+        tool_groups=groups,
+    )
+    db.add(grant)
+    db.flush()
+    return Origin("mcp", client.client_id, str(grant.id)), grant
+
+
+def test_an_agents_held_send_goes_as_its_app_while_its_grant_approves_sending(
+    composer: Composer,
+    user: User,
+    db_session: Session,
+    sessions: sessionmaker[Session],
+    mailboxes: Mailboxes,
+    smtp_server: SmtpTestServer,
+    audited: Callable[[int], list[AuditRecord]],
+) -> None:
+    ctx = context(composer)
+    origin, grant = agent_origin(db_session, user, ["mail_read", "mail_draft", "mail_send"])
+    later = datetime.now(UTC) + timedelta(hours=1)
+    to = stranger()
+    held = service.schedule_later(ctx, user.id, draft_to(composer, to), later, origin=origin)
+
+    [listed] = service.list_scheduled(ctx, user.id)
+    assert (listed.by, listed.app) == ("agent", "Helper")
+    assert send_scheduled(sessions, mailboxes, int(held.scheduled_id)) == "ok"
+    assert len(smtp_server.delivered_to(to)) == 1
+    # The send, then the draft's removal: both as the app; only the send says who authorised it.
+    sends = [record for record in audited(user.id) if record.action == "send"]
+    assert {(r.actor, r.client_id, r.grant_id) for r in sends} == {
+        ("agent", origin.client_id, origin.grant_id)
+    }
+    assert [r.detail.get("by") for r in sends] == ["agent", None]
+
+    # Sending taken back from the app, then the app revoked: each held send fails, refused and
+    # audited as the app, its draft kept.
+    grant.tool_groups = ["mail_read", "mail_draft"]
+    db_session.flush()
+    for code in ("not_approved", "grant_revoked"):
+        if code == "grant_revoked":
+            db_session.delete(grant)
+            db_session.flush()
+        ref = draft_to(composer, to)
+        held = service.schedule_later(ctx, user.id, ref, later, origin=origin)
+
+        assert send_scheduled(sessions, mailboxes, int(held.scheduled_id)) == code
+
+        stored = row(db_session, held.scheduled_id)
+        assert stored is not None
+        assert (stored.state, stored.code) == ("failed", code)
+        assert composer.read(ref)["send"] is None
+        [last] = [record for record in audited(user.id) if record.action == "send"][-1:]
+        assert (last.result, last.client_id, last.grant_id) == (
+            code,
+            origin.client_id,
+            origin.grant_id,
+        )
+        assert refused_sends([last]) == [refused_record(ref, code, "agent")]
+        service.cancel_scheduled(ctx, user.id, held.scheduled_id)
+    assert len(smtp_server.delivered_to(to)) == 1
 
 
 def test_removing_the_account_forgets_its_held_sends_and_their_jobs(

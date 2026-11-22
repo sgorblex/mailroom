@@ -52,6 +52,19 @@ export function composeErrorMessage(t: TFunction, failure: unknown, fallback: st
   return mailErrorMessage(t, failure, fallback)
 }
 
+/** A refused schedule (send later) or cancel of a held send. */
+export function scheduleErrorMessage(t: TFunction, failure: unknown): string {
+  if (failure instanceof ApiRequestError) {
+    if (failure.code === 'already_scheduled') {
+      return t('compose.alreadyScheduled')
+    }
+    if (failure.code === 'send_started') {
+      return t('compose.sendStarted')
+    }
+  }
+  return composeErrorMessage(t, failure, t('compose.notScheduled'))
+}
+
 /** The notes of a delivered send (`note_codes`), with their wording key. */
 const NOTE_CODES: Record<string, string> = {
   draft_not_removed: 'compose.noteDraftNotRemoved',

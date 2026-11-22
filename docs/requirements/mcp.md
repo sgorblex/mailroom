@@ -122,6 +122,13 @@ admission deadline answers "not confirmed" too, `draft_send` included, since its
 deliver, and an own draft's key cannot stop a retry once the delivered draft is gone.
 `draft_update` is refused (`draft_not_editable`) once the draft's send is going, unknown or sent, so
 that an edit cannot give it a new key or make a replay name recipients who never got it.
+`draft_send` with `send_at` (ISO 8601 with its offset, still to come, a year ahead at most)
+sends nothing now: it holds the draft as a [held send](mail-client.md#send-later) for the worker to
+send then as the agent, refused as `draft_send` is when the send mode would only draft it again
+(checked again when it goes), and `already_scheduled` while one is held; the answer says it is
+scheduled, not sent, to whom and when in the user's time zone, and that the user can cancel it.
+It goes as the app that scheduled it, and only while the user's grant to that app still approves
+`mail_send`: revoked or narrowed, the held send fails (`grant_revoked`, `not_approved`).
 `draft_send` of a draft already sent says so and sends nothing, and of one whose delivery is unknown
 is refused as `delivery_unknown`: only the user can confirm a resend. A draft written elsewhere is
 keyed by its ref, so both tools answer this way once it is gone too, which is how a delivered one

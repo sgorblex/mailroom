@@ -137,7 +137,8 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   user, account and identity address, the HTML (sanitised) and text the user wrote, kept plain and
   never logged; they go with their account and their user.
 - **Held sends** (`app.scheduled_send`, [`mail-client.md`](mail-client.md) — *Send state
-  machine*): per user, the account, the draft's ref and send key and when it goes, never logged
+  machine*): per user, the account, the draft's ref and send key, its subject and addresses (for
+  the Scheduled list), an agent's connected app and grant, and when it goes, never logged
   but by id; read only scoped to their user, they go with their account and their user, their
   jobs with them.
 - **Deletes only deliberately.** Trash moves to `\Trash`, as in mailroom-mcp, and nothing is
