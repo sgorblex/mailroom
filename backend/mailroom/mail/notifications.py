@@ -9,10 +9,11 @@ from typing import TYPE_CHECKING, Final
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
+from mailroom.filters.folders import segments, under
 from mailroom.models import MailNotificationFolders
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Callable, Iterable, Sequence
 
     from sqlalchemy.orm import Session
 
@@ -53,3 +54,57 @@ def set_folders(db: Session, user_id: int, account_id: int, folders: Sequence[st
     )
     db.commit()
     return chosen
+
+
+def _rewrite(
+    db: Session,
+    user_id: int,
+    account_id: int,
+    folder: str,
+    delimiter: str | None,
+    change: Callable[[list[str]], str | None],
+) -> None:
+    """Passes each chosen path that is ``folder`` or under it to ``change``: its new path, or
+    None to drop it; committed."""
+    row = db.scalars(
+        select(MailNotificationFolders)
+        .where(
+            MailNotificationFolders.user_id == user_id,
+            MailNotificationFolders.account_id == account_id,
+        )
+        .with_for_update()
+    ).one_or_none()
+    if row is None:
+        return
+    old = segments(folder, delimiter)
+    chosen: list[str] = []
+    for path in row.folders:
+        split = segments(path, delimiter)
+        kept = change(split[len(old) :]) if under(split, old) else path
+        if kept is not None:
+            chosen.append(kept)
+    row.folders = list(dict.fromkeys(chosen))
+    db.commit()
+
+
+def rename_folder(
+    db: Session, user_id: int, account_id: int, old: str, new: str, delimiter: str | None
+) -> None:
+    """The account's choice follows the folder ``old``, and every folder under it, renamed
+    ``new``."""
+    joiner = delimiter or ""
+    _rewrite(
+        db,
+        user_id,
+        account_id,
+        old,
+        delimiter,
+        lambda rest: joiner.join([*segments(new, delimiter), *rest]),
+    )
+
+
+def forget_folder(
+    db: Session, user_id: int, account_id: int, folder: str, delimiter: str | None
+) -> None:
+    """Drops the deleted ``folder``, and every folder under it, from the account's choice."""
+    _rewrite(db, user_id, account_id, folder, delimiter, lambda _rest: None)

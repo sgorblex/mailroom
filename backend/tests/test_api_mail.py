@@ -2434,6 +2434,74 @@ def test_a_rename_stands_when_its_rule_sets_cannot_follow(
     assert record.detail == {"folder": "Old", "destination": "New", "rule_sets_error": True}
 
 
+def test_the_notification_folders_follow_a_rename_and_a_delete(
+    mailbox: Mailbox, audited: Callable[[int], list[AuditRecord]]
+) -> None:
+    create_folders(mailbox.server, mailbox.login, "Old", "Old/Sub", "Older", "Gone")
+    chosen = {"folders": ["INBOX", "Old", "Old/Sub", "Older", "Gone"]}
+    assert mailbox.client.put(f"{MAIL}/notifications/accounts/1", json=chosen).status_code == 200
+
+    renamed = folder_call(mailbox, "rename", folder="Old", parent="Older", name="New")
+    assert renamed.status_code == 200, renamed.text
+    deleted = folder_call(mailbox, "delete", folder="Gone", messages=0)
+    assert deleted.status_code == 200, deleted.text
+    assert mailbox.client.get(f"{MAIL}/notifications").json() == {
+        "accounts": [{"account_id": 1, "folders": ["INBOX", "Older/New", "Older/New/Sub", "Older"]}]
+    }
+
+
+def test_a_rename_stands_when_the_notification_folders_cannot_follow(
+    mailbox: Mailbox,
+    audited: Callable[[int], list[AuditRecord]],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from mailroom.mail import notifications
+
+    def broken(*_args: object) -> None:
+        raise RuntimeError("UPDATE … 'Old' …")
+
+    create_folders(mailbox.server, mailbox.login, "Old")
+    monkeypatch.setattr(notifications, "rename_folder", broken)
+    with caplog.at_level(logging.INFO, logger="mailroom.mail.service"):
+        answer = folder_call(mailbox, "rename", folder="Old", parent=None, name="New")
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["rule_sets_updated"] is True
+    assert "New" in server_folders(mailbox)
+    failed = next(r for r in caplog.records if r.msg == "folder_notifications_failed")
+    assert failed.__dict__["error"] == "RuntimeError"
+    assert "Old" not in str(failed.__dict__)
+
+
+def test_a_delete_stands_when_the_notification_folders_cannot_follow(
+    mailbox: Mailbox,
+    audited: Callable[[int], list[AuditRecord]],
+    user: User,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from mailroom.mail import notifications
+
+    def broken(*_args: object) -> None:
+        raise RuntimeError("DELETE … 'Gone' …")
+
+    create_folders(mailbox.server, mailbox.login, "Gone")
+    monkeypatch.setattr(notifications, "forget_folder", broken)
+    with caplog.at_level(logging.INFO, logger="mailroom.mail.service"):
+        answer = folder_call(mailbox, "delete", folder="Gone", messages=0)
+    assert answer.status_code == 200, answer.text
+    assert "Gone" not in server_folders(mailbox)
+    failed = next(r for r in caplog.records if r.msg == "folder_notifications_failed")
+    assert failed.__dict__["error"] == "RuntimeError"
+    assert all("Gone" not in str(r.__dict__) for r in caplog.records)
+    [record] = audited(user.id)
+    assert (record.action, record.result, record.detail) == (
+        "folder_delete",
+        "ok",
+        {"folder": "Gone", "messages": 0},
+    )
+
+
 def test_a_folder_a_rule_set_names_is_not_deleted(
     mailbox: Mailbox,
     audited: Callable[[int], list[AuditRecord]],

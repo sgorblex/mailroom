@@ -1,5 +1,6 @@
 import { useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { FolderPlus } from 'lucide-react'
 
@@ -15,6 +16,7 @@ import { FolderTree } from './folder-tree-view.tsx'
 import { MAIL_NS } from './i18n.ts'
 import { MARK_READ_CONFIRM_ABOVE, markReadError, markScopeRead, type MarkReadOutcome, type MarkReadScope } from './mark-folder-read.ts'
 import { ACCOUNT_NOT_FOUND, mailErrorMessage } from './messages.ts'
+import { NOTIFICATIONS_KEY } from './queries.ts'
 import { ViewsSection } from './saved-views.tsx'
 import { forgetStoredSubfolders, renameStoredSubfolders } from './subfolder-view.ts'
 import { isSameFolder, useAccountFolders, useTriage } from './triage-context.ts'
@@ -83,6 +85,7 @@ function FolderList({
 }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const accountId = account.id
   // Shared with the toolbar, whose actions change the counts in place; read again on mount.
   const { state, retry } = useAccountFolders(accountId, true)
@@ -113,6 +116,8 @@ function FolderList({
         const { answer } = result
         setReveal(answer.path)
         renameStoredSubfolders(accountId, answer.folder, answer.path, delimiter)
+        // The server moved the desktop-notification choice along with the folder.
+        void queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY })
         if (folder !== null && isWithin(folder, answer.folder, delimiter)) {
           show(renamedPath(folder, answer.folder, answer.path, delimiter))
         }
@@ -134,6 +139,7 @@ function FolderList({
       }
       case 'deleted':
         forgetStoredSubfolders(accountId, result.path, delimiter)
+        void queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY })
         if (folder !== null && isSameFolder(folder, result.path)) {
           show(null)
         }

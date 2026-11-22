@@ -12,8 +12,9 @@ from typing import TYPE_CHECKING, Final, cast
 
 from mailroom.audit import WEB, AuditTrail, Origin
 from mailroom.errors import Refusal
-from mailroom.filters.folders import Rewritten, naming_rule_sets, rewrite_folder
+from mailroom.filters.folders import Rewritten, naming_rule_sets, rewrite_folder, segments
 from mailroom.filters.transfers import rename_in_ledger
+from mailroom.mail import notifications
 from mailroom.mail.index import reads as index_reads
 from mailroom.mail.index import writes as index_writes
 from mailroom.mail.service._shared import _Accounts, _accounts, _run, _Stoppable, _usable
@@ -111,10 +112,6 @@ def _folder_write[T](
     )
 
 
-def _segments(path: str, delimiter: str | None) -> list[str]:
-    return path.split(delimiter) if delimiter else [path]
-
-
 def create_folder(
     ctx: AppContext,
     user_id: int,
@@ -156,8 +153,8 @@ def _rewrite_rule_sets(
                 db,
                 user_id,
                 account_id,
-                _segments(change.path, change.delimiter),
-                _segments(destination, change.delimiter),
+                segments(change.path, change.delimiter),
+                segments(destination, change.delimiter),
             )
     except Exception as exc:
         logger.warning(
@@ -170,6 +167,33 @@ def _rewrite_rule_sets(
             },
         )
         return None
+
+
+def _follow_in_notifications(
+    ctx: AppContext, user_id: int, account_id: int, change: FolderChange, *, deleted: bool
+) -> None:
+    """Points the account's desktop-notification folders naming the renamed folder, or one under
+    it, at its new path, or drops them once it is ``deleted``; a database failure is logged, and
+    the folder change stands."""
+    try:
+        with ctx.session_maker() as db:
+            if deleted:
+                notifications.forget_folder(db, user_id, account_id, change.path, change.delimiter)
+            else:
+                destination = change.destination if change.destination is not None else change.path
+                notifications.rename_folder(
+                    db, user_id, account_id, change.path, destination, change.delimiter
+                )
+    except Exception as exc:
+        logger.warning(
+            "folder_notifications_failed",
+            extra={
+                "event": "folder_notifications_failed",
+                "user_id": user_id,
+                "account_id": account_id,
+                "error": type(exc).__name__,
+            },
+        )
 
 
 def rename_folder(
@@ -186,9 +210,10 @@ def rename_folder(
     it (mailroom-core's ``rename_folder``), then points the account's rule sets and filter
     actions that name it, or a folder under it, at the new path, and the other accounts' filters
     moving there (``move_to_account``): enabled ones too; the rule sets for all accounts naming it
-    are left, and listed (``all_accounts_rule_sets``). Both run on
-    the pool's thread, so the rule sets follow a rename the server did after the call's deadline.
-    A failure of that database step does not fail the call: ``rule_sets_updated`` is False.
+    are left, and listed (``all_accounts_rule_sets``); the account's desktop-notification
+    folders follow it too. These run on the pool's thread, so they follow a rename the server did
+    after the call's deadline. A failure of the rule sets' database step does not fail the call:
+    ``rule_sets_updated`` is False.
     Recorded as ``folder_rename``, with the rule sets and filters changed."""
     accounts = _accounts(ctx, user_id)
     _usable(ctx, user_id, accounts, account_id)
@@ -203,6 +228,7 @@ def rename_folder(
                 trail.note(item)
             raise
         rewritten = _rewrite_rule_sets(ctx, user_id, account_id, change)
+        _follow_in_notifications(ctx, user_id, account_id, change, deleted=False)
         extra: dict[str, object] = (
             {"rule_sets_error": True}
             if rewritten is None
@@ -261,7 +287,8 @@ def delete_folder(
     ``delete_folder``, with ``messages`` the count the user confirmed (``folder_changed``,
     carrying the count it holds now, when it differs). Refused first, before the folder is
     touched, while a rule set or a filter's action names it or a folder under it
-    (``folder_in_use``, listing them). Recorded as ``folder_delete``, refusals too."""
+    (``folder_in_use``, listing them). Once deleted, it and the folders under it leave the
+    account's desktop-notification folders. Recorded as ``folder_delete``, refusals too."""
     accounts = _accounts(ctx, user_id)
     _usable(ctx, user_id, accounts, account_id)
     trail = AuditTrail(ctx.session_maker, user_id, origin, "folder_delete")
@@ -271,9 +298,9 @@ def delete_folder(
 
     def work(connections: MailConnections) -> FolderChange:
         try:
-            segments = _segments(folder, connections.delimiter(account_id))
+            split = segments(folder, connections.delimiter(account_id))
             with ctx.session_maker() as db:
-                named = naming_rule_sets(db, user_id, account_id, segments)
+                named = naming_rule_sets(db, user_id, account_id, split)
         except Exception as error:
             noted(core.audit_result(error))
             raise
@@ -281,13 +308,15 @@ def delete_folder(
             noted(cast("MailErrorCode", "folder_in_use"))  # the app's own code
             raise _in_use(named)
         try:
-            return core.delete_folder(
+            deleted = core.delete_folder(
                 connections, account_id, folder, messages=messages, note=trail.note
             )
         except FolderChangedError as error:
             raise Refusal(
                 "mail", "folder_changed", error.message, extra={"messages": error.messages}
             ) from None
+        _follow_in_notifications(ctx, user_id, account_id, deleted, deleted=True)
+        return deleted
 
     with _logged_folder_call("mail_folder_deleted", user_id, origin.via, account_id) as logged:
         deleted = _folder_write(ctx, user_id, accounts, "mail_folder_deleted", account_id, work)
