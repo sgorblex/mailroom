@@ -497,6 +497,22 @@ export async function removeRemoteSender(address: string): Promise<void> {
   await apiPostJson(`${base}/remote-senders/remove`, { address })
 }
 
+const suggestedAddressSchema = addressSchema.extend({ sent: z.boolean() })
+export type SuggestedAddress = z.infer<typeof suggestedAddressSchema>
+
+/**
+ * Up to ten addresses starting with `q`, from the mail index: those the user sent to (`sent`)
+ * first, then people who wrote to them directly. What is typed goes in the body, never in a URL.
+ */
+export async function suggestAddresses(q: string, signal?: AbortSignal): Promise<SuggestedAddress[]> {
+  const answer = await apiPostJson(
+    `${base}/addresses`,
+    { q },
+    { init: { signal }, schema: z.object({ addresses: z.array(suggestedAddressSchema) }) },
+  )
+  return answer.addresses
+}
+
 const mutedThreadSchema = z.object({
   id: z.number(),
   account_id: accountIdSchema,

@@ -19,14 +19,16 @@ only counts and codes.
 
 The package is split by concern: ``read``, ``organize``, ``bulk`` (every message a search
 matches), ``folder_writes`` (creating, renaming and deleting folders, marking one read;
-``folders`` is the listing, re-exported here), ``compose`` (drafts with it), ``send`` and
-``views`` (a view's messages, from the index only), with what more than one of them uses in
+``folders`` is the listing, re-exported here), ``compose`` (drafts with it), ``send``,
+``views`` (a view's messages, from the index only) and ``addresses`` (a recipient field's
+suggestions, from the index too), with what more than one of them uses in
 ``_shared``. This facade re-exports what the front ends call, so they keep calling
 ``service.X``.
 """
 
 from mailroom.mail.index.reads import Conversation, ConversationPage, ListedSummary
 from mailroom.mail.service._shared import MAX_CURSOR, MAX_FOLDER, MAX_REF_LENGTH, MAX_TERM
+from mailroom.mail.service.addresses import MAX_PREFIX, suggest_addresses
 from mailroom.mail.service.bulk import BULK_BATCH, BULK_MAX, act_on_matching, count_matching
 from mailroom.mail.service.compose import (
     DRAFT_FIELD_BYTES,
@@ -113,6 +115,7 @@ __all__ = [
     "MAX_FOLDER",
     "MAX_FOLDER_NAME",
     "MAX_MESSAGE_COUNT",
+    "MAX_PREFIX",
     "MAX_QUOTE_CHARS",
     "MAX_REFS",
     "MAX_REF_LENGTH",
@@ -173,6 +176,7 @@ __all__ = [
     "send_holds",
     "send_message",
     "send_reply",
+    "suggest_addresses",
     "thread",
     "thread_key",
     "trash",

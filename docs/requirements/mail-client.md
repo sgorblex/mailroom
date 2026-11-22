@@ -723,6 +723,25 @@ images, and the web composer writes either ([Web editor](#web-editor)).
   an ASCII local part, a domain that is ASCII or punycode. Anything else is 422
   `recipient_refused` before a connection is made. Autosave saves only the recipients the user
   has committed (a chip), so an address half typed cannot fail a save.
+- **Address suggestions:** <a id="address-suggestions"></a>a recipient field is a combobox: once
+  typing pauses (200 ms) it asks `POST /addresses` for what was typed and lists up to 10
+  addresses, each with its name, those already in the field left out; arrows move, Enter or Tab
+  picks one as a chip, Escape closes the list, and Enter with none highlighted commits the typed
+  text as before. The server reads them from the [index](#index) alone and keeps nothing for
+  them, over the user's indexed, ready folders: first the addresses they sent to (To and Cc of
+  their accounts' Sent folders' rows, on Gmail of All Mail's rows labelled `\Sent`), then the
+  people who wrote to them directly (the one From of a row that names one of their identities in
+  To or Cc, Junk's rows left out); never list mail (a `List-Id`), a no-reply address
+  (`noreply`, `no-reply`, `do-not-reply` as a word of it) or one of the user's identities (of
+  every account). Each group is ranked by how many rows name the address, then by the latest;
+  an address in both is the first group's, with the name it last went by there (none when that
+  is longer than a draft's 1,024 characters). An address
+  matches when it, its name or a word of its name starts with the typed text, ignoring case.
+  Which folders are Sent and Junk is asked of each account's server (its folder list, at most
+  5 s for all of them, each kept for 5 minutes under the same account settings, so typing does
+  not list again): one that cannot say in time gives no Sent folder, so its sent-to addresses
+  wait, and the others' still count. While the answer for newer text is on its way, the list
+  keeps the last one, narrowed to what still matches.
 - **HTML:** a draft's `html`, when given, is its body (in a save, a multipart part of its own):
   it is sanitised on the server (mailroom-core's `render.outgoing_html`: no scripts, event
   handlers, forms, frames, objects or style sheets, links only `http(s)` and `mailto`, images
@@ -1032,6 +1051,7 @@ CSRF check apply. Bodies are JSON except `POST /drafts`. Unknown fields are 422.
 | Route | Body | Answers |
 | --- | --- | --- |
 | `POST /drafts/prefill` | `{"ref", "mode": "reply" \| "reply_all" \| "forward" \| "unsubscribe", "quote"?}` | 200 the fields below; writes nothing |
+| `POST /addresses` | `{"q", "limit"?}` (`q` 1–200 characters, `limit` 1–10, default 10) | 200 `{addresses: [{name, address, sent}]}` ([suggestions](#address-suggestions)); writes nothing |
 | `POST /drafts` | multipart: `draft` (JSON), `html` (optional, the HTML body as is) and `files[]` | 201 `{ref, parts, inline, replaced, autosave}` |
 | `POST /drafts?convert=text` | multipart: `html` alone | 200 `{text}`: the text part `html` would be sent with; writes nothing |
 | `GET /drafts/{ref}` | | 200 the draft's fields, `lossy`, `parts`, `inline`, `send` |

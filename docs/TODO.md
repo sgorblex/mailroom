@@ -197,7 +197,7 @@ First, fixes carried over from 0.14.0 testing:
 - [x] **Signatures** — one per identity, added in compose.
 - [x] **Quote the selection** — Reply with text selected quotes only that.
 - [x] **Paste images inline** — a pasted image becomes an inline part of the message.
-- [ ] **Address autocomplete** — in compose, from the addresses the user wrote to.
+- [x] **Address autocomplete** — in compose, from the addresses the user wrote to.
 - [x] **Rich text compose** — a TipTap editor sent as HTML with a plain text part, and a
       per-message switch to plain text.
 

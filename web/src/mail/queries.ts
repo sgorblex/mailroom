@@ -41,6 +41,11 @@ export function signaturesKey(account: AccountId): readonly unknown[] {
   return ['signatures', account]
 }
 
+/** The addresses a recipient field suggests for what was typed. */
+export function addressesKey(prefix: string): readonly unknown[] {
+  return ['mail-addresses', prefix]
+}
+
 /** Each account's folders whose new mail shows as a desktop notification. */
 export const NOTIFICATIONS_KEY = ['mail-notifications'] as const
 

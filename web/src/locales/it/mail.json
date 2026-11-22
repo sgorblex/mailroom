@@ -495,6 +495,7 @@
     "plainTextFailed": "Impossibile passare a testo semplice.",
     "richText": "Testo formattato",
     "recipientsOf": "Destinatari {{field}}",
+    "suggestions": "Indirizzi suggeriti per {{field}}",
     "removeRecipient": "Rimuovi {{address}}",
     "invalidRecipient": "Non è un indirizzo raggiungibile, oppure il campo ne contiene già 50.",
     "noRecipients": "Indica almeno un destinatario.",
