@@ -95,7 +95,14 @@ auto-approved and otherwise saves the whole message as a draft (nobody gets it),
 or "saved as a draft, not sent") and to whom. `draft_send` is refused when the mode would only
 draft the message again. The inputs are those of mailroom-mcp's `send`, `reply`, `forward` and
 `draft_*` tools (an account is `account_id`), with the app's refs; **attachments are named by
-`ref` and `part` only**, never passed as content. A draft or a reply takes its recipients and
+`ref` and `part` only**, never passed as content. `draft_create`, `draft_update`,
+`message_send`, `message_reply` and `message_forward` take the body as `text` or as `html` (not
+both): HTML is sanitised as the web composer's is ([`mail-client.md`](mail-client.md), *Compose*)
+and its text part is made from it; a reply then quotes the original in HTML, and a forward carries
+the original's HTML and inline images, below an empty paragraph as in a web prefill, the two
+together within the HTML cap (3 MiB of UTF-8; an agent's own HTML meets the MCP endpoint's 1 MiB
+request limit first). `draft_update` keeps an HTML draft's HTML and images until
+new `text` or `html` replaces them. A draft or a reply takes its recipients and
 quoted text from a message the agent read, so the server instructions name `message_read` as
 where refs come from. The hourly send limit and the recipient cap apply to every send.
 `accounts_list` also lists each account's `identities` (the addresses it can send as, and the

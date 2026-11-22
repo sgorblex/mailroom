@@ -39,6 +39,7 @@ from mailroom.mail.service._shared import (
     unknown_message,
 )
 from mailroom.mail.service.compose import (
+    _TYPE_HERE,
     DRAFT_GONE,
     SendView,
     _as_refusals,
@@ -465,6 +466,17 @@ def _plain(
     return build
 
 
+def _above(html: str | None, original: str | None) -> str | None:
+    """An agent's HTML with the original quoted or forwarded below it, parted as a prefill parts
+    them, so a reply sent and one drafted read the same; None without HTML. ``invalid_argument``
+    when the two together pass the HTML cap, past which the text part would lose the original."""
+    if html is None or original is None:
+        return html
+    joined = f"{html}{_TYPE_HERE}{original}"
+    core.check_fields(html=joined)
+    return joined
+
+
 def send_message(
     ctx: AppContext,
     user_id: int,
@@ -476,15 +488,16 @@ def send_message(
     bcc: Sequence[Mailbox] = (),
     subject: str,
     text: str,
+    html: str | None = None,
     attachments: Sequence[tuple[str, str]] = (),
     origin: Origin,
 ) -> Dispatched:
     """A new message from an agent, as far as the account's send mode lets it. ``attachments``
-    are ``(ref, part)`` of existing messages."""
+    are ``(ref, part)`` of existing messages; with ``html``, ``text`` is derived from it."""
     accounts = _accounts(ctx, user_id)
     account, used = _written(ctx, user_id, accounts, account_id, [r for r, _ in attachments])
     with _as_refusals():
-        core.check_fields(to=to, cc=cc, bcc=bcc, subject=subject, text=text)
+        core.check_fields(to=to, cc=cc, bcc=bcc, subject=subject, text=text, html=html or "")
     recipients = _deliverable(to), _deliverable(cc), _deliverable(bcc)
     limits = accounts.write_limits
     sources = _attachment_sources(attachments)
@@ -500,6 +513,7 @@ def send_message(
             bcc=recipients[2],
             subject=subject,
             text=text,
+            html=html,
             attachments=files,
         )
 
@@ -512,6 +526,7 @@ def send_reply(
     ref: str,
     *,
     text: str,
+    html: str | None = None,
     reply_all: bool = False,
     sender: str | None = None,
     cc: Sequence[Mailbox] = (),
@@ -521,22 +536,24 @@ def send_reply(
     origin: Origin,
 ) -> Dispatched:
     """A reply from an agent: threaded, to the original's Reply-To or sender (everyone with
-    ``reply_all``) and ``cc``, from the identity it was sent to, quoting it. It marks the
-    original ``\\Answered`` once delivered."""
+    ``reply_all``) and ``cc``, from the identity it was sent to, quoting it (in HTML with
+    ``html``). It marks the original ``\\Answered`` once delivered."""
     accounts = _accounts(ctx, user_id)
     original_ref = _message_ref(ctx, user_id, accounts, ref)
     account, used = _written(
         ctx, user_id, accounts, original_ref.account, [ref, *(r for r, _ in attachments)]
     )
     with _as_refusals():
-        core.check_fields(cc=cc, bcc=bcc, text=text)
+        core.check_fields(cc=cc, bcc=bcc, text=text, html=html or "")
     extra_cc, extra_bcc = _deliverable(cc), _deliverable(bcc)
     limits = accounts.write_limits
     sources = _attachment_sources(attachments)
     zone = ctx.time_zone(user_id)
 
     def build(connections: MailConnections) -> _Outgoing:
-        original = core.original_message(connections, original_ref)
+        original = core.original_message(
+            connections, original_ref, with_html=html is not None and quote
+        )
         answered = core.reply_recipients(original, account, reply_all=reply_all)
         thread = core.threading(original)
         files = core.attachments_from(connections, sources, core.attachment_cap(limits))
@@ -547,6 +564,7 @@ def send_reply(
             bcc=extra_bcc,
             subject=_subject_cut(core.reply_subject(original.subject)),
             text=f"{text}\n\n{core.quoted_original(original, zone)}" if quote else text,
+            html=_above(html, core.quoted_original_html(original, zone) if quote else None),
             answers=ref,
             in_reply_to=thread.in_reply_to,
             references=thread.references,
@@ -571,29 +589,36 @@ def send_forward(
     cc: Sequence[Mailbox] = (),
     bcc: Sequence[Mailbox] = (),
     text: str | None = None,
+    html: str | None = None,
     sender: str | None = None,
     include_attachments: bool = True,
     origin: Origin,
 ) -> Dispatched:
     """A forward from an agent: the original inline, its attachments too by default, an optional
-    note above it. It marks the original ``$Forwarded`` once delivered, where keywords are kept."""
+    note above it. With ``html`` the note is HTML and so is the original, its inline images
+    carried. It marks the original ``$Forwarded`` once delivered, where keywords are kept."""
     accounts = _accounts(ctx, user_id)
     original_ref = _message_ref(ctx, user_id, accounts, ref)
     account, used = _written(ctx, user_id, accounts, original_ref.account, [ref])
     with _as_refusals():
-        core.check_fields(to=to, cc=cc, bcc=bcc, text=text or "")
+        core.check_fields(to=to, cc=cc, bcc=bcc, text=text or "", html=html or "")
     recipients = _deliverable(to), _deliverable(cc), _deliverable(bcc)
     limits = accounts.write_limits
     zone = ctx.time_zone(user_id)
 
     def build(connections: MailConnections) -> _Outgoing:
-        original = core.original_message(connections, original_ref)
+        original = core.original_message(connections, original_ref, with_html=html is not None)
         forwarded = core.forwarded_original(original, zone)
         sources = (
             [core.AttachmentSource(original_ref, part.part) for part in original.attachments]
             if include_attachments
             else []
         )
+        if html is not None:
+            sources += [
+                core.AttachmentSource(original_ref, part.info.part, inline=True)
+                for part in original.inline
+            ]
         message = core.MessageInput(
             sender=core.from_identity(account, sender, original.addressed),
             to=recipients[0],
@@ -601,6 +626,7 @@ def send_forward(
             bcc=recipients[2],
             subject=_subject_cut(core.forward_subject(original.subject)),
             text=forwarded if text is None else f"{text}\n\n{forwarded}",
+            html=_above(html, core.forwarded_original_html(original, zone)),
             forwards=ref,
             attachments=core.attachments_from(connections, sources, core.attachment_cap(limits)),
         )

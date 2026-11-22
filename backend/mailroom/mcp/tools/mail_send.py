@@ -39,9 +39,11 @@ from mailroom.mcp.tools.outgoing import (
     AccountId,
     Addresses,
     Attachments,
+    Html,
     Sender,
     Subject,
     Text,
+    check_body,
     keep_of,
     recipients,
     who,
@@ -83,13 +85,15 @@ class MessageSendArguments(Arguments):
     to: Addresses | None = None
     cc: Addresses | None = None
     bcc: Addresses | None = None
-    text: Text
+    text: Text | None = None
+    html: Html | None = None
     attachments: Attachments | None = None
 
 
 class MessageReplyArguments(Arguments):
     ref: RefText = Field(description="Ref of the message to answer.")
-    text: Text
+    text: Text | None = None
+    html: Html | None = None
     reply_all: StrictBool = False
     sender: Sender | None = SENDER
     cc: Addresses | None = Field(
@@ -106,6 +110,13 @@ class MessageForwardArguments(Arguments):
     cc: Addresses | None = None
     bcc: Addresses | None = None
     text: Text | None = Field(default=None, description="A note above the forwarded message.")
+    html: Html | None = Field(
+        default=None,
+        description=(
+            "A note above the forwarded message as HTML, instead of text: the forward is then "
+            "HTML, the original's own HTML and images included."
+        ),
+    )
     sender: Sender | None = SENDER
     include_attachments: StrictBool = True
 
@@ -191,6 +202,7 @@ async def _send(call: ToolCall, dispatch: Callable[[], Dispatched]) -> types.Cal
 
 
 async def _message_send(args: MessageSendArguments, call: ToolCall) -> types.CallToolResult:
+    check_body(args.text, args.html)
     account = await named_account(args.account_id, call)
     to, cc, bcc = recipients(args.to), recipients(args.cc), recipients(args.bcc)
     keep = keep_of(args.attachments)
@@ -205,7 +217,8 @@ async def _message_send(args: MessageSendArguments, call: ToolCall) -> types.Cal
             cc=cc or (),
             bcc=bcc or (),
             subject=args.subject,
-            text=args.text,
+            text=args.text or "",
+            html=args.html,
             attachments=keep,
             origin=call.origin,
         ),
@@ -213,6 +226,7 @@ async def _message_send(args: MessageSendArguments, call: ToolCall) -> types.Cal
 
 
 async def _message_reply(args: MessageReplyArguments, call: ToolCall) -> types.CallToolResult:
+    check_body(args.text, args.html)
     cc, bcc = recipients(args.cc), recipients(args.bcc)
     keep = keep_of(args.attachments)
     return await _send(
@@ -221,7 +235,8 @@ async def _message_reply(args: MessageReplyArguments, call: ToolCall) -> types.C
             call.ctx,
             call.user_id,
             args.ref,
-            text=args.text,
+            text=args.text or "",
+            html=args.html,
             reply_all=args.reply_all,
             sender=args.sender,
             cc=cc or (),
@@ -234,6 +249,7 @@ async def _message_reply(args: MessageReplyArguments, call: ToolCall) -> types.C
 
 
 async def _message_forward(args: MessageForwardArguments, call: ToolCall) -> types.CallToolResult:
+    check_body(args.text, args.html, required=False)
     to, cc, bcc = recipients(args.to), recipients(args.cc), recipients(args.bcc)
     return await _send(
         call,
@@ -245,6 +261,7 @@ async def _message_forward(args: MessageForwardArguments, call: ToolCall) -> typ
             cc=cc or (),
             bcc=bcc or (),
             text=args.text,
+            html=args.html,
             sender=args.sender,
             include_attachments=args.include_attachments,
             origin=call.origin,

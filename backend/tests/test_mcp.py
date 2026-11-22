@@ -23,6 +23,7 @@ from starlette.testclient import TestClient
 from mailroom.accounts import service as accounts_service
 from mailroom.accounts.store import load_accounts
 from mailroom.api.main import create_application
+from mailroom.audit import MCP as MCP_ORIGIN
 from mailroom.auth.users import create_user, set_time_zone
 from mailroom.config.features import ALL_FEATURES
 from mailroom.context import app_context
@@ -37,7 +38,7 @@ from mailroom.mcp.tools import mail_send
 from mailroom.mcp.tools.filters import RUN_FILTERS_OFF_NOTE
 from mailroom.models import AuditRecord, Filter
 from mailroom_core.config import time_zone_name
-from mailroom_core.mail import MESSAGES, Folder, MessageRef, format_ref
+from mailroom_core.mail import MAX_HTML_BYTES, MESSAGES, Folder, MessageRef, format_ref
 from mailroom_core.store import SEND_CEILING
 from mailroom_core.testing import (
     HANG_UP,
@@ -53,6 +54,8 @@ from mailroom_core.testing import (
 from tests.conftest import PASSWORD
 from tests.support.mail import mail_servers_ssl_context, settle_sends
 from tests.test_api_accounts import MAILBOX_PASSWORD, new_account
+from tests.test_api_compose import PNG as FAKE_PNG
+from tests.test_api_compose import parsed, related
 from tests.test_api_filters import SHOP_SPEC
 from tests.test_api_mail import add_rule_set, moving_to
 from tests.test_filters_dry_run import SHOP, Mailbox
@@ -2096,6 +2099,129 @@ def test_a_forward_carries_the_attachments_byte_for_byte(
     flags = writer.contents("INBOX")[0].flags
     assert "$Forwarded" in flags
     assert "\\Answered" not in flags
+
+
+def html_part(raw: bytes) -> str:
+    [part] = [p for p in parsed(raw).walk() if p.get_content_type() == "text/html"]
+    return str(part.get_content())
+
+
+def text_part(raw: bytes) -> str:
+    [part] = [p for p in parsed(raw).walk() if p.get_content_type() == "text/plain"]
+    return str(part.get_content())
+
+
+def test_a_message_goes_as_sanitised_html_with_its_text_made_from_it(
+    mcp: Mcp, token: str, writer: Writer, smtp_server: Any
+) -> None:
+    to = stranger()
+    sent = mcp.text(
+        token,
+        "message_send",
+        to=[to],
+        subject="Rich",
+        html='<p>Hi <b>Ana</b></p><img src="https://tracker.example/p.gif"><script>x()</script>',
+    )
+    assert sent.startswith("Sent ")
+    [delivered] = smtp_server.delivered_to(to)
+    assert parsed(delivered.raw).get_content_type() == "multipart/alternative"
+    html = html_part(delivered.raw)
+    assert "<b>Ana</b>" in html
+    assert "tracker.example" not in html
+    assert "script" not in html
+    assert text_part(delivered.raw).strip() == "Hi Ana"
+
+    both = mcp.error(token, "message_send", to=[to], subject="s", text="t", html="<p>t</p>")
+    assert "not both" in both
+    assert "text or as html" in mcp.error(token, "message_send", to=[to], subject="s")
+    assert len(smtp_server.delivered_to(to)) == 1
+
+
+def test_an_html_reply_quotes_the_original_in_html(
+    mcp: Mcp, token: str, writer: Writer, smtp_server: Any
+) -> None:
+    ana = stranger()
+    writer.mail.seed(
+        writer.login,
+        mime("Dinner", sender=f"Ana <{ana}>", to=writer.me, html="<p>Friday at <i>8</i>?</p>"),
+    )
+    mcp.text(token, "message_reply", ref=inbox_ref(mcp, token), html="<p><b>Yes!</b></p>")
+    raw = smtp_server.delivered_to(ana)[0].raw
+    html = html_part(raw)
+    assert html.startswith("<p><b>Yes!</b></p><p></p><div>On ")
+    assert '<blockquote type="cite"><p>Friday at <i>8</i>?</p></blockquote>' in html
+    assert "Yes!" in text_part(raw)
+    assert "Friday at 8?" in text_part(raw)
+
+
+def test_an_html_reply_past_the_cap_with_its_quote_is_refused(
+    mcp: Mcp, token: str, writer: Writer, ctx: AppContext, user: User, smtp_server: Any
+) -> None:
+    # Over MCP an agent's HTML stops at the request cap; the service checks the joined body.
+    ana = stranger()
+    original = "<p>" + "y" * 600_000 + "</p>"
+    writer.mail.seed(writer.login, mime("Long", sender=f"Ana <{ana}>", to=writer.me, html=original))
+    with pytest.raises(Refusal) as refused:
+        mail_service.send_reply(
+            ctx,
+            user.id,
+            inbox_ref(mcp, token),
+            text="",
+            html="<p>" + "é" * ((MAX_HTML_BYTES - 500_000) // 2) + "</p>",
+            origin=MCP_ORIGIN,
+        )
+    assert refused.value.code == "invalid_argument"
+    assert smtp_server.delivered_to(ana) == []
+
+
+def test_an_html_forward_carries_the_originals_images(
+    mcp: Mcp, token: str, writer: Writer, smtp_server: Any
+) -> None:
+    bo = stranger()
+    writer.mail.seed(writer.login, related('<p>Sale<img src="cid:logo@x"></p>'))
+    forwarded = mcp.text(
+        token, "message_forward", ref=inbox_ref(mcp, token), to=[bo], html="<p>FYI</p>"
+    )
+    assert "Sent" in forwarded
+    wire = parsed(smtp_server.delivered_to(bo)[0].raw)
+    assert wire.get_content_type() == "multipart/related"
+    html = html_part(smtp_server.delivered_to(bo)[0].raw)
+    assert html.startswith("<p>FYI</p>")
+    assert '<img src="cid:logo@x">' in html
+    [image] = [part for part in wire.walk() if part["Content-ID"] == "<logo@x>"]
+    assert image.get_content() == FAKE_PNG
+
+
+def test_an_html_draft_keeps_its_html_until_text_replaces_it(
+    mcp: Mcp, token: str, writer: Writer, ctx: AppContext, user: User
+) -> None:
+    def stored(ref: str) -> Any:
+        return mail_service.read_draft(ctx, user.id, ref).draft
+
+    ana = stranger()
+    writer.mail.seed(
+        writer.login, mime("Dinner", sender=f"Ana <{ana}>", to=writer.me, text="Friday?")
+    )
+    created = mcp.text(
+        token, "draft_create", reply_to=inbox_ref(mcp, token), html="<p><b>Yes</b></p>"
+    )
+    ref = draft_ref(created)
+    draft = stored(ref)
+    assert draft.html is not None
+    assert draft.html.startswith("<p><b>Yes</b></p><p></p><div>On ")
+    assert '<blockquote type="cite"><div>Friday?</div></blockquote>' in draft.html
+
+    kept = draft_ref(mcp.text(token, "draft_update", ref=ref, subject="Re: Dinner, yes"))
+    assert stored(kept).html == draft.html
+    plain = draft_ref(mcp.text(token, "draft_update", ref=kept, text="Just text"))
+    replaced = stored(plain)
+    assert (replaced.html, replaced.text.strip()) == (None, "Just text")
+    assert "not both" in mcp.error(token, "draft_update", ref=plain, text="a", html="<p>b</p>")
+
+    empty = draft_ref(mcp.text(token, "draft_create", reply_to=inbox_ref(mcp, token), html=""))
+    quoted = stored(empty).html
+    assert quoted is not None
+    assert '<blockquote type="cite"><div>Friday?</div></blockquote>' in quoted
 
 
 def test_a_draft_is_sent_as_stored_then_removed_and_asking_twice_delivers_once(

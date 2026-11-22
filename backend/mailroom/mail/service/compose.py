@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from mailroom_core.mail import (
         AttachmentSource,
         Draft,
+        InlinePart,
         Mailbox,
         MailConnections,
         MessageInput,
@@ -47,15 +48,22 @@ UNDELIVERABLE: Final = (
     "A recipient is not a deliverable address, or the mail server refused the message; "
     "nothing was sent."
 )
-UPLOAD_OVERHEAD: Final = 2 * 1024 * 1024
-"""What a save's request may hold beyond its attachments: the text, the recipients and the
-multipart framing."""
+DRAFT_FIELD_BYTES: Final = 1024 * 1024
+"""Of a save's ``draft`` part, its fields as one JSON document but the HTML: the text, the
+recipients."""
+UPLOAD_OVERHEAD: Final = core.MAX_HTML_BYTES + DRAFT_FIELD_BYTES + 1024 * 1024
+"""What a save's request may hold beyond its attachments: its ``html`` part (the HTML cap, in the
+same bytes), its ``draft`` part and the multipart framing. With the largest attachments it is the
+upload route's body limit (``web/nginx-default.conf``), which the host's proxy must allow too."""
 SEND_HOLDS_THE_DRAFT: Final = frozenset({"sending", "unknown", "sent"})
 """Its delivery is going, unresolved or done: a new version could slip past ``delivery_unknown``
 with a new key, or make a replayed "sent" name recipients who never got it."""
 DRAFT_NOT_EDITABLE: Final = "This draft was sent, or may have been, so it cannot be changed."
 DRAFT_GONE: Final = frozenset({"not_found", "stale_reference"})
 """What reading a draft answers once its ref no longer holds it."""
+_TYPE_HERE: Final = "<p></p>"
+"""Above a prefill's quote: where the user writes; under an agent's HTML, what parts it from the
+original (``send._above``)."""
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -68,6 +76,9 @@ class Prefill:
     cc: tuple[Mailbox, ...]
     subject: str
     text: str
+    html: str | None
+    """The same as HTML, the original's HTML quoted (``core.quoted_original_html``) or forwarded
+    (``core.forwarded_original_html``) below an empty paragraph; None for an unsubscribe."""
     answers: str | None
     """The message a send is to mark ``\\Answered``: the ref, for a reply."""
     forwards: str | None
@@ -76,12 +87,14 @@ class Prefill:
     """The ref ``attachments`` are parts of."""
     attachments: tuple[PartInfo, ...]
     """For a forward, the original's attachments, offered for keeping."""
+    inline: tuple[InlinePart, ...] = ()
+    """For a forward, the original's inline parts ``html`` shows, to keep as inline."""
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class DraftFields:
-    """A draft as the user wrote it. Its addresses are checked here; the caps on the text and on
-    the attachments too (``core.check_fields``, ``core.check_uploads``)."""
+    """A draft as the user wrote it. Its addresses are checked here; the caps on the text, the HTML
+    and the attachments too (``core.check_fields``, ``core.check_uploads``)."""
 
     account: int
     compose_id: str
@@ -94,8 +107,14 @@ class DraftFields:
     bcc: Sequence[Mailbox] = ()
     subject: str = ""
     text: str = ""
+    html: str | None = None
+    """The body as HTML, sanitised when composed; the text is then derived from it and ``text``
+    is not used."""
     keep: Sequence[tuple[str, str]] = ()
     """``(ref, part)`` of the existing parts it keeps, its previous version's included."""
+    keep_inline: Sequence[tuple[str, str]] = ()
+    """``(ref, part)`` of existing inline parts ``html`` shows: its previous version's, or the
+    forwarded message's."""
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -204,7 +223,7 @@ def prefill(
         "mail_prefilled",
         via,
         message.account,
-        lambda connections: core.original_message(connections, message),
+        lambda connections: core.original_message(connections, message, with_html=True),
     )
     zone = ctx.time_zone(user_id)
     with _as_refusals():
@@ -217,10 +236,12 @@ def prefill(
                 cc=(),
                 subject=_subject_cut(core.forward_subject(original.subject)),
                 text=f"\n\n{core.forwarded_original(original, zone)}",
+                html=f"{_TYPE_HERE}{core.forwarded_original_html(original, zone)}",
                 answers=None,
                 forwards=ref,
                 source=ref,
                 attachments=original.attachments,
+                inline=original.inline,
             )
         answered = core.reply_recipients(original, account, reply_all=mode == "reply_all")
         return Prefill(
@@ -230,6 +251,7 @@ def prefill(
             cc=tuple(filter(_can_be_sent_to, answered.cc)),
             subject=_subject_cut(core.reply_subject(original.subject)),
             text=f"\n\n{core.quoted_original(original, zone)}",
+            html=f"{_TYPE_HERE}{core.quoted_original_html(original, zone)}",
             answers=ref,
             forwards=None,
             source=ref,
@@ -274,6 +296,7 @@ def _unsubscribe_prefill(
         cc=(),
         subject=_subject_cut(fields.subject or "unsubscribe"),
         text=fields.body,
+        html=None,
         answers=None,
         forwards=None,
         source=ref,
@@ -382,14 +405,20 @@ def save_draft(
     agent's save is recorded in the audit trail, the web's are not: they are the user typing."""
     accounts = _accounts(ctx, user_id)
     _usable(ctx, user_id, accounts, fields.account)
-    named = [fields.ref, fields.answers, fields.forwards, *(ref for ref, _part in fields.keep)]
+    kept = (*fields.keep, *fields.keep_inline)
+    named = [fields.ref, fields.answers, fields.forwards, *(ref for ref, _part in kept)]
     used = _ref_accounts(ctx, user_id, accounts, [ref for ref in named if ref is not None])
     account = accounts.config(fields.account)
     limits = accounts.write_limits
     _writable(account)
     with _as_refusals():
         core.check_fields(
-            to=fields.to, cc=fields.cc, bcc=fields.bcc, subject=fields.subject, text=fields.text
+            to=fields.to,
+            cc=fields.cc,
+            bcc=fields.bcc,
+            subject=fields.subject,
+            text=fields.text,
+            html=fields.html or "",
         )
     to, cc, bcc = _deliverable(fields.to), _deliverable(fields.cc), _deliverable(fields.bcc)
     with _as_refusals():
@@ -403,6 +432,7 @@ def save_draft(
         bcc=bcc,
         subject=fields.subject,
         text=fields.text,
+        html=fields.html,
         attachments=tuple(uploads),
         answers=fields.answers,
         forwards=fields.forwards,
@@ -414,7 +444,7 @@ def save_draft(
         if named_ref is not None and core.parse_ref(named_ref).account != account.id:
             elsewhere = "That message belongs to another account."
             raise mail_refusal("invalid_argument", elsewhere)
-    keep = _attachment_sources(fields.keep)
+    keep = _attachment_sources(fields.keep) + _attachment_sources(fields.keep_inline, inline=True)
     note = (
         kept_nowhere
         if origin.via == "web"
@@ -531,5 +561,7 @@ def delete_draft(ctx: AppContext, user_id: int, ref: str, *, origin: Origin = WE
     )
 
 
-def _attachment_sources(refs: Iterable[tuple[str, str]]) -> list[AttachmentSource]:
-    return [core.AttachmentSource(core.parse_ref(ref), part) for ref, part in refs]
+def _attachment_sources(
+    refs: Iterable[tuple[str, str]], *, inline: bool = False
+) -> list[AttachmentSource]:
+    return [core.AttachmentSource(core.parse_ref(ref), part, inline) for ref, part in refs]

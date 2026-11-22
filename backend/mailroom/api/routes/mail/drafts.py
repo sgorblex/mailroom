@@ -26,22 +26,28 @@ from mailroom.api.routes.mail._shared import (
 from mailroom.errors import mail_refusal
 from mailroom.mail import service
 from mailroom_core.config import MAX_SAFE_INTEGER
-from mailroom_core.mail import MAX_UPLOADS, MESSAGES, Mailbox, OutgoingAttachment, format_ref
+from mailroom_core.mail import (
+    MAX_HTML_BYTES,
+    MAX_UPLOADS,
+    MESSAGES,
+    Mailbox,
+    OutgoingAttachment,
+    format_ref,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from starlette.types import Message, Receive
 
-    from mailroom_core.mail import Draft, SavedDraft
+    from mailroom_core.mail import Draft, InlinePart, SavedDraft
 
-_MAX_DRAFT_FIELD: Final = 1024 * 1024
-"""The ``draft`` part of a save: more than its capped text and recipients can take."""
 _MAX_KEPT: Final = 50
 _MAX_ADDRESS: Final = 1024
 _MAX_NAME: Final = 1024
 _COMPOSE_ID: Final = r"^[A-Za-z0-9_-]{1,64}$"
 _UPLOAD_TYPE: Final = "application/octet-stream"
+_MAX_CONTENT_ID: Final = 250
 
 
 def _mailboxes(mailboxes: Iterable[Mailbox]) -> list[MailAddress]:
@@ -59,6 +65,24 @@ class KeptPart(MessagePart):
     ref: str
 
 
+class ShownPart(MessagePart):
+    """An inline part: what the HTML shows as ``cid:<content_id>``."""
+
+    content_id: str
+
+    @classmethod
+    def of_inline(cls, inline: InlinePart) -> ShownPart:
+        return cls(content_id=inline.content_id, **MessagePart.of(inline.info).model_dump())
+
+
+class KeptShownPart(ShownPart):
+    ref: str
+
+
+def _shown(parts: Iterable[InlinePart]) -> list[ShownPart]:
+    return [ShownPart.of_inline(part) for part in parts]
+
+
 class PrefillAnswer(BaseModel):
     account: int
     from_: str = Field(serialization_alias="from")
@@ -67,9 +91,11 @@ class PrefillAnswer(BaseModel):
     bcc: list[MailAddress]
     subject: str
     text: str
+    html: str | None
     answers: str | None
     forwards: str | None
     attachments: list[KeptPart]
+    inline: list[KeptShownPart]
 
     @classmethod
     def of(cls, started: service.Prefill) -> PrefillAnswer:
@@ -81,11 +107,16 @@ class PrefillAnswer(BaseModel):
             bcc=[],
             subject=started.subject,
             text=started.text,
+            html=started.html,
             answers=started.answers,
             forwards=started.forwards,
             attachments=[
                 KeptPart(ref=started.source, **MessagePart.of(info).model_dump())
                 for info in started.attachments
+            ],
+            inline=[
+                KeptShownPart(ref=started.source, **shown.model_dump())
+                for shown in _shown(started.inline)
             ],
         )
 
@@ -105,11 +136,17 @@ class KeepRequest(BaseModel):
 
     ref: BatchRef
     part: Annotated[str, StringConstraints(pattern=_PART, max_length=64)]
+    inline: bool = False
+    """The part is one the HTML shows as ``cid:``: the previous version's, or a forward's."""
+
+
+ContentId = Annotated[str, StringConstraints(min_length=1, max_length=_MAX_CONTENT_ID)]
 
 
 class DraftRequest(BaseModel):
-    """The ``draft`` part of a save. Addresses, subject and text are held to their caps by the
-    service, which answers ``invalid_argument`` for them, not here."""
+    """The ``draft`` part of a save; its HTML comes in a part of its own. Addresses, subject, text
+    and HTML are held to their caps by the service, which answers ``invalid_argument`` for them,
+    not here."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -124,9 +161,12 @@ class DraftRequest(BaseModel):
     bcc: list[DraftAddress] = []
     subject: str = ""
     text: str = ""
+    content_ids: Annotated[list[ContentId | None], Field(max_length=MAX_UPLOADS)] = []
+    """The Content-ID of each of ``files[]`` in order that the HTML shows in place, null for an
+    attachment; files past its end are attachments."""
     keep: Annotated[list[KeepRequest], Field(max_length=_MAX_KEPT)] = []
 
-    def fields(self) -> service.DraftFields:
+    def fields(self, html: str | None) -> service.DraftFields:
         return service.DraftFields(
             account=self.account,
             compose_id=self.compose_id,
@@ -139,13 +179,16 @@ class DraftRequest(BaseModel):
             bcc=[address.mailbox() for address in self.bcc],
             subject=self.subject,
             text=self.text,
-            keep=[(kept.ref, kept.part) for kept in self.keep],
+            html=html,
+            keep=[(kept.ref, kept.part) for kept in self.keep if not kept.inline],
+            keep_inline=[(kept.ref, kept.part) for kept in self.keep if kept.inline],
         )
 
 
 class SavedDraftAnswer(BaseModel):
     ref: str | None
     parts: list[MessagePart]
+    inline: list[ShownPart]
     replaced: bool
     autosave: bool
 
@@ -154,6 +197,7 @@ class SavedDraftAnswer(BaseModel):
         return cls(
             ref=None if saved.ref is None else format_ref(saved.ref),
             parts=[MessagePart.of(info) for info in saved.parts],
+            inline=_shown(saved.inline),
             replaced=saved.replaced in ("expunged", "trashed"),
             autosave=saved.autosave,
         )
@@ -162,12 +206,14 @@ class SavedDraftAnswer(BaseModel):
 class FoundDraftAnswer(BaseModel):
     ref: str
     parts: list[MessagePart]
+    inline: list[ShownPart]
 
     @classmethod
     def of(cls, draft: Draft) -> FoundDraftAnswer:
         return cls(
             ref=format_ref(draft.ref),
             parts=[MessagePart.of(info) for info in draft.attachments],
+            inline=_shown(draft.inline),
         )
 
 
@@ -187,10 +233,12 @@ class DraftAnswer(BaseModel):
     bcc: list[MailAddress]
     subject: str
     text: str
+    html: str | None
     answers: str | None
     forwards: str | None
     lossy: bool
     parts: list[MessagePart]
+    inline: list[ShownPart]
     send: DraftSend | None
 
     @classmethod
@@ -207,10 +255,12 @@ class DraftAnswer(BaseModel):
             bcc=_mailboxes(draft.bcc),
             subject=draft.subject,
             text=draft.text,
+            html=draft.html,
             answers=None if draft.answers is None else format_ref(draft.answers),
             forwards=None if draft.forwards is None else format_ref(draft.forwards),
             lossy=draft.lossy,
             parts=[MessagePart.of(info) for info in draft.attachments],
+            inline=_shown(draft.inline),
             send=None
             if send is None
             else DraftSend(send_id=send.send_id, state=send.state, code=send.code),
@@ -288,6 +338,8 @@ def _draft_request(value: object) -> DraftRequest:
         raise RequestValidationError(
             [{"type": "missing", "loc": ("body", "draft"), "msg": "Field required"}]
         )
+    if len(value.encode()) > service.DRAFT_FIELD_BYTES:
+        raise mail_refusal("invalid_argument", MESSAGES["invalid_argument"])
     try:
         return DraftRequest.model_validate_json(value)
     except ValidationError as error:
@@ -296,9 +348,12 @@ def _draft_request(value: object) -> DraftRequest:
         ) from None
 
 
-async def _attachment(upload: UploadFile) -> OutgoingAttachment:
+async def _attachment(upload: UploadFile, content_id: str | None) -> OutgoingAttachment:
     return OutgoingAttachment(
-        upload.filename or "", upload.content_type or _UPLOAD_TYPE, await upload.read()
+        upload.filename or "",
+        upload.content_type or _UPLOAD_TYPE,
+        await upload.read(),
+        content_id,
     )
 
 
@@ -313,7 +368,8 @@ async def save_draft(request: Request, ctx: Context, user: CurrentUser) -> Saved
     the signed-in user is known, and a declared size is refused before any of it is read. So is
     a save past the user's few at a time, which the mail gates could only refuse once it was
     read. Files past the memory threshold spool to disk until the form closes, before the save,
-    so that a file is not held twice while it runs."""
+    so that a file is not held twice while it runs. The HTML is a part of its own, raw: in the
+    JSON its escapes would let a part's size bind before the HTML cap, which counts its UTF-8."""
     limit = await run_in_threadpool(service.upload_limit, ctx, user.id)
     if _declared_over(request.headers.get("content-length", ""), limit):
         raise _too_large()
@@ -321,17 +377,21 @@ async def save_draft(request: Request, ctx: Context, user: CurrentUser) -> Saved
         body = Request(request.scope, _at_most(request.receive, limit))
         try:
             async with body.form(
-                max_files=MAX_UPLOADS, max_fields=1, max_part_size=_MAX_DRAFT_FIELD
+                max_files=MAX_UPLOADS, max_fields=2, max_part_size=MAX_HTML_BYTES
             ) as form:
                 draft = _draft_request(form.get("draft"))
-                uploads = [
-                    await _attachment(item)
-                    for item in form.getlist("files[]")
-                    if isinstance(item, UploadFile)
-                ]
+                html = form.get("html")
+                if not isinstance(html, str | None):
+                    raise mail_refusal("invalid_argument", MESSAGES["invalid_argument"])
+                files = [item for item in form.getlist("files[]") if isinstance(item, UploadFile)]
+                if len(draft.content_ids) > len(files):
+                    raise mail_refusal("invalid_argument", MESSAGES["invalid_argument"])
+                marks = [*draft.content_ids, *[None] * (len(files) - len(draft.content_ids))]
+                uploads = [await _attachment(f, cid) for f, cid in zip(files, marks, strict=True)]
         except HTTPException:  # how Starlette words a malformed body or too many parts
             raise mail_refusal("invalid_argument", MESSAGES["invalid_argument"]) from None
-        saved = await run_in_threadpool(service.save_draft, ctx, user.id, draft.fields(), uploads)
+        fields = draft.fields(html)
+        saved = await run_in_threadpool(service.save_draft, ctx, user.id, fields, uploads)
     return SavedDraftAnswer.of(saved)
 
 
