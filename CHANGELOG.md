@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.15.0](https://github.com/sgorblex/mailroom/compare/v0.14.0...v0.15.0) (2026-11-22)
+
+
+### Features
+
+* **core:** compose HTML bodies with inline images ([#158](https://github.com/sgorblex/mailroom/issues/158)) ([5ddaafc](https://github.com/sgorblex/mailroom/commit/5ddaafc829ed6f486ae26d07e8ad9f9c628a7b70))
+* **mail:** a reply quotes only the text selected in the message ([#161](https://github.com/sgorblex/mailroom/issues/161)) ([3205c02](https://github.com/sgorblex/mailroom/commit/3205c021445164e491454e8c815bb6bd0d7ba079))
+* **mail:** a signature per identity, in new messages, replies, forwards and agents' mail ([#162](https://github.com/sgorblex/mailroom/issues/162)) ([4205ded](https://github.com/sgorblex/mailroom/commit/4205ded6ca40e137974fa355b260bf4d4f180f93))
+* **mail:** answer new mail with each account's vacation reply ([#168](https://github.com/sgorblex/mailroom/issues/168)) ([696d0ad](https://github.com/sgorblex/mailroom/commit/696d0ad1735b6b62ae3f954b08760a62a26328c1))
+* **mail:** hold a draft for the worker to send later through the send gate ([#164](https://github.com/sgorblex/mailroom/issues/164)) ([03f1d99](https://github.com/sgorblex/mailroom/commit/03f1d990f25ba35ee9ed0bd172626c453c2cdbde))
+* **mail:** hold the web's Send for an Undo, sent by the worker ([#165](https://github.com/sgorblex/mailroom/issues/165)) ([ef52c17](https://github.com/sgorblex/mailroom/commit/ef52c1734f6760fa8126343a4b433c4148a43e3f))
+* **mail:** import a designed message as a draft, kept as built and checked ([#169](https://github.com/sgorblex/mailroom/issues/169)) ([bd6fd35](https://github.com/sgorblex/mailroom/commit/bd6fd353c8f088a45bdbfb53c91eed5c6d6ae334))
+* **mail:** save, read and send HTML drafts through the API and MCP ([#159](https://github.com/sgorblex/mailroom/issues/159)) ([fc541ab](https://github.com/sgorblex/mailroom/commit/fc541ab7cff1497a4ad6d93a681a742a3fa4f482))
+* **mail:** send a draft later, from the composer or an agent ([#166](https://github.com/sgorblex/mailroom/issues/166)) ([c2c1658](https://github.com/sgorblex/mailroom/commit/c2c1658180ae9c99ea04dc1313ab16e89575cd8f))
+* **mail:** snooze a message until a time, brought back by the worker ([#167](https://github.com/sgorblex/mailroom/issues/167)) ([d0e17cd](https://github.com/sgorblex/mailroom/commit/d0e17cdf1f33b8ba3e4989d6d2c35ab7e5e36a0b))
+* **mail:** suggest recipients from the mail index as they are typed ([#163](https://github.com/sgorblex/mailroom/issues/163)) ([24dd2a8](https://github.com/sgorblex/mailroom/commit/24dd2a843d92996bbae2e92c63fbfac670e77604))
+* **web:** import designed mail, preview it, check it and send a test ([#170](https://github.com/sgorblex/mailroom/issues/170)) ([d2d14bd](https://github.com/sgorblex/mailroom/commit/d2d14bd9f7b4c246661a43ec901d74890204fb81))
+* **web:** write mail in a rich-text editor with inline images ([#160](https://github.com/sgorblex/mailroom/issues/160)) ([f63ee36](https://github.com/sgorblex/mailroom/commit/f63ee36da6a88cb0275f02284fc74a5edddd6277))
+
+
+### Bug Fixes
+
+* **mail:** a forward's prefill starts from the identity the message arrived at ([#156](https://github.com/sgorblex/mailroom/issues/156)) ([e7727a4](https://github.com/sgorblex/mailroom/commit/e7727a44141e44ebfcce31b452c6ab881ad38465))
+* **mail:** compare index dates by the user's day in their time zone ([#153](https://github.com/sgorblex/mailroom/issues/153)) ([cefc739](https://github.com/sgorblex/mailroom/commit/cefc739a611fb4f8a24862ab716a4cf163a598ff))
+* **mail:** count Gmail label folders from All Mail's index rows ([#152](https://github.com/sgorblex/mailroom/issues/152)) ([7fc8c86](https://github.com/sgorblex/mailroom/commit/7fc8c863dc096e134b834dd2fa55e61110dc9129))
+* **mail:** keep the Date header's offset on index rows ([#154](https://github.com/sgorblex/mailroom/issues/154)) ([b736bff](https://github.com/sgorblex/mailroom/commit/b736bff96432b343d8b3feecd35734568c3c3011))
+* **mail:** notification folders follow a renamed or deleted folder ([#155](https://github.com/sgorblex/mailroom/issues/155)) ([bc9eca0](https://github.com/sgorblex/mailroom/commit/bc9eca002c4147c943405dede40415b5419b23f2))
+
 ## [0.14.0](https://github.com/sgorblex/mailroom/compare/v0.13.0...v0.14.0) (2026-11-21)
 
 
