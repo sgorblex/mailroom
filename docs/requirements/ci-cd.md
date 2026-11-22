@@ -91,7 +91,23 @@ too, from `/srv/backups`:
    upgrade fails on "already exists".
 3. Revert the Renovate PR, which starts the pod on the previous images.
 
-Staging is still to come ([`../TODO.md`](../TODO.md)).
+### Staging
+
+One staging instance, `https://mailroom.staging.aclerici.me`, runs whatever Gitea's `staging`
+branch points to: `git push -f ag <commit>:staging` deploys it, and pushing an older commit goes
+back. It is a test instance with its own empty database, secrets key, sign-in client and test
+mailboxes, never production's data. Its API answers `deploy_env: staging`, which the web app shows
+as a banner over every page.
+
+On that push the host looks for `mailroom-{api,web}:git-<sha7>` in the registry, labelled with the
+commit's full sha (`org.opencontainers.image.revision`). Missing, it starts a manual run of
+[`build-sha.yaml`](../../.woodpecker/build-sha.yaml) on Gitea's copy of the repository with
+`MAILROOM_SHA` set: the run fetches that commit into `target/`, has
+[`build-sha.sh`](../../scripts/build-sha.sh) (this checkout's, so older commits build alike) write
+its tag and build arguments, and pushes both images under staging's own registry user. It deploys
+nothing; the host then restarts staging's pod on them and checks it. The host reads
+`build-sha.yaml` from Gitea's `main`, the only pipeline file that repository runs. A release candidate is tried by pushing `main` there before the
+release PR is merged; release tags never deploy to staging.
 
 ## Repository automation
 

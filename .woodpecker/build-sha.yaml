@@ -1,0 +1,68 @@
+labels:
+  platform: linux/arm64
+
+# Builds mailroom-{api,web}:git-<sha7> of any commit and deploys nothing: staging's host pipeline
+# starts it (a manual run with MAILROOM_SHA, a full sha) when a push to the `staging` branch names a
+# commit it has no images of, then deploys them itself (docs/requirements/ci-cd.md, *Staging*).
+# The host reads this file from main.
+when:
+  - event: manual
+
+# Pinned so the fetch step's path is a literal: CI_WORKSPACE is empty when settings are parsed.
+workspace:
+  base: /woodpecker
+  path: src
+
+steps:
+  - name: validate
+    image: docker.io/library/alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+    commands:
+      - scripts/build-sha.sh validate
+
+  # A settings-only plugin step: Woodpecker gives the private repository's netrc to plugins, never
+  # to commands steps, and only to plugin-git when the repository trusts it as a clone plugin.
+  - name: fetch
+    image: docker.io/woodpeckerci/plugin-git:2.12.1@sha256:b8d2401997be68ec25d62bd753fe5d30236e029fe007a5e823177e0e485ae205
+    settings:
+      sha: ${MAILROOM_SHA}
+      path: /woodpecker/src/target
+      partial: false
+
+  - name: plan
+    image: docker.io/library/alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+    commands:
+      - apk add --no-cache git
+      - scripts/build-sha.sh prepare
+
+  # Privileged by name on the server, as in release.yaml.
+  - name: build-push-api
+    image: docker.io/woodpeckerci/plugin-docker-buildx:6.1.2@sha256:d26b69cbe748b8a219c707e7889d5ffb3f9214bc3c480c30fe857ff85954267c
+    settings:
+      <<: &build-settings
+        registry: reg.aclerici.me
+        username:
+          from_secret: mailroom_staging_registry_user
+        password:
+          from_secret: mailroom_staging_registry_password
+        tags_file: target/.ci/tags
+        env_file: target/.ci/build.env
+        platforms: linux/arm64
+        default_labels: false
+      repo: reg.aclerici.me/mailroom-api
+      context: target
+      dockerfile: target/backend/Containerfile
+      build_args_from_env: [MAILROOM_GIT_SHA, MAILROOM_GIT_BRANCH, MAILROOM_VERSION, MAILROOM_BUILD_DATE]
+      # A list setting, so its comma is escaped; cache_to is a plain string.
+      cache_from: 'type=registry\,ref=reg.aclerici.me/mailroom-api:buildcache'
+      cache_to: type=registry,ref=reg.aclerici.me/mailroom-api:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
+
+  - name: build-push-web
+    image: docker.io/woodpeckerci/plugin-docker-buildx:6.1.2@sha256:d26b69cbe748b8a219c707e7889d5ffb3f9214bc3c480c30fe857ff85954267c
+    settings:
+      <<: *build-settings
+      repo: reg.aclerici.me/mailroom-web
+      context: target/web
+      dockerfile: target/web/Containerfile
+      build_args_from_env: [VITE_GIT_SHA, VITE_GIT_BRANCH, VITE_MAILROOM_DEPLOY_ENV, VITE_VERSION, MAILROOM_BUILD_DATE]
+      cache_from: 'type=registry\,ref=reg.aclerici.me/mailroom-web:buildcache'
+      cache_to: type=registry,ref=reg.aclerici.me/mailroom-web:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
