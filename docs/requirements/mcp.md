@@ -102,7 +102,12 @@ and its text part is made from it; a reply then quotes the original in HTML, and
 the original's HTML and inline images, below an empty paragraph as in a web prefill, the two
 together within the HTML cap (3 MiB of UTF-8; an agent's own HTML meets the MCP endpoint's 1 MiB
 request limit first). `draft_update` keeps an HTML draft's HTML and images until
-new `text` or `html` replaces them. `draft_create`, `message_send`, `message_reply` and
+new `text` or `html` replaces them. `draft_import` saves a message built elsewhere as a draft as
+it was built ([designed mail](mail-client.md#drafts)): an .eml as `eml` (its text, within the
+1 MiB request), or `html` with `attachments` by `ref` and `part`, a `content_id` making one an
+inline image; To, Cc and subject default to the .eml's, From to the default identity. Its answer
+is the draft's ref and the checks to show the user before it is sent, each Content-ID or file
+name inside the envelope; `draft_update` refuses such a draft (import it again). `draft_create`, `message_send`, `message_reply` and
 `message_forward` add the [signature](mail-client.md#signatures) of the identity the message goes
 from below the text and above a quote, in text and in HTML; `include_signature: false` leaves it
 out. A draft or a reply takes its recipients and
@@ -164,7 +169,7 @@ not OAuth scope.
 | | `thread_unmute(id)` | none |
 | | `messages_snooze(ref, until, source_folder?)`: the message waits in its account's Snoozed folder until `until` (ISO 8601 with its offset, to come, a year ahead at most), when the worker brings it back unread ([snooze](mail-client.md#snooze)); the answer says until when, in the user's zone, and where it comes back | openWorld |
 | `mail_transfer` (preview, off) | `messages_move_to_account(refs, account_id, folder)`, `messages_move_to_account_for_good(refs, account_id, folder)` | destructive, openWorld |
-| `mail_draft` (stable, on) | `draft_create` | openWorld |
+| `mail_draft` (stable, on) | `draft_create`, `draft_import` | openWorld |
 | | `draft_update`, `draft_delete` | destructive, openWorld |
 | `mail_send` (stable, on) | `message_send`, `message_reply`, `message_forward`, `draft_send` | destructive, openWorld |
 | `mail_folders` (stable, on) | `folder_create(account_id, parent, name)`, `folder_rename(account_id, folder, parent, name)` | openWorld |
@@ -177,7 +182,7 @@ but Drafts and Sent) and has no destructive hint, by choice: the hint marks the 
 purpose is trashing, not every move that may end there. Every send tool is destructive, so the
 client asks before each one. `draft_update` and `draft_delete` are too: an edited draft is a new
 message and the old version is removed (the [own-draft exception](mail-client.md#the-own-draft-exception)),
-while `draft_create` only adds one. `folder_delete` is destructive and its description says the
+while `draft_create` and `draft_import` only add one. `folder_delete` is destructive and its description says the
 loss is permanent and that it is called only on the user's explicit request; `folder_rename`
 loses nothing, so it is not. Both `mail_transfer` tools are destructive: one trashes the
 originals, the other deletes them for good, and says so as `folder_delete` does.

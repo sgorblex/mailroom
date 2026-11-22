@@ -15,6 +15,7 @@ import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from email import message_from_bytes, policy
+from email.message import EmailMessage
 from typing import TYPE_CHECKING, Any, cast
 from zoneinfo import ZoneInfo
 
@@ -48,7 +49,6 @@ from tests.test_api_accounts import new_account
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
-    from email.message import EmailMessage
 
     from fastapi import FastAPI
     from sqlalchemy.engine import Engine
@@ -1100,6 +1100,190 @@ def test_the_spool_is_closed_before_the_save_runs(
     monkeypatch.setattr(service, "save_draft", checked)
     saved = composer.save(files=(("notes.pdf", PDF, "application/pdf"),))
     assert [part["name"] for part in saved["parts"]] == ["notes.pdf"]
+
+
+def designed_eml(to: str) -> bytes:
+    """A designed message as a builder exports it: mixed(alternative(text, related(html, image)),
+    a PDF), with a script and a remote image to remove."""
+    message = EmailMessage()
+    message["From"] = "Studio <studio@elsewhere.example>"
+    message["To"] = to
+    message["Subject"] = "Spring news"
+    message["DKIM-Signature"] = "v=1; d=elsewhere.example; b=abc"
+    message.set_content("Spring news, in text.")
+    message.add_alternative(
+        '<p>Spring <img src="cid:logo" alt="Logo"><img src="https://track.example/p.gif">'
+        "<script>steal()</script></p>",
+        subtype="html",
+    )
+    related = message.get_payload()[1]
+    related.add_related(PNG, "image", "png", cid="<logo>", disposition="inline")
+    message.add_attachment(PDF, "application", "pdf", filename="terms.pdf")
+    return message.as_bytes()
+
+
+def mime_shape(message: EmailMessage) -> object:
+    if message.is_multipart():
+        return (message.get_content_type(), [mime_shape(p) for p in message.iter_parts()])
+    return message.get_content_type()
+
+
+def post_import(composer: Composer, mode: str, draft: dict[str, Any], *parts: Any) -> Any:
+    fields = {"account": 1, "compose_id": str(uuid.uuid4()), **draft}
+    return composer.client.post(
+        f"{MAIL}/drafts",
+        params={"import": mode},
+        files=[("draft", (None, json.dumps(fields))), *parts],
+    )
+
+
+def test_an_imported_eml_is_stored_as_built_and_sends_unchanged_in_structure(
+    composer: Composer,
+) -> None:
+    to = stranger()
+    source = designed_eml(f"Ana <{to}>")
+    response = post_import(composer, "eml", {}, ("eml", ("news.eml", source, "message/rfc822")))
+    assert response.status_code == 201, response.text
+    imported = response.json()
+    assert [part["name"] for part in imported["parts"]] == ["terms.pdf"]
+    assert [part["content_id"] for part in imported["inline"]] == ["logo"]
+    findings = {finding["code"]: finding for finding in imported["findings"]}
+    assert set(findings) == {"removed_scripts", "removed_images"}
+    assert findings["removed_scripts"]["count"] == 1
+    assert findings["removed_scripts"]["text"] == "1 script or javascript: link was removed."
+
+    draft = composer.read(imported["ref"])
+    assert (draft["designed"], draft["lossy"]) == (True, False)
+    assert (draft["from"], draft["to"], draft["subject"]) == (
+        ME,
+        [address(to, "Ana")],
+        "Spring news",
+    )
+    assert draft["text"].strip() == "Spring news, in text."
+    assert '<img src="cid:logo" alt="Logo">' in draft["html"]
+    [stored] = composer.contents("Drafts")
+    assert b"DKIM-Signature" not in stored.source
+    assert b"studio@elsewhere.example" not in stored.source
+    assert b"X-Mailroom-Draft: 1; designed=images.1-scripts.1" in stored.source
+
+    checked = composer.client.get(f"{MAIL}/drafts/{imported['ref']}/findings")
+    assert checked.status_code == 200, checked.text
+    assert checked.json()["findings"] == imported["findings"]
+
+    assert composer.sent(imported["ref"])["state"] == "sent"
+    smtp = SmtpTestServer.from_env()
+    assert smtp is not None
+    [delivered] = smtp.delivered_to(to)
+    wire = parsed(delivered.raw)
+    assert mime_shape(wire) == mime_shape(parsed(source))
+    assert "X-Mailroom-Draft" not in wire
+    assert wire["From"] == f"Me <{ME}>"
+    [image] = [part for part in wire.walk() if part["Content-ID"] == "<logo>"]
+    assert image.get_content() == PNG
+    assert [part.get_content() for part in wire.iter_attachments()] == [PDF]
+    assert "steal" not in delivered.raw.decode()
+    assert composer.contents("Drafts") == []
+    [filed] = composer.contents("Sent")
+    assert mime_shape(parsed(filed.source)) == mime_shape(parsed(source))
+
+
+def test_an_imported_html_file_takes_its_files_and_its_fields_from_the_request(
+    composer: Composer,
+) -> None:
+    response = post_import(
+        composer,
+        "html",
+        {
+            "from": ALIAS,
+            "to": [address("ada@example.org")],
+            "subject": "Designed",
+            "content_ids": [None],
+        },
+        ("html", (None, b'<p>Hi <img src="images/logo.png"><img src="cid:gone" alt="g"></p>')),
+        ("files[]", ("logo.png", PNG, "image/png")),
+        ("files[]", ("terms.pdf", PDF, "application/pdf")),
+    )
+    assert response.status_code == 201, response.text
+    imported = response.json()
+    assert [part["content_id"] for part in imported["inline"]] == ["logo.png"]
+    assert [part["name"] for part in imported["parts"]] == ["terms.pdf"]
+    assert [f["code"] for f in imported["findings"]] == [
+        "text_derived",
+        "image_without_alt",
+        "cid_without_part",
+    ]
+    assert imported["findings"][2]["items"] == ["gone"]
+    draft = composer.read(imported["ref"])
+    assert (draft["from"], draft["subject"], draft["designed"]) == (ALIAS, "Designed", True)
+    assert draft["text"].strip() == "Hi"
+
+
+def test_an_imported_draft_is_replaced_only_by_another_import(composer: Composer) -> None:
+    compose_id = str(uuid.uuid4())
+    first = post_import(
+        composer, "html", {"compose_id": compose_id}, ("html", (None, b"<p>One</p>"))
+    ).json()
+    refused = composer.post_draft(compose_id=compose_id, ref=first["ref"], text="Edited")
+    assert detail(refused) == (400, "invalid_argument")
+    assert "import it again" in refused.json()["detail"]["message"]
+    second = post_import(
+        composer,
+        "html",
+        {"compose_id": compose_id, "ref": first["ref"]},
+        ("html", (None, b"<p>Two</p>")),
+    ).json()
+    assert second["replaced"] is True
+    [stored] = composer.contents("Drafts")
+    assert b"Two" in stored.source
+
+
+def test_an_import_keeps_the_thread_of_the_draft_it_replaces_but_not_a_reply(
+    composer: Composer,
+) -> None:
+    original = composer.seed(mime("Notes", sender="ada@example.org", to=ME, text="Hi"))
+    compose_id = str(uuid.uuid4())
+    reply = composer.save(
+        compose_id=compose_id, answers=original, to=[address(stranger())], text="Thanks"
+    )
+    refused = post_import(
+        composer,
+        "html",
+        {"compose_id": compose_id, "ref": reply["ref"]},
+        ("html", (None, b"<p>Designed</p>")),
+    )
+    assert detail(refused) == (400, "invalid_argument")
+    assert len(composer.contents("Drafts")) == 1
+
+    elsewhere = composer.seed(
+        mime("Re: Notes", to="ada@example.org", text="Draft", in_reply_to="<notes@example.org>"),
+        "Drafts",
+        ("\\Draft",),
+    )
+    imported = post_import(
+        composer, "html", {"ref": elsewhere}, ("html", (None, b"<p>Designed</p>"))
+    ).json()
+    assert imported["replaced"] is True
+    [stored] = [m for m in composer.contents("Drafts") if b"Designed" in m.source]
+    assert parsed(stored.source)["In-Reply-To"] == "<notes@example.org>"
+
+
+def test_malformed_imports_are_refused(composer: Composer) -> None:
+    eml_part = ("eml", ("news.eml", designed_eml("ada@example.org"), "message/rfc822"))
+    for mode, draft, parts in (
+        ("eml", {}, ()),
+        ("eml", {"content_ids": ["a"]}, (eml_part,)),
+        ("html", {}, ()),
+        ("html", {"content_ids": ["a"]}, (("html", (None, b"<p>x</p>")),)),
+        ("eml", {}, (("eml", ("x.eml", b"", "message/rfc822")),)),
+        (
+            "html",
+            {"content_ids": ["a\nb"]},
+            (("html", (None, b"<p>x</p>")), ("files[]", ("logo.png", PNG, "image/png"))),
+        ),
+    ):
+        assert detail(post_import(composer, mode, draft, *parts)) == (400, "invalid_argument")
+    assert post_import(composer, "zip", {}, eml_part).status_code == 422
+    assert composer.contents("Drafts") == []
 
 
 def test_a_file_without_a_name_still_saves(composer: Composer) -> None:

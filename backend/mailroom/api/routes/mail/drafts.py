@@ -1,7 +1,7 @@
 """Drafts and sends: the prefill of a reply, a forward or an unsubscribe by mail, saving a draft
-with its uploads (multipart, bounded before it is read) or converting its HTML to text, finding,
-reading and deleting one, sending it (held for an Undo, if asked) or scheduling it for later, and
-reading the send, or the held sends."""
+with its uploads (multipart, bounded before it is read), importing a message built elsewhere or
+converting its HTML to text, finding, reading, checking and deleting one, sending it (held for an
+Undo, if asked) or scheduling it for later, and reading the send, or the held sends."""
 
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ if TYPE_CHECKING:
 
     from starlette.types import Message, Receive
 
-    from mailroom_core.mail import Draft, InlinePart, SavedDraft
+    from mailroom_core.mail import Draft, Finding, InlinePart, SavedDraft
 
 _MAX_KEPT: Final = 50
 _MAX_ADDRESS: Final = 1024
@@ -220,6 +220,62 @@ class SavedDraftAnswer(BaseModel):
         )
 
 
+class ImportRequest(BaseModel):
+    """The ``draft`` part of an import. From, recipients and subject left out are the .eml's; the
+    HTML or the .eml comes in a part of its own."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    account: Annotated[int, Field(ge=1, le=MAX_SAFE_INTEGER)]
+    compose_id: Annotated[str, Field(pattern=_COMPOSE_ID)]
+    ref: BatchRef | None = None
+    sender: Annotated[str | None, Field(alias="from", max_length=_MAX_ADDRESS)] = None
+    to: list[DraftAddress] | None = None
+    cc: list[DraftAddress] | None = None
+    bcc: list[DraftAddress] | None = None
+    subject: str | None = None
+    content_ids: Annotated[list[ContentId | None], Field(max_length=MAX_UPLOADS)] = []
+    """As a save's: the Content-ID of each of ``files[]`` its HTML shows in place."""
+
+    def fields(self, *, eml: bytes | None, html: str | None) -> service.ImportFields:
+        def mailboxes(addresses: list[DraftAddress] | None) -> list[Mailbox] | None:
+            return None if addresses is None else [address.mailbox() for address in addresses]
+
+        return service.ImportFields(
+            account=self.account,
+            compose_id=self.compose_id,
+            ref=self.ref,
+            sender=self.sender,
+            to=mailboxes(self.to),
+            cc=mailboxes(self.cc),
+            bcc=mailboxes(self.bcc),
+            subject=self.subject,
+            eml=eml,
+            html=html,
+        )
+
+
+class FindingAnswer(BaseModel):
+    code: str
+    text: str
+    count: int
+    items: list[str]
+
+    @classmethod
+    def of(cls, finding: Finding) -> FindingAnswer:
+        return cls(
+            code=finding.code, text=finding.text, count=finding.count, items=list(finding.items)
+        )
+
+
+class FindingsAnswer(BaseModel):
+    findings: list[FindingAnswer]
+
+
+class ImportedDraftAnswer(SavedDraftAnswer):
+    findings: list[FindingAnswer]
+
+
 class FoundDraftAnswer(BaseModel):
     ref: str
     parts: list[MessagePart]
@@ -254,6 +310,8 @@ class DraftAnswer(BaseModel):
     answers: str | None
     forwards: str | None
     lossy: bool
+    designed: bool
+    """Imported as built: it is sent as stored, and a save is refused."""
     parts: list[MessagePart]
     inline: list[ShownPart]
     send: DraftSend | None
@@ -278,6 +336,7 @@ class DraftAnswer(BaseModel):
             answers=None if draft.answers is None else format_ref(draft.answers),
             forwards=None if draft.forwards is None else format_ref(draft.forwards),
             lossy=draft.lossy,
+            designed=draft.designed,
             parts=[MessagePart.of(info) for info in draft.attachments],
             inline=_shown(draft.inline),
             send=None
@@ -398,7 +457,7 @@ def _at_most(receive: Receive, limit: int) -> Receive:
     return bounded
 
 
-def _draft_request(value: object) -> DraftRequest:
+def _draft_request[T: BaseModel](value: object, model: type[T]) -> T:
     if not isinstance(value, str):
         raise RequestValidationError(
             [{"type": "missing", "loc": ("body", "draft"), "msg": "Field required"}]
@@ -406,7 +465,7 @@ def _draft_request(value: object) -> DraftRequest:
     if len(value.encode()) > service.DRAFT_FIELD_BYTES:
         raise mail_refusal("invalid_argument", MESSAGES["invalid_argument"])
     try:
-        return DraftRequest.model_validate_json(value)
+        return model.model_validate_json(value)
     except ValidationError as error:
         raise RequestValidationError(
             error.errors(include_url=False, include_context=False, include_input=False)
@@ -445,6 +504,49 @@ async def _plain_text(request: Request, ctx: Context, user_id: int) -> PlainText
         return PlainTextAnswer(text=await run_in_threadpool(service.plain_text, html))
 
 
+async def _import(
+    request: Request, ctx: Context, user_id: int, mode: Literal["eml", "html"]
+) -> ImportedDraftAnswer:
+    """A message built elsewhere saved as a draft as it is: the ``eml`` file, or the ``html``
+    part with its ``files[]``; bounded as a save is."""
+    limit = await run_in_threadpool(service.upload_limit, ctx, user_id)
+    if _declared_over(request.headers.get("content-length", ""), limit):
+        raise _too_large()
+    with service.upload_place(ctx, user_id):
+        body = Request(request.scope, _at_most(request.receive, limit))
+        try:
+            async with body.form(
+                max_files=MAX_UPLOADS if mode == "html" else 1,
+                max_fields=2 if mode == "html" else 1,
+                max_part_size=MAX_HTML_BYTES,
+            ) as form:
+                draft = _draft_request(form.get("draft"), ImportRequest)
+                eml: bytes | None = None
+                html: str | None = None
+                uploads: list[OutgoingAttachment] = []
+                if mode == "eml":
+                    file = form.get("eml")
+                    if not isinstance(file, UploadFile) or draft.content_ids:
+                        raise mail_refusal("invalid_argument", MESSAGES["invalid_argument"])
+                    eml = await file.read()
+                else:
+                    given = form.get("html")
+                    files = [i for i in form.getlist("files[]") if isinstance(i, UploadFile)]
+                    if not isinstance(given, str) or len(draft.content_ids) > len(files):
+                        raise mail_refusal("invalid_argument", MESSAGES["invalid_argument"])
+                    html = given
+                    marks = [*draft.content_ids, *[None] * (len(files) - len(draft.content_ids))]
+                    uploads = [await _attachment(f, c) for f, c in zip(files, marks, strict=True)]
+        except HTTPException:  # how Starlette words a malformed body or too many parts
+            raise mail_refusal("invalid_argument", MESSAGES["invalid_argument"]) from None
+        fields = draft.fields(eml=eml, html=html)
+        imported = await run_in_threadpool(service.import_draft, ctx, user_id, fields, uploads)
+    saved = SavedDraftAnswer.of(imported.saved)
+    return ImportedDraftAnswer(
+        **saved.model_dump(), findings=[FindingAnswer.of(f) for f in imported.findings]
+    )
+
+
 @mail_router.post("/drafts", status_code=201)
 async def save_draft(
     request: Request,
@@ -452,7 +554,8 @@ async def save_draft(
     user: CurrentUser,
     response: Response,
     convert: Annotated[Literal["text"] | None, Query()] = None,
-) -> SavedDraftAnswer | PlainTextAnswer:
+    import_: Annotated[Literal["eml", "html"] | None, Query(alias="import")] = None,
+) -> SavedDraftAnswer | ImportedDraftAnswer | PlainTextAnswer:
     """Multipart, parsed here and not by a signature: FastAPI would read the whole body before
     the signed-in user is known, and a declared size is refused before any of it is read. So is
     a save past the user's few at a time, which the mail gates could only refuse once it was
@@ -462,10 +565,16 @@ async def save_draft(
 
     ``?convert=text`` saves nothing: 200 with the text the ``html`` part would be sent with, for
     the composer's switch to plain text. It is this route, not one of its own, because the host's
-    proxy already lets a body this size through to it and to no other."""
+    proxy already lets a body this size through to it and to no other.
+
+    ``?import=eml`` or ``?import=html`` saves a message built elsewhere as it is (an ``eml`` file,
+    or the ``html`` part and its ``files[]``), answering the checks of it too: the same route for
+    the same reason."""
     if convert is not None:
         response.status_code = 200
         return await _plain_text(request, ctx, user.id)
+    if import_ is not None:
+        return await _import(request, ctx, user.id, import_)
     limit = await run_in_threadpool(service.upload_limit, ctx, user.id)
     if _declared_over(request.headers.get("content-length", ""), limit):
         raise _too_large()
@@ -475,7 +584,7 @@ async def save_draft(
             async with body.form(
                 max_files=MAX_UPLOADS, max_fields=2, max_part_size=MAX_HTML_BYTES
             ) as form:
-                draft = _draft_request(form.get("draft"))
+                draft = _draft_request(form.get("draft"), DraftRequest)
                 html = form.get("html")
                 if not isinstance(html, str | None):
                     raise mail_refusal("invalid_argument", MESSAGES["invalid_argument"])
@@ -509,6 +618,13 @@ def read_draft(ref: Ref, ctx: Context, user: CurrentUser) -> DraftAnswer:
     if held is not None:
         answer.scheduled = ScheduledAnswer.of(held)
     return answer
+
+
+@mail_router.get("/drafts/{ref}/findings")
+def check_draft(ref: Ref, ctx: Context, user: CurrentUser) -> FindingsAnswer:
+    """The checks before sending a draft, from it as stored: an imported one's import included."""
+    findings = service.draft_findings(ctx, user.id, ref)
+    return FindingsAnswer(findings=[FindingAnswer.of(finding) for finding in findings])
 
 
 @mail_router.delete("/drafts/{ref}")

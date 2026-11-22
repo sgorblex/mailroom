@@ -36,16 +36,15 @@ from mailroom_core.mail.compose import (
 )
 from mailroom_core.mail.drafts import (
     DRAFT_FLAGS,
-    MAX_DRAFT_BYTES,
-    MAX_DRAFT_HTML_BYTES,
     append_message,
     draft_source,
+    draft_source_cap,
     read_draft,
     try_remove_draft,
 )
 from mailroom_core.mail.errors import MailError, mail_error
 from mailroom_core.mail.identity import from_identity
-from mailroom_core.mail.outgoing import attachment_cap, check_sendable
+from mailroom_core.mail.outgoing import check_sendable
 from mailroom_core.mail.recipients import check_recipient_count, deliverable_address, matches_rule
 from mailroom_core.mail.reply import mark_answered, mark_forwarded
 from mailroom_core.mail.selected import FORWARDED
@@ -473,18 +472,6 @@ _UNSENDABLE_HEADERS: Final = (
 )
 
 
-_HTML_SOURCE: Final = 2 * 4 * MAX_DRAFT_HTML_BYTES
-"""Of a stored HTML draft beyond its attachments: its HTML and the text derived from it, each read
-back up to `MAX_DRAFT_HTML_BYTES`, which quoted-printable and its soft line breaks grow up to 3.1
-times. The images pasted into it were among the HTML's bytes."""
-
-
-def _source_cap(limits: Limits) -> int:
-    """How big a stored draft may be: its attachments up to their cap (its HTML's inline parts
-    included), which base64 and its line breaks grow by 37%, and its text or HTML."""
-    return attachment_cap(limits) * 3 // 2 + MAX_DRAFT_BYTES + _HTML_SOURCE
-
-
 def prepare_draft(
     connections: MailConnections, account: AccountConfig, ref: MessageRef, limits: Limits
 ) -> DraftToSend:
@@ -501,7 +488,7 @@ def prepare_draft(
     on what a line is."""
     if ref.account != account.id:
         raise MailError("invalid_argument", "That draft belongs to another account.")
-    source = draft_source(connections, ref, _source_cap(limits))
+    source = draft_source(connections, ref, draft_source_cap(limits))
     if bare_cr_in_headers(source):
         raise MailError("invalid_argument", _UNSENDABLE_HEADERS)
     draft = read_draft(connections, ref)

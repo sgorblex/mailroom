@@ -874,6 +874,21 @@ composer to server.
   that: a draft that is sent without being edited goes out exactly as stored (an HTML body
   included, which is also what `draft_send` does), under the key its ref gives when it has no
   `compose_id`.
+- **Designed mail.** A message built elsewhere (an .eml, or an HTML file with its images and
+  attachments) is imported as a draft as it was built (`POST /drafts?import=eml|html`, MCP
+  `draft_import`): its MIME structure and parts are kept, its own text part too (one is made from
+  the HTML when it has none), and it is never composed again: a save over it is refused, 400
+  `invalid_argument`, while an import may replace it or any other draft, keeping its thread,
+  but for a reply or a forward Mailroom saved (400 `invalid_argument`). Its HTML is still sanitised as any the
+  user writes (no scripts, forms, event handlers, style sheets, or anything remote but links),
+  its headers are Mailroom's (From an identity, a new `Message-ID` on its `compose_id`; To, Cc,
+  Bcc and subject the request's, else the .eml's), and the marker reads
+  `X-Mailroom-Draft: 1; designed=…` with what the import removed. It reads back whole (`designed:
+  true`, never `lossy`) and is sent as stored, through the same Send, undo and send later. The
+  import answers, and `GET /drafts/{ref}/findings` repeats, the checks to show before sending
+  ([`core.md`](../core.md#designed-mail)): what was removed, images without `alt`, a `cid:` with no
+  part and a part never shown, HTML over Gmail's 102 KB clip, remote images, no text part, and the
+  whole message over the attachment cap.
 - **Opening** a message in the Drafts folder opens it in the composer, and does not mark it read.
   An account in send mode `off` cannot save one, so there it reads as any other message.
 - **One composer** is open at a time, above the panes: sidebar and list links leave it alone, and
@@ -1210,6 +1225,7 @@ set on their *Profile* page ([`../REQUIREMENTS.md`](../REQUIREMENTS.md)).
 | New files per draft | 10, inline images included |
 | Attachments, in total (uploads and kept parts) | the user's `attachment_max_mb` (default 10), at most 25 MB |
 | Upload request | attachments plus 5 MiB (the `html` and `draft` parts, the framing): 30 MiB at most at `/api/v1/mail/drafts`, the web image's nginx limit there, which the host's proxy must allow too; refused early on `Content-Length` |
+| Imported message (`POST /drafts?import=`) | within the upload request's limit; its HTML and its text 3 MiB each, its other parts the attachment total, 100 parts nested 16 deep (400 `invalid_argument` beyond, 413 `too_large` for the parts); `html` files 10, as a save's. An .eml must fit the request whole and encoded (base64 adds about a third), so its attachments come to about 70% of the cap in practice |
 | HTML converted to plain text (`POST /drafts?convert=text`) | the HTML cap in its `html` part, within the same route's limits; a result over the body text's 100,000 characters is 400 `invalid_argument` |
 | Save requests at once | 3 per user, in each API process; one more is 429 `busy` before its body is read |
 | Original read for quoting | 2 MiB |
@@ -1245,6 +1261,9 @@ CSRF check apply. Bodies are JSON except `POST /drafts`. Unknown fields are 422.
 | `POST /addresses` | `{"q", "limit"?}` (`q` 1–200 characters, `limit` 1–10, default 10) | 200 `{addresses: [{name, address, sent}]}` ([suggestions](#address-suggestions)); writes nothing |
 | `POST /drafts` | multipart: `draft` (JSON), `html` (optional, the HTML body as is) and `files[]` | 201 `{ref, parts, inline, replaced, autosave}` |
 | `POST /drafts?convert=text` | multipart: `html` alone | 200 `{text}`: the text part `html` would be sent with; writes nothing |
+| `POST /drafts?import=eml` | multipart: `draft` (JSON, below) and `eml` (the file) | 201 a save's answer and `findings` ([designed mail](#drafts)) |
+| `POST /drafts?import=html` | multipart: `draft` (JSON, with `content_ids`), `html` (raw) and `files[]` | 201 the same |
+| `GET /drafts/{ref}/findings` | | 200 `{findings}`: the checks of the draft as stored |
 | `GET /drafts/{ref}` | | 200 the draft's fields, `lossy`, `parts`, `inline`, `send`, `scheduled` |
 | `GET /drafts/find?account=&compose_id=` | | 200 `{ref, parts, inline}` of the newest version; 404 `not_found` |
 | `DELETE /drafts/{ref}` | | 200 `{removed}` |
@@ -1257,6 +1276,16 @@ CSRF check apply. Bodies are JSON except `POST /drafts`. Unknown fields are 422.
 | `DELETE /scheduled/{id}` | | 200 the held send it was, the draft left in Drafts; 409 `send_started`; 404 |
 
 The static route `GET /drafts/find` is matched before `GET /drafts/{ref}`.
+
+An import's `draft` part is `{account, compose_id, ref?, from?, to?, cc?, bcc?, subject?,
+content_ids?}`: `ref` an earlier version to replace, the address fields and `subject` left out
+(or null) to take the .eml's, `from` null for the default identity (never the file's), and
+`content_ids` as a save's, for `html` only (an `eml` import with any is 400 `invalid_argument`, as
+are one without its file part and a Content-ID a save would leave out as unfit for a header). A finding is `{code, text, count, items}`: `code` one of
+`removed_scripts`, `removed_forms`, `removed_handlers`, `removed_images`, `removed_data_images`,
+`removed_remote`, `removed_styles`, `text_derived`, `image_without_alt`, `cid_without_part`,
+`part_not_referenced`, `html_clipped`, `remote_images`, `no_text_part`, `too_large`; `text` an
+English sentence; `items` the Content-IDs or file names involved, at most 20.
 
 ```jsonc
 // POST /drafts: the `draft` part (to, cc, bcc are lists of Address; text is plain text). The HTML
@@ -1304,8 +1333,9 @@ The static route `GET /drafts/find` is matched before `GET /drafts/{ref}`.
   identity address chosen as above. A recipient of the original that is not
   [deliverable](#compose) is left out, since it would refuse every save of the draft.
 - `GET /drafts/{ref}` answers `{ref, account, compose_id, from, to, cc, bcc, subject, text, html,
-  answers, forwards, lossy, parts, inline, send, scheduled}`: `html` is the HTML of a draft Mailroom wrote with
-  one, sanitised again as it is read, else null (`text` is then its text part); `compose_id` is
+  answers, forwards, lossy, designed, parts, inline, send, scheduled}`: `html` is the HTML of a draft Mailroom wrote with
+  one, sanitised again as it is read, else null (`text` is then its text part); `designed` is
+  true for a message imported as built; `compose_id` is
   `null` for a draft not written by Mailroom; `send` is
   `null`, or `{send_id, state, code}` of the send of this draft, so reopening shows an `unknown`
   banner; `scheduled` is `null`, or its held send still to go (`held` or `sending`, as

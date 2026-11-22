@@ -1,11 +1,18 @@
 """Mail rendered for a reader: bodies and headers as compact text for the model, the
-untrusted-content envelope, sanitised HTML for the Mailroom app's message view, and the owner's
-HTML sanitised to send."""
+untrusted-content envelope, sanitised HTML for the Mailroom app's message view, the owner's HTML
+sanitised to send, and what designed mail's checks read in HTML."""
 
 from mailroom_core.render.body import RenderedBody, render_body
 from mailroom_core.render.envelope import untrusted
 from mailroom_core.render.hosts import ascii_host
 from mailroom_core.render.html import MAX_DEPTH, MAX_HTML_CHARS, HtmlText, html_to_text
+from mailroom_core.render.html_checks import (
+    HtmlImages,
+    html_images,
+    image_sources,
+    unsafe_parts,
+    with_image_sources,
+)
 from mailroom_core.render.message import (
     Address,
     DateValue,
@@ -52,6 +59,7 @@ __all__ = [
     "Collapsed",
     "DateValue",
     "HeaderView",
+    "HtmlImages",
     "HtmlText",
     "InlineImage",
     "ListItem",
@@ -70,12 +78,16 @@ __all__ = [
     "format_date",
     "format_size",
     "header_block",
+    "html_images",
     "html_to_text",
+    "image_sources",
     "list_line",
     "outgoing_html",
     "render_body",
     "safe_cut",
     "safe_html",
     "sender_mismatch",
+    "unsafe_parts",
     "untrusted",
+    "with_image_sources",
 ]

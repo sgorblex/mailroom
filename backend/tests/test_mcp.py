@@ -13,6 +13,7 @@ import time
 import uuid
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from email import message_from_bytes, policy
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -315,6 +316,7 @@ ANNOTATIONS = {
     "folder_delete": (False, True, False, True),
     "draft_create": (False, False, False, True),
     "draft_update": (False, True, False, True),
+    "draft_import": (False, False, False, True),
     "draft_delete": (False, True, False, True),
     "message_send": (False, True, False, True),
     "message_reply": (False, True, False, True),
@@ -1908,7 +1910,7 @@ def set_mode(ctx: AppContext, user: User, mode: str, **changes: Any) -> None:
 
 def test_the_write_groups_are_registered_stable_and_enveloped(mcp: Mcp, token: str) -> None:
     names = {tool["name"] for tool in mcp.tools(token)}
-    assert {"draft_create", "draft_update", "draft_delete"} <= names
+    assert {"draft_create", "draft_update", "draft_import", "draft_delete"} <= names
     assert {"message_send", "message_reply", "message_forward", "draft_send"} <= names
     tools = {tool["name"]: tool for tool in mcp.tools(token)}
     properties = tools["message_send"]["inputSchema"]["properties"]
@@ -1929,7 +1931,7 @@ def test_the_write_groups_follow_the_server_settings() -> None:
     groups = selected_groups("mail_read,mail_draft")
     names = [tool.name for tool in tools_for(groups)]
     assert names[:2] == ["accounts_list", "folders_list"]
-    assert names[-3:] == ["draft_create", "draft_update", "draft_delete"]
+    assert names[-4:] == ["draft_create", "draft_update", "draft_import", "draft_delete"]
     assert "message_send" not in names
     text = instructions(groups)
     assert "message_send" not in text
@@ -2307,6 +2309,92 @@ def test_an_html_draft_keeps_its_html_until_text_replaces_it(
     quoted = stored(empty).html
     assert quoted is not None
     assert '<blockquote type="cite"><div>Friday?</div></blockquote>' in quoted
+
+
+def test_an_imported_eml_is_kept_as_built_checked_and_sent_unchanged_in_structure(
+    mcp: Mcp, token: str, writer: Writer, smtp_server: Any
+) -> None:
+    to = stranger()
+    source = (
+        f"From: studio@elsewhere.example\r\nTo: {to}\r\nSubject: Spring news\r\n"
+        "MIME-Version: 1.0\r\n"
+        'Content-Type: multipart/related; boundary="r"; type="text/html"\r\n\r\n'
+        "--r\r\nContent-Type: text/html; charset=utf-8\r\n\r\n"
+        '<p onclick="x()">Spring<img src="cid:logo"><img src="cid:gone" alt="g"></p>\r\n'
+        "--r\r\nContent-Type: image/png\r\nContent-ID: <logo>\r\n"
+        "Content-Disposition: inline\r\nContent-Transfer-Encoding: base64\r\n\r\n"
+        f"{base64.b64encode(b'png').decode()}\r\n--r--\r\n"
+    )
+    imported = mcp.text(token, "draft_import", eml=source)
+    ref = draft_ref(imported)
+    assert f"from Me <{writer.me}>, to {to}" in imported
+    assert "Checks before sending (tell the user):" in imported
+    assert "- 1 event handler was removed." in imported
+    assert "- It had no plain-text part: one was made from its HTML." in imported
+    assert "- 1 image has no alt text." in imported
+    assert "- 1 cid: reference names no part." in imported
+    assert ENVELOPE.search(imported)
+    assert "\ngone\n" in imported
+    # Saved as built, so never composed again by an update.
+    assert "import it again" in mcp.error(token, "draft_update", ref=ref, subject="Changed")
+
+    mcp.text(token, "draft_send", ref=ref)
+    [delivered] = smtp_server.delivered_to(to)
+    wire = message_from_bytes(delivered.raw, policy=policy.default)
+    assert [part.get_content_type() for part in wire.walk()] == [
+        "multipart/alternative",
+        "text/plain",
+        "multipart/related",
+        "text/html",
+        "image/png",
+    ]
+    assert "onclick" not in delivered.raw.decode()
+    assert "elsewhere.example" not in delivered.raw.decode()
+
+
+def test_an_imported_html_carries_parts_of_existing_messages(
+    mcp: Mcp, token: str, writer: Writer
+) -> None:
+    writer.mail.seed(
+        writer.login,
+        mime(
+            "Assets",
+            to=writer.me,
+            text="Here",
+            attachments=[
+                MimeAttachment("logo.png", "image/png", b"png"),
+                MimeAttachment("terms.pdf", "application/pdf", b"%PDF"),
+            ],
+        ),
+    )
+    assets = inbox_ref(mcp, token)
+    imported = mcp.text(
+        token,
+        "draft_import",
+        html='<p>Hi <img src="cid:brand" alt="Brand"></p>',
+        to=["ada@example.org"],
+        subject="Designed",
+        attachments=[
+            {"ref": assets, "part": "2", "content_id": "brand"},
+            {"ref": assets, "part": "3"},
+        ],
+    )
+    assert "1 attachment(s). Not sent." in imported
+    [stored] = writer.contents("Drafts")
+    message = message_from_bytes(stored.source, policy=policy.default)
+    assert message["Subject"] == "Designed"
+    [image] = [part for part in message.walk() if part["Content-ID"] == "<brand>"]
+    assert image.get_content() == b"png"
+    assert [part.get_filename() for part in message.iter_attachments()] == ["terms.pdf"]
+    assert "Give eml, or html" in mcp.error(token, "draft_import", eml="x", html="<p>y</p>")
+    refused = mcp.error(
+        token,
+        "draft_import",
+        html="<p>Hi</p>",
+        attachments=[{"ref": assets, "part": "2", "content_id": "a\nb"}],
+    )
+    assert "content ID" in refused
+    assert len(writer.contents("Drafts")) == 1
 
 
 def test_a_draft_is_sent_as_stored_then_removed_and_asking_twice_delivers_once(

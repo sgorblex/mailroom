@@ -34,6 +34,7 @@ from mailroom_core.mail import (
     reply_subject,
     save_draft,
 )
+from mailroom_core.mail import drafts as drafts_module
 from mailroom_core.mail import threading as thread_of
 from mailroom_core.send import (
     DRAFT_KEPT,
@@ -766,7 +767,7 @@ def test_a_draft_past_what_it_could_hold_is_refused_not_cut(
     user: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(gate_module, "_HTML_SOURCE", 0)
+    monkeypatch.setattr(drafts_module, "_HTML_SOURCE", 0)
     limits = Limits(attachment_max_mb=0.5)
     account = direct(imap_server, user)
     gate = live(account, limits=limits)

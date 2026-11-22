@@ -37,8 +37,8 @@ the tools answer with, and the app's MCP writes thin tools over it. The filter e
 | `config` | The settings document: accounts (with an optional name, colour and authentication server, `authserv_id`), identities, send modes, limits (`CoreSettings`) |
 | `crypto` | Sealed secrets |
 | `store` | `AccountStore` and core's migrations, in schema `core` |
-| `render` | Bodies to text, quotes, the untrusted-content envelope, `safe_html`, `outgoing_html` |
-| `mail` | Connections (`mail.imap`), operations on a selected folder (`mail.selected`), a folder's UIDs and flag changes (`mail.changes`), what an index keeps per message (`mail.index`), IDLE (`mail.idle`), refs, read, organize, snooze (`mail.snooze`), the vacation reply's checks (`mail.vacation`), folders (`mail.folders`), messages parsed for the filters (`mail.parsed`), compose, drafts, the tools' text, audit items |
+| `render` | Bodies to text, quotes, the untrusted-content envelope, `safe_html`, `outgoing_html`, what designed mail's checks read in HTML (`render.html_checks`) |
+| `mail` | Connections (`mail.imap`), operations on a selected folder (`mail.selected`), a folder's UIDs and flag changes (`mail.changes`), what an index keeps per message (`mail.index`), IDLE (`mail.idle`), refs, read, organize, snooze (`mail.snooze`), the vacation reply's checks (`mail.vacation`), folders (`mail.folders`), messages parsed for the filters (`mail.parsed`), compose, drafts, designed mail (`mail.designed`), the tools' text, audit items |
 | `send` | SMTP and the send gate |
 | `filters` | The filter engine: criteria, actions, rules as data (specs), runs, the runner and IDLE monitor, reports |
 | `testing` | A pytest plugin (no-network guard, store and mail fixtures) the app's tests load too |
@@ -499,9 +499,10 @@ subject or a name back into the header, CR/LF included, and would turn a long Me
 encoded word, so the message's own headers are written by hand. Deliberate choices:
 
 - `X-Mailroom-Draft` is `1`, `1; answers=<ref>` when sending the draft is to set `\Answered` on
-  the message it answers, or `1; forwards=<ref>` when it is to set `$Forwarded` on the message it
-  forwards (`draft_answers`, `draft_forwards`); a draft never carries both. Only those forms count
-  as Mailroom's mark.
+  the message it answers, `1; forwards=<ref>` when it is to set `$Forwarded` on the message it
+  forwards (`draft_answers`, `draft_forwards`), or `1; designed[=<changes>]` on a message
+  imported as built ([designed mail](#designed-mail), `draft_designed`); a draft never carries
+  two. Only those forms count as Mailroom's mark.
 - The `wire` copy never carries that header, and `compose` checks every recipient with
   `deliverable_address`, so a draft addressed to an address from IMAP that no send would accept is
   refused when saved, not when sent.
@@ -571,6 +572,47 @@ choices:
 - `remove_draft` tags a failed removal `removed: "failed"`, for an expunge and for a move to Trash,
   however it failed, a refusal before either included. `try_remove_draft` answers `failed` instead
   of raising, for a save that went through or a message delivered.
+
+## Designed mail
+
+`mailroom_core.mail.designed` takes in a message built elsewhere as a draft, as it was built, and
+checks it before it is sent. `import_eml` parses an .eml with the `email` package's default
+policy; `import_html` builds one from an HTML file and its files (a file with a `content_id`, or
+one the HTML's images name by a relative path's last segment or by `cid:` and its file name, is an
+inline part of a multipart/related, those paths becoming `cid:` references; the rest are
+attachments; a `content_id` that could not go in a header as it is, `invalid_argument`). `import_draft` stores the result through `store_draft`, the end every save shares.
+Deliberate choices:
+
+- **As built.** The MIME structure (alternative, related, mixed) and every part but the HTML stay
+  as they came; the message is never composed again. Its own text part stays; one without is given
+  `html_to_text` of its HTML as the first alternative (in its multipart/alternative, else in a new
+  one around the HTML or the multipart/related it roots). A save that would replace an imported
+  draft is refused (the app's `DESIGNED_KEPT`); another import may.
+- **Sanitised all the same.** Every HTML part shown as a body goes through `outgoing_html`, inside
+  a fixed document (charset and viewport): no scripts, forms, event handlers, style sheets,
+  frames, objects or anything remote but links; `data:` images are left out rather than turned
+  into parts. Its `cid:` references stay whether or not a part answers them, so the checks can
+  say so. `render.unsafe_parts` counts what that removes, by kind, and the counts go in the
+  draft's marker (`designed=scripts.2-images.1`, `text.1` for a text part made), so the checks
+  read the same when the draft is checked again later.
+- **Mailroom's own headers.** Above the body go only `compose`'s headers (`compose(body=...)`):
+  From an identity, the recipients and subject the host chose (the file's To, Cc, Bcc and
+  Subject by default, cleaned as any), a new Message-ID on the `compose_id`, and the marker. The
+  file's own headers (its From, Message-ID, DKIM signature, routing) are dropped, as are its MIME
+  headers but Content-Type and Content-Transfer-Encoding.
+- **Caps.** At most `MAX_IMPORT_PARTS` (100) parts nested `MAX_IMPORT_DEPTH` (16) deep, each HTML
+  and the text at most `MAX_HTML_BYTES`, the other parts the attachment cap together (an attached
+message counted as it is sent); a file the
+  `email` package cannot read is `invalid_argument`, never its exception.
+- **Checks.** `check_message` is pure, over a message's source: what the import changed (from the
+  marker), images without `alt` (an empty one marks decoration), `cid:` references no part
+  answers and inline parts nothing shows (the body's own HTML and text aside), HTML over `GMAIL_CLIP_BYTES` (102 KiB, where Gmail clips
+  it), remote images, no text part, and the whole message over the attachment cap. Each
+  `Finding` has a fixed `code`, an English `text`, a `count`, and at most 20 `items` (Content-IDs
+  or file names, from the message, one line each). A source the `email` package cannot read
+  gets only the import's and the size's findings. `draft_findings` checks a stored draft.
+- A draft imported this way sends through `prepare_draft` like any other: as stored, its marker
+  stripped.
 
 ## Send gate
 

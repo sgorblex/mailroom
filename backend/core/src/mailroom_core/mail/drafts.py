@@ -23,6 +23,7 @@ from mailroom_core.mail.compose import (
     DRAFT_HEADER,
     compose,
     draft_answers,
+    draft_designed,
     draft_forwards,
     is_own_draft,
     new_message_id,
@@ -30,7 +31,12 @@ from mailroom_core.mail.compose import (
 from mailroom_core.mail.download import body_text, part_content
 from mailroom_core.mail.errors import MailError, mail_error
 from mailroom_core.mail.organize import trash_messages
-from mailroom_core.mail.outgoing import MAX_HTML_BYTES, check_sendable, check_uploads
+from mailroom_core.mail.outgoing import (
+    MAX_HTML_BYTES,
+    attachment_cap,
+    check_sendable,
+    check_uploads,
+)
 from mailroom_core.mail.read import fetch_structure, fetched_headers
 from mailroom_core.mail.recipients import envelope_mailboxes
 from mailroom_core.mail.ref import MessageRef, check_fresh, format_ref, parse_ref
@@ -50,9 +56,9 @@ if TYPE_CHECKING:
 
     from imapclient import IMAPClient
 
-    from mailroom_core.config import AccountConfig
+    from mailroom_core.config import AccountConfig, Limits
     from mailroom_core.mail.attachments import AttachmentSource
-    from mailroom_core.mail.compose import MessageInput
+    from mailroom_core.mail.compose import Composed, MessageInput
     from mailroom_core.mail.imap import MailboxContext, MailConnections
     from mailroom_core.mail.recipients import Mailbox
     from mailroom_core.mail.structure import InlinePart, Structure
@@ -72,6 +78,16 @@ _DRAFTS_READ: Final = 200
 _COMPOSE_ID: Final = re.compile(r"[A-Za-z0-9_-]{1,64}")
 """A client's UUID, or what `new_message_id` makes up: nothing a search needs to quote."""
 _OWN_ID: Final = re.compile(r"<([A-Za-z0-9_-]{1,64})@[^<>]+>")
+_HTML_SOURCE: Final = 2 * 4 * MAX_DRAFT_HTML_BYTES
+"""Of a stored HTML draft beyond its attachments: its HTML and the text derived from it, each read
+back up to `MAX_DRAFT_HTML_BYTES`, which quoted-printable and its soft line breaks grow up to 3.1
+times. The images pasted into it were among the HTML's bytes."""
+
+
+def draft_source_cap(limits: Limits) -> int:
+    """How big a stored draft may be: its attachments up to their cap (its HTML's inline parts
+    included), which base64 and its line breaks grow by 37%, and its text or HTML."""
+    return attachment_cap(limits) * 3 // 2 + MAX_DRAFT_BYTES + _HTML_SOURCE
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -105,6 +121,8 @@ class Draft:
     lossy: bool = False
     """Its text is not all of it: it had HTML or inline images another client wrote, or an
     invite with no name, which a save would not keep, or more text or HTML than is read."""
+    designed: bool = False
+    """Imported as built (`mail.designed`): it is sent as it is stored, never saved again."""
     attachments: tuple[PartInfo, ...] = ()
 
 
@@ -287,6 +305,7 @@ def read_draft(connections: MailConnections, ref: MessageRef) -> Draft:
             html=html,
             inline=inline,
             lossy=lossy,
+            designed=draft_designed(headers) is not None,
             attachments=structure.carried,
         )
 
@@ -442,7 +461,6 @@ def save_draft(
         _check_compose_id(compose_id)
     uploads = [len(attachment.content) for attachment in message.attachments]
     check_uploads(uploads, cap)
-    autosave = connections.capabilities(account.id).uidplus
     if replaces is not None:
         check_removable(connections, replaces)
     kept = attachments_from(connections, keep, cap, used=sum(uploads))
@@ -451,11 +469,29 @@ def save_draft(
         draft,
         None if compose_id is None else new_message_id(message.sender.address, compose_id),
     )
-    folder = connections.special_folder(account.id, "drafts").path
+    return store_draft(connections, account.id, draft, composed, note=note, replaces=replaces)
+
+
+def store_draft(
+    connections: MailConnections,
+    account: int,
+    draft: MessageInput,
+    composed: Composed,
+    *,
+    note: Note,
+    replaces: MessageRef | None = None,
+    attachments: int | None = None,
+) -> SavedDraft:
+    """APPENDs `composed`, the draft `draft` composed, to Drafts and removes `replaces` once it is
+    confirmed: the end of a save, its checks done (`save_draft`), `check_removable` included.
+    `attachments` counts the files of a body built elsewhere, for its audit item."""
+    autosave = connections.capabilities(account).uidplus
+    folder = connections.special_folder(account, "drafts").path
     located = _append(
-        connections, account.id, folder, composed.stored, DRAFT_FLAGS, composed.message_id
+        connections, account, folder, composed.stored, DRAFT_FLAGS, composed.message_id
     )
-    note(outgoing_item(account.id, draft, "ok", folder=folder, message_id=composed.message_id))
+    item = outgoing_item(account, draft, "ok", folder=folder, message_id=composed.message_id)
+    note(item if attachments is None else replace(item, attachments=attachments))
     ref = None if located is None else located[0]
     replaced: Removal | None = None
     if replaces is not None and ref is not None and ref != replaces:
