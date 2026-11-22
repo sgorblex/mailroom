@@ -27,6 +27,7 @@ export const MAIL_ACTIONS = [
   'unmute',
   'snooze',
   'wake',
+  'vacation_reply',
 ] as const
 
 /** One message a write acted on, or tried to: never its subject or body. */

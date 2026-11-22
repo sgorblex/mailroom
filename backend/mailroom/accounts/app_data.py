@@ -1,8 +1,8 @@
 """The app's own rows about a user's accounts (schema ``app``), beside mailroom-core's: the Run
 filters switch, and forgetting all of it when an account or its user goes (the user's remembered
 remote-content senders, muted threads, ledger of copies moved between accounts, mail index,
-notification folders, signatures, held sends and snoozes, and its folders in the saved views
-too)."""
+notification folders, signatures, held sends, snoozes and vacation replies, and its folders in
+the saved views too)."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from mailroom.accounts.store import core_user_id, load_accounts, remove_account
 from mailroom.filters.transfers import forget_target
+from mailroom.mail.vacation import forget_vacation
 from mailroom.models import (
     AccountFilterSettings,
     FilterRun,
@@ -111,6 +112,7 @@ def forget_account(store: AccountStore, db: Session, user_id: int, account_id: i
     _drop_from_views(db, user_id, account_id)
     _forget_scheduled(db, user_id, account_id)
     _forget_snoozes(db, user_id, account_id)
+    forget_vacation(db, user_id, account_id)
     db.commit()
     remove_account(store, account_id)
 
@@ -156,4 +158,5 @@ def forget_user_accounts(db: Session, user_id: int) -> None:
     db.execute(delete(IdentitySignature).where(IdentitySignature.user_id == user_id))
     _forget_scheduled(db, user_id)
     _forget_snoozes(db, user_id)
+    forget_vacation(db, user_id)
     forget_user(db.connection(), core_user_id(user_id))

@@ -17,6 +17,7 @@ import { RemoteSenders } from '@/profile/remote-senders.tsx'
 import { SignatureSettings } from '@/profile/signature-settings.tsx'
 import { TimeZoneForm } from '@/profile/time-zone-form.tsx'
 import { UndoSendForm } from '@/profile/undo-send-form.tsx'
+import { VacationSettings } from '@/profile/vacation-settings.tsx'
 import { userErrorMessage } from '@/users/messages.ts'
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@/users/password.ts'
 
@@ -32,8 +33,9 @@ type Outcome =
  * The signed-in user's own page: their password, time zone, what "Mark all as read" does first
  * on a folder with subfolders, conversations, how long Send waits for an Undo, the senders whose
  * remote images they show, the mail index's settings and desktop notifications (with the mail
- * client), linked sign-ins, their identities'
- * signatures and mail limits where the instance sends (mail or MCP) and, with MCP, connected apps.
+ * client), linked sign-ins, their identities' signatures, each account's vacation reply (with the
+ * mail client) and mail limits where the instance sends (mail or MCP) and, with MCP, connected
+ * apps.
  */
 export function ProfileScreen(): ReactElement {
   const { t } = useTranslation()
@@ -156,6 +158,7 @@ export function ProfileScreen(): ReactElement {
       {mail && <NotificationSettings />}
       <LinkedSignIn />
       {sends && <SignatureSettings />}
+      {mail && <VacationSettings />}
       {sends && <LimitsForm />}
       {mcp && <ConnectedApps />}
     </main>

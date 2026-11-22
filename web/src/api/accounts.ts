@@ -166,3 +166,32 @@ export function accountSignatures(id: AccountId, signal?: AbortSignal): Promise<
 export function saveSignature(id: AccountId, address: string, html: string): Promise<IdentitySignature> {
   return apiPutJson(`${one(id)}/signatures`, { address, html }, { schema: identitySignatureSchema })
 }
+
+const vacationReplySchema = z.object({
+  enabled: z.boolean(),
+  /** The first and last day it answers (`YYYY-MM-DD`, the user's time zone); null: open. */
+  starts_on: z.string().nullable(),
+  ends_on: z.string().nullable(),
+  subject: z.string(),
+  /** Sanitised as an outgoing message's HTML is, without images. */
+  html: z.string(),
+  text: z.string(),
+  /** The identity it goes from; null: the one each message was addressed to. */
+  identity: z.string().nullable(),
+  /** On, and today is one of its days. */
+  answering: z.boolean(),
+  /** New mail reaches it: INBOX (on Gmail, All Mail) is on the mail index and synced. */
+  indexed: z.boolean(),
+})
+export type VacationReply = z.infer<typeof vacationReplySchema>
+export type VacationChange = Omit<VacationReply, 'text' | 'answering' | 'indexed'>
+
+/** The account's vacation auto-reply (`docs/requirements/mail-client.md`, *Vacation reply*). */
+export function accountVacation(id: AccountId, signal?: AbortSignal): Promise<VacationReply> {
+  return apiGetJson(`${one(id)}/vacation`, { init: { signal }, schema: vacationReplySchema })
+}
+
+/** Keeps the account's vacation reply, its HTML as the server sanitises it. */
+export function saveVacation(id: AccountId, change: VacationChange): Promise<VacationReply> {
+  return apiPutJson(`${one(id)}/vacation`, change, { schema: vacationReplySchema })
+}

@@ -22,6 +22,7 @@ from mailroom.models.signatures import IdentitySignature
 from mailroom.models.snoozes import Snooze
 from mailroom.models.sso import ExternalIdentity, Intent, SsoLoginState
 from mailroom.models.user import User, UserSession
+from mailroom.models.vacation import Vacation, VacationReplied
 from mailroom.models.views import SavedView
 
 __all__ = [
@@ -48,4 +49,6 @@ __all__ = [
     "TransferLedger",
     "User",
     "UserSession",
+    "Vacation",
+    "VacationReplied",
 ]

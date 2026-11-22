@@ -568,11 +568,12 @@ brings it back ([`../GLOSSARY.md`](../GLOSSARY.md)):
   comes back to INBOX (the move adds INBOX's label), and gets back the label it was snoozed from
   when that was another. **A woken message is not new mail:** its new refs go into the filter
   runs' ledger ([`filters.md`](filters.md#moves-to-another-account), the loop guard) as soon as the
-  move answered, so the `new_mail` rule sets its arrival queues, a muted thread's mark-as-read and
-  every later run of that folder leave it alone, unread where it was; the live updates may still
-  notify that it is back. A message no longer in Snoozed (another client moved or deleted
-  it) is recorded (`wake`, `not_found`) and the snooze dropped; one snoozed in the last 2 minutes
-  is tried again instead, as its move may still be on its way. A wake that fails (the server
+  move answered, so the `new_mail` rule sets its arrival queues, a muted thread's mark-as-read,
+  every later run of that folder and the vacation reply ([*Vacation reply*](#vacation-reply))
+  leave it alone, unread where it was; the live updates may still notify that it is back. A
+  message no longer in Snoozed (another client moved or deleted it) is recorded (`wake`,
+  `not_found`) and the snooze dropped; one snoozed in the last 2 minutes is tried again instead,
+  as its move may still be on its way. A wake that fails (the server
   unreachable, a missing password) keeps the row with its code and is tried again 15 minutes
   later. A job lost with a stopped worker is queued again when the next one starts; snoozes go
   with their account and their user, the messages staying in Snoozed. Renaming Snoozed, the
@@ -1070,6 +1071,59 @@ user next sends, so a direct send's `GET /sends/{id}` is `not_found` after a day
   are final: `sent` comes earlier, and a restart can leave it false, so a client stops waiting
   after 70 s, past the two 30 s calls that follow a delivery).
   Another user's `send_id` is 404.
+
+### Vacation reply
+
+<a id="vacation-reply"></a>Each account can answer new mail while the user is away
+([`../GLOSSARY.md`](../GLOSSARY.md)), as RFC 3834 asks of an automatic responder:
+
+- **Settings** (`app.vacation`, `mailroom.mail.vacation`), on the *Profile* page with the mail
+  client: on or off, a first and a last day (either open; days in the user's time zone), the
+  subject, the reply written in the composer's rich editor (kept sanitised as a message's HTML,
+  images dropped), and the identity it goes from, or the one each message was addressed to.
+  `GET /api/v1/accounts/{id}/vacation` answers `{enabled, starts_on, ends_on, subject, html, text,
+  identity, answering, indexed}` (`answering`: on, and today is one of its days; `indexed`: new
+  mail reaches it, INBOX's index row being on and synced, on Gmail All Mail's, else the *Profile*
+  says to turn the index on for it and saving says it is not replying yet); `PUT` with `{enabled,
+  starts_on, ends_on, subject, html, identity}` keeps it and answers the same; 400
+  `invalid_vacation` for an identity not the account's, a last day before the first, or one
+  switched on without a subject or a text. Logged as `vacation_changed` (`enabled` only).
+- **What it answers:** the index's sync is where the worker learns of new mail (IDLE's new mail
+  on INBOX queues it, and so does the dispatcher every 5 minutes): its new rows in INBOX (on
+  Gmail, All Mail's rows labelled `\Inbox`), never a first sync's or a rebuild's, each queue the
+  job `vacation_reply`, in the transaction that stores them, while the account's reply is on, the
+  message arrived after it was switched on (a minute's slack for the server's clock) and on one
+  of its days. Rows in the filter runs' ledger are skipped: a snoozed message woken into INBOX
+  comes back, it does not arrive ([*Snooze*](#snooze), *Waking*), and a filter's copy from
+  another account is the user's own move. An account whose INBOX is off the index is not
+  answered (`indexed` false). Queueing runs in a savepoint: one that fails is logged
+  (`vacation_queue_failed`, with the error's type) and costs the batch's rows nothing.
+- **The job** (`mailroom.worker.vacation`) checks again that the reply answers today, then reads
+  the message's header fields and asks mailroom-core's `vacation_refusal`
+  ([`../core.md`](../core.md)). Only header fields decide, never the message's text. Refused:
+  `no_sender` (not exactly one deliverable From, or a null Return-Path), `auto_submitted`
+  (`Auto-Submitted` other than `no`, `X-Autoreply`/`X-Autorespond`, or `X-Auto-Response-Suppress`
+  asking for none), `bulk` (`Precedence` bulk, junk or list), `mailing_list` (any `List-*`,
+  `Mailing-List` or `X-Mailing-List` field), `no_reply_sender` (a no-reply, mailer-daemon,
+  postmaster, bounce, list request or owner address, in From or Return-Path), `own_address` (any
+  identity of the user's accounts), `not_addressed` (none of the account's identities in To or
+  Cc: a Bcc, a list, a forward). A message let through has its sender claimed in
+  `app.vacation_replied` (account, sender, when), committed before anything is sent, unless the
+  account answered them in the last 4 days (`replied_recently`); the account's claims older than
+  that go with it; the reply then goes through the
+  send gate as the user (`by: user`) under a key of its own message, so a job run again never
+  sends twice, in every send mode but `off` (`send_disabled`), with the hourly limit. It goes to
+  the From address alone, from the chosen identity, with the user's subject and text, threaded
+  (`In-Reply-To`, `References`) and marked `Auto-Submitted: auto-replied`; it is filed in Sent.
+  A reply that surely did not leave gives the claim back, so the sender's next message is
+  answered: one the gate refuses before SMTP, and one whose delivery failed before the server
+  took it (the send recorded `failed`: a refused connection, a failed login, the recipient
+  refused). One whose delivery is unknown (`delivery_unknown`, or an unexpected error in it) may
+  have gone out, so the claim stays.
+- **Audit:** every reply and every refusal is a `vacation_reply` record as the user: the gate's
+  for a reply (`send`'s detail), else the refusal's code with the message's folder, UID and From
+  address. A message gone by then is `not_found`; an account that cannot log in, its code.
+- Vacation replies and their senders go with their account and their user.
 
 ### Texts in the web client
 
