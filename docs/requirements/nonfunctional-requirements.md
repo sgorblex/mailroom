@@ -599,7 +599,9 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   `mail_print_read`, `mail_filter_draft_read`, `mail_thread_key_read` (a mute),
   `mail_view_listed` (a view's page, `account_id` `*`), each with `user_id`, `account_id`, `via`,
   `outcome` (`ok` or the code) and `duration_ms`; never a subject, an address, a folder name or a
-  body. `view_created`, `view_changed`, `view_removed` and `views_reordered` carry `user_id` and
+  body. `mail_addresses_suggested` (a recipient field's suggestions) carries `user_id`, `via`,
+  `count` and `duration_ms`, never what was typed nor an address.
+  `view_created`, `view_changed`, `view_removed` and `views_reordered` carry `user_id` and
   `view_id` (not for a reorder), never a view's name, search or folder. `mail_moved`, `mail_archived`, `mail_junked`,
   `mail_trashed` and `mail_flagged` carry `user_id`, `via`, `account_ids`, `ref_count`, `changed`
   (messages), `groups`, `failed_groups`, `codes` (the failed groups'), `outcome` (`ok`,

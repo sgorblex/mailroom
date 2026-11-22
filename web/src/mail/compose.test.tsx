@@ -36,7 +36,8 @@ const compose = async (user: ReturnType<typeof userEvent.setup>) => {
 }
 /** The visible notice; the live region says the same. Three polls of a send take 4 s, so wait past them. */
 const sentNotice = (text: string | RegExp = 'Sent.') => screen.findByText(text, { selector: 'p' }, { timeout: 6_000 })
-const field = (form: HTMLElement, name: string) => within(form).getByRole('textbox', { name })
+/** A recipient field is a combobox (it suggests addresses), the rest text boxes. */
+const field = (form: HTMLElement, name: string) => within(form).queryByRole('combobox', { name }) ?? within(form).getByRole('textbox', { name })
 /** The body: a rich-text editor loads on its own, after the rest of the form, the first time at some length. */
 const body = (form: HTMLElement) => within(form).findByRole('textbox', { name: 'Message' }, { timeout: 10_000 })
 
@@ -1415,6 +1416,84 @@ describe('rich text', () => {
     renderMailApp(`/mail?compose=${draft.ref}`)
     const editor = await body(await composer('Draft'))
     expect(editor.querySelector('strong')).toHaveTextContent('there')
+  })
+})
+
+describe('address suggestions', () => {
+  const addressBook = [
+    { name: 'Ada Lovelace', address: 'ada@example.org', sent: true },
+    { name: '', address: 'adam@example.org', sent: false },
+    { name: 'Hal', address: 'hal@example.org', sent: false },
+  ]
+  const asked = (fetchMock: ReturnType<typeof stubMailApi>) => bodiesTo(fetchMock, '/api/v1/mail/addresses')
+  const chips = (form: HTMLElement) => within(within(form).getByRole('list', { name: 'To recipients' })).getAllByRole('listitem')
+
+  it('suggests from the index as the user types, and picks one as a chip from the keyboard', async () => {
+    const user = userEvent.setup()
+    const fetchMock = stubMailApi(state({ addressBook }))
+    renderMailApp('/mail')
+    const form = await compose(user)
+
+    await user.type(field(form, 'To'), 'ad')
+    const list = await within(form).findByRole('listbox', { name: 'Suggested To addresses' })
+    const options = await within(list).findAllByRole('option')
+    expect(options.map((option) => option.textContent)).toEqual(['Ada Lovelaceada@example.org', 'adam@example.org'])
+    // Asked once typing paused, with what was typed in the body, never in the URL.
+    expect(asked(fetchMock).at(-1)).toEqual({ q: 'ad' })
+    expect(fetchMock.mock.calls.every(([path]) => !String(path).includes('?q='))).toBe(true)
+
+    await user.keyboard('{ArrowDown}{Enter}')
+    expect(chips(form).map((chip) => chip.textContent)).toEqual(['Ada Lovelace <ada@example.org>'])
+    expect(field(form, 'To')).toHaveValue('')
+
+    // One already a chip is not offered again; Tab picks the highlighted one.
+    await user.type(field(form, 'To'), 'ad')
+    await within(form).findByRole('option', { name: 'adam@example.org' })
+    expect(within(form).queryByRole('option', { name: /ada@example.org/ })).not.toBeInTheDocument()
+    await user.keyboard('{ArrowDown}{Tab}')
+    expect(chips(form)).toHaveLength(2)
+    expect(field(form, 'To')).toHaveFocus()
+
+    await user.type(await body(form), 'Hello')
+    await within(form).findByText('Saved', {}, { timeout: 5_000 })
+    expect(savesOf(fetchMock).at(-1)?.fields.to).toEqual([
+      { name: 'Ada Lovelace', address: 'ada@example.org' },
+      { name: '', address: 'adam@example.org' },
+    ])
+  })
+
+  it('keeps the list while the next answer is on its way, narrowed to what still matches', async () => {
+    const user = userEvent.setup()
+    stubMailApi(state({ addressBook }))
+    renderMailApp('/mail')
+    const form = await compose(user)
+    await user.type(field(form, 'To'), 'ad')
+    await within(form).findByRole('option', { name: 'adam@example.org' })
+    await user.type(field(form, 'To'), 'am')
+    expect(within(form).getAllByRole('option').map((option) => option.textContent)).toEqual(['adam@example.org'])
+  })
+
+  it('picks by a click, closes on Escape, and commits what was typed on Enter with none highlighted', async () => {
+    const user = userEvent.setup()
+    stubMailApi(state({ addressBook }))
+    renderMailApp('/mail')
+    const form = await compose(user)
+
+    await user.click(within(form).getByRole('button', { name: 'Cc and Bcc' }))
+    await user.type(field(form, 'Cc'), 'lovel')
+    await user.click(await within(form).findByRole('option', { name: /ada@example.org/ }))
+    expect(within(form).getByRole('list', { name: 'Cc recipients' })).toHaveTextContent('Ada Lovelace <ada@example.org>')
+    expect(field(form, 'Cc')).toHaveFocus()
+
+    await user.type(field(form, 'To'), 'hal')
+    await within(form).findByRole('option', { name: /hal@example.org/ })
+    await user.keyboard('{Escape}')
+    expect(within(form).queryByRole('option')).not.toBeInTheDocument()
+    expect(await composer()).toBeInTheDocument()
+    expect(field(form, 'To')).toHaveValue('hal')
+
+    await user.type(field(form, 'To'), '@else.org{Enter}')
+    expect(chips(form).map((chip) => chip.textContent)).toEqual(['hal@else.org'])
   })
 })
 

@@ -17,6 +17,7 @@ import type {
   SendResult,
   ShownPart,
   SourceFailure,
+  SuggestedAddress,
   ViewPage,
 } from '@/api/mail.ts'
 
@@ -111,6 +112,8 @@ export interface FakeMailState {
   conversations?: string[][]
   /** The muted thread each muted message's mute answered, by ref. */
   mutedBy?: Record<string, number>
+  /** What `POST /mail/addresses` suggests from, in its order: those whose address or a word of the name starts with what was typed; none unless it says so. */
+  addressBook?: SuggestedAddress[]
   /** Each account's folders as the index settings list them; an account without is 404 there. */
   index?: Record<string, { gmail?: boolean; folders: IndexFolder[] }>
   /** Ref → its conversation, for `group=thread` and `GET /messages/{ref}/thread`; a message without one is alone. */
@@ -1129,6 +1132,13 @@ export function stubMailApi(state: FakeMailState): Mock {
     }
     if (path === '/api/v1/mail/messages/count' || path === '/api/v1/mail/messages/bulk') {
       return matchingRoutes(state, path.endsWith('bulk'), JSON.parse(init?.body as string) as { expected?: number; action?: { kind: string } })
+    }
+    if (path === '/api/v1/mail/addresses' && init?.method === 'POST') {
+      const { q } = JSON.parse(init.body as string) as { q: string }
+      const prefix = q.toLowerCase()
+      const starts = (each: SuggestedAddress): boolean =>
+        [each.address, ...each.name.split(/\s+/)].some((word) => word.toLowerCase().startsWith(prefix))
+      return json(200, { addresses: (state.addressBook ?? []).filter(starts).slice(0, 10) })
     }
     if (path === '/api/v1/mail/remote-senders' && init?.method === 'POST') {
       // Remembered when DMARC passed for the message's From; its views then say so.
