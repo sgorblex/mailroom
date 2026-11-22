@@ -1,7 +1,7 @@
 """The app's own rows about a user's accounts (schema ``app``), beside mailroom-core's: the Run
 filters switch, and forgetting all of it when an account or its user goes (the user's remembered
 remote-content senders, muted threads, ledger of copies moved between accounts, mail index,
-notification folders and signatures, and its folders in the saved views too)."""
+notification folders, signatures and held sends, and its folders in the saved views too)."""
 
 from __future__ import annotations
 
@@ -108,6 +108,7 @@ def forget_account(store: AccountStore, db: Session, user_id: int, account_id: i
         )
     )
     _drop_from_views(db, user_id, account_id)
+    _forget_scheduled(db, user_id, account_id)
     db.commit()
     remove_account(store, account_id)
 
@@ -121,6 +122,13 @@ def _drop_from_views(db: Session, user_id: int, account_id: int) -> None:
         kept = [source for source in view.sources or () if source[0] != account_id]
         if len(kept) != len(view.sources or ()):
             view.sources = kept
+
+
+def _forget_scheduled(db: Session, user_id: int, account_id: int | None = None) -> None:
+    # Here, not at the top: the mail service imports this module's.
+    from mailroom.mail.service.scheduled import forget_scheduled
+
+    forget_scheduled(db, user_id, account_id)
 
 
 def forget_user_accounts(db: Session, user_id: int) -> None:
@@ -137,4 +145,5 @@ def forget_user_accounts(db: Session, user_id: int) -> None:
     db.execute(delete(RemoteContentSender).where(RemoteContentSender.user_id == user_id))
     db.execute(delete(SavedView).where(SavedView.user_id == user_id))
     db.execute(delete(IdentitySignature).where(IdentitySignature.user_id == user_id))
+    _forget_scheduled(db, user_id)
     forget_user(db.connection(), core_user_id(user_id))

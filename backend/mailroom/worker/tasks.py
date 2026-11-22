@@ -9,13 +9,17 @@ With the ``mail`` feature, the index dispatcher queues ``sync_account`` for ever
 minutes; it brings the account's index folders in step with its listing and queues ``sync_folder``
 for each one due. A folder's job fetches a bounded share and queues the next one behind every
 other job, so a large mailbox takes turns with the others, its own filter runs included.
+
+A held send's ``send_draft`` is queued by the mail service (``defer_scheduled_send``) in the
+transaction writing its ``app.scheduled_send`` row, to run at its time (``mailroom.worker.sends``).
 """
 
 from __future__ import annotations
 
 import logging
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from procrastinate import SyncPsycopgConnector
 from procrastinate.exceptions import AlreadyEnqueued
@@ -25,14 +29,15 @@ from sqlalchemy import and_, func, or_, select, text
 
 from mailroom.config.features import features_from_env
 from mailroom.filters.runs import prune_runs
-from mailroom.models import AccountFilterSettings, FilterRun, RuleSet
+from mailroom.models import AccountFilterSettings, FilterRun, RuleSet, ScheduledSend
 from mailroom.worker.app import PROCRASTINATE_SCHEMA, app
 from mailroom.worker.context import worker_context
 from mailroom.worker.index import account_folders_due, index_accounts, run_folder_sync
 from mailroom.worker.runs import execute_run
+from mailroom.worker.sends import send_scheduled
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterator, Mapping, Sequence
 
     from sqlalchemy import Select
     from sqlalchemy.engine import Engine
@@ -50,6 +55,8 @@ SYNC_ACCOUNT: Final = "sync_account"
 """The job bringing one account's index folders in step and queueing the syncs due."""
 SYNC_FOLDER: Final = "sync_folder"
 """The job running one share of an indexed folder's sync."""
+SEND_DRAFT: Final = "send_draft"
+"""The job sending one scheduled draft (its ``app.scheduled_send`` row) through the send gate."""
 _IN_TRANSACTION: Final = JobManager(SyncPsycopgConnector())
 """Defers jobs on a connection the caller passes, never its own (it is never opened): the app's
 connector, once the worker opens it asynchronously, would take that connection for an async one."""
@@ -128,6 +135,16 @@ def sync_folder(user_id: int, account_id: int, folder_id: int) -> None:
             db.commit()
 
 
+@app.task(name=SEND_DRAFT)
+def send_draft(scheduled_id: int) -> None:
+    """Send the scheduled draft ``scheduled_id`` (``mailroom.worker.sends.send_scheduled``)."""
+    if not features_from_env().mail:
+        # The row stays held: the user can cancel it, and it goes nowhere.
+        return
+    context = worker_context()
+    send_scheduled(context.sessions, context.mailboxes, scheduled_id)
+
+
 def mailbox_lock(user_id: int, account_id: int) -> str:
     """procrastinate ``lock`` of every job acting on one mailbox: they run one at a time."""
     return f"mailbox:{user_id}:{account_id}"
@@ -138,26 +155,49 @@ def rule_set_queueing_lock(rule_set_id: int, account_id: int) -> str:
     return f"rule_set:{rule_set_id}:{account_id}"
 
 
-def _defer(db: Session, name: str, *, lock: str, queueing_lock: str, **arguments: int) -> int:
-    """Queue the task ``name`` inside ``db``'s transaction; its job id. Raises procrastinate's
-    ``AlreadyEnqueued`` when a job with ``queueing_lock`` is already waiting (the transaction is
-    then unusable: run this inside a savepoint)."""
+@contextmanager
+def _procrastinate_sql(db: Session) -> Iterator[Any]:
+    """``db``'s psycopg connection with procrastinate's schema first on its search path, for the
+    block: procrastinate's SQL names its tables and functions unqualified."""
     connection = db.connection()
     search_path = connection.execute(text("SELECT current_setting('search_path')")).scalar_one()
-    # procrastinate's SQL names its tables and functions unqualified.
     connection.execute(
         text("SELECT set_config('search_path', :path, true)"),
         {"path": f"{PROCRASTINATE_SCHEMA}, {search_path}"},
     )
-    job_id = configure_task(
-        name=name,
-        job_manager=_IN_TRANSACTION,
-        lock=lock,
-        queueing_lock=queueing_lock,
-        connection=connection.connection.driver_connection,
-    ).defer(**arguments)
+    yield connection.connection.driver_connection
     connection.execute(text("SELECT set_config('search_path', :path, true)"), {"path": search_path})
-    return job_id
+
+
+def _defer(
+    db: Session,
+    name: str,
+    *,
+    lock: str | None,
+    queueing_lock: str,
+    schedule_at: datetime | None = None,
+    arguments: Mapping[str, int],
+) -> int:
+    """Queue the task ``name`` with ``arguments`` inside ``db``'s transaction, to run from
+    ``schedule_at`` (else at once); its job id. Raises procrastinate's ``AlreadyEnqueued`` when a
+    job with ``queueing_lock`` is already waiting (the transaction is then unusable: run this
+    inside a savepoint)."""
+    with _procrastinate_sql(db) as connection:
+        return configure_task(
+            name=name,
+            job_manager=_IN_TRANSACTION,
+            lock=lock,
+            queueing_lock=queueing_lock,
+            schedule_at=schedule_at,
+            connection=connection,
+        ).defer(**arguments)
+
+
+def cancel_job(db: Session, job_id: int) -> bool:
+    """Delete the job ``job_id`` inside ``db``'s transaction while it is waiting; whether it
+    was."""
+    with _procrastinate_sql(db) as connection:
+        return _IN_TRANSACTION.cancel_job_by_id(job_id, delete_job=True, connection=connection)
 
 
 def defer_rule_set_run(
@@ -172,8 +212,54 @@ def defer_rule_set_run(
         RUN_RULE_SET,
         lock=mailbox_lock(user_id, account_id),
         queueing_lock=rule_set_queueing_lock(rule_set_id, account_id),
-        run_id=run_id,
+        arguments={"run_id": run_id},
     )
+
+
+def defer_scheduled_send(db: Session, *, scheduled_id: int, send_at: datetime) -> int:
+    """Queue ``send_draft`` for the scheduled send ``scheduled_id`` from ``send_at``, inside
+    ``db``'s transaction, so the job exists exactly when the row does; its job id. Without the
+    mailbox's lock: a job waiting for its time would hold back every later one of the mailbox,
+    and a send goes alongside them as the API's does."""
+    return _defer(
+        db,
+        SEND_DRAFT,
+        lock=None,
+        queueing_lock=f"scheduled_send:{scheduled_id}",
+        schedule_at=send_at,
+        arguments={"scheduled_id": scheduled_id},
+    )
+
+
+def requeue_interrupted_sends(db: Session) -> list[int]:
+    """Queue ``send_draft`` again for each scheduled send whose job is neither waiting nor running,
+    and commit (at start, once a stopped worker's jobs are marked failed): one left ``sending``
+    runs at once, and its send key keeps it from going out twice. The rows' ids."""
+    queued = text(
+        f"SELECT id FROM {PROCRASTINATE_SCHEMA}.procrastinate_jobs"
+        " WHERE task_name = :name AND status IN ('todo', 'doing')"
+    )
+    alive = set(db.scalars(queued, {"name": SEND_DRAFT}))
+    lost = [
+        scheduled
+        for scheduled in db.scalars(
+            select(ScheduledSend)
+            .where(ScheduledSend.state.in_(("held", "sending")))
+            .order_by(ScheduledSend.id)
+        )
+        if scheduled.job_id not in alive
+    ]
+    for scheduled in lost:
+        scheduled.job_id = defer_scheduled_send(
+            db, scheduled_id=scheduled.id, send_at=scheduled.send_at
+        )
+    db.commit()
+    if lost:
+        logger.warning(
+            "scheduled_sends_requeued",
+            extra={"event": "scheduled_sends_requeued", "count": len(lost)},
+        )
+    return [scheduled.id for scheduled in lost]
 
 
 def _defer_once(db: Session, name: str, *, lock: str, queueing_lock: str, **arguments: int) -> bool:
@@ -181,7 +267,7 @@ def _defer_once(db: Session, name: str, *, lock: str, queueing_lock: str, **argu
     with ``queueing_lock`` was already waiting."""
     try:
         with db.begin_nested():
-            _defer(db, name, lock=lock, queueing_lock=queueing_lock, **arguments)
+            _defer(db, name, lock=lock, queueing_lock=queueing_lock, arguments=arguments)
     except AlreadyEnqueued:
         return False
     return True

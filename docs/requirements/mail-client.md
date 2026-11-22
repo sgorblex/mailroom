@@ -902,9 +902,13 @@ user next sends, so a direct send's `GET /sends/{id}` is `not_found` after a day
 ```
             claim
   (none) ───────────▶ sending ──▶ sent
-                         │
-                         ├──────▶ failed   the message definitely did not leave
-                         └──────▶ unknown  delivery cannot be confirmed
+     │                   ▲   │
+     │ schedule          │   ├──────▶ failed   the message definitely did not leave
+     ▼        send_at    │   └──────▶ unknown  delivery cannot be confirmed
+   held ─────────────────┘
+     │ cancel
+     ▼
+  (none, the draft in Drafts)
 ```
 
 - **`sending`** while the background runner works on it. **`sent`** after the server accepted the
@@ -932,6 +936,31 @@ user next sends, so a direct send's `GET /sends/{id}` is `not_found` after a day
 - **SMTP timeouts:** 15 s to connect, 60 s per command, 60 s plus the message size at 128 KiB/s
   for `DATA`, and a watchdog at 360 s for the whole send.
 - A deploy or restart during a send leaves it `unknown` by design.
+- **Held sends** (one mechanism for undo send and send later): scheduling a draft checks it as
+  Send would (the draft, its recipients, an account in send mode `off`) and writes an
+  `app.scheduled_send` row (user, account, the draft's ref and send key, who scheduled it,
+  `send_at`, state) with the worker's job `send_draft`, deferred to `send_at`, in the same
+  transaction; `send_at` carries its offset, a year ahead at most, and a moment past sends at
+  once. A draft has one held send
+  at a time (`already_scheduled`), and none once a send of it began (`send_started`). At
+  `send_at` the job takes the row (`held` → `sending`, committed); unless a send of the draft's
+  key began meanwhile (Send now from another tab, or an agent's `draft_send`: that send decides,
+  and the row goes once it was delivered), it reads the draft, which must still be the version
+  scheduled (a later save replaces it, which leaves the held send `failed`), and sends it through
+  the gate as the web's Send does, with the draft's key: a job run again (the worker stopped
+  between the claim and the delivery, and the next one queued it again) finds that send and
+  delivers nothing. **The gate's `by` is who scheduled it, not the worker:** a held send the web
+  made goes as `user`, one an agent made through MCP as `agent`, so the account's send mode
+  applies to it as it would to the agent's own `draft_send` at that moment. Once the key's send was
+  delivered the row goes, and the send says the rest; a refusal before it, a failed delivery, one
+  not confirmed or an unexpected error (`internal`) leaves the row `failed` with its code, the
+  draft in Drafts. A job that ends before the gate audited it (the draft gone or changed,
+  `stale_reference`, the account unusable, `password_missing`, `internal`) writes a `send` audit
+  record of its own, refused with that code and the draft's folder and UID, nothing of the
+  message. Cancel, while the row is `held` (or `failed`), deletes the row and the job and
+  leaves the draft; once the worker has taken it, cancel is `send_started`. The service offers
+  `schedule_send`, `cancel_scheduled` and `list_scheduled` (soonest first); a held send goes with
+  its account and its user.
 - **The result** (`GET /sends/{id}`): `state`; `code` (the refusal's code for `failed`, else
   `null`); `filed` (the Sent copy was stored; `null` until known, and known only after `sent`, together with
   the notes); `rejected` (recipients the

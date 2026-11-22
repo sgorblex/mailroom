@@ -132,6 +132,7 @@ def _started_worker(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setattr(worker_main, "worker_context", lambda: context)
     monkeypatch.setattr(worker_main, "close_interrupted_runs", lambda _db: [])
+    monkeypatch.setattr(worker_main, "requeue_interrupted_sends", lambda _db: [])
     monkeypatch.setattr(worker_main, "IdleSupervisor", _IdleSupervisor)
 
 
