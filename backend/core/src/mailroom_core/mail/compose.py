@@ -93,6 +93,9 @@ class MessageInput:
     """On a draft: the ref of the message it answers."""
     forwards: str | None = None
     """On a draft: the ref of the message it forwards; never with `answers`."""
+    auto_replied: bool = False
+    """Marks an automatic reply (`Auto-Submitted: auto-replied`, RFC 3834), which no other
+    responder answers."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -306,6 +309,7 @@ def compose(message: MessageInput, message_id: str | None = None) -> Composed:
             else b"",
             _words("References", references) if references else b"",
             _words("Date", [format_datetime(datetime.now(UTC))]),
+            _words("Auto-Submitted", ["auto-replied"]) if message.auto_replied else b"",
         )
     )
     body = _body(message)

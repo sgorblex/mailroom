@@ -285,6 +285,14 @@ from mailroom_core.mail.text import (
     thread_text,
 )
 from mailroom_core.mail.transfer import TransferRemoval, move_to_account
+from mailroom_core.mail.vacation import (
+    Incoming,
+    VacationRefusal,
+    incoming_message,
+    no_reply_address,
+    vacation_refusal,
+    vacation_reply,
+)
 
 __all__ = [
     "ALL_FOLDERS",
@@ -357,6 +365,7 @@ __all__ = [
     "GroupResult",
     "IdleChange",
     "IdleWatch",
+    "Incoming",
     "IndexPlan",
     "IndexedMessage",
     "InlinePart",
@@ -404,6 +413,7 @@ __all__ = [
     "Timeouts",
     "ToolNames",
     "TransferRemoval",
+    "VacationRefusal",
     "Woken",
     "abandon_read_back",
     "act_on_matching",
@@ -469,6 +479,7 @@ __all__ = [
     "gmail_uid",
     "html_text",
     "html_view",
+    "incoming_message",
     "indexed_messages",
     "is_own_draft",
     "is_text_type",
@@ -491,6 +502,7 @@ __all__ = [
     "move_to_account",
     "move_uids",
     "new_message_id",
+    "no_reply_address",
     "one_click_unsubscribe",
     "organize_text",
     "original_message",
@@ -540,6 +552,8 @@ __all__ = [
     "try_remove_draft",
     "uids_matching",
     "uids_of",
+    "vacation_refusal",
+    "vacation_reply",
     "wake_snoozed",
     "with_subfolders",
     "without_headers",

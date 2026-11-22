@@ -38,7 +38,7 @@ the tools answer with, and the app's MCP writes thin tools over it. The filter e
 | `crypto` | Sealed secrets |
 | `store` | `AccountStore` and core's migrations, in schema `core` |
 | `render` | Bodies to text, quotes, the untrusted-content envelope, `safe_html`, `outgoing_html` |
-| `mail` | Connections (`mail.imap`), operations on a selected folder (`mail.selected`), a folder's UIDs and flag changes (`mail.changes`), what an index keeps per message (`mail.index`), IDLE (`mail.idle`), refs, read, organize, snooze (`mail.snooze`), folders (`mail.folders`), messages parsed for the filters (`mail.parsed`), compose, drafts, the tools' text, audit items |
+| `mail` | Connections (`mail.imap`), operations on a selected folder (`mail.selected`), a folder's UIDs and flag changes (`mail.changes`), what an index keeps per message (`mail.index`), IDLE (`mail.idle`), refs, read, organize, snooze (`mail.snooze`), the vacation reply's checks (`mail.vacation`), folders (`mail.folders`), messages parsed for the filters (`mail.parsed`), compose, drafts, the tools' text, audit items |
 | `send` | SMTP and the send gate |
 | `filters` | The filter engine: criteria, actions, rules as data (specs), runs, the runner and IDLE monitor, reports |
 | `testing` | A pytest plugin (no-network guard, store and mail fixtures) the app's tests load too |
@@ -374,6 +374,18 @@ rfc822msgid:`); None when it is gone, the folder too. `wake_snoozed` then clears
 longer a selectable folder; on Gmail always to INBOX, then adding the label it came from
 (`X-GM-LABELS`; one it could not add is logged). It returns both results and the message's refs
 where it now is (`Woken.refs`, INBOX's first), or None when it is gone.
+
+**Vacation reply.** `mailroom_core.mail.vacation` decides whether a new message gets an automatic
+reply (RFC 3834); the host keeps the settings, when the account is away and who it answered.
+`incoming_message(connections, ref)` reads the message's ENVELOPE and the header fields that
+matter, under EXAMINE, as `Incoming` (None when it is gone). `vacation_refusal(incoming,
+identities=, own=)` is pure and reads nothing but those fields: not exactly one deliverable From
+or a null Return-Path, `Auto-Submitted` other than `no` (or another responder's mark, or
+`X-Auto-Response-Suppress` asking for none), `Precedence` bulk, junk or list, any list field, a
+no-reply style sender (`no_reply_address`), one of `own`, or none of `identities` in To or Cc each
+refuse it, in that order. `vacation_reply` builds the reply as a `MessageInput`: to the From
+alone, threaded under it, with `auto_replied`, which `compose` writes as
+`Auto-Submitted: auto-replied`. It goes through the gate like any send.
 
 **Keywords.** A folder keeps keywords when its read-write SELECT answers PERMANENTFLAGS holding
 `\*` (`MailboxContext.keywords`; never under EXAMINE). `MailConnections.keywords(account)` asks

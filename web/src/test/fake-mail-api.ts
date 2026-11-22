@@ -1,6 +1,6 @@
 import { vi, type Mock } from 'vitest'
 
-import type { AccountId, AccountColour, Identity } from '@/api/accounts.ts'
+import type { AccountId, AccountColour, Identity, VacationChange, VacationReply } from '@/api/accounts.ts'
 import type { Filter, RuleSet } from '@/api/filters.ts'
 import type {
   Draft,
@@ -31,6 +31,8 @@ export function listedFolder(folder: FakeFolder): MailFolder {
   return { delimiter: '/', selectable: true, uid_validity: 1, uid_next: 1000, ...folder }
 }
 
+const OFF_VACATION: VacationReply = { enabled: false, starts_on: null, ends_on: null, subject: '', html: '', text: '', identity: null, answering: false, indexed: true }
+
 /** The accounts the tests use, and the names the fake lists them under. */
 export const WORK = 1
 export const HOME = 2
@@ -40,6 +42,10 @@ export interface FakeMailState {
   accounts: AccountId[]
   /** Each account's identities' signatures, by address, as `GET /accounts/{id}/signatures` lists them and `PUT` keeps them; none unless it says so. */
   signatures?: Record<string, Record<string, { html: string; text: string }>>
+  /** Each account's vacation reply as `GET /accounts/{id}/vacation` answers it and `PUT` keeps it; off unless it says so. */
+  vacations?: Record<string, VacationReply>
+  /** Whether a saved vacation reply is reached by new mail (`indexed`); true unless set. */
+  vacationIndexed?: boolean
   /** Each account's folders; `delimiter` is `/` and `selectable` true unless they say otherwise (`listedFolder`). */
   folders: Record<string, FakeFolder[]>
   /** `"<account>/<folder path>"` → its messages, newest (highest uid) first. */
@@ -1181,6 +1187,16 @@ export function stubMailApi(state: FakeMailState): Mock {
         200,
         (state.identities?.[id] ?? []).map(({ address }) => ({ address, html: kept[address]?.html ?? '', text: kept[address]?.text ?? '' })),
       )
+    }
+    const away = /^\/api\/v1\/accounts\/(\d+)\/vacation$/.exec(path)
+    if (away !== null) {
+      const id = Number(away[1])
+      if (init?.method === 'PUT') {
+        const change = JSON.parse(init.body as string) as VacationChange
+        const text = change.html.replace(/<[^>]*>/g, '')
+        state.vacations = { ...state.vacations, [id]: { ...change, text, answering: change.enabled && change.starts_on === null, indexed: state.vacationIndexed ?? true } }
+      }
+      return json(200, state.vacations?.[id] ?? OFF_VACATION)
     }
     const indexed = indexRoutes(state, url, init) ?? notificationRoutes(state, url, init) ?? viewRoutes(state, url, init)
     if (indexed !== null) {

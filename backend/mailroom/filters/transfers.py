@@ -189,17 +189,34 @@ def ledger_skip(
     """The UIDs of ``path`` of the account a filter's move copied there: every run there leaves
     them alone. The folder's entries of another UIDVALIDITY go (its UIDs name other messages
     now). Commits ``db``."""
-    folder = _ledger_folder(path)
-    of_folder = (
-        TransferLedger.user_id == user_id,
-        TransferLedger.account_id == account_id,
-        TransferLedger.folder == folder,
-    )
-    current = TransferLedger.uid_validity == uid_validity
-    db.execute(delete(TransferLedger).where(*of_folder, ~current))
-    uids = set(db.scalars(select(TransferLedger.uid).where(*of_folder, current)))
+    stale = TransferLedger.uid_validity != uid_validity
+    db.execute(delete(TransferLedger).where(*_of_ledger_folder(user_id, account_id, path), stale))
+    uids = ledger_uids(db, user_id, account_id, path, uid_validity)
     db.commit()
     return uids
+
+
+def ledger_uids(
+    db: Session, user_id: int, account_id: int, path: str, uid_validity: int
+) -> set[int]:
+    """``ledger_skip``'s UIDs, read only, inside ``db``'s transaction: for a caller in the
+    middle of its own (the index's sync, whose new rows these are not)."""
+    return set(
+        db.scalars(
+            select(TransferLedger.uid).where(
+                *_of_ledger_folder(user_id, account_id, path),
+                TransferLedger.uid_validity == uid_validity,
+            )
+        )
+    )
+
+
+def _of_ledger_folder(user_id: int, account_id: int, path: str) -> tuple[Any, ...]:
+    return (
+        TransferLedger.user_id == user_id,
+        TransferLedger.account_id == account_id,
+        TransferLedger.folder == _ledger_folder(path),
+    )
 
 
 def rename_in_ledger(

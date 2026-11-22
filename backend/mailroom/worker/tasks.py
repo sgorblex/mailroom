@@ -13,6 +13,8 @@ other job, so a large mailbox takes turns with the others, its own filter runs i
 A held send's ``send_draft`` is queued by the mail service (``defer_scheduled_send``) in the
 transaction writing its ``app.scheduled_send`` row, to run at its time (``mailroom.worker.sends``);
 a snooze's ``wake_snooze`` likewise with its ``app.snooze`` row (``mailroom.worker.snoozes``).
+An index sync's new rows in INBOX queue ``vacation_reply`` for each while the account's vacation
+reply answers (``mailroom.mail.vacation``), in the transaction storing them.
 """
 
 from __future__ import annotations
@@ -37,6 +39,7 @@ from mailroom.worker.index import account_folders_due, index_accounts, run_folde
 from mailroom.worker.runs import execute_run
 from mailroom.worker.sends import send_scheduled
 from mailroom.worker.snoozes import wake_snooze as wake_snoozed
+from mailroom.worker.vacation import reply_vacation
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
@@ -61,6 +64,8 @@ SEND_DRAFT: Final = "send_draft"
 """The job sending one scheduled draft (its ``app.scheduled_send`` row) through the send gate."""
 WAKE_SNOOZE: Final = "wake_snooze"
 """The job bringing one snoozed message (its ``app.snooze`` row) back to its folder."""
+VACATION_REPLY: Final = "vacation_reply"
+"""The job answering one new message (its ref) with its account's vacation reply."""
 _IN_TRANSACTION: Final = JobManager(SyncPsycopgConnector())
 """Defers jobs on a connection the caller passes, never its own (it is never opened): the app's
 connector, once the worker opens it asynchronously, would take that connection for an async one."""
@@ -159,6 +164,16 @@ def wake_snooze(snooze_id: int) -> None:
     wake_snoozed(context.sessions, context.mailboxes, snooze_id)
 
 
+@app.task(name=VACATION_REPLY)
+def vacation_reply(user_id: int, account_id: int, ref: str) -> None:
+    """Answer the new message ``ref`` with the account's vacation reply, unless its checks
+    refuse it (``mailroom.worker.vacation.reply_vacation``)."""
+    if not features_from_env().mail:
+        return
+    context = worker_context()
+    reply_vacation(context.sessions, context.mailboxes, user_id, account_id, ref)
+
+
 def mailbox_lock(user_id: int, account_id: int) -> str:
     """procrastinate ``lock`` of every job acting on one mailbox: they run one at a time."""
     return f"mailbox:{user_id}:{account_id}"
@@ -190,7 +205,7 @@ def _defer(
     lock: str | None,
     queueing_lock: str,
     schedule_at: datetime | None = None,
-    arguments: Mapping[str, int],
+    arguments: Mapping[str, int | str],
 ) -> int:
     """Queue the task ``name`` with ``arguments`` inside ``db``'s transaction, to run from
     ``schedule_at`` (else at once); its job id. Raises procrastinate's ``AlreadyEnqueued`` when a
@@ -314,7 +329,9 @@ def requeue_lost_snoozes(db: Session) -> list[int]:
     return [row.id for row in lost]
 
 
-def _defer_once(db: Session, name: str, *, lock: str, queueing_lock: str, **arguments: int) -> bool:
+def _defer_once(
+    db: Session, name: str, *, lock: str, queueing_lock: str, **arguments: int | str
+) -> bool:
     """``_defer`` in a savepoint of ``db``'s transaction (the caller commits); False when a job
     with ``queueing_lock`` was already waiting."""
     try:
@@ -323,6 +340,20 @@ def _defer_once(db: Session, name: str, *, lock: str, queueing_lock: str, **argu
     except AlreadyEnqueued:
         return False
     return True
+
+
+def defer_vacation_reply(db: Session, *, user_id: int, account_id: int, ref: str) -> bool:
+    """Queue ``vacation_reply`` for the message ``ref`` (the caller commits), once while one
+    waits; whether it was queued."""
+    return _defer_once(
+        db,
+        VACATION_REPLY,
+        lock=mailbox_lock(user_id, account_id),
+        queueing_lock=f"vacation:{user_id}:{ref}",
+        user_id=user_id,
+        account_id=account_id,
+        ref=ref,
+    )
 
 
 def queue_index_accounts(db: Session, engine: Engine) -> int:

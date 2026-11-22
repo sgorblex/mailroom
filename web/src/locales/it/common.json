@@ -349,6 +349,28 @@
     "loadFailed": "Impossibile caricare le firme.",
     "saveFailed": "Impossibile salvare la firma."
   },
+  "vacation": {
+    "title": "Risposta automatica",
+    "intro": "Mentre sei via, ogni account può rispondere per te alla posta nuova nella sua posta in arrivo. Risponde solo al messaggio di una persona indirizzato a te, mai a una lista, una newsletter, un messaggio automatico o un mittente no-reply, e a ogni mittente una volta ogni 4 giorni. Le risposte seguono la modalità d'invio dell'account (non quando è disattivata) e compaiono in Attività.",
+    "enabled": "Rispondi automaticamente",
+    "startsOn": "Primo giorno",
+    "endsOn": "Ultimo giorno",
+    "identity": "Rispondi da",
+    "addressed": "L'indirizzo a cui è stato inviato",
+    "subject": "Oggetto",
+    "body": "Risposta",
+    "placeholder": "Sono via fino al…",
+    "save": "Salva la risposta automatica",
+    "saved": "Salvata. Oggi non risponde.",
+    "savedAnswering": "Salvata. Ora risponde.",
+    "savedNotIndexed": "Salvata, ma non risponde ancora: l'indice della posta non segue INBOX.",
+    "notIndexed": "Risponde solo alla posta nuova che l'indice della posta vede arrivare: attiva l'indice per INBOX (su Gmail, Tutti i messaggi) e lascia finire la prima sincronizzazione.",
+    "incomplete": "La risposta automatica richiede un oggetto e un testo.",
+    "daysOutOfOrder": "L'ultimo giorno viene prima del primo.",
+    "loading": "Caricamento della risposta automatica…",
+    "loadFailed": "Impossibile caricare la risposta automatica.",
+    "saveFailed": "Impossibile salvare la risposta automatica."
+  },
   "limits": {
     "title": "Limiti della posta",
     "intro": "Valgono per la tua posta qui e dalle app collegate, su tutti i tuoi account. Solo tu li cambi, qui: un'app collegata non può.",

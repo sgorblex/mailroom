@@ -47,6 +47,11 @@ export function signaturesKey(account: AccountId): readonly unknown[] {
   return ['signatures', account]
 }
 
+/** The account's vacation reply. */
+export function vacationKey(account: AccountId): readonly unknown[] {
+  return ['vacation', account]
+}
+
 /** The addresses a recipient field suggests for what was typed. */
 export function addressesKey(prefix: string): readonly unknown[] {
   return ['mail-addresses', prefix]

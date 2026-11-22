@@ -1,9 +1,11 @@
-"""Each user's mail accounts: list, add, edit, remove, test the login, read the quota and keep each
-identity's signature. Only the signed-in user's own: another user's account id is a 404."""
+"""Each user's mail accounts: list, add, edit, remove, test the login, read the quota, keep each
+identity's signature and the account's vacation reply. Only the signed-in user's own: another
+user's account id is a 404."""
 
 from __future__ import annotations
 
 import logging
+from datetime import date
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Query, Request
@@ -15,7 +17,7 @@ from mailroom.accounts.service import ListedAccount, StoredAccount, StoredEndpoi
 from mailroom.api.deps import AccountId, Context, CurrentUser, DbSession
 from mailroom.errors import Refusal
 from mailroom.mail import service as mail
-from mailroom.mail import signatures
+from mailroom.mail import signatures, vacation
 
 if TYPE_CHECKING:
     from mailroom_core.mail import QuotaUsage
@@ -99,6 +101,54 @@ class SignatureChange(BaseModel):
     address: str = Field(max_length=320)
     html: str = Field(max_length=signatures.MAX_SIGNATURE_CHARS)
     """Without text: the signature is removed."""
+
+
+class VacationReply(BaseModel):
+    """An account's vacation reply; off, with an empty subject and text, until set."""
+
+    enabled: bool
+    starts_on: date | None
+    ends_on: date | None
+    """The first and last day it answers, in the user's time zone; null: open."""
+    subject: str
+    html: str
+    """Sanitised as an outgoing message's HTML is, without images."""
+    text: str
+    """``html`` as the reply's text part has it."""
+    identity: str | None
+    """The identity it goes from; null: the one each message was addressed to."""
+    answering: bool
+    """Whether it answers today: on, and today is one of its days."""
+    indexed: bool
+    """Whether new mail reaches it: replies are queued from the index's sync of INBOX (on Gmail,
+    All Mail), so that folder must be on the index and synced."""
+
+
+class VacationChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
+    starts_on: date | None = None
+    ends_on: date | None = None
+    subject: str = Field(default="", max_length=vacation.MAX_SUBJECT_CHARS)
+    html: str = Field(default="", max_length=vacation.MAX_VACATION_CHARS)
+    identity: str | None = Field(default=None, max_length=320)
+
+
+def _vacation_reply(
+    settings: vacation.VacationSettings, today: date, *, indexed: bool
+) -> VacationReply:
+    return VacationReply(
+        enabled=settings.enabled,
+        starts_on=settings.starts_on,
+        ends_on=settings.ends_on,
+        subject=settings.subject,
+        html=settings.html,
+        text=settings.text,
+        identity=settings.identity,
+        answering=vacation.answers_on(settings, today),
+        indexed=indexed,
+    )
 
 
 def _fields(body: AccountFields) -> dict[str, Json]:
@@ -228,6 +278,61 @@ def change_signature(
     if signature is None:
         return IdentitySignature(address=identity.address, html="", text="")
     return IdentitySignature(address=identity.address, html=signature.html, text=signature.text)
+
+
+@accounts_router.get("/{account_id}/vacation")
+def account_vacation(
+    account_id: AccountId, ctx: Context, db: DbSession, user: CurrentUser
+) -> VacationReply:
+    """The account's vacation reply."""
+    service.require_account(ctx.store(user.id), account_id)
+    settings = vacation.vacation_of(db, user.id, account_id)
+    return _vacation_reply(
+        settings,
+        vacation.today_of(db, user.id),
+        indexed=vacation.inbox_indexed(db, user.id, account_id),
+    )
+
+
+@accounts_router.put("/{account_id}/vacation")
+def change_vacation(
+    account_id: AccountId,
+    body: VacationChange,
+    ctx: Context,
+    db: DbSession,
+    user: CurrentUser,
+) -> VacationReply:
+    """Keep the account's vacation reply, its HTML sanitised. ``invalid_vacation`` (400) for an
+    identity that is none of the account's, a last day before the first, or one switched on
+    without a subject or a text."""
+    account = service.require_account(ctx.store(user.id), account_id)
+    settings = vacation.set_vacation(
+        db,
+        user.id,
+        account,
+        vacation.VacationSettings(
+            enabled=body.enabled,
+            starts_on=body.starts_on,
+            ends_on=body.ends_on,
+            subject=body.subject,
+            html=body.html,
+            identity=body.identity,
+        ),
+    )
+    logger.info(
+        "vacation_changed",
+        extra={
+            "event": "vacation_changed",
+            "user_id": user.id,
+            "account_id": account_id,
+            "enabled": settings.enabled,
+        },
+    )
+    return _vacation_reply(
+        settings,
+        vacation.today_of(db, user.id),
+        indexed=vacation.inbox_indexed(db, user.id, account_id),
+    )
 
 
 def _log_test(user_id: int, account_id: int, outcome: str) -> None:

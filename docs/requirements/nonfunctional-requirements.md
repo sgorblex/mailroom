@@ -146,6 +146,11 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   its subject and sender (for the Snoozed list) and when it comes back, never logged but by id;
   read only scoped to their user, they go with their account and their user, their jobs with
   them (the messages stay in Snoozed).
+- **Vacation replies** (`app.vacation`, `app.vacation_replied`,
+  [`mail-client.md`](mail-client.md#vacation-reply)): per user and account, the settings (days,
+  subject, sanitised HTML, identity) and each sender answered with when, kept to answer a sender
+  once in 4 days (the account's next claim deletes the older ones); never logged, read only scoped to their user, they go with their account and
+  their user.
 - **Deletes only deliberately.** Trash moves to `\Trash`, as in mailroom-mcp, and nothing is
   expunged but what a move copied elsewhere and **a draft Mailroom wrote**, by `UID EXPUNGE` of
   exactly that UID ([`mail-client.md`](mail-client.md), *The own-draft exception*); a draft
@@ -170,8 +175,9 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   recorded before SMTP; a draft's send is keyed so it is delivered once (an agent's direct send has
   no key), and one whose delivery is uncertain is `unknown`, never retried by itself. A held send
   the worker sends goes through the same gate with the draft's key, so its job run twice delivers
-  once. Header values built from user input or mail have CR and LF stripped, and Bcc never goes in
-  a transmitted header.
+  once; so does a vacation reply, keyed by the message it answers, its sender claimed before SMTP,
+  and decided by the message's header fields only, never its text. Header values built from user
+  input or mail have CR and LF stripped, and Bcc never goes in a transmitted header.
 - **Learning never acts** ([`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Filter suggestions*).
 - **Outbound HTTP to a host from input** (an email address's domain, a URL a document names, a
   client ID metadata document's URL, a one-click unsubscribe URL) goes through
@@ -673,7 +679,8 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   `unsubscribe` (the list's id, the URL's host and the status it answered, never the URL),
   `mute` and `unmute` (the `muted_thread_id`; a mute's folder and UID), `snooze` (the move into
   Snoozed) and `wake` (marked unread and the move back, or `not_found` with the `snooze_id` for a
-  message gone from Snoozed),
+  message gone from Snoozed), `vacation_reply` (the reply's send, or why the message got none,
+  with its folder, UID and From address),
   or the filter's action as its report names it) and the result. A move to another account is
   recorded in both: the original's record names the `destination_account`, the copy's (in the
   target account) its `source_account` and `source_folder`. A run records each message its report
@@ -862,6 +869,12 @@ What they do and the route list: [`filters.md`](filters.md). How:
     ([`mail-client.md`](mail-client.md#snooze)); a wake that failed is deferred again 15 minutes
     later. Logged as `mail_snooze_woken` (with `account_id`, `snooze_id` and `outcome`: `ok`,
     `gone`, `missing` or the code); the API logs `mail_snooze_held` and `mail_snooze_woken_now`.
+  - **Vacation replies** go from here, with `mail`: an index sync's new rows in INBOX queue
+    `vacation_reply(user_id, account_id, ref)` in the transaction storing them, one waiting per
+    message, with the mailbox's `lock`, while the account's reply is on; the job checks the
+    message's header fields and sends the reply through mailroom-core's send gate as the user
+    ([`mail-client.md`](mail-client.md#vacation-reply)). Logged as `mail_vacation_reply` (with
+    `account_id` and `outcome`: `ok`, `off`, `gone`, or why it got none); nothing of the message.
   - Jobs run 4 at a time (synchronous tasks, each on a thread); besides being notified of new jobs,
     the worker looks for them every second, so a run held back by its mailbox's lock starts within
     a second of the lock freeing. One worker process (below): a second would watch every folder

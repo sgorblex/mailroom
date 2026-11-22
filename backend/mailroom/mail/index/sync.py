@@ -14,7 +14,8 @@ logged, and stays readable live. Nothing here changes mail: every read is under 
 
 Each commit that changed the folder's rows or its state announces it on ``NOTIFY_CHANNEL``
 (``notify``), a batch with the range of the new mail it stored: the UIDs from the folder's
-UIDNEXT at its last pass on, none on a first sync or a rebuild.
+UIDNEXT at its last pass on, none on a first sync or a rebuild. The same new mail, in INBOX,
+queues the account's vacation replies (``mailroom.mail.vacation``).
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ from sqlalchemy import BigInteger, any_, bindparam, delete, or_, select
 from sqlalchemy.dialects.postgresql import ARRAY
 
 from mailroom.auth.users import time_zone_of
+from mailroom.mail import vacation
 from mailroom.mail.connections import PASSWORD_MISSING, PasswordMissing
 from mailroom.mail.index import threads
 from mailroom.mail.index.rows import apply_flags, count_rows, flag_kinds, upsert_rows
@@ -331,10 +333,32 @@ def _stored_batch(
     _store(db, user_id, account_id, folder_id, messages)
     count_rows(db, row)
     start = found.new_from
-    new = [message.uid for message in messages if start is not None and message.uid >= start]
+    fresh = [message for message in messages if start is not None and message.uid >= start]
+    new = [message.uid for message in fresh]
     notify(db, user_id, account_id, folder_id, new=(min(new), max(new)) if new else None)
+    _queue_replies(db, user_id, account_id, fresh)
     db.commit()
     return "stored"
+
+
+def _queue_replies(
+    db: Session, user_id: int, account_id: int, fresh: Sequence[IndexedMessage]
+) -> None:
+    """``vacation.queue_vacation_replies`` in a savepoint: one that fails costs those replies,
+    never the batch's rows."""
+    try:
+        with db.begin_nested():
+            vacation.queue_vacation_replies(db, user_id, account_id, fresh)
+    except Exception as error:
+        logger.warning(
+            "vacation_queue_failed",
+            extra={
+                "event": "vacation_queue_failed",
+                "user_id": user_id,
+                "account_id": account_id,
+                "error_type": type(error).__name__,
+            },
+        )
 
 
 def _stored_one_by_one(

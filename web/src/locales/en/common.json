@@ -349,6 +349,28 @@
     "loadFailed": "Could not load the signatures.",
     "saveFailed": "Could not save the signature."
   },
+  "vacation": {
+    "title": "Vacation reply",
+    "intro": "While you are away, each account can answer new mail in its inbox for you. Only a person's message addressed to you is answered, never a list, a newsletter, an automatic message or a no-reply sender, and each sender once every 4 days. Replies go through the account's send mode (not when it is off) and are listed in Activity.",
+    "enabled": "Reply automatically",
+    "startsOn": "First day",
+    "endsOn": "Last day",
+    "identity": "Reply from",
+    "addressed": "The address it was sent to",
+    "subject": "Subject",
+    "body": "Reply",
+    "placeholder": "I am away until…",
+    "save": "Save vacation reply",
+    "saved": "Saved. Not replying today.",
+    "savedAnswering": "Saved. Replying now.",
+    "savedNotIndexed": "Saved, but not replying yet: the mail index does not follow INBOX.",
+    "notIndexed": "It answers only new mail the mail index sees arrive: turn the index on for INBOX (on Gmail, All Mail) and let its first sync finish.",
+    "incomplete": "A vacation reply needs a subject and a text.",
+    "daysOutOfOrder": "The last day comes before the first.",
+    "loading": "Loading the vacation reply…",
+    "loadFailed": "Could not load the vacation reply.",
+    "saveFailed": "Could not save the vacation reply."
+  },
   "limits": {
     "title": "Mail limits",
     "intro": "They hold for your mail here and through connected apps, across all your accounts. Only you change them, here: a connected app cannot.",

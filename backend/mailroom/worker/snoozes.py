@@ -157,8 +157,9 @@ def _wake(sessions: sessionmaker[Session], mailboxes: Mailboxes, due: _Due) -> s
 def _not_new(sessions: sessionmaker[Session], due: _Due, refs: Sequence[str]) -> None:
     """The woken message's refs into the ledger the filter runs leave alone (``ledger_skip``),
     as soon as the move answered: back in its folder it is no new mail, so neither the
-    ``new_mail`` rule sets its arrival queues nor a muted thread's mark it read again, or move it.
-    Its notification is the live updates', from the index. A failure is logged: it is back."""
+    ``new_mail`` rule sets its arrival queues nor a muted thread's mark it read again, or move it,
+    and the vacation reply does not answer it (``mailroom.mail.vacation``). Its notification is
+    the live updates', from the index. A failure is logged: it is back."""
     if not refs:
         return
     with sessions() as db:
