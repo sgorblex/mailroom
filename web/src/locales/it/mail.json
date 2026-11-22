@@ -28,7 +28,6 @@
     "markReadSubtree": "Segna tutti come letti, con le sottocartelle",
     "markReadFolderOnly": "Segna tutti come letti, solo questa cartella",
     "noUnread": "Nessun messaggio non letto.",
-    "noUids": "Il server non ha dato gli UID di questa cartella; elencala di nuovo.",
     "protected": "La posta in arrivo e le cartelle con un ruolo non si possono rinominare né eliminare.",
     "holdsRole": "Contiene una cartella con un ruolo.",
     "hasSubfolders": "Prima elimina o sposta le sue sottocartelle.",

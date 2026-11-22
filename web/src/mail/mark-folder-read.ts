@@ -38,19 +38,12 @@ export function markReadScope(node: FolderNode & { folder: MailFolder }, subfold
   return { folder: node.folder, subfolders, folders, unread: folders.reduce((sum, folder) => sum + folder.unread, 0) }
 }
 
-/** Whether every folder of `scope` came with its UIDs, which a mark-read sends back. */
-export function hasUids(scope: MarkReadScope): boolean {
-  return scope.folders.every((folder) => folder.uid_validity !== null && folder.uid_next !== null)
-}
-
 /**
  * Marks `folder` read as the listing the user acted on had it: mail that arrived since stays
- * unread. Only for a folder whose listing gave its UIDs. The count marked.
+ * unread. A Gmail label's folder counted from the index comes without its UIDs: the server reads
+ * them then. The count marked.
  */
 export function markRead(accountId: AccountId, folder: MailFolder): Promise<number> {
-  if (folder.uid_validity === null || folder.uid_next === null) {
-    return Promise.reject(new Error('markRead on a folder without its UIDs'))
-  }
   return markFolderRead(accountId, folder.path, folder.uid_validity, folder.uid_next)
 }
 

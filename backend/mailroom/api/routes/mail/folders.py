@@ -99,9 +99,10 @@ class FolderMarkReadRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     folder: FolderPath
-    uid_validity: UidNumber
-    uid_next: UidNumber
-    """The listing's: messages that arrived after it stay unread."""
+    uid_validity: UidNumber | None
+    uid_next: UidNumber | None
+    """The listing's: messages that arrived after it stay unread. Both null for a Gmail label's
+    folder the listing counted from the index, which gave none: its STATUS now gives them."""
 
 
 class FolderCreated(BaseModel):

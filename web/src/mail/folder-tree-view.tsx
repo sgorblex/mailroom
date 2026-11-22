@@ -53,7 +53,7 @@ import {
   type FolderRefusal,
 } from './folder-tree.ts'
 import { MAIL_NS } from './i18n.ts'
-import { hasUids, markReadScope } from './mark-folder-read.ts'
+import { markReadScope } from './mark-folder-read.ts'
 import { carriesMessages, endMessageDrag, useDraggedMessages } from './message-drag.ts'
 import { storedPaths, storePaths } from './stored-paths.ts'
 import { storedSubfolders, storeSubfolders } from './subfolder-view.ts'
@@ -399,7 +399,7 @@ function actionItems(
     const scope = markReadScope(node, subfolders)
     return {
       label,
-      disabledReason: scope.unread === 0 ? t('folderActions.noUnread') : hasUids(scope) ? null : t('folderActions.noUids'),
+      disabledReason: scope.unread === 0 ? t('folderActions.noUnread') : null,
       onSelect: () => {
         onAction({ kind: 'markRead', scope })
       },

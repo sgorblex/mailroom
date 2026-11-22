@@ -91,8 +91,11 @@ def folders(
     """The account's selectable folders in mailroom-core's order (special-use first, then the rest
     by path), with their counts unless ``counts`` is off: a folder the index holds whole
     (ready, no age limit) has the index's counts, UIDVALIDITY and UIDNEXT
-    (``counted_folders``), each other one STATUS's (one command per folder). ``every``: the
-    ``\\Noselect`` ones too (a tree's parents, without counts)."""
+    (``counted_folders``); on Gmail, with All Mail held so, INBOX and each label's folder have
+    the counts of All Mail's rows carrying its label (``label_counts``), without UIDVALIDITY or
+    UIDNEXT (a mark read reads them then), or STATUS's when those cannot be read; each other one
+    STATUS's (one command per folder). ``every``: the ``\\Noselect`` ones too (a tree's parents,
+    without counts)."""
     accounts = _accounts(ctx, user_id)
     _usable(ctx, user_id, accounts, account_id)
     held = _index_counts(ctx, user_id, account_id) if counts else {}
@@ -100,17 +103,36 @@ def folders(
     def read(connections: MailConnections) -> list[Folder]:
         if not held:
             return connections.folders(account_id, with_status=counts)
-        listed = connections.folders(account_id, with_status=lambda f: f.path not in held)
-        return [_counted(folder, held.get(folder.path)) for folder in listed]
+        gmail = connections.capabilities(account_id).gmail
+
+        def live(folder: Folder) -> bool:
+            return folder.path not in held and not (
+                gmail and index_reads.gmail_label(folder) is not None
+            )
+
+        listed = connections.folders(account_id, with_status=live)
+        labels = _label_counts(ctx, user_id, account_id, listed, held) if gmail else None
+        if gmail and labels is None:
+            listed = connections.folders(account_id, with_status=lambda f: f.path not in held)
+        return [_counted(folder, held.get(folder.path), labels) for folder in listed]
 
     listed = _call(ctx, user_id, accounts, "mail_folders", via, account_id, read)
     return listed if every else [folder for folder in listed if folder.selectable]
 
 
-def _counted(folder: Folder, held: Folder | None) -> Folder:
-    """``folder`` with the index's counts ``held``, if any."""
-    if held is None or not folder.selectable:
+def _counted(
+    folder: Folder, held: Folder | None, labels: Mapping[str, tuple[int, int]] | None
+) -> Folder:
+    """``folder`` with the index's counts ``held``, if any; on Gmail (``labels``: All Mail's
+    counts per label, None when they could not be read), a label's folder with its label's."""
+    if not folder.selectable:
         return folder
+    if held is None:
+        label = None if labels is None else index_reads.gmail_label(folder)
+        if labels is None or label is None:
+            return folder
+        messages, unseen = labels.get(label, (0, 0))
+        return replace(folder, messages=messages, unseen=unseen)
     return replace(
         folder,
         messages=held.messages,
@@ -666,6 +688,27 @@ def _index_counts(ctx: AppContext, user_id: int, account_id: int) -> dict[str, F
     except Exception as exc:
         _index_read_failed(user_id, exc)
         return {}
+
+
+def _label_counts(
+    ctx: AppContext,
+    user_id: int,
+    account_id: int,
+    listed: Sequence[Folder],
+    held: Mapping[str, Folder],
+) -> dict[str, tuple[int, int]] | None:
+    """A Gmail account's counts per label from All Mail's rows (``label_counts``), when the
+    index holds All Mail whole; None when it does not or cannot be read
+    (``_index_read_failed``)."""
+    every = next((f for f in listed if f.role == "all" and f.path in held), None)
+    if every is None:
+        return None
+    try:
+        with ctx.session_maker() as db:
+            return index_reads.label_counts(db, user_id, account_id, every.path)
+    except Exception as exc:
+        _index_read_failed(user_id, exc)
+        return None
 
 
 def _tail_page(
