@@ -806,6 +806,12 @@ const keepPartSchema = partSchema.extend({ ref: z.string() })
 /** A part of another message (or of the draft itself) a draft keeps. */
 export type KeptPart = z.infer<typeof keepPartSchema>
 
+const shownPartSchema = partSchema.extend({ content_id: z.string() })
+/** An inline part: what the HTML shows as `cid:<content_id>`. */
+export type ShownPart = z.infer<typeof shownPartSchema>
+const keptShownPartSchema = shownPartSchema.extend({ ref: z.string() })
+export type KeptShownPart = z.infer<typeof keptShownPartSchema>
+
 const composeFieldsSchema = z.object({
   account: accountIdSchema,
   from: z.string().nullable(),
@@ -814,11 +820,13 @@ const composeFieldsSchema = z.object({
   bcc: z.array(addressSchema),
   subject: z.string(),
   text: z.string(),
+  /** The body as HTML, when it has one: its text is then derived from it. */
+  html: z.string().nullable(),
   answers: z.string().nullable(),
   forwards: z.string().nullable(),
 })
 
-const prefillSchema = composeFieldsSchema.extend({ attachments: z.array(keepPartSchema) })
+const prefillSchema = composeFieldsSchema.extend({ attachments: z.array(keepPartSchema), inline: z.array(keptShownPartSchema) })
 export type Prefill = z.infer<typeof prefillSchema>
 export type PrefillMode = 'reply' | 'reply_all' | 'forward' | 'unsubscribe'
 
@@ -832,6 +840,7 @@ const draftSchema = composeFieldsSchema.extend({
   compose_id: z.string().nullable(),
   lossy: z.boolean(),
   parts: z.array(partSchema),
+  inline: z.array(shownPartSchema),
   send: draftSendSchema.nullable(),
 })
 export type Draft = z.infer<typeof draftSchema>
@@ -847,12 +856,13 @@ export function holdingSend(error: unknown): DraftSend | null {
 const savedDraftSchema = z.object({
   ref: z.string().nullable(),
   parts: z.array(partSchema),
+  inline: z.array(shownPartSchema),
   replaced: z.boolean(),
   autosave: z.boolean(),
 })
 export type SavedDraft = z.infer<typeof savedDraftSchema>
 
-const foundDraftSchema = z.object({ ref: z.string(), parts: z.array(partSchema) })
+const foundDraftSchema = z.object({ ref: z.string(), parts: z.array(partSchema), inline: z.array(shownPartSchema) })
 export type FoundDraft = z.infer<typeof foundDraftSchema>
 
 const sendResultSchema = z.object({
@@ -867,7 +877,7 @@ const sendResultSchema = z.object({
 })
 export type SendResult = z.infer<typeof sendResultSchema>
 
-/** The `draft` part of a save. */
+/** A save's fields: `html` goes as a part of its own, the rest as the `draft` part. */
 export interface DraftFields {
   account: AccountId
   compose_id: string
@@ -879,8 +889,12 @@ export interface DraftFields {
   cc: MailAddress[]
   bcc: MailAddress[]
   subject: string
+  /** Not used when there is `html`. */
   text: string
-  keep: { ref: string; part: string }[]
+  html: string | null
+  /** The Content-ID of each upload the HTML shows in place, in order; the files after them are attachments. */
+  content_ids: string[]
+  keep: { ref: string; part: string; inline?: boolean }[]
 }
 
 const draftPath = (ref: string): string => `${base}/drafts/${encodeURIComponent(ref)}`
@@ -891,12 +905,32 @@ export function prefillDraft(ref: string, mode: PrefillMode, signal?: AbortSigna
 }
 
 /**
+ * The text an HTML body is sent with (the server's conversion), for a switch to plain text. It
+ * goes to the save's route, the one the host's proxy lets an HTML body this size through to.
+ */
+export async function draftText(html: string, signal?: AbortSignal): Promise<string> {
+  const form = new FormData()
+  form.set('html', html)
+  const answer = await apiPostForm(withQuery(`${base}/drafts`, { convert: 'text' }), form, {
+    init: { signal },
+    schema: z.object({ text: z.string() }),
+  })
+  return answer.text
+}
+
+/**
  * Replaces the draft `fields.ref` (or writes the first version). `keepalive` outlives the page, so
- * it must fit the browser's small keepalive quota: text only, no `files`.
+ * it must fit the browser's small keepalive quota: text only, no `files`. `files` start with the
+ones `fields.content_ids` name.
  */
 export function saveDraft(fields: DraftFields, files: File[], options: { keepalive?: boolean } = {}): Promise<SavedDraft> {
+  const { html, ...rest } = fields
   const form = new FormData()
-  form.set('draft', JSON.stringify(fields))
+  form.set('draft', JSON.stringify(rest))
+  // Raw, not in the JSON: escaping would let the part outgrow the HTML cap, which counts UTF-8.
+  if (html !== null) {
+    form.set('html', html)
+  }
   for (const file of files) {
     form.append('files[]', file)
   }

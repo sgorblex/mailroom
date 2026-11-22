@@ -490,7 +490,8 @@ encoded word, so the message's own headers are written by hand. Deliberate choic
   core does not list as attachments, unless the source says `inline`: then it takes only such a
   part, with its Content-ID, for a forward or a draft's next version that keeps that HTML.
 - **HTML bodies.** With `MessageInput.html`, the body is multipart/alternative of a text part,
-  `html_to_text` over the sanitised HTML (`text` is not used), and that HTML; wrapped in a
+  `html_to_text` over the sanitised HTML (`text` is not used; `html_text` gives it alone, for a
+  client's switch to plain text), and that HTML; wrapped in a
   multipart/related, `type="multipart/alternative"`, with the inline parts it shows, if any; then
   multipart/mixed with the attachments. An `OutgoingAttachment` with a `content_id` is an inline
   part: written with an inline disposition and its Content-ID only while the HTML refers to it,

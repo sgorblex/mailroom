@@ -87,3 +87,32 @@
     @apply bg-background text-foreground antialiased;
   }
 }
+
+/* The composer's rich-text body (TipTap): what preflight resets, as the message will show it. */
+@layer components {
+  .rich-body p {
+    @apply min-h-[1lh];
+  }
+  .rich-body ul {
+    @apply list-disc pl-6;
+  }
+  .rich-body ol {
+    @apply list-decimal pl-6;
+  }
+  .rich-body blockquote {
+    @apply border-l-2 pl-3 text-muted-foreground;
+  }
+  .rich-body a {
+    @apply text-primary underline;
+  }
+  .rich-body img {
+    @apply inline max-w-full;
+  }
+  .rich-body img.ProseMirror-selectednode {
+    @apply outline-2 outline-ring;
+  }
+  .rich-body p.is-editor-empty:first-child::before {
+    @apply pointer-events-none float-left h-0 text-muted-foreground;
+    content: attr(data-placeholder);
+  }
+}

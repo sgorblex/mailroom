@@ -2,7 +2,18 @@ import type { AccountId, Account } from '@/api/accounts.ts'
 import { ApiRequestError } from '@/api/http.ts'
 import { deleteDraft, findDraft, prefillDraft, readDraft, saveDraft, type Draft, type DraftSend } from '@/api/mail.ts'
 
-import { isBlank, isFile, isPart, reconcileTray, trayBytes, trayPart, type ComposeForm } from './compose-form.ts'
+import {
+  inlinePart,
+  isBlank,
+  isFile,
+  isPart,
+  reconcileInline,
+  reconcileTray,
+  shownImages,
+  trayBytes,
+  trayPart,
+  type ComposeForm,
+} from './compose-form.ts'
 import type { ComposeSession } from './compose-session.ts'
 import { SaveQueue, type SaveState } from './save-queue.ts'
 
@@ -20,7 +31,7 @@ export interface ComposeStart {
   send: Draft['send']
 }
 
-const BLANK_FORM: ComposeForm = { from: null, to: [], cc: [], bcc: [], subject: '', text: '', tray: [] }
+const BLANK_FORM: ComposeForm = { from: null, to: [], cc: [], bcc: [], subject: '', text: '', html: '', inline: [], tray: [] }
 
 /** An identity of the account, or `null` (the default) when `from` is none of them. */
 function knownFrom(account: Account | undefined, from: string | null): string | null {
@@ -42,6 +53,8 @@ function draftStart(draft: Draft, composeId: string, account: Account | undefine
       bcc: draft.bcc,
       subject: draft.subject,
       text: draft.text,
+      html: draft.html,
+      inline: draft.inline.map((part) => inlinePart({ ...part, ref: draft.ref })),
       tray: draft.parts.map((part) => trayPart({ ...part, ref: draft.ref })),
     },
     lossy: draft.lossy,
@@ -86,6 +99,8 @@ export async function loadStart(
           bcc: prefill.bcc,
           subject: prefill.subject,
           text: prefill.text,
+          html: prefill.html,
+          inline: prefill.inline.map(inlinePart),
           tray: prefill.attachments.map(trayPart),
         },
         lossy: false,
@@ -126,10 +141,16 @@ export class DraftModel {
     this.writtenElsewhere = start.elsewhere ? start.ref : null
     this.queue = new SaveQueue<ComposeForm>(
       {
-        snapshot: (textOnly) => (textOnly ? { ...this.form, tray: this.form.tray.filter(isPart) } : this.form),
-        bytes: () => trayBytes(this.form.tray),
-        save: (form, ref, keepalive) =>
-          saveDraft(
+        snapshot: (textOnly) => {
+          const inline = shownImages(this.form.html, this.form.inline)
+          return textOnly
+            ? { ...this.form, inline: inline.filter(isPart), tray: this.form.tray.filter(isPart) }
+            : { ...this.form, inline }
+        },
+        bytes: () => trayBytes([...this.form.tray, ...shownImages(this.form.html, this.form.inline)]),
+        save: (form, ref, keepalive) => {
+          const uploads = form.inline.filter(isFile)
+          return saveDraft(
             {
               account: start.account,
               compose_id: start.composeId,
@@ -141,28 +162,36 @@ export class DraftModel {
               cc: form.cc,
               bcc: form.bcc,
               subject: form.subject,
-              text: form.text,
-              keep: form.tray.filter(isPart).map(({ ref: from, part }) => ({ ref: from, part })),
+              text: form.html === null ? form.text : '',
+              html: form.html,
+              content_ids: uploads.map((item) => item.contentId),
+              keep: [
+                ...form.inline.filter(isPart).map(({ ref: from, part }) => ({ ref: from, part, inline: true })),
+                ...form.tray.filter(isPart).map(({ ref: from, part }) => ({ ref: from, part })),
+              ],
             },
-            form.tray.filter(isFile).map((item) => item.file),
+            [...uploads, ...form.tray.filter(isFile)].map((item) => item.file),
             { keepalive },
-          ),
+          )
+        },
         find: () => findDraft(start.account, start.composeId),
-        landed: (form, ref, parts) => {
+        landed: (form, ref, { parts, inline: shown }) => {
           const tray = reconcileTray(this.form.tray, form?.tray ?? this.form.tray.filter(isPart), ref, parts)
-          this.form = { ...this.form, tray }
+          const inline = reconcileInline(this.form.inline, ref, shown, start.forwards)
+          this.form = { ...this.form, tray, inline }
           onSaved()
           this.refresh()
           // Files a text-only save left behind still have to go.
-          if (tray.some(isFile)) {
+          if (tray.some(isFile) || shownImages(this.form.html, inline).some(isFile)) {
             this.queue.touch()
           }
         },
         // A save naming a part of the dead ref would be refused, and so would every one after it.
         lost: (ref) => {
           const tray = this.form.tray.filter((item) => !isPart(item) || item.ref !== ref)
-          this.attachmentsLost ||= tray.length !== this.form.tray.length
-          this.form = { ...this.form, tray }
+          const inline = this.form.inline.filter((item) => !isPart(item) || item.ref !== ref)
+          this.attachmentsLost ||= tray.length !== this.form.tray.length || inline.length !== this.form.inline.length
+          this.form = { ...this.form, tray, inline }
           this.refresh()
         },
         changed: () => {

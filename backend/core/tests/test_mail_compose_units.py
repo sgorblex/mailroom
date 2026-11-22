@@ -47,6 +47,7 @@ from mailroom_core.mail import (
     forwarded_original,
     forwarded_original_html,
     from_identity,
+    html_text,
     is_own_draft,
     mailbox_text,
     matches_rule,
@@ -450,6 +451,7 @@ class TestHtmlBody:
         assert text.get_content().replace("\r\n", "\n") == "Hello there\n\n> q\n"
         assert rich.get_content().strip() == "<p>Hello <b>there</b></p><blockquote>q</blockquote>"
         assert reread["MIME-Version"] == "1.0"
+        assert html_text(html) == text.get_content().replace("\r\n", "\n").rstrip("\n")
 
     def test_wraps_the_alternative_in_related_parts_the_html_shows(self) -> None:
         message = replace(

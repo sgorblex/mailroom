@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig, loadEnv, type PluginOption } from "vite";
+import { defineConfig, loadEnv, type Plugin, type PluginOption } from "vite";
 
 /** Missing, empty, or whitespace-only values are treated as unset (defaults apply). */
 function trimmedNonEmptyEnv(env: Record<string, string>, key: string): string | undefined {
@@ -30,6 +30,32 @@ function gitValue(args: string): string {
   } catch {
     return "";
   }
+}
+
+/**
+ * Code the SPA's CSP (`script-src 'self'`, no `unsafe-eval`) would refuse to run. Zod's probe,
+ * `Function("")` in a try, is not matched: it is how Zod finds out it must not compile.
+ */
+const EVAL = /\beval\s*\(|\bnew\s+Function\s*\(/;
+
+/** Fails the build on a chunk that evaluates strings, so a dependency that does is found here. */
+function noEval(): Plugin {
+  return {
+    name: "mailroom-no-eval",
+    apply: "build",
+    generateBundle(_options, bundle) {
+      for (const output of Object.values(bundle)) {
+        if (output.type !== "chunk") {
+          continue;
+        }
+        const found = EVAL.exec(output.code);
+        if (found !== null) {
+          const near = output.code.slice(Math.max(0, found.index - 60), found.index + 60);
+          this.error(`${output.fileName} evaluates strings, which the CSP refuses: …${near}…`);
+        }
+      }
+    },
+  };
 }
 
 // https://vite.dev/config/
@@ -63,7 +89,7 @@ export default defineConfig(({ mode }) => {
     ? deployEnvRaw
     : "";
 
-  const plugins: PluginOption[] = [react()];
+  const plugins: PluginOption[] = [react(), noEval()];
   if (!isTest) {
     plugins.push(tailwindcss());
   }

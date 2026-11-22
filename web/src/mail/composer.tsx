@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type ReactElement } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { X } from 'lucide-react'
 
 import { ApiRequestError } from '@/api/http.ts'
-import { deleteDraft, type MailAddress } from '@/api/mail.ts'
+import { deleteDraft, draftText, type MailAddress } from '@/api/mail.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Dialog } from '@/components/ui/dialog.tsx'
 import { Input } from '@/components/ui/input.tsx'
@@ -14,17 +14,31 @@ import { useUnmountSignal } from '@/lib/use-unmount-signal.ts'
 
 import { AttachmentTray } from './attachment-tray.tsx'
 import { useCompose } from './compose-context.ts'
-import { isBlank, type ComposeForm, type TrayItem } from './compose-form.ts'
+import {
+  isBlank,
+  MAX_FILES,
+  newContentId,
+  plainToHtml,
+  shownImages,
+  uploadProblem,
+  type ComposeForm,
+  type InlineItem,
+  type TrayItem,
+} from './compose-form.ts'
 import type { ComposeSession, ComposeSource } from './compose-session.ts'
 import { DraftModel, loadStart, type ComposeStart, type DraftView } from './draft-model.ts'
 import { MAIL_NS } from './i18n.ts'
 import { IdentitySelect } from './identity-select.tsx'
 import { composeErrorMessage, mailCodeMessage, mailErrorMessage, sentMessage } from './messages.ts'
 import { RecipientInput, type Typed } from './recipient-input.tsx'
+import type { RichEditorHandle } from './rich-editor.tsx'
 import { commitTyped } from './recipients.ts'
 import { followSend, runSend, type SendEnd } from './send-flow.ts'
 import { SendStatus, type SendState } from './send-status.tsx'
 import { loadedFolders, roleFolder, useAccountFolders } from './triage-context.ts'
+
+// TipTap is most of the composer's weight: the mail screen loads without it.
+const RichEditor = lazy(() => import('./rich-editor.tsx').then((module) => ({ default: module.RichEditor })))
 
 const MAX_SUBJECT = 998
 const MAX_TEXT = 100_000
@@ -182,16 +196,18 @@ function Editor({ session, start }: { session: ComposeSession; start: ComposeSta
   const [held, setHeld] = useState(() => holdsTheDraft(start.send))
   const [refusalShown, setRefusalShown] = useState<DraftView['refusedBy']>(null)
   const [problem, setProblem] = useState<string | null>(null)
-  const [dialog, setDialog] = useState<'resend' | 'delete' | 'unsaved' | null>(null)
+  const [dialog, setDialog] = useState<'resend' | 'delete' | 'unsaved' | 'plain' | null>(null)
   const [deleting, setDeleting] = useState(false)
   const unmountSignal = useUnmountSignal()
   const { state: folders } = useAccountFolders(start.account)
   const titleId = useId()
   const subjectId = useId()
   const bodyId = useId()
+  const bodyLabelId = useId()
   const problemId = useId()
   const toInput = useRef<HTMLInputElement>(null)
   const bodyInput = useRef<HTMLTextAreaElement>(null)
+  const richInput = useRef<RichEditorHandle>(null)
   const sending = send.kind === 'sending'
   const spent = send.kind === 'sent'
   const account = compose.account(start.account)
@@ -222,14 +238,16 @@ function Editor({ session, start }: { session: ComposeSession; start: ComposeSta
     setProblem(null)
   }
 
+  // The rich editor focuses itself once it is loaded.
+  const richStart = start.form.html !== null
   useEffect(() => {
-    if (replying) {
+    if (!replying) {
+      toInput.current?.focus()
+    } else if (!richStart) {
       bodyInput.current?.focus()
       bodyInput.current?.setSelectionRange(0, 0)
-    } else {
-      toInput.current?.focus()
     }
-  }, [replying])
+  }, [replying, richStart])
 
   useEffect(() => {
     identified(start.composeId, start.account)
@@ -241,7 +259,11 @@ function Editor({ session, start }: { session: ComposeSession; start: ComposeSta
         ref: () => model.queue.ref,
         leave: () => model.leave(),
         focus: () => {
-          bodyInput.current?.focus()
+          if (richInput.current === null) {
+            bodyInput.current?.focus()
+          } else {
+            richInput.current.focus()
+          }
         },
       }),
     [attach, model],
@@ -489,6 +511,45 @@ function Editor({ session, start }: { session: ComposeSession; start: ComposeSta
     model.update({ tray: [...model.getView().form.tray, ...added] })
   }
 
+  const maxMb = account?.attachment_max_mb ?? DEFAULT_ATTACHMENT_MB
+  const shown = shownImages(form.html, form.inline)
+
+  /** Files pasted or dropped into the body, held to the attachments' limits; false when over them. */
+  function withinLimits(files: File[]): boolean {
+    const current = model.getView().form
+    const problem = uploadProblem([...current.tray, ...shownImages(current.html, current.inline)], files, maxMb)
+    if (problem === 'count') {
+      setProblem(t('compose.tooManyFiles', { count: MAX_FILES }))
+    } else if (problem === 'size') {
+      setProblem(t('compose.attachmentsTooLarge', { limit: maxMb }))
+    }
+    return problem === null
+  }
+
+  /** Images pasted or dropped into the body, as inline parts under the Content-IDs it shows them by. */
+  function addImages(files: File[]): string[] | null {
+    if (!withinLimits(files)) {
+      return null
+    }
+    const added: InlineItem[] = files.map((file) => ({ kind: 'file', id: crypto.randomUUID(), file, contentId: newContentId() }))
+    model.update({ inline: [...model.getView().form.inline, ...added] })
+    return added.map((item) => item.contentId)
+  }
+
+  async function toPlainText(): Promise<void> {
+    setDialog(null)
+    const { html } = model.getView().form
+    if (html === null) {
+      return
+    }
+    try {
+      const text = await draftText(html)
+      model.update({ html: null, text, inline: [] })
+    } catch (error) {
+      setProblem(mailErrorMessage(t, error, t('compose.plainTextFailed')))
+    }
+  }
+
   function removeItem(item: TrayItem): void {
     model.update({ tray: model.getView().form.tray.filter((each) => each.id !== item.id) })
   }
@@ -567,28 +628,68 @@ function Editor({ session, start }: { session: ComposeSession; start: ComposeSta
           />
         </div>
         <div className="flex min-h-48 flex-1 flex-col gap-1">
-          <label htmlFor={bodyId} className="text-sm text-muted-foreground">
-            {t('compose.body')}
-          </label>
-          <Textarea
-            ref={bodyInput}
-            id={bodyId}
-            className="flex-1"
-            maxLength={MAX_TEXT}
-            readOnly={locked}
-            value={form.text}
-            onChange={(event) => {
-              model.update({ text: event.target.value })
-            }}
-          />
+          {form.html === null ? (
+            <>
+              <div className="flex items-center gap-2">
+                <label id={bodyLabelId} htmlFor={bodyId} className="flex-1 text-sm text-muted-foreground">
+                  {t('compose.body')}
+                </label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  disabled={locked}
+                  onClick={() => {
+                    model.update({ html: plainToHtml(model.getView().form.text) })
+                  }}
+                >
+                  {t('compose.richText')}
+                </Button>
+              </div>
+              <Textarea
+                ref={bodyInput}
+                id={bodyId}
+                className="flex-1"
+                maxLength={MAX_TEXT}
+                readOnly={locked}
+                value={form.text}
+                onChange={(event) => {
+                  model.update({ text: event.target.value })
+                }}
+              />
+            </>
+          ) : (
+            <>
+              <span id={bodyLabelId} className="text-sm text-muted-foreground">
+                {t('compose.body')}
+              </span>
+              <Suspense fallback={<p className="text-sm text-muted-foreground">{t('compose.loading')}</p>}>
+                <RichEditor
+                  ref={richInput}
+                  focusStart={replying}
+                  labelId={bodyLabelId}
+                  html={form.html}
+                  inline={form.inline}
+                  locked={locked}
+                  onChange={(html, text) => {
+                    model.update({ html, text })
+                  }}
+                  onImages={addImages}
+                  onFiles={(files) => {
+                    if (withinLimits(files)) {
+                      addFiles(files)
+                    }
+                  }}
+                  onPlainText={() => {
+                    setDialog('plain')
+                  }}
+                />
+              </Suspense>
+            </>
+          )}
         </div>
         <fieldset disabled={locked} className="contents">
-          <AttachmentTray
-            items={form.tray}
-            maxMb={account?.attachment_max_mb ?? DEFAULT_ATTACHMENT_MB}
-            onAdd={addFiles}
-            onRemove={removeItem}
-          />
+          <AttachmentTray items={form.tray} inline={shown} maxMb={maxMb} onAdd={addFiles} onRemove={removeItem} />
         </fieldset>
       </fieldset>
       <SendStatus
@@ -698,6 +799,31 @@ function Editor({ session, start }: { session: ComposeSession; start: ComposeSta
             </Button>
             <Button type="button" variant="destructive" size="sm" onClick={() => void deleteNow()}>
               {t('compose.deleteDraft')}
+            </Button>
+          </div>
+        </Dialog>
+      )}
+      {dialog === 'plain' && (
+        <Dialog
+          label={t('compose.plainText')}
+          onCancel={() => {
+            setDialog(null)
+          }}
+        >
+          <p className="text-sm">{t('compose.plainTextQuestion')}</p>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setDialog(null)
+              }}
+            >
+              {t('compose.cancel')}
+            </Button>
+            <Button type="button" variant="destructive" size="sm" onClick={() => void toPlainText()}>
+              {t('compose.toPlainText')}
             </Button>
           </div>
         </Dialog>

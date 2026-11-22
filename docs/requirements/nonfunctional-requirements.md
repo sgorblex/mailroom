@@ -8,7 +8,7 @@ Engineering baseline for Mailroom. Product scope: [`../REQUIREMENTS.md`](../REQU
 | --- | --- |
 | Backend | Python 3.14+ (dev pin 3.15 via mise), FastAPI, SQLAlchemy 2 (sync) + psycopg 3, Alembic, uv; PyJWT and httpx for OIDC; dnspython and lxml for account autoconfiguration |
 | Worker | procrastinate (psycopg 3) on the app's database, `python -m mailroom.worker`; it also watches folders over IMAP IDLE and syncs the mail index |
-| Web | React 19, Vite, TanStack Router (code-based routes), TanStack Query (in-memory cache of the mail screen's reads), TanStack Virtual (the message list), Tailwind 4 + shadcn (`web/components.json`), Downshift (headless combobox: the command palette), i18next, Zod at the API boundary, ESLint `strictTypeChecked` (no Prettier) |
+| Web | React 19, Vite, TanStack Router (code-based routes), TanStack Query (in-memory cache of the mail screen's reads), TanStack Virtual (the message list), Tailwind 4 + shadcn (`web/components.json`), Downshift (headless combobox: the command palette), TipTap 3 (the composer's rich-text editor, loaded with it), i18next, Zod at the API boundary, ESLint `strictTypeChecked` (no Prettier) |
 | Database | PostgreSQL 18 |
 | Tests | pytest (+ xdist, one database per worker cloned from the migrated `mailroom_test`), Vitest (`node` and `jsdom` projects) |
 | Containers | Podman, `mailroom-api` and `mailroom-web` images; Quadlet for deploy |
@@ -67,6 +67,8 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   [`../core.md`](../core.md) — *Compose*): the same allowlists, no script, event handlers, forms,
   frames, objects or style sheets, links only `http(s)` and `mailto`, images only the message's own
   `cid:` parts (`data:` images become such parts), styles without `url()` or `expression()`.
+  The web composer's editor (TipTap) parses only `cid:` images, so a paste fetches nothing; it
+  never renders mail HTML as HTML in the SPA's document, only the nodes of its own schema.
 - Plain-text rendering is the fallback and the default for the index.
 - **No request on mail's behalf, but one.** Nothing a message names is fetched, with one
   exception: a **one-click unsubscribe** (RFC 8058) the user asks for on one message (`POST
@@ -100,7 +102,9 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   and `Referrer-Policy: no-referrer`. The `/api/` location gets the last two but not the SPA's CSP:
   the API's HTML mail document sets its own. nginx hides the API's own copies of those two, so
   each is sent once. `style-src` allows `'unsafe-inline'` for UI-library style attributes
-  (decided; revisit if that stops being needed).
+  (decided; revisit if that stops being needed). The production build fails on a chunk that
+  evaluates strings (`eval`, `new Function`; `web/vite.config.ts`), which `script-src 'self'`
+  would refuse at run time.
 - The SPA and API are **same-origin** (Vite proxy in dev, nginx in the image), so `/api/` has no
   CORS configuration at all. Only the OAuth metadata, token, register and revoke endpoints answer
   CORS (any origin, no credentials), for browser-based MCP clients.
@@ -611,7 +615,7 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
     100,000 characters or of 3 MiB of UTF-8 in HTML (a save's own `html` part), a subject
     of 998, 10 new files and the user's `attachment_max_mb` (at most
     25) in total, a 2 MiB original read for quoting. `python-multipart` parses the one multipart
-    route (`POST /drafts`); the web image's nginx allows `client_max_body_size 30m` on that exact
+    route (`POST /drafts`, a save or, with `?convert=text`, the switch to plain text); the web image's nginx allows `client_max_body_size 30m` on that exact
     location (repeating its security headers) and the host's proxy needs the same (attachments
     plus 5 MiB for the fields fit it), and the route
     refuses early from `Content-Length`, then at the user's limit as the body arrives, once the
@@ -904,8 +908,9 @@ clear (hash them, as mailroom-mcp's audit does).
   folders, a login limit above what the parallel workers open).
 - **Web:** Vitest; `*.node.test.ts(x)` in bare Node, everything else in jsdom with
   `src/test/setup.ts`, which stands `src/test/fake-virtualizer.ts` in for TanStack Virtual (jsdom
-  lays nothing out): every row is rendered, and `scrollListToEnd` reads the next page. Test by
-  accessible role and label.
+  lays nothing out): every row is rendered, and `scrollListToEnd` reads the next page. It also
+  gives ranges and the document the empty measures ProseMirror asks for. Test by accessible role
+  and label.
 - **Editions:** the shared test apps pass `features=ALL_FEATURES`, so a developer's
   `MAILROOM_FEATURES` does not change the suite; `tests/test_editions.py` builds the others.
 - **OIDC** tests run against `mailroom.dev.fake_idp` (also `mise run dev-idp`) through

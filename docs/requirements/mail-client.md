@@ -656,7 +656,7 @@ tools. It is the one slice that sends mail, so its rules are the strictest: read
 `mail.reply`, `mail.attachments`, `mail.drafts` and `send` modules, themselves the behaviour of
 mailroom-mcp's `draft` and `send` tools. A message is **plain text or HTML** (rich text, tier 2 in
 [`../REQUIREMENTS.md`](../REQUIREMENTS.md)): the routes and the MCP tools take HTML with inline
-images; the web composer still writes plain text.
+images, and the web composer writes either ([Web editor](#web-editor)).
 
 ### Compose
 
@@ -710,6 +710,29 @@ images; the web composer still writes plain text.
   image is a new upload whose `content_ids` entry names its Content-ID, or a kept part with
   `inline: true` (the draft's own, or a forwarded message's); one the HTML does not show is left
   out.
+- **Web editor:** <a id="web-editor"></a>the composer writes rich text by default, in a TipTap
+  (ProseMirror) editor: bold, italic, underline, links (`http(s)` and `mailto` only: a typed
+  address without a scheme gets `https://`, or `mailto:` for a mail address), bulleted and
+  numbered lists, quotes, from a toolbar or their shortcuts (Ctrl/⌘ B, I, U, K for a link,
+  Shift+7 and Shift+8 for the lists, Shift+B for a quote). An image pasted or dropped into the text
+  goes in place as an inline upload under a Content-ID the composer makes (`<uuid>@mailroom`),
+  held to the attachments' limits; another file dropped there is attached. A paste that also
+  carries text or HTML pastes that, not the picture of it a word processor adds. Once a save
+  replaces the version an image deleted from the text was a part of, that part goes with it, so an
+  undo brings back the image's place but not the image. Only `cid:` images
+  parse, so nothing pasted makes the composer fetch anything; an upload shows from the file
+  itself (a `data:` URL), a kept part from its download. A reply or forward opens on the prefill's
+  `html` (its quote, a forward's block with its inline images), a draft on its saved HTML; the
+  editor holds only what its schema has, so formatting outside it (tables, colours, fonts) is
+  flattened. A save carries `html` (and an empty `text`). A per-message switch goes to plain
+  text, after a warning that the formatting, links and images go: the text is the server's
+  conversion of the HTML (`POST /drafts?convert=text`, `render.html_to_text` over the sanitised
+  HTML, the text part the message would be sent with; refused, and the composer stays in rich
+  text, when that text is over the plain-text cap). It is the save's route, which the host's proxy
+  already lets 30 MiB through to, so the conversion asks nothing more of it. Back to rich text,
+  each line becomes a paragraph. A plain-text draft, an unsubscribe by mail and a draft written
+  elsewhere open in plain text. The editor loads with the composer, not with the mail screen, and
+  runs under the SPA's CSP: the production build fails on a chunk that evaluates strings.
 - **Attachments** are new uploads (`files[]`) or parts of existing messages (`keep`: `ref` and
   `part`); an agent never passes file content (MCP). Only attachment and calendar parts of a
   message can be kept as attachments, inline parts only as inline parts, never the body parts.
@@ -955,6 +978,7 @@ set on their *Profile* page ([`../REQUIREMENTS.md`](../REQUIREMENTS.md)).
 | New files per draft | 10, inline images included |
 | Attachments, in total (uploads and kept parts) | the user's `attachment_max_mb` (default 10), at most 25 MB |
 | Upload request | attachments plus 5 MiB (the `html` and `draft` parts, the framing): 30 MiB at most at `/api/v1/mail/drafts`, the web image's nginx limit there, which the host's proxy must allow too; refused early on `Content-Length` |
+| HTML converted to plain text (`POST /drafts?convert=text`) | the HTML cap in its `html` part, within the same route's limits; a result over the body text's 100,000 characters is 400 `invalid_argument` |
 | Save requests at once | 3 per user, in each API process; one more is 429 `busy` before its body is read |
 | Original read for quoting | 2 MiB |
 | Text quoted or forwarded | 20,000 characters (the original's text is cut to this) |
@@ -986,6 +1010,7 @@ CSRF check apply. Bodies are JSON except `POST /drafts`. Unknown fields are 422.
 | --- | --- | --- |
 | `POST /drafts/prefill` | `{"ref", "mode": "reply" \| "reply_all" \| "forward" \| "unsubscribe"}` | 200 the fields below; writes nothing |
 | `POST /drafts` | multipart: `draft` (JSON), `html` (optional, the HTML body as is) and `files[]` | 201 `{ref, parts, inline, replaced, autosave}` |
+| `POST /drafts?convert=text` | multipart: `html` alone | 200 `{text}`: the text part `html` would be sent with; writes nothing |
 | `GET /drafts/{ref}` | | 200 the draft's fields, `lossy`, `parts`, `inline`, `send` |
 | `GET /drafts/find?account=&compose_id=` | | 200 `{ref, parts, inline}` of the newest version; 404 `not_found` |
 | `DELETE /drafts/{ref}` | | 200 `{removed}` |

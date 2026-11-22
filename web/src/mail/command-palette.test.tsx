@@ -174,7 +174,7 @@ describe('the command palette', () => {
     expect(within(within(palette()).getByRole('group', { name: 'Recent' })).getAllByRole('option')[0]).toHaveTextContent('home')
   })
 
-  it('is listed in the shortcut sheet, and does not open while typing in the composer', async () => {
+  it('is listed in the shortcut sheet, and does not open while typing in the composer, where Ctrl+K is a link', async () => {
     const user = userEvent.setup()
     stubMailApi(state())
     renderMailApp('/mail')
@@ -190,8 +190,11 @@ describe('the command palette', () => {
 
     await user.click(screen.getByRole('button', { name: 'Compose' }))
     const form = await screen.findByRole('form', { name: 'New message' })
-    await user.click(within(form).getByRole('textbox', { name: 'Message' }))
+    // The rich-text editor loads on its own, the first time at some length.
+    await user.click(await within(form).findByRole('textbox', { name: 'Message' }, { timeout: 10_000 }))
     await user.keyboard('{Control>}k{/Control}')
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    // There it is the editor's own: a link.
+    expect(await screen.findByRole('dialog', { name: 'Link' })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Command palette' })).not.toBeInTheDocument()
   })
 })
