@@ -37,7 +37,7 @@ from mailroom.mcp.settings import McpSettings
 from mailroom.mcp.tool import BUSY_MESSAGE, CALLS_PER_USER, call_tool
 from mailroom.mcp.tools import mail_send
 from mailroom.mcp.tools.filters import RUN_FILTERS_OFF_NOTE
-from mailroom.models import AuditRecord, Filter
+from mailroom.models import AuditRecord, Filter, Snooze
 from mailroom_core.config import time_zone_name
 from mailroom_core.mail import MAX_HTML_BYTES, MESSAGES, Folder, MessageRef, format_ref
 from mailroom_core.store import SEND_CEILING
@@ -306,6 +306,7 @@ ANNOTATIONS = {
     "messages_move": (False, False, False, True),
     "messages_trash": (False, True, False, True),
     "messages_flag": (False, False, True, True),
+    "messages_snooze": (False, False, False, True),
     "thread_mute": (False, False, True, True),
     "muted_threads_list": (True, False, True, False),
     "thread_unmute": (False, False, False, False),
@@ -1472,6 +1473,7 @@ def test_the_organize_group_can_be_left_out() -> None:
         "messages_move",
         "messages_trash",
         "messages_flag",
+        "messages_snooze",
         "thread_mute",
         "muted_threads_list",
         "thread_unmute",
@@ -1647,6 +1649,35 @@ def test_an_agent_mutes_and_unmutes_a_thread(
     assert [(r.actor, r.action, r.result, r.client_id) for r in records] == [
         ("agent", "mute", "ok", "client"),
         ("agent", "unmute", "ok", "client"),
+    ]
+
+
+def test_an_agent_snoozes_a_message_until_a_time(
+    mcp: Mcp, token: str, mail: MailAccounts, db_session: Session, user: User
+) -> None:
+    login = mail.add()
+    mail.seed(login, mime("Tomorrow", message_id="<snooze@example.org>"))
+    ref = inbox_ref(mcp, token)
+    until = (datetime.now(UTC) + timedelta(days=1)).replace(microsecond=0)
+
+    answer = mcp.text(token, "messages_snooze", ref=ref, until=until.isoformat())
+
+    assert "Snoozed until " in answer
+    assert "comes back to INBOX marked unread" in answer
+    assert stored(mail, login, "Snoozed") == [("Tomorrow", ())]
+    assert stored(mail, login, "INBOX") == []
+    [snoozed] = db_session.scalars(select(Snooze).where(Snooze.user_id == user.id)).all()
+    assert (snoozed.via, snoozed.until, snoozed.folder) == ("mcp", until, "INBOX")
+    assert "Invalid arguments" in mcp.error(token, "messages_snooze", ref=ref, until="2030-01-01")
+    assert "in the future" in mcp.error(
+        token, "messages_snooze", ref=ref, until=(until - timedelta(days=2)).isoformat()
+    )
+    records = db_session.scalars(
+        select(AuditRecord).where(AuditRecord.user_id == user.id).order_by(AuditRecord.id)
+    ).all()
+    assert [(r.actor, r.action, r.result) for r in records] == [
+        ("agent", "folder_create", "ok"),
+        ("agent", "snooze", "ok"),
     ]
 
 

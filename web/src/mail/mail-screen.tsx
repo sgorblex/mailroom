@@ -33,6 +33,7 @@ import { ComposeAnnouncer } from './send-status.tsx'
 import { useMailShortcuts, usePaletteShortcut } from './shortcuts.ts'
 import { storedSubfolders } from './subfolder-view.ts'
 import { MuteProvider } from './mute-provider.tsx'
+import { SnoozeProvider } from './snooze-provider.tsx'
 import { ACCOUNTS_KEY, messagesKey, READ_ON_MOUNT, viewsQuery } from './queries.ts'
 import { ToastHost } from './toast.tsx'
 import { SpamFilterOffer } from './spam-filter-offer.tsx'
@@ -123,38 +124,40 @@ export function MailScreen(): ReactElement {
             }
             accounts={accountIds}
           >
-            <ComposeProvider accounts={accounts.data} accountId={accountId}>
-              <MailShortcuts
-                accountId={accountId}
-                onHelp={openSheet}
-                onPalette={() => {
-                  setPalette((open) => !open)
-                }}
-              />
-              <MailPanes
-                accounts={accounts.data}
-                accountId={accountId}
-                folder={folder}
-                requested={requested}
-                onHelp={openSheet}
-              />
-              {sheet && (
-                <ShortcutSheet
-                  onClose={() => {
-                    setSheet(false)
+            <SnoozeProvider>
+              <ComposeProvider accounts={accounts.data} accountId={accountId}>
+                <MailShortcuts
+                  accountId={accountId}
+                  onHelp={openSheet}
+                  onPalette={() => {
+                    setPalette((open) => !open)
                   }}
                 />
-              )}
-              {palette && (
-                <CommandPalette
+                <MailPanes
                   accounts={accounts.data}
                   accountId={accountId}
-                  onClose={() => {
-                    setPalette(false)
-                  }}
+                  folder={folder}
+                  requested={requested}
+                  onHelp={openSheet}
                 />
-              )}
-            </ComposeProvider>
+                {sheet && (
+                  <ShortcutSheet
+                    onClose={() => {
+                      setSheet(false)
+                    }}
+                  />
+                )}
+                {palette && (
+                  <CommandPalette
+                    accounts={accounts.data}
+                    accountId={accountId}
+                    onClose={() => {
+                      setPalette(false)
+                    }}
+                  />
+                )}
+              </ComposeProvider>
+            </SnoozeProvider>
           </TriageProvider>
         </MuteProvider>
       </ToastHost>

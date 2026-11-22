@@ -620,5 +620,32 @@
     "cancelLabel": "Annulla l'invio di «{{subject}}»",
     "cancelled": "Annullato. Il messaggio è rimasto nelle Bozze.",
     "close": "Chiudi"
+  },
+  "snooze": {
+    "snooze": "Posticipa",
+    "title": "Posticipa fino a",
+    "later": {
+      "laterToday": "Più tardi oggi",
+      "tomorrowMorning": "Domani",
+      "mondayMorning": "La settimana prossima"
+    },
+    "pick": "Posticipa",
+    "tooFar": "Un messaggio si può posticipare al massimo di un anno.",
+    "snoozed": "Posticipato fino a {{when}}: aspetta in Snoozed e torna da leggere.",
+    "failed": "Impossibile posticipare il messaggio.",
+    "already": "Questo messaggio è già posticipato.",
+    "waking": "Sta tornando ora.",
+    "wakeFailed": "Impossibile far tornare il messaggio.",
+    "list": "Posticipati",
+    "count_one": "{{count}} posticipato",
+    "count_other": "{{count}} posticipati",
+    "loading": "Caricamento dei messaggi posticipati…",
+    "loadFailed": "Impossibile elencare i messaggi posticipati.",
+    "empty": "Nessun messaggio posticipato.",
+    "from": "Da {{sender}}, in {{account}}",
+    "back": "Torna {{when}}, in {{folder}}",
+    "notBack": "Non ancora tornato, nuovo tentativo più tardi:",
+    "wake": "Fai tornare ora",
+    "wakeLabel": "Fai tornare ora “{{subject}}”"
   }
 }

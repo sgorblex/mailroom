@@ -147,7 +147,8 @@ def _ledger_folder(path: str) -> str:
 
 
 def ledger_copies(db: Session, user_id: int, refs: Sequence[str]) -> None:
-    """Add the copies ``refs`` name to the user's ledger, and forget the entries older than
+    """Add the messages ``refs`` name to the user's ledger (a move's copies, or snoozed messages
+    brought back, ``mailroom.worker.snoozes``), and forget the entries older than
     ``LEDGER_DAYS``. Commits ``db``. Raises ``MailError`` (``unsupported``) when the database
     refuses: the moves left then stop, a copy unrecorded being one a run could move on."""
     rows = []

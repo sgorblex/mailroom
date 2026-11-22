@@ -10,6 +10,7 @@ import { useCompose } from './compose-context.ts'
 import { useDraftFilter } from './filter-draft.ts'
 import { MAIL_NS } from './i18n.ts'
 import { useMuting } from './mute-context.ts'
+import { useSnoozing } from './snooze-context.ts'
 import { NO_TRIAGE_ACTIONS } from './triage-actions.ts'
 
 /**
@@ -23,6 +24,7 @@ export function ReplyActions({ account, messageRef }: { account: AccountId; mess
   const compose = useCompose()
   const draftFilter = useDraftFilter()
   const muting = useMuting()
+  const snoozing = useSnoozing()
   const accountName = useAccountName()
   const hintId = useId()
   const context: ActionContext = {
@@ -33,6 +35,7 @@ export function ReplyActions({ account, messageRef }: { account: AccountId; mess
     openPicker: () => undefined,
     draftFilter,
     muting,
+    snoozing,
   }
   const muted = muting?.mutedAs(messageRef)
   const actions = listedActions('reply', context)

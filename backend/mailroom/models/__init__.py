@@ -19,6 +19,7 @@ from mailroom.models.notifications import MailNotificationFolders
 from mailroom.models.remote_content import RemoteContentSender
 from mailroom.models.sends import ScheduledSend
 from mailroom.models.signatures import IdentitySignature
+from mailroom.models.snoozes import Snooze
 from mailroom.models.sso import ExternalIdentity, Intent, SsoLoginState
 from mailroom.models.user import User, UserSession
 from mailroom.models.views import SavedView
@@ -42,6 +43,7 @@ __all__ = [
     "RuleSet",
     "SavedView",
     "ScheduledSend",
+    "Snooze",
     "SsoLoginState",
     "TransferLedger",
     "User",

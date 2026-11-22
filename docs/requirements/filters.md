@@ -206,6 +206,8 @@ A filter's `move_to_account` moves mail to a folder of **another of the user's a
   UIDVALIDITY changes, follow its rename, and go with its account and user; a leading INBOX is one
   folder in any case. A ledger the database cannot write leaves that chunk's originals where they
   were (in both accounts, so the rule set is turned off) and stops the moves left (`unsupported`).
+  A [snoozed](mail-client.md#snooze) message brought back joins the ledger too, so no run takes
+  it for new mail.
 - **In the web**, the filter editor's *Move to another account* picks the account among the
   user's others (greyed out with none, and in a rule set for all accounts), then a folder of
   that account, listed once it is chosen; choosing another account clears the folder, and a

@@ -18,6 +18,7 @@ from mailroom.mail import notifications
 from mailroom.mail.index import reads as index_reads
 from mailroom.mail.index import writes as index_writes
 from mailroom.mail.service._shared import _Accounts, _accounts, _run, _Stoppable, _usable
+from mailroom.mail.service.snooze import rename_in_snoozes
 from mailroom_core import mail as core
 from mailroom_core.mail import AuditItem, FolderChangedError, MailError
 from mailroom_core.render import clean_header
@@ -196,6 +197,30 @@ def _follow_in_notifications(
         )
 
 
+def _follow_in_snoozes(
+    ctx: AppContext, user_id: int, account_id: int, change: FolderChange
+) -> None:
+    """Points the account's snoozes waiting in, or going back to, the renamed folder or one under
+    it at its new path; a database failure is logged, and the rename stands."""
+    if change.destination is None:
+        return
+    try:
+        with ctx.session_maker() as db:
+            rename_in_snoozes(
+                db, user_id, account_id, change.path, change.destination, change.delimiter
+            )
+    except Exception as exc:
+        logger.warning(
+            "folder_snoozes_failed",
+            extra={
+                "event": "folder_snoozes_failed",
+                "user_id": user_id,
+                "account_id": account_id,
+                "error": type(exc).__name__,
+            },
+        )
+
+
 def rename_folder(
     ctx: AppContext,
     user_id: int,
@@ -211,9 +236,9 @@ def rename_folder(
     actions that name it, or a folder under it, at the new path, and the other accounts' filters
     moving there (``move_to_account``): enabled ones too; the rule sets for all accounts naming it
     are left, and listed (``all_accounts_rule_sets``); the account's desktop-notification
-    folders follow it too. These run on the pool's thread, so they follow a rename the server did
-    after the call's deadline. A failure of the rule sets' database step does not fail the call:
-    ``rule_sets_updated`` is False.
+    folders and snoozes follow it too. These run on the pool's thread, so they follow a rename
+    the server did after the call's deadline. A failure of the rule sets' database step does not
+    fail the call: ``rule_sets_updated`` is False.
     Recorded as ``folder_rename``, with the rule sets and filters changed."""
     accounts = _accounts(ctx, user_id)
     _usable(ctx, user_id, accounts, account_id)
@@ -229,6 +254,7 @@ def rename_folder(
             raise
         rewritten = _rewrite_rule_sets(ctx, user_id, account_id, change)
         _follow_in_notifications(ctx, user_id, account_id, change, deleted=False)
+        _follow_in_snoozes(ctx, user_id, account_id, change)
         extra: dict[str, object] = (
             {"rule_sets_error": True}
             if rewritten is None

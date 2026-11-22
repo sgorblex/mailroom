@@ -17,6 +17,7 @@ import type {
   ScheduledSend,
   SendResult,
   ShownPart,
+  Snooze,
   SourceFailure,
   SuggestedAddress,
   ViewPage,
@@ -117,6 +118,8 @@ export interface FakeMailState {
   conversations?: string[][]
   /** The muted thread each muted message's mute answered, by ref. */
   mutedBy?: Record<string, number>
+  /** The snoozed messages the snooze routes keep; a snoozed message leaves its folder's list. */
+  snoozes?: Snooze[]
   /** What `POST /mail/addresses` suggests from, in its order: those whose address or a word of the name starts with what was typed; none unless it says so. */
   addressBook?: SuggestedAddress[]
   /** Each account's folders as the index settings list them; an account without is 404 there. */
@@ -1299,6 +1302,43 @@ export function stubMailApi(state: FakeMailState): Mock {
       return state.muted.length === before.length
         ? json(404, { detail: { code: 'not_found', message: 'No such muted thread' } })
         : new Response(null, { status: 204 })
+    }
+    match = /^\/api\/v1\/mail\/messages\/([^/]+)\/snooze$/.exec(path)
+    if (match !== null && init?.method === 'POST') {
+      const view = state.views[decodeURIComponent(match[1] ?? '')]
+      if (view === undefined) {
+        return notFound()
+      }
+      const snoozes = (state.snoozes ??= [])
+      if (snoozes.some((each) => each.subject === view.subject && each.account === view.account_id)) {
+        return refuse(409, 'already_snoozed')
+      }
+      const { until } = JSON.parse(init.body as string) as { until: string }
+      const snoozed: Snooze = {
+        snooze_id: String(nextUid++),
+        account: view.account_id,
+        subject: view.subject,
+        sender: view.from?.address ?? null,
+        folder: view.folder,
+        until,
+        code: null,
+      }
+      snoozes.push(snoozed)
+      const key = `${String(view.account_id)}/${view.folder}`
+      state.messages[key] = (state.messages[key] ?? []).filter((item) => item.ref !== view.ref)
+      return json(201, snoozed)
+    }
+    if (path === '/api/v1/mail/snoozes') {
+      return json(200, { snoozes: state.snoozes ?? [] })
+    }
+    match = /^\/api\/v1\/mail\/snoozes\/([^/]+)\/wake$/.exec(path)
+    if (match !== null && init?.method === 'POST') {
+      const snoozed = state.snoozes?.find((each) => each.snooze_id === decodeURIComponent(match?.[1] ?? ''))
+      if (snoozed === undefined) {
+        return notFound()
+      }
+      state.snoozes = state.snoozes?.filter((each) => each !== snoozed)
+      return json(200, { ...snoozed, until: '2026-11-22T10:00:00+00:00' })
     }
     match = /^\/api\/v1\/mail\/messages\/([^/]+)\/unsubscribe$/.exec(path)
     if (match !== null && init?.method === 'POST') {

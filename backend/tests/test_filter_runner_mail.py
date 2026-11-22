@@ -5,15 +5,19 @@ from __future__ import annotations
 
 import threading
 import time
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import pytest
 from sqlalchemy import select
 
 from mailroom.accounts.store import load_accounts, user_store
+from mailroom.context import app_context
+from mailroom.mail import service as mail_service
 from mailroom.models import AuditRecord, FilterRun, MutedThread
 from mailroom.worker.idle import FolderWatch, WatchedFolder
 from mailroom.worker.runs import execute_run
+from mailroom.worker.snoozes import wake_snooze
 from mailroom.worker.tasks import queue_new_mail_runs
 from mailroom_core.mail import TO_SORT, IdleChange, subject_sha256
 from mailroom_core.testing import mime
@@ -33,7 +37,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from fastapi import FastAPI
-    from sqlalchemy.orm import Session
+    from sqlalchemy.orm import Session, sessionmaker
     from starlette.testclient import TestClient
 
     from mailroom.models import User
@@ -347,6 +351,58 @@ def test_a_muted_threads_new_mail_arrives_read_once_run_filters_is_on(
         select(AuditRecord).where(AuditRecord.run_id == run_id).order_by(AuditRecord.id)
     ).all()
     assert [(r.actor, r.detail["filter"]) for r in records] == [("filter", "Muted threads")] * 3
+
+
+def test_a_woken_message_is_no_new_mail_to_the_rule_sets_or_the_muted_threads(
+    user_client: TestClient,
+    db_session: Session,
+    sessions: sessionmaker[Session],
+    user: User,
+    mailbox: Mailbox,
+    account: int,
+    mailboxes: Mailboxes,
+    application: FastAPI,
+    monkeypatch: pytest.MonkeyPatch,
+    audited: Callable[[int], list[AuditRecord]],
+) -> None:
+    """Brought back unread into INBOX, a snoozed message would match the rule set moving the
+    shop's mail and the muted thread it belongs to: the run its arrival queues leaves it alone,
+    and acts on the mail that did arrive meanwhile."""
+    _ = audited
+    monkeypatch.setattr(application.state, "mail_ssl_context", mail_servers_ssl_context())
+    mailbox.append("Archive")
+    root = "<root@example.org>"
+    mailbox.append_raw("INBOX", mime("Plans", message_id=root).encode())
+    mail = f"/api/v1/mail/accounts/{account}/messages"
+
+    def inbox() -> dict[str, str]:
+        listed = user_client.get(mail, params={"folder": "INBOX"}).json()["messages"]
+        return {message["subject"]: message["ref"] for message in listed}
+
+    assert user_client.post(f"/api/v1/mail/messages/{inbox()['Plans']}/mute").status_code == 201
+    woken = mime("Re: Plans", sender=SHOP, message_id="<w@example.org>", in_reply_to=root)
+    mailbox.append_raw("INBOX", woken.encode())
+    ctx = app_context(application.state)
+    assert ctx is not None
+    until = datetime.now(UTC) + timedelta(hours=1)
+    snoozed = mail_service.snooze(ctx, user.id, inbox()["Re: Plans"], until)
+    assert wake_snooze(sessions, mailboxes, int(snoozed.snooze_id)) == "ok"
+    mailbox.append_raw("INBOX", mime("Sale", sender=SHOP).encode())
+    mailbox.append_raw("INBOX", mime("Re: Re: Plans", in_reply_to=root, references=root).encode())
+    set_run_filters(user_client, account, on=True)
+    add_filter(
+        user_client, add_rule_set(user_client, account, trigger="new_mail"), "Shop", SHOP_SPEC
+    )
+
+    run_ids = queue_new_mail_runs(db_session, user.id, account, ["INBOX"])
+    db_session.commit()
+    assert len(run_ids) == 2  # the muted threads' and the shop's
+    for run_id in run_ids:
+        execute_run(db_session, run_id, mailboxes)
+
+    assert mailbox.subjects("Archive") == ["Sale"]
+    assert sorted(mailbox.subjects("INBOX")) == ["Plans", "Re: Plans", "Re: Re: Plans"]
+    assert unread_subjects(mailbox) == ["Re: Plans"]
 
 
 def test_a_watched_folder_queues_runs_that_move_new_mail(

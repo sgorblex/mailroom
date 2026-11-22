@@ -45,6 +45,8 @@
     "bulk_trash": "Spostato nel Cestino (tutti i risultati)",
     "mute": "Conversazione silenziata",
     "unmute": "Conversazione riattivata",
+    "snooze": "Posticipato",
+    "wake": "Tornato dal posticipo",
     "run_failed": "Esecuzione dei filtri non riuscita"
   },
   "results": {

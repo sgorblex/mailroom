@@ -620,5 +620,32 @@
     "cancelLabel": "Cancel sending “{{subject}}”",
     "cancelled": "Cancelled. The message stayed in Drafts.",
     "close": "Close"
+  },
+  "snooze": {
+    "snooze": "Snooze",
+    "title": "Snooze until",
+    "later": {
+      "laterToday": "Later today",
+      "tomorrowMorning": "Tomorrow",
+      "mondayMorning": "Next week"
+    },
+    "pick": "Snooze",
+    "tooFar": "A message can be snoozed up to a year ahead.",
+    "snoozed": "Snoozed until {{when}}: it waits in Snoozed and comes back unread.",
+    "failed": "Could not snooze the message.",
+    "already": "This message is snoozed already.",
+    "waking": "Coming back now.",
+    "wakeFailed": "Could not bring the message back.",
+    "list": "Snoozed",
+    "count_one": "{{count}} snoozed",
+    "count_other": "{{count}} snoozed",
+    "loading": "Loading snoozed messages…",
+    "loadFailed": "Could not list the snoozed messages.",
+    "empty": "Nothing is snoozed.",
+    "from": "From {{sender}}, in {{account}}",
+    "back": "Back {{when}}, to {{folder}}",
+    "notBack": "Not back yet, tried again later:",
+    "wake": "Bring back now",
+    "wakeLabel": "Bring back “{{subject}}” now"
   }
 }

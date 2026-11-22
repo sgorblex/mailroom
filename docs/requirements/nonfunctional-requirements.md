@@ -141,6 +141,11 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   the Scheduled list), an agent's connected app and grant, and when it goes, never logged
   but by id; read only scoped to their user, they go with their account and their user, their
   jobs with them.
+- **Snoozes** (`app.snooze`, [`mail-client.md`](mail-client.md#snooze)): per user, the account,
+  the message's `Message-ID` and size, the folder it came from, its Snoozed folder and ref there,
+  its subject and sender (for the Snoozed list) and when it comes back, never logged but by id;
+  read only scoped to their user, they go with their account and their user, their jobs with
+  them (the messages stay in Snoozed).
 - **Deletes only deliberately.** Trash moves to `\Trash`, as in mailroom-mcp, and nothing is
   expunged but what a move copied elsewhere and **a draft Mailroom wrote**, by `UID EXPUNGE` of
   exactly that UID ([`mail-client.md`](mail-client.md), *The own-draft exception*); a draft
@@ -666,7 +671,9 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   `archive`, `junk`, `trash`, `flag`, `draft_save`, `draft_remove`, `send`, `folder_create`,
   `folder_rename`, `folder_delete`, `mark_folder_read`, `bulk_flag`, `bulk_move`, `bulk_trash`,
   `unsubscribe` (the list's id, the URL's host and the status it answered, never the URL),
-  `mute` and `unmute` (the `muted_thread_id`; a mute's folder and UID),
+  `mute` and `unmute` (the `muted_thread_id`; a mute's folder and UID), `snooze` (the move into
+  Snoozed) and `wake` (marked unread and the move back, or `not_found` with the `snooze_id` for a
+  message gone from Snoozed),
   or the filter's action as its report names it) and the result. A move to another account is
   recorded in both: the original's record names the `destination_account`, the copy's (in the
   target account) its `source_account` and `source_folder`. A run records each message its report
@@ -743,8 +750,8 @@ What they do and the route list: [`filters.md`](filters.md). How:
   finishes), `muted_thread` (by `user_id` and account id; its Message-IDs as `jsonb`, 200 at
   most, and Gmail's thread id), and `rule_set.kind` (`user`, or the account's one hidden `mute`
   rule set, a partial unique index), `rule_set.disabled_reason` (why the app turned it off),
-  `transfer_ledger` (the copies a filter's move to another account made, keyed by user, account,
-  folder, UIDVALIDITY and UID: the loop guard; 90 days, a folder's entries dropped when its
+  `transfer_ledger` (the copies a filter's move to another account made, and the messages a
+  snooze brought back, keyed by user, account, folder, UIDVALIDITY and UID: the loop guard; 90 days, a folder's entries dropped when its
   UIDVALIDITY changes). Removing an account removes its rule sets, muted threads and ledger entries,
   and the runs on it of the rule sets for all accounts, and turns off the user's other rule sets
   moving to it; a rule set's removal removes its filters and runs; removing a user removes all of
@@ -849,6 +856,12 @@ What they do and the route list: [`filters.md`](filters.md). How:
     (with `account_id`, `scheduled_id` and `outcome`: `ok`, `gone` or the row's code, `internal`
     for an unexpected error, logged as `mail_scheduled_send_broke` with its type); the API
     logs `mail_send_scheduled` and `mail_send_unscheduled`.
+  - **Snoozes** come back here too, with `mail`: `wake_snooze(snooze_id)`, deferred with
+    `schedule_at` in the transaction that writes its `app.snooze` row, without the mailbox's
+    `lock` (as `send_draft`), moves the message back on the user's connections from the worker's pool
+    ([`mail-client.md`](mail-client.md#snooze)); a wake that failed is deferred again 15 minutes
+    later. Logged as `mail_snooze_woken` (with `account_id`, `snooze_id` and `outcome`: `ok`,
+    `gone`, `missing` or the code); the API logs `mail_snooze_held` and `mail_snooze_woken_now`.
   - Jobs run 4 at a time (synchronous tasks, each on a thread); besides being notified of new jobs,
     the worker looks for them every second, so a run held back by its mailbox's lock starts within
     a second of the lock freeing. One worker process (below): a second would watch every folder
@@ -902,8 +915,9 @@ What they do and the route list: [`filters.md`](filters.md). How:
   until the database is at its head, then starts.
 - **One worker process** at a time: it holds a session advisory lock, and a second one exits. At
   start it marks failed every job still `doing`, which a stopped worker left (its `lock` would hold
-  back every later job with the same lock), and queues `send_draft` again for every held send
-  whose job is neither waiting nor running. Stopping, it gives running jobs 60 s, then aborts them.
+  back every later job with the same lock), and queues `send_draft` again for every held send,
+  and `wake_snooze` for every snooze, whose job is neither waiting nor running. Stopping, it
+  gives running jobs 60 s, then aborts them.
 - An unmerged branch's migrations are edited in place, never followed by a fixing migration;
   merged revisions are immutable.
 

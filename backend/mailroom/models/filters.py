@@ -168,7 +168,8 @@ class MutedThread(Base):
 
 class TransferLedger(Base):
     """A message a filter's move to another account copied there, by its place in that account:
-    the target's runs leave it alone, so no filter moves it on or back (the loop guard). Pruned
+    the target's runs leave it alone, so no filter moves it on or back (the loop guard); or a
+    snoozed message brought back, which no run takes for new mail. Pruned
     when its folder's UIDVALIDITY changes and after ``mailroom.filters.transfers.LEDGER_DAYS``."""
 
     __tablename__ = "transfer_ledger"

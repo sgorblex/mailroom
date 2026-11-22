@@ -13,6 +13,7 @@ import { MAIL_ACTIONS, runnable } from './action-registry.ts'
 import { useCompose } from './compose-context.ts'
 import { useDraftFilter } from './filter-draft.ts'
 import { useMuting } from './mute-context.ts'
+import { useSnoozing } from './snooze-context.ts'
 import { MAIL_NS } from './i18n.ts'
 import { folderName } from './messages.ts'
 import { matchItems, storedRecents, storeRecent, type PaletteItem } from './palette.ts'
@@ -201,7 +202,8 @@ function usePaletteItems(accounts: readonly Account[], accountId: AccountId): Pa
 
   const draftFilter = useDraftFilter()
   const muting = useMuting()
-  const context = { ...screenContext(triage, actions, compose, accountId), draftFilter, muting }
+  const snoozing = useSnoozing()
+  const context = { ...screenContext(triage, actions, compose, accountId), draftFilter, muting, snoozing }
   const state = { busy: triage.busy, composing: compose.session !== null }
   const actionItems = MAIL_ACTIONS.filter(
     (action) => runnable(action, context, state) && (action.listed?.(context) ?? true),

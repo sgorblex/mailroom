@@ -262,6 +262,15 @@ from mailroom_core.mail.selected import (
     special_folder_in,
     store_flags,
 )
+from mailroom_core.mail.snooze import (
+    SNOOZED_FOLDER,
+    SnoozeTarget,
+    Woken,
+    find_snoozed,
+    leave_inbox,
+    snooze_target,
+    wake_snoozed,
+)
 from mailroom_core.mail.structure import InlinePart, MimePart, Structure, analyse_structure
 from mailroom_core.mail.text import (
     ATTACHMENT_FILE_NOTE,
@@ -310,6 +319,7 @@ __all__ = [
     "PREVIEW_LENGTH",
     "REFUSALS",
     "SETTABLE_FLAGS",
+    "SNOOZED_FOLDER",
     "TO_SORT",
     "UID_CHUNK",
     "Addressed",
@@ -386,6 +396,7 @@ __all__ = [
     "ReplyRecipients",
     "SavedDraft",
     "SearchQuery",
+    "SnoozeTarget",
     "Source",
     "Structure",
     "ThreadKey",
@@ -393,6 +404,7 @@ __all__ = [
     "Timeouts",
     "ToolNames",
     "TransferRemoval",
+    "Woken",
     "abandon_read_back",
     "act_on_matching",
     "analyse_structure",
@@ -443,6 +455,7 @@ __all__ = [
     "fetch_source",
     "fetch_sources",
     "find_drafts",
+    "find_snoozed",
     "flags_of",
     "folder_index_plan",
     "folders_block",
@@ -460,6 +473,7 @@ __all__ = [
     "is_own_draft",
     "is_text_type",
     "junk_messages",
+    "leave_inbox",
     "list_messages",
     "listed_folders",
     "mail_error",
@@ -511,6 +525,7 @@ __all__ = [
     "searchable_folders",
     "sent_to",
     "set_flags",
+    "snooze_target",
     "special_folder_in",
     "store_flags",
     "stored_flags",
@@ -525,6 +540,7 @@ __all__ = [
     "try_remove_draft",
     "uids_matching",
     "uids_of",
+    "wake_snoozed",
     "with_subfolders",
     "without_headers",
 ]

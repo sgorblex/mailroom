@@ -19,6 +19,7 @@ import { useCompose } from './compose-context.ts'
 import { isConversation, listRow, opened } from './conversations.ts'
 import { useDraftFilter } from './filter-draft.ts'
 import { useMuting } from './mute-context.ts'
+import { useSnoozing } from './snooze-context.ts'
 import { addressLabel, formatListDate } from './format.ts'
 import { MAIL_NS } from './i18n.ts'
 import { endMessageDrag, startMessageDrag } from './message-drag.ts'
@@ -399,6 +400,7 @@ function MessageMenu({
   const compose = useCompose()
   const draftFilter = useDraftFilter()
   const muting = useMuting()
+  const snoozing = useSnoozing()
   // Every row is selected, as its checkbox shows, while every matching message is.
   const selected = triage.matching !== null || triage.selection.has(row.ref)
   const targets = selected ? [...triage.selection.values()] : [row]
@@ -423,6 +425,7 @@ function MessageMenu({
     },
     draftFilter,
     muting,
+    snoozing,
   }
   const items: MenuItem[] = [
     ...listedActions('reply', context),
