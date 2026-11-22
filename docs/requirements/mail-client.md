@@ -879,7 +879,8 @@ composer to server.
   `draft_import`): its MIME structure and parts are kept, its own text part too (one is made from
   the HTML when it has none), and it is never composed again: a save over it is refused, 400
   `invalid_argument`, while an import may replace it or any other draft, keeping its thread,
-  but for a reply or a forward Mailroom saved (400 `invalid_argument`). Its HTML is still sanitised as any the
+  but for a reply or a forward Mailroom saved (400 `invalid_argument`), and `?import=kept` saves
+  it again as built under new From, recipients and subject. Its HTML is still sanitised as any the
   user writes (no scripts, forms, event handlers, style sheets, or anything remote but links),
   its headers are Mailroom's (From an identity, a new `Message-ID` on its `compose_id`; To, Cc,
   Bcc and subject the request's, else the .eml's), and the marker reads
@@ -889,6 +890,19 @@ composer to server.
   ([`core.md`](../core.md#designed-mail)): what was removed, images without `alt`, a `cid:` with no
   part and a part never shown, HTML over Gmail's 102 KB clip, remote images, no text part, and the
   whole message over the attachment cap.
+- **Designed mail in the web client.** *Import*, beside *Compose*, takes an .eml, or an HTML file
+  with its images and attachments, as a new draft of the account shown, and opens it in the
+  composer. There its body is not edited: in its place are the checks, worded by `code` (the
+  server's `text` for a code the client does not know, the `items` after it), and a preview
+  through the message view's sandboxed frame (`GET /messages/{ref}/html`, remote images blocked),
+  at the pane's width or a phone's (375 px), light or dark (`dark=1`). Its attachments are listed,
+  with nothing to add or remove. From, the recipients and the subject are edited as in any draft
+  and saved by keeping it as built (`?import=kept`), so Send, Undo and Send later work as for any
+  other draft. *Send a test to me* sends it as stored to the account's default identity, subject
+  prefixed `[Test]` (`POST /drafts/{ref}/test`), the draft left as it is: through the send gate
+  as the user, audited and filed in Sent as any send (Gmail would file it anyway), with a new
+  Message-ID, so the real send keeps its own thread. *Replace* imports a file again over the
+  draft, under the From, recipients and subject the composer holds.
 - **Opening** a message in the Drafts folder opens it in the composer, and does not mark it read.
   An account in send mode `off` cannot save one, so there it reads as any other message.
 - **One composer** is open at a time, above the panes: sidebar and list links leave it alone, and
@@ -1194,6 +1208,11 @@ In meaning (the strings are in the `mail` namespace, English and Italian, the sa
   or `stale_reference` on Send mean the ref held is no longer the draft: the composer looks up what
   is there now and, if it finds a version, says the draft changed elsewhere, that the text is saved
   over that version, and to press Send again.
+- **Designed mail:** "Imported as built: its body is sent as it is and can't be edited here.";
+  each check in words of its own; "Test sent to …" once the test was delivered, or that it was
+  not sent and why, or that its delivery can't be confirmed; an import refused
+  `invalid_argument` says the file is not a message Mailroom can import, in the dialog, which
+  stays open.
 - **Leaving:** closing the composer or the tab with unsaved text flushes a save; nothing asks the
   user to confirm leaving a saved draft. Only a save that fails on closing asks, since closing then
   loses the latest changes. *Send anyway* and deleting a draft ask first too.
@@ -1263,6 +1282,8 @@ CSRF check apply. Bodies are JSON except `POST /drafts`. Unknown fields are 422.
 | `POST /drafts?convert=text` | multipart: `html` alone | 200 `{text}`: the text part `html` would be sent with; writes nothing |
 | `POST /drafts?import=eml` | multipart: `draft` (JSON, below) and `eml` (the file) | 201 a save's answer and `findings` ([designed mail](#drafts)) |
 | `POST /drafts?import=html` | multipart: `draft` (JSON, with `content_ids`), `html` (raw) and `files[]` | 201 the same |
+| `POST /drafts?import=kept` | multipart: `draft` (JSON, with `ref`) alone | 201 the same: the imported draft `ref` saved again as built under the part's fields; 400 `invalid_argument` for another draft, or one whose HTML is not as an import leaves it |
+| `POST /drafts/{ref}/test` | `{"test_id"}`, the click's (`compose_id`'s form) | 202 `{send_id, to}`: the draft as a test to `to`, the account's default identity ([designed mail](#drafts)); the same `test_id` again answers that send, nothing sent twice |
 | `GET /drafts/{ref}/findings` | | 200 `{findings}`: the checks of the draft as stored |
 | `GET /drafts/{ref}` | | 200 the draft's fields, `lossy`, `parts`, `inline`, `send`, `scheduled` |
 | `GET /drafts/find?account=&compose_id=` | | 200 `{ref, parts, inline}` of the newest version; 404 `not_found` |
@@ -1278,8 +1299,9 @@ CSRF check apply. Bodies are JSON except `POST /drafts`. Unknown fields are 422.
 The static route `GET /drafts/find` is matched before `GET /drafts/{ref}`.
 
 An import's `draft` part is `{account, compose_id, ref?, from?, to?, cc?, bcc?, subject?,
-content_ids?}`: `ref` an earlier version to replace, the address fields and `subject` left out
-(or null) to take the .eml's, `from` null for the default identity (never the file's), and
+content_ids?}`: `ref` an earlier version to replace (required by `kept`, which takes only a
+draft imported as built, else 400 `invalid_argument`), the address fields and `subject` left out
+(or null) to take the .eml's (none, for `kept`), `from` null for the default identity (never the file's), and
 `content_ids` as a save's, for `html` only (an `eml` import with any is 400 `invalid_argument`, as
 are one without its file part and a Content-ID a save would leave out as unfit for a header). A finding is `{code, text, count, items}`: `code` one of
 `removed_scripts`, `removed_forms`, `removed_handlers`, `removed_images`, `removed_data_images`,
@@ -1704,7 +1726,10 @@ a failure too, with the app's code `password_missing`.
 
 ### `GET /messages/{ref}/html?remote=0`
 
-A **standalone HTML document**, not JSON: `remote=0|1` (default `0`). The sanitised HTML body
+A **standalone HTML document**, not JSON: `remote=0|1` (default `0`), and `dark=0|1` (default
+`0`), which only gives the document's page dark colours (`color-scheme: dark`), for the preview
+of designed mail: the message's own colours stay, as in a client in dark mode that changes only
+the page. The sanitised HTML body
 (mailroom-core's `safe_html`: allowlisted tags, attributes and CSS properties; no script, forms,
 frames, `base`, event handlers). `cid:` images are inlined as `data:` up to a total budget; past
 it an image loses its `src` and keeps its alt text, with no placeholder. Remote (`http(s)`) image

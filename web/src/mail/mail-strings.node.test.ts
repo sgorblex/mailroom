@@ -29,6 +29,12 @@ describe('the compose strings', () => {
   })
 })
 
+describe('the designed mail strings', () => {
+  it('exist in both languages', () => {
+    expect(keys(it_.designed).sort()).toEqual(keys(en.designed).sort())
+  })
+})
+
 describe('the search strings', () => {
   it('exist in both languages', () => {
     expect(keys(it_.search).sort()).toEqual(keys(en.search).sort())

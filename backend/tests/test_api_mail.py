@@ -850,6 +850,12 @@ def test_the_html_view_is_a_sanitised_standalone_document(mailbox: Mailbox) -> N
     assert "https://t.example/pixel.gif" in shown.text
     assert "bg.png" not in shown.text
 
+    assert ":root{color-scheme:light}" in page
+    dark = mailbox.client.get(f"{MAIL}/messages/{ref}/html", params={"dark": "1"})
+    assert dark.headers["content-security-policy"] == NO_REMOTE_CSP
+    assert ":root{color-scheme:dark}" in dark.text
+    assert dark.text.split("<body>", 1)[1] == body
+
 
 def test_a_message_without_html_has_no_html_view(mailbox: Mailbox) -> None:
     mailbox.seed(mime("plain", text="hello"))

@@ -211,19 +211,19 @@ First, fixes carried over from 0.14.0 testing:
 
 #### 9. HTML and templated mail
 
-- [ ] **HTML and templated mail** (to specify) — two parts, sharing the send path:
-  - **Designed HTML mail:** a ready-built message (HTML, its plain-text part, inline `cid:`
+- [ ] **HTML and templated mail** — two parts, sharing the send path:
+  - [x] **Designed HTML mail:** a ready-built message (HTML, its plain-text part, inline `cid:`
     images, attachments) taken in as a draft, maybe later authored here from MJML. Previewed
     at phone and desktop widths, light and dark; checked before sending (images without
     `alt`, a `cid:` with no image or the reverse, over Gmail's 102 KB clip); a test send to
     the user; sent from the account, so it lands in Sent and its thread.
-  - **Templates with variants per recipient:** logic-free `{{ placeholders }}`, each value
-    HTML-escaped, from the recipient (a contact) or typed per recipient (a table, a CSV); a
-    missing value holds back that recipient only. Rendered once on the server, so the
-    preview cannot drift from what is sent; sent one by one by the worker, each recipient
-    pending, sending (recorded before the server is called), then sent or failed, so none
-    gets it twice. A real sandboxed engine with autoescape only if conditions are ever
-    needed.
+  - [ ] **Templates with variants per recipient** (a later milestone, to specify): logic-free
+    `{{ placeholders }}`, each value HTML-escaped, from the recipient (a contact) or typed per
+    recipient (a table, a CSV); a missing value holds back that recipient only. Rendered
+    once on the server, so the preview cannot drift from what is sent; sent one by one by the
+    worker, each recipient pending, sending (recorded before the server is called), then sent
+    or failed, so none gets it twice. A real sandboxed engine with autoescape only if
+    conditions are ever needed.
 
 ### Milestone E: Profile, design, agents, integrations, operations
 

@@ -1,6 +1,21 @@
 import { accountSignatures, type AccountId, type Account, type IdentitySignature } from '@/api/accounts.ts'
 import { ApiRequestError } from '@/api/http.ts'
-import { cancelScheduled, deleteDraft, findDraft, prefillDraft, readDraft, saveDraft, type Draft, type DraftSend, type ScheduledSend } from '@/api/mail.ts'
+import {
+  cancelScheduled,
+  deleteDraft,
+  findDraft,
+  importDraft,
+  keepDesigned,
+  prefillDraft,
+  readDraft,
+  saveDraft,
+  type Draft,
+  type DraftSend,
+  type ImportedDraft,
+  type ImportFields,
+  type ImportSource,
+  type ScheduledSend,
+} from '@/api/mail.ts'
 
 import {
   inlinePart,
@@ -29,6 +44,8 @@ export interface ComposeStart {
   elsewhere: boolean
   form: ComposeForm
   lossy: boolean
+  /** Imported as built: its body is not edited here, and a save keeps it as it is. */
+  designed: boolean
   send: Draft['send']
   /** Its held send still to go, opened from Drafts: the first change cancels it. */
   scheduled: ScheduledSend | null
@@ -63,6 +80,7 @@ function draftStart(draft: Draft, composeId: string, account: Account | undefine
       tray: draft.parts.map((part) => trayPart({ ...part, ref: draft.ref })),
     },
     lossy: draft.lossy,
+    designed: draft.designed,
     send: draft.send,
     scheduled: draft.scheduled,
     signatures,
@@ -98,6 +116,7 @@ export async function loadStart(
         elsewhere: false,
         form: { ...BLANK_FORM, html: newMessageHtml(signature) },
         lossy: false,
+        designed: false,
         send: null,
         scheduled: null,
         signatures,
@@ -140,6 +159,7 @@ export async function loadStart(
           tray: prefill.attachments.map(trayPart),
         },
         lossy: false,
+        designed: false,
         send: null,
         scheduled: null,
         signatures,
@@ -188,8 +208,10 @@ export class DraftModel {
   private readonly scheduledId: string | null
   private schedule: HeldSchedule | null
   private cancelling: Promise<void> | null = null
+  private readonly start: ComposeStart
 
   constructor(start: ComposeStart, onSaved: () => void) {
+    this.start = start
     this.form = start.form
     this.writtenElsewhere = start.elsewhere ? start.ref : null
     const held = start.scheduled
@@ -205,6 +227,9 @@ export class DraftModel {
         },
         bytes: () => trayBytes([...this.form.tray, ...shownImages(this.form.html, this.form.inline)]),
         save: (form, ref, keepalive) => {
+          if (start.designed && ref !== null) {
+            return keepDesigned({ ...this.importFields(form, ref), ref }, { keepalive })
+          }
           const uploads = form.inline.filter(isFile)
           return saveDraft(
             {
@@ -232,7 +257,10 @@ export class DraftModel {
         },
         find: () => findDraft(start.account, start.composeId),
         landed: (form, ref, { parts, inline: shown }) => {
-          const tray = reconcileTray(this.form.tray, form?.tray ?? this.form.tray.filter(isPart), ref, parts)
+          // A designed draft's files are its own, never changed here: what it holds is what it shows.
+          const tray = start.designed
+            ? parts.map((part) => trayPart({ ...part, ref }))
+            : reconcileTray(this.form.tray, form?.tray ?? this.form.tray.filter(isPart), ref, parts)
           const inline = reconcileInline(this.form.inline, ref, shown, start.forwards)
           this.form = { ...this.form, tray, inline }
           onSaved()
@@ -257,6 +285,27 @@ export class DraftModel {
       start.ref,
     )
     this.view = this.currentView()
+  }
+
+  /** An import's fields from `form`: everything as the composer holds it. */
+  private importFields(form: ComposeForm, ref: string | null): ImportFields {
+    const { account, composeId } = this.start
+    return { account, compose_id: composeId, ref, from: form.from, to: form.to, cc: form.cc, bcc: form.bcc, subject: form.subject }
+  }
+
+  /**
+   * Imports `source` in place of the designed draft, under the From, recipients and subject the
+   * composer holds; saves wait meanwhile. A refusal leaves the draft as it was.
+   */
+  async replace(source: ImportSource): Promise<ImportedDraft> {
+    const ref = await this.queue.stop()
+    try {
+      const imported = await importDraft(this.importFields(this.form, ref), source)
+      await this.queue.took(imported)
+      return imported
+    } finally {
+      this.queue.resume()
+    }
   }
 
   subscribe = (listener: () => void): (() => void) => {

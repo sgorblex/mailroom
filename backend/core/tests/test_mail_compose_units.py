@@ -64,7 +64,7 @@ from mailroom_core.mail import (
     without_headers,
 )
 from mailroom_core.mail._mime import header_values
-from mailroom_core.mail.compose import crlf_lines
+from mailroom_core.mail.compose import crlf_lines, readdressed
 from mailroom_core.render import PartInfo
 
 if TYPE_CHECKING:
@@ -610,6 +610,31 @@ class TestWithoutHeaders:
     def test_strips_what_compose_stored_down_to_the_wire(self) -> None:
         composed = compose(replace(BASE, draft=True))
         assert without_headers(composed.stored, ["Bcc", DRAFT_HEADER]) == composed.wire
+
+
+class TestReaddressed:
+    def test_replaces_only_the_addressing_and_cleans_what_it_writes(self) -> None:
+        raw = (
+            b"From: a@x.org\r\nTo: b@x.org,\r\n c@x.org\r\nCc: d@x.org\r\nBcc: e@x.org\r\n"
+            b"Subject: Hi\r\nMessage-ID: <old@x.org>\r\nContent-Type: text/plain\r\n\r\nTo: body\r\n"
+        )
+        test = readdressed(
+            raw,
+            to=Mailbox("me@example.test", "Me"),
+            subject="[Test] Hi\r\nBcc: evil@x.org",
+            message_id="<new@x.org>",
+        )
+        message = email.message_from_bytes(test, policy=policy.default)
+        assert message["To"] == "Me <me@example.test>"
+        assert message["Subject"] == "[Test] Hi Bcc: evil@x.org"
+        assert message["Message-ID"] == "<new@x.org>"
+        assert (message["Cc"], message["Bcc"]) == (None, None)
+        assert message["From"] == "a@x.org"
+        assert test.endswith(b"Content-Type: text/plain\r\n\r\nTo: body\r\n")
+
+    def test_refuses_a_malformed_message_id(self) -> None:
+        with pytest.raises(MailError):
+            readdressed(b"A: 1\r\n\r\n", to=Mailbox("me@x.org"), subject="", message_id="x")
 
 
 class TestCrlfLines:

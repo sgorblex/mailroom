@@ -183,6 +183,23 @@ export class SaveQueue<S> {
     return found !== null
   }
 
+  /**
+   * A version written past the queue while it was stopped (an import replacing the draft), which
+   * holds what the form holds now. Answered without a ref, it is looked for by its `compose_id`.
+   */
+  async took(answer: SavedDraft): Promise<void> {
+    this.savedVersion = this.version
+    this.unverified = false
+    this.unsettled = null
+    if (answer.ref === null) {
+      this.adopt(await this.hooks.find())
+    } else {
+      this.ref = answer.ref
+      this.hooks.landed(null, answer.ref, answer)
+    }
+    this.set('saved')
+  }
+
   private set(state: SaveState, error: unknown = null): void {
     this.state = state
     this.error = error

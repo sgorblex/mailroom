@@ -595,6 +595,11 @@ Deliberate choices:
   say so. `render.unsafe_parts` counts what that removes, by kind, and the counts go in the
   draft's marker (`designed=scripts.2-images.1`, `text.1` for a text part made), so the checks
   read the same when the draft is checked again later.
+- **Addressed again as built.** `stored_design` reads an imported draft back for `import_draft`
+  to save under new headers (From, recipients, subject): its body byte for byte with its MIME
+  headers, and the changes from its marker, nothing parsed into it. The marker is a header any
+  message can carry, so its HTML must be as an import leaves it (sanitised again, unchanged);
+  `invalid_argument` for any other draft. This is how the web composer saves one.
 - **Mailroom's own headers.** Above the body go only `compose`'s headers (`compose(body=...)`):
   From an identity, the recipients and subject the host chose (the file's To, Cc, Bcc and
   Subject by default, cleaned as any), a new Message-ID on the `compose_id`, and the marker. The
@@ -612,7 +617,11 @@ message counted as it is sent); a file the
   or file names, from the message, one line each). A source the `email` package cannot read
   gets only the import's and the size's findings. `draft_findings` checks a stored draft.
 - A draft imported this way sends through `prepare_draft` like any other: as stored, its marker
-  stripped.
+  stripped. `send.prepare_test` sends any draft as a test of itself: as stored, From included, to
+  the account's default identity alone, its subject prefixed `TEST_PREFIX` (`[Test] `) and under a
+  new Message-ID, so the draft's own send keeps its own (`compose.readdressed` writes those
+  fields, cleaned as `compose`'s). It goes through `admit` like any send, under
+  the key the host gives each test, so a retry of one delivers it once.
 
 ## Send gate
 

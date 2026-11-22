@@ -5,6 +5,7 @@ import type { Filter, RuleSet } from '@/api/filters.ts'
 import type {
   Draft,
   DraftFields,
+  Finding,
   IndexFolder,
   MailFolder,
   MessageItem,
@@ -80,6 +81,12 @@ export interface FakeMailState {
   inline?: Record<string, ShownPart[]>
   /** Drafts as `GET /drafts/{ref}` reads them, newest last. */
   drafts?: Draft[]
+  /** What an import and `GET /drafts/{ref}/findings` answer; none unless it says otherwise. */
+  findings?: Finding[]
+  /** An import is refused with this code (`invalid_argument` as 400, `too_large` as 413). */
+  importRefusal?: string
+  /** The refs of the drafts sent as a test, in order. */
+  tested?: string[]
   /** `false`: the server lacks UIDPLUS. */
   autosave?: boolean
   /**
@@ -550,6 +557,7 @@ function saveDraftAnswer(state: FakeMailState, form: FormData): Response {
     answers: fields.answers,
     forwards: fields.forwards,
     lossy: false,
+    designed: false,
     parts,
     inline,
     send: null,
@@ -567,6 +575,77 @@ function saveDraftAnswer(state: FakeMailState, form: FormData): Response {
     return json(201, { ref: null, parts: [], inline: [], replaced: false, autosave })
   }
   return json(201, { ref, parts, inline, replaced: old !== undefined && !oldStays, autosave })
+}
+
+/** `POST /drafts?import=`: an .eml or an HTML file made a designed draft, or (`kept`) one saved again under new fields. */
+function importAnswer(state: FakeMailState, mode: string, form: FormData): Response {
+  const fields = JSON.parse(form.get('draft') as string) as Pick<DraftFields, 'account' | 'compose_id' | 'ref' | 'from'> & {
+    subject: string | null
+    to: Draft['to'] | null
+    cc: Draft['cc'] | null
+    bcc: Draft['bcc'] | null
+  }
+  if (state.importRefusal !== undefined) {
+    return refuse(state.importRefusal === 'too_large' ? 413 : 400, state.importRefusal)
+  }
+  const drafts = state.drafts ?? []
+  const old = fields.ref === null ? undefined : drafts.find((each) => each.ref === fields.ref)
+  if (fields.ref !== null && old === undefined) {
+    return refuse(404, 'not_found')
+  }
+  if (mode === 'kept' && old?.designed !== true) {
+    return refuse(400, 'invalid_argument')
+  }
+  const files = mode === 'html' ? (form.getAll('files[]') as File[]) : []
+  const parts =
+    mode === 'kept'
+      ? (old?.parts ?? [])
+      : files.map((file, index) => ({ name: file.name, type: file.type, size: file.size, part: String(index + 2) }))
+  nextUid += 1
+  const draft: Draft = {
+    ref: fakeRef(fields.account, 'Drafts', nextUid),
+    account: fields.account,
+    compose_id: fields.compose_id,
+    from: fields.from,
+    to: fields.to ?? [],
+    cc: fields.cc ?? [],
+    bcc: fields.bcc ?? [],
+    subject: fields.subject ?? (mode === 'eml' ? 'Imported' : ''),
+    text: 'Imported text',
+    html: '<p>Imported</p>',
+    answers: null,
+    forwards: null,
+    lossy: false,
+    designed: true,
+    parts,
+    inline: [],
+    send: null,
+    scheduled: null,
+  }
+  state.drafts = [...drafts.filter((each) => each !== old), draft]
+  listDraft(state, draft, fields.ref)
+  return json(201, { ref: draft.ref, parts, inline: [], replaced: old !== undefined, autosave: state.autosave ?? true, findings: state.findings ?? [] })
+}
+
+/** `POST /drafts/{ref}/test`: a send to the default identity, the draft left where it is. */
+function testAnswer(state: FakeMailState, draft: Draft): Response {
+  const to = defaultIdentity(state, draft.account) ?? `me@${String(draft.account)}.example`
+  const key = `test-${String(nextUid++)}`
+  state.tested = [...(state.tested ?? []), draft.ref]
+  state.sends ??= {}
+  const outcome = state.sendOutcome ?? { state: 'sent' }
+  state.sends[key] = {
+    send_id: `send-${key}`,
+    code: null,
+    filed: outcome.state === 'sent' ? true : null,
+    rejected: [],
+    notes: [],
+    note_codes: [],
+    settled: outcome.state === 'sent',
+    ...outcome,
+    polls: state.sendingPolls ?? 0,
+  }
+  return json(202, { send_id: `send-${key}`, to })
 }
 
 function prefillAnswer(state: FakeMailState, body: { ref: string; mode: string; quote?: string }): Response {
@@ -786,6 +865,14 @@ function composeRoutes(state: FakeMailState, url: URL, init?: RequestInit): Resp
     if (url.searchParams.get('convert') === 'text') {
       return json(200, { text: fakeHtmlText(form.get('html') as string) })
     }
+    const mode = url.searchParams.get('import')
+    if (mode !== null) {
+      return importAnswer(state, mode, form)
+    }
+    const designed = state.drafts?.find((each) => each.ref === draftFieldsOf(form).ref)
+    if (designed?.designed === true) {
+      return refuse(400, 'invalid_argument')
+    }
     return saveDraftAnswer(state, form)
   }
   if (path === '/api/v1/mail/drafts/find') {
@@ -813,6 +900,14 @@ function composeRoutes(state: FakeMailState, url: URL, init?: RequestInit): Resp
   match = /^\/api\/v1\/mail\/scheduled\/([^/]+)$/.exec(path)
   if (match !== null) {
     return scheduledAnswer(state, decodeURIComponent(match[1] ?? ''), method)
+  }
+  match = /^\/api\/v1\/mail\/drafts\/([^/]+?)\/(findings|test)$/.exec(path)
+  if (match !== null) {
+    const designed = state.drafts?.find((each) => each.ref === decodeURIComponent(match?.[1] ?? ''))
+    if (designed === undefined) {
+      return notFound()
+    }
+    return match[2] === 'test' && method === 'POST' ? testAnswer(state, designed) : json(200, { findings: state.findings ?? [] })
   }
   match = /^\/api\/v1\/mail\/drafts\/([^/]+?)\/schedule$/.exec(path)
   if (match !== null && method === 'POST') {
@@ -1385,8 +1480,9 @@ export function stubMailApi(state: FakeMailState): Mock {
     }
     match = /^\/api\/v1\/mail\/messages\/([^/]+)\/html$/.exec(path)
     if (match !== null) {
-      const view = state.views[decodeURIComponent(match[1] ?? '')]
-      if (view?.has_html !== true) {
+      const ref = decodeURIComponent(match[1] ?? '')
+      const view = state.views[ref]
+      if (view?.has_html !== true && state.drafts?.some((each) => each.ref === ref && each.designed) !== true) {
         return notFound()
       }
       return new Response('<!doctype html><p>HTML</p>', { status: 200, headers: { 'Content-Type': 'text/html' } })
@@ -1441,6 +1537,7 @@ export function fakeDraft(account: AccountId, uid: number, fields: Partial<Draft
     answers: null,
     forwards: null,
     lossy: false,
+    designed: false,
     parts: [],
     inline: [],
     send: null,

@@ -433,3 +433,30 @@ def without_headers(raw: bytes, names: Iterable[str]) -> bytes:
             kept.append(line)
     # The separator that follows brings its own line break: the last kept line must not add one.
     return _LAST_BREAK.sub(b"", b"".join(kept)) + raw[end:]
+
+
+def header_names(raw: bytes) -> set[str]:
+    """The names of `raw`'s header fields, lowercase, each found as `without_headers` finds it."""
+    return {
+        line.partition(b":")[0].strip().lower().decode("ascii", "replace")
+        for line in _LINE_START.split(_header_block(raw))
+        if line[:1] not in (b" ", b"\t") and b":" in line
+    }
+
+
+def readdressed(raw: bytes, *, to: Mailbox, subject: str, message_id: str) -> bytes:
+    """`raw`, its lines CRLF, to `to` alone under `subject` and `message_id`: its To, Cc, Bcc,
+    Subject and Message-ID replaced, every other field and the body left as they are. The new
+    values are cleaned as `compose` cleans its own."""
+    if not _is_id(message_id):
+        raise MailError("invalid_argument", "Not a Message-ID.")
+    kept = without_headers(raw, ["To", "Cc", "Bcc", "Subject", "Message-ID"])
+    cleaned = clean_header(well_formed(subject), 998)
+    return b"".join(
+        (
+            _addresses("To", _deliverable([to])),
+            _subject(cleaned) if cleaned else b"",
+            _words("Message-ID", [message_id]),
+            kept,
+        )
+    )

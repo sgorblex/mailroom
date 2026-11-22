@@ -1267,6 +1267,142 @@ def test_an_import_keeps_the_thread_of_the_draft_it_replaces_but_not_a_reply(
     assert parsed(stored.source)["In-Reply-To"] == "<notes@example.org>"
 
 
+def test_an_imported_draft_is_addressed_again_as_built(composer: Composer) -> None:
+    compose_id = str(uuid.uuid4())
+    eml = ("eml", ("news.eml", designed_eml("ada@example.org"), "message/rfc822"))
+    first = post_import(composer, "eml", {"compose_id": compose_id}, eml).json()
+    [before] = composer.contents("Drafts")
+    to = stranger()
+    response = post_import(
+        composer,
+        "kept",
+        {
+            "compose_id": compose_id,
+            "ref": first["ref"],
+            "from": ALIAS,
+            "to": [address(to, "Bo")],
+            "subject": "Spring news, again",
+        },
+    )
+    assert response.status_code == 201, response.text
+    kept = response.json()
+    assert kept["replaced"] is True
+    assert kept["findings"] == first["findings"]
+    assert [part["name"] for part in kept["parts"]] == ["terms.pdf"]
+    [after] = composer.contents("Drafts")
+
+    def body(source: bytes) -> bytes:
+        return source.partition(b"\r\n\r\n")[2]
+
+    assert body(after.source) == body(before.source)
+    assert b"X-Mailroom-Draft: 1; designed=images.1-scripts.1" in after.source
+    draft = composer.read(kept["ref"])
+    assert (draft["from"], draft["to"], draft["subject"], draft["designed"]) == (
+        ALIAS,
+        [address(to, "Bo")],
+        "Spring news, again",
+        True,
+    )
+
+
+def test_only_an_imported_draft_is_kept_as_built(composer: Composer) -> None:
+    compose_id = str(uuid.uuid4())
+    plain = composer.save(compose_id=compose_id, subject="Plain", text="Hi")
+    refused = post_import(composer, "kept", {"compose_id": compose_id, "ref": plain["ref"]})
+    assert detail(refused) == (400, "invalid_argument")
+    assert detail(post_import(composer, "kept", {})) == (400, "invalid_argument")
+    html = ("html", (None, b"<p>x</p>"))
+    with_html = post_import(composer, "kept", {"compose_id": compose_id, "ref": plain["ref"]}, html)
+    assert detail(with_html) == (400, "invalid_argument")
+    [stored] = composer.contents("Drafts")
+    assert b"Plain" in stored.source
+
+
+def test_a_test_send_goes_to_the_default_identity_and_leaves_the_draft(
+    composer: Composer, audited: Callable[[int], list[AuditRecord]], user: User
+) -> None:
+    to = stranger()
+    subject = f"Spring news {uuid.uuid4().hex}"
+    imported = post_import(
+        composer,
+        "html",
+        {"to": [address(to)], "cc": [address(stranger())], "subject": subject},
+        ("html", (None, b"<p>Spring</p>")),
+    ).json()
+    test_id = str(uuid.uuid4())
+    response = composer.client.post(
+        f"{MAIL}/drafts/{imported['ref']}/test", json={"test_id": test_id}
+    )
+    assert response.status_code == 202, response.text
+    accepted = response.json()
+    assert accepted["to"] == ME
+    composer.settled()
+    assert composer.follow(accepted["send_id"])["state"] == "sent"
+
+    smtp = SmtpTestServer.from_env()
+    assert smtp is not None
+    [delivered] = [m for m in smtp.delivered_to(ME) if subject in str(parsed(m.raw)["Subject"])]
+    wire = parsed(delivered.raw)
+    assert wire["Subject"] == f"[Test] {subject}"
+    assert wire["To"] == f"Me <{ME}>"
+    assert wire["Cc"] is None
+    assert "X-Mailroom-Draft" not in wire
+    assert wire["Message-ID"] != parsed(composer.contents("Drafts")[0].source)["Message-ID"]
+    assert smtp.delivered_to(to) == []
+    assert composer.read(imported["ref"])["to"] == [address(to)]
+    [record] = [r for r in audited(user.id) if r.detail.get("delivery") == "sent"]
+    assert (record.actor, record.action, record.detail["to"]) == ("user", "send", [ME])
+
+    # The same click again answers the send it made; another click is another test.
+    again = composer.client.post(f"{MAIL}/drafts/{imported['ref']}/test", json={"test_id": test_id})
+    assert again.json()["send_id"] == accepted["send_id"]
+    another = composer.client.post(
+        f"{MAIL}/drafts/{imported['ref']}/test", json={"test_id": str(uuid.uuid4())}
+    )
+    assert another.status_code == 202, another.text
+    assert another.json()["send_id"] != accepted["send_id"]
+    composer.settled()
+    tests = [m for m in smtp.delivered_to(ME) if subject in str(parsed(m.raw)["Subject"])]
+    assert len(tests) == 2
+
+
+def test_a_test_send_is_refused_for_what_is_no_draft_of_the_user(composer: Composer) -> None:
+    smtp = SmtpTestServer.from_env()
+    assert smtp is not None
+    before = len(smtp.delivered_to(ME))
+    inbox = composer.seed(mime("Notes", sender="ada@example.org", to=ME, text="Hi"))
+    compose_id = str(uuid.uuid4())
+    first = composer.save(compose_id=compose_id, subject="One", text="Hi")["ref"]
+    composer.save(compose_id=compose_id, ref=first, subject="Two", text="Hi")
+
+    def test(ref: str) -> tuple[int, str]:
+        response = composer.client.post(
+            f"{MAIL}/drafts/{ref}/test", json={"test_id": str(uuid.uuid4())}
+        )
+        return detail(response)
+
+    assert test(inbox) == (400, "invalid_argument")
+    assert test(first)[0] == 404
+    assert composer.client.post(f"{MAIL}/drafts/{first}/test", json={}).status_code == 422
+    composer.settled()
+    assert len(smtp.delivered_to(ME)) == before
+
+
+def test_a_forged_designed_marker_does_not_keep_html_unsanitised(composer: Composer) -> None:
+    forged = composer.seed(
+        "From: Ada <ada@example.org>\r\nTo: me@example.org\r\nSubject: Hi\r\n"
+        "X-Mailroom-Draft: 1; designed=scripts.1\r\nMIME-Version: 1.0\r\n"
+        "Content-Type: text/html; charset=utf-8\r\n\r\n"
+        '<p>Hi</p><script>steal()</script><img src="https://track.example/p.gif">\r\n',
+        "Drafts",
+        ("\\Draft",),
+    )
+    refused = post_import(composer, "kept", {"ref": forged, "to": [address(stranger())]})
+    assert detail(refused) == (400, "invalid_argument")
+    [stored] = composer.contents("Drafts")
+    assert b"ada@example.org" in stored.source
+
+
 def test_malformed_imports_are_refused(composer: Composer) -> None:
     eml_part = ("eml", ("news.eml", designed_eml("ada@example.org"), "message/rfc822"))
     for mode, draft, parts in (
@@ -1469,6 +1605,8 @@ def test_off_refuses_everything_that_writes(
 
     refused = (409, "send_disabled")
     assert detail(composer.post_send(ref)) == refused
+    tested = composer.client.post(f"{MAIL}/drafts/{ref}/test", json={"test_id": "t1"})
+    assert detail(tested) == refused
     assert detail(composer.post_draft(ref=ref, text="More")) == refused
     assert detail(composer.client.delete(f"{MAIL}/drafts/{ref}")) == refused
     assert (
@@ -1836,6 +1974,7 @@ def test_another_users_refs_parts_and_sends_are_not_found(
     assert detail(client.get(f"{MAIL}/drafts/{ref}")) == gone
     assert detail(client.delete(f"{MAIL}/drafts/{ref}")) == gone
     assert detail(client.post(f"{MAIL}/drafts/{ref}/send", json={})) == gone
+    assert detail(client.post(f"{MAIL}/drafts/{ref}/test", json={"test_id": "t1"})) == gone
     assert detail(client.post(f"{MAIL}/drafts/prefill", json={"ref": ref, "mode": "reply"})) == gone
     assert detail(client.get(f"{MAIL}/messages/{attached}/parts/2")) == gone
     assert detail(client.get(f"{MAIL}/sends/{send_id}")) == gone

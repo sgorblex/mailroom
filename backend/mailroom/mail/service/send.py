@@ -418,6 +418,42 @@ def send_draft(
     return started
 
 
+@dataclass(frozen=True, slots=True)
+class TrialSend:
+    """A test of a draft on its way (``send``, followed with ``read_send``) to ``to``."""
+
+    send: SendView
+    to: str
+
+
+def send_test(
+    ctx: AppContext, user_id: int, ref: str, test_id: str, *, origin: Origin = WEB
+) -> TrialSend:
+    """Sends the draft ``ref`` as a test (``gate.prepare_test``): through the gate as the user,
+    to the account's default identity, the draft left as it is. Its key is the client's
+    ``test_id``, one per click: a retry of that click answers the send it made, while another
+    click is another test. Delivered, it is filed in Sent as any send is."""
+    accounts = _accounts(ctx, user_id)
+    message = _message_ref(ctx, user_id, accounts, ref)
+    account = accounts.config(message.account)
+    _writable(account)
+
+    def test(connections: MailConnections) -> _Outgoing:
+        ready = gate.prepare_test(connections, account, message, accounts.write_limits)
+        return _Outgoing(
+            ready.message,
+            ready.prepared,
+            f"test/{account.id}/{test_id}",
+            lambda _c, _filed: (),
+            lambda _filed: (),
+        )
+
+    started = _admit(ctx, user_id, accounts, account, origin, test, by="user", confirm_resend=False)
+    if isinstance(started, gate.Drafted):  # a stored draft is refused, not drafted again
+        raise mail_refusal("invalid_argument", MESSAGES["invalid_argument"])
+    return TrialSend(started, core.from_identity(account).address)
+
+
 def read_send(ctx: AppContext, user_id: int, send_id: str) -> SendView:
     """The user's send ``send_id``. Another user's reads as one that does not exist."""
     send = None

@@ -28,9 +28,11 @@ import {
   type TrayItem,
 } from './compose-form.ts'
 import type { ComposeSession, ComposeSource } from './compose-session.ts'
+import { DesignedBody } from './designed-body.tsx'
 import { DraftModel, loadStart, type ComposeStart, type DraftView, type HeldSchedule } from './draft-model.ts'
 import { MAIL_NS } from './i18n.ts'
 import { IdentitySelect } from './identity-select.tsx'
+import { ImportDialog } from './import-dialog.tsx'
 import { composeErrorMessage, mailCodeMessage, mailErrorMessage, scheduleErrorMessage, sentMessage } from './messages.ts'
 import { RecipientInput, type Typed } from './recipient-input.tsx'
 import type { RichEditorHandle } from './rich-editor.tsx'
@@ -220,7 +222,7 @@ function Editor({ session, start }: { session: ComposeSession; start: ComposeSta
   const [held, setHeld] = useState(() => holdsTheDraft(start.send))
   const [refusalShown, setRefusalShown] = useState<DraftView['refusedBy']>(null)
   const [problem, setProblem] = useState<string | null>(null)
-  const [dialog, setDialog] = useState<'resend' | 'delete' | 'unsaved' | 'plain' | 'later' | null>(null)
+  const [dialog, setDialog] = useState<'resend' | 'delete' | 'unsaved' | 'plain' | 'later' | 'replace' | null>(null)
   const [scheduling, setScheduling] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const unmountSignal = useUnmountSignal()
@@ -622,6 +624,10 @@ function Editor({ session, start }: { session: ComposeSession; start: ComposeSta
 
   /** From changes, and the signature with it where the user left it as it was put there. */
   function changeFrom(address: string): void {
+    if (start.designed) {
+      model.update({ from: address })
+      return
+    }
     const current = model.getView().form
     const before = signatureOf(start.signatures, fromAddress(account, current.from))
     const after = signatureOf(start.signatures, address)
@@ -707,69 +713,81 @@ function Editor({ session, start }: { session: ComposeSession; start: ComposeSta
             }}
           />
         </div>
-        <div className="flex min-h-48 flex-1 flex-col gap-1">
-          {form.html === null ? (
-            <>
-              <div className="flex items-center gap-2">
-                <label id={bodyLabelId} htmlFor={bodyId} className="flex-1 text-sm text-muted-foreground">
-                  {t('compose.body')}
-                </label>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="xs"
-                  disabled={locked}
-                  onClick={() => {
-                    model.update({ html: plainToHtml(model.getView().form.text) })
-                  }}
-                >
-                  {t('compose.richText')}
-                </Button>
-              </div>
-              <Textarea
-                ref={bodyInput}
-                id={bodyId}
-                className="flex-1"
-                maxLength={MAX_TEXT}
-                readOnly={locked}
-                value={form.text}
-                onChange={(event) => {
-                  model.update({ text: event.target.value })
-                }}
-              />
-            </>
-          ) : (
-            <>
-              <span id={bodyLabelId} className="text-sm text-muted-foreground">
-                {t('compose.body')}
-              </span>
-              <Suspense fallback={<p className="text-sm text-muted-foreground">{t('compose.loading')}</p>}>
-                <RichEditor
-                  ref={richInput}
-                  focusStart={replying}
-                  labelId={bodyLabelId}
-                  html={form.html}
-                  inline={form.inline}
-                  locked={locked}
-                  onChange={(html, text) => {
-                    model.update({ html, text })
-                  }}
-                  onImages={addImages}
-                  onFiles={(files) => {
-                    if (withinLimits(files)) {
-                      addFiles(files)
-                    }
-                  }}
-                  onPlainText={() => {
-                    setDialog('plain')
+        {start.designed && view.ref !== null ? (
+          <DesignedBody
+            draftRef={view.ref}
+            subject={form.subject}
+            locked={locked}
+            saved={async () => ((await model.queue.flush(true)) ? model.queue.ref : null)}
+            onReplace={() => {
+              setDialog('replace')
+            }}
+          />
+        ) : (
+          <div className="flex min-h-48 flex-1 flex-col gap-1">
+            {form.html === null ? (
+              <>
+                <div className="flex items-center gap-2">
+                  <label id={bodyLabelId} htmlFor={bodyId} className="flex-1 text-sm text-muted-foreground">
+                    {t('compose.body')}
+                  </label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="xs"
+                    disabled={locked}
+                    onClick={() => {
+                      model.update({ html: plainToHtml(model.getView().form.text) })
+                    }}
+                  >
+                    {t('compose.richText')}
+                  </Button>
+                </div>
+                <Textarea
+                  ref={bodyInput}
+                  id={bodyId}
+                  className="flex-1"
+                  maxLength={MAX_TEXT}
+                  readOnly={locked}
+                  value={form.text}
+                  onChange={(event) => {
+                    model.update({ text: event.target.value })
                   }}
                 />
-              </Suspense>
-            </>
-          )}
-        </div>
+              </>
+            ) : (
+              <>
+                <span id={bodyLabelId} className="text-sm text-muted-foreground">
+                  {t('compose.body')}
+                </span>
+                <Suspense fallback={<p className="text-sm text-muted-foreground">{t('compose.loading')}</p>}>
+                  <RichEditor
+                    ref={richInput}
+                    focusStart={replying}
+                    labelId={bodyLabelId}
+                    html={form.html}
+                    inline={form.inline}
+                    locked={locked}
+                    onChange={(html, text) => {
+                      model.update({ html, text })
+                    }}
+                    onImages={addImages}
+                    onFiles={(files) => {
+                      if (withinLimits(files)) {
+                        addFiles(files)
+                      }
+                    }}
+                    onPlainText={() => {
+                      setDialog('plain')
+                    }}
+                  />
+                </Suspense>
+              </>
+            )}
+          </div>
+        )}
         <fieldset disabled={locked} className="contents">
-          <AttachmentTray items={form.tray} inline={shown} maxMb={maxMb} onAdd={addFiles} onRemove={removeItem} />
+          <AttachmentTray items={form.tray} inline={shown} maxMb={maxMb} fixed={start.designed} onAdd={addFiles} onRemove={removeItem} />
         </fieldset>
       </fieldset>
       <SendStatus
@@ -837,6 +855,19 @@ function Editor({ session, start }: { session: ComposeSession; start: ComposeSta
           <SaveStatus view={view} sending={sending} limit={overLimit(form)} onSave={() => void model.queue.flush()} />
         )}
       </footer>
+      {dialog === 'replace' && (
+        <ImportDialog
+          replacing
+          onImport={(source) => model.replace(source)}
+          onDone={() => {
+            setDialog(null)
+            announce({ text: t('designed.replaced'), urgent: false })
+          }}
+          onCancel={() => {
+            setDialog(null)
+          }}
+        />
+      )}
       {dialog === 'later' && (
         <SendLaterDialog
           onPick={(at) => void scheduleAt(at)}
