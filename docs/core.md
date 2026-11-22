@@ -293,7 +293,9 @@ items (envelope, flags without `\Recent`, structure, INTERNALDATE, size), the th
 (Message-ID, In-Reply-To, References, List-Id; cut past `parsed.MAX_HEADER_BYTES` as
 `search.thread_key` reads them, `parsed_message` dropping the field the cut split), and on Gmail
 X-GM-LABELS (decoded as LIST decodes a folder's path, so a label matches its folder),
-X-GM-MSGID and X-GM-THRID; then the previews as a page makes them (`preview_of`). It is refused
+X-GM-MSGID and X-GM-THRID; then the previews as a page makes them (`preview_of`). `date`, the
+Date header, keeps the header's UTC offset as a page item's does (UTC when it has none), which an
+index stores to give it back the same (`aware_date`, exported for that). It is refused
 (`stale_reference`) once the folder's UIDVALIDITY is no longer the plan's. Every text is a page's
 (decoded, flattened, capped; at most `index.INDEX_ADDRESSES` per address field) with each lone
 surrogate as U+FFFD,

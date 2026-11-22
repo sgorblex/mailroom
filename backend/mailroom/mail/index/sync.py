@@ -439,6 +439,12 @@ def _text(addresses: Sequence[Address]) -> str:
     return " ".join(part for a in addresses for part in (a.name, a.address) if part)
 
 
+def _offset_minutes(moment: datetime | None) -> int | None:
+    """``moment``'s UTC offset in minutes; None without a date."""
+    offset = None if moment is None else moment.utcoffset()
+    return None if offset is None else round(offset.total_seconds() / 60)
+
+
 def _row(
     user_id: int, folder_id: int, message: IndexedMessage, thread_key: str | None
 ) -> dict[str, Any]:
@@ -449,6 +455,7 @@ def _row(
         "user_id": user_id,
         "received": message.received or message.date or _EPOCH,
         "date": message.date,
+        "date_offset": _offset_minutes(message.date),
         "sender": _people(message.sender),
         "recipients": {"to": _people(message.to), "cc": _people(message.cc)},
         "sender_text": _text(message.sender),

@@ -184,6 +184,8 @@ First, fixes carried over from 0.14.0 testing:
       folder list with 122 labels took over 20 s).
 - [x] **Index dates in the user's time zone** — `after:`/`before:` on the index, and the age
       limit's first day, are days of the user's time zone, not UTC's.
+- [x] **Index dates keep their offset** — an index row keeps its Date header's UTC offset, so a
+      message's date reads the same from the index as live.
 
 #### 7. Compose
 
