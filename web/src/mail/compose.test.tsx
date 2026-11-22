@@ -539,6 +539,97 @@ describe('identities', () => {
   })
 })
 
+describe('signatures', () => {
+  const identities = {
+    [WORK]: [
+      { address: 'me@work.example', name: 'Me', default: true },
+      { address: 'alias@work.example', name: null },
+      { address: 'bare@work.example', name: null },
+    ],
+  }
+  const signatures = {
+    [WORK]: {
+      'me@work.example': { html: '<p>Me, <strong>at work</strong></p>', text: 'Me, at work' },
+      'alias@work.example': { html: '<p>The alias</p>', text: 'The alias' },
+    },
+  }
+
+  it('start a new message with its identity\'s, swapped with From while untouched', async () => {
+    const user = userEvent.setup()
+    const fetchMock = stubMailApi(state({ identities, signatures }))
+    renderMailApp('/mail')
+    const form = await compose(user)
+    const editor = await body(form)
+    expect(editor.querySelector('[data-mailroom-signature] strong')).toHaveTextContent('at work')
+    const from = within(form).getByRole('combobox', { name: 'From' })
+
+    await user.selectOptions(from, 'alias@work.example')
+    await waitFor(() => {
+      expect(editor.querySelector('[data-mailroom-signature]')).toHaveTextContent('The alias')
+    })
+    expect(editor).not.toHaveTextContent('at work')
+    await user.selectOptions(from, 'bare@work.example')
+    await waitFor(() => {
+      expect(editor).not.toHaveTextContent('The alias')
+    })
+    await user.selectOptions(from, 'me@work.example')
+    await waitFor(() => {
+      expect(editor.querySelector('[data-mailroom-signature]')).toHaveTextContent('Me, at work')
+    })
+    await user.type(field(form, 'Subject'), 'Signed')
+    await user.click(within(form).getByRole('button', { name: 'Close' }))
+    await waitFor(() => {
+      expect(savesOf(fetchMock).at(-1)?.fields.html).toBe('<p></p><div data-mailroom-signature=""><p>Me, <strong>at work</strong></p></div>')
+    })
+  })
+
+  it('leave no draft of a new message holding only its signature, swapped by From', async () => {
+    const user = userEvent.setup()
+    const fake = state({ identities, signatures })
+    stubMailApi(fake)
+    renderMailApp('/mail')
+    const form = await compose(user)
+    const editor = await body(form)
+    await user.selectOptions(within(form).getByRole('combobox', { name: 'From' }), 'alias@work.example')
+    await waitFor(() => {
+      expect(editor.querySelector('[data-mailroom-signature]')).toHaveTextContent('The alias')
+    })
+    await user.click(within(form).getByRole('button', { name: 'Close' }))
+    await waitFor(() => {
+      expect(screen.queryByRole('form')).not.toBeInTheDocument()
+    })
+    await new Promise((resolve) => setTimeout(resolve, 2_300))
+    expect(fake.drafts ?? []).toEqual([])
+  })
+
+  it('open a reply without them when they cannot be read', async () => {
+    const user = userEvent.setup()
+    stubMailApi(state({ identities, signatures, refuse: { [`GET /api/v1/accounts/${String(WORK)}/signatures`]: { status: 503, body: {} } } }))
+    renderMailApp(`/mail?message=${firstRef}`)
+    await user.click(await screen.findByRole('button', { name: 'Reply' }))
+    const editor = await body(await composer('Reply'))
+    expect(editor.querySelector('blockquote')).toBeInTheDocument()
+    expect(editor).not.toHaveTextContent('at work')
+  })
+
+  it('stay as the user changed them when From changes', async () => {
+    const user = userEvent.setup()
+    const draft = fakeDraft(WORK, 42, {
+      from: 'me@work.example',
+      html: '<p>Hi</p><div data-mailroom-signature=""><p>Me, changed</p></div>',
+      text: 'Hi\n\nMe, changed',
+    })
+    stubMailApi(state({ identities, signatures, drafts: [draft] }))
+    renderMailApp(`/mail?compose=${draft.ref}`)
+    const form = await composer('Draft')
+    const editor = await body(form)
+    await user.selectOptions(within(form).getByRole('combobox', { name: 'From' }), 'alias@work.example')
+    expect(within(form).getByRole('combobox', { name: 'From' })).toHaveValue('alias@work.example')
+    expect(editor).toHaveTextContent('Me, changed')
+    expect(editor).not.toHaveTextContent('The alias')
+  })
+})
+
 describe('attachments', () => {
   it('uploads a file once: later saves keep the draft\'s own part', async () => {
     const user = userEvent.setup()

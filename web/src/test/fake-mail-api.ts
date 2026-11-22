@@ -35,6 +35,8 @@ const ACCOUNT_NAMES: Record<AccountId, string> = { [WORK]: 'work', [HOME]: 'home
 
 export interface FakeMailState {
   accounts: AccountId[]
+  /** Each account's identities' signatures, by address, as `GET /accounts/{id}/signatures` lists them and `PUT` keeps them; none unless it says so. */
+  signatures?: Record<string, Record<string, { html: string; text: string }>>
   /** Each account's folders; `delimiter` is `/` and `selectable` true unless they say otherwise (`listedFolder`). */
   folders: Record<string, FakeFolder[]>
   /** `"<account>/<folder path>"` → its messages, newest (highest uid) first. */
@@ -1049,6 +1051,22 @@ export function stubMailApi(state: FakeMailState): Mock {
             keywords: state.keywords?.[id] ?? null,
           }
         }),
+      )
+    }
+    const signed = /^\/api\/v1\/accounts\/(\d+)\/signatures$/.exec(path)
+    if (signed !== null) {
+      const id = Number(signed[1])
+      const kept = state.signatures?.[id] ?? {}
+      if (init?.method === 'PUT') {
+        const { address, html } = JSON.parse(init.body as string) as { address: string; html: string }
+        const text = html.replace(/<[^>]*>/g, '')
+        kept[address] = { html: text === '' ? '' : html, text }
+        state.signatures = { ...state.signatures, [id]: kept }
+        return json(200, { address, ...kept[address] })
+      }
+      return json(
+        200,
+        (state.identities?.[id] ?? []).map(({ address }) => ({ address, html: kept[address]?.html ?? '', text: kept[address]?.text ?? '' })),
       )
     }
     const indexed = indexRoutes(state, url, init) ?? notificationRoutes(state, url, init) ?? viewRoutes(state, url, init)

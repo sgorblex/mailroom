@@ -35,6 +35,7 @@ import type { RichEditorHandle } from './rich-editor.tsx'
 import { commitTyped } from './recipients.ts'
 import { followSend, runSend, type SendEnd } from './send-flow.ts'
 import { SendStatus, type SendState } from './send-status.tsx'
+import { fromAddress, signatureOf, swapTextSignature } from './signature.ts'
 import { loadedFolders, roleFolder, useAccountFolders } from './triage-context.ts'
 
 // TipTap is most of the composer's weight: the mail screen loads without it.
@@ -550,6 +551,21 @@ function Editor({ session, start }: { session: ComposeSession; start: ComposeSta
     }
   }
 
+  /** From changes, and the signature with it where the user left it as it was put there. */
+  function changeFrom(address: string): void {
+    const current = model.getView().form
+    const before = signatureOf(start.signatures, fromAddress(account, current.from))
+    const after = signatureOf(start.signatures, address)
+    model.update({ from: address })
+    if (current.html === null) {
+      model.update({ text: swapTextSignature(current.text, before, after) })
+    } else {
+      // A new message has no quote to keep the signature above: one can go at its end.
+      const append = start.answers === null && start.forwards === null
+      richInput.current?.swapSignature(before?.html ?? null, after?.html ?? null, append)
+    }
+  }
+
   function removeItem(item: TrayItem): void {
     model.update({ tray: model.getView().form.tray.filter((each) => each.id !== item.id) })
   }
@@ -585,13 +601,7 @@ function Editor({ session, start }: { session: ComposeSession; start: ComposeSta
       <fieldset className="flex min-w-0 flex-1 flex-col gap-3">
         <legend className="sr-only">{title}</legend>
         <fieldset disabled={locked} className="contents">
-          <IdentitySelect
-            account={account}
-            value={form.from}
-            onChange={(address) => {
-              model.update({ from: address })
-            }}
-          />
+          <IdentitySelect account={account} value={form.from} onChange={changeFrom} />
           {typedRecipient('to', t('message.to'), toInput)}
           {copies ? (
             <>

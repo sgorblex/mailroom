@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Final, Literal, cast
 
 from mailroom.audit import WEB, AuditTrail, Origin, kept_nowhere
 from mailroom.errors import Refusal, mail_refusal
+from mailroom.mail import signatures
 from mailroom.mail.service._shared import (
     _Accounts,
     _accounts,
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
 
     from mailroom.accounts.service import Via
     from mailroom.context import AppContext
+    from mailroom.mail.signatures import Signature
     from mailroom_core.config import AccountConfig
     from mailroom_core.mail import (
         AttachmentSource,
@@ -79,9 +81,12 @@ class Prefill:
     cc: tuple[Mailbox, ...]
     subject: str
     text: str
+    """Room to write, the identity's signature (``signatures.text_block``), then the original
+    quoted or forwarded."""
     html: str | None
     """The same as HTML, the original's HTML quoted (``core.quoted_original_html``) or forwarded
-    (``core.forwarded_original_html``) below an empty paragraph; None for an unsubscribe."""
+    (``core.forwarded_original_html``) below an empty paragraph and the signature's block
+    (``signatures.html_block``, empty without one); None for an unsubscribe."""
     answers: str | None
     """The message a send is to mark ``\\Answered``: the ref, for a reply."""
     forwards: str | None
@@ -209,13 +214,15 @@ def prefill(
     mode: Literal["reply", "reply_all", "forward", "unsubscribe"],
     *,
     quote: str | None = None,
+    signature: bool = True,
     via: Via = "web",
 ) -> Prefill:
     """What answering, forwarding or unsubscribing by mail from the message ``ref`` names starts
     from; writes nothing. A recipient no send could reach is left out: it would refuse every save
     of the draft. A reply with a ``quote`` (the text the user selected in the message, at most
     ``MAX_QUOTE_CHARS``) quotes only that, as text in both forms; a forward or an unsubscribe
-    ignores it."""
+    ignores it. A reply or a forward carries the signature of the identity it goes from, unless
+    ``signature`` is false; an unsubscribe never does."""
     accounts = _accounts(ctx, user_id)
     message = _message_ref(ctx, user_id, accounts, ref)
     account = accounts.config(message.account)
@@ -234,6 +241,10 @@ def prefill(
     zone = ctx.time_zone(user_id)
     with _as_refusals():
         sender = core.from_identity(account, None, original.addressed).address
+    signed = _signature(ctx, user_id, account.id, sender) if signature else None
+    text_top = "\n\n" if signed is None else f"\n\n{signatures.text_block(signed)}\n\n"
+    html_top = f"{_TYPE_HERE}{signatures.html_block(signed)}" if signature else _TYPE_HERE
+    with _as_refusals():
         if mode == "forward":
             return Prefill(
                 account=account.id,
@@ -241,8 +252,8 @@ def prefill(
                 to=(),
                 cc=(),
                 subject=_subject_cut(core.forward_subject(original.subject)),
-                text=f"\n\n{core.forwarded_original(original, zone)}",
-                html=f"{_TYPE_HERE}{core.forwarded_original_html(original, zone)}",
+                text=f"{text_top}{core.forwarded_original(original, zone)}",
+                html=f"{html_top}{core.forwarded_original_html(original, zone)}",
                 answers=None,
                 forwards=ref,
                 source=ref,
@@ -259,13 +270,33 @@ def prefill(
             to=tuple(filter(_can_be_sent_to, answered.to)),
             cc=tuple(filter(_can_be_sent_to, answered.cc)),
             subject=_subject_cut(core.reply_subject(original.subject)),
-            text=f"\n\n{core.quoted_original(original, zone)}",
-            html=f"{_TYPE_HERE}{core.quoted_original_html(original, zone)}",
+            text=f"{text_top}{core.quoted_original(original, zone)}",
+            html=f"{html_top}{core.quoted_original_html(original, zone)}",
             answers=ref,
             forwards=None,
             source=ref,
             attachments=(),
         )
+
+
+def _signature(ctx: AppContext, user_id: int, account_id: int, address: str) -> Signature | None:
+    with ctx.session_maker() as db:
+        return signatures.account_signatures(db, user_id, account_id).get(address.lower())
+
+
+def identity_signature(
+    ctx: AppContext, user_id: int, account_id: int, sender: str | None
+) -> Signature | None:
+    """The signature of the identity a message from the user's account goes from: ``sender``,
+    else the default; None without one, or for a ``sender`` that is no identity, which the
+    message's save or send then refuses."""
+    accounts = _accounts(ctx, user_id)
+    _usable(ctx, user_id, accounts, account_id)
+    try:
+        address = core.from_identity(accounts.config(account_id), sender).address
+    except MailError:
+        return None
+    return _signature(ctx, user_id, account_id, address)
 
 
 def _quoted_part(quote: str | None) -> str | None:

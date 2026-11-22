@@ -35,6 +35,7 @@ from mailroom.mcp.tools.mail_read import (
     named_account,
 )
 from mailroom.mcp.tools.outgoing import (
+    INCLUDE_SIGNATURE,
     SENDER,
     AccountId,
     Addresses,
@@ -88,6 +89,7 @@ class MessageSendArguments(Arguments):
     text: Text | None = None
     html: Html | None = None
     attachments: Attachments | None = None
+    include_signature: StrictBool = INCLUDE_SIGNATURE
 
 
 class MessageReplyArguments(Arguments):
@@ -102,6 +104,7 @@ class MessageReplyArguments(Arguments):
     bcc: Addresses | None = None
     attachments: Attachments | None = None
     quote: StrictBool = Field(default=True, description="Quote the original under the text.")
+    include_signature: StrictBool = INCLUDE_SIGNATURE
 
 
 class MessageForwardArguments(Arguments):
@@ -119,6 +122,7 @@ class MessageForwardArguments(Arguments):
     )
     sender: Sender | None = SENDER
     include_attachments: StrictBool = True
+    include_signature: StrictBool = INCLUDE_SIGNATURE
 
 
 class DraftSendArguments(Arguments):
@@ -220,6 +224,7 @@ async def _message_send(args: MessageSendArguments, call: ToolCall) -> types.Cal
             text=args.text or "",
             html=args.html,
             attachments=keep,
+            signature=args.include_signature,
             origin=call.origin,
         ),
     )
@@ -243,6 +248,7 @@ async def _message_reply(args: MessageReplyArguments, call: ToolCall) -> types.C
             bcc=bcc or (),
             attachments=keep,
             quote=args.quote,
+            signature=args.include_signature,
             origin=call.origin,
         ),
     )
@@ -264,6 +270,7 @@ async def _message_forward(args: MessageForwardArguments, call: ToolCall) -> typ
             html=args.html,
             sender=args.sender,
             include_attachments=args.include_attachments,
+            signature=args.include_signature,
             origin=call.origin,
         ),
     )

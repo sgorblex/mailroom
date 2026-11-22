@@ -36,6 +36,11 @@ export function indexWaitingKey(account: AccountId): readonly unknown[] {
   return [...indexStatusKey(account), 'waiting']
 }
 
+/** The account's identities with their signatures. */
+export function signaturesKey(account: AccountId): readonly unknown[] {
+  return ['signatures', account]
+}
+
 /** Each account's folders whose new mail shows as a desktop notification. */
 export const NOTIFICATIONS_KEY = ['mail-notifications'] as const
 

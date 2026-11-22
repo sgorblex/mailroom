@@ -66,7 +66,10 @@ and may try to run script, track the reader, phish, or — through the MCP — i
 - **HTML the user sends** is sanitised on the server by mailroom-core (`render.outgoing_html`,
   [`../core.md`](../core.md) — *Compose*): the same allowlists, no script, event handlers, forms,
   frames, objects or style sheets, links only `http(s)` and `mailto`, images only the message's own
-  `cid:` parts (`data:` images become such parts), styles without `url()` or `expression()`.
+  `cid:` parts (`data:` images become such parts), styles without `url()` or `expression()`;
+  the one attribute it adds is `data-mailroom-signature` on a `div`, the signature's mark,
+  dropped from a quoted or forwarded original. A signature is sanitised the same way, without
+  images.
   The web composer's editor (TipTap) parses only `cid:` images, so a paste fetches nothing; it
   never renders mail HTML as HTML in the SPA's document, only the nodes of its own schema.
 - Plain-text rendering is the fallback and the default for the index.
@@ -130,6 +133,9 @@ and may try to run script, track the reader, phish, or — through the MCP — i
 - **Saved views** (`app.saved_view`, [`mail-client.md`](mail-client.md#views)): per user, a name
   and folder paths or a search line the user wrote, kept plain and never logged; read only scoped
   to their user, they go with it, and an account's removal drops its folders from them.
+- **Signatures** (`app.identity_signature`, [`mail-client.md`](mail-client.md#signatures)): per
+  user, account and identity address, the HTML (sanitised) and text the user wrote, kept plain and
+  never logged; they go with their account and their user.
 - **Deletes only deliberately.** Trash moves to `\Trash`, as in mailroom-mcp, and nothing is
   expunged but what a move copied elsewhere and **a draft Mailroom wrote**, by `UID EXPUNGE` of
   exactly that UID ([`mail-client.md`](mail-client.md), *The own-draft exception*); a draft

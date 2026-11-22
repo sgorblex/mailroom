@@ -241,7 +241,9 @@ def _original_html(original: Original, content_ids: Iterable[str]) -> str:
     """Its HTML sanitised as a send would (`render.outgoing_html`), else its text as HTML."""
     if original.html is None:
         return _text_html(original.text)
-    return outgoing_html(original.html, content_ids=content_ids, data_images=False).html
+    return outgoing_html(
+        original.html, content_ids=content_ids, data_images=False, signature_mark=False
+    ).html
 
 
 def quoted_original(original: Original, time_zone: str) -> str:

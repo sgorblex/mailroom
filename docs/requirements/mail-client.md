@@ -701,6 +701,23 @@ images, and the web composer writes either ([Web editor](#web-editor)).
   client each account's `identities` (`address`, `name`, `default`), its `send_mode`,
   `attachment_max_mb` (the user's limit, at most 25) and `max_recipients`, so the composer can say
   early what is not possible.
+- **Signatures:** <a id="signatures"></a>each identity can have one, written on the *Profile*
+  page in the same rich editor (no images: they are dropped) and kept per user, account and
+  address (`app.identity_signature`) as HTML sanitised as a send is, with its text part; one
+  without text is removed. They are forgotten with the account and with the user. A message starts
+  with the signature of the identity it goes from, in a marked block: in HTML a
+  `<div data-mailroom-signature>` (the one attribute `render.outgoing_html` keeps for it, dropped
+  from a quoted or forwarded original), in text below a `-- ` line. A new message in the web
+  composer has it at its end, below an empty paragraph; a prefill has it below the empty
+  paragraph and above the quote or the forwarded message (its HTML has the block even without a
+  signature, empty, so one can go there; an unsubscribe by mail has none). Changing `From` swaps
+  it for the new identity's while the block holds the old one as it was put there; one the user
+  edited stays, and in plain text only a `-- ` block standing whole is swapped. An agent's draft
+  or send ([MCP](#mcp-1)) gets it too, unless `include_signature` is false. Routes:
+  `GET /api/v1/accounts/{id}/signatures` lists each of the account's identities, in its order,
+  as `{address, html, text}` (both empty for none); `PUT` the same path with `{address, html}`
+  (at most 20,000 characters, 422 beyond) keeps one and answers it, 404 `identity_not_found` for
+  an address that is none of the account's identities. Neither is under `/api/v1/mail`.
 - **Recipients** are To, Cc and Bcc: each at most 50 addresses, together at most the user's
   `max_recipients` (mailroom-core settings, default 10). An address must be deliverable: one `@`,
   an ASCII local part, a domain that is ASCII or punycode. Anything else is 422
@@ -1062,7 +1079,8 @@ The static route `GET /drafts/find` is matched before `GET /drafts/{ref}`.
 - A draft with no recipient is a valid draft; a send needs at least one.
 - `POST /drafts/prefill` answers `{account, from, to, cc, bcc, subject, text, html, answers,
   forwards, attachments, inline}`, the fields of the draft it would start (`html` the same body in
-  HTML, an empty paragraph above the quote or the forwarded message, null for an unsubscribe;
+  HTML, an empty paragraph and the [signature](#signatures)'s block above the quote or the
+  forwarded message, null for an unsubscribe;
   `answers` the ref for a reply, `forwards` the ref for a forward, else null; `attachments`, for a
   forward, the original's `{ref, part, name, type, size}` that the composer offers as `keep`;
   `inline`, for a forward, the original's inline parts its `html` shows, the same with
@@ -1098,7 +1116,10 @@ The `mail_draft` and `mail_send` groups ([`mcp.md`](mcp.md)) are the same servic
 behind the same gate, with the agent as the one acting: the send mode limits them as in the
 [table above](#send-mode-and-who-is-acting), and the hourly limit and recipient cap bind them.
 Attachments are named by `ref` and `part` only: an agent never passes file content. A body is
-`text` or `html`, sanitised as the web's is, its text part made from it.
+`text` or `html`, sanitised as the web's is, its text part made from it. `draft_create`,
+`message_send`, `message_reply` and `message_forward` add the identity's
+[signature](#signatures) below the text and above a quote (in text and in HTML), unless
+`include_signature` is false; `draft_update` and `draft_send` leave the body as it is.
 
 ## REST contract
 

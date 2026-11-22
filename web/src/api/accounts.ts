@@ -147,3 +147,22 @@ export type AccountQuota = z.infer<typeof accountQuotaSchema>
 export function accountQuota(id: AccountId, signal?: AbortSignal): Promise<AccountQuota> {
   return apiGetJson(`${one(id)}/quota`, { init: { signal }, schema: accountQuotaSchema })
 }
+
+const identitySignatureSchema = z.object({
+  address: z.string(),
+  /** Sanitised as an outgoing message's HTML is, without images; empty for none. */
+  html: z.string(),
+  /** `html` as a message's text part has it; empty for none. */
+  text: z.string(),
+})
+export type IdentitySignature = z.infer<typeof identitySignatureSchema>
+
+/** Each of the account's identities, in its order, with its signature. */
+export function accountSignatures(id: AccountId, signal?: AbortSignal): Promise<IdentitySignature[]> {
+  return apiGetJson(`${one(id)}/signatures`, { init: { signal }, schema: z.array(identitySignatureSchema) })
+}
+
+/** Keeps the identity's signature as the server sanitises it; one without text is removed. */
+export function saveSignature(id: AccountId, address: string, html: string): Promise<IdentitySignature> {
+  return apiPutJson(`${one(id)}/signatures`, { address, html }, { schema: identitySignatureSchema })
+}

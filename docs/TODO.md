@@ -194,7 +194,7 @@ First, fixes carried over from 0.14.0 testing:
 #### 7. Compose
 
 - [ ] **Reply from the right address** — a reply goes from the identity the message arrived at.
-- [ ] **Signatures** — one per identity, added in compose.
+- [x] **Signatures** — one per identity, added in compose.
 - [x] **Quote the selection** — Reply with text selected quotes only that.
 - [x] **Paste images inline** — a pasted image becomes an inline part of the message.
 - [ ] **Address autocomplete** — in compose, from the addresses the user wrote to.

@@ -18,11 +18,12 @@ from typing import TYPE_CHECKING, Any, Final
 from pydantic import Field, StrictBool
 
 from mailroom.errors import Refusal
-from mailroom.mail import service
+from mailroom.mail import service, signatures
 from mailroom.mail.service import DraftFields
 from mailroom.mcp.tool import Arguments, Hints, Tool, text_result
 from mailroom.mcp.tools.mail_read import RefText, named_account
 from mailroom.mcp.tools.outgoing import (
+    INCLUDE_SIGNATURE,
     SENDER,
     AccountId,
     Addresses,
@@ -74,6 +75,7 @@ class DraftCreateArguments(Arguments):
     quote: StrictBool = Field(
         default=True, description="With reply_to: quote the original under the text."
     )
+    include_signature: StrictBool = INCLUDE_SIGNATURE
 
 
 class DraftUpdateArguments(Arguments):
@@ -129,6 +131,16 @@ async def _saved(call: ToolCall, saved: SavedDraft) -> str:
     return f"Draft saved as {ref}: {recipients_text}, {attachments}"
 
 
+async def _signature(
+    call: ToolCall, args: DraftCreateArguments, account: int, sender: str | None
+) -> signatures.Signature | None:
+    if not args.include_signature:
+        return None
+    return await call.thread(
+        lambda: service.identity_signature(call.ctx, call.user_id, account, sender)
+    )
+
+
 async def _draft_create(args: DraftCreateArguments, call: ToolCall) -> types.CallToolResult:
     check_body(args.text, args.html)
     text = args.text or ""
@@ -136,6 +148,7 @@ async def _draft_create(args: DraftCreateArguments, call: ToolCall) -> types.Cal
     keep = keep_of(args.attachments)
     if args.reply_to is None:
         account = await named_account(args.account_id, call)
+        signed = await _signature(call, args, account, args.sender)
         fields = DraftFields(
             account=account,
             compose_id=_compose_id(),
@@ -144,8 +157,8 @@ async def _draft_create(args: DraftCreateArguments, call: ToolCall) -> types.Cal
             cc=cc or (),
             bcc=bcc or (),
             subject=args.subject or "",
-            text=text,
-            html=args.html,
+            text=signatures.signed_text(text, signed),
+            html=signatures.signed_html(args.html, signed),
             keep=keep,
         )
     else:
@@ -156,24 +169,27 @@ async def _draft_create(args: DraftCreateArguments, call: ToolCall) -> types.Cal
                 call.user_id,
                 answered,
                 "reply_all" if args.reply_all else "reply",
+                signature=False,
                 via="mcp",
             )
         )
         if args.account_id is not None and args.account_id != prefilled.account:
             raise Refusal("invalid", "invalid_argument", "reply_to belongs to another account.")
+        sender = args.sender or prefilled.sender
+        signed = await _signature(call, args, prefilled.account, sender)
+        body = signatures.signed_text(text, signed)
+        html = signatures.signed_html(args.html, signed)
         fields = DraftFields(
             account=prefilled.account,
             compose_id=_compose_id(),
             answers=answered,
-            sender=args.sender or prefilled.sender,
+            sender=sender,
             to=prefilled.to if to is None else to,
             cc=prefilled.cc if cc is None else cc,
             bcc=bcc or (),
             subject=prefilled.subject if args.subject is None else args.subject,
-            text=f"{text}{prefilled.text}" if args.quote else text,
-            html=f"{args.html}{prefilled.html or ''}"
-            if args.html is not None and args.quote
-            else args.html,
+            text=f"{body}{prefilled.text}" if args.quote else body,
+            html=f"{html}{prefilled.html or ''}" if html is not None and args.quote else html,
             keep=keep,
         )
     saved = await call.thread(

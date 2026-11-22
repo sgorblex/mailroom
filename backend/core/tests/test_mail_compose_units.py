@@ -771,6 +771,11 @@ class TestRepliesAndForwards:
             "<br><div>Shall we?<br><br>Ana</div>"
         )
 
+    def test_drops_the_originals_signature_mark_from_a_quote_or_a_forward(self) -> None:
+        rich = replace(ORIGINAL, html="<p>Hi</p><div data-mailroom-signature><p>Ana</p></div>")
+        assert "data-mailroom-signature" not in quoted_original_html(rich, "UTC")
+        assert "data-mailroom-signature" not in forwarded_original_html(rich, "UTC")
+
     def test_reads_less_of_an_original_than_a_read_does(self) -> None:
         assert MAX_ORIGINAL_BYTES == 2 * 1024 * 1024
 

@@ -4,7 +4,8 @@ lxml normalises the markup as for `safe_html`, then nh3 keeps the same tags, att
 properties, minus anything that reaches out: links only `http(s)` and `mailto`, images only `cid:`
 parts the message carries. A raster `data:` image becomes such a part, under a Content-ID made up
 here; any other image is left out, element and all. No script, event handler, form, frame, object
-or style sheet survives; styles lose `url()`, `expression()` and escapes.
+or style sheet survives; styles lose `url()`, `expression()` and escapes. A `div` keeps
+`SIGNATURE_MARK`, which marks the owner's signature.
 """
 
 import base64
@@ -36,6 +37,9 @@ from mailroom_core.render.hosts import browser_url, web_url
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+SIGNATURE_MARK: Final = "data-mailroom-signature"
+"""The attribute of the `div` that holds the signature in a message Mailroom writes, so a client
+can tell it from the rest of the body."""
 _DATA_IMAGE: Final = re.compile(r"data:(image/[a-z]+);base64,(.*)", re.IGNORECASE | re.DOTALL)
 
 
@@ -69,6 +73,8 @@ class _Filter:
         self.images: dict[tuple[str, bytes], InlineImage] = {}
 
     def __call__(self, tag: str, attribute: str, value: str) -> str | None:
+        if attribute == SIGNATURE_MARK:
+            return ""
         if attribute == "style":
             kept = [decl for decl in value.split(";") if not UNSAFE_CSS.search(decl)]
             return ";".join(kept) or None
@@ -128,17 +134,26 @@ def _referred(cleaned: str) -> frozenset[str]:
 
 
 def outgoing_html(
-    html: str, *, content_ids: Iterable[str] = (), data_images: bool = True
+    html: str,
+    *,
+    content_ids: Iterable[str] = (),
+    data_images: bool = True,
+    signature_mark: bool = True,
 ) -> OutgoingHtml:
     """`html` sanitised to send. An image stays only as `cid:` one of `content_ids` (angle
     brackets optional), or, with `data_images`, as a raster `data:` image, which becomes one of
-    `images`; any other is removed. Called from a worker thread, as `safe_html` is."""
+    `images`; any other is removed. Without `signature_mark` a signature's mark goes too, as
+    from a message quoted or forwarded, whose signature is not the owner's. Called from a worker
+    thread, as `safe_html` is."""
     attribute_filter = _Filter(content_ids, data_images)
+    attributes = {tag: set(names) for tag, names in ATTRIBUTES.items()}
+    if signature_mark:
+        attributes["div"] = {*attributes.get("div", ()), SIGNATURE_MARK}
     cleaned = nh3.clean(
         _normalised(html, attribute_filter),
         tags=set(TAGS),
         clean_content_tags=set(DROPPED_WITH_CONTENT),
-        attributes={tag: set(names) for tag, names in ATTRIBUTES.items()},
+        attributes=attributes,
         attribute_filter=attribute_filter,
         strip_comments=True,
         link_rel=None,

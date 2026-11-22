@@ -1,7 +1,7 @@
 """The app's own rows about a user's accounts (schema ``app``), beside mailroom-core's: the Run
 filters switch, and forgetting all of it when an account or its user goes (the user's remembered
-remote-content senders, muted threads, ledger of copies moved between accounts, mail index and
-notification folders, and its folders in the saved views too)."""
+remote-content senders, muted threads, ledger of copies moved between accounts, mail index,
+notification folders and signatures, and its folders in the saved views too)."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from mailroom.filters.transfers import forget_target
 from mailroom.models import (
     AccountFilterSettings,
     FilterRun,
+    IdentitySignature,
     MailIndexFolder,
     MailNotificationFolders,
     MailViewInterest,
@@ -101,6 +102,11 @@ def forget_account(store: AccountStore, db: Session, user_id: int, account_id: i
             MailNotificationFolders.account_id == account_id,
         )
     )
+    db.execute(
+        delete(IdentitySignature).where(
+            IdentitySignature.user_id == user_id, IdentitySignature.account_id == account_id
+        )
+    )
     _drop_from_views(db, user_id, account_id)
     db.commit()
     remove_account(store, account_id)
@@ -130,4 +136,5 @@ def forget_user_accounts(db: Session, user_id: int) -> None:
     db.execute(delete(MailNotificationFolders).where(MailNotificationFolders.user_id == user_id))
     db.execute(delete(RemoteContentSender).where(RemoteContentSender.user_id == user_id))
     db.execute(delete(SavedView).where(SavedView.user_id == user_id))
+    db.execute(delete(IdentitySignature).where(IdentitySignature.user_id == user_id))
     forget_user(db.connection(), core_user_id(user_id))

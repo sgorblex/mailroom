@@ -17,6 +17,7 @@ from mailroom.models.filters import (
 from mailroom.models.mail_index import MailIndexFolder, MailIndexMessage, MailViewInterest
 from mailroom.models.notifications import MailNotificationFolders
 from mailroom.models.remote_content import RemoteContentSender
+from mailroom.models.signatures import IdentitySignature
 from mailroom.models.sso import ExternalIdentity, Intent, SsoLoginState
 from mailroom.models.user import User, UserSession
 from mailroom.models.views import SavedView
@@ -29,6 +30,7 @@ __all__ = [
     "Filter",
     "FilterMatchDay",
     "FilterRun",
+    "IdentitySignature",
     "Intent",
     "MailIndexFolder",
     "MailIndexMessage",

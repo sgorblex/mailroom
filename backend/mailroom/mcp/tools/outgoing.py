@@ -77,6 +77,13 @@ Sender = Annotated[
 ]
 SENDER: Final = Field(default=None, alias="from")
 """The ``from`` field (a Python keyword: the attribute is ``sender``)."""
+INCLUDE_SIGNATURE: Final = Field(
+    default=True,
+    description=(
+        "Add the signature the user set for the identity it goes from, below the text and above "
+        "any quote (in HTML too); false leaves it out."
+    ),
+)
 
 
 class AttachmentRef(Arguments):

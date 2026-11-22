@@ -102,7 +102,10 @@ and its text part is made from it; a reply then quotes the original in HTML, and
 the original's HTML and inline images, below an empty paragraph as in a web prefill, the two
 together within the HTML cap (3 MiB of UTF-8; an agent's own HTML meets the MCP endpoint's 1 MiB
 request limit first). `draft_update` keeps an HTML draft's HTML and images until
-new `text` or `html` replaces them. A draft or a reply takes its recipients and
+new `text` or `html` replaces them. `draft_create`, `message_send`, `message_reply` and
+`message_forward` add the [signature](mail-client.md#signatures) of the identity the message goes
+from below the text and above a quote, in text and in HTML; `include_signature: false` leaves it
+out. A draft or a reply takes its recipients and
 quoted text from a message the agent read, so the server instructions name `message_read` as
 where refs come from. The hourly send limit and the recipient cap apply to every send.
 `accounts_list` also lists each account's `identities` (the addresses it can send as, and the

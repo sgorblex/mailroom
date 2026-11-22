@@ -86,3 +86,9 @@ def test_answers_nothing_for_empty_markup() -> None:
         out = outgoing_html(html)
         assert out.html.strip() == ""
         assert out.content_ids == frozenset()
+
+
+def test_keeps_the_signature_mark_on_a_div_unless_told() -> None:
+    html = "<div data-mailroom-signature='x'><p>Ada</p></div><p data-mailroom-signature>p</p>"
+    assert outgoing_html(html).html == ('<div data-mailroom-signature=""><p>Ada</p></div><p>p</p>')
+    assert outgoing_html(html, signature_mark=False).html == "<div><p>Ada</p></div><p>p</p>"

@@ -48,6 +48,9 @@ through the Vite proxy. Engineering baseline:
 - **Remote images.** Each user lists on their *Profile* page the senders whose remote images
   they always show, and removes them there; a sender is added only from a message whose DMARC
   passed ([`requirements/mail-client.md`](requirements/mail-client.md) — *Remote content*).
+- **Signatures.** Each user writes on their *Profile* page a signature for each identity of
+  their accounts, which their messages from it start with
+  ([`requirements/mail-client.md`](requirements/mail-client.md#signatures)).
 - **Index.** Each user picks on their *Profile* page how far back the mail index keeps their
   mail and, per account, which folders it keeps, each with its sync state and counts; while a
   folder the mail screen lists or searches is first being indexed, a line above the list says
@@ -152,9 +155,9 @@ the index and live updates; tier 3 items arrive one at a time.
 | Tier | Scope |
 | --- | --- |
 | **1 — Read** | Accounts and folders with unread counts; message list (threaded or flat) with paging; read a message: headers, text and **sandboxed HTML** body, attachments (download), print (a printable page) and the `.eml` source (download), remote content blocked with a per-message reveal, or shown at once for a sender the user chose whose DMARC passed. Search. |
-| **2 — Triage and compose** | *Triage (slice B, in):* flag/unflag (a row's star too), mark To sort or sorted (a row's mark too), read/unread, move (to another of the user's accounts too, its originals to Trash or, on request, deleted for good once copied), archive, trash (never expunge), multi-select, keyboard shortcuts for triage. *Compose (slice C, in):* compose new, reply, reply-all (quoting only the text selected in the message, when there is some), forward in plain text or rich text (HTML with inline images, sanitised on the server; the web composer's TipTap editor writes it by default, with a per-message switch to plain text), with identity (`From`) choice, attachments and drafts always kept in the server's `\Drafts`. The **send mode** (mailroom-core's send gate) limits what agents may send; the user's own *Send* works unless the mode is `off`; the hourly limit and recipient cap bind both. No automatic retry delivers a send twice (only the user's *Send anyway*, after an unconfirmed delivery, can), and one whose delivery cannot be confirmed says so instead of retrying. |
+| **2 — Triage and compose** | *Triage (slice B, in):* flag/unflag (a row's star too), mark To sort or sorted (a row's mark too), read/unread, move (to another of the user's accounts too, its originals to Trash or, on request, deleted for good once copied), archive, trash (never expunge), multi-select, keyboard shortcuts for triage. *Compose (slice C, in):* compose new, reply, reply-all (quoting only the text selected in the message, when there is some), forward in plain text or rich text (HTML with inline images, sanitised on the server; the web composer's TipTap editor writes it by default, with a per-message switch to plain text), with identity (`From`) choice and each identity's signature, attachments and drafts always kept in the server's `\Drafts`. The **send mode** (mailroom-core's send gate) limits what agents may send; the user's own *Send* works unless the mode is `off`; the hourly limit and recipient cap bind both. No automatic retry delivers a send twice (only the user's *Send anyway*, after an unconfirmed delivery, can), and one whose delivery cannot be confirmed says so instead of retrying. |
 | **2+ — Index and live updates** | A **local index** of every account and folder (metadata plus rendered text) for fast cross-account search and lists; kept fresh by the worker over **IMAP IDLE** (and periodic resync), pushed to the browser (SSE or WebSocket). |
-| **3 — Later** | Signatures, snooze and send-later, contacts and autocomplete from history, calendar invites, offline reading, PGP/S/MIME; unified inbox views and saved searches are in ([views](requirements/mail-client.md#views)). |
+| **3 — Later** | Snooze and send-later, contacts and autocomplete from history, calendar invites, offline reading, PGP/S/MIME; unified inbox views and saved searches are in ([views](requirements/mail-client.md#views)). |
 
 ## Filters UI
 
