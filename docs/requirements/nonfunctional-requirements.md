@@ -72,6 +72,15 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   images.
   The web composer's editor (TipTap) parses only `cid:` images, so a paste fetches nothing; it
   never renders mail HTML as HTML in the SPA's document, only the nodes of its own schema.
+- **Imported HTML** (designed mail, [`../core.md`](../core.md#designed-mail)) is mail content too,
+  whoever built it: its HTML goes through the same `outgoing_html` (`data:` images left out, its
+  `cid:` references kept for the checks), and only Content-Type and Content-Transfer-Encoding of
+  the file's headers survive: From, Message-ID and the rest are Mailroom's, built as any send's,
+  CRLF stripped. The `email` package parses it under caps (100 parts, 16 deep, the HTML and the
+  text 3 MiB each, the other parts the attachment cap), and any exception it raises is
+  `invalid_argument`, so nothing of the file reaches a log. The checks' Content-IDs and file
+  names go to the user, and to an agent inside the untrusted envelope. It is previewed only
+  through the message view's sanitiser and sandbox, and sent only through the send gate.
 - Plain-text rendering is the fallback and the default for the index.
 - **No request on mail's behalf, but one.** Nothing a message names is fetched, with one
   exception: a **one-click unsubscribe** (RFC 8058) the user asks for on one message (`POST
@@ -658,10 +667,10 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
     and the result), keyed rows for at least 30 days and key-less ones (an agent's direct send) for a
     day, pruned when the user next sends; claiming counts and inserts under a per-user advisory
     lock.
-  - **Logs:** `mail_prefilled`, `mail_draft_saved`, `mail_draft_read`, `mail_draft_found`,
-    `mail_draft_deleted`, `mail_send_requested` and `mail_send_finished`, each with `user_id`,
-    `account_id`, `via` (`web` or `mcp`), `outcome` (`ok`, the state or the code) and
-    `duration_ms`, and a finished send's `send_id`, `state`, `filed`, `recipient_count` and
+  - **Logs:** `mail_prefilled`, `mail_draft_saved`, `mail_draft_imported`, `mail_draft_checked`,
+    `mail_draft_read`, `mail_draft_found`, `mail_draft_deleted`, `mail_send_requested` and
+    `mail_send_finished`, each with `user_id`, `account_id`, `via` (`web` or `mcp`), `outcome`
+    (`ok`, the state or the code) and `duration_ms`, and a finished send's `send_id`, `state`, `filed`, `recipient_count` and
     `rejected_count`; `mail_send_not_filed` and `mail_send_not_settled` with their `code`. Never an
     address, a subject, a body, a filename, a `Message-ID`, a ref or the server's wording.
     mailroom-core produces an audit item for each draft and send (recipients, and a `removed` tag

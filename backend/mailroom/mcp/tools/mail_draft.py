@@ -1,6 +1,7 @@
 """Writing drafts: create, update and delete, over ``mailroom.mail.service`` (never over
 mailroom-core directly). Behaviour and inputs are mailroom-mcp's ``draft_create``, ``draft_update``
-and ``draft_delete``, with this server's account naming and the app's refs. Nothing here sends.
+and ``draft_delete``, with this server's account naming and the app's refs; ``draft_import`` saves
+a message built elsewhere as it is, and answers its checks. Nothing here sends.
 
 A draft is saved in the account's Drafts folder as a new message: an update saves the next version
 and removes the old one (``docs/requirements/mail-client.md``, *The own-draft exception*), so the
@@ -13,13 +14,13 @@ The result gives the draft's ref, from which identity and to whom, read back fro
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Annotated, Any, Final
 
 from pydantic import Field, StrictBool
 
 from mailroom.errors import Refusal
 from mailroom.mail import service, signatures
-from mailroom.mail.service import DraftFields
+from mailroom.mail.service import DraftFields, ImportFields
 from mailroom.mcp.tool import Arguments, Hints, Tool, text_result
 from mailroom.mcp.tools.mail_read import RefText, named_account
 from mailroom.mcp.tools.outgoing import (
@@ -27,6 +28,7 @@ from mailroom.mcp.tools.outgoing import (
     SENDER,
     AccountId,
     Addresses,
+    AttachmentRef,
     Attachments,
     Html,
     Sender,
@@ -37,13 +39,14 @@ from mailroom.mcp.tools.outgoing import (
     recipients,
     who,
 )
-from mailroom_core.mail import format_ref
+from mailroom_core.mail import MAX_HTML_BYTES, MAX_UPLOADS, format_ref
+from mailroom_core.render import untrusted
 
 if TYPE_CHECKING:
     from mcp import types
 
     from mailroom.mcp.tool import ToolCall
-    from mailroom_core.mail import Draft, SavedDraft
+    from mailroom_core.mail import Draft, Finding, SavedDraft
 
 DRAFT: Final = Hints(open_world=True)
 """Adds a message to Drafts and nothing else."""
@@ -88,6 +91,42 @@ class DraftUpdateArguments(Arguments):
     text: Text | None = None
     html: Html | None = None
     attachments: Attachments | None = None
+
+
+class ImportedPart(AttachmentRef):
+    content_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=250,
+        description=(
+            "Makes it an inline image: the Content-ID its HTML shows it by, as cid:<content_id>. "
+            "Without one it is attached, unless the HTML names it by its file name."
+        ),
+    )
+
+
+class DraftImportArguments(Arguments):
+    account_id: AccountId | None = None
+    eml: Annotated[str, Field(min_length=1, max_length=MAX_HTML_BYTES)] | None = Field(
+        default=None,
+        description=(
+            "The whole message as an .eml (RFC 5322) file's text, with its MIME parts: kept as "
+            "it was built. Its To, Cc and Subject are used unless given here; never its From."
+        ),
+    )
+    html: Html | None = None
+    attachments: Annotated[list[ImportedPart], Field(max_length=MAX_UPLOADS)] | None = Field(
+        default=None,
+        description=(
+            "With html: parts of existing messages, by ref and part, to carry: images it shows "
+            "(by content_id, or by file name in a relative path or cid:) and attachments."
+        ),
+    )
+    sender: Sender | None = SENDER
+    to: Addresses | None = None
+    cc: Addresses | None = None
+    bcc: Addresses | None = None
+    subject: Subject | None = None
 
 
 class DraftDeleteArguments(Arguments):
@@ -264,6 +303,41 @@ async def _draft_update(args: DraftUpdateArguments, call: ToolCall) -> types.Cal
     return text_result(f"{await _saved(call, saved)}{previous}{lossy}")
 
 
+def _findings_text(findings: tuple[Finding, ...]) -> str:
+    if not findings:
+        return " Checks before sending: nothing to look at."
+    lines = [
+        f"- {finding.text}" + (f" {untrusted(', '.join(finding.items))}" if finding.items else "")
+        for finding in findings
+    ]
+    return "\nChecks before sending (tell the user):\n" + "\n".join(lines)
+
+
+async def _draft_import(args: DraftImportArguments, call: ToolCall) -> types.CallToolResult:
+    if (args.eml is None) == (args.html is None) or (args.eml is not None and args.attachments):
+        raise Refusal(
+            "invalid", "invalid_argument", "Give eml, or html with its attachments: one of them."
+        )
+    account = await named_account(args.account_id, call)
+    fields = ImportFields(
+        account=account,
+        compose_id=_compose_id(),
+        sender=args.sender,
+        to=recipients(args.to),
+        cc=recipients(args.cc),
+        bcc=recipients(args.bcc),
+        subject=args.subject,
+        eml=None if args.eml is None else args.eml.encode("utf-8", "replace"),
+        html=args.html,
+        keep=[(part.ref, part.part, part.content_id) for part in args.attachments or ()],
+    )
+    imported = await call.thread(
+        lambda: service.import_draft(call.ctx, call.user_id, fields, origin=call.origin)
+    )
+    saved = await _saved(call, imported.saved)
+    return text_result(f"{saved}{_findings_text(imported.findings)}")
+
+
 async def _draft_delete(args: DraftDeleteArguments, call: ToolCall) -> types.CallToolResult:
     removed = await call.thread(
         lambda: service.delete_draft(call.ctx, call.user_id, args.ref, origin=call.origin)
@@ -299,6 +373,23 @@ MAIL_DRAFT_TOOLS: Final[tuple[Tool[Any], ...]] = (
         arguments=DraftUpdateArguments,
         hints=DRAFT_REPLACING,
         run=_draft_update,
+    ),
+    Tool(
+        name="draft_import",
+        title="Import a designed message as a draft",
+        description=(
+            "Save a message built elsewhere (a designed HTML email) in Drafts as it was built, "
+            "without sending it: an .eml as `eml`, or `html` with its images and attachments. "
+            "Scripts, forms, event handlers, style sheets and anything remote but links are "
+            "removed. The answer gives the draft's ref and the checks to show the user before "
+            "it is sent: what was removed, images without alt text, cid: references with no "
+            "part and parts never shown, HTML past Gmail's 102 KB clip, a missing text part, a "
+            "message over the attachment limit. draft_update cannot change it: import it again."
+        ),
+        group="mail_draft",
+        arguments=DraftImportArguments,
+        hints=DRAFT,
+        run=_draft_import,
     ),
     Tool(
         name="draft_delete",

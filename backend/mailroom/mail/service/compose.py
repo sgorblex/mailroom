@@ -61,6 +61,10 @@ SEND_HOLDS_THE_DRAFT: Final = frozenset({"sending", "unknown", "sent"})
 """Its delivery is going, unresolved or done: a new version could slip past ``delivery_unknown``
 with a new key, or make a replayed "sent" name recipients who never got it."""
 DRAFT_NOT_EDITABLE: Final = "This draft was sent, or may have been, so it cannot be changed."
+DESIGNED_KEPT: Final = "An imported message is kept as it was built: import it again to change it."
+IMPORT_OVER_REPLY: Final = (
+    "A reply or a forward is not replaced by an imported message: start a new draft to import it."
+)
 DRAFT_GONE: Final = frozenset({"not_found", "stale_reference"})
 """What reading a draft answers once its ref no longer holds it."""
 MAX_QUOTE_CHARS: Final = core.MAX_QUOTED_CHARS
@@ -374,11 +378,14 @@ def _replaced(
     connections: MailConnections,
     replaces: MessageRef | None,
     compose_id: str,
+    *,
+    importing: bool = False,
 ) -> Draft | None:
     """The version a save replaces. Its ``compose_id`` is the send key, so a new one would forget
     how the draft's send went and deliver it again. A draft written elsewhere has none: the
     client gives it one, which ``_not_held`` allows only while no send stands under its ref. That
-    send is why such a draft is normally gone, so a ref that holds nothing is asked about it too."""
+    send is why such a draft is normally gone, so a ref that holds nothing is asked about it too.
+    One imported as built is replaced only by ``importing`` another: no save composes it again."""
     if replaces is None:
         return None
     try:
@@ -387,6 +394,8 @@ def _replaced(
         if error.code in DRAFT_GONE:
             _not_held(ctx, user_id, replaces)
         raise
+    if previous.designed and not importing:
+        raise MailError("invalid_argument", DESIGNED_KEPT)
     if previous.compose_id is None:
         _not_held(ctx, user_id, replaces)
     elif previous.compose_id != compose_id:
@@ -532,6 +541,142 @@ def save_draft(
         account.id,
         saved,
         on=sorted({account.id, *used}),
+    )
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ImportFields:
+    """A message built elsewhere, to save as a draft as it is (``core.import_draft``): an .eml, or
+    an HTML file with its files. From, recipients and subject left None are the .eml's (From
+    never: the default identity); ``keep`` names parts of existing messages as ``(ref, part,
+    content_id)``, a Content-ID making one an inline part of the HTML."""
+
+    account: int
+    compose_id: str
+    ref: str | None = None
+    sender: str | None = None
+    to: Sequence[Mailbox] | None = None
+    cc: Sequence[Mailbox] | None = None
+    bcc: Sequence[Mailbox] | None = None
+    subject: str | None = None
+    eml: bytes | None = None
+    html: str | None = None
+    keep: Sequence[tuple[str, str, str | None]] = ()
+
+
+def import_draft(
+    ctx: AppContext,
+    user_id: int,
+    fields: ImportFields,
+    uploads: Sequence[OutgoingAttachment] = (),
+    *,
+    origin: Origin = WEB,
+) -> core.ImportedDraft:
+    """Saves an imported message in Drafts as it was built, as a first version or as the next
+    version of ``fields.ref`` (itself imported or not, but no reply or forward: the marker of a
+    designed draft names no original), keeping its thread, and answers with the checks of what
+    was stored. The refs are checked as ``save_draft``'s are, and the save is audited the same
+    way."""
+    if (fields.eml is None) == (fields.html is None) or (
+        fields.eml is not None and (uploads or fields.keep)
+    ):
+        raise mail_refusal("invalid_argument", "Import an .eml, or an HTML file with its files.")
+    accounts = _accounts(ctx, user_id)
+    _usable(ctx, user_id, accounts, fields.account)
+    named = [fields.ref, *(ref for ref, _part, _cid in fields.keep)]
+    used = _ref_accounts(ctx, user_id, accounts, [ref for ref in named if ref is not None])
+    account = accounts.config(fields.account)
+    limits = accounts.write_limits
+    cap = core.attachment_cap(limits)
+    _writable(account)
+    with _as_refusals():
+        core.check_fields(
+            to=fields.to or (),
+            cc=fields.cc or (),
+            bcc=fields.bcc or (),
+            subject=fields.subject or "",
+        )
+        core.check_uploads([*(len(f.content) for f in uploads), *(0 for _ in fields.keep)], cap)
+    replaces = None if fields.ref is None else core.parse_ref(fields.ref)
+    if replaces is not None and replaces.account != account.id:
+        raise mail_refusal("invalid_argument", "That message belongs to another account.")
+    sources = [core.AttachmentSource(core.parse_ref(ref), part) for ref, part, _cid in fields.keep]
+    note = (
+        kept_nowhere
+        if origin.via == "web"
+        else AuditTrail(ctx.session_maker, user_id, origin, "draft_save").note
+    )
+
+    def imported(connections: MailConnections) -> core.ImportedDraft:
+        previous = _replaced(ctx, user_id, connections, replaces, fields.compose_id, importing=True)
+        if previous is not None and (previous.answers is not None or previous.forwards is not None):
+            raise MailError("invalid_argument", IMPORT_OVER_REPLY)
+        used_bytes = sum(len(upload.content) for upload in uploads)
+        kept = core.attachments_from(connections, sources, cap, used=used_bytes)
+        files = (
+            *uploads,
+            *(replace(a, content_id=k[2]) for a, k in zip(kept, fields.keep, strict=True)),
+        )
+        if fields.eml is not None:
+            built = core.import_eml(fields.eml, cap)
+        else:
+            built = core.import_html(fields.html or "", files, cap)
+        to, cc, bcc = (
+            _deliverable(built.to if fields.to is None else fields.to),
+            _deliverable(built.cc if fields.cc is None else fields.cc),
+            _deliverable(built.bcc if fields.bcc is None else fields.bcc),
+        )
+        core.check_fields(to=to, cc=cc, bcc=bcc)
+        if to or cc or bcc:
+            core.check_recipient_count((*to, *cc, *bcc), limits.max_recipients)
+        message = core.MessageInput(
+            sender=core.from_identity(account, fields.sender),
+            to=to,
+            cc=cc,
+            bcc=bcc,
+            subject=built.subject if fields.subject is None else fields.subject,
+            text="",
+            in_reply_to=None if previous is None else previous.in_reply_to,
+            references=() if previous is None else previous.references,
+        )
+        return core.import_draft(
+            connections,
+            account,
+            message,
+            built,
+            cap=cap,
+            note=note,
+            compose_id=fields.compose_id,
+            replaces=replaces,
+        )
+
+    return _stoppable_call(
+        ctx,
+        user_id,
+        accounts,
+        "mail_draft_imported",
+        origin.via,
+        account.id,
+        imported,
+        on=sorted({account.id, *used}),
+    )
+
+
+def draft_findings(
+    ctx: AppContext, user_id: int, ref: str, *, via: Via = "web"
+) -> tuple[core.Finding, ...]:
+    """The checks of a draft before it is sent (``core.check_message``), from it as stored."""
+    accounts = _accounts(ctx, user_id)
+    message = _message_ref(ctx, user_id, accounts, ref)
+    limits = accounts.write_limits
+    return _call(
+        ctx,
+        user_id,
+        accounts,
+        "mail_draft_checked",
+        via,
+        message.account,
+        lambda connections: core.draft_findings(connections, message, limits),
     )
 
 

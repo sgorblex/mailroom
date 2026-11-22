@@ -29,7 +29,9 @@ if TYPE_CHECKING:
 DRAFT_HEADER: Final = "X-Mailroom-Draft"
 """Marks a draft mailroom wrote, so only those are ever expunged when replaced (docs/core.md,
 *Safety*). Its value is `1`, `1; answers=<ref>` when sending the draft is to set \\Answered on
-that message, or `1; forwards=<ref>` when it is to set `FORWARDED` on it."""
+that message, `1; forwards=<ref>` when it is to set `FORWARDED` on it, or `1; designed` for a
+message imported as built (`mail.designed`), `designed=<changes>` listing what its import changed
+(`scripts.2-text.1`)."""
 
 _POLICY: Final = policy.SMTP.clone(max_line_length=76)
 _MAX_LINE: Final = 78
@@ -39,7 +41,10 @@ _MAX_ID: Final = 900
 _ID_CHAR: Final = "[!-;=?-~]"
 _ID: Final = re.compile(f"<{_ID_CHAR}+@{_ID_CHAR}+>")
 """What a Message-ID looks like: no spaces, angle brackets, controls or anything but ASCII."""
-_DRAFT_VALUE: Final = re.compile(r"1(?:;[ \t]*(answers|forwards)=([A-Za-z0-9_-]+))?")
+_DRAFT_VALUE: Final = re.compile(
+    r"1(?:;[ \t]*(?:(answers|forwards)=([A-Za-z0-9_-]+)"
+    r"|(designed)(?:=([a-z]{1,20}\.[0-9]{1,9}(?:-[a-z]{1,20}\.[0-9]{1,9}){0,19}))?))?"
+)
 _PART_TYPE: Final = re.compile(r"[a-z0-9][\w.+-]*/[\w.+-]+", re.ASCII)
 _NOT_BASE64: Final = ("multipart/", "message/")
 """A multipart needs a boundary and a message/* may not be base64 (RFC 2046, 5.2.1): as
@@ -96,6 +101,9 @@ class MessageInput:
     auto_replied: bool = False
     """Marks an automatic reply (`Auto-Submitted: auto-replied`, RFC 3834), which no other
     responder answers."""
+    designed: tuple[tuple[str, int], ...] | None = None
+    """On a draft imported as built (`mail.designed`): what its import changed, by kind and
+    count, which its marker keeps for the checks."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -279,17 +287,24 @@ def _draft_mark(message: MessageInput) -> bytes:
         return b""
     if message.answers is not None and message.forwards is not None:
         raise MailError("invalid_argument", "A draft answers or forwards a message, not both.")
+    if message.designed is not None:
+        changes = "-".join(f"{kind}.{count}" for kind, count in message.designed if count > 0)
+        return _words(DRAFT_HEADER, ["1;", f"designed={changes}" if changes else "designed"])
     for kind, ref in (("answers", message.answers), ("forwards", message.forwards)):
         if ref is not None:
             return _words(DRAFT_HEADER, ["1;", f"{kind}={format_ref(parse_ref(ref))}"])
     return _words(DRAFT_HEADER, ["1"])
 
 
-def compose(message: MessageInput, message_id: str | None = None) -> Composed:
+def compose(
+    message: MessageInput, message_id: str | None = None, *, body: bytes | None = None
+) -> Composed:
     """The message under `message_id`, a new one when None. Every header value is cleaned, so no
     CR/LF can start a new header; threading ids that do not look like Message-IDs are dropped;
     `invalid_argument` on a recipient that is not deliverable, wherever it came from, or a
-    malformed `message_id`, `answers` or `forwards`, or both of the last two."""
+    malformed `message_id`, `answers` or `forwards`, or both of the last two. `body`, its MIME
+    headers included, is one built already, which then goes as it is instead of `message`'s text,
+    HTML and attachments."""
     chosen = new_message_id(message.sender.address) if message_id is None else message_id
     if not _is_id(chosen):
         raise MailError("invalid_argument", "Not a Message-ID.")
@@ -312,7 +327,8 @@ def compose(message: MessageInput, message_id: str | None = None) -> Composed:
             _words("Auto-Submitted", ["auto-replied"]) if message.auto_replied else b"",
         )
     )
-    body = _body(message)
+    if body is None:
+        body = _body(message)
     return Composed(
         stored=b"".join((addressed, _addresses("Bcc", bcc), rest, _draft_mark(message), body)),
         wire=b"".join((addressed, rest, body)),
@@ -327,6 +343,17 @@ def _draft_match(headers: bytes | str) -> re.Match[str] | None:
         if match is not None:
             return match
     return None
+
+
+def draft_designed(headers: bytes | str) -> dict[str, int] | None:
+    """What the import of a draft imported as built changed, by kind, from its header block; None
+    for any other draft."""
+    match = _draft_match(headers)
+    if match is None or match.group(3) is None:
+        return None
+    changes = match.group(4)
+    pairs = [] if changes is None else [change.split(".") for change in changes.split("-")]
+    return {kind: int(count) for kind, count in pairs}
 
 
 def is_own_draft(headers: bytes | str) -> bool:
