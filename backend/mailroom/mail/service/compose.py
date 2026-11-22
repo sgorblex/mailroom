@@ -61,6 +61,9 @@ with a new key, or make a replayed "sent" name recipients who never got it."""
 DRAFT_NOT_EDITABLE: Final = "This draft was sent, or may have been, so it cannot be changed."
 DRAFT_GONE: Final = frozenset({"not_found", "stale_reference"})
 """What reading a draft answers once its ref no longer holds it."""
+MAX_QUOTE_CHARS: Final = core.MAX_QUOTED_CHARS
+"""Of the part of a message a reply quotes instead of all of it: as much as a whole one's
+(``web/src/api/mail.ts`` repeats it)."""
 _TYPE_HERE: Final = "<p></p>"
 """Above a prefill's quote: where the user writes; under an agent's HTML, what parts it from the
 original (``send._above``)."""
@@ -205,11 +208,14 @@ def prefill(
     ref: str,
     mode: Literal["reply", "reply_all", "forward", "unsubscribe"],
     *,
+    quote: str | None = None,
     via: Via = "web",
 ) -> Prefill:
     """What answering, forwarding or unsubscribing by mail from the message ``ref`` names starts
     from; writes nothing. A recipient no send could reach is left out: it would refuse every save
-    of the draft."""
+    of the draft. A reply with a ``quote`` (the text the user selected in the message, at most
+    ``MAX_QUOTE_CHARS``) quotes only that, as text in both forms; a forward or an unsubscribe
+    ignores it."""
     accounts = _accounts(ctx, user_id)
     message = _message_ref(ctx, user_id, accounts, ref)
     account = accounts.config(message.account)
@@ -244,6 +250,9 @@ def prefill(
                 inline=original.inline,
             )
         answered = core.reply_recipients(original, account, reply_all=mode == "reply_all")
+        selected = _quoted_part(quote)
+        if selected is not None:
+            original = replace(original, text=selected, html=None)
         return Prefill(
             account=account.id,
             sender=sender,
@@ -257,6 +266,13 @@ def prefill(
             source=ref,
             attachments=(),
         )
+
+
+def _quoted_part(quote: str | None) -> str | None:
+    if quote is None:
+        return None
+    text = quote.replace("\r\n", "\n").replace("\r", "\n").strip("\n")
+    return text if text.strip() else None
 
 
 def plain_text(html: str) -> str:

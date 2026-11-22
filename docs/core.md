@@ -506,7 +506,8 @@ encoded word, so the message's own headers are written by hand. Deliberate choic
   `<blockquote type="cite">` under the attribution line, without its images.
   `forwarded_original_html` keeps the `cid:` images of `Original.inline`, which the forward
   carries as inline sources. `original_message` reads the HTML for them only `with_html`: a text
-  reply or forward does without that second fetch.
+  reply or forward does without that second fetch. `Original.text` is cut at `MAX_QUOTED_CHARS`
+  (20,000), which a host also holds a quoted selection to.
 
 **`from` resolution:** an explicit `from` must be one of the account's identities, else the call
 fails and lists the valid ones. A reply or forward without one matches the original's `To`, then

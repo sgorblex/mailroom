@@ -673,6 +673,11 @@ images, and the web composer writes either ([Web editor](#web-editor)).
   one is cut, never refused. In HTML the quote is the attribution line, then a
   `<blockquote type="cite">` of the original's HTML, sanitised as a send is (its text when it has
   none, or when its HTML is over 1 MiB), without its images.
+- **Quote the selection:** Reply or Reply all (button or shortcut) with text selected in the open
+  message's text view quotes only that text, sent as the prefill's `quote` (at most 20,000
+  characters; the web cuts a longer selection), under the same attribution line, in the text and,
+  as text, in the HTML. The HTML view's frame cannot be read without loosening its sandbox, so a
+  selection there, or none, quotes the whole message. A forward or an unsubscribe ignores `quote`.
 - **Forward** has an empty recipient list and the subject with one `Fwd: `. The body holds a
   "Forwarded message" block with the original's headers and text (in HTML, its sanitised HTML with
   its `cid:` images, whose inline parts are offered as `keep` entries with `inline: true`), and the
@@ -982,6 +987,7 @@ set on their *Profile* page ([`../REQUIREMENTS.md`](../REQUIREMENTS.md)).
 | Save requests at once | 3 per user, in each API process; one more is 429 `busy` before its body is read |
 | Original read for quoting | 2 MiB |
 | Text quoted or forwarded | 20,000 characters (the original's text is cut to this) |
+| Selection quoted (`quote`) | 20,000 characters (422 beyond it) |
 | HTML quoted or forwarded | 1 MiB of the original's HTML; a longer one goes as its text |
 | Existing parts kept (`keep`) in a save | 50 (422 beyond it) |
 | Attachments on an MCP tool | 10 (`attachments`, by ref and part) |
@@ -1008,7 +1014,7 @@ CSRF check apply. Bodies are JSON except `POST /drafts`. Unknown fields are 422.
 
 | Route | Body | Answers |
 | --- | --- | --- |
-| `POST /drafts/prefill` | `{"ref", "mode": "reply" \| "reply_all" \| "forward" \| "unsubscribe"}` | 200 the fields below; writes nothing |
+| `POST /drafts/prefill` | `{"ref", "mode": "reply" \| "reply_all" \| "forward" \| "unsubscribe", "quote"?}` | 200 the fields below; writes nothing |
 | `POST /drafts` | multipart: `draft` (JSON), `html` (optional, the HTML body as is) and `files[]` | 201 `{ref, parts, inline, replaced, autosave}` |
 | `POST /drafts?convert=text` | multipart: `html` alone | 200 `{text}`: the text part `html` would be sent with; writes nothing |
 | `GET /drafts/{ref}` | | 200 the draft's fields, `lossy`, `parts`, `inline`, `send` |

@@ -196,7 +196,12 @@ describe('the action registry', () => {
     const each = context(offered, { message: target })
     shortcutAction('v', each, { busy: false, composing: false })?.run(each)
     expect(each.openPicker).toHaveBeenCalledWith('move')
-    shortcutAction('a', each, { busy: false, composing: false })?.run(each)
+    vi.stubGlobal('document', { getSelection: () => null })
+    try {
+      shortcutAction('a', each, { busy: false, composing: false })?.run(each)
+    } finally {
+      vi.unstubAllGlobals()
+    }
     expect(each.compose.start).toHaveBeenCalledWith({ kind: 'reply_all', account: 1, ref: 'r1' })
   })
 })

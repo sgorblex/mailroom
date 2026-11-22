@@ -899,9 +899,13 @@ export interface DraftFields {
 
 const draftPath = (ref: string): string => `${base}/drafts/${encodeURIComponent(ref)}`
 
-/** The fields a reply or forward of `ref` starts from; writes nothing. */
-export function prefillDraft(ref: string, mode: PrefillMode, signal?: AbortSignal): Promise<Prefill> {
-  return apiPostJson(`${base}/drafts/prefill`, { ref, mode }, { init: { signal }, schema: prefillSchema })
+/** The server's cap on a reply's `quote`. */
+export const MAX_QUOTE_CHARS = 20_000
+
+/** The fields a reply or forward of `ref` starts from; writes nothing. A reply with a `quote` quotes only that. */
+export function prefillDraft(ref: string, mode: PrefillMode, quote: string | null, signal?: AbortSignal): Promise<Prefill> {
+  const body = quote === null ? { ref, mode } : { ref, mode, quote }
+  return apiPostJson(`${base}/drafts/prefill`, body, { init: { signal }, schema: prefillSchema })
 }
 
 /**

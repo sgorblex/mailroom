@@ -549,7 +549,7 @@ function saveDraftAnswer(state: FakeMailState, form: FormData): Response {
   return json(201, { ref, parts, inline, replaced: old !== undefined && !oldStays, autosave })
 }
 
-function prefillAnswer(state: FakeMailState, body: { ref: string; mode: string }): Response {
+function prefillAnswer(state: FakeMailState, body: { ref: string; mode: string; quote?: string }): Response {
   const view = state.views[body.ref]
   if (view === undefined) {
     return notFound()
@@ -581,6 +581,7 @@ function prefillAnswer(state: FakeMailState, body: { ref: string; mode: string }
   const forward = body.mode === 'forward'
   const shown = forward ? (state.inline?.[view.ref] ?? []) : []
   const sender = view.reply_to[0] ?? view.from
+  const quoted = forward ? view.text.content : (body.quote ?? view.text.content)
   return json(200, {
     account: view.account_id,
     from: defaultIdentity(state, view.account_id),
@@ -588,10 +589,10 @@ function prefillAnswer(state: FakeMailState, body: { ref: string; mode: string }
     cc: body.mode === 'reply_all' ? view.to : [],
     bcc: [],
     subject: `${forward ? 'Fwd' : 'Re'}: ${view.subject}`,
-    text: `\n\n> ${view.text.content}`,
+    text: `\n\n> ${quoted}`,
     html: forward
       ? `<p></p><div>Forwarded message</div><p>${escapeHtml(view.text.content)}</p>${shown.map((part) => `<p><img src="cid:${part.content_id}"></p>`).join('')}`
-      : `<p></p><div>${escapeHtml(view.from?.address ?? '')} wrote:</div><blockquote type="cite"><p>${escapeHtml(view.text.content)}</p></blockquote>`,
+      : `<p></p><div>${escapeHtml(view.from?.address ?? '')} wrote:</div><blockquote type="cite"><p>${escapeHtml(quoted)}</p></blockquote>`,
     answers: forward ? null : view.ref,
     forwards: forward ? view.ref : null,
     attachments: forward ? view.attachments.map((part) => ({ ...part, ref: view.ref })) : [],
@@ -676,7 +677,7 @@ function composeRoutes(state: FakeMailState, url: URL, init?: RequestInit): Resp
   const method = init?.method ?? 'GET'
   const text = typeof init?.body === 'string' ? init.body : '{}'
   if (path === '/api/v1/mail/drafts/prefill' && method === 'POST') {
-    return prefillAnswer(state, JSON.parse(text) as { ref: string; mode: string })
+    return prefillAnswer(state, JSON.parse(text) as { ref: string; mode: string; quote?: string })
   }
   if (path === '/api/v1/mail/drafts' && method === 'POST') {
     const form = init?.body as FormData

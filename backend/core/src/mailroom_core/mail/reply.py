@@ -34,7 +34,8 @@ MAX_QUOTED_HTML_BYTES: Final = 1024 * 1024
 """Of an original's HTML: a longer one is quoted as text, since HTML cannot be cut."""
 _MAX_REFERENCES: Final = 20
 """References kept when answering: the most recent ones, as the thread read uses them too."""
-_MAX_QUOTED_CHARS: Final = 20_000
+MAX_QUOTED_CHARS: Final = 20_000
+"""Of an original's text in a quote or a forward: it is cut there."""
 _HEADERS: Final = ("REFERENCES", "X-ORIGINAL-TO", "DELIVERED-TO")
 _MESSAGE_ID: Final = re.compile(r"<[^<>\s]+@[^<>\s]+>")
 _ANSWER_PREFIX: Final = re.compile(r"\s*(?:re|r|aw|sv)\s*:", re.IGNORECASE)
@@ -110,7 +111,7 @@ def original_message(
             content = part_content(client, ref.uid, structure.body, MAX_ORIGINAL_BYTES)
             decoded = body_text(content, structure.body, complete=len(content) < MAX_ORIGINAL_BYTES)
             text = render_body(
-                decoded, fmt, include_quoted=True, offset=0, max_chars=_MAX_QUOTED_CHARS
+                decoded, fmt, include_quoted=True, offset=0, max_chars=MAX_QUOTED_CHARS
             ).text
         html: str | None = None
         part = structure.html if with_html else None
