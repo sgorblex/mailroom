@@ -117,6 +117,7 @@ from mailroom.mail.service.send import (
     send_holds,
     send_message,
     send_reply,
+    send_test,
 )
 from mailroom.mail.service.snooze import SnoozeView, list_snoozes, snooze, wake_now
 from mailroom.mail.service.views import TEXT_REFUSED, ViewPage, view_messages
@@ -208,6 +209,7 @@ __all__ = [
     "send_holds",
     "send_message",
     "send_reply",
+    "send_test",
     "snooze",
     "suggest_addresses",
     "thread",

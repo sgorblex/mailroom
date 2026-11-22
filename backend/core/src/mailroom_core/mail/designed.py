@@ -29,7 +29,9 @@ from mailroom_core.mail.compose import (
     compose,
     crlf_lines,
     draft_designed,
+    header_names,
     new_message_id,
+    without_headers,
 )
 from mailroom_core.mail.drafts import (
     SavedDraft,
@@ -61,7 +63,7 @@ from mailroom_core.render import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping, Sequence
+    from collections.abc import Iterable, Iterator, Mapping, Sequence
 
     from mailroom_core.config import AccountConfig, Limits
     from mailroom_core.mail.audit import Note
@@ -89,6 +91,7 @@ _UNREADABLE: Final = "That is not a message Mailroom can import."
 _BAD_CONTENT_ID: Final = (
     "A content ID is 1 to 250 letters, digits and the characters !#$&'*+./=@^`{|}~_- only."
 )
+_NOT_DESIGNED: Final = "That draft was not imported as built."
 _IMPORT_ERRORS: Final = (
     AttributeError,
     LookupError,
@@ -360,6 +363,26 @@ def _check_text(text: str) -> None:
         )
 
 
+type _Role = Literal["html", "text", "inline", "file"]
+
+
+def _roles(leaves: Iterable[_Leaf]) -> Iterator[tuple[_Leaf, _Role]]:
+    """What each leaf of an imported message is: HTML shown as a body, its text part (the first
+    one), an inline part its related HTML may show, or a file."""
+    has_text = False
+    for leaf in leaves:
+        part = leaf.part
+        if part.get_content_type() == "text/html" and _shown(part):
+            yield leaf, "html"
+        elif _is_body(part, "text/plain") and not has_text:
+            has_text = True
+            yield leaf, "text"
+        elif leaf.related and _content_id(part) is not None and _shown(part):
+            yield leaf, "inline"
+        else:
+            yield leaf, "file"
+
+
 def _built(root: EmailMessage, cap: int, *, from_headers: bool = False) -> Built:
     """`root` sanitised and with a text part, its headers but the MIME ones gone; with
     `from_headers`, its recipients and subject as its own headers gave them."""
@@ -374,9 +397,9 @@ def _built(root: EmailMessage, cap: int, *, from_headers: bool = False) -> Built
     has_text = False
     files = 0
     carried = 0
-    for leaf in leaves:
+    for leaf, role in _roles(leaves):
         part = leaf.part
-        if part.get_content_type() == "text/html" and _shown(part):
+        if role == "html":
             content = _text_of(part)
             check_fields(html=content)
             cleaned, removed = _sanitised(content)
@@ -385,14 +408,12 @@ def _built(root: EmailMessage, cap: int, *, from_headers: bool = False) -> Built
             _set_html(part, _DOCUMENT.format(cleaned))
             if html_part is None and part.get_filename() is None:
                 body_html, html_part = cleaned, part
-            continue
-        if _is_body(part, "text/plain") and not has_text:
+        elif role == "text":
             has_text = True
             _check_text(_text_of(part))
-            continue
-        carried += _carried_size(part)
-        if not (leaf.related and _content_id(part) is not None and _shown(part)):
-            files += 1
+        else:
+            carried += _carried_size(part)
+            files += role == "file"
     if carried > cap:
         raise attachments_too_large(cap)
     for name in {name.lower() for name in root} - _KEPT_ROOT_HEADERS:
@@ -626,6 +647,34 @@ def import_draft(
         attachments=built.attachments,
     )
     return ImportedDraft(saved, check_message(composed.stored, cap, dict(built.changes)))
+
+
+def _as_imported(html: str) -> bool:
+    """`html` is as an import leaves it: sanitising it again changes nothing."""
+    again = _DOCUMENT.format(_sanitised(html)[0])
+    return again.replace("\r\n", "\n") == html.replace("\r\n", "\n")
+
+
+def stored_design(connections: MailConnections, ref: MessageRef, limits: Limits) -> Built:
+    """The draft at `ref`, imported as built, as `import_draft` takes it to save it again under
+    other headers: its body byte for byte, with what its import changed. The marker is a header
+    any message can carry, so its HTML must be as an import leaves it: `invalid_argument` for a
+    draft not imported as built, or whose HTML sanitising would still change."""
+    source = crlf_lines(draft_source(connections, ref, draft_source_cap(limits)))
+    header_end = source.find(b"\r\n\r\n")
+    changes = draft_designed(source if header_end < 0 else source[: header_end + 2])
+    if changes is None:
+        raise MailError("invalid_argument", _NOT_DESIGNED)
+    body = without_headers(source, header_names(source) - _KEPT_ROOT_HEADERS - {"mime-version"})
+    files = 0
+    try:
+        for leaf, role in _roles(list(_leaves(_parsed(body), bounded=True))):
+            if role == "html" and not _as_imported(_text_of(leaf.part)):
+                raise MailError("invalid_argument", _NOT_DESIGNED)
+            files += role == "file"
+    except _IMPORT_ERRORS:
+        raise MailError("invalid_argument", _UNREADABLE) from None
+    return Built(body=body, changes=tuple(sorted(changes.items())), attachments=files)
 
 
 def draft_findings(

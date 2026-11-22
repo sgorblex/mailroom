@@ -80,7 +80,9 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   text 3 MiB each, the other parts the attachment cap), and any exception it raises is
   `invalid_argument`, so nothing of the file reaches a log. The checks' Content-IDs and file
   names go to the user, and to an agent inside the untrusted envelope. It is previewed only
-  through the message view's sanitiser and sandbox, and sent only through the send gate.
+  through the message view's sanitiser and sandbox (`GET /messages/{ref}/html`, whose `dark` only
+  colours the document's page, its CSP and the frame's sandbox the same), and sent only through
+  the send gate, a test to the user's own address included.
 - Plain-text rendering is the fallback and the default for the index.
 - **No request on mail's behalf, but one.** Nothing a message names is fetched, with one
   exception: a **one-click unsubscribe** (RFC 8058) the user asks for on one message (`POST

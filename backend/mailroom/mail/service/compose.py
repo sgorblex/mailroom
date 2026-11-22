@@ -546,10 +546,11 @@ def save_draft(
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class ImportFields:
-    """A message built elsewhere, to save as a draft as it is (``core.import_draft``): an .eml, or
-    an HTML file with its files. From, recipients and subject left None are the .eml's (From
-    never: the default identity); ``keep`` names parts of existing messages as ``(ref, part,
-    content_id)``, a Content-ID making one an inline part of the HTML."""
+    """A message built elsewhere, to save as a draft as it is (``core.import_draft``): an .eml, an
+    HTML file with its files, or neither, for the draft ``ref`` imported earlier, kept as built
+    under new fields. From, recipients and subject left None are the .eml's (From never: the
+    default identity); ``keep`` names parts of existing messages as ``(ref, part, content_id)``,
+    a Content-ID making one an inline part of the HTML."""
 
     account: int
     compose_id: str
@@ -577,8 +578,11 @@ def import_draft(
     designed draft names no original), keeping its thread, and answers with the checks of what
     was stored. The refs are checked as ``save_draft``'s are, and the save is audited the same
     way."""
-    if (fields.eml is None) == (fields.html is None) or (
-        fields.eml is not None and (uploads or fields.keep)
+    as_stored = fields.eml is None and fields.html is None
+    if (
+        (fields.eml is not None and fields.html is not None)
+        or (as_stored and fields.ref is None)
+        or ((fields.eml is not None or as_stored) and (uploads or fields.keep))
     ):
         raise mail_refusal("invalid_argument", "Import an .eml, or an HTML file with its files.")
     accounts = _accounts(ctx, user_id)
@@ -617,7 +621,9 @@ def import_draft(
             *uploads,
             *(replace(a, content_id=k[2]) for a, k in zip(kept, fields.keep, strict=True)),
         )
-        if fields.eml is not None:
+        if replaces is not None and as_stored:
+            built = core.stored_design(connections, replaces, limits)
+        elif fields.eml is not None:
             built = core.import_eml(fields.eml, cap)
         else:
             built = core.import_html(fields.html or "", files, cap)

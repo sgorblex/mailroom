@@ -357,6 +357,12 @@ class SendRequest(BaseModel):
     """Hold the send for the user's Undo delay (``undo_send_seconds``) first, unless that is 0."""
 
 
+class TrialRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    test_id: Annotated[str, Field(pattern=_COMPOSE_ID)]
+
+
 class ScheduleRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -365,6 +371,10 @@ class ScheduleRequest(BaseModel):
 
 class SendAccepted(BaseModel):
     send_id: str
+
+
+class TrialAccepted(SendAccepted):
+    to: str
 
 
 class ScheduledAnswer(BaseModel):
@@ -505,10 +515,11 @@ async def _plain_text(request: Request, ctx: Context, user_id: int) -> PlainText
 
 
 async def _import(
-    request: Request, ctx: Context, user_id: int, mode: Literal["eml", "html"]
+    request: Request, ctx: Context, user_id: int, mode: Literal["eml", "html", "kept"]
 ) -> ImportedDraftAnswer:
-    """A message built elsewhere saved as a draft as it is: the ``eml`` file, or the ``html``
-    part with its ``files[]``; bounded as a save is."""
+    """A message built elsewhere saved as a draft as it is: the ``eml`` file, the ``html`` part
+    with its ``files[]``, or (``kept``) the draft ``ref`` imported before, under the ``draft``
+    part's fields; bounded as a save is."""
     limit = await run_in_threadpool(service.upload_limit, ctx, user_id)
     if _declared_over(request.headers.get("content-length", ""), limit):
         raise _too_large()
@@ -516,7 +527,7 @@ async def _import(
         body = Request(request.scope, _at_most(request.receive, limit))
         try:
             async with body.form(
-                max_files=MAX_UPLOADS if mode == "html" else 1,
+                max_files={"html": MAX_UPLOADS, "eml": 1, "kept": 0}[mode],
                 max_fields=2 if mode == "html" else 1,
                 max_part_size=MAX_HTML_BYTES,
             ) as form:
@@ -524,7 +535,10 @@ async def _import(
                 eml: bytes | None = None
                 html: str | None = None
                 uploads: list[OutgoingAttachment] = []
-                if mode == "eml":
+                if mode == "kept":
+                    if draft.ref is None or draft.content_ids:
+                        raise mail_refusal("invalid_argument", MESSAGES["invalid_argument"])
+                elif mode == "eml":
                     file = form.get("eml")
                     if not isinstance(file, UploadFile) or draft.content_ids:
                         raise mail_refusal("invalid_argument", MESSAGES["invalid_argument"])
@@ -554,7 +568,7 @@ async def save_draft(
     user: CurrentUser,
     response: Response,
     convert: Annotated[Literal["text"] | None, Query()] = None,
-    import_: Annotated[Literal["eml", "html"] | None, Query(alias="import")] = None,
+    import_: Annotated[Literal["eml", "html", "kept"] | None, Query(alias="import")] = None,
 ) -> SavedDraftAnswer | ImportedDraftAnswer | PlainTextAnswer:
     """Multipart, parsed here and not by a signature: FastAPI would read the whole body before
     the signed-in user is known, and a declared size is refused before any of it is read. So is
@@ -569,7 +583,8 @@ async def save_draft(
 
     ``?import=eml`` or ``?import=html`` saves a message built elsewhere as it is (an ``eml`` file,
     or the ``html`` part and its ``files[]``), answering the checks of it too: the same route for
-    the same reason."""
+    the same reason. ``?import=kept`` saves the imported draft ``ref`` again as it was built,
+    under the ``draft`` part's From, recipients and subject: how one is addressed."""
     if convert is not None:
         response.status_code = 200
         return await _plain_text(request, ctx, user.id)
@@ -656,6 +671,15 @@ def send_draft(
         return SendAccepted(send_id=send.send_id)
     response.status_code = 200
     return SendAnswer.of(send)
+
+
+@mail_router.post("/drafts/{ref}/test", status_code=202)
+def send_test(ref: Ref, request: TrialRequest, ctx: Context, user: CurrentUser) -> TrialAccepted:
+    """The draft sent as a test to the account's default identity (``to``), subject prefixed
+    ``[Test]``, the draft left as it is; the send is followed as any other. ``test_id`` is the
+    click's: the same one again answers the send it made."""
+    trial = service.send_test(ctx, user.id, ref, request.test_id)
+    return TrialAccepted(send_id=trial.send.send_id, to=trial.to)
 
 
 @mail_router.post("/drafts/{ref}/schedule", status_code=201)

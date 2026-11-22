@@ -1,19 +1,24 @@
-import { createElement, useEffect, useId, useRef, type ReactElement } from 'react'
+import { createElement, useEffect, useId, useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
-import { PenLine } from 'lucide-react'
+import { FileUp, PenLine } from 'lucide-react'
 
 import type { AccountId } from '@/api/accounts.ts'
+import { importDraft, type ImportSource } from '@/api/mail.ts'
 import { Button } from '@/components/ui/button.tsx'
 
 import { mailAction, unavailableReason, type ActionContext } from './action-registry.ts'
 import { useCompose } from './compose-context.ts'
 import { MAIL_NS } from './i18n.ts'
+import { ImportDialog } from './import-dialog.tsx'
 import { HeldNotices, ScheduledNotice, SentNotice } from './send-status.tsx'
 import { NO_TRIAGE_ACTIONS } from './triage-actions.ts'
 
 const COMPOSE = mailAction('compose')
 
-/** Starts a message on the account shown, or goes back to the draft a message is in front of. */
+/**
+ * Starts a message on the account shown, or imports one built elsewhere, or goes back to the draft
+ * a message is in front of.
+ */
 export function ComposeBar({ accountId }: { accountId: AccountId }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const compose = useCompose()
@@ -30,6 +35,19 @@ export function ComposeBar({ accountId }: { accountId: AccountId }): ReactElemen
   const reason = unavailableReason(COMPOSE, context)
   const allowed = reason === null
   const open = session !== null
+  const [importing, setImporting] = useState<string | null>(null)
+
+  /** A new draft of the account shown, under `composeId`, opened in the composer once saved. */
+  function imported(composeId: string, ref: string | null): void {
+    setImporting(null)
+    compose.start(ref === null ? { kind: 'recover', account: accountId, composeId } : { kind: 'draft', ref })
+  }
+
+  const importAs = (composeId: string) => (source: ImportSource) =>
+    importDraft(
+      { account: accountId, compose_id: composeId, ref: null, from: null, to: null, cc: null, bcc: null, subject: null },
+      source,
+    )
 
   // The composer that had focus is gone.
   const wasOpen = useRef(open)
@@ -43,24 +61,51 @@ export function ComposeBar({ accountId }: { accountId: AccountId }): ReactElemen
   return (
     <div className="flex flex-col gap-2">
       {!open && (
-        <Button
-          ref={button}
-          type="button"
-          size="sm"
-          className="self-start"
-          title={`${t(COMPOSE.label(context))} (${COMPOSE.shortcut ?? ''})`}
-          aria-keyshortcuts={COMPOSE.shortcut}
-          aria-disabled={!allowed}
-          aria-describedby={allowed ? undefined : hintId}
-          onClick={() => {
-            if (allowed) {
-              COMPOSE.run(context)
-            }
+        <div className="flex flex-wrap gap-2">
+          <Button
+            ref={button}
+            type="button"
+            size="sm"
+            className="self-start"
+            title={`${t(COMPOSE.label(context))} (${COMPOSE.shortcut ?? ''})`}
+            aria-keyshortcuts={COMPOSE.shortcut}
+            aria-disabled={!allowed}
+            aria-describedby={allowed ? undefined : hintId}
+            onClick={() => {
+              if (allowed) {
+                COMPOSE.run(context)
+              }
+            }}
+          >
+            {createElement(COMPOSE.icon(context), { 'aria-hidden': true })}
+            {t(COMPOSE.label(context))}
+          </Button>
+          {allowed && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setImporting(crypto.randomUUID())
+              }}
+            >
+              <FileUp aria-hidden="true" />
+              {t('designed.import')}
+            </Button>
+          )}
+        </div>
+      )}
+      {importing !== null && (
+        <ImportDialog
+          replacing={false}
+          onImport={importAs(importing)}
+          onDone={(draft) => {
+            imported(importing, draft.ref)
           }}
-        >
-          {createElement(COMPOSE.icon(context), { 'aria-hidden': true })}
-          {t(COMPOSE.label(context))}
-        </Button>
+          onCancel={() => {
+            setImporting(null)
+          }}
+        />
       )}
       {open && !shown && (
         <Button type="button" variant="outline" size="sm" className="self-start" onClick={backToDraft}>

@@ -74,6 +74,7 @@ from mailroom_core.mail.designed import (
     import_draft,
     import_eml,
     import_html,
+    stored_design,
 )
 from mailroom_core.mail.download import body_text, part_content
 from mailroom_core.mail.drafts import (
@@ -570,6 +571,7 @@ __all__ = [
     "special_folder_in",
     "store_draft",
     "store_flags",
+    "stored_design",
     "stored_flags",
     "subfolders_of",
     "subject_sha256",

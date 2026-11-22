@@ -446,17 +446,21 @@ export function readMessage(
   return apiGetJson(path, { init: { signal }, schema: messageViewSchema })
 }
 
-/** The standalone, sanitised HTML document of a message, for a sandboxed iframe's `src`. */
-export function messageHtmlUrl(ref: string, remote: boolean): string {
-  return `${getApiBaseUrl()}${messagePath(ref)}/html${remote ? '?remote=1' : ''}`
+/**
+ * The standalone, sanitised HTML document of a message, for a sandboxed iframe's `src`; `dark` as
+ * a client in dark mode shows it, for the preview of a designed message.
+ */
+export function messageHtmlUrl(ref: string, remote: boolean, dark = false): string {
+  const query = [...(remote ? ['remote=1'] : []), ...(dark ? ['dark=1'] : [])].join('&')
+  return `${getApiBaseUrl()}${messagePath(ref)}/html${query === '' ? '' : `?${query}`}`
 }
 
 /**
  * Asks for the HTML document before a frame shows it: a refusal then throws, as any API call's,
  * for the client to word, instead of showing up inside the frame as the API's JSON.
  */
-export async function checkMessageHtml(ref: string, remote: boolean, signal?: AbortSignal): Promise<void> {
-  const response = await fetch(messageHtmlUrl(ref, remote), { credentials: 'include', signal })
+export async function checkMessageHtml(ref: string, remote: boolean, signal?: AbortSignal, dark = false): Promise<void> {
+  const response = await fetch(messageHtmlUrl(ref, remote, dark), { credentials: 'include', signal })
   if (response.ok) {
     await response.body?.cancel()
     return
@@ -910,6 +914,8 @@ const draftSchema = composeFieldsSchema.extend({
   ref: z.string(),
   compose_id: z.string().nullable(),
   lossy: z.boolean(),
+  /** Imported as built: its body is sent as stored, and only `keepDesigned` saves it again. */
+  designed: z.boolean(),
   parts: z.array(partSchema),
   inline: z.array(shownPartSchema),
   send: draftSendSchema.nullable(),
@@ -934,6 +940,61 @@ const savedDraftSchema = z.object({
   autosave: z.boolean(),
 })
 export type SavedDraft = z.infer<typeof savedDraftSchema>
+
+const findingSchema = z.object({
+  code: z.string(),
+  /** The server's English, for a code this client has no words for. */
+  text: z.string(),
+  count: z.number().int(),
+  /** Content-IDs or file names from the message itself, at most 20. */
+  items: z.array(z.string()),
+})
+/** Something to look at before a designed message is sent. */
+export type Finding = z.infer<typeof findingSchema>
+
+const importedDraftSchema = savedDraftSchema.extend({ findings: z.array(findingSchema) })
+export type ImportedDraft = z.infer<typeof importedDraftSchema>
+
+/** An import's fields: what is left `null` the .eml's, `from` the default identity. */
+export interface ImportFields {
+  account: AccountId
+  compose_id: string
+  /** The version an import replaces. */
+  ref: string | null
+  from: string | null
+  to: MailAddress[] | null
+  cc: MailAddress[] | null
+  bcc: MailAddress[] | null
+  subject: string | null
+}
+
+/** A message built elsewhere: an .eml, or an HTML file with its images and attachments. */
+export type ImportSource = { kind: 'eml'; eml: File } | { kind: 'html'; html: File; files: File[] }
+
+/** Saves a message built elsewhere as a draft, as it was built, with the checks of it. */
+export async function importDraft(fields: ImportFields, source: ImportSource): Promise<ImportedDraft> {
+  const form = new FormData()
+  form.set('draft', JSON.stringify(fields))
+  if (source.kind === 'eml') {
+    form.set('eml', source.eml)
+  } else {
+    form.set('html', await source.html.text())
+    for (const file of source.files) {
+      form.append('files[]', file)
+    }
+  }
+  return apiPostForm(withQuery(`${base}/drafts`, { import: source.kind }), form, { schema: importedDraftSchema })
+}
+
+/** Saves the designed draft `fields.ref` again as it was built, under the fields given. */
+export function keepDesigned(fields: ImportFields & { ref: string }, options: { keepalive?: boolean } = {}): Promise<ImportedDraft> {
+  const form = new FormData()
+  form.set('draft', JSON.stringify(fields))
+  return apiPostForm(withQuery(`${base}/drafts`, { import: 'kept' }), form, {
+    init: { keepalive: options.keepalive === true },
+    schema: importedDraftSchema,
+  })
+}
 
 const foundDraftSchema = z.object({ ref: z.string(), parts: z.array(partSchema), inline: z.array(shownPartSchema) })
 export type FoundDraft = z.infer<typeof foundDraftSchema>
@@ -1061,6 +1122,20 @@ export function readSend(sendId: string, signal?: AbortSignal): Promise<SendResu
 export function readComposeSend(account: AccountId, composeId: string, signal?: AbortSignal): Promise<SendResult> {
   const query = new URLSearchParams({ account: String(account), compose_id: composeId })
   return apiGetJson(`${base}/sends?${query.toString()}`, { init: { signal }, schema: sendResultSchema })
+}
+
+/** The checks of the draft `ref` as stored, before it is sent. */
+export async function draftFindings(ref: string, signal?: AbortSignal): Promise<Finding[]> {
+  const answer = await apiGetJson(`${draftPath(ref)}/findings`, { init: { signal }, schema: z.object({ findings: z.array(findingSchema) }) })
+  return answer.findings
+}
+
+/**
+ * Sends the draft `ref` as a test, to the account's default identity (`to`); the draft stays as it
+ * is. `testId` is one per click: the same one again answers the send it made.
+ */
+export function sendTest(ref: string, testId: string): Promise<{ send_id: string; to: string }> {
+  return apiPostJson(`${draftPath(ref)}/test`, { test_id: testId }, { schema: z.object({ send_id: z.string(), to: z.string() }) })
 }
 
 /** Send later: the draft `ref` held for the worker to send at `sendAt`, which must still be to come. */

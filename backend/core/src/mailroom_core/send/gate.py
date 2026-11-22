@@ -32,6 +32,7 @@ from mailroom_core.mail.compose import (
     crlf_lines,
     field_count,
     new_message_id,
+    readdressed,
     without_headers,
 )
 from mailroom_core.mail.drafts import (
@@ -520,6 +521,37 @@ def prepare_draft(
                 envelope=Envelope(sender.address, tuple(m.address for m in recipients)),
             ),
             len(draft.attachments),
+        ),
+    )
+
+
+TEST_PREFIX: Final = "[Test] "
+
+
+def prepare_test(
+    connections: MailConnections, account: AccountConfig, ref: MessageRef, limits: Limits
+) -> DraftToSend:
+    """A draft as a test of itself, for the sender to see as a recipient will (`prepare_draft`):
+    as stored, From included, but to the account's default identity alone, its subject prefixed
+    `TEST_PREFIX`, under a new Message-ID, so that the draft's own send keeps its own."""
+    ready = prepare_draft(connections, account, ref, limits)
+    me = from_identity(account)
+    subject = f"{TEST_PREFIX}{ready.draft.subject}"
+    message_id = new_message_id(ready.message.sender.address)
+    stored = readdressed(
+        ready.prepared.composed.stored, to=me, subject=subject, message_id=message_id
+    )
+    return DraftToSend(
+        draft=ready.draft,
+        message=replace(ready.message, to=(me,), cc=(), bcc=(), subject=subject),
+        prepared=Prepared(
+            Composed(
+                stored=stored,
+                wire=stored,
+                message_id=message_id,
+                envelope=Envelope(ready.message.sender.address, (me.address,)),
+            ),
+            ready.prepared.attachments,
         ),
     )
 

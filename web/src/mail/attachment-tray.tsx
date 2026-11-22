@@ -8,11 +8,15 @@ import { itemName, itemSize, MAX_FILES, uploadProblem, type TrayItem } from './c
 import { formatSize } from './format.ts'
 import { MAIL_NS } from './i18n.ts'
 
-/** What the draft attaches: files to upload and parts it keeps. Limits are said before any upload. */
+/**
+ * What the draft attaches: files to upload and parts it keeps. Limits are said before any upload.
+ * `fixed`: what a designed draft carries, listed only.
+ */
 export function AttachmentTray({
   items,
   inline,
   maxMb,
+  fixed = false,
   onAdd,
   onRemove,
 }: {
@@ -20,6 +24,7 @@ export function AttachmentTray({
   /** The images the body shows, which count towards the limits too. */
   inline: TrayItem[]
   maxMb: number
+  fixed?: boolean
   onAdd: (files: File[]) => void
   onRemove: (item: TrayItem) => void
 }): ReactElement {
@@ -56,45 +61,49 @@ export function AttachmentTray({
                 <Paperclip aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
                 <span className="min-w-0 flex-1 truncate">{name}</span>
                 <span className="shrink-0 text-xs text-muted-foreground">{formatSize(i18n.language, itemSize(item))}</span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label={t('compose.removeAttachment', { name })}
-                  onClick={() => {
-                    onRemove(item)
-                  }}
-                >
-                  <X aria-hidden="true" />
-                </Button>
+                {!fixed && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={t('compose.removeAttachment', { name })}
+                    onClick={() => {
+                      onRemove(item)
+                    }}
+                  >
+                    <X aria-hidden="true" />
+                  </Button>
+                )}
               </li>
             )
           })}
         </ul>
       )}
-      <div>
-        <input
-          ref={input}
-          id={id}
-          type="file"
-          multiple
-          className="peer sr-only"
-          aria-describedby={error === null ? undefined : errorId}
-          onChange={(event) => {
-            const files = [...(event.target.files ?? [])]
-            if (files.length > 0) {
-              add(files)
-            }
-          }}
-        />
-        <label
-          htmlFor={id}
-          className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-3 text-sm font-medium hover:bg-accent peer-focus-visible:ring-[3px] peer-focus-visible:ring-ring/50"
-        >
-          <Paperclip aria-hidden="true" className="size-4" />
-          {t('compose.attach')}
-        </label>
-      </div>
+      {!fixed && (
+        <div>
+          <input
+            ref={input}
+            id={id}
+            type="file"
+            multiple
+            className="peer sr-only"
+            aria-describedby={error === null ? undefined : errorId}
+            onChange={(event) => {
+              const files = [...(event.target.files ?? [])]
+              if (files.length > 0) {
+                add(files)
+              }
+            }}
+          />
+          <label
+            htmlFor={id}
+            className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-3 text-sm font-medium hover:bg-accent peer-focus-visible:ring-[3px] peer-focus-visible:ring-ring/50"
+          >
+            <Paperclip aria-hidden="true" className="size-4" />
+            {t('compose.attach')}
+          </label>
+        </div>
+      )}
       {error !== null && (
         <p id={errorId} role="alert" className="text-sm text-destructive">
           {error}
