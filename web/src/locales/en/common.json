@@ -267,6 +267,17 @@
     "saved": "Saved.",
     "saveFailed": "Could not save this choice."
   },
+  "undoSend": {
+    "title": "Undo send",
+    "intro": "Send holds a message this long before it goes, with an Undo that brings it back to the editor. The server sends it even if you close the page.",
+    "label": "Time to undo a send",
+    "off": "Off: send at once",
+    "seconds_one": "{{count}} second",
+    "seconds_other": "{{count}} seconds",
+    "save": "Save",
+    "saved": "Saved.",
+    "saveFailed": "Could not save this choice."
+  },
   "remoteSenders": {
     "title": "Remote images",
     "intro": "Senders whose remote images you always show. A sender counts only when its message passed DMARC at the account's authentication server.",

@@ -979,13 +979,52 @@ export async function deleteDraft(ref: string): Promise<void> {
 }
 
 /** Starts the send (an id to follow), or the result when this draft's key is already sent. */
-export function sendDraft(ref: string, options: { confirmResend?: boolean } = {}): Promise<SendResult | { send_id: string }> {
-  const body = options.confirmResend === true ? { confirm_resend: true } : {}
+/** A draft held for the worker to send at `send_at`: `held` until it takes it, `failed` with `code` when that ended before a delivery. */
+const scheduledSchema = z.object({
+  scheduled_id: z.string(),
+  account: accountIdSchema,
+  ref: z.string(),
+  send_at: z.string(),
+  /** How long until `send_at` as the server answered, by its clock. */
+  remaining_ms: z.number().int().nonnegative(),
+  state: z.enum(['held', 'sending', 'failed']),
+  code: z.string().nullable(),
+})
+export type ScheduledSend = z.infer<typeof scheduledSchema>
+
+/**
+ * `undoable`: held for the user's Undo delay first, answered with the held send, unless a send of
+ * the draft began already.
+ */
+export function sendDraft(
+  ref: string,
+  options: { confirmResend?: boolean; undoable?: boolean } = {},
+): Promise<SendResult | { send_id: string } | ScheduledSend> {
+  const body = {
+    ...(options.confirmResend === true ? { confirm_resend: true } : {}),
+    ...(options.undoable === true ? { undoable: true } : {}),
+  }
   return apiPostJson(`${draftPath(ref)}/send`, body, {
-    schema: z.union([sendResultSchema, z.object({ send_id: z.string() })]),
+    schema: z.union([sendResultSchema, scheduledSchema, z.object({ send_id: z.string() })]),
   })
 }
 
 export function readSend(sendId: string, signal?: AbortSignal): Promise<SendResult> {
   return apiGetJson(`${base}/sends/${encodeURIComponent(sendId)}`, { init: { signal }, schema: sendResultSchema })
+}
+
+/** The send of the draft saved under `composeId`, there or not by now: a held send's, once it went. */
+export function readComposeSend(account: AccountId, composeId: string, signal?: AbortSignal): Promise<SendResult> {
+  const query = new URLSearchParams({ account: String(account), compose_id: composeId })
+  return apiGetJson(`${base}/sends?${query.toString()}`, { init: { signal }, schema: sendResultSchema })
+}
+
+/** A held send; `not_found` once it went or was cancelled. */
+export function readScheduled(scheduledId: string, signal?: AbortSignal): Promise<ScheduledSend> {
+  return apiGetJson(`${base}/scheduled/${encodeURIComponent(scheduledId)}`, { init: { signal }, schema: scheduledSchema })
+}
+
+/** Cancels a held send, the draft left in Drafts; `send_started` once the worker took it. */
+export function cancelScheduled(scheduledId: string): Promise<ScheduledSend> {
+  return apiDeleteJson(`${base}/scheduled/${encodeURIComponent(scheduledId)}`, { schema: scheduledSchema })
 }

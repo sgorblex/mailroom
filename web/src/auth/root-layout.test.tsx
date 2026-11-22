@@ -50,7 +50,7 @@ function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status })
 }
 
-const ALICE = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null, conversations: true }
+const ALICE = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null, conversations: true, undo_send_seconds: 10 }
 
 /**
  * A fake API: `/me` answers from `signedIn`, naming `features` unless left out; login accepts

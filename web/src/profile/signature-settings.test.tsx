@@ -8,7 +8,7 @@ import { renderSignedIn } from '@/test/signed-in.tsx'
 
 import { SignatureSettings } from './signature-settings.tsx'
 
-const ALICE: User = { username: 'alice', is_admin: false, time_zone: 'UTC', mark_read_subfolders: true, index_max_age_days: null, conversations: true }
+const ALICE: User = { username: 'alice', is_admin: false, time_zone: 'UTC', mark_read_subfolders: true, index_max_age_days: null, conversations: true, undo_send_seconds: 10 }
 
 afterEach(() => {
   vi.unstubAllGlobals()

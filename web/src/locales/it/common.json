@@ -267,6 +267,17 @@
     "saved": "Salvato.",
     "saveFailed": "Impossibile salvare questa scelta."
   },
+  "undoSend": {
+    "title": "Annulla invio",
+    "intro": "Invia trattiene il messaggio per questo tempo prima che parta, con un Annulla che lo riporta nell'editor. Il server lo invia anche se chiudi la pagina.",
+    "label": "Tempo per annullare un invio",
+    "off": "Disattivato: invia subito",
+    "seconds_one": "{{count}} secondo",
+    "seconds_other": "{{count}} secondi",
+    "save": "Salva",
+    "saved": "Salvato.",
+    "saveFailed": "Impossibile salvare questa scelta."
+  },
   "remoteSenders": {
     "title": "Immagini remote",
     "intro": "I mittenti di cui mostri sempre le immagini remote. Un mittente conta solo se il suo messaggio ha superato DMARC sul server di autenticazione dell'account.",

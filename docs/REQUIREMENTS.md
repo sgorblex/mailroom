@@ -48,6 +48,9 @@ through the Vite proxy. Engineering baseline:
 - **Remote images.** Each user lists on their *Profile* page the senders whose remote images
   they always show, and removes them there; a sender is added only from a message whose DMARC
   passed ([`requirements/mail-client.md`](requirements/mail-client.md) — *Remote content*).
+- **Undo send.** Each user picks on their *Profile* page how long the web's Send holds a
+  message for an Undo, 0 (off) to 30 seconds, 10 by default
+  ([`requirements/mail-client.md`](requirements/mail-client.md#undo-send)).
 - **Signatures.** Each user writes on their *Profile* page a signature for each identity of
   their accounts, which their messages from it start with
   ([`requirements/mail-client.md`](requirements/mail-client.md#signatures)).
@@ -147,7 +150,9 @@ accounts, or a search) are read from the index and kept in the web sidebar, wher
 as one. A list, search or view read from the index can come
 [grouped by conversation](requirements/mail-client.md#conversations), as the web shows it unless the
 user turns that off: a conversation is a row, read as a thread and acted on whole. The web list is
-virtualised and reads its next page as it is scrolled, so a large folder stays smooth.
+virtualised and reads its next page as it is scrolled, so a large folder stays smooth. Send is
+held on the server for the user's [Undo](requirements/mail-client.md#undo-send) delay, and the
+worker sends it.
 Target is
 **between tier 2 and tier 3**: tiers 1 and 2 in full, on top of
 the index and live updates; tier 3 items arrive one at a time.

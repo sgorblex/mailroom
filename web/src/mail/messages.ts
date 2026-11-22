@@ -4,6 +4,8 @@ import { MAIL_CODES, accountErrorMessage, mailboxMessage } from '@/accounts/mess
 import { ApiRequestError } from '@/api/http.ts'
 import type { MailFolder } from '@/api/mail.ts'
 
+import type { HeldEnd } from './send-flow.ts'
+
 /** `not_found` from the account routes (folders, a list, a search): the account is not there. */
 export const ACCOUNT_NOT_FOUND = 'mailErrors.accountNotFound'
 
@@ -74,6 +76,22 @@ export function sentMessage(t: TFunction, notice: { filed: boolean | null; rejec
     }
   }
   return parts.join(' ')
+}
+
+/** How a held send went, when not sent. */
+export function heldEndMessage(t: TFunction, end: Exclude<HeldEnd, { kind: 'sent' }>): string {
+  switch (end.kind) {
+    case 'failed':
+      return end.code === null ? t('compose.notSent') : `${t('compose.notSent')} ${mailCodeMessage(t, end.code)}`
+    case 'unknown':
+      return t('compose.unknown')
+    case 'already':
+      return t('compose.alreadySent')
+    case 'refused':
+      return composeErrorMessage(t, end.error, t('compose.notSent'), t('compose.invalidStored'))
+    case 'cancelled':
+      return t('compose.cancelledElsewhere')
+  }
 }
 
 /** A folder as the sidebar and the move picker name it: its role's name, else its path. */

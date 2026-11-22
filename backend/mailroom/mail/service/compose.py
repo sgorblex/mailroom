@@ -544,8 +544,13 @@ def _send_key(draft: Draft) -> str:
     a key is claimed per user and a copy between accounts keeps the id. A draft written elsewhere
     has none, and is one message, so its ref says which send it is."""
     if draft.compose_id is not None:
-        return f"{draft.ref.account}/{draft.compose_id}"
+        return _compose_key(draft.ref.account, draft.compose_id)
     return _ref_key(draft.ref)
+
+
+def _compose_key(account_id: int, compose_id: str) -> str:
+    """The send key of an own draft (``_send_key``)."""
+    return f"{account_id}/{compose_id}"
 
 
 def _texts(value: object) -> tuple[str, ...]:

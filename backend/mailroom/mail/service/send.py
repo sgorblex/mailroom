@@ -45,6 +45,7 @@ from mailroom.mail.service.compose import (
     SendView,
     _as_refusals,
     _attachment_sources,
+    _compose_key,
     _deliverable,
     _holding_send,
     _send_key,
@@ -422,6 +423,18 @@ def read_send(ctx: AppContext, user_id: int, send_id: str) -> SendView:
     send = None
     if _SEND_ID.fullmatch(send_id):
         send = ctx.store(user_id).send_state(int(send_id))
+    if send is None:
+        raise unknown_message()
+    return _send_view(send)
+
+
+def read_compose_send(ctx: AppContext, user_id: int, account_id: int, compose_id: str) -> SendView:
+    """The send of the draft saved under ``compose_id`` in the user's ``account_id``, its key's,
+    which outlives the draft a delivery removes: how a held send is followed once its row has
+    gone. ``not_found`` without one."""
+    if not _accounts(ctx, user_id).has(account_id):
+        raise unknown_account()
+    send = ctx.store(user_id).send_state_by_key(_compose_key(account_id, compose_id))
     if send is None:
         raise unknown_message()
     return _send_view(send)

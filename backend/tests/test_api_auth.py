@@ -28,6 +28,7 @@ SIGNED_IN = {
         "mark_read_subfolders": True,
         "index_max_age_days": None,
         "conversations": True,
+        "undo_send_seconds": 10,
     },
     "features": EVERY_FEATURE,
 }
@@ -254,6 +255,31 @@ def test_the_user_picks_whether_lists_are_grouped_by_conversation(
     assert user_client.put(route, json={"conversations": True}).json()["conversations"] is True
     api_client.cookies.clear()
     assert api_client.put(route, json={"conversations": False}).status_code == 401
+
+
+def test_the_user_picks_how_long_send_waits_for_an_undo(
+    user_client: TestClient, api_client: TestClient, db_session: Session, user: User
+) -> None:
+    route = "/api/v1/auth/me/undo-send"
+    assert user_client.get("/api/v1/auth/me").json()["user"]["undo_send_seconds"] == 10
+    response = user_client.put(route, json={"undo_send_seconds": 30})
+    assert (response.status_code, response.json()["undo_send_seconds"]) == (200, 30)
+    db_session.expire_all()
+    stored = db_session.get(User, user.id)
+    assert stored is not None
+    assert stored.undo_send_seconds == 30
+    for body in (
+        {"undo_send_seconds": -1},
+        {"undo_send_seconds": 31},
+        {"undo_send_seconds": "5"},
+        {"undo_send_seconds": 5.5},
+        {"undo_send_seconds": None},
+        {},
+    ):
+        assert user_client.put(route, json=body).status_code == 422, body
+    assert user_client.put(route, json={"undo_send_seconds": 0}).json()["undo_send_seconds"] == 0
+    api_client.cookies.clear()
+    assert api_client.put(route, json={"undo_send_seconds": 5}).status_code == 401
 
 
 def test_the_user_limits_the_index_to_recent_mail(

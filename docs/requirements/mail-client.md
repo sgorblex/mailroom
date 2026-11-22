@@ -961,6 +961,23 @@ user next sends, so a direct send's `GET /sends/{id}` is `not_found` after a day
   leaves the draft; once the worker has taken it, cancel is `send_started`. The service offers
   `schedule_send`, `cancel_scheduled` and `list_scheduled` (soonest first); a held send goes with
   its account and its user.
+- **Undo send:** <a id="undo-send"></a>each user's `undo_send_seconds` (`app.user`, 0 to 30,
+  10 by default), picked on their *Profile* page, is how long the web's Send holds a message
+  (`PUT /api/v1/auth/me/undo-send`, `{"undo_send_seconds": 10}`, a JSON integer, answers the
+  user; `auth/me`'s `user` carries it; logged as `undo_send_changed`).
+  `POST /drafts/{ref}/send` with `undoable: true` (and no `confirm_resend`) holds the draft as a
+  held send at the server's now plus that delay, counted from once the draft was checked, and
+  answers 202 with it (`remaining_ms`: how long it is still held, by the server's clock); asked
+  again while it is held or being sent (a lost answer), the same one, and `already_scheduled`
+  while the draft is held for later than that. With the delay at 0, or once a send of the draft
+  began or the draft is gone, it is the plain Send above. The web closes the composer and shows
+  *Sending…* with **Undo** for `remaining_ms`, each held send its own notice: Undo cancels it (`DELETE /scheduled/{id}`) and opens the draft again in
+  the composer; past that, or refused `send_started` (*Too late to undo*), the web follows it
+  (`GET /scheduled/{id}` until its row is gone, then `GET /sends?account=&compose_id=`, the send of
+  the draft's key, as `GET /sends/{id}`) to *Sent* or to why it was not sent, with *Open draft*. A
+  row gone with no send was cancelled elsewhere. A draft written elsewhere and sent as it is has no
+  `compose_id` to follow it by, so it goes at once. The hold lives on the server: a closed tab or a
+  restart does not stop it.
 - **The result** (`GET /sends/{id}`): `state`; `code` (the refusal's code for `failed`, else
   `null`); `filed` (the Sent copy was stored; `null` until known, and known only after `sent`, together with
   the notes); `rejected` (recipients the
@@ -989,6 +1006,9 @@ In meaning (the strings are in the `mail` namespace, English and Italian, the sa
   the notes worded from `note_codes`, never the server's English); on `failed`, that the message
   was **not sent** and stays in Drafts, with the reason of the code. More recipients than
   `max_recipients` are refused at Send, naming the number.
+- **Undo send:** "Sending…" with **Undo** while the delay runs; "Not sent: the draft is open
+  again." after Undo; "Too late to undo: the message is being sent." when the worker took it
+  first; then "Sent" as above, or why it was not sent with *Open draft*.
 - **Already sent:** a first answer of `200` means an earlier delivery spent the key, and this click
   delivered nothing, whatever the draft now holds, so it never says "Sent". The composer stays
   open on the banner a reopened draft of a `sent` key shows; Send stays blocked there and what is
@@ -1086,8 +1106,11 @@ CSRF check apply. Bodies are JSON except `POST /drafts`. Unknown fields are 422.
 | `GET /drafts/{ref}` | | 200 the draft's fields, `lossy`, `parts`, `inline`, `send` |
 | `GET /drafts/find?account=&compose_id=` | | 200 `{ref, parts, inline}` of the newest version; 404 `not_found` |
 | `DELETE /drafts/{ref}` | | 200 `{removed}` |
-| `POST /drafts/{ref}/send` | `{"confirm_resend": false}` (optional) | 202 `{send_id}`; 200 already sent; 409; 429 |
+| `POST /drafts/{ref}/send` | `{"confirm_resend": false, "undoable": false}` (optional) | 202 `{send_id}`, or the held send for `undoable` ([undo send](#undo-send)); 200 already sent; 409; 429 |
 | `GET /sends/{id}` | | 200 the send's result |
+| `GET /sends?account=&compose_id=` | | 200 the result of the send of that draft's key; 404 `not_found` |
+| `GET /scheduled/{id}` | | 200 the held send `{scheduled_id, account, ref, send_at, remaining_ms, state, code}`; 404 `not_found` once it went or was cancelled |
+| `DELETE /scheduled/{id}` | | 200 the held send it was, the draft left in Drafts; 409 `send_started`; 404 |
 
 The static route `GET /drafts/find` is matched before `GET /drafts/{ref}`.
 

@@ -24,6 +24,8 @@ export type AuthContextValue = AuthState & {
   changeIndexMaxAge: (days: number | null) => Promise<void>
   /** Saves whether the message lists are grouped by conversation; rejects with the API error. */
   changeConversations: (conversations: boolean) => Promise<void>
+  /** Saves how long Send holds a message for an Undo (0: none); rejects with the API error. */
+  changeUndoSend: (seconds: number) => Promise<void>
   /** Ask the API again, after it could not be reached. */
   recheck: () => void
 }
@@ -65,6 +67,15 @@ export function useMarkReadSubfolders(): boolean {
 export function useConversations(): boolean {
   const auth = useContext(AuthContext)
   return auth?.status === 'signed-in' ? auth.user.conversations : false
+}
+
+/**
+ * How long Send holds a message for an Undo, in seconds: the signed-in user's choice, else
+ * (outside an `AuthProvider`) 0, which sends at once.
+ */
+export function useUndoSendSeconds(): number {
+  const auth = useContext(AuthContext)
+  return auth?.status === 'signed-in' ? auth.user.undo_send_seconds : 0
 }
 
 /**

@@ -5,6 +5,7 @@ import { X } from 'lucide-react'
 
 import { ApiRequestError } from '@/api/http.ts'
 import { deleteDraft, draftText, type MailAddress } from '@/api/mail.ts'
+import { useUndoSendSeconds } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Dialog } from '@/components/ui/dialog.tsx'
 import { Input } from '@/components/ui/input.tsx'
@@ -186,7 +187,8 @@ function SaveStatus({
 function Editor({ session, start }: { session: ComposeSession; start: ComposeStart }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const compose = useCompose()
-  const { attach, announce, close, finishSent, hide, identified, mailChanged } = compose
+  const { attach, announce, close, finishSent, hide, holdSent, identified, mailChanged } = compose
+  const undoSeconds = useUndoSendSeconds()
   const navigate = useNavigate()
   const [model] = useState(() => new DraftModel(start, mailChanged))
   const view = useSyncExternalStore(model.subscribe, model.getView)
@@ -369,9 +371,12 @@ function Editor({ session, start }: { session: ComposeSession; start: ComposeSta
           return
         case 'refused':
           refused(end.error)
+          return
+        case 'held':
+          holdSent(end.held, start.composeId)
       }
     },
-    [announce, finishSent, model, t],
+    [announce, finishSent, holdSent, model, start.composeId, t],
   )
 
   // Reopened while its send runs, or found running by a save: it goes on being followed.
@@ -447,7 +452,9 @@ function Editor({ session, start }: { session: ComposeSession; start: ComposeSta
       return
     }
     const signal = unmountSignal()
-    const end = await runSend(ref, confirmResend, signal)
+    // One written elsewhere and sent as it is has no compose id to follow its send by.
+    const undoable = undoSeconds > 0 && !confirmResend && !model.getView().elsewhere
+    const end = await runSend(ref, confirmResend, signal, undoable)
     if (!signal.aborted) {
       finish(end)
     }

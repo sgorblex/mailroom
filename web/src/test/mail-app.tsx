@@ -79,6 +79,7 @@ export function renderMailApp(
           changeMarkReadSubfolders: reject,
           changeIndexMaxAge: reject,
           changeConversations: reject,
+          changeUndoSend: reject,
           recheck: vi.fn(),
         }}
       >
