@@ -352,7 +352,8 @@ bounded to one minor because the server relies on its handlers.
   revision `202611191200`), and how far back the mail index keeps their mail
   (`index_max_age_days`, null for no limit of their own; revision `202611201300`), and whether
   the web groups their lists by conversation (`conversations`, true by default; revision
-  `202611211400`). `mise run create-user`
+  `202611211400`), and how the web looks (`appearance`, below; revision `202611222000`).
+  `mise run create-user`
   makes one; startup warns while there are none. An unknown username still checks a dummy hash, and
   both failures answer the same 401, so neither timing nor wording tells whether a user exists.
 - **Sessions** (`app.user_session`): one per signed-in browser, deleted with their user. The
@@ -404,6 +405,16 @@ bounded to one minor because the server relies on its handlers.
   false}`, a JSON boolean): whether the web's lists are grouped by conversation
   ([`mail-client.md`](mail-client.md#conversations)). `auth/me`'s `user` carries it; logged as
   `conversations_changed`.
+- **Own appearance** (`PUT /api/v1/auth/me/appearance`, some of `{"theme", "accent",
+  "density", "text_size", "reading_pane", "home", "swipe_left", "swipe_right"}`, at least one;
+  null leaves one as it is): how the web looks, the same on every device
+  (`mailroom.auth.appearance`). `app.user.appearance` (JSONB) keeps only the choices the user
+  made, merged over the earlier ones, so a later change of a default reaches whoever never chose;
+  `auth/me`'s `user` carries every choice, a default where none was made or where a stored one is
+  no longer an option. An unknown choice or option is a 422; logged as `appearance_changed`. The
+  web reads an option it does not know as its default too (`web/src/api/auth.ts`), so neither an
+  older nor a newer API breaks sign-in. What suits one device only (a pane's width, a collapsed
+  folder pane) stays in that browser, under `mailroom.ui.<name>` (`web/src/lib/device-prefs.ts`).
 - **A session ending under the user:** any 401 from the API but a refused sign-in signs the web
   app out (`onSessionEnded` in `web/src/api/http.ts`), and the sign-in screen says the session
   has ended.
@@ -413,7 +424,7 @@ bounded to one minor because the server relies on its handlers.
   `logout`, `user_created`,
   `user_removed`, `password_reset` (with `user_id`, the admin, and `target_user_id`),
   `password_changed`, `mark_read_subfolders_changed`, `index_max_age_changed`,
-  `conversations_changed`,
+  `conversations_changed`, `appearance_changed`,
   `password_change_failed`, `sso_refused` and `sso_failed` (with the
   `outcome`), `sso_not_linked`, `sso_identity_linked` (with `user_id` and `via`: `profile` or the
   link claim), `sso_identity_unlinked`; never a password, a token, or a username.

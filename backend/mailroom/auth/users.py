@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Final
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
+from mailroom.auth.appearance import valid_choices
 from mailroom.auth.password import MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, hash_password
 from mailroom.auth.sessions import end_user_sessions
 from mailroom.models import User
@@ -17,6 +18,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from sqlalchemy.orm import Session
+
+    from mailroom.auth.appearance import AppearanceChange
 
 _USERNAME = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")
 DEFAULT_TIME_ZONE: Final = time_zone_name("UTC")
@@ -133,6 +136,15 @@ UNDO_SEND_SECONDS: Final = 30
 def set_undo_send(db: Session, user: User, seconds: int) -> None:
     """Keep how long ``user``'s Send waits for an Undo; 0 sends at once."""
     user.undo_send_seconds = seconds
+    db.commit()
+
+
+def set_appearance(db: Session, user: User, change: AppearanceChange) -> None:
+    """Keep ``change``'s choices of how ``user``'s web looks, over the ones they made before
+    (those no longer options dropped). The row is read again and locked first, so two changes
+    at once (two quick clicks, two tabs) each keep the other's choices."""
+    db.refresh(user, with_for_update=True)
+    user.appearance = {**valid_choices(user.appearance), **change.chosen()}
     db.commit()
 
 

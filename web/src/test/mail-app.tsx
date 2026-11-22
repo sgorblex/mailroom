@@ -12,7 +12,7 @@ import {
 } from '@tanstack/react-router'
 import { vi } from 'vitest'
 
-import type { Feature, User } from '@/api/auth.ts'
+import { userSchema, type Feature, type UserJson } from '@/api/auth.ts'
 import { AuthContext } from '@/auth/auth-context.ts'
 import { validateFilterDraftSearch } from '@/filters/draft-search.ts'
 import { createQueryClient } from '@/lib/query-client.ts'
@@ -28,7 +28,7 @@ import { validateMailSearch } from '@/mail/route-search.ts'
  */
 export function renderMailApp(
   path: string,
-  { strict = false, user, features = ['mail'] }: { strict?: boolean; user?: User; features?: Feature[] } = {},
+  { strict = false, user, features = ['mail'] }: { strict?: boolean; user?: UserJson; features?: Feature[] } = {},
 ): RouterHistory {
   const rootRoute = createRootRoute({
     component: () => (
@@ -71,7 +71,7 @@ export function renderMailApp(
       <AuthContext
         value={{
           status: 'signed-in',
-          user,
+          user: userSchema.parse(user),
           features: new Set(features),
           signIn: reject,
           signOut: reject,
@@ -80,6 +80,7 @@ export function renderMailApp(
           changeIndexMaxAge: reject,
           changeConversations: reject,
           changeUndoSend: reject,
+          changeAppearance: reject,
           recheck: vi.fn(),
         }}
       >

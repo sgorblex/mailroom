@@ -2,14 +2,14 @@ import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { User } from '@/api/auth.ts'
+import type { UserJson } from '@/api/auth.ts'
 import { FakeNotification, stubNotification, stubRefusingNotification } from '@/test/fake-notification.ts'
 import { bodiesTo, HOME, indexFolder, stubMailApi, WORK, type FakeMailState } from '@/test/fake-mail-api.ts'
 import { renderSignedIn } from '@/test/signed-in.tsx'
 
 import { NotificationSettings } from './notification-settings.tsx'
 
-const ALICE: User = { username: 'alice', is_admin: false, time_zone: 'UTC', mark_read_subfolders: true, index_max_age_days: null, conversations: true, undo_send_seconds: 10 }
+const ALICE: UserJson = { username: 'alice', is_admin: false, time_zone: 'UTC', mark_read_subfolders: true, index_max_age_days: null, conversations: true, undo_send_seconds: 10 }
 
 function state(fields: Partial<FakeMailState> = {}): FakeMailState {
   return {

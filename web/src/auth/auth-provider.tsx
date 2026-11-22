@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react'
 
 import {
+  changeAppearance as saveAppearance,
   changeConversations as saveConversations,
   changeIndexMaxAge as saveIndexMaxAge,
   changeMarkReadSubfolders as saveMarkReadSubfolders,
@@ -9,6 +10,7 @@ import {
   fetchSession,
   login,
   logout,
+  type Appearance,
   type Feature,
   type User,
 } from '@/api/auth.ts'
@@ -119,6 +121,13 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
     [updateUser],
   )
 
+  const changeAppearance = useCallback(
+    async (change: Partial<Appearance>) => {
+      updateUser(await saveAppearance(change))
+    },
+    [updateUser],
+  )
+
   const signIn = useCallback(async (username: string, password: string) => {
     const user = await login(username, password)
     setState({ status: 'signed-in', user })
@@ -135,8 +144,8 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
   }, [])
 
   const value = useMemo<AuthContextValue>(
-    () => ({ ...state, features, signIn, signOut, changeTimeZone, changeMarkReadSubfolders, changeIndexMaxAge, changeConversations, changeUndoSend, recheck }),
-    [state, features, signIn, signOut, changeTimeZone, changeMarkReadSubfolders, changeIndexMaxAge, changeConversations, changeUndoSend, recheck],
+    () => ({ ...state, features, signIn, signOut, changeTimeZone, changeMarkReadSubfolders, changeIndexMaxAge, changeConversations, changeUndoSend, changeAppearance, recheck }),
+    [state, features, signIn, signOut, changeTimeZone, changeMarkReadSubfolders, changeIndexMaxAge, changeConversations, changeUndoSend, changeAppearance, recheck],
   )
   return <AuthContext value={value}>{children}</AuthContext>
 }

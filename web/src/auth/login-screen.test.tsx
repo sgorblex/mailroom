@@ -35,6 +35,7 @@ function renderSignedOut(): void {
         changeIndexMaxAge: reject,
         changeConversations: reject,
         changeUndoSend: reject,
+        changeAppearance: reject,
         recheck: vi.fn(),
       }}
     >
