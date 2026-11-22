@@ -4,10 +4,10 @@ The mail client (its index's sync) and filters need it: with neither in ``MAILRO
 logs why and exits 0 before it touches the database, and an unknown feature name makes it exit 1.
 
 One worker runs at a time (it holds a database lock while it runs): a second one exits. At
-start, jobs a stopped worker left running are marked failed, and their runs closed as
-interrupted. Beside procrastinate's job loop, a thread runs the IDLE supervisor
-(``mailroom.worker.idle``): the rule sets' watches with filters, the index's with the mail
-client. On SIGTERM or SIGINT procrastinate gives the jobs in progress `SHUTDOWN_SECONDS` to
+start, jobs a stopped worker left running are marked failed, their runs closed as interrupted
+and their scheduled sends queued again. Beside procrastinate's job loop, a thread runs the IDLE
+supervisor (``mailroom.worker.idle``): the rule sets' watches with filters, the index's with the
+mail client. On SIGTERM or SIGINT procrastinate gives the jobs in progress `SHUTDOWN_SECONDS` to
 finish, then aborts them; the watches are then stopped too, and the
 worker's mail connections logged out, and it exits 0. A worker that stops without being asked
 (procrastinate stops itself when its database connection fails, as when PostgreSQL restarts)
@@ -36,6 +36,7 @@ from mailroom.worker.context import worker_context
 from mailroom.worker.idle import IdleSupervisor
 from mailroom.worker.runs import close_interrupted_runs
 from mailroom.worker.startup import fail_interrupted_jobs, worker_lock
+from mailroom.worker.tasks import requeue_interrupted_sends
 
 # Not __name__: run with -m, that is "__main__", outside the "mailroom" loggers.
 logger = logging.getLogger("mailroom.worker")
@@ -125,6 +126,7 @@ def main() -> None:
         context = worker_context()
         with context.sessions() as db:
             close_interrupted_runs(db)
+            requeue_interrupted_sends(db)
         logger.info("Worker starting.")
         stop = threading.Event()
         supervisor = IdleSupervisor(

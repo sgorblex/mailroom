@@ -136,6 +136,10 @@ and may try to run script, track the reader, phish, or — through the MCP — i
 - **Signatures** (`app.identity_signature`, [`mail-client.md`](mail-client.md#signatures)): per
   user, account and identity address, the HTML (sanitised) and text the user wrote, kept plain and
   never logged; they go with their account and their user.
+- **Held sends** (`app.scheduled_send`, [`mail-client.md`](mail-client.md) — *Send state
+  machine*): per user, the account, the draft's ref and send key and when it goes, never logged
+  but by id; read only scoped to their user, they go with their account and their user, their
+  jobs with them.
 - **Deletes only deliberately.** Trash moves to `\Trash`, as in mailroom-mcp, and nothing is
   expunged but what a move copied elsewhere and **a draft Mailroom wrote**, by `UID EXPUNGE` of
   exactly that UID ([`mail-client.md`](mail-client.md), *The own-draft exception*); a draft
@@ -158,8 +162,10 @@ and may try to run script, track the reader, phish, or — through the MCP — i
 - **Sending** passes the send gate only: an `Admitted` token from `admit` is the one thing
   `deliver` takes, and the user's *Send* overrides a send mode except `off`. A send is counted and
   recorded before SMTP; a draft's send is keyed so it is delivered once (an agent's direct send has
-  no key), and one whose delivery is uncertain is `unknown`, never retried by itself. Header values built from user input or mail have CR and LF
-  stripped, and Bcc never goes in a transmitted header.
+  no key), and one whose delivery is uncertain is `unknown`, never retried by itself. A held send
+  the worker sends goes through the same gate with the draft's key, so its job run twice delivers
+  once. Header values built from user input or mail have CR and LF stripped, and Bcc never goes in
+  a transmitted header.
 - **Learning never acts** ([`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Filter suggestions*).
 - **Outbound HTTP to a host from input** (an email address's domain, a URL a document names, a
   client ID metadata document's URL, a one-click unsubscribe URL) goes through
@@ -832,6 +838,16 @@ What they do and the route list: [`filters.md`](filters.md). How:
     and the index without one. The index's other folders keep the 5-minute resync.
   - The **mail index's sync** runs in this worker too, with `mail` and without filters:
     [Mail index sync](#mail-index-sync).
+  - **Held sends** run here too, with `mail`: `send_draft(scheduled_id)`, deferred with
+    `schedule_at` in the transaction that writes its `app.scheduled_send` row, without the
+    mailbox's `lock` (waiting for its time, it would hold back every later job of the mailbox; a
+    send goes alongside them, as the API's does), sends the draft through mailroom-core's send
+    gate on the user's connections from the worker's pool, its SMTP sender built as the API
+    builds it
+    ([`mail-client.md`](mail-client.md) — *Send state machine*). Logged as `mail_scheduled_send`
+    (with `account_id`, `scheduled_id` and `outcome`: `ok`, `gone` or the row's code, `internal`
+    for an unexpected error, logged as `mail_scheduled_send_broke` with its type); the API
+    logs `mail_send_scheduled` and `mail_send_unscheduled`.
   - Jobs run 4 at a time (synchronous tasks, each on a thread); besides being notified of new jobs,
     the worker looks for them every second, so a run held back by its mailbox's lock starts within
     a second of the lock freeing. One worker process (below): a second would watch every folder
@@ -885,7 +901,8 @@ What they do and the route list: [`filters.md`](filters.md). How:
   until the database is at its head, then starts.
 - **One worker process** at a time: it holds a session advisory lock, and a second one exits. At
   start it marks failed every job still `doing`, which a stopped worker left (its `lock` would hold
-  back every later job with the same lock). Stopping, it gives running jobs 60 s, then aborts them.
+  back every later job with the same lock), and queues `send_draft` again for every held send
+  whose job is neither waiting nor running. Stopping, it gives running jobs 60 s, then aborts them.
 - An unmerged branch's migrations are edited in place, never followed by a fixing migration;
   merged revisions are immutable.
 

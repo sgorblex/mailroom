@@ -20,10 +20,10 @@ only counts and codes.
 The package is split by concern: ``read``, ``organize``, ``bulk`` (every message a search
 matches), ``folder_writes`` (creating, renaming and deleting folders, marking one read;
 ``folders`` is the listing, re-exported here), ``compose`` (drafts with it), ``send``,
-``views`` (a view's messages, from the index only) and ``addresses`` (a recipient field's
-suggestions, from the index too), with what more than one of them uses in
-``_shared``. This facade re-exports what the front ends call, so they keep calling
-``service.X``.
+``scheduled`` (held sends, which the worker sends), ``views`` (a view's messages, from the index
+only) and ``addresses`` (a recipient field's suggestions, from the index too), with what more
+than one of them uses in ``_shared``. This facade re-exports what the front ends call, so they
+keep calling ``service.X``.
 """
 
 from mailroom.mail.index.reads import Conversation, ConversationPage, ListedSummary
@@ -93,6 +93,12 @@ from mailroom.mail.service.read import (
     thread,
     thread_key,
 )
+from mailroom.mail.service.scheduled import (
+    ScheduledView,
+    cancel_scheduled,
+    list_scheduled,
+    schedule_send,
+)
 from mailroom.mail.service.send import (
     Dispatched,
     read_send,
@@ -134,6 +140,7 @@ __all__ = [
     "Prefill",
     "Printable",
     "Quotas",
+    "ScheduledView",
     "SendView",
     "ViewPage",
     "account_by_name",
@@ -142,6 +149,7 @@ __all__ = [
     "act_on_matching",
     "archive",
     "attachment",
+    "cancel_scheduled",
     "count_matching",
     "create_folder",
     "delete_draft",
@@ -155,6 +163,7 @@ __all__ = [
     "junk",
     "keywords",
     "list_messages",
+    "list_scheduled",
     "mark_folder_read",
     "message_html",
     "message_source",
@@ -170,6 +179,7 @@ __all__ = [
     "read_send",
     "rename_folder",
     "save_draft",
+    "schedule_send",
     "search",
     "send_draft",
     "send_forward",

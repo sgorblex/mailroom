@@ -57,11 +57,13 @@ from mailroom_core import send as gate
 from mailroom_core.mail import MESSAGES, MailError
 
 if TYPE_CHECKING:
+    import ssl
     from collections.abc import Callable, Sequence
 
     from mailroom.context import AppContext
     from mailroom.mail.sends import SendRunner
     from mailroom_core.config import AccountConfig
+    from mailroom_core.crypto import SecretsSubkey
     from mailroom_core.mail import (
         Authoriser,
         Draft,
@@ -69,9 +71,10 @@ if TYPE_CHECKING:
         MailConnections,
         MessageInput,
         MessageRef,
+        Note,
     )
     from mailroom_core.send import Transfer
-    from mailroom_core.store import Json, SendState
+    from mailroom_core.store import AccountStore, Json, SendState
 
 logger = logging.getLogger(__name__)
 
@@ -106,9 +109,10 @@ def _runner(ctx: AppContext) -> SendRunner:
     return ctx.send_runner
 
 
-def _smtp(ctx: AppContext, user_id: int) -> gate.SmtpSender:
-    store = ctx.store(user_id)
-    subkey = ctx.subkey
+def smtp_sender(
+    store: AccountStore, subkey: SecretsSubkey | None, ssl_context: ssl.SSLContext
+) -> gate.SmtpSender:
+    """The SMTP sender for the store user's accounts, as they stand at each send."""
 
     def account(account_id: int) -> AccountConfig | None:
         try:
@@ -119,8 +123,68 @@ def _smtp(ctx: AppContext, user_id: int) -> gate.SmtpSender:
     return gate.SmtpSender(
         account,
         lambda account_id: account_password(store, subkey, account_id),
-        ssl_context=ctx.ssl_context,
+        ssl_context=ssl_context,
     )
+
+
+def _smtp(ctx: AppContext, user_id: int) -> gate.SmtpSender:
+    return smtp_sender(ctx.store(user_id), ctx.subkey, ctx.ssl_context)
+
+
+def sent_result(sent: gate.SentMessage, filed: bool, notes: Sequence[gate.SendNote]) -> Json:
+    """A delivered send's final result, once it was filed (or not) and settled."""
+    texts = tuple(note.text for note in notes)
+    return {
+        "rejected": [*sent.rejected],
+        "filed": filed,
+        "notes": [*texts] if filed else [NOT_FILED, *texts],
+        "note_codes": [note.code for note in notes],
+    }
+
+
+@dataclass(frozen=True, slots=True)
+class Delivery:
+    """How an admitted send ended: ``sent`` (code ``ok``), or ``failed`` or ``unknown`` with
+    deliver's code."""
+
+    state: SendState
+    code: str
+    filed: bool | None = None
+    rejected: int = 0
+
+
+def deliver_admitted(
+    deps: gate.GateDeps,
+    admitted: gate.Admitted,
+    note: Note,
+    *,
+    file: Callable[[gate.SentMessage], bool],
+    settle: Callable[[bool], Sequence[gate.SendNote]],
+    transfer: Transfer | None = None,
+) -> Delivery:
+    """Deliver an admitted send, and only then file it (``file``, whether it was) and settle what
+    it leaves (``settle``, given that: the notes of what failed), both of which never raise, and
+    write its result. ``gate.deliver`` writes down how a failed delivery went."""
+    try:
+        sent = gate.deliver(deps, admitted, note, transfer)
+    except MailError as error:
+        return Delivery("unknown" if error.code == "delivery_unknown" else "failed", error.code)
+    except Exception as error:
+        logger.warning(
+            "mail_send_broke",
+            extra={"event": "mail_send_broke", "error_type": type(error).__name__},
+        )
+        return Delivery("unknown", "delivery_unknown")
+    filed = file(sent)
+    notes = settle(filed)
+    try:
+        deps.send_log.finish_send(admitted.send, "sent", sent_result(sent, filed, notes))
+    except Exception as error:
+        logger.warning(
+            "mail_send_result_lost",
+            extra={"event": "mail_send_result_lost", "error_type": type(error).__name__},
+        )
+    return Delivery("sent", "ok", filed=filed, rejected=len(sent.rejected))
 
 
 def _after_delivery[T](
@@ -161,80 +225,52 @@ def _run_send(
     outgoing: _Outgoing,
     transfer: Transfer,
 ) -> None:
-    """A send's thread: delivers, and only then files and settles. ``gate.deliver`` writes down
-    how the delivery went, so there is nothing to add when it fails."""
+    """A send's thread: ``deliver_admitted``, filing and settling each as its own call."""
     started = time.monotonic()
     account_id = admitted.account.id
     trail = _sending(ctx, user_id, origin)
-
-    def finished(
-        state: SendState, outcome: str, *, filed: bool | None = None, rejected: int = 0
-    ) -> None:
-        logger.info(
-            "mail_send_finished",
-            extra={
-                "event": "mail_send_finished",
-                "user_id": user_id,
-                "via": origin.via,
-                "account_id": account_id,
-                "send_id": admitted.send.id,
-                "state": state,
-                "outcome": outcome,
-                "filed": filed,
-                "recipient_count": len(admitted.composed.envelope.recipients),
-                "rejected_count": rejected,
-                "duration_ms": round((time.monotonic() - started) * 1000),
-            },
-        )
-
-    try:
-        sent = gate.deliver(deps, admitted, trail.note, transfer)
-    except MailError as error:
-        delivered: SendState = "unknown" if error.code == "delivery_unknown" else "failed"
-        finished(delivered, error.code)
-        return
-    except Exception as error:
-        logger.warning(
-            "mail_send_broke",
-            extra={"event": "mail_send_broke", "error_type": type(error).__name__},
-        )
-        finished("unknown", "delivery_unknown")
-        return
-    filed = _after_delivery(
-        ctx,
-        user_id,
-        accounts,
-        "mail_send_not_filed",
-        account_id,
-        lambda connections: gate.file_sent(
-            replace(deps, connections=connections), sent, trail.note
+    delivered = deliver_admitted(
+        deps,
+        admitted,
+        trail.note,
+        file=lambda sent: _after_delivery(
+            ctx,
+            user_id,
+            accounts,
+            "mail_send_not_filed",
+            account_id,
+            lambda connections: gate.file_sent(
+                replace(deps, connections=connections), sent, trail.note
+            ),
+            False,
         ),
-        False,
+        settle=lambda filed: _after_delivery(
+            ctx,
+            user_id,
+            accounts,
+            "mail_send_not_settled",
+            account_id,
+            lambda connections: outgoing.after(connections, filed),
+            outgoing.unsettled(filed),
+        ),
+        transfer=transfer,
     )
-    notes = _after_delivery(
-        ctx,
-        user_id,
-        accounts,
-        "mail_send_not_settled",
-        account_id,
-        lambda connections: outgoing.after(connections, filed),
-        outgoing.unsettled(filed),
+    logger.info(
+        "mail_send_finished",
+        extra={
+            "event": "mail_send_finished",
+            "user_id": user_id,
+            "via": origin.via,
+            "account_id": account_id,
+            "send_id": admitted.send.id,
+            "state": delivered.state,
+            "outcome": delivered.code,
+            "filed": delivered.filed,
+            "recipient_count": len(admitted.composed.envelope.recipients),
+            "rejected_count": delivered.rejected,
+            "duration_ms": round((time.monotonic() - started) * 1000),
+        },
     )
-    texts = tuple(note.text for note in notes)
-    result: Json = {
-        "rejected": [*sent.rejected],
-        "filed": filed,
-        "notes": [*texts] if filed else [NOT_FILED, *texts],
-        "note_codes": [note.code for note in notes],
-    }
-    try:
-        deps.send_log.finish_send(admitted.send, "sent", result)
-    except Exception as error:
-        logger.warning(
-            "mail_send_result_lost",
-            extra={"event": "mail_send_result_lost", "error_type": type(error).__name__},
-        )
-    finished("sent", "ok", filed=filed, rejected=len(sent.rejected))
 
 
 def _admit(
@@ -307,7 +343,7 @@ def _admit(
         slot.release()
 
 
-def _draft_unsettled(draft: Draft, filed: bool) -> tuple[gate.SendNote, ...]:
+def draft_unsettled(draft: Draft, filed: bool) -> tuple[gate.SendNote, ...]:
     """What ``gate.settle_draft`` would have reported had none of it worked."""
     answered = () if draft.answers is None else (gate.ORIGINAL_NOT_MARKED,)
     forwarded = () if draft.forwards is None else (gate.ORIGINAL_NOT_MARKED_FORWARDED,)
@@ -362,7 +398,7 @@ def send_draft(
             lambda settling, filed: gate.settle_draft(
                 settling, ready.draft, _sending(ctx, user_id, origin).note, filed=filed
             ),
-            partial(_draft_unsettled, ready.draft),
+            partial(draft_unsettled, ready.draft),
         )
 
     try:
