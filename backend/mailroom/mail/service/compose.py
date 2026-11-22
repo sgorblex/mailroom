@@ -208,10 +208,11 @@ def prefill(
     )
     zone = ctx.time_zone(user_id)
     with _as_refusals():
+        sender = core.from_identity(account, None, original.addressed).address
         if mode == "forward":
             return Prefill(
                 account=account.id,
-                sender=core.from_identity(account).address,
+                sender=sender,
                 to=(),
                 cc=(),
                 subject=_subject_cut(core.forward_subject(original.subject)),
@@ -224,7 +225,7 @@ def prefill(
         answered = core.reply_recipients(original, account, reply_all=mode == "reply_all")
         return Prefill(
             account=account.id,
-            sender=core.from_identity(account, None, original.addressed).address,
+            sender=sender,
             to=tuple(filter(_can_be_sent_to, answered.to)),
             cc=tuple(filter(_can_be_sent_to, answered.cc)),
             subject=_subject_cut(core.reply_subject(original.subject)),

@@ -331,6 +331,14 @@ def test_a_forward_offers_the_attachments(composer: Composer) -> None:
     assert (flags["forwarded"], flags["answered"]) == (True, False)
 
 
+def test_a_forward_starts_from_the_identity_the_message_arrived_at(composer: Composer) -> None:
+    ref = composer.seed(mime("Notes", to=f"Alias <{ALIAS}>", text="Hello"))
+    started = composer.client.post(
+        f"{MAIL}/drafts/prefill", json={"ref": ref, "mode": "forward"}
+    ).json()
+    assert started["from"] == ALIAS
+
+
 def test_a_draft_cannot_both_answer_and_forward(composer: Composer) -> None:
     ref = composer.seed(mime("Notes", text="Hello"))
     response = composer.post_draft(answers=ref, forwards=ref, to=[address(stranger())])
