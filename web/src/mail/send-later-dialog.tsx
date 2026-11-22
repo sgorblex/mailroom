@@ -8,17 +8,39 @@ import { Input } from '@/components/ui/input.tsx'
 import { formatDateTime } from '@/lib/format.ts'
 
 import { MAIL_NS } from './i18n.ts'
-import { addDays, MAX_AHEAD_DAYS, presets, sendTimeProblem, wallTime, zonedInstant } from './send-later.ts'
-
-const PROBLEMS = {
-  invalid: 'compose.laterInvalid',
-  past: 'compose.laterPast',
-  tooFar: 'compose.laterTooFar',
-} as const
+import { addDays, MAX_AHEAD_DAYS, presets, sendTimeProblem, wallTime, zonedInstant, type PresetKind } from './send-later.ts'
 
 /** Send later: a quick choice, or a day and time of the user's own, in their time zone. */
 export function SendLaterDialog({ onPick, onCancel }: { onPick: (at: Date) => void; onCancel: () => void }): ReactElement {
+  const { t } = useTranslation(MAIL_NS)
+  return (
+    <LaterDialog
+      title={t('compose.sendLater')}
+      presetLabel={(kind) => t(`compose.later.${kind}`)}
+      pickLabel={t('compose.laterSchedule')}
+      tooFar={t('compose.laterTooFar')}
+      onPick={onPick}
+      onCancel={onCancel}
+    />
+  )
+}
+
+export interface LaterDialogProps {
+  title: string
+  /** A quick choice's name. */
+  presetLabel: (kind: PresetKind) => string
+  /** The button taking the date and time picked. */
+  pickLabel: string
+  /** Why a time over a year ahead is refused. */
+  tooFar: string
+  onPick: (at: Date) => void
+  onCancel: () => void
+}
+
+/** A time to come, up to a year ahead: a quick choice, or a day and time of the user's own, in their time zone. */
+export function LaterDialog({ title, presetLabel, pickLabel, tooFar, onPick, onCancel }: LaterDialogProps): ReactElement {
   const { t, i18n } = useTranslation(MAIL_NS)
+  const problems = { invalid: t('compose.laterInvalid'), past: t('compose.laterPast'), tooFar }
   const timeZone = useTimeZone()
   const [now] = useState(() => new Date())
   const today = wallTime(now, timeZone)
@@ -33,15 +55,15 @@ export function SendLaterDialog({ onPick, onCancel }: { onPick: (at: Date) => vo
     const at = zonedInstant(date, time, timeZone)
     const wrong = sendTimeProblem(at, new Date())
     if (at === null || wrong !== null) {
-      setProblem(t(PROBLEMS[wrong ?? 'invalid']))
+      setProblem(problems[wrong ?? 'invalid'])
       return
     }
     onPick(at)
   }
 
   return (
-    <Dialog label={t('compose.sendLater')} onCancel={onCancel}>
-      <h2 className="text-base font-semibold">{t('compose.sendLater')}</h2>
+    <Dialog label={title} onCancel={onCancel}>
+      <h2 className="text-base font-semibold">{title}</h2>
       <p className="mt-1 text-xs text-muted-foreground">{t('compose.laterZone', { zone: timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone })}</p>
       <ul className="mt-3 flex flex-col gap-1">
         {presets(now, timeZone).map((preset) => (
@@ -54,7 +76,7 @@ export function SendLaterDialog({ onPick, onCancel }: { onPick: (at: Date) => vo
                 onPick(preset.at)
               }}
             >
-              <span>{t(`compose.later.${preset.kind}`)}</span>
+              <span>{presetLabel(preset.kind)}</span>
               <span className="text-muted-foreground">{formatDateTime(i18n.language, preset.at.toISOString(), timeZone)}</span>
             </Button>
           </li>
@@ -96,7 +118,7 @@ export function SendLaterDialog({ onPick, onCancel }: { onPick: (at: Date) => vo
             />
           </div>
           <Button type="button" size="sm" onClick={pickOwn}>
-            {t('compose.laterSchedule')}
+            {pickLabel}
           </Button>
         </div>
         {problem !== null && (

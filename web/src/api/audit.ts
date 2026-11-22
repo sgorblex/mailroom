@@ -25,6 +25,8 @@ export const MAIL_ACTIONS = [
   'bulk_trash',
   'mute',
   'unmute',
+  'snooze',
+  'wake',
 ] as const
 
 /** One message a write acted on, or tried to: never its subject or body. */

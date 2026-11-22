@@ -544,6 +544,41 @@ export async function unmuteThread(id: number): Promise<void> {
   await apiDelete(`${base}/muted/${String(id)}`)
 }
 
+const snoozeSchema = z.object({
+  snooze_id: z.string(),
+  account: accountIdSchema,
+  subject: z.string(),
+  /** Its From address. */
+  sender: z.string().nullable(),
+  /** The folder it goes back to. */
+  folder: z.string(),
+  until: z.string(),
+  /** Why its last wake failed; it is tried again later. */
+  code: z.string().nullable(),
+})
+
+export type Snooze = z.infer<typeof snoozeSchema>
+
+/**
+ * Snoozes the message `ref` names until `until`: it moves to its account's Snoozed folder, and the
+ * server moves it back, unread, then. `sourceFolder`: the folder it was listed under, as a move's.
+ */
+export function snoozeMessage(ref: string, until: Date, sourceFolder?: string | null): Promise<Snooze> {
+  const body = { until: until.toISOString(), ...(sourceFolder == null ? {} : { source_folder: sourceFolder }) }
+  return apiPostJson(`${messagePath(ref)}/snooze`, body, { schema: snoozeSchema })
+}
+
+/** The user's snoozed messages, soonest back first. */
+export async function listSnoozes(signal?: AbortSignal): Promise<Snooze[]> {
+  const answer = await apiGetJson(`${base}/snoozes`, { init: { signal }, schema: z.object({ snoozes: z.array(snoozeSchema) }) })
+  return answer.snoozes
+}
+
+/** Brings a snoozed message back now: the server moves it in a moment. */
+export function wakeSnooze(snoozeId: string): Promise<Snooze> {
+  return apiPostJson(`${base}/snoozes/${encodeURIComponent(snoozeId)}/wake`, undefined, { schema: snoozeSchema })
+}
+
 /** The longest age limit of the mail index, the user's or the instance's (`INDEX_MAX_AGE_DAYS`). */
 export const INDEX_MAX_AGE_DAYS = 36500
 

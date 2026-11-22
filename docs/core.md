@@ -38,7 +38,7 @@ the tools answer with, and the app's MCP writes thin tools over it. The filter e
 | `crypto` | Sealed secrets |
 | `store` | `AccountStore` and core's migrations, in schema `core` |
 | `render` | Bodies to text, quotes, the untrusted-content envelope, `safe_html`, `outgoing_html` |
-| `mail` | Connections (`mail.imap`), operations on a selected folder (`mail.selected`), a folder's UIDs and flag changes (`mail.changes`), what an index keeps per message (`mail.index`), IDLE (`mail.idle`), refs, read, organize, folders (`mail.folders`), messages parsed for the filters (`mail.parsed`), compose, drafts, the tools' text, audit items |
+| `mail` | Connections (`mail.imap`), operations on a selected folder (`mail.selected`), a folder's UIDs and flag changes (`mail.changes`), what an index keeps per message (`mail.index`), IDLE (`mail.idle`), refs, read, organize, snooze (`mail.snooze`), folders (`mail.folders`), messages parsed for the filters (`mail.parsed`), compose, drafts, the tools' text, audit items |
 | `send` | SMTP and the send gate |
 | `filters` | The filter engine: criteria, actions, rules as data (specs), runs, the runner and IDLE monitor, reports |
 | `testing` | A pytest plugin (no-network guard, store and mail fixtures) the app's tests load too |
@@ -357,6 +357,23 @@ repeated call never acts twice. A group copied but not removed (`CopiedNotRemove
 its messages are in both folders. Over several accounts an account or folder that fails is a `PageFailure` and the
 others go on; over one, its error is raised. Notes an `AuditItem` per message, per failed
 source, and per account on a refusal (`messages`, its count).
+
+**Snooze.** `mailroom_core.mail.snooze` holds what the host's snooze needs; the host keeps when.
+`snooze_target(connections, ref, note)` reads the message read-only (its `Message-ID`, size,
+subject and sender) and the account's `SNOOZED_FOLDER` (`Snoozed`, at the top level; a label on
+Gmail), creating it with `create_folder` when missing (noting its item); it refuses
+`invalid_argument` a message in Snoozed already, in Gmail's All Mail, Drafts, Sent, Junk or
+Trash, or without a `Message-ID`. The host then moves it there with `move_messages`, and on
+Gmail, from a folder other than INBOX, takes INBOX's label off it there with `leave_inbox` (a
+move only takes off the label it came from).
+`find_snoozed` finds it in Snoozed again: at the ref the host kept while that folder's
+UIDVALIDITY and the message's `Message-ID` still match, else by `message_id_uids` with its size
+(never SEARCH HEADER alone, which Mailu's index never matches; Gmail's `X-GM-RAW
+rfc822msgid:`); None when it is gone, the folder too. `wake_snoozed` then clears `\Seen`
+(`set_flags`) and moves it (`move_messages`) to the folder it came from, or INBOX when that is no
+longer a selectable folder; on Gmail always to INBOX, then adding the label it came from
+(`X-GM-LABELS`; one it could not add is logged). It returns both results and the message's refs
+where it now is (`Woken.refs`, INBOX's first), or None when it is gone.
 
 **Keywords.** A folder keeps keywords when its read-write SELECT answers PERMANENTFLAGS holding
 `\*` (`MailboxContext.keywords`; never under EXAMINE). `MailConnections.keywords(account)` asks

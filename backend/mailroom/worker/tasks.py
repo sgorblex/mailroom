@@ -11,7 +11,8 @@ for each one due. A folder's job fetches a bounded share and queues the next one
 other job, so a large mailbox takes turns with the others, its own filter runs included.
 
 A held send's ``send_draft`` is queued by the mail service (``defer_scheduled_send``) in the
-transaction writing its ``app.scheduled_send`` row, to run at its time (``mailroom.worker.sends``).
+transaction writing its ``app.scheduled_send`` row, to run at its time (``mailroom.worker.sends``);
+a snooze's ``wake_snooze`` likewise with its ``app.snooze`` row (``mailroom.worker.snoozes``).
 """
 
 from __future__ import annotations
@@ -29,12 +30,13 @@ from sqlalchemy import and_, func, or_, select, text
 
 from mailroom.config.features import features_from_env
 from mailroom.filters.runs import prune_runs
-from mailroom.models import AccountFilterSettings, FilterRun, RuleSet, ScheduledSend
+from mailroom.models import AccountFilterSettings, FilterRun, RuleSet, ScheduledSend, Snooze
 from mailroom.worker.app import PROCRASTINATE_SCHEMA, app
 from mailroom.worker.context import worker_context
 from mailroom.worker.index import account_folders_due, index_accounts, run_folder_sync
 from mailroom.worker.runs import execute_run
 from mailroom.worker.sends import send_scheduled
+from mailroom.worker.snoozes import wake_snooze as wake_snoozed
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
@@ -57,6 +59,8 @@ SYNC_FOLDER: Final = "sync_folder"
 """The job running one share of an indexed folder's sync."""
 SEND_DRAFT: Final = "send_draft"
 """The job sending one scheduled draft (its ``app.scheduled_send`` row) through the send gate."""
+WAKE_SNOOZE: Final = "wake_snooze"
+"""The job bringing one snoozed message (its ``app.snooze`` row) back to its folder."""
 _IN_TRANSACTION: Final = JobManager(SyncPsycopgConnector())
 """Defers jobs on a connection the caller passes, never its own (it is never opened): the app's
 connector, once the worker opens it asynchronously, would take that connection for an async one."""
@@ -145,6 +149,16 @@ def send_draft(scheduled_id: int) -> None:
     send_scheduled(context.sessions, context.mailboxes, scheduled_id)
 
 
+@app.task(name=WAKE_SNOOZE)
+def wake_snooze(snooze_id: int) -> None:
+    """Bring the snoozed message ``snooze_id`` back (``mailroom.worker.snoozes.wake_snooze``)."""
+    if not features_from_env().mail:
+        # The row stays: the next worker with the mail client queues its job again.
+        return
+    context = worker_context()
+    wake_snoozed(context.sessions, context.mailboxes, snooze_id)
+
+
 def mailbox_lock(user_id: int, account_id: int) -> str:
     """procrastinate ``lock`` of every job acting on one mailbox: they run one at a time."""
     return f"mailbox:{user_id}:{account_id}"
@@ -231,15 +245,35 @@ def defer_scheduled_send(db: Session, *, scheduled_id: int, send_at: datetime) -
     )
 
 
-def requeue_interrupted_sends(db: Session) -> list[int]:
-    """Queue ``send_draft`` again for each scheduled send whose job is neither waiting nor running,
-    and commit (at start, once a stopped worker's jobs are marked failed): one left ``sending``
-    runs at once, and its send key keeps it from going out twice. The rows' ids."""
+def defer_snooze_wake(db: Session, *, snooze_id: int, until: datetime | None) -> int:
+    """Queue ``wake_snooze`` for the snooze ``snooze_id`` from ``until`` (None: at once), inside
+    ``db``'s transaction, so the job exists exactly when the row does; its job id. Without the
+    mailbox's lock, as ``send_draft``: waiting for its time, it would hold back every later job
+    of the mailbox."""
+    return _defer(
+        db,
+        WAKE_SNOOZE,
+        lock=None,
+        queueing_lock=f"snooze:{snooze_id}",
+        schedule_at=until,
+        arguments={"snooze_id": snooze_id},
+    )
+
+
+def _alive(db: Session, task: str) -> set[int]:
+    """The ids of the jobs of ``task`` waiting or running."""
     queued = text(
         f"SELECT id FROM {PROCRASTINATE_SCHEMA}.procrastinate_jobs"
         " WHERE task_name = :name AND status IN ('todo', 'doing')"
     )
-    alive = set(db.scalars(queued, {"name": SEND_DRAFT}))
+    return set(db.scalars(queued, {"name": task}))
+
+
+def requeue_interrupted_sends(db: Session) -> list[int]:
+    """Queue ``send_draft`` again for each scheduled send whose job is neither waiting nor running,
+    and commit (at start, once a stopped worker's jobs are marked failed): one left ``sending``
+    runs at once, and its send key keeps it from going out twice. The rows' ids."""
+    alive = _alive(db, SEND_DRAFT)
     lost = [
         scheduled
         for scheduled in db.scalars(
@@ -260,6 +294,24 @@ def requeue_interrupted_sends(db: Session) -> list[int]:
             extra={"event": "scheduled_sends_requeued", "count": len(lost)},
         )
     return [scheduled.id for scheduled in lost]
+
+
+def requeue_lost_snoozes(db: Session) -> list[int]:
+    """Queue ``wake_snooze`` again for each snooze whose job is neither waiting nor running, and
+    commit (at start, once a stopped worker's jobs are marked failed): one due runs at once. The
+    rows' ids."""
+    alive = _alive(db, WAKE_SNOOZE)
+    lost = [
+        row
+        for row in db.scalars(select(Snooze).order_by(Snooze.id).with_for_update())
+        if row.job_id not in alive
+    ]
+    for row in lost:
+        row.job_id = defer_snooze_wake(db, snooze_id=row.id, until=row.until)
+    db.commit()
+    if lost:
+        logger.warning("snoozes_requeued", extra={"event": "snoozes_requeued", "count": len(lost)})
+    return [row.id for row in lost]
 
 
 def _defer_once(db: Session, name: str, *, lock: str, queueing_lock: str, **arguments: int) -> bool:

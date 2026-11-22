@@ -1,7 +1,8 @@
 """The app's own rows about a user's accounts (schema ``app``), beside mailroom-core's: the Run
 filters switch, and forgetting all of it when an account or its user goes (the user's remembered
 remote-content senders, muted threads, ledger of copies moved between accounts, mail index,
-notification folders, signatures and held sends, and its folders in the saved views too)."""
+notification folders, signatures, held sends and snoozes, and its folders in the saved views
+too)."""
 
 from __future__ import annotations
 
@@ -109,6 +110,7 @@ def forget_account(store: AccountStore, db: Session, user_id: int, account_id: i
     )
     _drop_from_views(db, user_id, account_id)
     _forget_scheduled(db, user_id, account_id)
+    _forget_snoozes(db, user_id, account_id)
     db.commit()
     remove_account(store, account_id)
 
@@ -131,6 +133,13 @@ def _forget_scheduled(db: Session, user_id: int, account_id: int | None = None) 
     forget_scheduled(db, user_id, account_id)
 
 
+def _forget_snoozes(db: Session, user_id: int, account_id: int | None = None) -> None:
+    # Here, not at the top: the mail service imports this module's.
+    from mailroom.mail.service.snooze import forget_snoozes
+
+    forget_snoozes(db, user_id, account_id)
+
+
 def forget_user_accounts(db: Session, user_id: int) -> None:
     """Remove everything about the user's accounts inside ``db``'s transaction, for the user's
     own removal in the same one: the app's rows (remembered senders included), then
@@ -146,4 +155,5 @@ def forget_user_accounts(db: Session, user_id: int) -> None:
     db.execute(delete(SavedView).where(SavedView.user_id == user_id))
     db.execute(delete(IdentitySignature).where(IdentitySignature.user_id == user_id))
     _forget_scheduled(db, user_id)
+    _forget_snoozes(db, user_id)
     forget_user(db.connection(), core_user_id(user_id))

@@ -135,7 +135,9 @@ def instructions(groups: Sequence[ToolGroup]) -> str:
             f"messages_move, messages_trash and messages_flag take refs {source}; these tools "
             "never delete mail permanently. thread_mute takes one such ref and mutes its "
             "conversation: new messages of it arrive marked read, while the account's Run "
-            "filters is on; muted_threads_list and thread_unmute list and undo mutes."
+            "filters is on; muted_threads_list and thread_unmute list and undo mutes. "
+            "messages_snooze takes one such ref and a time: the message waits in the account's "
+            "Snoozed folder and comes back unread then."
         )
     if transfers:
         source = "from messages_list, messages_search or thread_read" if reads else "of messages"

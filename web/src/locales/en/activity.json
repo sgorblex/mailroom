@@ -45,6 +45,8 @@
     "bulk_trash": "Moved to Trash (all matching)",
     "mute": "Thread muted",
     "unmute": "Thread unmuted",
+    "snooze": "Snoozed",
+    "wake": "Back from snooze",
     "run_failed": "Filter run failed"
   },
   "results": {

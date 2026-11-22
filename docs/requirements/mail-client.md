@@ -538,13 +538,67 @@ Errors: 400 `invalid_argument`, 404 `not_found` (account) and `mailbox_missing`,
 `count_changed`, `too_many`, `auth_failed` and `password_missing`, 422, 429, 502, 504. There is
 no MCP tool.
 
+### Snooze
+
+<a id="snooze"></a>**Snooze** takes one message out of its folder until a time, and the worker
+brings it back ([`../GLOSSARY.md`](../GLOSSARY.md)):
+
+- **Snoozing** (`mailroom.mail.service.snooze`) reads the message and the account's `Snoozed`
+  folder (mailroom-core's `snooze_target`), creating it at the top level when missing (a label on
+  Gmail; audited `folder_create`). Refused `invalid_argument` for a message in Snoozed already,
+  in Gmail's All Mail, Drafts, Sent, Junk or Trash (it could not come back there), or without a
+  `Message-ID`; for a time without its offset, past, or more than a year ahead; `already_snoozed`
+  (409) for a message of the account with that `Message-ID` snoozed already. Then, in one
+  transaction, an `app.snooze` row (the `Message-ID` and size, the folder it came from, the
+  Snoozed folder, its subject and sender for the list, when it comes back, who snoozed it) and the
+  worker's job `wake_snooze`, deferred to that time, without the mailbox's lock (waiting, it
+  would hold back the mailbox's other jobs); then the move into Snoozed (`move_messages`, audited
+  `snooze`). On Gmail a snoozed message is always out of INBOX: the move from INBOX drops its
+  label, and one snoozed from a label's view, which the move takes off that label only, has
+  INBOX's label taken off too (`leave_inbox`; one that stayed is logged, the snooze kept). A move that fails drops the row and its
+  job; one that timed out or lost the server (`timeout`, `unreachable`), which may have been done
+  all the same, keeps the row with that code and wakes it 2 minutes later instead, which brings the
+  message back or records it missing. A Gmail label view's ref is acted on in the folder it
+  was listed under (`source_folder`), as a move's. Other clients see the message in Snoozed
+  meanwhile.
+- **Waking** (`mailroom.worker.snoozes`): at its time the job finds the message in Snoozed by its
+  ref there, else by its `Message-ID` and size (`find_snoozed`, never by subject; on Gmail
+  `X-GM-RAW rfc822msgid:`), marks it unread, then moves it back to its folder, or to INBOX when
+  that folder is gone, audited `wake` as whoever snoozed it, and the row goes. On Gmail it always
+  comes back to INBOX (the move adds INBOX's label), and gets back the label it was snoozed from
+  when that was another. **A woken message is not new mail:** its new refs go into the filter
+  runs' ledger ([`filters.md`](filters.md#moves-to-another-account), the loop guard) as soon as the
+  move answered, so the `new_mail` rule sets its arrival queues, a muted thread's mark-as-read and
+  every later run of that folder leave it alone, unread where it was; the live updates may still
+  notify that it is back. A message no longer in Snoozed (another client moved or deleted
+  it) is recorded (`wake`, `not_found`) and the snooze dropped; one snoozed in the last 2 minutes
+  is tried again instead, as its move may still be on its way. A wake that fails (the server
+  unreachable, a missing password) keeps the row with its code and is tried again 15 minutes
+  later. A job lost with a stopped worker is queued again when the next one starts; snoozes go
+  with their account and their user, the messages staying in Snoozed. Renaming Snoozed, the
+  folder a message came from, or a folder above either, in Mailroom carries the snoozes along.
+- **The web:** the message's *Snooze* (beside reply, print and mute; and in a row's menu) asks
+  until when: later today (18:00, until 17:00), tomorrow (08:00), next week (Monday 08:00), or a
+  date and time, all in the user's time zone. The message leaves the list, its pane closes, and a
+  toast says until when, with Undo, which brings it back now. The sidebar's *Snoozed* entry, with
+  a count, lists the snoozed messages (subject, sender, account, when and where they come back, a
+  failed wake's reason) with *Bring back now*.
+- **Routes** (CSRF as for every state-changing route):
+  - `POST /messages/{ref}/snooze` `{"until", "source_folder"}` (`source_folder` optional): 201
+    `{snooze_id, account, subject, sender, folder, until, code}`; 400, 404, 409
+    `already_snoozed`, 422 for a time without its offset; the move's errors.
+  - `GET /snoozes`: `{"snoozes": [...]}`, soonest back first.
+  - `POST /snoozes/{id}/wake`: brings it back now (its job runs at once); 200 the snooze; 404
+    once it is back, or another user's.
+
 ### MCP
 
 The tools `messages_move`, `messages_trash` and `messages_flag` (group `mail_organize`,
 [`mcp.md`](mcp.md)) take the same refs (up to 50, any folders) and return mailroom-core's text
-inside the untrusted envelope. When every group fails, the tool error is mailroom-core's text
-inside the envelope too: a lone group's error message, or the per-folder text when there were
-several. mailroom-core returns an audit item per message
+inside the untrusted envelope. `messages_snooze` (same group) [snoozes](#snooze) one ref until
+`until` and says until when in the user's time zone and where it comes back, inside the
+envelope. When every group fails, the tool error is mailroom-core's text inside the envelope
+too: a lone group's error message, or the per-folder text when there were several. mailroom-core returns an audit item per message
 (account, folder, UID, `Message-ID`, sender address, a SHA-256 of the subject, destination, junk,
 result), which the app keeps in the user's audit trail, from the web as from MCP
 ([`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *Audit trail*); its logs

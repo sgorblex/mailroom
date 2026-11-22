@@ -162,6 +162,7 @@ not OAuth scope.
 | | `thread_mute(ref)`, muting the message's conversation ([`filters.md`](filters.md#muted-threads)); the answer is the muted thread, with `run_filters` | idempotent, openWorld |
 | | `muted_threads_list(account_id?)` | readOnly, idempotent |
 | | `thread_unmute(id)` | none |
+| | `messages_snooze(ref, until, source_folder?)`: the message waits in its account's Snoozed folder until `until` (ISO 8601 with its offset, to come, a year ahead at most), when the worker brings it back unread ([snooze](mail-client.md#snooze)); the answer says until when, in the user's zone, and where it comes back | openWorld |
 | `mail_transfer` (preview, off) | `messages_move_to_account(refs, account_id, folder)`, `messages_move_to_account_for_good(refs, account_id, folder)` | destructive, openWorld |
 | `mail_draft` (stable, on) | `draft_create` | openWorld |
 | | `draft_update`, `draft_delete` | destructive, openWorld |

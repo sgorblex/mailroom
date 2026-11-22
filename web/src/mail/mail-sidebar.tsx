@@ -19,6 +19,7 @@ import { ACCOUNT_NOT_FOUND, mailErrorMessage } from './messages.ts'
 import { NOTIFICATIONS_KEY } from './queries.ts'
 import { ViewsSection } from './saved-views.tsx'
 import { ScheduledEntry } from './scheduled-sends.tsx'
+import { SnoozedEntry } from './snoozed-list.tsx'
 import { forgetStoredSubfolders, renameStoredSubfolders } from './subfolder-view.ts'
 import { isSameFolder, useAccountFolders, useTriage } from './triage-context.ts'
 
@@ -50,6 +51,7 @@ export function MailSidebar({
     >
       <ViewsSection accounts={accounts} accountId={accountId} current={view} />
       <ScheduledEntry />
+      <SnoozedEntry />
       {accounts.map((account) =>
         account.id === accountId ? (
           <section key={account.id} aria-labelledby={`mail-account-${String(account.id)}`} className="flex flex-col gap-1">

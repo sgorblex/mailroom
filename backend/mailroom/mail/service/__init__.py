@@ -20,9 +20,10 @@ only counts and codes.
 The package is split by concern: ``read``, ``organize``, ``bulk`` (every message a search
 matches), ``folder_writes`` (creating, renaming and deleting folders, marking one read;
 ``folders`` is the listing, re-exported here), ``compose`` (drafts with it), ``send``,
-``scheduled`` (held sends, which the worker sends), ``views`` (a view's messages, from the index
-only) and ``addresses`` (a recipient field's suggestions, from the index too), with what more
-than one of them uses in ``_shared``. This facade re-exports what the front ends call, so they
+``scheduled`` (held sends, which the worker sends), ``snooze`` (snoozed messages, which the
+worker brings back), ``views`` (a view's messages, from the index only) and ``addresses`` (a
+recipient field's suggestions, from the index too), with what more than one of them uses in
+``_shared``. This facade re-exports what the front ends call, so they
 keep calling ``service.X``.
 """
 
@@ -113,6 +114,7 @@ from mailroom.mail.service.send import (
     send_message,
     send_reply,
 )
+from mailroom.mail.service.snooze import SnoozeView, list_snoozes, snooze, wake_now
 from mailroom.mail.service.views import TEXT_REFUSED, ViewPage, view_messages
 
 __all__ = [
@@ -147,6 +149,7 @@ __all__ = [
     "Quotas",
     "ScheduledView",
     "SendView",
+    "SnoozeView",
     "ViewPage",
     "account_by_name",
     "account_ids",
@@ -170,6 +173,7 @@ __all__ = [
     "keywords",
     "list_messages",
     "list_scheduled",
+    "list_snoozes",
     "mark_folder_read",
     "message_html",
     "message_source",
@@ -196,6 +200,7 @@ __all__ = [
     "send_holds",
     "send_message",
     "send_reply",
+    "snooze",
     "suggest_addresses",
     "thread",
     "thread_key",
@@ -203,4 +208,5 @@ __all__ = [
     "upload_limit",
     "upload_place",
     "view_messages",
+    "wake_now",
 ]
