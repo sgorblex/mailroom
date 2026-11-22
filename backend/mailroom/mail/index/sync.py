@@ -24,10 +24,12 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Final, Literal
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import BigInteger, any_, bindparam, delete, or_, select
 from sqlalchemy.dialects.postgresql import ARRAY
 
+from mailroom.auth.users import time_zone_of
 from mailroom.mail.connections import PASSWORD_MISSING, PasswordMissing
 from mailroom.mail.index import threads
 from mailroom.mail.index.rows import apply_flags, count_rows, flag_kinds, upsert_rows
@@ -49,6 +51,7 @@ if TYPE_CHECKING:
 
     from sqlalchemy.orm import Session
 
+    from mailroom_core.config import TimeZoneName
     from mailroom_core.mail import IndexedMessage, MailboxContext, MailConnections
     from mailroom_core.render import Address
 
@@ -87,9 +90,11 @@ class _Survey:
     """On Gmail, the labels of the same messages as ``flags``."""
 
 
-def since_day(max_age_days: int | None, now: datetime) -> date | None:
-    """The first day the age limit keeps (UTC), None without a limit."""
-    return None if max_age_days is None else now.date() - timedelta(days=max_age_days)
+def since_day(max_age_days: int | None, now: datetime, zone: TimeZoneName) -> date | None:
+    """The first day the age limit keeps (the user's, in ``zone``), None without a limit."""
+    if max_age_days is None:
+        return None
+    return now.astimezone(ZoneInfo(zone)).date() - timedelta(days=max_age_days)
 
 
 def due_folders(db: Session, user_id: int, account_id: int, now: datetime) -> list[int]:
@@ -131,7 +136,8 @@ def sync_folder(
         db.rollback()
         return False
     user = db.get(User, user_id)
-    since = since_day(effective_max_age(None if user is None else user.index_max_age_days), now)
+    max_age = effective_max_age(None if user is None else user.index_max_age_days)
+    since = since_day(max_age, now, time_zone_of(db, user_id))
     stored = frozenset(
         db.scalars(
             select(MailIndexMessage.uid).where(

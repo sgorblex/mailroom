@@ -16,6 +16,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Literal, cast
 
 from mailroom.accounts.service import require_subkey
+from mailroom.auth.users import time_zone_of
 from mailroom.errors import Refusal, mail_refusal
 from mailroom.mail.connections import PASSWORD_MISSING, PASSWORD_MISSING_TEXT, PasswordMissing
 from mailroom.mail.index import reads as index_reads
@@ -38,7 +39,7 @@ if TYPE_CHECKING:
 
     from mailroom.accounts.service import Via
     from mailroom.context import AppContext
-    from mailroom_core.config import AccountConfig
+    from mailroom_core.config import AccountConfig, TimeZoneName
     from mailroom_core.mail import (
         Attachment,
         Criteria,
@@ -592,11 +593,14 @@ def _from_index(
     if resumed is not None and resumed.mode == index_reads.TAIL:
         tail = [entry for entry in resumed.tail if entry[0] in accounts]
         before = [] if resumed.live is not None else resumed.failures(HOST_CODES)
+        with ctx.session_maker() as db:
+            zone = time_zone_of(db, user_id)
         return _tail_page(
             connections,
             live,
             tail,
             query,
+            zone,
             (),
             limit,
             cursor=resumed.live,
@@ -618,11 +622,13 @@ def _from_index(
             )
             if picked is None:
                 return None
+            zone = time_zone_of(db, user_id)
             rows = index_reads.read_page_rows(
                 db,
                 user_id,
                 picked,
                 query,
+                zone=zone,
                 limit=limit + 1,
                 group=group,
                 listing=connections.folders,
@@ -631,11 +637,13 @@ def _from_index(
     else:
         with ctx.session_maker() as db:
             picked = index_reads.resumed_sources(db, user_id, resumed, accounts)
+            zone = time_zone_of(db, user_id)
             rows = index_reads.read_page_rows(
                 db,
                 user_id,
                 picked,
                 query,
+                zone=zone,
                 limit=limit + 1,
                 after=resumed.key,
                 group=group,
@@ -647,7 +655,7 @@ def _from_index(
     if len(rows) > limit:
         following = index_reads.IndexCursor.index(picked, rows[limit - 1][1], carried, HOST_CODES)
         return index_reads.page_of(messages, conversations, following.encode(), carried)
-    tail = index_reads.tail_of(picked, query)
+    tail = index_reads.tail_of(picked, query, zone)
     if not tail:
         return index_reads.page_of(messages, conversations, None, carried)
     remaining = limit - len(messages)
@@ -656,6 +664,7 @@ def _from_index(
         live,
         tail,
         query,
+        zone,
         messages,
         remaining,
         cursor=None,
@@ -716,6 +725,7 @@ def _tail_page(
     live: _LiveRead,
     tail: Sequence[tuple[int, str, date]],
     query: SearchQuery | None,
+    zone: TimeZoneName,
     messages: Sequence[MessageSummary],
     remaining: int,
     *,
@@ -726,25 +736,42 @@ def _tail_page(
     """``messages`` from the index, then up to ``remaining`` more read live from the ``tail``:
     the folders whose mail before their age-limit day the index leaves out (``BEFORE`` that
     day), from ``cursor``, the live read's; ``failures`` as ``read_page``'s
-    ``account_failures``. With ``conversations`` (those of ``messages``), a page of
-    conversations, each message read live alone."""
+    ``account_failures``. The query's days are the user's (``zone``), as on the index: the
+    server is asked a day more on each side (``tail_query``) and what falls outside them is
+    dropped (``in_days``), reading on until the page is full or the tail ends. With
+    ``conversations`` (those of ``messages``), a page of conversations, each message read live
+    alone."""
     if remaining <= 0:
         start = index_reads.IndexCursor.tail_from(tail, None, failures, HOST_CODES)
         return index_reads.page_of(messages, conversations, start.encode(), failures)
+    widened = index_reads.tail_query(query)
     criteria: dict[Source, Criteria] = {}
     for account, path, day in tail:
-        own = _live_criteria(connections, account, query)
+        own = _live_criteria(connections, account, widened)
         criteria[Source(account, path)] = [*own, "BEFORE", day]
-    page = live(list(criteria), criteria, limit=remaining, cursor=cursor, account_failures=failures)
-    after = page.next_cursor
+    kept: list[MessageSummary] = []
+    after, carried = cursor, failures
+    while True:
+        page = live(
+            list(criteria),
+            criteria,
+            limit=remaining - len(kept),
+            cursor=after,
+            account_failures=carried,
+        )
+        kept += [summary for summary in page.messages if index_reads.in_days(summary, query, zone)]
+        after = page.next_cursor
+        if after is None or len(kept) >= remaining:
+            break
+        carried = ()  # the cursor carries them on
     following = index_reads.IndexCursor.tail_from(tail, after, (), HOST_CODES)
     grouped = (
         None
         if conversations is None
-        else [*conversations, *(Conversation.single(summary) for summary in page.messages)]
+        else [*conversations, *(Conversation.single(summary) for summary in kept)]
     )
     return index_reads.page_of(
-        [*messages, *page.messages],
+        [*messages, *kept],
         grouped,
         None if after is None else following.encode(),
         page.failures,

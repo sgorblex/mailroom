@@ -9,7 +9,10 @@ Gmail (``X-GM-EXT-1``) INBOX and the label folders are All Mail's rows carrying 
 Spam and Trash stay live. Rows are ordered newest first by arrival, then folder and UID: the
 index's cursor (version 3) keeps that key, so mail indexed meanwhile never shifts a page. A
 folder indexed under an age limit holds only the mail since its day: once its rows run out, the
-rest of it is read live (``BEFORE`` that day), and the cursor then carries the live one.
+rest of it is read live (``BEFORE`` that day), and the cursor then carries the live one. A
+search's ``since`` and ``before`` are days of the user's time zone; a live read keeps the server's,
+but for that live tail, which asks a day more on each side and keeps the user's days
+(``tail_query``, ``in_days``).
 
 Grouped by conversation (``read_conversations``), a read gives each conversation once, at its
 latest matching row, with the rest of its rows in the source read: within one account, those of
@@ -28,6 +31,7 @@ import json
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, time, timedelta
 from typing import TYPE_CHECKING, Final
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import (
     BigInteger,
@@ -63,6 +67,7 @@ if TYPE_CHECKING:
     from sqlalchemy import ColumnElement
     from sqlalchemy.orm import InstrumentedAttribute, Session
 
+    from mailroom_core.config import TimeZoneName
     from mailroom_core.mail import Folder, SearchQuery, Source
 
 CURSOR_VERSION: Final = 3
@@ -285,8 +290,9 @@ def resumed_sources(
     return out
 
 
-def _midnight(day: date) -> datetime:
-    return datetime.combine(day, time(), UTC)
+def _midnight(day: date, zone: TimeZoneName) -> datetime:
+    """The start of ``day`` in ``zone``."""
+    return datetime.combine(day, time(), ZoneInfo(zone))
 
 
 def _has(column: InstrumentedAttribute[list[str]], flag: str) -> ColumnElement[bool]:
@@ -294,10 +300,13 @@ def _has(column: InstrumentedAttribute[list[str]], flag: str) -> ColumnElement[b
 
 
 def _criteria(
-    query: SearchQuery | None, message: type[MailIndexMessage] = MailIndexMessage
+    query: SearchQuery | None,
+    zone: TimeZoneName,
+    message: type[MailIndexMessage] = MailIndexMessage,
 ) -> list[ColumnElement[bool]]:
     """The query's criteria on the rows (``message``, or an alias of it): substrings of From, To
-    and the subject (any case), the arrival day (UTC), the flags, an attachment."""
+    and the subject (any case), the arrival day (the user's, in ``zone``), the flags, an
+    attachment."""
     if query is None:
         return []
     out: list[ColumnElement[bool]] = []
@@ -309,9 +318,9 @@ def _criteria(
         if term is not None:
             out.append(column.icontains(term, autoescape=True))
     if query.since is not None:
-        out.append(message.received >= _midnight(query.since))
+        out.append(message.received >= _midnight(query.since, zone))
     if query.before is not None:
-        out.append(message.received < _midnight(query.before))
+        out.append(message.received < _midnight(query.before, zone))
     marks: list[tuple[str, bool | None, InstrumentedAttribute[list[str]]]] = [
         (_SEEN, None if query.unread is None else not query.unread, message.flags),
         (_FLAGGED, query.flagged, message.flags),
@@ -334,17 +343,18 @@ def _of_sources(
     user_id: int,
     sources: Sequence[IndexSource],
     query: SearchQuery | None,
+    zone: TimeZoneName,
     message: type[MailIndexMessage] = MailIndexMessage,
 ) -> list[ColumnElement[bool]]:
     """The user's rows (``message``, or an alias of it) of ``sources`` (on Gmail, those carrying
-    one of a source's labels) matching ``query``."""
+    one of a source's labels) matching ``query``, its days the user's (``zone``)."""
     where = []
     for source in sources:
         own = message.folder_id == source.folder_id
         if source.labels is not None:
             own = and_(own, message.labels.overlap(literal(list(source.labels), ARRAY(Text))))
         where.append(own)
-    return [message.user_id == user_id, or_(*where), *_criteria(query, message)]
+    return [message.user_id == user_id, or_(*where), *_criteria(query, zone, message)]
 
 
 def _after(after: Key | None) -> list[ColumnElement[bool]]:
@@ -376,18 +386,19 @@ def read_rows(
     sources: Sequence[IndexSource],
     query: SearchQuery | None,
     *,
+    zone: TimeZoneName,
     limit: int,
     after: Key | None = None,
 ) -> list[tuple[MessageSummary, Key]]:
-    """Up to ``limit`` of the sources' rows matching ``query``, newest first, after ``after``;
-    each as a page's summary, with its key."""
+    """Up to ``limit`` of the sources' rows matching ``query`` (its days the user's, in
+    ``zone``), newest first, after ``after``; each as a page's summary, with its key."""
     if not sources:
         return []
     message = MailIndexMessage
     by_folder = {source.folder_id: source for source in sources}
     statement = (
         select(message)
-        .where(*_of_sources(user_id, sources, query), *_after(after))
+        .where(*_of_sources(user_id, sources, query, zone), *_after(after))
         .order_by(*_NEWEST)
         .limit(limit)
     )
@@ -490,19 +501,20 @@ def read_conversations(
     sources: Sequence[IndexSource],
     query: SearchQuery | None,
     *,
+    zone: TimeZoneName,
     limit: int,
     after: Key | None = None,
     listing: Callable[[int], Sequence[Folder]] | None = None,
 ) -> list[tuple[MessageSummary, Key, Conversation]]:
-    """Up to ``limit`` of the conversations among the sources' rows matching ``query``, within
-    one account each, newest first by their latest row, that row after ``after``: each as its
-    latest row's summary, that row's key, and the conversation of the matching rows. A row's
-    conversation is its ``thread_key`` (``mailroom.mail.index.threads``); a row without one is
-    alone. A row is a conversation's latest when no newer
-    matching row of its account has its key, which follows the newest-first index and stops at
-    ``limit``, rather than ranking every row of the sources. ``listing`` gives an account's
-    folders, asked only of a conversation across several folders not read by Gmail label, for
-    which of them are its Sent and Drafts (``own_copy``)."""
+    """Up to ``limit`` of the conversations among the sources' rows matching ``query`` (``zone``
+    as ``read_rows``'s), within one account each, newest first by their latest row, that row
+    after ``after``: each as its latest row's summary, that row's key, and the conversation of
+    the matching rows. A row's conversation is its ``thread_key``
+    (``mailroom.mail.index.threads``); a row without one is alone. A row is a conversation's
+    latest when no newer matching row of its account has its key, which follows the newest-first
+    index and stops at ``limit``, rather than ranking every row of the sources. ``listing`` gives
+    an account's folders, asked only of a conversation across several folders not read by Gmail
+    label, for which of them are its Sent and Drafts (``own_copy``)."""
     if not sources:
         return []
     message, folder = MailIndexMessage, MailIndexFolder
@@ -515,7 +527,7 @@ def read_conversations(
             and_(newer_folder.id == newer.folder_id, newer_folder.user_id == newer.user_id),
         )
         .where(
-            *_of_sources(user_id, sources, query, newer),
+            *_of_sources(user_id, sources, query, zone, newer),
             newer_folder.account_id == folder.account_id,
             newer.thread_key == message.thread_key,
             tuple_(newer.received, newer.folder_id, newer.uid)
@@ -525,7 +537,7 @@ def read_conversations(
     latest = db.execute(
         select(message, folder.account_id)
         .join(folder, and_(folder.id == message.folder_id, folder.user_id == message.user_id))
-        .where(*_of_sources(user_id, sources, query), *_after(after), ~later.exists())
+        .where(*_of_sources(user_id, sources, query, zone), *_after(after), ~later.exists())
         .order_by(*_NEWEST)
         .limit(limit)
     ).all()
@@ -538,7 +550,7 @@ def read_conversations(
             select(message, folder.account_id)
             .join(folder, and_(folder.id == message.folder_id, folder.user_id == message.user_id))
             .where(
-                *_of_sources(user_id, sources, query),
+                *_of_sources(user_id, sources, query, zone),
                 tuple_(folder.account_id, message.thread_key).in_(list(threads)),
             )
             .order_by(*_NEWEST)
@@ -649,6 +661,7 @@ def read_page_rows(
     sources: Sequence[IndexSource],
     query: SearchQuery | None,
     *,
+    zone: TimeZoneName,
     limit: int,
     after: Key | None = None,
     group: bool = False,
@@ -659,11 +672,18 @@ def read_page_rows(
     if group:
         out.extend(
             read_conversations(
-                db, user_id, sources, query, limit=limit, after=after, listing=listing
+                db,
+                user_id,
+                sources,
+                query,
+                zone=zone,
+                limit=limit,
+                after=after,
+                listing=listing,
             )
         )
     else:
-        found = read_rows(db, user_id, sources, query, limit=limit, after=after)
+        found = read_rows(db, user_id, sources, query, zone=zone, limit=limit, after=after)
         out.extend((summary, key, None) for summary, key in found)
     return out
 
@@ -692,18 +712,52 @@ def _addresses(people: Sequence[Mapping[str, object]]) -> tuple[Address, ...]:
 
 
 def tail_of(
-    sources: Sequence[IndexSource], query: SearchQuery | None
+    sources: Sequence[IndexSource], query: SearchQuery | None, zone: TimeZoneName
 ) -> list[tuple[int, str, date]]:
     """What is read live once the rows run out: each folder indexed under an age limit, with its
-    day, unless the query's own ``since`` leaves nothing before it."""
-    since = None if query is None else query.since
+    day, unless the query's own ``since`` (the user's, in ``zone``) starts no earlier than that
+    day, the server's (taken as UTC's, as the write-through does): then the index holds all it
+    asks for. A user east of UTC searching from that very day still has its first hours read
+    live."""
+    since = None if query is None or query.since is None else _midnight(query.since, zone)
     out: dict[tuple[int, str], date] = {}
     for source in sources:
-        if source.oldest is None or (since is not None and since >= source.oldest):
+        if source.oldest is None:
+            continue
+        if since is not None and since >= datetime.combine(source.oldest, time(), UTC):
             continue
         for path in source.live:
             out[(source.account, path)] = source.oldest
     return [(account, path, day) for (account, path), day in out.items()]
+
+
+def tail_query(query: SearchQuery | None) -> SearchQuery | None:
+    """``query`` as the live tail asks the server: its ``since`` a day earlier and its ``before``
+    a day later, since the server's day may start before or after the user's; ``in_days`` then
+    keeps what falls within the user's own."""
+    if query is None:
+        return None
+    return replace(query, since=_shifted(query.since, -1), before=_shifted(query.before, 1))
+
+
+def _shifted(day: date | None, days: int) -> date | None:
+    if day is None:
+        return None
+    try:
+        return day + timedelta(days=days)
+    except OverflowError:
+        return day
+
+
+def in_days(summary: MessageSummary, query: SearchQuery | None, zone: TimeZoneName) -> bool:
+    """Whether ``summary`` arrived within ``query``'s ``since`` and ``before``, days of the user's
+    (``zone``), as the index compares them; one without an arrival time is kept."""
+    at = summary.received or summary.date
+    if query is None or at is None:
+        return True
+    if query.since is not None and at < _midnight(query.since, zone):
+        return False
+    return query.before is None or at < _midnight(query.before, zone)
 
 
 @dataclass(frozen=True, slots=True)
