@@ -1,7 +1,8 @@
 # Deploy
 
 **Runs in production since 0.2.0** (28 October 2026), on the operator's host, from the Quadlet units
-below adapted to it. There is no staging yet. A release tag builds and pushes both images, and the
+below adapted to it. Staging runs the same images from Gitea's `staging` branch
+([`requirements/ci-cd.md`](requirements/ci-cd.md) — *Staging*). A release tag builds and pushes both images, and the
 host's config repository deploys them ([`requirements/ci-cd.md`](requirements/ci-cd.md) — *Release
 and deploy*).
 
