@@ -48,6 +48,15 @@ class MimePart:
 
 
 @dataclass(frozen=True, slots=True)
+class InlinePart:
+    """A part the HTML shows in place, with the Content-ID its `cid:` URLs name."""
+
+    info: PartInfo
+    content_id: str
+    """Without its angle brackets."""
+
+
+@dataclass(frozen=True, slots=True)
 class Structure:
     """A message's parts by role: body, HTML, attachments, inline parts, invite and every leaf."""
 
@@ -79,6 +88,15 @@ class Structure:
         invite."""
         calendar = () if self.calendar is None else (self.calendar,)
         return self.attachments + self.inline_parts + calendar
+
+    @property
+    def inline(self) -> tuple[InlinePart, ...]:
+        """The inline parts with their Content-IDs."""
+        return tuple(
+            InlinePart(info, cid)
+            for info in self.inline_parts
+            if (cid := self.parts[info.part].content_id) is not None
+        )
 
     @property
     def carried(self) -> tuple[PartInfo, ...]:

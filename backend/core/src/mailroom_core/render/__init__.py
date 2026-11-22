@@ -1,5 +1,6 @@
 """Mail rendered for a reader: bodies and headers as compact text for the model, the
-untrusted-content envelope, and sanitised HTML for the Mailroom app's message view."""
+untrusted-content envelope, sanitised HTML for the Mailroom app's message view, and the owner's
+HTML sanitised to send."""
 
 from mailroom_core.render.body import RenderedBody, render_body
 from mailroom_core.render.envelope import untrusted
@@ -17,6 +18,7 @@ from mailroom_core.render.message import (
     header_block,
     list_line,
 )
+from mailroom_core.render.outgoing_html import InlineImage, OutgoingHtml, outgoing_html
 from mailroom_core.render.quotes import (
     CUT_MARK,
     MARKER_LINE,
@@ -45,9 +47,11 @@ __all__ = [
     "DateValue",
     "HeaderView",
     "HtmlText",
+    "InlineImage",
     "ListItem",
     "Marker",
     "Omitted",
+    "OutgoingHtml",
     "PartInfo",
     "RenderedBody",
     "SafeHtml",
@@ -62,6 +66,7 @@ __all__ = [
     "header_block",
     "html_to_text",
     "list_line",
+    "outgoing_html",
     "render_body",
     "safe_cut",
     "safe_html",

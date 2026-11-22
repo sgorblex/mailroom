@@ -37,6 +37,7 @@ from mailroom_core.mail.compose import (
 from mailroom_core.mail.drafts import (
     DRAFT_FLAGS,
     MAX_DRAFT_BYTES,
+    MAX_DRAFT_HTML_BYTES,
     append_message,
     draft_source,
     read_draft,
@@ -471,10 +472,16 @@ _UNSENDABLE_HEADERS: Final = (
 )
 
 
+_HTML_SOURCE: Final = 2 * 4 * MAX_DRAFT_HTML_BYTES
+"""Of a stored HTML draft beyond its attachments: its HTML and the text derived from it, each read
+back up to `MAX_DRAFT_HTML_BYTES`, which quoted-printable and its soft line breaks grow up to 3.1
+times. The images pasted into it were among the HTML's bytes."""
+
+
 def _source_cap(limits: Limits) -> int:
-    """How big a stored draft may be: its attachments up to their cap, which base64 and its line
-    breaks grow by 37%, and its text."""
-    return attachment_cap(limits) * 3 // 2 + MAX_DRAFT_BYTES
+    """How big a stored draft may be: its attachments up to their cap (its HTML's inline parts
+    included), which base64 and its line breaks grow by 37%, and its text or HTML."""
+    return attachment_cap(limits) * 3 // 2 + MAX_DRAFT_BYTES + _HTML_SOURCE
 
 
 def prepare_draft(

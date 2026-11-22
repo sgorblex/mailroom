@@ -63,6 +63,10 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   browser reads them (backslashes as slashes) before the host is taken. The check has no
   public-suffix list and reads text the sender may hide with styles: it warns, the title is
   what to trust.
+- **HTML the user sends** is sanitised on the server by mailroom-core (`render.outgoing_html`,
+  [`../core.md`](../core.md) — *Compose*): the same allowlists, no script, event handlers, forms,
+  frames, objects or style sheets, links only `http(s)` and `mailto`, images only the message's own
+  `cid:` parts (`data:` images become such parts), styles without `url()` or `expression()`.
 - Plain-text rendering is the fallback and the default for the index.
 - **No request on mail's behalf, but one.** Nothing a message names is fetched, with one
   exception: a **one-click unsubscribe** (RFC 8058) the user asks for on one message (`POST

@@ -26,10 +26,20 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 from urllib.parse import unquote
 
-import lxml.etree
 import lxml.html
 import nh3
 
+from mailroom_core.render._html_policy import (
+    ATTRIBUTES,
+    CSS_PROPERTIES,
+    DROPPED_WITH_CONTENT,
+    LINK,
+    RASTER_TYPES,
+    TAGS,
+    UNSAFE_CSS,
+    content_id,
+    parsed_body,
+)
 from mailroom_core.render.hosts import (
     browser_url,
     element_text,
@@ -42,61 +52,8 @@ from mailroom_core.render.hosts import (
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-_TAGS: Final = frozenset(
-    {
-        "a", "abbr", "address", "article", "aside", "b", "bdi", "bdo", "big", "blockquote",
-        "br", "caption", "center", "cite", "code", "col", "colgroup", "dd", "del", "details",
-        "dfn", "div", "dl", "dt", "em", "figcaption", "figure", "font", "footer", "h1", "h2",
-        "h3", "h4", "h5", "h6", "header", "hr", "i", "img", "ins", "kbd", "li", "main", "mark",
-        "nav", "ol", "p", "pre", "q", "s", "samp", "section", "small", "span", "strike",
-        "strong", "sub", "summary", "sup", "table", "tbody", "td", "tfoot", "th", "thead",
-        "time", "tr", "tt", "u", "ul", "var", "wbr",
-    }
-)  # fmt: skip
-
-_ATTRIBUTES: Final = {
-    "*": {"align", "bgcolor", "border", "color", "dir", "height", "lang", "style", "title",
-          "valign", "width"},
-    "a": {"href"},
-    "blockquote": {"type"},
-    "col": {"span"},
-    "colgroup": {"span"},
-    "font": {"face", "size"},
-    "img": {"alt", "src"},
-    "ol": {"start", "type", "reversed"},
-    "table": {"cellpadding", "cellspacing"},
-    "td": {"colspan", "nowrap", "rowspan"},
-    "th": {"colspan", "nowrap", "rowspan", "scope"},
-}  # fmt: skip
-
-_DROPPED_WITH_CONTENT: Final = frozenset(
-    {
-        "form", "head", "iframe", "math", "noscript", "object", "script", "select", "style",
-        "svg", "template", "textarea", "title",
-    }
-)  # fmt: skip
-
-_CSS_PROPERTIES: Final = frozenset(
-    {
-        "background-color", "border", "border-bottom", "border-collapse", "border-color",
-        "border-left", "border-radius", "border-right", "border-spacing", "border-style",
-        "border-top", "border-width", "color", "direction", "display", "font", "font-family",
-        "font-size", "font-style", "font-variant", "font-weight", "height", "letter-spacing",
-        "line-height", "list-style-type", "margin", "margin-bottom", "margin-left",
-        "margin-right", "margin-top", "max-height", "max-width", "min-height", "min-width",
-        "overflow-wrap", "padding", "padding-bottom", "padding-left", "padding-right",
-        "padding-top", "table-layout", "text-align", "text-decoration", "text-indent",
-        "text-transform", "vertical-align", "white-space", "width", "word-break", "word-spacing",
-    }
-)  # fmt: skip
-
-RASTER_TYPES: Final = frozenset({"image/gif", "image/jpeg", "image/png", "image/webp"})
-"""The image types inlined as `data:`. Not SVG, which is a document of its own."""
-
-_UNSAFE_CSS: Final = re.compile(r"url\s*\(|expression\s*\(|\\", re.IGNORECASE)
 _DATA_IMAGE: Final = re.compile(r"data:image/(?:gif|jpeg|png|webp)[;,]", re.IGNORECASE)
 _REMOTE: Final = re.compile(r"https?://", re.IGNORECASE)
-_LINK: Final = re.compile(r"(?:https?://|mailto:)", re.IGNORECASE)
 _REMOTE_CANDIDATE: Final = re.compile(r"(?:^|[\s,])https?://", re.IGNORECASE)
 _REMOTE_CSS_URL: Final = re.compile(r"url\s*\(\s*['\"]?\s*https?:", re.IGNORECASE)
 _MARK_STYLE: Final = (
@@ -122,17 +79,13 @@ class SafeHtml:
     """Of those, the `<img>` sources: what `remote` would show."""
 
 
-def _content_id(value: str) -> str:
-    return value.strip().removeprefix("<").removesuffix(">").strip()
-
-
 class _Filter:
     """nh3's `attribute_filter`: rewrites or drops one attribute value."""
 
     def __init__(
         self, inline_images: Mapping[str, tuple[str, bytes]], remote: bool, max_inline_bytes: int
     ) -> None:
-        self.images = {_content_id(cid): part for cid, part in inline_images.items()}
+        self.images = {content_id(cid): part for cid, part in inline_images.items()}
         self.remote = remote
         self.budget = max_inline_bytes
         self.inlined: dict[str, str] = {}
@@ -145,19 +98,19 @@ class _Filter:
             prefix = self.title_prefix
             return value.removeprefix(prefix) if value.startswith(prefix) else None
         if attribute == "style":
-            kept = [decl for decl in value.split(";") if not _UNSAFE_CSS.search(decl)]
+            kept = [decl for decl in value.split(";") if not UNSAFE_CSS.search(decl)]
             return ";".join(kept) or None
         if tag == "img" and attribute == "src":
             return self._image(browser_url(value))
         if attribute == "href":
             # Absolute web and mail links only: no cid:, data:, or a path on the host's origin.
             url = browser_url(value)
-            return url if _LINK.match(url) else None
+            return url if LINK.match(url) else None
         return value
 
     def _image(self, src: str) -> str | None:
         if src[:4].lower() == "cid:":
-            return self._inline(_content_id(unquote(src[4:])))
+            return self._inline(content_id(unquote(src[4:])))
         if _DATA_IMAGE.match(src):
             return src
         if _REMOTE.match(src):
@@ -210,7 +163,7 @@ def _mark_link(link: lxml.html.HtmlElement, title_prefix: str) -> None:
     if href is None:
         return
     url = web_url(browser_url(href))
-    if not _LINK.match(url):
+    if not LINK.match(url):
         return
     link.set("href", url)
     host = link_host(url)
@@ -245,14 +198,7 @@ def _normalised(html: str, title_prefix: str) -> tuple[str, tuple[int, int]]:
     """The body as lxml serialises it once `_prepare`d: well-formed, at most libxml2's depth
     (2048 with `huge_tree`), no comments or processing instructions; and its remote images, all
     and loadable."""
-    parser = lxml.html.HTMLParser(
-        encoding="utf-8", huge_tree=True, no_network=True, remove_comments=True, remove_pis=True
-    )
-    try:
-        document = lxml.html.document_fromstring(html.encode("utf-8", "replace"), parser=parser)
-    except lxml.etree.ParserError:
-        return "", (0, 0)
-    body = document.find("body")
+    body = parsed_body(html)
     if body is None:
         return "", (0, 0)
     counts = _prepare(body, title_prefix)
@@ -276,15 +222,15 @@ def safe_html(
     normalised, (remote_images, loadable) = _normalised(html, attribute_filter.title_prefix)
     cleaned = nh3.clean(
         normalised,
-        tags=set(_TAGS),
-        clean_content_tags=set(_DROPPED_WITH_CONTENT),
-        attributes={tag: set(names) for tag, names in _ATTRIBUTES.items()},
+        tags=set(TAGS),
+        clean_content_tags=set(DROPPED_WITH_CONTENT),
+        attributes={tag: set(names) for tag, names in ATTRIBUTES.items()},
         attribute_filter=attribute_filter,
         strip_comments=True,
         link_rel="noopener noreferrer nofollow",
         # cid: and data: pass the scheme check so the filter can inline or drop them.
         url_schemes={"cid", "data", "http", "https", "mailto"},
         set_tag_attribute_values={"a": {"target": "_blank"}},
-        filter_style_properties=set(_CSS_PROPERTIES),
+        filter_style_properties=set(CSS_PROPERTIES),
     )
     return SafeHtml(cleaned, remote_images, loadable)

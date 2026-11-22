@@ -30,7 +30,7 @@ from mailroom_core.mail.compose import (
 from mailroom_core.mail.download import body_text, part_content
 from mailroom_core.mail.errors import MailError, mail_error
 from mailroom_core.mail.organize import trash_messages
-from mailroom_core.mail.outgoing import check_sendable, check_uploads
+from mailroom_core.mail.outgoing import MAX_HTML_BYTES, check_sendable, check_uploads
 from mailroom_core.mail.read import fetch_structure, fetched_headers
 from mailroom_core.mail.recipients import envelope_mailboxes
 from mailroom_core.mail.ref import MessageRef, check_fresh, format_ref, parse_ref
@@ -43,7 +43,7 @@ from mailroom_core.mail.selected import (
     message_id_uids,
     search_uids,
 )
-from mailroom_core.render import html_to_text
+from mailroom_core.render import html_to_text, outgoing_html
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
@@ -55,11 +55,16 @@ if TYPE_CHECKING:
     from mailroom_core.mail.compose import MessageInput
     from mailroom_core.mail.imap import MailboxContext, MailConnections
     from mailroom_core.mail.recipients import Mailbox
-    from mailroom_core.mail.structure import Structure
+    from mailroom_core.mail.structure import InlinePart, Structure
     from mailroom_core.render import PartInfo
 
 MAX_DRAFT_BYTES: Final = 2 * 1024 * 1024
-"""Of a draft's text when read back; a longer one reads as `lossy`."""
+"""Of a draft's text, and of another client's HTML, when read back; a longer one reads as
+`lossy`."""
+MAX_DRAFT_HTML_BYTES: Final = 2 * MAX_HTML_BYTES
+"""Of a Mailroom HTML draft's HTML, and of the text derived from it, when read back: twice the
+longest HTML `check_fields` admits, room for the entities sanitising writes out (`&lt;` for a
+stray `<`), so that one reads back whole."""
 DRAFT_FLAGS: Final = ("\\Draft", "\\Seen")
 _MARK: Final = f"BODY.PEEK[HEADER.FIELDS ({DRAFT_HEADER.upper()})]"
 _DRAFTS_READ: Final = 200
@@ -92,9 +97,14 @@ class Draft:
     forwards: MessageRef | None = None
     """The message a send is to mark `FORWARDED`, the same way."""
     text: str = ""
+    html: str | None = None
+    """Its HTML, on a draft Mailroom wrote with one, sanitised as a send would
+    (`render.outgoing_html`), its images naming `inline` by `cid:`; None on any other."""
+    inline: tuple[InlinePart, ...] = ()
+    """The parts that HTML shows in place, which a save keeps as inline `AttachmentSource`s."""
     lossy: bool = False
-    """Its text is not all of it: it had HTML, inline images or an invite with no name, which a
-    save would not keep, or more text than is read."""
+    """Its text is not all of it: it had HTML or inline images another client wrote, or an
+    invite with no name, which a save would not keep, or more text or HTML than is read."""
     attachments: tuple[PartInfo, ...] = ()
 
 
@@ -109,6 +119,8 @@ class SavedDraft:
     message_id: str
     parts: tuple[PartInfo, ...]
     """Its attachments, as a read lists them; empty when `ref` is None."""
+    inline: tuple[InlinePart, ...] = ()
+    """The parts its HTML shows in place; empty when `ref` is None."""
     replaced: Removal | None
     """What became of the old version; `failed` when it is still there, None when there was none
     or it was left in place because `ref` is None."""
@@ -227,19 +239,30 @@ def read_draft(connections: MailConnections, ref: MessageRef) -> Draft:
         headers = fetched_headers(data)
         own = is_own_draft(headers)
         text = ""
-        lossy = bool(
-            structure.html
-            or structure.inline_parts
-            or (structure.calendar is not None and structure.calendar.name is None)
+        html: str | None = None
+        kept_html = own and structure.html is not None
+        inline = structure.inline if kept_html else ()
+        lossy = (structure.calendar is not None and structure.calendar.name is None) or (
+            not kept_html and bool(structure.html or structure.inline_parts)
         )
+        cap = MAX_DRAFT_HTML_BYTES if kept_html else MAX_DRAFT_BYTES
         fmt = structure.body_format
         if structure.body is not None and fmt is not None:
-            content = part_content(client, ref.uid, structure.body, MAX_DRAFT_BYTES)
-            complete = len(content) < MAX_DRAFT_BYTES
+            content = part_content(client, ref.uid, structure.body, cap)
+            complete = len(content) < cap
             lossy = lossy or not complete
             text = body_text(content, structure.body, complete=complete)
             if fmt == "html":
                 text = html_to_text(text, False).text
+        if kept_html and structure.html is not None:
+            content = part_content(client, ref.uid, structure.html, cap)
+            complete = len(content) < cap
+            lossy = lossy or not complete
+            html = outgoing_html(
+                body_text(content, structure.html, complete=complete),
+                content_ids=[part.content_id for part in inline],
+                data_images=False,
+            ).html
         envelope = data.get(b"ENVELOPE")
         message_id = getattr(envelope, "message_id", None)
         identifier = None if message_id is None else header_text(message_id) or None
@@ -261,6 +284,8 @@ def read_draft(connections: MailConnections, ref: MessageRef) -> Draft:
             answers=answers if answers is None or answers.account == ref.account else None,
             forwards=forwards if forwards is None or forwards.account == ref.account else None,
             text=text.replace("\r\n", "\n"),
+            html=html,
+            inline=inline,
             lossy=lossy,
             attachments=structure.carried,
         )
@@ -394,8 +419,9 @@ def save_draft(
 ) -> SavedDraft:
     """Saves `message` in Drafts, as a new draft or as the next version of `replaces`.
 
-    `message.attachments` are new files; `keep` names parts of existing messages, the draft being
-    replaced included, and the two together stay under `cap`. `compose_id` keeps the Message-ID
+    `message.attachments` are new files, inline parts included; `keep` names parts of existing
+    messages, the draft being replaced included (its inline parts as `inline` sources), and the
+    two together stay under `cap`. `compose_id` keeps the Message-ID
     of every version the same; without it each save gets a new one. Anything that fails before
     the APPEND is answered, or the APPEND itself, raises with the old version untouched. After
     an APPEND error the message may be saved all the same: `find_drafts` tells. The old version
@@ -439,6 +465,7 @@ def save_draft(
         folder=folder,
         message_id=composed.message_id,
         parts=() if located is None else located[1].carried,
+        inline=() if located is None else located[1].inline,
         replaced=replaced,
         autosave=autosave,
     )

@@ -487,13 +487,13 @@ def _starts_tag(html: str, name: str) -> bool:
     return re.search(_TAG_START.format(name, name), html, re.IGNORECASE) is not None
 
 
-def html_to_text(html: str, mark_quotes: bool) -> HtmlText:
+def html_to_text(html: str, mark_quotes: bool, *, max_chars: int = MAX_HTML_CHARS) -> HtmlText:
     """HTML to plain text: links as `[text](url)`, no images (so no tracking pixels), no styles
     or scripts. With `mark_quotes`, quote containers are marked for `collapse_quotes`. Content
-    past the size or depth limits is dropped, at CUT_MARK for depth."""
-    too_long = utf16_length(html) > MAX_HTML_CHARS
+    past `max_chars` (UTF-16 units) or the depth limit is dropped, at CUT_MARK for depth."""
+    too_long = utf16_length(html) > max_chars
     if too_long:
-        html = utf16_prefix(html, MAX_HTML_CHARS)
+        html = utf16_prefix(html, max_chars)
     parser = lxml.html.HTMLParser(encoding="utf-8", huge_tree=True, no_network=True)
     try:
         document = lxml.html.document_fromstring(html.encode("utf-8", "replace"), parser=parser)

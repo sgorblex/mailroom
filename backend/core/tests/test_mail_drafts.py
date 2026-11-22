@@ -2,6 +2,7 @@
 Dovecot, including what the TypeScript leaves to imapflow: reading an APPEND's raw response, and
 what is left after each way a save can fail."""
 
+import base64
 import imaplib
 import secrets
 import socket
@@ -66,6 +67,7 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.integration
 
 CAP = 5 * 1024 * 1024
+PNG = b"\x89PNG\r\n\x1a\nfake"
 PDF = b"%PDF-1.4\n1 0 obj << >> endobj\ntrailer << >>\n%%EOF\n"
 
 
@@ -487,6 +489,93 @@ def test_html_reads_as_text_and_as_lossy(imap_server, harness, user, account) ->
     assert "Hello" in draft.text
     assert "<b>" not in draft.text
     assert draft.lossy is True
+
+
+def test_a_mailroom_html_draft_round_trips_with_its_inline_images(
+    imap_server, harness, user, account
+) -> None:
+    pasted = base64.b64encode(b"GIF89a-pasted").decode()
+    mail = harness(account)
+    first, items = save(
+        mail,
+        account,
+        message(
+            account,
+            "unused",
+            html=f"<p>Hello <b>there</b><img src='cid:up@x'><img src='data:image/gif;base64,{pasted}'></p>",
+            attachments=(
+                OutgoingAttachment("up.png", "image/png", PNG, content_id="up@x"),
+                OutgoingAttachment("a.pdf", "application/pdf", PDF),
+            ),
+        ),
+        compose_id="rich-id",
+    )
+    assert first.ref is not None
+    assert [p.name for p in first.parts] == ["a.pdf"]
+    assert len(first.inline) == 2
+    assert [item.attachments for item in items] == [1]
+
+    draft = read_draft(mail, first.ref)
+    assert draft.lossy is False
+    assert draft.text == "Hello there\n"
+    assert {part.content_id for part in draft.inline} == {part.content_id for part in first.inline}
+    assert draft.html is not None
+    pasted_id = next(p.content_id for p in draft.inline if p.content_id != "up@x")
+    assert draft.html == (
+        f'<p>Hello <b>there</b><img src="cid:up@x"><img src="cid:{pasted_id}"></p>\n'
+    )
+
+    second, _ = save(
+        mail,
+        account,
+        message(account, "unused", html=draft.html.replace("Hello", "Hi")),
+        compose_id="rich-id",
+        replaces=first.ref,
+        keep=[
+            *(AttachmentSource(first.ref, p.info.part, inline=True) for p in draft.inline),
+            *(AttachmentSource(first.ref, p.part) for p in draft.attachments),
+        ],
+    )
+    assert second.ref is not None
+    again = read_draft(mail, second.ref)
+    assert again.lossy is False
+    assert again.html == draft.html.replace("Hello", "Hi")
+    assert {p.content_id for p in again.inline} == {"up@x", pasted_id}
+    up = next(p for p in again.inline if p.content_id == "up@x")
+    assert read_attachment(mail, second.ref, up.info.part, max_bytes=CAP).data == PNG
+    assert [p.name for p in again.attachments] == ["a.pdf"]
+
+
+def test_a_mailroom_html_draft_past_the_text_cap_reads_back_whole(
+    imap_server, harness, user, account
+) -> None:
+    wide = "é" * (drafts_module.MAX_DRAFT_BYTES // 2 + 1000)
+    mail = harness(account)
+    saved, _ = save(mail, account, message(account, "unused", html=f"<p>{wide}</p>"))
+    assert saved.ref is not None
+    draft = read_draft(mail, saved.ref)
+    assert draft.lossy is False
+    assert draft.html == f"<p>{wide}</p>\n"
+    assert draft.text == f"{wide}\n"
+
+
+def test_another_clients_inline_images_are_lossy_and_not_kept(
+    imap_server, harness, user, account
+) -> None:
+    raw = (
+        "From: a@example.org\r\nTo: b@example.org\r\nSubject: theirs\r\nMIME-Version: 1.0\r\n"
+        'Content-Type: multipart/related; boundary="r"\r\n\r\n'
+        "--r\r\nContent-Type: text/html\r\n\r\n<p>x<img src=cid:one@x></p>\r\n"
+        "--r\r\nContent-Type: image/png\r\nContent-ID: <one@x>\r\n"
+        "Content-Transfer-Encoding: base64\r\n\r\niVBORw0KGgo=\r\n"
+        "--r--\r\n"
+    )
+    seed(imap_server, user, "Drafts", raw, ["\\Draft"])
+    mail = harness(account)
+    draft = read_draft(mail, refs_in(mail)[0])
+    assert draft.lossy is True
+    assert draft.html is None
+    assert draft.inline == ()
 
 
 def test_a_save_whose_removal_fails_still_stands(

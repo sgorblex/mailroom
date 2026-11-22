@@ -36,7 +36,7 @@ from mailroom_core.render import (
     safe_html,
     sender_mismatch,
 )
-from mailroom_core.render.safe_html import RASTER_TYPES
+from mailroom_core.render._html_policy import RASTER_TYPES
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

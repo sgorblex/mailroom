@@ -64,6 +64,7 @@ from mailroom_core.mail.download import body_text, part_content
 from mailroom_core.mail.drafts import (
     DRAFT_FLAGS,
     MAX_DRAFT_BYTES,
+    MAX_DRAFT_HTML_BYTES,
     Draft,
     SavedDraft,
     append_message,
@@ -156,6 +157,7 @@ from mailroom_core.mail.organize import (
 )
 from mailroom_core.mail.outgoing import (
     MAX_ADDRESSES,
+    MAX_HTML_BYTES,
     MAX_SUBJECT_CHARS,
     MAX_TEXT_CHARS,
     MAX_UPLOADS,
@@ -203,15 +205,18 @@ from mailroom_core.mail.recipients import (
 from mailroom_core.mail.ref import MessageRef, check_fresh, format_ref, parse_ref
 from mailroom_core.mail.reply import (
     MAX_ORIGINAL_BYTES,
+    MAX_QUOTED_HTML_BYTES,
     Original,
     ReplyRecipients,
     Threading,
     forward_subject,
     forwarded_original,
+    forwarded_original_html,
     mark_answered,
     mark_forwarded,
     original_message,
     quoted_original,
+    quoted_original_html,
     reply_recipients,
     reply_subject,
     threading,
@@ -255,7 +260,7 @@ from mailroom_core.mail.selected import (
     special_folder_in,
     store_flags,
 )
-from mailroom_core.mail.structure import MimePart, Structure, analyse_structure
+from mailroom_core.mail.structure import InlinePart, MimePart, Structure, analyse_structure
 from mailroom_core.mail.text import (
     ATTACHMENT_FILE_NOTE,
     ToolNames,
@@ -286,10 +291,13 @@ __all__ = [
     "MAX_ADDRESSES",
     "MAX_BODY_BYTES",
     "MAX_DRAFT_BYTES",
+    "MAX_DRAFT_HTML_BYTES",
     "MAX_FOLDER_DEPTH",
     "MAX_FOLDER_NAME",
+    "MAX_HTML_BYTES",
     "MAX_LISTED_FOLDERS",
     "MAX_ORIGINAL_BYTES",
+    "MAX_QUOTED_HTML_BYTES",
     "MAX_REFS",
     "MAX_SUBJECT_CHARS",
     "MAX_TEXT_CHARS",
@@ -338,6 +346,7 @@ __all__ = [
     "IdleWatch",
     "IndexPlan",
     "IndexedMessage",
+    "InlinePart",
     "Junk",
     "ListInfo",
     "MailConnections",
@@ -437,6 +446,7 @@ __all__ = [
     "format_ref",
     "forward_subject",
     "forwarded_original",
+    "forwarded_original_html",
     "from_identity",
     "gmail_label_ref",
     "gmail_label_refs",
@@ -475,6 +485,7 @@ __all__ = [
     "plan_index",
     "preview_of",
     "quoted_original",
+    "quoted_original_html",
     "read_attachment",
     "read_draft",
     "read_folders",
