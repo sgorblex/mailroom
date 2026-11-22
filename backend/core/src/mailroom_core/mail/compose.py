@@ -444,6 +444,12 @@ def header_names(raw: bytes) -> set[str]:
     }
 
 
+def dated(raw: bytes, at: datetime) -> bytes:
+    """`raw`, its lines CRLF, with one Date field saying `at`, in place of any it had: a stored
+    draft goes out dated when it is sent, not when it was saved."""
+    return _words("Date", [format_datetime(at)]) + without_headers(raw, ["Date"])
+
+
 def readdressed(raw: bytes, *, to: Mailbox, subject: str, message_id: str) -> bytes:
     """`raw`, its lines CRLF, to `to` alone under `subject` and `message_id`: its To, Cc, Bcc,
     Subject and Message-ID replaced, every other field and the body left as they are. The new

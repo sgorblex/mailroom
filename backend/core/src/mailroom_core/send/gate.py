@@ -30,6 +30,7 @@ from mailroom_core.mail.compose import (
     bare_cr_in_headers,
     compose,
     crlf_lines,
+    dated,
     field_count,
     new_message_id,
     readdressed,
@@ -477,7 +478,8 @@ def prepare_draft(
     connections: MailConnections, account: AccountConfig, ref: MessageRef, limits: Limits
 ) -> DraftToSend:
     """Reads a draft to send it as it is stored (HTML, attachments and Message-ID included): the
-    wire copy loses its Bcc, and both lose mailroom's marker. Its From must still be one of the
+    wire copy loses its Bcc, both lose mailroom's marker, and both are dated now, when it goes
+    out, not when it was saved (a held send's hours later). Its From must still be one of the
     account's identities. A draft with no Message-ID, not written here, gets one, so what is filed
     can be found and audited. `too_large` rather than a cut message.
 
@@ -497,7 +499,7 @@ def prepare_draft(
     if from_fields > 1 or len(draft.sender) != from_fields:
         raise MailError("invalid_argument", _UNSENDABLE_HEADERS)
     sender = from_identity(account, draft.sender[0].address if draft.sender else None)
-    stored = without_headers(crlf_lines(source), [DRAFT_HEADER])
+    stored = dated(without_headers(crlf_lines(source), [DRAFT_HEADER]), datetime.now(UTC))
     message_id = draft.message_id
     if message_id is None:
         message_id = new_message_id(sender.address)
