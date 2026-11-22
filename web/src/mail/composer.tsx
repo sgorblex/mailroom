@@ -4,12 +4,13 @@ import { useNavigate } from '@tanstack/react-router'
 import { X } from 'lucide-react'
 
 import { ApiRequestError } from '@/api/http.ts'
-import { deleteDraft, draftText, type MailAddress } from '@/api/mail.ts'
-import { useUndoSendSeconds } from '@/auth/auth-context.ts'
+import { deleteDraft, draftText, scheduleDraft, type MailAddress } from '@/api/mail.ts'
+import { useTimeZone, useUndoSendSeconds } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Dialog } from '@/components/ui/dialog.tsx'
 import { Input } from '@/components/ui/input.tsx'
 import { Textarea } from '@/components/ui/textarea.tsx'
+import { formatDateTime } from '@/lib/format.ts'
 import { useLoad } from '@/lib/use-load.ts'
 import { useUnmountSignal } from '@/lib/use-unmount-signal.ts'
 
@@ -27,14 +28,15 @@ import {
   type TrayItem,
 } from './compose-form.ts'
 import type { ComposeSession, ComposeSource } from './compose-session.ts'
-import { DraftModel, loadStart, type ComposeStart, type DraftView } from './draft-model.ts'
+import { DraftModel, loadStart, type ComposeStart, type DraftView, type HeldSchedule } from './draft-model.ts'
 import { MAIL_NS } from './i18n.ts'
 import { IdentitySelect } from './identity-select.tsx'
-import { composeErrorMessage, mailCodeMessage, mailErrorMessage, sentMessage } from './messages.ts'
+import { composeErrorMessage, mailCodeMessage, mailErrorMessage, scheduleErrorMessage, sentMessage } from './messages.ts'
 import { RecipientInput, type Typed } from './recipient-input.tsx'
 import type { RichEditorHandle } from './rich-editor.tsx'
 import { commitTyped } from './recipients.ts'
 import { followSend, runSend, type SendEnd } from './send-flow.ts'
+import { SendLaterDialog } from './send-later-dialog.tsx'
 import { SendStatus, type SendState } from './send-status.tsx'
 import { fromAddress, signatureOf, swapTextSignature } from './signature.ts'
 import { loadedFolders, roleFolder, useAccountFolders } from './triage-context.ts'
@@ -184,10 +186,29 @@ function SaveStatus({
   return view.ref === null ? null : <span className="text-sm text-muted-foreground">{t('compose.saved')}</span>
 }
 
+/** What the composer says of the held send of a draft opened from Drafts. */
+function ScheduleBanner({ schedule }: { schedule: HeldSchedule }): ReactElement {
+  const { t, i18n } = useTranslation(MAIL_NS)
+  const timeZone = useTimeZone()
+  const text = {
+    held: () => t('compose.heldScheduled', { when: formatDateTime(i18n.language, schedule.sendAt, timeZone) }),
+    cancelling: () => t('compose.heldCancelling'),
+    cancelled: () => t('compose.heldCancelled'),
+    taken: () => t('compose.heldTaken'),
+    cancelFailed: () => t('compose.heldCancelFailed'),
+  }[schedule.state]()
+  const alert = schedule.state === 'taken' || schedule.state === 'cancelFailed'
+  return (
+    <p role={alert ? 'alert' : 'status'} className={`rounded-lg border p-2 text-sm ${alert ? 'text-destructive' : ''}`}>
+      {text}
+    </p>
+  )
+}
+
 function Editor({ session, start }: { session: ComposeSession; start: ComposeStart }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const compose = useCompose()
-  const { attach, announce, close, finishSent, hide, holdSent, identified, mailChanged } = compose
+  const { attach, announce, close, finishScheduled, finishSent, hide, holdSent, identified, mailChanged } = compose
   const undoSeconds = useUndoSendSeconds()
   const navigate = useNavigate()
   const [model] = useState(() => new DraftModel(start, mailChanged))
@@ -199,7 +220,8 @@ function Editor({ session, start }: { session: ComposeSession; start: ComposeSta
   const [held, setHeld] = useState(() => holdsTheDraft(start.send))
   const [refusalShown, setRefusalShown] = useState<DraftView['refusedBy']>(null)
   const [problem, setProblem] = useState<string | null>(null)
-  const [dialog, setDialog] = useState<'resend' | 'delete' | 'unsaved' | 'plain' | null>(null)
+  const [dialog, setDialog] = useState<'resend' | 'delete' | 'unsaved' | 'plain' | 'later' | null>(null)
+  const [scheduling, setScheduling] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const unmountSignal = useUnmountSignal()
   const { state: folders } = useAccountFolders(start.account)
@@ -218,9 +240,10 @@ function Editor({ session, start }: { session: ComposeSession; start: ComposeSta
   const { attachmentsLost } = view
   const { refusedBy } = view
   // Keep draft only dismisses the banner: the send still holds the draft.
-  const readOnly = (held && view.elsewhere) || refusedBy !== null
+  // Taken by the worker, the held send goes as scheduled: nothing typed here could follow it.
+  const readOnly = (held && view.elsewhere) || refusedBy !== null || view.schedule?.state === 'taken'
   // Read-only, not disabled, so text that exists only here stays selectable while it can't change.
-  const locked = readOnly || sending || deleting
+  const locked = readOnly || sending || scheduling || deleting
   const maxRecipients = account?.max_recipients
   const limitWords = maxRecipients === undefined ? null : t('compose.tooManyRecipients', { count: maxRecipients })
 
@@ -416,28 +439,32 @@ function Editor({ session, start }: { session: ComposeSession; start: ComposeSta
     return RECIPIENT_FIELDS.every((field) => !left[field].invalid)
   }
 
-  async function sendDraftNow(confirmResend: boolean): Promise<void> {
+  /** Whether the form can go: its recipients committed and within the limits, else says why. */
+  function sendable(): boolean {
     if (model.busy() || deleting || spent || model.getView().refusedBy !== null) {
-      return
+      return false
     }
     setProblem(null)
     if (!commitRecipients()) {
       setCopies((value) => value || typed.cc.text !== '' || typed.bcc.text !== '')
-      return
+      return false
     }
     const { form: current } = model.getView()
     if (current.to.length + current.cc.length + current.bcc.length === 0) {
       setProblem(t('compose.noRecipients'))
-      return
+      return false
     }
     const limit = overLimit(current)
     if (limit !== null) {
       setProblem(limit)
-      return
+      return false
     }
+    return true
+  }
+
+  /** The form saved, `model` busy: its ref, or null when it is not saved (said why). */
+  async function savedRef(): Promise<string | null> {
     model.setBusy(true)
-    setSend({ kind: 'sending' })
-    announce({ text: t('compose.sending'), urgent: false })
     const saved = await model.queue.flush(true)
     const ref = model.queue.ref
     if (!saved || ref === null) {
@@ -449,6 +476,19 @@ function Editor({ session, start }: { session: ComposeSession; start: ComposeSta
       if (model.queue.state !== 'failed') {
         setProblem(t('compose.stillSaving'))
       }
+      return null
+    }
+    return ref
+  }
+
+  async function sendDraftNow(confirmResend: boolean): Promise<void> {
+    if (!sendable()) {
+      return
+    }
+    setSend({ kind: 'sending' })
+    announce({ text: t('compose.sending'), urgent: false })
+    const ref = await savedRef()
+    if (ref === null) {
       return
     }
     const signal = unmountSignal()
@@ -457,6 +497,28 @@ function Editor({ session, start }: { session: ComposeSession; start: ComposeSta
     const end = await runSend(ref, confirmResend, signal, undoable)
     if (!signal.aborted) {
       finish(end)
+    }
+  }
+
+  /** Send later: the draft saved, then held for the worker to send at `at`. */
+  async function scheduleAt(at: Date): Promise<void> {
+    setDialog(null)
+    if (!sendable()) {
+      return
+    }
+    setScheduling(true)
+    const ref = await savedRef()
+    if (ref === null) {
+      setScheduling(false)
+      return
+    }
+    try {
+      const held = await scheduleDraft(ref, at)
+      finishScheduled(held)
+    } catch (error) {
+      model.setBusy(false)
+      setScheduling(false)
+      setProblem(scheduleErrorMessage(t, error))
     }
   }
 
@@ -604,7 +666,8 @@ function Editor({ session, start }: { session: ComposeSession; start: ComposeSta
       </header>
       {start.lossy && <p className="rounded-lg border p-2 text-sm">{t('compose.lossy')}</p>}
       {attachmentsLost && <p className="rounded-lg border p-2 text-sm">{t('compose.attachmentsLost')}</p>}
-      {readOnly && <p className="rounded-lg border p-2 text-sm">{t('compose.heldBySend')}</p>}
+      {view.schedule !== null && <ScheduleBanner schedule={view.schedule} />}
+      {readOnly && view.schedule?.state !== 'taken' && <p className="rounded-lg border p-2 text-sm">{t('compose.heldBySend')}</p>}
       <fieldset className="flex min-w-0 flex-1 flex-col gap-3">
         <legend className="sr-only">{title}</legend>
         <fieldset disabled={locked} className="contents">
@@ -743,6 +806,18 @@ function Editor({ session, start }: { session: ComposeSession; start: ComposeSta
         >
           {sending ? t('compose.sending') : t('compose.send')}
         </Button>
+        <Button
+          type="button"
+          variant="outline"
+          aria-disabled={sending || scheduling || deleting || spent || refusedBy !== null}
+          onClick={() => {
+            if (!model.busy() && !deleting && !spent && refusedBy === null) {
+              setDialog('later')
+            }
+          }}
+        >
+          {scheduling ? t('compose.scheduling') : t('compose.sendLater')}
+        </Button>
         {(view.ref !== null || !isBlank(form)) && (
           <Button
             type="button"
@@ -762,6 +837,14 @@ function Editor({ session, start }: { session: ComposeSession; start: ComposeSta
           <SaveStatus view={view} sending={sending} limit={overLimit(form)} onSave={() => void model.queue.flush()} />
         )}
       </footer>
+      {dialog === 'later' && (
+        <SendLaterDialog
+          onPick={(at) => void scheduleAt(at)}
+          onCancel={() => {
+            setDialog(null)
+          }}
+        />
+      )}
       {dialog === 'resend' && (
         <Dialog
           label={t('compose.sendAnyway')}

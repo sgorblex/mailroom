@@ -7,13 +7,16 @@ refused, and one that came first has left nothing to do. Then ``send_held``: unl
 key began already (the draft sent at once meanwhile, from another tab or by an agent), it reads the
 draft at the row's ref, which must still be the version scheduled (the same send key), and takes
 it through ``admit`` with that key, ``deliver``, ``file_sent`` and ``settle_draft``, as the
-scheduler's ``by``. The key is claimed before SMTP, so the job run again after a worker stopped
-between the claim and the delivery finds that send and delivers nothing. Once the gate has
-delivered the key, or had delivered it before, the row goes: the send's own row says the rest.
+scheduler's ``by``, audited as its connected app. An agent's held send first needs its grant:
+revoked, or no longer approving ``mail_send``, it fails (``grant_revoked``, ``not_approved``)
+before the draft is read. The key is claimed before SMTP, so the job run again after a worker
+stopped between the claim and the delivery finds that send and delivers nothing. Once the gate
+has delivered the key, or had delivered it before, the row goes: the send's own row says the rest.
 Anything else, an unexpected error too (``internal``), leaves it ``failed`` with its code, the
-draft where it was. A job that ends before the gate audited anything (the draft gone or changed,
-the account unusable, its password missing, an unexpected error) writes a refused record of its
-own, its code and the draft's folder and UID: nothing of the message, which it may not have read.
+draft where it was. A job that ends before the gate audited anything (the grant, the draft gone
+or changed, the account unusable, its password missing, an unexpected error) writes a refused
+record of its own, its code and the draft's folder and UID: nothing of the message, which it may
+not have read.
 """
 
 from __future__ import annotations
@@ -32,6 +35,7 @@ from mailroom.mail.connections import PASSWORD_MISSING, PasswordMissing, unusabl
 from mailroom.mail.service.scheduled import SENT, send_held
 from mailroom.mail.service.send import smtp_sender
 from mailroom.models import ScheduledSend
+from mailroom.oauth.grants import grant_refusal
 from mailroom_core.mail import AuditItem, MailError, parse_ref
 
 if TYPE_CHECKING:
@@ -45,6 +49,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 GONE: Final = "gone"
+MAIL_SEND_GROUP: Final = "mail_send"
 INTERNAL: Final = "internal"
 
 
@@ -56,6 +61,8 @@ class _Held:
     ref: str
     send_key: str
     via: Via
+    client_id: str | None
+    grant_id: str | None
 
     @property
     def by(self) -> Authoriser:
@@ -71,7 +78,7 @@ def send_scheduled(sessions: sessionmaker[Session], mailboxes: Mailboxes, schedu
         held, zone = taken
         audit = _Audit(sessions, held)
         try:
-            outcome = _send(mailboxes, held, zone, audit.note)
+            outcome = _ungranted(sessions, held) or _send(mailboxes, held, zone, audit.note)
         except Exception as error:
             # Its key keeps the draft from going out twice if the user schedules it again.
             logger.warning(
@@ -115,6 +122,8 @@ def _take(sessions: sessionmaker[Session], scheduled_id: int) -> tuple[_Held, Ti
                 ScheduledSend.ref,
                 ScheduledSend.send_key,
                 ScheduledSend.via,
+                ScheduledSend.client_id,
+                ScheduledSend.grant_id,
             )
         ).one_or_none()
         db.commit()
@@ -127,6 +136,8 @@ def _take(sessions: sessionmaker[Session], scheduled_id: int) -> tuple[_Held, Ti
             taken.ref,
             taken.send_key,
             cast("Via", taken.via),
+            taken.client_id,
+            taken.grant_id,
         )
         return held, time_zone_of(db, held.user_id)
 
@@ -136,7 +147,8 @@ class _Audit:
     record of a held send that ended before it did."""
 
     def __init__(self, sessions: sessionmaker[Session], held: _Held) -> None:
-        self._trail = AuditTrail(sessions, held.user_id, Origin(held.via), "send")
+        origin = Origin(held.via, held.client_id, held.grant_id)
+        self._trail = AuditTrail(sessions, held.user_id, origin, "send")
         self._held = held
         self.noted = False
 
@@ -160,6 +172,16 @@ class _Audit:
                 result=cast("AuditResult", outcome),
             )
         )
+
+
+def _ungranted(sessions: sessionmaker[Session], held: _Held) -> str | None:
+    """Why an agent's held send may no longer go: its grant revoked, or ``mail_send`` taken
+    back from it (``grant_refusal``); None for the user's, and an app's without a grant of
+    Mailroom's own (an external issuer's token)."""
+    if held.grant_id is None:
+        return None
+    with sessions() as db:
+        return grant_refusal(db, held.user_id, held.grant_id, MAIL_SEND_GROUP)
 
 
 def _send(mailboxes: Mailboxes, held: _Held, zone: TimeZoneName, note: Note) -> str:

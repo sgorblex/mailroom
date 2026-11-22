@@ -187,10 +187,14 @@ const held = (state: ScheduledSend['state'] = 'held', code: string | null = null
   scheduled_id: '7',
   account: 1,
   ref: 'r',
+  subject: 's',
+  recipients: ['a@example.org'],
   send_at: '2026-11-22T10:00:10Z',
   remaining_ms: 10_000,
   state,
   code,
+  by: 'user',
+  app: null,
 })
 
 describe('a held send', () => {

@@ -2331,6 +2331,40 @@ def test_drafts_mode_drafts_and_off_refuses_through_mcp_while_the_web_send_works
         mail_service.send_draft(ctx, user.id, ref, by="user")
 
 
+def test_draft_send_with_send_at_schedules_it_as_the_agent_and_sends_nothing_now(
+    mcp: Mcp, token: str, writer: Writer, smtp_server: Any, ctx: AppContext, user: User
+) -> None:
+    out = stranger()
+    ref = draft_ref(mcp.text(token, "draft_create", to=[out], subject="Later", text="x"))
+    send_at = datetime.now(UTC) + timedelta(hours=2)
+
+    answer = mcp.text(token, "draft_send", ref=ref, send_at=send_at.isoformat())
+
+    assert answer.startswith("Scheduled, NOT sent yet: ")
+    assert out in answer
+    assert smtp_server.delivered_to(out) == []
+    [held] = mail_service.list_scheduled(ctx, user.id)
+    assert (held.ref, held.send_at, held.subject, held.recipients) == (
+        ref,
+        send_at,
+        "Later",
+        (out,),
+    )
+    assert len(writer.contents("Drafts")) == 1
+    # Scheduled once only, and never for a time past or without its offset.
+    assert "already" in mcp.error(token, "draft_send", ref=ref, send_at=send_at.isoformat())
+    mail_service.cancel_scheduled(ctx, user.id, held.scheduled_id)
+    past = (datetime.now(UTC) - timedelta(minutes=1)).isoformat()
+    assert "in the future" in mcp.error(token, "draft_send", ref=ref, send_at=past)
+    mcp.error(token, "draft_send", ref=ref, send_at="2030-01-01T09:00:00")
+    # A send mode that would only draft it again refuses the schedule as it refuses the send.
+    set_mode(ctx, user, "drafts")
+    assert "The draft stays." in mcp.error(
+        token, "draft_send", ref=ref, send_at=send_at.isoformat()
+    )
+    assert mail_service.list_scheduled(ctx, user.id) == []
+
+
 def test_approval_sends_only_to_auto_approved_recipients(
     mcp: Mcp, token: str, writer: Writer, smtp_server: Any, ctx: AppContext, user: User
 ) -> None:

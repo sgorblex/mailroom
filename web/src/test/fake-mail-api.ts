@@ -90,7 +90,7 @@ export interface FakeMailState {
   sendingPolls?: number
   /** How many polls a `sent` send answers unsettled, as a real one does until filing and what follows are done. */
   filingPolls?: number
-  /** Sends held for an Undo (an undoable Send), by `scheduled_id`; `polls`: how many more reads answer `held` before the worker sends it. */
+  /** Held sends (an undoable Send, or one scheduled for later), by `scheduled_id`; `polls`: how many more reads answer `held` before the worker sends it. */
   scheduled?: Record<string, ScheduledSend & { polls: number }>
   /** How many reads a held send answers `held` before the worker sends it. */
   heldPolls?: number
@@ -544,6 +544,7 @@ function saveDraftAnswer(state: FakeMailState, form: FormData): Response {
     parts,
     inline,
     send: null,
+    scheduled: null,
   }
   const autosave = state.autosave ?? true
   const hidden = state.saveWithoutRef === true
@@ -654,8 +655,25 @@ function sendAnswer(state: FakeMailState, draft: Draft, confirmResend: boolean):
 }
 
 function scheduledOf(held: ScheduledSend): ScheduledSend {
-  const { scheduled_id, account, ref, send_at, state, code } = held
-  return { scheduled_id, account, ref, send_at, remaining_ms: Math.max(0, Date.parse(send_at) - Date.now()), state, code }
+  const { scheduled_id, account, ref, subject, recipients, send_at, state, code, by, app } = held
+  return { scheduled_id, account, ref, subject, recipients, send_at, remaining_ms: Math.max(0, Date.parse(send_at) - Date.now()), state, code, by, app }
+}
+
+function newHeld(state: FakeMailState, draft: Draft, sendAt: string): ScheduledSend & { polls: number } {
+  return {
+    scheduled_id: String(nextUid++),
+    account: draft.account,
+    ref: draft.ref,
+    subject: draft.subject,
+    recipients: [...draft.to, ...draft.cc, ...draft.bcc].map((each) => each.address),
+    send_at: sendAt,
+    remaining_ms: Math.max(0, Date.parse(sendAt) - Date.now()),
+    state: 'held',
+    code: null,
+    by: 'user',
+    app: null,
+    polls: state.heldPolls ?? 0,
+  }
 }
 
 /** An undoable Send: the draft held, as a held send. */
@@ -665,18 +683,31 @@ function holdAnswer(state: FakeMailState, draft: Draft): Response {
   }
   state.scheduled ??= {}
   const existing = Object.values(state.scheduled).find((each) => each.ref === draft.ref)
-  const held = existing ?? {
-    scheduled_id: String(nextUid++),
-    account: draft.account,
-    ref: draft.ref,
-    send_at: new Date(Date.now() + 10_000).toISOString(),
-    remaining_ms: 10_000,
-    state: 'held' as const,
-    code: null,
-    polls: state.heldPolls ?? 0,
+  // Held for later than an Undo: that is a send-later the user must cancel first.
+  if (existing !== undefined && Date.parse(existing.send_at) > Date.now() + 10_000) {
+    return refuse(409, 'already_scheduled')
   }
+  const held = existing ?? newHeld(state, draft, new Date(Date.now() + 10_000).toISOString())
   state.scheduled[held.scheduled_id] = held
   return json(202, scheduledOf(held))
+}
+
+/** Send later: the draft held until `send_at`, which must still be to come. */
+function scheduleAnswer(state: FakeMailState, draft: Draft, body: string): Response {
+  if (isOff(state, draft.account)) {
+    return refuse(409, 'send_disabled')
+  }
+  const sendAt = (JSON.parse(body) as { send_at: string }).send_at
+  if (new Date(sendAt).getTime() <= Date.now()) {
+    return refuse(400, 'invalid_argument')
+  }
+  state.scheduled ??= {}
+  if (Object.values(state.scheduled).some((each) => each.ref === draft.ref)) {
+    return refuse(409, 'already_scheduled')
+  }
+  const held = newHeld(state, draft, sendAt)
+  state.scheduled[held.scheduled_id] = held
+  return json(201, scheduledOf(held))
 }
 
 /** A held send read: `held` for its polls, then the worker sends it and its row goes. */
@@ -686,6 +717,9 @@ function scheduledAnswer(state: FakeMailState, id: string, method: string): Resp
     return notFound()
   }
   const answer = scheduledOf(held)
+  if (method === 'DELETE' && held.state === 'sending') {
+    return refuse(409, 'send_started')
+  }
   if (method === 'DELETE' || held.polls > 0) {
     if (method === 'DELETE') {
       delete state.scheduled?.[id]
@@ -763,9 +797,18 @@ function composeRoutes(state: FakeMailState, url: URL, init?: RequestInit): Resp
   if (match !== null) {
     return sendResult(state, decodeURIComponent(match[1] ?? ''))
   }
+  if (path === '/api/v1/mail/scheduled') {
+    const listed = Object.values(state.scheduled ?? {}).sort((a, b) => a.send_at.localeCompare(b.send_at))
+    return json(200, { scheduled: listed.map(scheduledOf) })
+  }
   match = /^\/api\/v1\/mail\/scheduled\/([^/]+)$/.exec(path)
   if (match !== null) {
     return scheduledAnswer(state, decodeURIComponent(match[1] ?? ''), method)
+  }
+  match = /^\/api\/v1\/mail\/drafts\/([^/]+?)\/schedule$/.exec(path)
+  if (match !== null && method === 'POST') {
+    const held = state.drafts?.find((each) => each.ref === decodeURIComponent(match?.[1] ?? ''))
+    return held === undefined ? notFound() : scheduleAnswer(state, held, text)
   }
   match = /^\/api\/v1\/mail\/drafts\/([^/]+?)(\/send)?$/.exec(path)
   if (match === null) {
@@ -790,7 +833,8 @@ function composeRoutes(state: FakeMailState, url: URL, init?: RequestInit): Resp
     unlistDraft(state, draft)
     return json(200, { removed: 'expunged' })
   }
-  return json(200, draft)
+  const scheduled = Object.values(state.scheduled ?? {}).find((each) => each.ref === draft.ref && each.state !== 'failed')
+  return json(200, { ...draft, scheduled: scheduled === undefined ? null : scheduledOf(scheduled) })
 }
 
 /** The folder writes over `state.folders` (`/` the delimiter), or `null` for another route. */
@@ -1344,6 +1388,7 @@ export function fakeDraft(account: AccountId, uid: number, fields: Partial<Draft
     parts: [],
     inline: [],
     send: null,
+    scheduled: null,
     ...fields,
   }
 }

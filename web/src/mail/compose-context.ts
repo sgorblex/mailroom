@@ -67,6 +67,10 @@ export interface Compose {
   /** Cancels the held send and opens its draft again, while Undo can stop it. */
   undoSend: (scheduledId: string) => void
   dismissHeld: (scheduledId: string) => void
+  /** Closes the composer of a draft scheduled to be sent later, and says when it goes. */
+  finishScheduled: (send: ScheduledSend) => void
+  scheduled: ScheduledSend | null
+  dismissScheduled: () => void
   announcement: Announcement | null
   announce: Dispatch<SetStateAction<Announcement | null>>
 }

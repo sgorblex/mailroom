@@ -18,6 +18,7 @@ import { MARK_READ_CONFIRM_ABOVE, markReadError, markScopeRead, type MarkReadOut
 import { ACCOUNT_NOT_FOUND, mailErrorMessage } from './messages.ts'
 import { NOTIFICATIONS_KEY } from './queries.ts'
 import { ViewsSection } from './saved-views.tsx'
+import { ScheduledEntry } from './scheduled-sends.tsx'
 import { forgetStoredSubfolders, renameStoredSubfolders } from './subfolder-view.ts'
 import { isSameFolder, useAccountFolders, useTriage } from './triage-context.ts'
 
@@ -48,6 +49,7 @@ export function MailSidebar({
       className={cn('flex flex-col gap-4 p-3 lg:w-60 lg:shrink-0 lg:overflow-y-auto lg:border-r', className)}
     >
       <ViewsSection accounts={accounts} accountId={accountId} current={view} />
+      <ScheduledEntry />
       {accounts.map((account) =>
         account.id === accountId ? (
           <section key={account.id} aria-labelledby={`mail-account-${String(account.id)}`} className="flex flex-col gap-1">

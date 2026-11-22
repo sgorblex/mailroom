@@ -25,7 +25,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Any, Final, cast
 
 import anyio
-from pydantic import Field, StrictBool
+from pydantic import AwareDatetime, Field, StrictBool
 
 from mailroom.errors import Refusal, mail_refusal
 from mailroom.mail import service
@@ -50,10 +50,11 @@ from mailroom.mcp.tools.outgoing import (
     who,
 )
 from mailroom_core.mail import MESSAGES, format_ref
-from mailroom_core.render import untrusted
+from mailroom_core.render import format_date, untrusted
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from datetime import datetime
 
     from mcp import types
 
@@ -127,6 +128,14 @@ class MessageForwardArguments(Arguments):
 
 class DraftSendArguments(Arguments):
     ref: RefText = Field(description="Ref of the draft.")
+    send_at: AwareDatetime | None = Field(
+        default=None,
+        strict=False,  # JSON carries it as text
+        description=(
+            "Send later instead of now: an ISO 8601 time with its UTC offset, in the future and "
+            "at most a year ahead. The draft stays in Drafts until then; the user can cancel it."
+        ),
+    )
 
 
 async def _settled(call: ToolCall, view: SendView) -> SendView:
@@ -276,7 +285,31 @@ async def _message_forward(args: MessageForwardArguments, call: ToolCall) -> typ
     )
 
 
+async def _draft_schedule(
+    args: DraftSendArguments, send_at: datetime, call: ToolCall
+) -> types.CallToolResult:
+    stored = await call.thread(
+        lambda: service.read_draft(call.ctx, call.user_id, args.ref, via="mcp")
+    )
+    held, zone = await call.thread(
+        lambda: (
+            service.schedule_later(call.ctx, call.user_id, args.ref, send_at, origin=call.origin),
+            call.ctx.time_zone(call.user_id),
+        )
+    )
+    draft = stored.draft
+    return text_result(
+        f"Scheduled, NOT sent yet: {who(draft.sender, draft.to, draft.cc, draft.bcc)}, to be sent "
+        f"at {format_date(held.send_at, zone)} ({zone}) if the account's send mode then lets "
+        "it and this app is still approved to send. It stays in Drafts until then, and the "
+        "user can cancel it in Mailroom's Scheduled list. Do not schedule or send it again; "
+        "editing the draft before then makes the scheduled send fail."
+    )
+
+
 async def _draft_send(args: DraftSendArguments, call: ToolCall) -> types.CallToolResult:
+    if args.send_at is not None:
+        return await _draft_schedule(args, args.send_at, call)
     # Read first, for the sentence naming whom it goes to: it must say what is stored.
     try:
         stored = await call.thread(
@@ -355,7 +388,8 @@ MAIL_SEND_TOOLS: Final[tuple[Tool[Any], ...]] = (
             "Send a draft from Drafts exactly as it is stored (HTML, attachments and Message-ID "
             "included), then remove it from Drafts. Refused when the account's send mode would "
             "only save it as a draft again. Asking twice delivers once; a result that is not "
-            "confirmed means it may have been delivered, so do not resend."
+            "confirmed means it may have been delivered, so do not resend. With send_at it is "
+            "scheduled to be sent then instead, by the same rules."
         ),
         group="mail_send",
         arguments=DraftSendArguments,

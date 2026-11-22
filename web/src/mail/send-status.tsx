@@ -2,7 +2,9 @@ import type { ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 
+import { useTimeZone } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
+import { formatDateTime } from '@/lib/format.ts'
 
 import { useCompose, type HeldNotice } from './compose-context.ts'
 import { MAIL_NS } from './i18n.ts'
@@ -167,6 +169,26 @@ function HeldSend({ notice }: { notice: HeldNotice }): ReactElement {
           {t('compose.undo')}
         </Button>
       )}
+    </div>
+  )
+}
+
+/** A draft scheduled to be sent later, once its composer has closed: when it goes. */
+export function ScheduledNotice(): ReactElement | null {
+  const { t, i18n } = useTranslation(MAIL_NS)
+  const timeZone = useTimeZone()
+  const { scheduled, dismissScheduled } = useCompose()
+  if (scheduled === null) {
+    return null
+  }
+  return (
+    <div className="flex items-start gap-2 rounded-lg border p-2 text-sm">
+      <p className="min-w-0 flex-1 break-words">
+        {t('compose.scheduledFor', { when: formatDateTime(i18n.language, scheduled.send_at, timeZone) })}
+      </p>
+      <Button type="button" variant="ghost" size="icon-xs" aria-label={t('triage.dismiss')} onClick={dismissScheduled}>
+        <X aria-hidden="true" />
+      </Button>
     </div>
   )
 }

@@ -51,6 +51,9 @@ through the Vite proxy. Engineering baseline:
 - **Undo send.** Each user picks on their *Profile* page how long the web's Send holds a
   message for an Undo, 0 (off) to 30 seconds, 10 by default
   ([`requirements/mail-client.md`](requirements/mail-client.md#undo-send)).
+- **Send later.** The composer schedules a message for a time in the user's time zone, and the
+  mail screen's *Scheduled* list cancels or edits what is scheduled; an agent schedules with
+  `draft_send`'s `send_at` ([`requirements/mail-client.md`](requirements/mail-client.md#send-later)).
 - **Signatures.** Each user writes on their *Profile* page a signature for each identity of
   their accounts, which their messages from it start with
   ([`requirements/mail-client.md`](requirements/mail-client.md#signatures)).

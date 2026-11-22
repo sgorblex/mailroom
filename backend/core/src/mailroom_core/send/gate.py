@@ -211,8 +211,9 @@ def _checked(mailboxes: Iterable[Mailbox]) -> tuple[Mailbox, ...]:
     return tuple(replace(m, address=deliverable_address(m.address)) for m in mailboxes)
 
 
-def _kept_as_draft(account: AccountConfig) -> MailError:
-    # A prepared message is a draft already: drafting it again would only make a copy.
+def kept_as_draft(account: AccountConfig) -> MailError:
+    """The refusal of a stored draft the send mode does not let go now (`sends_now`): a prepared
+    message is a draft already, and drafting it again would only make a copy."""
     return MailError(
         "invalid_argument",
         "Not every recipient is auto-approved for this account, so it would only be saved as a "
@@ -274,7 +275,7 @@ def admit(
         check_recipient_count(recipients, deps.limits.max_recipients)
         goes_out = sends_now(account, checked, by)
         if prepared is not None and not goes_out:
-            raise _kept_as_draft(account)
+            raise kept_as_draft(account)
         if goes_out:
             composed = prepared.composed if prepared else compose(replace(checked, draft=False))
     except MailError as error:
