@@ -494,5 +494,8 @@
       "label": "Leggere l'attività",
       "description": "Il registro di ciò che è stato fatto alla tua posta."
     }
+  },
+  "deployBanner": {
+    "text": "{{env}}: un'istanza di prova, non il tuo Mailroom reale."
   }
 }

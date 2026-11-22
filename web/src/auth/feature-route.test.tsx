@@ -81,7 +81,9 @@ describe('featureRoute', () => {
       await screen.findByRole('heading', { name: 'Not available on this instance' }),
     ).toBeInTheDocument()
     await new Promise((resolve) => setTimeout(resolve, 0))
-    expect(fetchMock).not.toHaveBeenCalled()
+    // Only the deploy banner's read of the version, never the consent request.
+    const urls = fetchMock.mock.calls.map(([input]) => String(input))
+    expect(urls.filter((url) => !url.endsWith('/api/v1/version'))).toEqual([])
   })
 
   it('asks for the consent request with mcp', async () => {
