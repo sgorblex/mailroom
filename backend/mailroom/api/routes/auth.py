@@ -21,10 +21,12 @@ from mailroom.auth.sessions import (
 from mailroom.auth.throttle import LoginThrottle, client_key
 from mailroom.auth.users import (
     INDEX_MAX_AGE_DAYS,
+    UNDO_SEND_SECONDS,
     set_conversations,
     set_index_max_age,
     set_mark_read_subfolders,
     set_time_zone,
+    set_undo_send,
     user_by_username,
 )
 from mailroom.config.features import Feature, Features
@@ -53,6 +55,8 @@ class UserOut(BaseModel):
     still applies)."""
     conversations: bool
     """Whether the web's message lists are grouped by conversation."""
+    undo_send_seconds: int
+    """How long the web's Send holds a message for an Undo; 0 sends at once."""
 
     @classmethod
     def of(cls, user: User) -> UserOut:
@@ -63,6 +67,7 @@ class UserOut(BaseModel):
             mark_read_subfolders=user.mark_read_subfolders,
             index_max_age_days=user.index_max_age_days,
             conversations=user.conversations,
+            undo_send_seconds=user.undo_send_seconds,
         )
 
 
@@ -86,6 +91,12 @@ class IndexMaxAgeChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     index_max_age_days: Annotated[StrictInt, Field(ge=1, le=INDEX_MAX_AGE_DAYS)] | None
+
+
+class UndoSendChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    undo_send_seconds: Annotated[StrictInt, Field(ge=0, le=UNDO_SEND_SECONDS)]
 
 
 class MeResponse(BaseModel):
@@ -171,6 +182,15 @@ def change_index_max_age(body: IndexMaxAgeChange, db: DbSession, user: CurrentUs
     logger.info(
         "index_max_age_changed", extra={"event": "index_max_age_changed", "user_id": user.id}
     )
+    return UserOut.of(user)
+
+
+@auth_router.put("/me/undo-send")
+def change_undo_send(body: UndoSendChange, db: DbSession, user: CurrentUser) -> UserOut:
+    """How long the web's Send holds a message for an Undo, 0 (sends at once) to 30 seconds.
+    The answer is the user."""
+    set_undo_send(db, user, body.undo_send_seconds)
+    logger.info("undo_send_changed", extra={"event": "undo_send_changed", "user_id": user.id})
     return UserOut.of(user)
 
 

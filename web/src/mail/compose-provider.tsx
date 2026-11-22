@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
+import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 
 import type { AccountId, Account } from '@/api/accounts.ts'
+import { ApiRequestError } from '@/api/http.ts'
+import { cancelScheduled, type ScheduledSend } from '@/api/mail.ts'
+import { useUndoSendSeconds } from '@/auth/auth-context.ts'
 
-import { ComposeContext, type Announcement, type Compose, type EditorHandle, type SendNotice } from './compose-context.ts'
+import { ComposeContext, type Announcement, type Compose, type EditorHandle, type HeldNotice, type SendNotice } from './compose-context.ts'
 import { composeKey, sourceFromParam, type ComposeSession, type ComposeSource } from './compose-session.ts'
+import { MAIL_NS } from './i18n.ts'
+import { heldEndMessage, sentMessage } from './messages.ts'
+import { followHeld } from './send-flow.ts'
 import { useTriage } from './triage-context.ts'
 
 /** In `shownOver`, which no message equals: the editor waits behind whatever the pane shows. */
@@ -25,7 +32,9 @@ export function ComposeProvider({
   accountId: AccountId
   children: ReactNode
 }): ReactElement {
+  const { t } = useTranslation(MAIL_NS)
   const search = useSearch({ from: '/mail' })
+  const undoSeconds = useUndoSendSeconds()
   const navigate = useNavigate()
   const { loadFolders } = useTriage()
   const [session, setSession] = useState<ComposeSession | null>(null)
@@ -35,6 +44,7 @@ export function ComposeProvider({
   const [revision, setRevision] = useState(0)
   const [notice, setNotice] = useState<SendNotice | null>(null)
   const [announcement, setAnnouncement] = useState<Announcement | null>(null)
+  const [held, setHeld] = useState<HeldNotice[]>([])
   const handle = useRef<EditorHandle | null>(null)
   const nextId = useRef(1)
   const starting = useRef(false)
@@ -139,6 +149,109 @@ export function ComposeProvider({
     setNotice(null)
   }, [])
 
+  // Each held send is followed from here, as its composer has closed: Undo can stop it until the worker takes it.
+  const followers = useRef(new Map<string, AbortController>())
+  useEffect(() => {
+    const running = followers.current
+    return () => {
+      for (const controller of running.values()) {
+        controller.abort()
+      }
+      running.clear()
+    }
+  }, [])
+  const stopFollowing = useCallback((id: string) => {
+    followers.current.get(id)?.abort()
+    followers.current.delete(id)
+  }, [])
+  const changeHeld = useCallback((id: string, change: (notice: HeldNotice) => HeldNotice | null) => {
+    setHeld((list) =>
+      list.flatMap((notice) => {
+        if (notice.send.scheduled_id !== id) {
+          return [notice]
+        }
+        const changed = change(notice)
+        return changed === null ? [] : [changed]
+      }),
+    )
+  }, [])
+
+  const undoMs = undoSeconds * 1_000
+  const holdSent = useCallback(
+    (send: ScheduledSend, composeId: string) => {
+      const id = send.scheduled_id
+      stopFollowing(id)
+      const controller = new AbortController()
+      followers.current.set(id, controller)
+      setNotice(null)
+      setHeld((list) => [...list.filter((notice) => notice.send.scheduled_id !== id), { send, composeId, phase: 'undoable' }])
+      setAnnouncement({ text: t('compose.heldSending'), urgent: false })
+      close()
+      // What is left of the hold by the server's clock, not the time since its answer arrived.
+      const holdMs = Math.min(undoMs, send.remaining_ms)
+      const past = setTimeout(() => {
+        changeHeld(id, (notice) => (notice.phase === 'undoable' ? { ...notice, phase: 'sending' } : notice))
+      }, holdMs)
+      controller.signal.addEventListener('abort', () => {
+        clearTimeout(past)
+      })
+      void followHeld(send, composeId, holdMs, controller.signal).then((end) => {
+        if (controller.signal.aborted) {
+          return
+        }
+        followers.current.delete(id)
+        clearTimeout(past)
+        if (end.kind === 'sent') {
+          const { filed, rejected, note_codes } = end.result
+          changeHeld(id, () => null)
+          setNotice({ filed, rejected, note_codes })
+          setAnnouncement({ text: sentMessage(t, { filed, rejected, note_codes }), urgent: false })
+        } else {
+          changeHeld(id, (notice) => ({ ...notice, phase: 'ended', end }))
+          setAnnouncement({ text: heldEndMessage(t, end), urgent: true })
+        }
+        mailChanged()
+      })
+    },
+    [changeHeld, close, mailChanged, stopFollowing, t, undoMs],
+  )
+
+  const heldNow = useRef(held)
+  useEffect(() => {
+    heldNow.current = held
+  })
+  const undoSend = useCallback(
+    (id: string) => {
+      const current = heldNow.current.find((notice) => notice.send.scheduled_id === id)
+      if (current?.phase !== 'undoable') {
+        return
+      }
+      changeHeld(id, (notice) => ({ ...notice, phase: 'undoing' }))
+      cancelScheduled(id).then(
+        () => {
+          stopFollowing(id)
+          changeHeld(id, () => null)
+          setAnnouncement({ text: t('compose.undone'), urgent: false })
+          void open({ kind: 'draft', ref: current.send.ref }, null)
+        },
+        (error: unknown) => {
+          // Taken by the worker, or gone with it: what it comes to is followed still.
+          const late = error instanceof ApiRequestError && (error.code === 'send_started' || error.code === 'not_found')
+          changeHeld(id, (notice) => (notice.phase === 'undoing' ? { ...notice, phase: late ? 'tooLate' : 'undoable' } : notice))
+          setAnnouncement({ text: late ? t('compose.tooLateToUndo') : t('compose.undoFailed'), urgent: true })
+        },
+      )
+    },
+    [changeHeld, open, stopFollowing, t],
+  )
+
+  const dismissHeld = useCallback(
+    (id: string) => {
+      changeHeld(id, () => null)
+    },
+    [changeHeld],
+  )
+
   // A param opens a composer: a draft from the list, or the one open before a reload.
   const param = search.compose
   useEffect(() => {
@@ -177,6 +290,10 @@ export function ComposeProvider({
       finishSent,
       notice,
       dismissNotice,
+      holdSent,
+      held,
+      undoSend,
+      dismissHeld,
       announcement,
       announce: setAnnouncement,
     }),
@@ -197,6 +314,10 @@ export function ComposeProvider({
       finishSent,
       notice,
       dismissNotice,
+      holdSent,
+      held,
+      undoSend,
+      dismissHeld,
       announcement,
     ],
   )

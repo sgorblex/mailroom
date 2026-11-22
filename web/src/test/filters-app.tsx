@@ -63,7 +63,7 @@ export function renderFiltersApp(path: string, { features }: { features?: Featur
   if (features === undefined) {
     render(<QueryClientProvider client={createQueryClient()}>{app}</QueryClientProvider>)
   } else {
-    renderSignedIn(app, { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null, conversations: true }, features)
+    renderSignedIn(app, { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null, conversations: true, undo_send_seconds: 10 }, features)
   }
   return history
 }

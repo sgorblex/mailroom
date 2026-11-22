@@ -14,6 +14,7 @@ import type {
   MutedThread,
   OrganizeGroup,
   SavedView,
+  ScheduledSend,
   SendResult,
   ShownPart,
   SourceFailure,
@@ -89,6 +90,10 @@ export interface FakeMailState {
   sendingPolls?: number
   /** How many polls a `sent` send answers unsettled, as a real one does until filing and what follows are done. */
   filingPolls?: number
+  /** Sends held for an Undo (an undoable Send), by `scheduled_id`; `polls`: how many more reads answer `held` before the worker sends it. */
+  scheduled?: Record<string, ScheduledSend & { polls: number }>
+  /** How many reads a held send answers `held` before the worker sends it. */
+  heldPolls?: number
   /** Claimed sends by key, as `core.sends` holds them. */
   sends?: Record<string, SendResult & { polls: number; filingPolls?: number }>
   /** What reached SMTP, once per delivery. */
@@ -648,6 +653,55 @@ function sendAnswer(state: FakeMailState, draft: Draft, confirmResend: boolean):
   return json(202, { send_id: send.send_id })
 }
 
+function scheduledOf(held: ScheduledSend): ScheduledSend {
+  const { scheduled_id, account, ref, send_at, state, code } = held
+  return { scheduled_id, account, ref, send_at, remaining_ms: Math.max(0, Date.parse(send_at) - Date.now()), state, code }
+}
+
+/** An undoable Send: the draft held, as a held send. */
+function holdAnswer(state: FakeMailState, draft: Draft): Response {
+  if (isOff(state, draft.account)) {
+    return refuse(409, 'send_disabled')
+  }
+  state.scheduled ??= {}
+  const existing = Object.values(state.scheduled).find((each) => each.ref === draft.ref)
+  const held = existing ?? {
+    scheduled_id: String(nextUid++),
+    account: draft.account,
+    ref: draft.ref,
+    send_at: new Date(Date.now() + 10_000).toISOString(),
+    remaining_ms: 10_000,
+    state: 'held' as const,
+    code: null,
+    polls: state.heldPolls ?? 0,
+  }
+  state.scheduled[held.scheduled_id] = held
+  return json(202, scheduledOf(held))
+}
+
+/** A held send read: `held` for its polls, then the worker sends it and its row goes. */
+function scheduledAnswer(state: FakeMailState, id: string, method: string): Response {
+  const held = state.scheduled?.[id]
+  if (held === undefined) {
+    return notFound()
+  }
+  const answer = scheduledOf(held)
+  if (method === 'DELETE' || held.polls > 0) {
+    if (method === 'DELETE') {
+      delete state.scheduled?.[id]
+    } else {
+      held.polls -= 1
+    }
+    return json(200, answer)
+  }
+  delete state.scheduled?.[id]
+  const draft = state.drafts?.find((each) => each.ref === held.ref)
+  if (draft !== undefined) {
+    sendAnswer(state, draft, false)
+  }
+  return notFound()
+}
+
 /** A retry for a draft that is gone reaches only a send keyed by its ref: one written elsewhere. */
 function goneSendAnswer(state: FakeMailState, ref: string, confirmResend: boolean): Response {
   const existing = state.sends?.[ref]
@@ -701,9 +755,17 @@ function composeRoutes(state: FakeMailState, url: URL, init?: RequestInit): Resp
     )
     return draft === undefined ? notFound() : json(200, { ref: draft.ref, parts: draft.parts, inline: draft.inline })
   }
+  if (path === '/api/v1/mail/sends') {
+    const send = state.sends?.[url.searchParams.get('compose_id') ?? '']
+    return send === undefined ? notFound() : sendResult(state, send.send_id)
+  }
   let match = /^\/api\/v1\/mail\/sends\/([^/]+)$/.exec(path)
   if (match !== null) {
     return sendResult(state, decodeURIComponent(match[1] ?? ''))
+  }
+  match = /^\/api\/v1\/mail\/scheduled\/([^/]+)$/.exec(path)
+  if (match !== null) {
+    return scheduledAnswer(state, decodeURIComponent(match[1] ?? ''), method)
   }
   match = /^\/api\/v1\/mail\/drafts\/([^/]+?)(\/send)?$/.exec(path)
   if (match === null) {
@@ -712,12 +774,13 @@ function composeRoutes(state: FakeMailState, url: URL, init?: RequestInit): Resp
   const ref = decodeURIComponent(match[1] ?? '')
   const draft = state.drafts?.find((each) => each.ref === ref)
   const sending = match[2] !== undefined && method === 'POST'
-  const confirmResend = sending && (JSON.parse(text) as { confirm_resend?: boolean }).confirm_resend === true
+  const sendBody = sending ? (JSON.parse(text) as { confirm_resend?: boolean; undoable?: boolean }) : {}
+  const confirmResend = sendBody.confirm_resend === true
   if (draft === undefined) {
     return sending ? goneSendAnswer(state, ref, confirmResend) : notFound()
   }
   if (sending) {
-    return sendAnswer(state, draft, confirmResend)
+    return sendBody.undoable === true && !confirmResend ? holdAnswer(state, draft) : sendAnswer(state, draft, confirmResend)
   }
   if (method === 'DELETE') {
     if (isOff(state, draft.account)) {
@@ -816,7 +879,7 @@ function indexRoutes(state: FakeMailState, url: URL, init?: RequestInit): Respon
   if (url.pathname === '/api/v1/auth/me/index-max-age' && init?.method === 'PUT') {
     const { index_max_age_days } = JSON.parse(init.body as string) as { index_max_age_days: number | null }
     state.indexMaxAgeDays = index_max_age_days
-    return json(200, { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days, conversations: true })
+    return json(200, { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days, conversations: true, undo_send_seconds: 10 })
   }
   const match = /^\/api\/v1\/mail\/index\/accounts\/(\d+)(\/folders)?$/.exec(url.pathname)
   if (match === null) {

@@ -6,6 +6,7 @@ import { apiGetJson, apiPostJson, apiPutJson } from './http.ts'
  * `mark_read_subfolders`: what "Mark all as read" on a folder with subfolders does first: `true`, them too.
  * `index_max_age_days`: the user's own age limit of the mail index, in days; `null` for none (the instance's cap still holds).
  * `conversations`: whether the message lists are grouped by conversation.
+ * `undo_send_seconds`: how long Send holds a message for an Undo; 0 sends at once.
  */
 export const userSchema = z.object({
   username: z.string(),
@@ -14,6 +15,7 @@ export const userSchema = z.object({
   mark_read_subfolders: z.boolean(),
   index_max_age_days: z.number().nullable(),
   conversations: z.boolean(),
+  undo_send_seconds: z.number(),
 })
 export type User = z.infer<typeof userSchema>
 
@@ -79,4 +81,12 @@ export function changeIndexMaxAge(days: number | null): Promise<User> {
 /** Whether the message lists are grouped by conversation. */
 export function changeConversations(conversations: boolean): Promise<User> {
   return apiPutJson('/api/v1/auth/me/conversations', { conversations }, { schema: userSchema })
+}
+
+/** The longest Send can wait for an Undo, in seconds (the server's limit too). */
+export const UNDO_SEND_SECONDS = 30
+
+/** How long Send holds a message for an Undo, in seconds; 0 sends at once. */
+export function changeUndoSend(seconds: number): Promise<User> {
+  return apiPutJson('/api/v1/auth/me/undo-send', { undo_send_seconds: seconds }, { schema: userSchema })
 }

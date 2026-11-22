@@ -1,14 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiRequestError } from '@/api/http.ts'
-import { readSend, sendDraft, type SendResult } from '@/api/mail.ts'
+import { readComposeSend, readScheduled, readSend, sendDraft, type ScheduledSend, type SendResult } from '@/api/mail.ts'
 
-import { followSend, runSend } from './send-flow.ts'
+import { followHeld, followSend, runSend } from './send-flow.ts'
 
-vi.mock('@/api/mail.ts', () => ({ readSend: vi.fn(), sendDraft: vi.fn() }))
+vi.mock('@/api/mail.ts', () => ({ readSend: vi.fn(), sendDraft: vi.fn(), readScheduled: vi.fn(), readComposeSend: vi.fn() }))
 
 const send = vi.mocked(sendDraft)
 const read = vi.mocked(readSend)
+const readHeld = vi.mocked(readScheduled)
+const readOfKey = vi.mocked(readComposeSend)
 
 const result = (state: SendResult['state'], fields: Partial<SendResult> = {}): SendResult => ({
   send_id: 's1',
@@ -178,5 +180,64 @@ describe('a send', () => {
     await vi.runAllTimersAsync()
     expect(await end).toEqual({ kind: 'unknown' })
     expect(read.mock.calls.length).toBeGreaterThan(5)
+  })
+})
+
+const held = (state: ScheduledSend['state'] = 'held', code: string | null = null): ScheduledSend => ({
+  scheduled_id: '7',
+  account: 1,
+  ref: 'r',
+  send_at: '2026-11-22T10:00:10Z',
+  remaining_ms: 10_000,
+  state,
+  code,
+})
+
+describe('a held send', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    send.mockReset()
+    read.mockReset()
+    readHeld.mockReset()
+    readOfKey.mockReset()
+  })
+
+  it('is what an undoable Send answers when the server holds it', async () => {
+    send.mockResolvedValue(held())
+    expect(await runSend('r', false, signal, true)).toEqual({ kind: 'held', held: held() })
+    expect(send).toHaveBeenCalledWith('r', { confirmResend: false, undoable: true })
+  })
+
+  it('is read only once the Undo time is over, then followed to its send once its row has gone', async () => {
+    readHeld.mockResolvedValueOnce(held()).mockResolvedValueOnce(held('sending')).mockRejectedValue(refusal(404, 'not_found'))
+    readOfKey.mockResolvedValue(result('sent', { filed: false, settled: false }))
+    read.mockResolvedValue(result('sent', { filed: false, note_codes: ['draft_kept'] }))
+    const end = followHeld(held(), 'c1', 10_000, signal)
+    await vi.advanceTimersByTimeAsync(9_999)
+    expect(readHeld).not.toHaveBeenCalled()
+    await vi.runAllTimersAsync()
+    expect(await end).toMatchObject({ kind: 'sent', result: { note_codes: ['draft_kept'] } })
+    expect(readOfKey).toHaveBeenCalledWith(1, 'c1', signal)
+  })
+
+  it.each([
+    ['failed with its code', held('failed', 'recipient_refused'), { kind: 'failed', code: 'recipient_refused' }],
+    ['unknown when its delivery could not be confirmed', held('failed', 'delivery_unknown'), { kind: 'unknown' }],
+  ])('ends %s', async (_name, row, ending) => {
+    readHeld.mockResolvedValue(row)
+    const end = followHeld(held(), 'c1', 0, signal)
+    await vi.runAllTimersAsync()
+    expect(await end).toEqual(ending)
+  })
+
+  it('was cancelled elsewhere when its row went with no send', async () => {
+    readHeld.mockRejectedValue(refusal(404, 'not_found'))
+    readOfKey.mockRejectedValue(refusal(404, 'not_found'))
+    const end = followHeld(held(), 'c1', 0, signal)
+    await vi.runAllTimersAsync()
+    expect(await end).toEqual({ kind: 'cancelled' })
   })
 })

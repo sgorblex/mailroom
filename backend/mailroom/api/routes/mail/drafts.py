@@ -1,9 +1,11 @@
 """Drafts and sends: the prefill of a reply, a forward or an unsubscribe by mail, saving a draft
 with its uploads (multipart, bounded before it is read) or converting its HTML to text, finding,
-reading and deleting one, sending it and reading the send."""
+reading and deleting one, sending it (held for an Undo, if asked) and reading the send, or the
+held send."""
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Annotated, Final, Literal
 
 from fastapi import Path, Query, Request
@@ -283,10 +285,36 @@ class SendRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     confirm_resend: bool = False
+    undoable: bool = False
+    """Hold the send for the user's Undo delay (``undo_send_seconds``) first, unless that is 0."""
 
 
 class SendAccepted(BaseModel):
     send_id: str
+
+
+class ScheduledAnswer(BaseModel):
+    scheduled_id: str
+    account: int
+    ref: str
+    send_at: datetime
+    remaining_ms: int
+    """How long until ``send_at`` as the server answers, by its clock, not the client's."""
+    state: str
+    code: str | None
+
+    @classmethod
+    def of(cls, view: service.ScheduledView) -> ScheduledAnswer:
+        remaining = view.send_at - datetime.now(UTC)
+        return cls(
+            scheduled_id=view.scheduled_id,
+            account=view.account,
+            ref=view.ref,
+            send_at=view.send_at,
+            remaining_ms=max(0, round(remaining.total_seconds() * 1000)),
+            state=view.state,
+            code=view.code,
+        )
 
 
 class SendAnswer(BaseModel):
@@ -462,10 +490,18 @@ def send_draft(
     user: CurrentUser,
     response: Response,
     request: SendRequest | None = None,
-) -> SendAccepted | SendAnswer:
+) -> SendAccepted | SendAnswer | ScheduledAnswer:
     """202 with the send to follow, unless this draft's key has been delivered already: then 200
-    with what came of it, and nothing goes out."""
+    with what came of it, and nothing goes out. ``undoable``, while the user's Undo delay is not
+    0, 202 with the held send instead (``GET``/``DELETE /scheduled/{id}``), unless a send of the
+    draft began already."""
     confirm_resend = request is not None and request.confirm_resend
+    undoable = request is not None and request.undoable and not confirm_resend
+    if undoable and user.undo_send_seconds > 0:
+        delay = timedelta(seconds=user.undo_send_seconds)
+        held = service.hold_send(ctx, user.id, ref, delay)
+        if held is not None:
+            return ScheduledAnswer.of(held)
     send = service.send_draft(ctx, user.id, ref, by="user", confirm_resend=confirm_resend)
     if send.state == "sending":
         return SendAccepted(send_id=send.send_id)
@@ -473,8 +509,35 @@ def send_draft(
     return SendAnswer.of(send)
 
 
+@mail_router.get("/sends")
+def read_compose_send(
+    account: Annotated[int, Query(ge=1, le=MAX_SAFE_INTEGER)],
+    compose_id: Annotated[str, Query(pattern=_COMPOSE_ID)],
+    ctx: Context,
+    user: CurrentUser,
+) -> SendAnswer:
+    """The send of the draft saved under ``compose_id``, there or not by now."""
+    return SendAnswer.of(service.read_compose_send(ctx, user.id, account, compose_id))
+
+
 @mail_router.get("/sends/{send_id}")
 def read_send(
     send_id: Annotated[str, Path(max_length=64)], ctx: Context, user: CurrentUser
 ) -> SendAnswer:
     return SendAnswer.of(service.read_send(ctx, user.id, send_id))
+
+
+@mail_router.get("/scheduled/{scheduled_id}")
+def read_scheduled(
+    scheduled_id: Annotated[str, Path(max_length=64)], ctx: Context, user: CurrentUser
+) -> ScheduledAnswer:
+    """A held send; ``not_found`` once it went (``GET /sends`` has its send) or was cancelled."""
+    return ScheduledAnswer.of(service.read_scheduled(ctx, user.id, scheduled_id))
+
+
+@mail_router.delete("/scheduled/{scheduled_id}")
+def cancel_scheduled(
+    scheduled_id: Annotated[str, Path(max_length=64)], ctx: Context, user: CurrentUser
+) -> ScheduledAnswer:
+    """Cancel a held send, the draft left in Drafts; ``send_started`` once the worker took it."""
+    return ScheduledAnswer.of(service.cancel_scheduled(ctx, user.id, scheduled_id))

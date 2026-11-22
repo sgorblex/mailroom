@@ -5,6 +5,7 @@ import {
   changeIndexMaxAge as saveIndexMaxAge,
   changeMarkReadSubfolders as saveMarkReadSubfolders,
   changeTimeZone as saveTimeZone,
+  changeUndoSend as saveUndoSend,
   fetchSession,
   login,
   logout,
@@ -111,6 +112,13 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
     [updateUser],
   )
 
+  const changeUndoSend = useCallback(
+    async (seconds: number) => {
+      updateUser(await saveUndoSend(seconds))
+    },
+    [updateUser],
+  )
+
   const signIn = useCallback(async (username: string, password: string) => {
     const user = await login(username, password)
     setState({ status: 'signed-in', user })
@@ -127,8 +135,8 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
   }, [])
 
   const value = useMemo<AuthContextValue>(
-    () => ({ ...state, features, signIn, signOut, changeTimeZone, changeMarkReadSubfolders, changeIndexMaxAge, changeConversations, recheck }),
-    [state, features, signIn, signOut, changeTimeZone, changeMarkReadSubfolders, changeIndexMaxAge, changeConversations, recheck],
+    () => ({ ...state, features, signIn, signOut, changeTimeZone, changeMarkReadSubfolders, changeIndexMaxAge, changeConversations, changeUndoSend, recheck }),
+    [state, features, signIn, signOut, changeTimeZone, changeMarkReadSubfolders, changeIndexMaxAge, changeConversations, changeUndoSend, recheck],
   )
   return <AuthContext value={value}>{children}</AuthContext>
 }

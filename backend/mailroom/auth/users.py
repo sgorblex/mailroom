@@ -126,6 +126,16 @@ def set_conversations(db: Session, user: User, grouped: bool) -> None:
     db.commit()
 
 
+UNDO_SEND_SECONDS: Final = 30
+"""The longest a user's Send can wait for an Undo."""
+
+
+def set_undo_send(db: Session, user: User, seconds: int) -> None:
+    """Keep how long ``user``'s Send waits for an Undo; 0 sends at once."""
+    user.undo_send_seconds = seconds
+    db.commit()
+
+
 INDEX_MAX_AGE_DAYS: Final = 36500
 """The longest age limit of the mail index, a user's or the instance's (a hundred years)."""
 

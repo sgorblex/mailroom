@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import type { User } from '@/api/auth.ts'
 import type { SendResult } from '@/api/mail.ts'
 import { bodiesTo, fakeDraft, type FakeMailState, HOME, messageItem, messageView, plainTextsAsked, queriesTo, refusal, savesOf, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
 import { renderMailApp } from '@/test/mail-app.tsx'
@@ -78,6 +79,8 @@ const firstSave = (fetchMock: ReturnType<typeof stubMailApi>) =>
   )
 const sendsOf = (fetchMock: ReturnType<typeof stubMailApi>) =>
   fetchMock.mock.calls.filter(([path]) => String(path).endsWith('/send'))
+const sendBodies = (fetchMock: ReturnType<typeof stubMailApi>) =>
+  sendsOf(fetchMock).map(([, init]) => JSON.parse((init as RequestInit).body as string) as unknown)
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -1874,5 +1877,107 @@ describe('sending', () => {
     expect(savesOf(fetchMock)).toHaveLength(2)
     expect(fake.delivered).toHaveLength(1)
     expect(fake.drafts).toEqual([])
+  })
+
+  describe('held for an Undo', () => {
+    const undoing = (seconds: number): User => ({
+      username: 'alice',
+      is_admin: false,
+      time_zone: null,
+      mark_read_subfolders: true,
+      index_max_age_days: null,
+      conversations: true,
+      undo_send_seconds: seconds,
+    })
+
+    it('closes the composer, and Undo opens the draft again with nothing sent', async () => {
+      const user = userEvent.setup()
+      const fake = state({ heldPolls: 100 })
+      const fetchMock = stubMailApi(fake)
+      renderMailApp('/mail', { user: undoing(10) })
+      const form = await ready(user)
+      await user.click(within(form).getByRole('button', { name: 'Send' }))
+
+      const undo = await screen.findByRole('button', { name: 'Undo' }, { timeout: 3_000 })
+      expect(screen.queryByRole('form')).not.toBeInTheDocument()
+      expect(sendBodies(fetchMock)).toEqual([{ undoable: true }])
+      expect(Object.keys(fake.scheduled ?? {})).toHaveLength(1)
+
+      await user.click(undo)
+
+      const reopened = await composer('Draft')
+      await waitFor(() => {
+        expect(within(reopened).getByRole('textbox', { name: 'Message' })).toHaveTextContent('Hello')
+      })
+      expect(fake.scheduled).toEqual({})
+      expect(fake.delivered).toBeUndefined()
+      expect(fake.drafts).toHaveLength(1)
+      expect(live('polite')).toHaveTextContent('Not sent: the draft is open again.')
+      expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
+    })
+
+    it('is followed to Sent once the worker sends it', async () => {
+      const user = userEvent.setup()
+      const fake = state({ heldPolls: 1 })
+      stubMailApi(fake)
+      renderMailApp('/mail', { user: undoing(1) })
+      const form = await ready(user)
+      await user.click(within(form).getByRole('button', { name: 'Send' }))
+      expect(await screen.findByText('Sending…', { selector: 'p' })).toBeInTheDocument()
+
+      await sentNotice()
+      expect(fake.delivered).toHaveLength(1)
+      expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
+    })
+
+    it('says when Undo came too late, and still reports the send', async () => {
+      const user = userEvent.setup()
+      const fake = state({ heldPolls: 100 })
+      stubMailApi(fake)
+      renderMailApp('/mail', { user: undoing(10) })
+      const form = await ready(user)
+      await user.click(within(form).getByRole('button', { name: 'Send' }))
+      const undo = await screen.findByRole('button', { name: 'Undo' }, { timeout: 3_000 })
+      const [id] = Object.keys(fake.scheduled ?? {})
+      fake.refuse = { [`DELETE /api/v1/mail/scheduled/${id ?? ''}`]: refusal(409, 'send_started') }
+
+      await user.click(undo)
+
+      expect(await screen.findByText(/Too late to undo/, { selector: 'p' })).toBeInTheDocument()
+      expect(live('assertive')).toHaveTextContent('Too late to undo')
+      expect(screen.queryByRole('form')).not.toBeInTheDocument()
+    })
+
+    it('keeps an Undo for each send held at once', async () => {
+      const user = userEvent.setup()
+      const fake = state({ heldPolls: 100 })
+      stubMailApi(fake)
+      renderMailApp('/mail', { user: undoing(10) })
+      await user.click(within(await ready(user)).getByRole('button', { name: 'Send' }))
+      await screen.findByRole('button', { name: 'Undo' }, { timeout: 3_000 })
+
+      await user.click(within(await ready(user)).getByRole('button', { name: 'Send' }))
+
+      await waitFor(() => {
+        expect(screen.getAllByRole('button', { name: 'Undo' })).toHaveLength(2)
+      })
+      expect(Object.keys(fake.scheduled ?? {})).toHaveLength(2)
+      await user.click(screen.getAllByRole('button', { name: 'Undo' })[0] ?? document.body)
+      await composer('Draft')
+      expect(Object.keys(fake.scheduled ?? {})).toHaveLength(1)
+      expect(screen.getAllByRole('button', { name: 'Undo' })).toHaveLength(1)
+    })
+
+    it('sends at once with no Undo time, as before', async () => {
+      const user = userEvent.setup()
+      const fake = state()
+      const fetchMock = stubMailApi(fake)
+      renderMailApp('/mail', { user: undoing(0) })
+      const form = await ready(user)
+      await user.click(within(form).getByRole('button', { name: 'Send' }))
+      await sentNotice()
+      expect(sendBodies(fetchMock)).toEqual([{}])
+      expect(fake.scheduled).toBeUndefined()
+    })
   })
 })

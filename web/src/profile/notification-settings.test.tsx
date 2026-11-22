@@ -9,7 +9,7 @@ import { renderSignedIn } from '@/test/signed-in.tsx'
 
 import { NotificationSettings } from './notification-settings.tsx'
 
-const ALICE: User = { username: 'alice', is_admin: false, time_zone: 'UTC', mark_read_subfolders: true, index_max_age_days: null, conversations: true }
+const ALICE: User = { username: 'alice', is_admin: false, time_zone: 'UTC', mark_read_subfolders: true, index_max_age_days: null, conversations: true, undo_send_seconds: 10 }
 
 function state(fields: Partial<FakeMailState> = {}): FakeMailState {
   return {

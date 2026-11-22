@@ -27,7 +27,7 @@ from mailroom_core import send as gate
 from mailroom_core.mail import parse_ref
 from mailroom_core.testing import SmtpTestServer, create_folders
 from tests.support.mail import mail_servers_ssl_context
-from tests.test_api_compose import Composer, add_account, address, smtp_endpoint
+from tests.test_api_compose import MAIL, Composer, add_account, address, detail, smtp_endpoint
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -108,6 +108,11 @@ def refused_record(ref: str, code: str, actor: str = "user") -> tuple[str, str, 
         code,
         {"folder": draft.folder, "uid": draft.uid, "by": actor, "delivery": "refused"},
     )
+
+
+def steady(answer: dict[str, Any]) -> dict[str, Any]:
+    """A held send's answer less ``remaining_ms``, which shrinks between two answers."""
+    return {key: value for key, value in answer.items() if key != "remaining_ms"}
 
 
 def stranger() -> str:
@@ -385,3 +390,124 @@ def test_removing_the_account_forgets_its_held_sends_and_their_jobs(
     assert service.list_scheduled(ctx, user.id) == []
     assert job(db_session, job_id) is None
     assert db_session.scalars(select(ScheduledSend.id)).all() == []
+
+
+def test_an_undoable_send_is_held_for_the_users_delay_and_undo_leaves_the_draft(
+    composer: Composer,
+    user: User,
+    admin: User,
+    db_session: Session,
+    sessions: sessionmaker[Session],
+    mailboxes: Mailboxes,
+    smtp_server: SmtpTestServer,
+) -> None:
+    to = stranger()
+    ref = draft_to(composer, to)
+    before = datetime.now(UTC)
+
+    response = composer.post_send(ref, undoable=True)
+
+    assert response.status_code == 202, response.text
+    held = response.json()
+    assert (held["state"], held["ref"], held["account"]) == ("held", ref, 1)
+    send_at = datetime.fromisoformat(held["send_at"])
+    assert before + timedelta(seconds=10) <= send_at <= datetime.now(UTC) + timedelta(seconds=10)
+    assert 0 < held["remaining_ms"] <= 10_000
+    # Asked again, as after a lost answer: the same held send, and nothing more.
+    assert steady(composer.post_send(ref, undoable=True).json()) == steady(held)
+    path = f"{MAIL}/scheduled/{held['scheduled_id']}"
+    assert steady(composer.client.get(path).json()) == steady(held)
+    assert service.read_scheduled(context(composer), user.id, held["scheduled_id"]) is not None
+    with pytest.raises(Refusal) as other:
+        service.read_scheduled(context(composer), admin.id, held["scheduled_id"])
+    assert other.value.code == "not_found"
+
+    undone = composer.client.delete(path)
+
+    assert (undone.status_code, steady(undone.json())) == (200, steady(held))
+    assert composer.client.get(path).status_code == 404
+    assert composer.client.delete(path).status_code == 404
+    assert send_scheduled(sessions, mailboxes, int(held["scheduled_id"])) == "gone"
+    assert smtp_server.delivered_to(to) == []
+    assert composer.read(ref)["send"] is None
+    assert row(db_session, held["scheduled_id"]) is None
+
+
+def test_send_while_the_draft_is_held_for_later_is_refused(composer: Composer, user: User) -> None:
+    ref = draft_to(composer, stranger())
+    later = service.schedule_send(
+        context(composer), user.id, ref, datetime.now(UTC) + timedelta(hours=1)
+    )
+
+    response = composer.post_send(ref, undoable=True)
+
+    assert detail(response) == (409, "already_scheduled")
+    assert service.list_scheduled(context(composer), user.id) == [later]
+
+
+def test_send_asked_again_once_the_worker_took_the_held_send_answers_it(
+    composer: Composer, db_session: Session
+) -> None:
+    ref = draft_to(composer, stranger())
+    held = composer.post_send(ref, undoable=True).json()
+    stored = row(db_session, held["scheduled_id"])
+    assert stored is not None
+    stored.state = "sending"
+    db_session.flush()
+
+    again = composer.post_send(ref, undoable=True)
+
+    assert again.status_code == 202, again.text
+    assert (again.json()["scheduled_id"], again.json()["state"]) == (
+        held["scheduled_id"],
+        "sending",
+    )
+
+
+def test_a_held_send_is_followed_to_its_send_once_the_worker_sent_it(
+    composer: Composer,
+    sessions: sessionmaker[Session],
+    mailboxes: Mailboxes,
+    smtp_server: SmtpTestServer,
+) -> None:
+    to = stranger()
+    compose_id = str(uuid.uuid4())
+    saved = composer.post_draft(
+        compose_id=compose_id, to=[address(to)], subject="Undoable", text="Hello"
+    )
+    ref = saved.json()["ref"]
+    compose_send = {"account": 1, "compose_id": compose_id}
+    assert composer.client.get(f"{MAIL}/sends", params=compose_send).status_code == 404
+    held = composer.post_send(ref, undoable=True).json()
+
+    assert send_scheduled(sessions, mailboxes, int(held["scheduled_id"])) == "ok"
+
+    assert composer.client.get(f"{MAIL}/scheduled/{held['scheduled_id']}").status_code == 404
+    sent = composer.client.get(f"{MAIL}/sends", params=compose_send)
+    assert sent.status_code == 200, sent.text
+    assert (sent.json()["state"], sent.json()["filed"], sent.json()["settled"]) == (
+        "sent",
+        True,
+        True,
+    )
+    assert composer.follow(sent.json()["send_id"]) == sent.json()
+    assert len(smtp_server.delivered_to(to)) == 1
+    other_account = composer.client.get(
+        f"{MAIL}/sends", params={"account": 2, "compose_id": compose_id}
+    )
+    assert other_account.status_code == 404
+
+
+def test_with_no_undo_delay_an_undoable_send_goes_at_once(
+    composer: Composer, smtp_server: SmtpTestServer
+) -> None:
+    assert (
+        composer.client.put("/api/v1/auth/me/undo-send", json={"undo_send_seconds": 0}).status_code
+        == 200
+    )
+    to = stranger()
+
+    result = composer.sent(draft_to(composer, to), undoable=True)
+
+    assert result["state"] == "sent"
+    assert len(smtp_server.delivered_to(to)) == 1

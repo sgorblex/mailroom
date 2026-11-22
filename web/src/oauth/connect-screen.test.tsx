@@ -10,7 +10,7 @@ import { renderSignedIn } from '@/test/signed-in.tsx'
 
 import { ConnectScreen } from './connect-screen.tsx'
 
-const ALICE = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null, conversations: true }
+const ALICE = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null, conversations: true, undo_send_seconds: 10 }
 const REQUEST_PATH = '/api/v1/oauth/requests/req-1'
 const CALLBACK = 'https://claude.ai/api/mcp/auth_callback'
 
@@ -239,6 +239,7 @@ describe('ConnectScreen', () => {
           changeMarkReadSubfolders: reject,
           changeIndexMaxAge: reject,
           changeConversations: reject,
+          changeUndoSend: reject,
           recheck: vi.fn(),
         }}
       >

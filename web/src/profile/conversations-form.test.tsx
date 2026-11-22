@@ -7,7 +7,7 @@ import { renderSignedIn } from '@/test/signed-in.tsx'
 import { ConversationsForm } from './conversations-form.tsx'
 
 const PATH = '/api/v1/auth/me/conversations'
-const ALICE = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null, conversations: true }
+const ALICE = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null, conversations: true, undo_send_seconds: 10 }
 
 function stubApi(status: number): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn((_path: string, init?: RequestInit) => {

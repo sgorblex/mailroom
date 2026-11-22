@@ -6,7 +6,7 @@ import { renderSignedIn } from '@/test/signed-in.tsx'
 
 import { RemoteSenders } from './remote-senders.tsx'
 
-const ALICE = { username: 'alice', is_admin: false, time_zone: 'UTC', mark_read_subfolders: true, index_max_age_days: null, conversations: true }
+const ALICE = { username: 'alice', is_admin: false, time_zone: 'UTC', mark_read_subfolders: true, index_max_age_days: null, conversations: true, undo_send_seconds: 10 }
 const LIST = '/api/v1/mail/remote-senders'
 const REMOVE = '/api/v1/mail/remote-senders/remove'
 

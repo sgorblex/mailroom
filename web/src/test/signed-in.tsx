@@ -3,14 +3,14 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
 import { vi } from 'vitest'
 
-import { ALL_FEATURES, changeConversations, changeIndexMaxAge, changeMarkReadSubfolders, changeTimeZone, type Feature, type User } from '@/api/auth.ts'
+import { ALL_FEATURES, changeConversations, changeUndoSend, changeIndexMaxAge, changeMarkReadSubfolders, changeTimeZone, type Feature, type User } from '@/api/auth.ts'
 import { AuthContext } from '@/auth/auth-context.ts'
 import { setRouteFeatures } from '@/auth/feature-route.tsx'
 import { createQueryClient } from '@/lib/query-client.ts'
 
 /**
  * Render `ui` as `user` would see it on an instance with `features`, without the sign-in round trip.
- * A time zone, mark-read default, index age limit or conversations change goes to the API but leaves `user` as it is. A cache of
+ * A time zone, mark-read default, index age limit, conversations or Undo delay change goes to the API but leaves `user` as it is. A cache of
  * its own, never retrying.
  */
 export function renderSignedIn(
@@ -40,6 +40,9 @@ export function renderSignedIn(
         },
         changeConversations: async (conversations) => {
           await changeConversations(conversations)
+        },
+        changeUndoSend: async (seconds) => {
+          await changeUndoSend(seconds)
         },
         recheck: vi.fn(),
       }}

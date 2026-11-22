@@ -6,7 +6,7 @@ import { renderSignedIn } from '@/test/signed-in.tsx'
 
 import { LimitsForm } from './limits-form.tsx'
 
-const ALICE = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null, conversations: true }
+const ALICE = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null, conversations: true, undo_send_seconds: 10 }
 const DEFAULTS = { send_per_hour: 20, max_recipients: 10, body_chars: 6000, attachment_max_mb: 10, move_max_mb: 25 }
 
 function stubApi(put: (body: Record<string, number>) => Response): ReturnType<typeof vi.fn> {

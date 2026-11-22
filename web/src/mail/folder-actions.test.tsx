@@ -417,7 +417,7 @@ describe('folder actions', () => {
       fake.messages['1/Lists/Junk'] = [5, 4, 3, 2, 1].map((uid) => messageItem(WORK, 'Lists/Junk', uid, unseen))
       return fake
     }
-    const ALICE = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null, conversations: true }
+    const ALICE = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null, conversations: true, undo_send_seconds: 10 }
     const markReads = (fetchMock: ReturnType<typeof stubMailApi>): unknown[] => bodiesTo(fetchMock, '/api/v1/mail/accounts/1/folders/mark-read')
 
     it('offers a folder with subfolders both ways, with them first, and marks each listed one up to its own UIDNEXT', async () => {

@@ -1,9 +1,10 @@
 """Held sends (``docs/requirements/mail-client.md``, *Send state machine*): one mechanism for
 undo send and send later. ``schedule_send`` checks a draft as Send would and holds it: a
 ``held`` row of ``app.scheduled_send`` and the worker's job ``send_draft`` from ``send_at``,
-written in one transaction (``mailroom.worker.sends`` sends it, through ``send_held``).
-``cancel_scheduled`` deletes both while the job has not taken the row, leaving the draft in Drafts;
-``list_scheduled`` lists them."""
+written in one transaction (``mailroom.worker.sends`` sends it, through ``send_held``);
+``hold_send`` holds the user's Send for an Undo. ``cancel_scheduled`` deletes both while the job
+has not taken the row, leaving the draft in Drafts; ``read_scheduled`` and ``list_scheduled`` read
+them."""
 
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ from mailroom.audit import WEB, Origin
 from mailroom.errors import Refusal
 from mailroom.mail.service._shared import _Accounts, _accounts, _call, _message_ref
 from mailroom.mail.service.compose import (
+    DRAFT_GONE,
     SEND_HOLDS_THE_DRAFT,
     _deliverable,
     _send_key,
@@ -93,17 +95,31 @@ def _log(event: str, user_id: int, origin: Origin, row: ScheduledSend) -> None:
     )
 
 
+class _AlreadyScheduled(Refusal):
+    """``already_scheduled``, with the draft's held send."""
+
+    def __init__(self, existing: ScheduledView | None) -> None:
+        super().__init__("conflict", "already_scheduled", ALREADY_SCHEDULED)
+        self.existing = existing
+
+
 def schedule_send(
-    ctx: AppContext, user_id: int, ref: str, send_at: datetime, *, origin: Origin = WEB
+    ctx: AppContext,
+    user_id: int,
+    ref: str,
+    send_at: datetime | timedelta,
+    *,
+    origin: Origin = WEB,
 ) -> ScheduledView:
     """Hold the draft ``ref`` for the worker to send at ``send_at`` (a moment past sends at
-    once), as ``origin.actor``: checked now as ``send_draft`` checks it, and again by the gate
-    when it goes. ``already_scheduled`` while the draft has a held send, ``send_started`` once a
-    send of it began."""
-    if send_at.tzinfo is None:
-        raise Refusal("invalid", "invalid_argument", "A send time needs its offset.")
-    if send_at > datetime.now(UTC) + MAX_AHEAD:
-        raise Refusal("invalid", "invalid_argument", "A send can be held for a year at most.")
+    once; a ``timedelta``, that long after the check), as ``origin.actor``: checked now as
+    ``send_draft`` checks it, and again by the gate when it goes. ``already_scheduled`` while the
+    draft has a held send, ``send_started`` once a send of it began."""
+    if isinstance(send_at, datetime):
+        if send_at.tzinfo is None:
+            raise Refusal("invalid", "invalid_argument", "A send time needs its offset.")
+        if send_at > datetime.now(UTC) + MAX_AHEAD:
+            raise Refusal("invalid", "invalid_argument", "A send can be held for a year at most.")
     accounts = _accounts(ctx, user_id)
     message = _message_ref(ctx, user_id, accounts, ref)
     account = accounts.config(message.account)
@@ -121,6 +137,8 @@ def schedule_send(
         raise Refusal("conflict", "send_started", SEND_STARTED)
     from mailroom.worker.tasks import defer_scheduled_send
 
+    if isinstance(send_at, timedelta):
+        send_at = datetime.now(UTC) + send_at
     with ctx.session_maker() as db:
         # One that failed is done with: scheduling the draft again replaces it.
         db.execute(
@@ -144,21 +162,43 @@ def schedule_send(
                 db.add(row)
                 db.flush()
         except IntegrityError:
-            raise Refusal("conflict", "already_scheduled", ALREADY_SCHEDULED) from None
+            existing = db.scalar(
+                select(ScheduledSend).where(
+                    ScheduledSend.user_id == user_id, ScheduledSend.send_key == key
+                )
+            )
+            raise _AlreadyScheduled(None if existing is None else _view(existing)) from None
         row.job_id = defer_scheduled_send(db, scheduled_id=row.id, send_at=send_at)
         db.commit()
         _log("mail_send_scheduled", user_id, origin, row)
         return _view(row)
 
 
-def _own(db: Session, user_id: int, scheduled_id: str) -> ScheduledSend:
+def hold_send(ctx: AppContext, user_id: int, ref: str, delay: timedelta) -> ScheduledView | None:
+    """The user's Send of the draft ``ref`` held ``delay`` for an Undo (``schedule_send``). Asked
+    again while it is held or being sent, the same held send; ``already_scheduled`` while the
+    draft is held for later than that. None when a send of the draft began already or the draft
+    is gone, which ``send_draft`` answers."""
+    try:
+        return schedule_send(ctx, user_id, ref, delay)
+    except _AlreadyScheduled as refusal:
+        held = refusal.existing
+        if held is not None and held.send_at <= datetime.now(UTC) + delay:
+            return held
+        raise
+    except Refusal as refusal:
+        if refusal.code in DRAFT_GONE or refusal.code == "send_started":
+            return None
+        raise
+
+
+def _own(db: Session, user_id: int, scheduled_id: str, *, lock: bool = True) -> ScheduledSend:
     row = None
     if _ID.fullmatch(scheduled_id):
-        row = db.scalar(
-            select(ScheduledSend)
-            .where(ScheduledSend.id == int(scheduled_id), ScheduledSend.user_id == user_id)
-            .with_for_update()
+        query = select(ScheduledSend).where(
+            ScheduledSend.id == int(scheduled_id), ScheduledSend.user_id == user_id
         )
+        row = db.scalar(query.with_for_update() if lock else query)
     if row is None:
         raise Refusal("not_found", "not_found", _NO_SUCH, coded=True)
     return row
@@ -182,6 +222,12 @@ def cancel_scheduled(
         db.commit()
         _log("mail_send_unscheduled", user_id, origin, row)
         return view
+
+
+def read_scheduled(ctx: AppContext, user_id: int, scheduled_id: str) -> ScheduledView:
+    """The user's held send ``scheduled_id``; ``not_found`` once it went, or was cancelled."""
+    with ctx.session_maker() as db:
+        return _view(_own(db, user_id, scheduled_id, lock=False))
 
 
 def list_scheduled(ctx: AppContext, user_id: int) -> list[ScheduledView]:
