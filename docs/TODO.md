@@ -261,7 +261,7 @@ First, fixes carried over from 0.14.0 testing:
         neither: a finger held on a row selects it.
   - [ ] **One-line compact rows** (later) — sender, subject and date on one line; the compact
         density for now keeps two lines.
-- [ ] **Undo where it is seen** — the Undo send toast is easy to miss where it is now: centred at
+- [x] **Undo where it is seen** — the Undo send toast is easy to miss where it is now: centred at
       the bottom of the window, larger, with the seconds left.
 - [ ] **Profile layout** — the Profile uses the width of a desktop screen, its sections side by
       side in a grid instead of one narrow column.

@@ -11,7 +11,7 @@ import { keys } from '@/test/strings.ts'
 
 import { formatListDate, formatSize } from './format.ts'
 import { MAIL_NS } from './i18n.ts'
-import { sentMessage } from './messages.ts'
+import { recipientsLabel, sentMessage } from './messages.ts'
 
 describe.each([
   ['en', en],
@@ -76,6 +76,23 @@ describe.each([
 
   it('leaves out a note it has no words for: the server text is never shown', () => {
     expect(sentMessage(t, { filed: true, rejected: [], note_codes: ['something_new'] })).toBe(locale.compose.sent)
+  })
+})
+
+describe('the recipients label', () => {
+  const ada = { name: 'Ada Lovelace', address: 'ada@example.org' }
+  const hal = { name: '', address: 'hal@example.org' }
+
+  it.each([
+    ['en', [], ''],
+    ['en', [hal], 'hal@example.org'],
+    ['en', [ada], 'Ada Lovelace'],
+    ['en', [ada, hal], 'Ada Lovelace and 1 other'],
+    ['en', [hal, ada, hal], 'hal@example.org and 2 others'],
+    ['it', [ada, hal], 'Ada Lovelace e 1 altro'],
+    ['it', [hal, ada, hal], 'hal@example.org e altri 2'],
+  ])('is worded in %s for %j', (language, addresses, label) => {
+    expect(recipientsLabel(i18n.getFixedT(language, MAIL_NS), addresses)).toBe(label)
   })
 })
 

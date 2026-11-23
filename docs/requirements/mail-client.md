@@ -1112,10 +1112,14 @@ user next sends, so a direct send's `GET /sends/{id}` is `not_found` after a day
   again while it is held or being sent (a lost answer), the same one, and `already_scheduled`
   while the draft is held for later than that. With the delay at 0, or once a send of the draft
   began or the draft is gone, it is the plain Send above. The web closes the composer and shows
-  *Sending…* with **Undo** for `remaining_ms`, each held send its own notice: Undo cancels it (`DELETE /scheduled/{id}`) and opens the draft again in
+  *Sending to … in 7 s* with **Undo** for `remaining_ms` in a toast centred at the foot of the
+  screen (above a phone's tab bar), larger than the others and with no timer of its own, each held
+  send its own: the seconds left count down on screen while its live region says once whom it
+  goes to and for how long Undo lasts. Undo cancels it (`DELETE /scheduled/{id}`) and opens the draft again in
   the composer; past that, or refused `send_started` (*Too late to undo*), the web follows it
   (`GET /scheduled/{id}` until its row is gone, then `GET /sends?account=&compose_id=`, the send of
-  the draft's key, as `GET /sends/{id}`) to *Sent* or to why it was not sent, with *Open draft*. A
+  the draft's key, as `GET /sends/{id}`) to *Sent* or to why it was not sent, said in the same
+  toast (assertively) with *Open draft*. A
   row gone with no send was cancelled elsewhere. A draft written elsewhere and sent as it is has no
   `compose_id` to follow it by, so it goes at once. The hold lives on the server: a closed tab or a
   restart does not stop it.
@@ -1128,9 +1132,9 @@ user next sends, so a direct send's `GET /sends/{id}` is `not_found` after a day
   as the user and answers 201 with it; the composer closes on *Scheduled for …*, the draft staying
   in Drafts. The sidebar's **Scheduled** entry, with how many there are, lists the user's held
   sends of every account (`GET /scheduled`, soonest first, the ones that failed included with why,
-  and an Undo's while it waits): the subject, the addresses, the account and when it goes, with
-  **Edit** (cancels it and opens the draft in the composer) and **Cancel send** (cancels it, the
-  draft left in Drafts); one the worker has taken shows *Sending…* with neither. Editing the
+  and an Undo's while it waits, gone from the count once undone): the subject, the addresses, the
+  account and when it goes, with **Edit** (cancels it and opens the draft in the composer) and
+  **Cancel send** (cancels it, the draft left in Drafts); one the worker has taken shows *Sending…* with neither. Editing the
   draft any other way before it goes makes it another version, so the held send then fails and
   stays listed, with why, until cancelled. A draft with a held send still to go, opened from
   Drafts, says *Scheduled for …* in the composer (`GET /drafts/{ref}` gives it as `scheduled`):

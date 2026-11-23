@@ -6,14 +6,14 @@ import { useNavigate, useSearch } from '@tanstack/react-router'
 
 import type { AccountId, Account } from '@/api/accounts.ts'
 import { ApiRequestError } from '@/api/http.ts'
-import { cancelScheduled, type ScheduledSend } from '@/api/mail.ts'
+import { cancelScheduled, type MailAddress, type ScheduledSend } from '@/api/mail.ts'
 import { useTimeZone, useUndoSendSeconds } from '@/auth/auth-context.ts'
 import { formatDateTime } from '@/lib/format.ts'
 
 import { ComposeContext, type Announcement, type Compose, type EditorHandle, type HeldNotice, type SendNotice } from './compose-context.ts'
 import { composeKey, sourceFromParam, type ComposeSession, type ComposeSource } from './compose-session.ts'
 import { MAIL_NS } from './i18n.ts'
-import { heldEndMessage, sentMessage } from './messages.ts'
+import { sentMessage } from './messages.ts'
 import { SCHEDULED_KEY } from './queries.ts'
 import { followHeld } from './send-flow.ts'
 import { useTriage } from './triage-context.ts'
@@ -184,17 +184,21 @@ export function ComposeProvider({
 
   const undoMs = undoSeconds * 1_000
   const holdSent = useCallback(
-    (send: ScheduledSend, composeId: string) => {
+    (send: ScheduledSend, composeId: string, to: MailAddress[]) => {
       const id = send.scheduled_id
       stopFollowing(id)
       const controller = new AbortController()
       followers.current.set(id, controller)
       setNotice(null)
-      setHeld((list) => [...list.filter((notice) => notice.send.scheduled_id !== id), { send, composeId, phase: 'undoable' }])
-      setAnnouncement({ text: t('compose.heldSending'), urgent: false })
-      close()
       // What is left of the hold by the server's clock, not the time since its answer arrived.
       const holdMs = Math.min(undoMs, send.remaining_ms)
+      const whom = to.length > 0 ? to : send.recipients.map((address) => ({ name: '', address }))
+      // Its toast says so, as it says how it ends but when sent.
+      setHeld((list) => [
+        ...list.filter((notice) => notice.send.scheduled_id !== id),
+        { send, composeId, to: whom, until: Date.now() + holdMs, holdMs, phase: 'undoable' },
+      ])
+      close()
       const past = setTimeout(() => {
         changeHeld(id, (notice) => (notice.phase === 'undoable' ? { ...notice, phase: 'sending' } : notice))
       }, holdMs)
@@ -214,7 +218,6 @@ export function ComposeProvider({
           setAnnouncement({ text: sentMessage(t, { filed, rejected, note_codes }), urgent: false })
         } else {
           changeHeld(id, (notice) => ({ ...notice, phase: 'ended', end }))
-          setAnnouncement({ text: heldEndMessage(t, end), urgent: true })
         }
         mailChanged()
       })
@@ -238,17 +241,21 @@ export function ComposeProvider({
           stopFollowing(id)
           changeHeld(id, () => null)
           setAnnouncement({ text: t('compose.undone'), urgent: false })
+          // Nothing is held now: the Scheduled count and the lists read again.
+          mailChanged()
           void open({ kind: 'draft', ref: current.send.ref }, null)
         },
         (error: unknown) => {
           // Taken by the worker, or gone with it: what it comes to is followed still.
           const late = error instanceof ApiRequestError && (error.code === 'send_started' || error.code === 'not_found')
           changeHeld(id, (notice) => (notice.phase === 'undoing' ? { ...notice, phase: late ? 'tooLate' : 'undoable' } : notice))
-          setAnnouncement({ text: late ? t('compose.tooLateToUndo') : t('compose.undoFailed'), urgent: true })
+          if (!late) {
+            setAnnouncement({ text: t('compose.undoFailed'), urgent: true })
+          }
         },
       )
     },
-    [changeHeld, open, stopFollowing, t],
+    [changeHeld, mailChanged, open, stopFollowing, t],
   )
 
   const dismissHeld = useCallback(
