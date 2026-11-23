@@ -295,6 +295,34 @@ First, fixes carried over from 0.14.0 testing:
 
 ### Milestone F: Access, apps and data
 
+#### Found while checking milestone E
+
+Older than milestone E, seen in its browser check; fix before batch 11.
+
+- [ ] **Unread count drops by two** — opening an unread message lowers the folder's count twice:
+      once by the client's guess when the mark-read answers, once by the live count the server
+      sent for the same change. The guess should yield to a newer live count.
+- [ ] **Import, then Send refused** — an imported HTML draft whose `style` attribute is left
+      empty by the cleaner is refused on Send ("That draft was not imported as built."): a second
+      clean drops the empty attribute, so the two no longer match. The composer says only *Not
+      saved*.
+- [ ] **Sent list after a send** — the copy is filed in Sent, but nothing syncs the index's Sent
+      folder afterwards, so the app's Sent list misses it until the next sweep.
+- [ ] **Draft left after Undo, then Send** — after an Undo and a second Send the draft can stay in
+      Drafts, though the message went once.
+- [ ] **Wide HTML on phones** — fit a newsletter laid out wider than the screen to its width,
+      as phone mail apps do, instead of cutting it at the frame's edge.
+- [ ] **Speed, later** — what the milestone E speed pass left (its measurement found the rest):
+  - [ ] **Mail without waiting on mailbox logins** — `/accounts` logs in to every account's IMAP
+        server for its keywords before the mail screen draws anything; answer first and fill the
+        keywords in later, and start the list from the remembered account.
+  - [ ] **Fewer IMAP round trips per read** — skip selecting a folder that is already selected
+        with the same UIDVALIDITY, and keep a message's BODYSTRUCTURE for a while (mailroom-core).
+  - [ ] **Mail code sooner** — load the mail screen's chunk without waiting for `/auth/me`, or
+        ship it with the shell.
+  - [ ] **React Compiler** — the general form of the targeted memoising in the speed pass, so
+        rows stop re-rendering when the open message changes.
+
 #### 11. Profile, security and data
 
 - [ ] **Sessions** — the user's signed-in sessions on the profile, each one endable.
