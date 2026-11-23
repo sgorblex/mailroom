@@ -20,7 +20,8 @@ import { GroupChoices } from '@/oauth/group-choices.tsx'
 /**
  * The apps (MCP clients) the user approved, with the tool groups each may use, which the user
  * changes here, and each revocable after a confirm. With an external issuer the identity provider
- * manages access instead; with the MCP server off the section shows only leftovers.
+ * manages access instead; with the MCP server off the section shows only leftovers, and nothing
+ * once it knows there are none.
  */
 export function ConnectedApps(): ReactElement | null {
   const { t, i18n } = useTranslation()
@@ -70,7 +71,15 @@ export function ConnectedApps(): ReactElement | null {
   }
 
   if (state.kind === 'loading') {
-    return null
+    // A line while it asks, so the card (and its group) is not taken for one with nothing in it.
+    return (
+      <section aria-labelledby="connected-apps" className="flex flex-col gap-3">
+        <h3 id="connected-apps" className="font-medium">
+          {t('connectedApps.title')}
+        </h3>
+        <p className="text-sm text-muted-foreground">{t('connectedApps.loading')}</p>
+      </section>
+    )
   }
   const auth = state.kind === 'loaded' ? state.value.auth : null
   const grants = state.kind === 'loaded' ? state.value.grants : []
@@ -80,9 +89,9 @@ export function ConnectedApps(): ReactElement | null {
   }
   return (
     <section aria-labelledby="connected-apps" className="flex flex-col gap-3">
-      <h2 id="connected-apps" className="font-medium">
+      <h3 id="connected-apps" className="font-medium">
         {t('connectedApps.title')}
-      </h2>
+      </h3>
       {state.kind === 'failed' && <p role="alert">{state.message}</p>}
       {auth === 'external' && (
         <p className="text-sm text-muted-foreground">

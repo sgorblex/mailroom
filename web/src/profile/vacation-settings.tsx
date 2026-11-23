@@ -24,9 +24,9 @@ export function VacationSettings(): ReactElement {
   const accounts = useQuery({ queryKey: ACCOUNTS_KEY, queryFn: ({ signal }) => listAccounts(signal), ...READ_ON_MOUNT })
   return (
     <section aria-labelledby="vacation" className="flex flex-col gap-3">
-      <h2 id="vacation" className="font-medium">
+      <h3 id="vacation" className="font-medium">
         {t('vacation.title')}
-      </h2>
+      </h3>
       <p className="text-sm text-muted-foreground">{t('vacation.intro')}</p>
       {accounts.isError && (
         <p role="alert" className="text-sm text-destructive">
@@ -48,9 +48,9 @@ function AccountVacation({ account }: { account: Account }): ReactElement {
   const headingId = `vacation-${String(account.id)}`
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
-      <h3 id={headingId} className="text-sm font-medium">
+      <h4 id={headingId} className="text-sm font-medium">
         {account.display_name}
-      </h3>
+      </h4>
       {vacation.isPending && <p className="text-sm text-muted-foreground">{t('vacation.loading')}</p>}
       {vacation.isError && (
         <p role="alert" className="text-sm text-destructive">

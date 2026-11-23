@@ -101,6 +101,7 @@
   },
   "connectedApps": {
     "title": "App collegate",
+    "loading": "Caricamento delle app collegate…",
     "none": "Nessuna per ora: qui compare ogni app che colleghi a Mailroom (un client MCP come Claude).",
     "external": "Le app che possono raggiungere Mailroom le gestisce il tuo provider di identità: revoca lì il loro accesso.",
     "externalLeftovers": "Quelle elencate qui erano state collegate prima.",
@@ -291,7 +292,16 @@
     "save": "Cambia password",
     "changed": "Password cambiata. Le altre sessioni sono state chiuse.",
     "passwordsDiffer": "Le nuove password non coincidono.",
-    "unknownError": "Impossibile cambiare la password."
+    "unknownError": "Impossibile cambiare la password.",
+    "sections": {
+      "label": "Sezioni del profilo",
+      "account": "Account",
+      "appearance": "Aspetto",
+      "mail": "Posta",
+      "sending": "Invio",
+      "apps": "App",
+      "empty": "Nulla da impostare qui su questo server."
+    }
   },
   "timeZone": {
     "title": "Fuso orario",
@@ -311,7 +321,7 @@
     "saveFailed": "Impossibile salvare questa scelta."
   },
   "appearance": {
-    "title": "Aspetto",
+    "heading": "Tema e disposizione",
     "intro": "Come appare Mailroom, uguale su ogni dispositivo da cui accedi. Una scelta si vede subito.",
     "home": "Apri su",
     "homes": {

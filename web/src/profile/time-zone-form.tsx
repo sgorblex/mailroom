@@ -39,9 +39,9 @@ export function TimeZoneForm(): ReactElement {
 
   return (
     <section aria-labelledby="time-zone" className="flex flex-col gap-3">
-      <h2 id="time-zone" className="font-medium">
+      <h3 id="time-zone" className="font-medium">
         {t('timeZone.title')}
-      </h2>
+      </h3>
       <p id="time-zone-intro" className="text-sm text-muted-foreground">
         {t('timeZone.intro')}
       </p>

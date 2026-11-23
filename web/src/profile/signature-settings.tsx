@@ -20,9 +20,9 @@ export function SignatureSettings(): ReactElement {
   const accounts = useQuery({ queryKey: ACCOUNTS_KEY, queryFn: ({ signal }) => listAccounts(signal), ...READ_ON_MOUNT })
   return (
     <section aria-labelledby="signatures" className="flex flex-col gap-3">
-      <h2 id="signatures" className="font-medium">
+      <h3 id="signatures" className="font-medium">
         {t('signatures.title')}
-      </h2>
+      </h3>
       <p className="text-sm text-muted-foreground">{t('signatures.intro')}</p>
       {accounts.isError && (
         <p role="alert" className="text-sm text-destructive">
@@ -44,9 +44,9 @@ function AccountSignatures({ account }: { account: Account }): ReactElement {
   const headingId = `signatures-${String(account.id)}`
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
-      <h3 id={headingId} className="text-sm font-medium">
+      <h4 id={headingId} className="text-sm font-medium">
         {account.display_name}
-      </h3>
+      </h4>
       {signatures.isPending && <p className="text-sm text-muted-foreground">{t('signatures.loading')}</p>}
       {signatures.isError && (
         <p role="alert" className="text-sm text-destructive">

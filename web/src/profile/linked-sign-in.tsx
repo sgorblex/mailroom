@@ -52,9 +52,9 @@ export function LinkedSignIn(): ReactElement | null {
   const linkedHere = identities.some((identity) => identity.name !== null)
   return (
     <section aria-labelledby="linked-sign-in" className="flex flex-col gap-3">
-      <h2 id="linked-sign-in" className="font-medium">
+      <h3 id="linked-sign-in" className="font-medium">
         {t('sso.linkedTitle')}
-      </h2>
+      </h3>
       {ssoError !== null && (
         <p role="alert" className="text-sm text-destructive">
           {ssoErrorMessage(t, ssoError)}

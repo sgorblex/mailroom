@@ -39,9 +39,9 @@ export function LimitsForm(): ReactElement {
   const { state, retry } = useLoad(load, (error) => apiErrorMessage(error, t('limits.loadFailed')))
   return (
     <section aria-labelledby="limits" className="flex flex-col gap-3">
-      <h2 id="limits" className="font-medium">
+      <h3 id="limits" className="font-medium">
         {t('limits.title')}
-      </h2>
+      </h3>
       <p className="text-sm text-muted-foreground">{t('limits.intro')}</p>
       {state.kind === 'loading' && <p className="text-sm">{t('limits.loading')}</p>}
       {state.kind === 'failed' && (

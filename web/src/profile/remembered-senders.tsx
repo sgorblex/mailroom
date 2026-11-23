@@ -99,9 +99,9 @@ function SenderList({
   const senders = state.kind === 'loaded' ? state.value : []
   return (
     <section aria-labelledby={id} className="flex flex-col gap-3">
-      <h2 id={id} className="font-medium">
+      <h3 id={id} className="font-medium">
         {labels.title}
-      </h2>
+      </h3>
       <p className="text-sm text-muted-foreground">{labels.intro}</p>
       {state.kind === 'failed' && (
         <p role="alert" className="text-sm">

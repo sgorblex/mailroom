@@ -36,9 +36,9 @@ export function UndoSendForm(): ReactElement {
 
   return (
     <section aria-labelledby="undo-send" className="flex flex-col gap-3">
-      <h2 id="undo-send" className="font-medium">
+      <h3 id="undo-send" className="font-medium">
         {t('undoSend.title')}
-      </h2>
+      </h3>
       <p id="undo-send-intro" className="text-sm text-muted-foreground">
         {t('undoSend.intro')}
       </p>
