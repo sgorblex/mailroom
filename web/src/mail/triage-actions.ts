@@ -6,7 +6,7 @@ import type { MailFolder, MoveRemoval } from '@/api/mail.ts'
 
 import { isSameFolder, loadedFolders, roleFolder, useTriage, type Action, type Target } from './triage-context.ts'
 
-/** The actions the toolbar and the shortcuts offer for the current targets; `null` is not offered. */
+/** The actions the toolbars and the shortcuts offer for the current targets; `null` is not offered. */
 export interface TriageActions {
   targets: Target[]
   /**
@@ -67,7 +67,7 @@ export function movableInto(folder: MailFolder): boolean {
 }
 
 /**
- * The actions on `of`, by default what the toolbar acts on (the selection, else the open message,
+ * The actions on `of`, by default what the keys act on (the selection, else the open message,
  * or every message matching when they are selected).
  */
 export function useTriageActions(of?: Target[]): TriageActions {

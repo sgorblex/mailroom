@@ -44,6 +44,7 @@ function state(overrides: Partial<FakeMailState> = {}): FakeMailState {
 
 const messagesList = (): Promise<HTMLElement> => screen.findByRole('list', { name: 'Messages' })
 const actions = (): Promise<HTMLElement> => screen.findByRole('group', { name: 'Message actions' })
+const selection = (): Promise<HTMLElement> => screen.findByRole('group', { name: 'Selected messages' })
 const offer = (): Promise<HTMLElement> => screen.findByRole('region', { name: 'Filter for spam' })
 
 function toast(): HTMLElement {
@@ -76,7 +77,7 @@ describe('report spam', () => {
 
     const list = await messagesList()
     await select(list, 'Message 9')
-    expect(within(await actions()).getByRole('button', { name: 'Report spam' })).toHaveAttribute('aria-keyshortcuts', '!')
+    expect(within(await selection()).getByRole('button', { name: 'Report spam' })).toHaveAttribute('aria-keyshortcuts', '!')
     await userEvent.keyboard('!')
     await waitFor(() => {
       expect(toast()).toHaveTextContent('Reported 1 message as spam.')
@@ -96,7 +97,7 @@ describe('report spam', () => {
     renderMailApp('/mail')
 
     await select(await messagesList(), 'Message 9')
-    expect(within(await actions()).getByRole('button', { name: 'Move to Trash' })).toBeInTheDocument()
+    expect(within(await selection()).getByRole('button', { name: 'Move to Trash' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Report spam' })).not.toBeInTheDocument()
   })
 })
@@ -108,7 +109,7 @@ describe('the filter offered after a report of spam', () => {
     renderMailApp('/mail', withFilters)
 
     await select(await messagesList(), 'Message 9')
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Report spam' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Report spam' }))
     const region = await offer()
     expect(region).toHaveTextContent(`Send future mail from ${SENDER} to Junk?`)
     expect(region).toHaveTextContent(/only while that rule set and Run filters for this account are on/)
@@ -165,7 +166,7 @@ describe('the filter offered after a report of spam', () => {
     renderMailApp('/mail', withFilters)
 
     await select(await messagesList(), 'Message 9')
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Report spam' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Report spam' }))
     const region = await offer()
     await userEvent.click(within(region).getByRole('button', { name: 'Add the filter' }))
     expect(await within(region).findByRole('alert')).toHaveTextContent('Could not add the filter.')
@@ -185,7 +186,7 @@ describe('the filter offered after a report of spam', () => {
     renderMailApp('/mail', withFilters)
 
     await select(await messagesList(), 'Message 9')
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Report spam' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Report spam' }))
     const region = await offer()
     await userEvent.click(within(region).getByRole('button', { name: 'Add the filter' }))
     await within(region).findByText(/Filter added to the rule set “Inbox”/)
@@ -204,7 +205,7 @@ describe('the filter offered after a report of spam', () => {
     renderMailApp('/mail', withFilters)
 
     await select(await messagesList(), 'Message 9')
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Report spam' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Report spam' }))
     const region = await offer()
     await userEvent.click(within(region).getByRole('button', { name: 'Add the filter' }))
     await within(region).findByText(/Filter added to the rule set/)
@@ -221,11 +222,11 @@ describe('the filter offered after a report of spam', () => {
 
     const list = await messagesList()
     await select(list, 'Message 9')
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Report spam' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Report spam' }))
     await offer()
     fake.refuse = { 'POST /api/v1/mail/messages/junk': { status: 502, body: { detail: 'Bad gateway' } } }
     await select(list, 'Message 8')
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Report spam' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Report spam' }))
     await waitFor(() => {
       expect(screen.queryByRole('region', { name: 'Filter for spam' })).not.toBeInTheDocument()
     })
@@ -237,7 +238,7 @@ describe('the filter offered after a report of spam', () => {
 
     const list = await messagesList()
     await select(list, 'Message 9')
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Report spam' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Report spam' }))
     await offer()
     await userEvent.click(screen.getByRole('button', { name: 'Undo' }))
     await waitFor(() => {
@@ -245,7 +246,7 @@ describe('the filter offered after a report of spam', () => {
     })
 
     await select(list, 'Message 8')
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Report spam' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Report spam' }))
     await userEvent.click(within(await offer()).getByRole('button', { name: 'No thanks' }))
     expect(screen.queryByRole('region', { name: 'Filter for spam' })).not.toBeInTheDocument()
     expect(filterRequests(fetchMock)).toEqual([])
@@ -258,7 +259,7 @@ describe('the filter offered after a report of spam', () => {
     const list = await messagesList()
     await select(list, 'Message 9')
     await select(list, 'Message 8')
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Report spam' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Report spam' }))
     await waitFor(() => {
       expect(toast()).toHaveTextContent('Reported 2 messages as spam.')
     })
@@ -270,7 +271,7 @@ describe('the filter offered after a report of spam', () => {
     renderMailApp('/mail', { user: ALICE })
 
     await select(await messagesList(), 'Message 9')
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Report spam' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Report spam' }))
     await waitFor(() => {
       expect(toast()).toHaveTextContent('Reported 1 message as spam.')
     })

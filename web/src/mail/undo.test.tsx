@@ -34,7 +34,7 @@ function state(overrides: Partial<FakeMailState> = {}): FakeMailState {
 const MOVE = '/api/v1/mail/messages/move'
 const FLAG = '/api/v1/mail/messages/flag'
 const messagesList = (): Promise<HTMLElement> => screen.findByRole('list', { name: 'Messages' })
-const actions = (): Promise<HTMLElement> => screen.findByRole('group', { name: 'Message actions' })
+const selection = (): Promise<HTMLElement> => screen.findByRole('group', { name: 'Selected messages' })
 const undoButton = (): HTMLElement | null => screen.queryByRole('button', { name: 'Undo' })
 
 function toast(live: 'polite' | 'assertive'): HTMLElement {
@@ -62,7 +62,7 @@ describe('undo', () => {
     const list = await messagesList()
     await select(list, 'Message 9')
     await select(list, 'Message 8')
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Archive' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Archive' }))
     await waitFor(() => {
       expect(toast('polite')).toHaveTextContent('Archived 2 messages.')
     })
@@ -91,7 +91,7 @@ describe('undo', () => {
     const list = await messagesList()
     await select(list, 'Message 10')
     await select(list, 'Message 7')
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Star' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Star' }))
     await waitFor(() => {
       expect(toast('polite')).toHaveTextContent('Starred 2 messages.')
     })
@@ -121,7 +121,7 @@ describe('undo', () => {
 
     const list = await messagesList()
     await select(list, 'Message 9')
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Move to Trash' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Move to Trash' }))
     await waitFor(() => {
       expect(toast('polite')).toHaveTextContent(
         'Moved 1 message to Trash. It cannot be undone: the mail server did not say where the messages went.',
@@ -137,7 +137,7 @@ describe('undo', () => {
 
     const list = await messagesList()
     await select(list, 'Message 9')
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Move to another account…' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Move to another account…' }))
     const picker = screen.getByRole('dialog', { name: 'Move to another account' })
     await userEvent.click(await within(picker).findByRole('button', { name: 'Inbox' }))
     await waitFor(() => {
@@ -152,7 +152,7 @@ describe('undo', () => {
 
     const list = await messagesList()
     await select(list, 'Message 9')
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Archive' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Archive' }))
     expect(await screen.findByRole('button', { name: 'Undo' })).toBeInTheDocument()
     const folders = screen.getByRole('tree', { name: 'Folders of work' })
     await userEvent.click(within(folders).getByRole('treeitem', { name: 'Archive' }))
@@ -168,7 +168,7 @@ describe('undo', () => {
     const list = await messagesList()
     const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) })
     await user.click(within(list).getByRole('checkbox', { name: 'Select Message 9' }))
-    await user.click(within(await actions()).getByRole('button', { name: 'Archive' }))
+    await user.click(within(await selection()).getByRole('button', { name: 'Archive' }))
     const undo = await screen.findByRole('button', { name: 'Undo' })
     const card = undo.parentElement
     if (card === null) {
@@ -204,7 +204,7 @@ describe('undo', () => {
 
     const list = await messagesList()
     await select(list, 'Message 9')
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Archive' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Archive' }))
     const undo = await screen.findByRole('button', { name: 'Undo' })
     fake.groupFailures = { '1/Archive': 'not_found' }
     await userEvent.click(undo)
@@ -220,7 +220,7 @@ describe('undo', () => {
 
     const list = await messagesList()
     await select(list, 'Message 9')
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Archive' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Archive' }))
     const undo = await screen.findByRole('button', { name: 'Undo' })
     fake.refuse = { [`POST ${MOVE}`]: { status: 502, body: { detail: { code: 'server_error', message: 'The mail server failed.' } } } }
     await userEvent.click(undo)
@@ -236,7 +236,7 @@ describe('undo', () => {
     const list = await messagesList()
     await select(list, 'Message 9')
     await select(list, 'Message 8')
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Archive' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Archive' }))
     await waitFor(() => {
       expect(toast('polite')).toHaveTextContent(
         'Archived 2 messages. It cannot be undone: the mail server did not say where the messages went.',
@@ -251,7 +251,7 @@ describe('undo', () => {
 
     const list = await messagesList()
     await select(list, 'Message 9')
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Archive' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Archive' }))
     const undo = await screen.findByRole('button', { name: 'Undo' })
     const before = within(list).getByRole('checkbox', { name: 'Select Message 10' })
     act(() => {

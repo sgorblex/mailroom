@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -70,6 +70,7 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
   return { promise, resolve }
 }
 const actions = (): Promise<HTMLElement> => screen.findByRole('group', { name: 'Message actions' })
+const selection = (): Promise<HTMLElement> => screen.findByRole('group', { name: 'Selected messages' })
 const rowLink = (list: HTMLElement, subject: string): HTMLElement =>
   within(list).getByRole('link', { name: new RegExp(`${subject}Preview`) })
 /** The row of the message with `subject`, its checkbox and star toggle included. */
@@ -95,18 +96,18 @@ describe('triage', () => {
     renderMailApp('/mail')
 
     const list = await messagesList()
-    expect(screen.queryByRole('group', { name: 'Message actions' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Selected messages' })).not.toBeInTheDocument()
     await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 9' }))
     await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 8' }))
-    expect(await actions()).toHaveTextContent('2 selected')
+    expect(await selection()).toHaveTextContent('2 selected')
 
     const all = screen.getByRole('checkbox', { name: 'Select all' })
     expect(all).toHaveProperty('indeterminate', true)
     await userEvent.click(all)
-    expect(await actions()).toHaveTextContent('5 selected')
+    expect(await selection()).toHaveTextContent('5 selected')
     await userEvent.click(all)
     expect(within(list).queryAllByRole('checkbox', { checked: true })).toHaveLength(0)
-    expect(screen.queryByRole('group', { name: 'Message actions' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Selected messages' })).not.toBeInTheDocument()
   })
 
   it('selects every row between two checkboxes with Shift+click, and unselects them so', async () => {
@@ -119,13 +120,13 @@ describe('triage', () => {
     await user.keyboard('{Shift>}')
     await user.click(within(list).getByRole('checkbox', { name: 'Select Message 7' }))
     await user.keyboard('{/Shift}')
-    expect(await actions()).toHaveTextContent('3 selected')
+    expect(await selection()).toHaveTextContent('3 selected')
     expect(within(list).getByRole('checkbox', { name: 'Select Message 8' })).toBeChecked()
 
     await user.keyboard('{Shift>}')
     await user.click(within(list).getByRole('checkbox', { name: 'Select Message 8' }))
     await user.keyboard('{/Shift}')
-    expect(await actions()).toHaveTextContent('1 selected')
+    expect(await selection()).toHaveTextContent('1 selected')
     expect(within(list).getByRole('checkbox', { name: 'Select Message 9' })).toBeChecked()
   })
 
@@ -136,7 +137,7 @@ describe('triage', () => {
     const list = await messagesList()
     await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 10' }))
     await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 9' }))
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Archive' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Archive' }))
 
     await reported('polite', 'Archived 2 messages.')
     expect(within(list).queryByRole('link', { name: /Message 10Preview/ })).not.toBeInTheDocument()
@@ -173,8 +174,9 @@ describe('triage', () => {
     const history = renderMailApp(`/mail?message=${String(second?.ref)}`)
 
     await screen.findByRole('region', { name: 'Message body' })
-    expect(await actions()).toHaveTextContent('This message')
-    await userEvent.click(screen.getByRole('button', { name: 'Move to Trash' }))
+    // The list's toolbar is for a selection; the open message has its own bar.
+    expect(screen.queryByRole('group', { name: 'Selected messages' })).not.toBeInTheDocument()
+    await userEvent.click(within(await actions()).getByRole('button', { name: 'Move to Trash' }))
     await reported('polite', 'Moved 1 message to Trash.')
     expect(bodiesTo(fetchMock, '/api/v1/mail/messages/trash')).toEqual([{ refs: [second?.ref], source_folder: 'INBOX' }])
     await waitFor(() => {
@@ -195,8 +197,8 @@ describe('triage', () => {
 
     const list = await messagesList()
     await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 8' }))
-    expect(within(await actions()).getByRole('button', { name: 'Move to Trash' })).toBeInTheDocument()
-    expect(within(await actions()).queryByRole('button', { name: 'Archive' })).not.toBeInTheDocument()
+    expect(within(await selection()).getByRole('button', { name: 'Move to Trash' })).toBeInTheDocument()
+    expect(within(await selection()).queryByRole('button', { name: 'Archive' })).not.toBeInTheDocument()
   })
 
   it('moves to a folder from the picker, without Drafts, Sent, the folder they are in or a level holding only folders', async () => {
@@ -205,7 +207,7 @@ describe('triage', () => {
 
     const list = await messagesList()
     await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 8' }))
-    const move = within(await actions()).getByRole('button', { name: 'Move to…' })
+    const move = within(await selection()).getByRole('button', { name: 'Move to…' })
     await userEvent.click(move)
     expect(move).toHaveAttribute('aria-expanded', 'true')
     const picker = screen.getByRole('dialog', { name: 'Move to' })
@@ -243,10 +245,10 @@ describe('triage', () => {
     const list = await screen.findByRole('list', { name: 'Search results' })
     await userEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
     // Not every account of the selection has an Archive folder.
-    expect(within(await actions()).queryByRole('button', { name: 'Archive' })).not.toBeInTheDocument()
+    expect(within(await selection()).queryByRole('button', { name: 'Archive' })).not.toBeInTheDocument()
     // Two accounts: no one folder list to move to.
-    expect(within(await actions()).queryByRole('button', { name: 'Move to…' })).not.toBeInTheDocument()
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Move to Trash' }))
+    expect(within(await selection()).queryByRole('button', { name: 'Move to…' })).not.toBeInTheDocument()
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Move to Trash' }))
 
     await reported('assertive', 'Moved 1 message to Trash.')
     const alert = report('assertive')
@@ -259,7 +261,7 @@ describe('triage', () => {
     expect(within(list).queryByRole('link', { name: /From home/ })).not.toBeInTheDocument()
     expect(rowLink(list, 'Message 9')).toBeInTheDocument()
     // The failed row stays selected, for another try.
-    expect(await actions()).toHaveTextContent('1 selected')
+    expect(await selection()).toHaveTextContent('1 selected')
   })
 
   it('words a batch where every group failed as the refusal', async () => {
@@ -268,7 +270,7 @@ describe('triage', () => {
 
     const list = await messagesList()
     await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 9' }))
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Archive' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Archive' }))
     await reported('assertive', 'Not every message is still in that folder. Reload the list.')
     expect(rowLink(list, 'Message 9')).toBeInTheDocument()
     // The notice's text is hidden from screen readers; the region holding it describes the button.
@@ -286,7 +288,7 @@ describe('triage', () => {
 
     const list = await messagesList()
     await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 9' }))
-    const group = await actions()
+    const group = await selection()
     await userEvent.click(within(group).getByRole('button', { name: 'Star' }))
     await reported('polite', 'Starred 1 message.')
     expect(starToggle(list, 'Message 9')).toHaveAttribute('aria-pressed', 'true')
@@ -317,7 +319,7 @@ describe('triage', () => {
 
     const list = await messagesList()
     await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 9' }))
-    const group = await actions()
+    const group = await selection()
     await userEvent.click(within(group).getByRole('button', { name: 'Mark To sort' }))
     await reported('polite', 'Marked 1 message To sort.')
     expect(toSortToggle(list, 'Message 9')).toHaveAttribute('aria-pressed', 'true')
@@ -365,7 +367,7 @@ describe('triage', () => {
 
     const list = await messagesList()
     await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 9' }))
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Mark To sort' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Mark To sort' }))
     await reported('assertive', 'The mail server does not support this.')
     expect(toSortToggle(list, 'Message 9')).toHaveAttribute('aria-pressed', 'false')
 
@@ -390,7 +392,7 @@ describe('triage', () => {
     expect(starToggle(list, 'Message 9')).toHaveAttribute('title', 'Unstar')
     expect(starToggle(list, 'Message 9')).toHaveAttribute('aria-pressed', 'true')
     expect(history.location.search).toContain(`message=${String(third?.ref)}`)
-    expect(await actions()).toHaveTextContent('1 selected')
+    expect(await selection()).toHaveTextContent('1 selected')
     expect(within(list).getByRole('checkbox', { name: 'Select Message 9' })).not.toBeChecked()
 
     await userEvent.click(starToggle(list, 'Message 9'))
@@ -444,7 +446,7 @@ describe('triage', () => {
 
     const list = await messagesList()
     await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 8' }))
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Archive' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Archive' }))
     const star = starToggle(list, 'Message 9')
     await waitFor(() => {
       expect(star).toHaveAttribute('aria-disabled', 'true')
@@ -478,10 +480,10 @@ describe('triage', () => {
 
     const list = await messagesList()
     await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 9' }))
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Archive' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Archive' }))
     await reported('polite', 'Archived 1 message.')
     await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 8' }))
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Archive' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Archive' }))
     await waitFor(() => {
       expect(report('polite')).toBeEmptyDOMElement()
     })
@@ -507,7 +509,7 @@ describe('triage', () => {
 
     await screen.findByRole('list', { name: 'Search results' })
     await userEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Move to Trash' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Move to Trash' }))
 
     await reported('assertive', 'Moved 50 messages to Trash.')
     expect(within(report('assertive')).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
@@ -533,8 +535,8 @@ describe('triage', () => {
 
     await screen.findByRole('list', { name: 'Search results' })
     await userEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
-    expect(await actions()).toHaveTextContent('110 selected')
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Move to Trash' }))
+    expect(await selection()).toHaveTextContent('110 selected')
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Move to Trash' }))
 
     await reported('assertive', 'Moved 60 messages to Trash.')
     expect(report('assertive')).toHaveTextContent('work, Projects: This message is out of date')
@@ -543,7 +545,7 @@ describe('triage', () => {
       projects.map((item) => item.ref),
       home.map((item) => item.ref),
     ])
-    expect(await actions()).toHaveTextContent('50 selected')
+    expect(await selection()).toHaveTextContent('50 selected')
   })
 
   it('starts a new folder from what it reads: no selection, no flags changed before', async () => {
@@ -553,7 +555,7 @@ describe('triage', () => {
 
     const list = await messagesList()
     await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 9' }))
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Mark as unread' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Mark as unread' }))
     expect(await within(list).findByRole('link', { name: /Unread:\s*Message 9Preview/ })).toBeInTheDocument()
     // Another client reads it meanwhile.
     fake.messages['1/INBOX'] = (fake.messages['1/INBOX'] ?? []).map((item) =>
@@ -563,7 +565,7 @@ describe('triage', () => {
     const folders = screen.getByRole('tree', { name: 'Folders of work' })
     await userEvent.click(within(folders).getByRole('treeitem', { name: 'Projects' }))
     expect(await screen.findByText('No messages in this folder.')).toBeInTheDocument()
-    expect(screen.queryByRole('group', { name: 'Message actions' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Selected messages' })).not.toBeInTheDocument()
     await userEvent.click(within(folders).getByRole('treeitem', { name: /^Inbox/ }))
 
     const again = await messagesList()
@@ -578,7 +580,7 @@ describe('triage', () => {
 
     await messagesList()
     await userEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Archive' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Archive' }))
     await reported('polite', 'Archived 25 messages.')
     expect(screen.queryByText('No messages in this folder.')).not.toBeInTheDocument()
     expect(rowLink(await messagesList(), 'Message 75')).toBeInTheDocument()
@@ -591,7 +593,7 @@ describe('triage', () => {
 
     const list = await messagesList()
     await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 76' }))
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Archive' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Archive' }))
     await reported('polite', 'Archived 1 message.')
 
     scrollListToEnd()
@@ -608,7 +610,7 @@ describe('triage', () => {
 
     const list = await messagesList()
     await userEvent.click(within(list).getByRole('checkbox', { name: 'Select From home' }))
-    const group = await actions()
+    const group = await selection()
     expect(within(group).getByRole('button', { name: 'Move to Trash' })).toBeInTheDocument()
     expect(within(group).queryByRole('button', { name: 'Archive' })).not.toBeInTheDocument()
   })
@@ -891,7 +893,7 @@ describe('keyboard shortcuts', () => {
 
     await userEvent.keyboard('x')
     expect(within(list).getByRole('checkbox', { name: 'Select Message 9' })).toBeChecked()
-    expect(await actions()).toHaveTextContent('1 selected')
+    expect(await selection()).toHaveTextContent('1 selected')
     await userEvent.keyboard('{Escape}')
     expect(within(list).getByRole('checkbox', { name: 'Select Message 9' })).not.toBeChecked()
   })
@@ -917,7 +919,7 @@ describe('keyboard shortcuts', () => {
     renderAt('/mail')
     const list = await messagesList()
     await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 9' }))
-    await actions()
+    await selection()
 
     await userEvent.keyboard('v')
     expect(await screen.findByRole('dialog', { name: 'Move to' })).toBeInTheDocument()
@@ -1004,3 +1006,172 @@ function renderAt(path: string): ReturnType<typeof renderMailApp> {
   stubMailApi(state())
   return renderMailApp(path)
 }
+
+describe("the open message's action bar", () => {
+  it('has the replies, the triage actions and a More menu of the rest, all from the registry', async () => {
+    stubMailApi(state())
+    renderMailApp(`/mail?message=${String(second?.ref)}`)
+
+    const bar = await actions()
+    expect(within(bar).getAllByRole('button').map((button) => button.getAttribute('aria-label') ?? button.textContent)).toEqual([
+      'Reply',
+      'Reply all',
+      'Forward',
+      'Archive',
+      'Move to Trash',
+      'Move to…',
+      'Move to another account…',
+      'Star',
+      'Mark To sort',
+      'Mark as unread',
+      'More actions',
+    ])
+    expect(within(bar).getByRole('button', { name: 'Archive' })).toHaveAttribute('title', 'Archive (e)')
+    const more = within(bar).getByRole('button', { name: 'More actions' })
+    await userEvent.click(more)
+    const menu = screen.getByRole('menu', { name: 'More actions' })
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Print', 'Download .eml', 'Snooze'])
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(more).toHaveFocus()
+  })
+
+  it('acts on the open message, not on the rows selected, which keep their own toolbar', async () => {
+    const fetchMock = stubMailApi(state())
+    renderMailApp(`/mail?message=${String(second?.ref)}`)
+
+    const list = await messagesList()
+    await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 8' }))
+    expect(await selection()).toHaveTextContent('1 selected')
+    // The keys act on the selection now, so the bar's buttons do not name them.
+    const archive = within(await actions()).getByRole('button', { name: 'Archive' })
+    expect(archive).not.toHaveAttribute('aria-keyshortcuts')
+    expect(archive).toHaveAttribute('title', 'Archive')
+    expect(within(await selection()).getByRole('button', { name: 'Archive' })).toHaveAttribute('aria-keyshortcuts', 'e')
+    await userEvent.click(within(await actions()).getByRole('button', { name: 'Star' }))
+    await waitFor(() => {
+      expect(bodiesTo(fetchMock, FLAG)).toEqual([{ refs: [second?.ref], flagged: true }])
+    })
+    expect(within(list).getByRole('checkbox', { name: 'Select Message 8' })).toBeChecked()
+  })
+
+  it('opens its own move picker beside a selection, Escape closing it and keeping the selection', async () => {
+    const fetchMock = stubMailApi(state())
+    renderMailApp(`/mail?message=${String(second?.ref)}`)
+
+    const list = await messagesList()
+    await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 8' }))
+    const move = within(await actions()).getByRole('button', { name: 'Move to…' })
+    await userEvent.click(move)
+    expect(move).toHaveAttribute('aria-expanded', 'true')
+    expect(within(await selection()).getByRole('button', { name: 'Move to…' })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getAllByRole('dialog', { name: 'Move to' })).toHaveLength(1)
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(move).toHaveFocus()
+    expect(within(list).getByRole('checkbox', { name: 'Select Message 8' })).toBeChecked()
+
+    await userEvent.click(move)
+    await userEvent.click(within(screen.getByRole('dialog', { name: 'Move to' })).getByRole('button', { name: 'Projects' }))
+    await waitFor(() => {
+      expect(bodiesTo(fetchMock, '/api/v1/mail/messages/move')).toEqual([
+        { refs: [second?.ref], folder: 'Projects', source_folder: 'INBOX' },
+      ])
+    })
+  })
+
+  it('keeps to one row, the actions that do not fit going to the top of the More menu', async () => {
+    // jsdom lays nothing out: every button 40 px wide, the bar `room` wide, its observer fired by hand.
+    let room = 400
+    const fits: (() => void)[] = []
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        private readonly fit: () => void
+        constructor(fit: () => void) {
+          this.fit = fit
+        }
+        observe(): void {
+          fits.push(this.fit)
+        }
+        disconnect(): void {
+          fits.splice(fits.indexOf(this.fit), 1)
+        }
+      },
+    )
+    const offsetWidth = vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(40)
+    const clientWidth = vi.spyOn(Element.prototype, 'clientWidth', 'get').mockImplementation(function (this: Element) {
+      return this.getAttribute('aria-label') === 'Message actions' ? room : 0
+    })
+    try {
+      const fetchMock = stubMailApi(state())
+      renderMailApp(`/mail?message=${String(second?.ref)}`)
+
+      const bar = await actions()
+      // Twelve buttons, the separator counted as one, are 480 px: To sort and Move to… go first.
+      await waitFor(() => {
+        expect(within(bar).getAllByRole('button').map((button) => button.getAttribute('aria-label') ?? button.textContent)).toEqual([
+          'Reply',
+          'Reply all',
+          'Forward',
+          'Archive',
+          'Move to Trash',
+          'Move to another account…',
+          'Star',
+          'Mark as unread',
+          'More actions',
+        ])
+      })
+      const more = within(bar).getByRole('button', { name: 'More actions' })
+      await userEvent.click(more)
+      const menu = screen.getByRole('menu', { name: 'More actions' })
+      const items = within(menu).getAllByRole('menuitem')
+      expect(items.map((item) => item.textContent)).toEqual(['Move to…v', 'Mark To sortt', 'Print', 'Download .eml', 'Snooze'])
+      // Nothing is selected: the keys act on the open message, and the moved items name theirs.
+      expect(items.map((item) => item.getAttribute('aria-keyshortcuts'))).toEqual([
+        'v',
+        't',
+        null,
+        null,
+        null,
+      ])
+      // Chosen there, the move picker opens on the open message, and gives focus back to More.
+      await userEvent.click(within(menu).getByRole('menuitem', { name: /Move to…/ }))
+      const picker = await screen.findByRole('dialog', { name: 'Move to' })
+      await userEvent.keyboard('{Escape}')
+      expect(picker).not.toBeInTheDocument()
+      expect(more).toHaveFocus()
+      await userEvent.click(more)
+      await userEvent.click(within(screen.getByRole('menu', { name: 'More actions' })).getByRole('menuitem', { name: /Mark To sort/ }))
+      await waitFor(() => {
+        expect(bodiesTo(fetchMock, FLAG)).toEqual([{ refs: [second?.ref], to_sort: true }])
+      })
+
+      // Room again: they come back to the bar.
+      room = 1000
+      act(() => {
+        for (const fit of [...fits]) {
+          fit()
+        }
+      })
+      expect(within(bar).getByRole('button', { name: 'Move to…' })).toBeVisible()
+    } finally {
+      offsetWidth.mockRestore()
+      clientWidth.mockRestore()
+    }
+  })
+
+  it('shows the move picker v opens when nothing is selected', async () => {
+    stubMailApi(state())
+    renderMailApp(`/mail?message=${String(second?.ref)}`)
+
+    const bar = await actions()
+    await waitFor(() => {
+      expect(within(bar).getByRole('button', { name: 'Move to…' })).toBeInTheDocument()
+    })
+    await userEvent.keyboard('v')
+    expect(await screen.findByRole('dialog', { name: 'Move to' })).toBeInTheDocument()
+    expect(within(bar).getByRole('button', { name: 'Move to…' })).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.queryByRole('group', { name: 'Selected messages' })).not.toBeInTheDocument()
+  })
+})

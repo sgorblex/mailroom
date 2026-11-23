@@ -170,7 +170,7 @@ describe('the folder pane', () => {
     renderMailApp('/mail')
     const icons = await rail()
     await user.click(await screen.findByRole('checkbox', { name: /^Select (?!all)/ }))
-    const actions = await screen.findByRole('group', { name: 'Message actions' })
+    const actions = await screen.findByRole('group', { name: 'Selected messages' })
     expect(actions).toHaveTextContent('1 selected')
 
     await user.hover(icons)

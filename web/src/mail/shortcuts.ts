@@ -25,6 +25,11 @@ export function isTyping(target: EventTarget | null): boolean {
   return target.closest('textarea, select, [contenteditable]:not([contenteditable="false"])') !== null
 }
 
+/** A modal dialog or a menu is open: it takes the keys, Escape above all, from the page behind it. */
+export function overlayOpen(): boolean {
+  return document.querySelector('dialog[open], [role="menu"]') !== null
+}
+
 /** A letter key: refused with Alt, which on some layouts types the other keys (`#` is Option+à). */
 const LETTER = /^[a-z]$/i
 
@@ -66,7 +71,7 @@ function registryKeys(groups: readonly MailAction['group'][]): SheetEntry[] {
   )
 }
 
-/** The sheet's groups: the screen's own keys, then the registry's, which the toolbar and menus name too. */
+/** The sheet's groups: the screen's own keys, then the registry's, which the toolbar, the message's action bar and the menus name too. */
 export const SHEET_GROUPS: readonly { title: string; entries: SheetEntry[] }[] = [
   { title: 'shortcuts.moving', entries: [...NAVIGATION_KEYS] },
   { title: 'shortcuts.writing', entries: registryKeys(['reply', 'compose']) },
@@ -230,7 +235,7 @@ export function useMailShortcuts(accountId: AccountId, onHelp: () => void): void
         isTyping(event.target) ||
         // A modal leaves the page behind it out of reach, and Escape to the dialog; an open menu
         // takes the keys too.
-        document.querySelector('dialog[open], [role="menu"]') !== null
+        overlayOpen()
       ) {
         return
       }

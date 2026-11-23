@@ -42,7 +42,7 @@ export interface ActionContext {
   /** The account a new message is written on, where one can be. */
   account: AccountId | null
   compose: Pick<Compose, 'start' | 'canCompose'>
-  /** Opens (or, from the toolbar, toggles) the move picker or the account move picker, on `into` where a drop chose it. */
+  /** Opens (or, from the toolbar or the message's action bar, toggles) the move picker or the account move picker, on `into` where a drop chose it. */
   openPicker: (picker: 'move' | 'account', into?: Destination) => void
   /** Where a drag dropped the targets: a move goes there instead of opening a picker. */
   into?: Destination
@@ -55,8 +55,8 @@ export interface ActionContext {
 }
 
 /**
- * A mail action: the toolbar, the shortcuts, the reply buttons and the context menus all read
- * these. `triage` ones act on the targets and wait while another runs; `reply` and `compose` ones
+ * A mail action: the toolbar, the message's action bar, the shortcuts and the context menus all
+ * read these. `triage` ones act on the targets and wait while another runs; `reply` and `compose` ones
  * open the composer, and their keys wait while one is open; `message` ones open the message in
  * another form, in a tab or as a download, or a filter drafted from it, mute its conversation or
  * snooze it, and never wait.
@@ -72,7 +72,7 @@ export interface MailAction {
   sheetLabel?: string
   /** Whether it can be run on these targets. */
   available: (context: ActionContext) => boolean
-  /** Whether the toolbar and the menus list it, when available; the key works either way. */
+  /** Whether the toolbar, the message's action bar and the menus list it, when available; the key works either way. */
   listed?: (context: ActionContext) => boolean
   /** Why it is offered greyed out and not run (a key in the `mail` namespace), or `null`. */
   unavailable?: (context: ActionContext) => string | null
@@ -323,6 +323,14 @@ export const MAIL_ACTIONS: readonly MailAction[] = [
     matching: true,
   },
 ]
+
+/**
+ * The key a triage action's button or menu item names: only where `shortcuts` (the keys act on its
+ * targets), and not `u` while it goes back to the list instead (a message in full view).
+ */
+export function triageShortcut(action: MailAction, shortcuts: boolean, uGoesBack: boolean): string | undefined {
+  return !shortcuts || (action.id === 'markUnread' && uGoesBack) ? undefined : action.shortcut
+}
 
 /** The actions of `group` the toolbar or a menu lists for this context, in order. */
 export function listedActions(group: MailAction['group'], context: ActionContext): MailAction[] {

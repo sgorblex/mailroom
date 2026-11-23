@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { UserJson } from '@/api/auth.ts'
 import { bodiesTo, type FakeMailState, messageItem, messageView, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
-import { renderMailApp } from '@/test/mail-app.tsx'
+import { openMessageMenu, renderMailApp } from '@/test/mail-app.tsx'
 
 const ALICE: UserJson = { username: 'alice', is_admin: false, time_zone: 'Europe/Rome', mark_read_subfolders: true, index_max_age_days: null, conversations: true, undo_send_seconds: 10 }
 const item = messageItem(WORK, 'INBOX', 1, { subject: 'Read me later' })
@@ -28,7 +28,6 @@ function toast(): HTMLElement {
   return found
 }
 
-const actions = (): Promise<HTMLElement> => screen.findByRole('group', { name: 'Reply, forward, print and download' })
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -40,7 +39,7 @@ describe('snoozing a message', () => {
     const fetchMock = stubMailApi(fake)
     renderMailApp(`/mail?message=${item.ref}`, { user: ALICE, features: ['mail'] })
 
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Snooze' }))
+    await userEvent.click(within(await openMessageMenu()).getByRole('menuitem', { name: 'Snooze' }))
     const dialog = await screen.findByRole('dialog', { name: 'Snooze until' })
     expect(within(dialog).getByText('Times are in Europe/Rome.')).toBeInTheDocument()
     await userEvent.click(within(dialog).getByRole('button', { name: /^Tomorrow/ }))
@@ -52,7 +51,7 @@ describe('snoozing a message', () => {
     expect(new Date(body?.until ?? '').getTime()).toBeGreaterThan(Date.now())
     expect(fake.snoozes).toHaveLength(1)
     await waitFor(() => {
-      expect(screen.queryByRole('group', { name: 'Reply, forward, print and download' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('group', { name: 'Message actions' })).not.toBeInTheDocument()
     })
 
     const snoozeId = fake.snoozes?.[0]?.snooze_id ?? ''

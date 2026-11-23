@@ -155,7 +155,7 @@ describe('conversations in the list', () => {
     })
 
     await userEvent.click(within(await planRow()).getByRole('checkbox'))
-    const actions = await screen.findByRole('group', { name: 'Message actions' })
+    const actions = await screen.findByRole('group', { name: 'Selected messages' })
     expect(actions).toHaveTextContent('1 selected')
     await userEvent.click(within(actions).getByRole('button', { name: 'Archive' }))
     await waitFor(() => {

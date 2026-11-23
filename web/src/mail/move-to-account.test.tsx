@@ -37,7 +37,7 @@ function state(overrides: Partial<FakeMailState> = {}): FakeMailState {
 }
 
 const messagesList = (): Promise<HTMLElement> => screen.findByRole('list', { name: 'Messages' })
-const actions = (): Promise<HTMLElement> => screen.findByRole('group', { name: 'Message actions' })
+const selection = (): Promise<HTMLElement> => screen.findByRole('group', { name: 'Selected messages' })
 
 async function reported(live: 'polite' | 'assertive', text: string): Promise<void> {
   await waitFor(() => {
@@ -49,7 +49,7 @@ async function reported(live: 'polite' | 'assertive', text: string): Promise<voi
 async function pickHome(): Promise<HTMLElement> {
   const list = await messagesList()
   await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 8' }))
-  const button = within(await actions()).getByRole('button', { name: 'Move to another account…' })
+  const button = within(await selection()).getByRole('button', { name: 'Move to another account…' })
   await userEvent.click(button)
   expect(button).toHaveAttribute('aria-expanded', 'true')
   // One other account: straight to its folders.
@@ -87,10 +87,10 @@ describe('moving to another account', () => {
     let picker = await pickHome()
     await userEvent.keyboard('{Escape}')
     expect(picker).not.toBeInTheDocument()
-    const button = within(await actions()).getByRole('button', { name: 'Move to another account…' })
+    const button = within(await selection()).getByRole('button', { name: 'Move to another account…' })
     expect(button).toHaveFocus()
     // Escape closed the picker only: the selection is still there.
-    expect(await actions()).toHaveTextContent('1 selected')
+    expect(await selection()).toHaveTextContent('1 selected')
 
     await userEvent.click(button)
     picker = screen.getByRole('dialog', { name: 'Move to another account' })
@@ -116,7 +116,7 @@ describe('moving to another account', () => {
     expect(screen.queryByRole('dialog', { name: 'Delete the originals for good?' })).not.toBeInTheDocument()
     expect(bodiesTo(fetchMock, MOVE_TO_ACCOUNT)).toEqual([])
 
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Move to another account…' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Move to another account…' }))
     picker = screen.getByRole('dialog', { name: 'Move to another account' })
     await userEvent.click(within(picker).getByRole('radio', { name: 'are deleted for good' }))
     await userEvent.click(await within(picker).findByRole('button', { name: 'Inbox' }))
@@ -148,7 +148,7 @@ describe('moving to another account', () => {
     renderMailApp('/mail')
     const list = await messagesList()
     await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 8' }))
-    expect(within(await actions()).queryByRole('button', { name: 'Move to another account…' })).not.toBeInTheDocument()
+    expect(within(await selection()).queryByRole('button', { name: 'Move to another account…' })).not.toBeInTheDocument()
     cleanup()
 
     const results = {
@@ -160,6 +160,6 @@ describe('moving to another account', () => {
     renderMailApp('/mail?q=%7B%7D')
     await screen.findByRole('list', { name: 'Search results' })
     await userEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
-    expect(within(await actions()).queryByRole('button', { name: 'Move to another account…' })).not.toBeInTheDocument()
+    expect(within(await selection()).queryByRole('button', { name: 'Move to another account…' })).not.toBeInTheDocument()
   })
 })

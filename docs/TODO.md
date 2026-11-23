@@ -236,9 +236,11 @@ First, fixes carried over from 0.14.0 testing:
 - [x] **App shell** — a new header with icon nav and a user menu, and a bottom tab bar on phones.
 - [ ] **Home page** — a real start page after sign-in instead of landing straight in a mail
       list, its content configurable (unread across accounts, flagged, recent filter runs, say).
-- [ ] **Every message action in the reading pane** — each action on one message (move, archive,
+- [x] **Every message action in the reading pane** — each action on one message (move, archive,
       junk, To sort, mute, filter like this, print, `.eml`, reply and the rest) offered in the
-      pane beside the message, not only some of them there and the rest elsewhere.
+      pane beside the message, not only some of them there and the rest elsewhere: an action bar
+      on the open message, on one row, the rest (and what does not fit) in its More menu; the
+      list's toolbar is for selections.
 - [x] **Layout and density** — the reading pane on the right, below the list or off; compact or
       comfortable rows.
   - [x] **Density** — comfortable or compact rows (less padding, no opening), on the Profile.

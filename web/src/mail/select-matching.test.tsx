@@ -29,7 +29,7 @@ function state(overrides: Partial<FakeMailState> = {}): FakeMailState {
 
 const BULK = '/api/v1/mail/messages/bulk'
 const COUNT = '/api/v1/mail/messages/count'
-const actions = (): Promise<HTMLElement> => screen.findByRole('group', { name: 'Message actions' })
+const selection = (): Promise<HTMLElement> => screen.findByRole('group', { name: 'Selected messages' })
 
 /** Selects the loaded rows, then every message the folder matches. */
 async function selectMatching(total = 1200): Promise<void> {
@@ -50,7 +50,7 @@ describe('select all matching', () => {
     renderMailApp('/mail')
 
     await selectMatching()
-    const toolbar = await actions()
+    const toolbar = await selection()
     expect(within(toolbar).getByText('All 1200 matching selected')).toBeInTheDocument()
     await userEvent.click(within(toolbar).getByRole('button', { name: 'Move to Trash' }))
     const dialog = await screen.findByRole('dialog', { name: 'Act on every matching message' })
@@ -83,7 +83,7 @@ describe('select all matching', () => {
     renderMailApp('/mail')
 
     await selectMatching()
-    const archive = within(await actions()).getByRole('button', { name: 'Archive' })
+    const archive = within(await selection()).getByRole('button', { name: 'Archive' })
     expect(archive).toHaveAttribute('aria-disabled', 'true')
     expect(archive).toHaveAttribute(
       'title',
@@ -114,7 +114,7 @@ describe('select all matching', () => {
     renderMailApp('/mail')
 
     await selectMatching()
-    const toolbar = await actions()
+    const toolbar = await selection()
     for (const name of ['Star', 'Unstar', 'Mark To sort', 'Mark sorted', 'Mark as read', 'Mark as unread']) {
       expect(within(toolbar).getByRole('button', { name: new RegExp(`^${name}`) })).not.toHaveAttribute('aria-disabled', 'true')
     }
@@ -136,7 +136,7 @@ describe('select all matching', () => {
     renderMailApp('/mail')
 
     await selectMatching()
-    await userEvent.click(within(await actions()).getByRole('button', { name: /^Mark sorted/ }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: /^Mark sorted/ }))
     const dialog = await screen.findByRole('dialog', { name: 'Act on every matching message' })
     expect(await within(dialog).findByText(/^Mark sorted: 4 matching messages/)).toBeInTheDocument()
     await userEvent.click(within(dialog).getByRole('button', { name: 'Mark sorted' }))
@@ -162,7 +162,7 @@ describe('select all matching', () => {
     renderMailApp('/mail')
 
     await selectMatching()
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Move to Trash' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Move to Trash' }))
     const dialog = await screen.findByRole('dialog', { name: 'Act on every matching message' })
     await userEvent.click(await within(dialog).findByRole('button', { name: 'Move to Trash' }))
 
@@ -204,7 +204,7 @@ describe('select all matching', () => {
     renderMailApp('/mail')
 
     await selectMatching()
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Move to Trash' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Move to Trash' }))
     const dialog = await screen.findByRole('dialog', { name: 'Act on every matching message' })
     await userEvent.click(await within(dialog).findByRole('button', { name: 'Move to Trash' }))
     expect(await within(dialog).findByText('0 of 1200 done…')).toBeInTheDocument()
@@ -226,7 +226,7 @@ describe('select all matching', () => {
     renderMailApp('/mail')
 
     await selectMatching()
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Move to Trash' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Move to Trash' }))
     const dialog = await screen.findByRole('dialog', { name: 'Act on every matching message' })
     await userEvent.click(await within(dialog).findByRole('button', { name: 'Move to Trash' }))
     const alert = await within(dialog).findByRole('alert')
@@ -278,6 +278,6 @@ describe('select all matching', () => {
     const list = screen.getByRole('list', { name: 'Messages' })
     await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 100' }))
     expect(screen.queryByText(/matching messages are selected/)).not.toBeInTheDocument()
-    expect(within(await actions()).getByText('24 selected')).toBeInTheDocument()
+    expect(within(await selection()).getByText('24 selected')).toBeInTheDocument()
   })
 })

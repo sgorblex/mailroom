@@ -1,5 +1,6 @@
 import { StrictMode } from 'react'
-import { render } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClientProvider } from '@tanstack/react-query'
 import {
   createMemoryHistory,
@@ -89,4 +90,11 @@ export function renderMailApp(
     )
   render(ui, { wrapper: strict ? StrictMode : undefined })
   return history
+}
+
+/** Opens the open message's More menu (print, download, filter, mute, snooze) and answers it. */
+export async function openMessageMenu(): Promise<HTMLElement> {
+  const bar = await screen.findByRole('group', { name: 'Message actions' })
+  await userEvent.click(within(bar).getByRole('button', { name: 'More actions' }))
+  return screen.findByRole('menu', { name: 'More actions' })
 }
