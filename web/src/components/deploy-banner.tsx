@@ -2,13 +2,14 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactElement } from 
 import { useTranslation } from 'react-i18next'
 
 import { fetchVersion } from '@/api/health.ts'
-import { bannerEnv } from '@/lib/deploy-env.ts'
+import { bannerEnv, showStagingHead } from '@/lib/deploy-env.ts'
 
 /** A bar over every page, signed in or not, on an instance that is not production, and the
- * environment before the tab's title. Read once from the API, so one image serves every
- * environment; an API that does not answer shows nothing. It stays at the top of the window as
- * the page scrolls, and its height is `--deploy-banner` (0 without it), which whatever else
- * sticks to the top sits under. */
+ * environment before the tab's title, with staging's favicon, manifest and app title in the head
+ * (an install there is "Mailroom staging", its icon banded in the banner's amber). Read once from
+ * the API, so one image serves every environment; production, and an API that does not answer,
+ * keep index.html's. It stays at the top of the window as the page scrolls, and its height is
+ * `--deploy-banner` (0 without it), which whatever else sticks to the top sits under. */
 export function DeployBanner(): ReactElement | null {
   const { t } = useTranslation()
   const [env, setEnv] = useState<string | null>(null)
@@ -21,6 +22,8 @@ export function DeployBanner(): ReactElement | null {
     )
     return () => { abort.abort(); }
   }, [])
+
+  useEffect(() => (env === null ? undefined : showStagingHead()), [env])
 
   const label = env === null ? null : env.toUpperCase()
   useEffect(() => {

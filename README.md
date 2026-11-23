@@ -75,6 +75,7 @@ Defaults live in `mise.toml`'s `[env]`. To change one, set it in a gitignored `m
 | `fix` | Ruff and ESLint auto-fix, then mypy |
 | `build-containers` | Build `mailroom-api` and `mailroom-web` (`-- staging` for staging tags) |
 | `browser-check` | Report the browser chrome-devtools-mcp would drive |
+| `web-icons` | Render the web app's PNG icons, production's and staging's, from their SVGs (needs `rsvg-convert`) |
 | `clean` | Remove venv, caches, `node_modules`, `dist` |
 
 ## Documentation

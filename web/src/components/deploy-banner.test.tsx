@@ -1,5 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { bannerEnv } from '@/lib/deploy-env.ts'
 
@@ -23,9 +23,37 @@ function renderBanner(): void {
   render(<DeployBanner />)
 }
 
+// index.html's head, production's.
+const PRODUCTION_HEAD = `
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-title" content="Mailroom" />`
+
+/** The head's manifest, favicon, apple-touch-icon and home-screen title. */
+function head(): string[] {
+  return [
+    document.querySelector('link[rel="manifest"]')?.getAttribute('href') ?? '',
+    document.querySelector('link[rel="icon"]')?.getAttribute('href') ?? '',
+    document.querySelector('link[rel="apple-touch-icon"]')?.getAttribute('href') ?? '',
+    document.querySelector('meta[name="apple-mobile-web-app-title"]')?.getAttribute('content') ?? '',
+  ]
+}
+
+const PRODUCTION = ['/manifest.webmanifest', '/icon.svg', '/apple-touch-icon.png', 'Mailroom']
+
+let added: Element[] = []
+
+beforeEach(() => {
+  const before = new Set(document.head.children)
+  document.head.insertAdjacentHTML('beforeend', PRODUCTION_HEAD)
+  added = [...document.head.children].filter((element) => !before.has(element))
+})
+
 afterEach(() => {
   vi.unstubAllGlobals()
   document.title = 'Mailroom'
+  for (const element of added) element.remove()
 })
 
 describe('bannerEnv', () => {
@@ -66,5 +94,37 @@ describe('DeployBanner', () => {
     await waitFor(() => { expect(fetch).toHaveBeenCalled(); })
     expect(screen.queryByRole('note')).toBeNull()
     expect(document.title).toBe('Mailroom')
+  })
+
+  it('names staging in the head: its manifest, icons and app title, production\'s back on unmount', async () => {
+    serve('staging')
+    const { unmount } = render(<DeployBanner />)
+    await screen.findByRole('note')
+    // The head is swapped in an effect after the banner shows: wait for it, not for the banner.
+    await waitFor(() => {
+      expect(head()).toEqual([
+        '/manifest-staging.webmanifest',
+        '/icon-staging.svg',
+        '/apple-touch-icon-staging.png',
+        'Mailroom staging',
+      ])
+    })
+    unmount()
+    expect(head()).toEqual(PRODUCTION)
+  })
+
+  it('keeps production\'s head in production', async () => {
+    serve('production')
+    renderBanner()
+    await waitFor(() => { expect(fetch).toHaveBeenCalled(); })
+    expect(head()).toEqual(PRODUCTION)
+  })
+
+  it('keeps production\'s head while /version does not answer', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('offline'))))
+    renderBanner()
+    await waitFor(() => { expect(fetch).toHaveBeenCalled(); })
+    expect(screen.queryByRole('note')).toBeNull()
+    expect(head()).toEqual(PRODUCTION)
   })
 })
