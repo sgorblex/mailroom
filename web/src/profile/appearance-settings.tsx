@@ -1,21 +1,26 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { ACCENTS, TEXT_SIZES, THEMES, type Appearance } from '@/api/auth.ts'
+import { ACCENTS, DENSITIES, TEXT_SIZES, THEMES, type Appearance } from '@/api/auth.ts'
 import { apiErrorMessage } from '@/api/http.ts'
 import { useAppearance } from '@/auth/auth-context.ts'
 import { lookOf, setLook, type Look } from '@/theme/look.ts'
 
 type Outcome = { kind: 'idle' } | { kind: 'saved' } | { kind: 'failed'; message: string }
 
+/** What this section chooses: the look of the whole page and the density of the mail lists. */
+type Shown = Look & Pick<Appearance, 'density'>
+
+const shownOf = (appearance: Appearance): Shown => ({ ...lookOf(appearance), density: appearance.density })
+
 /**
- * The user's theme, accent and text size, the same on every device. A choice shows at once and is
- * saved; when the save fails the saved look comes back and the section says so.
+ * The user's theme, accent, text size and density, the same on every device. A choice shows at
+ * once and is saved; when the save fails the saved look comes back and the section says so.
  */
 export function AppearanceSettings(): ReactElement {
   const { t } = useTranslation()
   const { appearance, save } = useAppearance()
-  const [shown, setShown] = useState<Look>(() => lookOf(appearance))
+  const [shown, setShown] = useState<Shown>(() => shownOf(appearance))
   const [saved, setSaved] = useState<Appearance>(appearance)
   const [outcome, setOutcome] = useState<Outcome>({ kind: 'idle' })
   // Choices whose save has not answered yet, and the newest choice: only its answer counts.
@@ -26,7 +31,7 @@ export function AppearanceSettings(): ReactElement {
     // The saved look changed (a save answered, or the session was read again): show it. Not while a
     // choice is still being saved, which is what the user wants to see meanwhile.
     setSaved(appearance)
-    setShown(lookOf(appearance))
+    setShown(shownOf(appearance))
   }
   useEffect(() => {
     latest.current = appearance
@@ -37,7 +42,7 @@ export function AppearanceSettings(): ReactElement {
     setLook(shown)
   }, [shown, appearance])
 
-  async function choose(change: Partial<Look>): Promise<void> {
+  async function choose(change: Partial<Shown>): Promise<void> {
     const request = ++newest.current
     setShown({ ...shown, ...change })
     setOutcome({ kind: 'idle' })
@@ -47,7 +52,7 @@ export function AppearanceSettings(): ReactElement {
       if (request === newest.current) setOutcome({ kind: 'saved' })
     } catch (failure) {
       if (request === newest.current) {
-        setShown(lookOf(latest.current))
+        setShown(shownOf(latest.current))
         setOutcome({ kind: 'failed', message: apiErrorMessage(failure, t('appearance.saveFailed')) })
       }
     } finally {
@@ -113,6 +118,21 @@ export function AppearanceSettings(): ReactElement {
               onChange={() => void choose({ text_size: size })}
             />
             {t(`appearance.textSizes.${size}`)}
+          </label>
+        ))}
+      </fieldset>
+      <fieldset className="flex flex-col gap-1.5">
+        <legend className="mb-1.5 text-sm font-medium">{t('appearance.density')}</legend>
+        {DENSITIES.map((density) => (
+          <label key={density} className="flex items-center gap-2 text-sm">
+            <input
+              type="radio"
+              name="appearance-density"
+              value={density}
+              checked={shown.density === density}
+              onChange={() => void choose({ density })}
+            />
+            {t(`appearance.densities.${density}`)}
           </label>
         ))}
       </fieldset>

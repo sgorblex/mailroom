@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -80,6 +80,17 @@ describe('AppearanceSettings', () => {
     await userEvent.click(screen.getByRole('radio', { name: 'Small' }))
     expect(root.dataset['textSize']).toBe('small')
     expect(fetchMock).toHaveBeenLastCalledWith(PATH, expect.objectContaining({ body: JSON.stringify({ text_size: 'small' }) }))
+  })
+
+  it('saves the density of the mail lists', async () => {
+    const fetchMock = stubApi(200)
+    renderSignedIn(<AppearanceSettings />, ALICE)
+    const density = screen.getByRole('group', { name: 'Density' })
+    expect(within(density).getByRole('radio', { name: 'Comfortable' })).toBeChecked()
+    await userEvent.click(within(density).getByRole('radio', { name: /^Compact/ }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Saved.')
+    expect(fetchMock).toHaveBeenLastCalledWith(PATH, expect.objectContaining({ body: JSON.stringify({ density: 'compact' }) }))
+    expect(within(density).getByRole('radio', { name: /^Compact/ })).toBeChecked()
   })
 
   it('puts the saved look back when the choice could not be saved', async () => {

@@ -286,6 +286,11 @@
       "default": "Default",
       "large": "Large"
     },
+    "density": "Density",
+    "densities": {
+      "comfortable": "Comfortable",
+      "compact": "Compact, without the opening of each message"
+    },
     "saved": "Saved.",
     "saveFailed": "Could not save this choice."
   },

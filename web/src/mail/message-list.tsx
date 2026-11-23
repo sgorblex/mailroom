@@ -8,7 +8,8 @@ import { Bookmark, Forward, Paperclip, Reply, Star } from 'lucide-react'
 import { AccountName } from '@/accounts/account-name.tsx'
 import { useAccountKeywords, useAccountLabel, useAccountName } from '@/accounts/accounts-context.ts'
 import type { MatchScope, MessageItem, MessagePage, SourceFailure } from '@/api/mail.ts'
-import { useTimeZone } from '@/auth/auth-context.ts'
+import type { Appearance } from '@/api/auth.ts'
+import { useAppearance, useTimeZone } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Menu, type MenuItem, type MenuPoint } from '@/components/ui/menu.tsx'
 import { useUnmountSignal } from '@/lib/use-unmount-signal.ts'
@@ -25,6 +26,7 @@ import { MAIL_NS } from './i18n.ts'
 import { endMessageDrag, startMessageDrag } from './message-drag.ts'
 import { ACCOUNT_NOT_FOUND, mailCodeMessage, mailErrorMessage } from './messages.ts'
 import { keptRows, keptTail, withKept, type Kept, type Tail } from './list-tail.ts'
+import { useLongPress } from './long-press.ts'
 import { fetchPage, messagesKey, READ_ON_MOUNT } from './queries.ts'
 import { SelectMatching } from './select-matching.tsx'
 import { TOAST_RETURN_ID } from './toast.tsx'
@@ -33,8 +35,11 @@ import { useTriage, type Flags, type Target } from './triage-context.ts'
 
 type More = { kind: 'idle' } | { kind: 'loading' } | { kind: 'failed'; message: string }
 
-/** A row's height before it is measured: a sender, a subject and an opening. */
-const ROW_ESTIMATE = 76
+/**
+ * A row's height before it is measured, per density: a sender, a subject and an opening, or
+ * without the opening and with less padding.
+ */
+const ROW_ESTIMATE: Readonly<Record<Appearance['density'], number>> = { comfortable: 76, compact: 50 }
 
 /** How many rows short of the last loaded one the view may come before the next page is read. */
 const READ_AHEAD = 10
@@ -83,6 +88,9 @@ export function MessageList({
   const [more, setMore] = useState<More>({ kind: 'idle' })
   const triage = useTriage()
   const { removed, setVisible, refreshed, flagsOf } = triage
+  const { density } = useAppearance().appearance
+  // Once a row is selected, every row's checkbox shows; before, a row's on hover or focus.
+  const selecting = triage.matching !== null || triage.selection.size > 0
   // Under quick filters, a row this screen changed so it no longer matches (read on opening it
   // under Unread) stays on show, read again too, until the source changes.
   const [kept, setKept] = useState<readonly Kept[]>([])
@@ -141,7 +149,7 @@ export function MessageList({
   const virtualizer = useVirtualizer({
     count: messages.length,
     getScrollElement: () => scroller.current,
-    estimateSize: () => ROW_ESTIMATE,
+    estimateSize: () => ROW_ESTIMATE[density],
     getItemKey: (index) => messages[index]?.ref ?? index,
     overscan: 5,
     // A row whose menu is open stays rendered, scrolled out of view too: the menu gives focus back to it.
@@ -191,6 +199,8 @@ export function MessageList({
   }, [current, loaded, virtualizer])
   // Shift+click on a checkbox sets every row from the one clicked before to this one.
   const lastChecked = useRef<string | null>(null)
+  // On a touch screen, a finger held on a row selects it, as its hidden checkbox would.
+  const longPress = useLongPress()
 
   async function loadMore(cursor: string): Promise<void> {
     setMore({ kind: 'loading' })
@@ -271,6 +281,7 @@ export function MessageList({
             <ul
               id={TOAST_RETURN_ID}
               aria-label={searching ? t('list.results') : t('list.messages')}
+              data-density={density}
               className="relative divide-y"
               style={{ height: virtualizer.getTotalSize() }}
             >
@@ -279,6 +290,7 @@ export function MessageList({
                 if (message === undefined) {
                   return null
                 }
+                const checked = triage.matching !== null || triage.selection.has(message.ref)
                 return (
                   // The row's link is what takes focus: its menu key and a right-click reach it from here.
                   // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
@@ -289,7 +301,13 @@ export function MessageList({
                     // Only the rows in view are in the page: each says where it stands in the list.
                     aria-posinset={row.index + 1}
                     aria-setsize={nextCursor === null ? messages.length : -1}
-                    className="group/row absolute top-0 left-0 flex w-full items-start"
+                    className={cn(
+                      'group/row absolute top-0 left-0 flex w-full items-start hover:bg-accent',
+                      // The whole row, its checkbox's gutter too.
+                      message.ref === current && 'bg-accent',
+                      // A finger held on it selects it: no text selection or link preview of the browser's.
+                      'pointer-coarse:select-none pointer-coarse:[-webkit-touch-callout:none]',
+                    )}
                     style={{ transform: `translateY(${String(row.start)}px)` }}
                     // Dragged onto a folder, it moves the selection when it is in it (as every row is while
                     // every matching message is selected), else itself alone.
@@ -300,7 +318,16 @@ export function MessageList({
                       startMessageDrag(event.dataTransfer, targets, t('list.dragging', { count: targets.length }))
                     }}
                     onDragEnd={endMessageDrag}
+                    {...longPress.bind(() => {
+                      lastChecked.current = message.ref
+                      triage.select([message], !checked)
+                    })}
                     onContextMenu={(event) => {
+                      // A finger held on the row selects it rather than opening its menu.
+                      if (longPress.held()) {
+                        event.preventDefault()
+                        return
+                      }
                       const anchor = event.currentTarget.querySelector('a')
                       // Shift+right-click keeps the browser's own menu.
                       if (event.shiftKey || anchor === null) {
@@ -323,8 +350,15 @@ export function MessageList({
                       name="message"
                       value={message.ref}
                       aria-label={t('triage.select', { subject: message.subject === '' ? t('message.noSubject') : message.subject })}
-                      className="m-3 mr-0 size-4 shrink-0 accent-primary"
-                      checked={triage.matching !== null || triage.selection.has(message.ref)}
+                      className={cn(
+                        'mr-0 ml-3 size-4 shrink-0 accent-primary',
+                        density === 'compact' ? 'my-2' : 'my-3',
+                        // Hidden, not removed: it keeps its place and the keyboard still reaches it. On a touch
+                        // screen it takes no width either until a row is selected (a finger held on one).
+                        !selecting &&
+                          'opacity-0 group-focus-within/row:opacity-100 group-hover/row:opacity-100 pointer-coarse:sr-only',
+                      )}
+                      checked={checked}
                       onChange={(event) => {
                         const from = event.nativeEvent instanceof MouseEvent && event.nativeEvent.shiftKey
                           ? messages.findIndex((each) => each.ref === lastChecked.current)
@@ -336,9 +370,27 @@ export function MessageList({
                         )
                       }}
                     />
-                    <StarToggle message={message} />
-                    <ToSortToggle message={message} />
-                    <MessageRow message={message} source={searching || view ? 'account' : subfolders ? 'folder' : null} />
+                    <MessageRow
+                      message={message}
+                      source={searching || view ? 'account' : subfolders ? 'folder' : null}
+                      compact={density === 'compact'}
+                    />
+                    {/* Over the row's end, taking no width, while the row is hovered or has focus; not on a
+                        touch screen, where the message's actions and a swipe star or mark it instead. */}
+                    <span
+                      className={cn(
+                        'absolute right-2 flex items-center gap-0.5 rounded-md border bg-background shadow-xs',
+                        density === 'compact' ? 'top-1' : 'top-2',
+                        // Hidden, it takes no click: a tap on the date opens the message.
+                        'pointer-events-none opacity-0 group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100',
+                        'group-hover/row:pointer-events-auto group-hover/row:opacity-100',
+                        // Still there for screen readers.
+                        'pointer-coarse:sr-only',
+                      )}
+                    >
+                      <StarToggle message={message} />
+                      <ToSortToggle message={message} />
+                    </span>
                   </li>
                 )
               })}
@@ -526,9 +578,9 @@ function SelectAll({ messages }: { messages: Target[] }): ReactElement {
 
 /**
  * Stars or unstars this one message, whatever is selected or open, through the triage flag path:
- * its outcome is the toolbar's. A sibling of the row's link, so a click opens nothing. Filled when
- * starred; otherwise an outline seen on hover and focus (and always on a touch screen), but
- * always there for screen readers.
+ * its outcome is the toolbar's. A sibling of the row's link, so a click opens nothing. Shown over
+ * the row on hover and focus (not on a touch screen), always there for screen readers; a starred
+ * row says so by its mark.
  */
 function StarToggle({ message }: { message: MessageItem }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
@@ -544,11 +596,8 @@ function StarToggle({ message }: { message: MessageItem }): ReactElement {
       aria-pressed={flagged}
       aria-disabled={busy}
       className={cn(
-        'mt-2.5 ml-1.5 shrink-0 text-muted-foreground hover:text-foreground',
-        // Not opacity: an unstarred row's outline stays hidden until hover or focus.
+        'shrink-0 text-muted-foreground hover:text-foreground',
         'aria-disabled:cursor-not-allowed aria-disabled:text-muted-foreground/50 aria-disabled:hover:text-muted-foreground/50',
-        !flagged &&
-          'opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100',
       )}
       onClick={() => {
         if (!busy) {
@@ -556,7 +605,7 @@ function StarToggle({ message }: { message: MessageItem }): ReactElement {
         }
       }}
     >
-      <Star aria-hidden="true" className={cn('size-3.5', flagged && 'fill-current text-foreground')} />
+      <Star aria-hidden="true" className={cn('size-3.5', flagged && 'fill-current text-star')} />
     </Button>
   )
 }
@@ -580,10 +629,8 @@ function ToSortToggle({ message }: { message: MessageItem }): ReactElement {
       aria-pressed={marked}
       aria-disabled={busy || unsupported}
       className={cn(
-        'mt-2.5 shrink-0 text-muted-foreground hover:text-foreground',
+        'shrink-0 text-muted-foreground hover:text-foreground',
         'aria-disabled:cursor-not-allowed aria-disabled:text-muted-foreground/50 aria-disabled:hover:text-muted-foreground/50',
-        !marked &&
-          'opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100',
       )}
       onClick={() => {
         if (!busy && !unsupported) {
@@ -591,16 +638,25 @@ function ToSortToggle({ message }: { message: MessageItem }): ReactElement {
         }
       }}
     >
-      <Bookmark aria-hidden="true" className={cn('size-3.5', marked && 'fill-current text-foreground')} />
+      <Bookmark aria-hidden="true" className={cn('size-3.5', marked && 'fill-current text-primary')} />
     </Button>
   )
 }
 
 /**
  * A message's row, or a conversation's: its first writers, how many messages it has, and its
- * latest message's subject, date and opening.
+ * latest message's subject, date and opening (not in a compact row). A star and a To sort mark
+ * by the date say the row's flags, which its toggles change.
  */
-function MessageRow({ message, source }: { message: MessageItem; source: 'account' | 'folder' | null }): ReactElement {
+function MessageRow({
+  message,
+  source,
+  compact,
+}: {
+  message: MessageItem
+  source: 'account' | 'folder' | null
+  compact: boolean
+}): ReactElement {
   const { t, i18n } = useTranslation(MAIL_NS)
   const timeZone = useTimeZone()
   const accountLabel = useAccountLabel()
@@ -622,8 +678,8 @@ function MessageRow({ message, source }: { message: MessageItem; source: 'accoun
       // The row drags its messages, not the link's URL.
       draggable={false}
       className={cn(
-        'flex min-w-0 flex-1 flex-col gap-0.5 p-3 text-sm hover:bg-accent',
-        current && 'bg-accent',
+        'flex min-w-0 flex-1 flex-col gap-0.5 text-sm',
+        compact ? 'px-3 py-1.5' : 'p-3',
       )}
     >
       <span className="flex items-baseline gap-2">
@@ -636,9 +692,6 @@ function MessageRow({ message, source }: { message: MessageItem; source: 'accoun
             <span className="sr-only">{t('list.conversation', { count: conversation.count })}</span>
           </span>
         )}
-        {/* Shown by the row's toggles; said here too for whoever goes through the links. */}
-        {flags.flagged && <span className="sr-only">{t('list.flagged')}</span>}
-        {flags.to_sort && <span className="sr-only">{t('list.toSort')}</span>}
         {message.flags.answered && (
           <Reply role="img" aria-label={t('list.answered')} className="size-3.5 shrink-0 self-center text-muted-foreground" />
         )}
@@ -648,7 +701,20 @@ function MessageRow({ message, source }: { message: MessageItem; source: 'accoun
         {(conversation?.has_attachments ?? message.has_attachments) && (
           <Paperclip role="img" aria-label={t('list.hasAttachments')} className="size-3.5 shrink-0 self-center" />
         )}
-        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+        {flags.to_sort && (
+          <Bookmark role="img" aria-label={t('list.toSort')} className="size-3 shrink-0 self-center fill-current text-primary" />
+        )}
+        {flags.flagged && (
+          <Star role="img" aria-label={t('list.flagged')} className="size-3 shrink-0 self-center fill-current text-star" />
+        )}
+        {/* Under the row's toggles while they show: none of it shows past their edge, though a
+            screen reader still reads it. */}
+        <span
+          className={cn(
+            'shrink-0 text-xs text-muted-foreground tabular-nums',
+            'group-hover/row:text-transparent group-focus-within/row:text-transparent pointer-coarse:text-muted-foreground',
+          )}
+        >
           {formatListDate(i18n.language, message.date, timeZone)}
         </span>
       </span>
@@ -656,7 +722,7 @@ function MessageRow({ message, source }: { message: MessageItem; source: 'accoun
         {unread && <span className="sr-only">{`${t('list.unread')}: `}</span>}
         {subject}
       </span>
-      {message.preview !== '' && (
+      {!compact && message.preview !== '' && (
         <span className="line-clamp-1 text-muted-foreground">{message.preview}</span>
       )}
       {source !== null && (

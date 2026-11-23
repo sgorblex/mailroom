@@ -331,7 +331,15 @@ MCP `message_read` still never set `\Seen`.
 ### Web client
 
 - **Multi-select:** a checkbox per row (Shift+click sets every row from the one clicked before
-  to this one, as this one now is), and a select-all for the loaded rows.
+  to this one, as this one now is), and a select-all for the loaded rows. A row's checkbox shows
+  while the row is hovered or holds the focus, and every row's once one is selected; hidden, it
+  keeps its place and the keyboard still reaches it. On a touch screen it shows only once a row is
+  selected, taking no width before (screen readers still reach it): a finger held still on a row
+  selects or unselects it, instead of the browser's or the row's menu, and the lifted finger
+  opens nothing. The open row's highlight takes its whole width, its checkbox's too.
+- **Density:** comfortable rows (a sender line, the subject and the message's opening), or
+  compact ones with less padding and no opening, as the user chose on the *Profile* (the same
+  on every device).
 - **Select all matching:** once every loaded row is selected and the list or search has more, a
   line above the list says so and, from [`POST /messages/count`](#every-message-a-search-matches),
   offers to select all the messages it matches (a folder's list being a search with no criteria);
@@ -375,14 +383,17 @@ MCP `message_read` still never set `\Seen`.
   accounts (from a search) takes no drop, as Move to… is not offered for it either. From the
   keyboard, `v` is the way.
 - **A star on each row** stars or unstars that one message, whatever is selected or open, without
-  opening it: filled when starred, else an outline shown on hover and keyboard focus (always on a
-  touch screen) and always there for screen readers, a toggle button named *Star* whose pressed
+  opening it: shown over the row's end (taking no width, the date under it showing none of
+  itself) while the row is hovered or holds the focus, never on a touch screen (where the
+  message's actions star it), and always there for screen readers, a toggle button named *Star*
+  whose pressed
   state says whether the message is starred (its tooltip says *Star* or *Unstar*). While another
   action runs it is disabled and looks it, and a click sends nothing. Its result shows as any
   action's (below).
 - **A To sort mark on each row**, next to the star, marks that one message To sort or sorted the
   same way: a toggle named *To sort*, filled when marked (its tooltip says *Mark To sort* or
-  *Mark sorted*).
+  *Mark sorted*). A starred or To sort row shows it by small marks next to its date (a star in the
+  star colour, a bookmark), named *Starred* and *To sort* for screen readers.
 - Where the account's server keeps no keywords (the accounts listing's `keywords` is `false`),
   the toolbar's To sort action and the row's mark are greyed out, their tooltip saying why, and
   neither they nor `t` send anything; where it is not known, they are offered and the server's
