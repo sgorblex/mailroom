@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import { ACCENTS, DEFAULT_APPEARANCE, TEXT_SIZES, THEMES, type Appearance } from '@/api/auth.ts'
 import { readDevicePref, writeDevicePref } from '@/lib/device-prefs.ts'
+import { DARK_QUERY, matchesMedia } from '@/lib/media-query.ts'
 
 /**
  * The part of the user's appearance that styles the whole page, set on <html>: `.dark`,
@@ -15,7 +16,6 @@ export type Look = Pick<Appearance, 'theme' | 'accent' | 'text_size'>
 export const BACKGROUNDS = { light: '#f1f6f5', dark: '#0f1a18' } as const
 
 const STORED = 'look'
-const DARK_QUERY = '(prefers-color-scheme: dark)'
 
 const lookSchema = z.object({ theme: z.enum(THEMES), accent: z.enum(ACCENTS), text_size: z.enum(TEXT_SIZES) })
 const isLook = (value: unknown): value is Look => lookSchema.safeParse(value).success
@@ -34,7 +34,7 @@ export function lookOf({ theme, accent, text_size }: Look): Look {
 }
 
 function systemDark(): boolean {
-  return typeof window.matchMedia === 'function' && window.matchMedia(DARK_QUERY).matches
+  return matchesMedia(DARK_QUERY, false)
 }
 
 function apply(look: Look): void {

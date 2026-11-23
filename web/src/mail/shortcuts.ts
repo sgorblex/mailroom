@@ -6,6 +6,7 @@ import type { AccountId } from '@/api/accounts.ts'
 import { MAIL_ACTIONS, shortcutAction, type ActionContext, type MailAction } from './action-registry.ts'
 import { useCompose, type Compose } from './compose-context.ts'
 import { opened } from './conversations.ts'
+import { toggleFolderPane } from './folder-pane.ts'
 import { NO_TRIAGE_ACTIONS, useTriageActions, type TriageActions } from './triage-actions.ts'
 import { useTriage, type Triage } from './triage-context.ts'
 
@@ -41,6 +42,7 @@ const NAVIGATION_KEYS: readonly SheetEntry[] = [
   { key: 'j', label: 'shortcuts.next' },
   { key: 'k', label: 'shortcuts.previous' },
   { key: 'x', label: 'shortcuts.select' },
+  { key: '[', label: 'shortcuts.folderPane' },
   { key: 'Escape', label: 'shortcuts.escape', keyName: 'shortcuts.escapeKey' },
   { key: '?', label: 'shortcuts.sheet' },
   { key: 'Control+K', label: 'shortcuts.palette', keyName: 'shortcuts.paletteKey' },
@@ -126,10 +128,11 @@ export function usePaletteShortcut(onToggle: () => void): void {
 
 /**
  * The mail screen's keyboard shortcuts (`docs/requirements/mail-client.md`): j/k move through
- * the list, x selects, Escape closes a picker or clears the selection, `?` calls `onHelp` (the
- * shortcut sheet); the other keys are the action registry's, on the selection or the open message
- * (a reply on the open one, a new message on `accountId`). None while typing, none with Ctrl or
- * Meta (but for AltGr, which types characters), and no letter with Alt.
+ * the list, x selects, `[` folds or opens the folder pane, Escape closes a picker or clears the
+ * selection, `?` calls `onHelp` (the shortcut sheet); the other keys are the action registry's, on
+ * the selection or the open message (a reply on the open one, a new message on `accountId`). None
+ * while typing, none with Ctrl or Meta (but for AltGr, which types characters), and no letter with
+ * Alt.
  */
 export function useMailShortcuts(accountId: AccountId, onHelp: () => void): void {
   const triage = useTriage()
@@ -176,6 +179,8 @@ export function useMailShortcuts(accountId: AccountId, onHelp: () => void): void
         case '?':
           current.onHelp()
           return true
+        case '[':
+          return toggleFolderPane()
         case 'Escape':
           if (state.picker) {
             state.setPicker(false)

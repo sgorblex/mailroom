@@ -12,25 +12,10 @@ import {
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { Link, useNavigate } from '@tanstack/react-router'
-import {
-  Archive,
-  ChevronRight,
-  FilePen,
-  Folder,
-  FolderClosed,
-  Inbox,
-  ListTree,
-  Mails,
-  MoreHorizontal,
-  Send,
-  ShieldAlert,
-  Star,
-  Trash2,
-  type LucideIcon,
-} from 'lucide-react'
+import { ChevronRight, Folder, FolderClosed, ListTree, MoreHorizontal } from 'lucide-react'
 
 import type { AccountId } from '@/api/accounts.ts'
-import type { FolderRole, MailFolder } from '@/api/mail.ts'
+import type { MailFolder } from '@/api/mail.ts'
 import { useMarkReadSubfolders } from '@/auth/auth-context.ts'
 import { Menu, type MenuItem, type MenuPoint } from '@/components/ui/menu.tsx'
 import { cn } from '@/lib/utils.ts'
@@ -55,21 +40,11 @@ import {
 import { MAIL_NS } from './i18n.ts'
 import { markReadScope } from './mark-folder-read.ts'
 import { carriesMessages, endMessageDrag, useDraggedMessages } from './message-drag.ts'
+import { ROLE_ICONS } from './role-icons.ts'
 import { storedPaths, storePaths } from './stored-paths.ts'
 import { storedSubfolders, storeSubfolders } from './subfolder-view.ts'
 import { useTriageActions } from './triage-actions.ts'
 import { isSameFolder, useTriage, type Destination, type Target } from './triage-context.ts'
-
-const ROLE_ICONS: Record<FolderRole, LucideIcon> = {
-  inbox: Inbox,
-  sent: Send,
-  drafts: FilePen,
-  trash: Trash2,
-  junk: ShieldAlert,
-  archive: Archive,
-  all: Mails,
-  flagged: Star,
-}
 
 /** The levels the user left open on each account, if this browser kept them. */
 const EXPANDED_PREFIX = 'mailroom.mail.expandedFolders.'

@@ -1,4 +1,4 @@
-import type { QueryClient, UseQueryOptions } from '@tanstack/react-query'
+import { useQueries, type QueryClient, type UseQueryOptions } from '@tanstack/react-query'
 
 import type { AccountId } from '@/api/accounts.ts'
 import { listMailFolders, listViews, type MailFolder, type SavedView } from '@/api/mail.ts'
@@ -111,4 +111,12 @@ export function fetchPage<T>(
     { once: true },
   )
   return queryClient.query({ queryKey, queryFn: ({ signal: querySignal }) => read(querySignal), staleTime: 0, ...READ_ON_MOUNT })
+}
+
+/** Each account's folders as already listed, read from the cache only: nothing is asked for them here. */
+export function useListedFolders(accounts: readonly AccountId[]): (account: AccountId) => MailFolder[] | undefined {
+  const lists = useQueries({
+    queries: accounts.map((account) => ({ ...foldersQuery(account), enabled: false })),
+  })
+  return (account) => lists[accounts.indexOf(account)]?.data
 }

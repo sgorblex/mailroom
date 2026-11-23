@@ -17,6 +17,11 @@
     "showThisFolderOnly": "Show this folder only",
     "withSubfolders": "{{name}}, with subfolders"
   },
+  "folderPane": {
+    "rail": "Main folders",
+    "collapse": "Fold the folder pane",
+    "expand": "Open the folder pane"
+  },
   "folderActions": {
     "menu": "Actions for {{name}}",
     "more": "Folder actions",
@@ -584,6 +589,7 @@
     "next": "Next message",
     "previous": "Previous message",
     "select": "Select or deselect the open message",
+    "folderPane": "Fold or open the folder pane",
     "escape": "Close the picker, else clear the selection",
     "escapeKey": "Esc",
     "sheet": "Show these shortcuts",

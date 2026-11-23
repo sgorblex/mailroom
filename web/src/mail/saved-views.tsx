@@ -2,9 +2,9 @@ import { useId, useRef, useState, type ReactElement, type SubmitEvent } from 're
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { Bookmark, Folders, Inbox, MoreHorizontal, Search } from 'lucide-react'
+import { Bookmark, Folders, MoreHorizontal, Search } from 'lucide-react'
 
 import type { Account, AccountId } from '@/api/accounts.ts'
 import { ApiRequestError } from '@/api/http.ts'
@@ -14,7 +14,6 @@ import {
   deleteView,
   renameView,
   reorderViews,
-  type MailFolder,
   type SavedView,
   type SearchQuery,
   type ViewKey,
@@ -30,7 +29,8 @@ import { cn } from '@/lib/utils.ts'
 import { Buttons } from './folder-dialogs.tsx'
 import { MAIL_NS } from './i18n.ts'
 import { mailErrorMessage } from './messages.ts'
-import { foldersQuery, messagesKey, READ_ON_MOUNT, VIEWS_KEY, viewsQuery } from './queries.ts'
+import { messagesKey, READ_ON_MOUNT, useListedFolders, VIEWS_KEY, viewsQuery } from './queries.ts'
+import { ALL_INBOXES_ICON } from './role-icons.ts'
 import { savableLine, viewUnread, type ShownView } from './views.ts'
 
 /** As the server keeps them: a name of 1-100 characters, trimmed. */
@@ -51,14 +51,6 @@ function viewErrorMessage(t: TFunction, failure: unknown, action: 'save' | 'chan
     }
   }
   return mailErrorMessage(t, failure, t(action === 'save' ? 'views.errors.failed' : 'views.errors.changeFailed'))
-}
-
-/** Each account's folders as already listed, read from the cache only: nothing is asked for them here. */
-function useListedFolders(accounts: readonly AccountId[]): (account: AccountId) => MailFolder[] | undefined {
-  const lists = useQueries({
-    queries: accounts.map((account) => ({ ...foldersQuery(account), enabled: false })),
-  })
-  return (account) => lists[accounts.indexOf(account)]?.data
 }
 
 type ViewDialog = { kind: 'rename'; view: SavedView } | { kind: 'delete'; view: SavedView }
@@ -248,7 +240,7 @@ function ViewRow({
 }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const key: ViewKey = view === ALL_INBOXES ? ALL_INBOXES : view.id
-  const Icon = view === ALL_INBOXES ? Inbox : view.query === null ? Folders : Search
+  const Icon = view === ALL_INBOXES ? ALL_INBOXES_ICON : view.query === null ? Folders : Search
   const counted = unread !== null && unread > 0
   return (
     <li

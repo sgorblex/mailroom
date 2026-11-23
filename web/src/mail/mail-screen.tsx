@@ -17,13 +17,13 @@ import { ConversationView } from './conversation-view.tsx'
 import { useCompose } from './compose-context.ts'
 import { ComposeProvider } from './compose-provider.tsx'
 import { Composer } from './composer.tsx'
+import { FolderPane } from './folder-pane-view.tsx'
 import { findNode, folderTree, hasListedSubfolders } from './folder-tree.ts'
 import { MAIL_NS } from './i18n.ts'
 import { indexScope, scopeReads } from './index-progress.ts'
 import { IndexingNotice } from './indexing-notice.tsx'
 import { useLiveEvents, useLiveStatus, useLiveViewing } from './live-context.ts'
 import { ListPane } from './list-pane.tsx'
-import { MailSidebar } from './mail-sidebar.tsx'
 import { MessageList } from './message-list.tsx'
 import { MessageView } from './message-view.tsx'
 import { SearchForm } from './search-form.tsx'
@@ -199,7 +199,7 @@ function MailPanes({
     // its content (min-h-dvh) reads as the content's height, letting the whole page scroll.
     <main className="flex flex-1 flex-col border-t lg:min-h-0 lg:basis-0 lg:flex-row">
       <h1 className="sr-only">{t('mail.title')}</h1>
-      <MailSidebar
+      <FolderPane
         accounts={accounts}
         accountId={accountId}
         folder={showsFolder ? folder : null}

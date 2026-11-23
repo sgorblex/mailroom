@@ -17,6 +17,11 @@
     "showThisFolderOnly": "Mostra solo questa cartella",
     "withSubfolders": "{{name}}, con le sottocartelle"
   },
+  "folderPane": {
+    "rail": "Cartelle principali",
+    "collapse": "Riduci il riquadro delle cartelle",
+    "expand": "Apri il riquadro delle cartelle"
+  },
   "folderActions": {
     "menu": "Azioni per {{name}}",
     "more": "Azioni sulla cartella",
@@ -584,6 +589,7 @@
     "next": "Messaggio successivo",
     "previous": "Messaggio precedente",
     "select": "Seleziona o deseleziona il messaggio aperto",
+    "folderPane": "Riduci o apri il riquadro delle cartelle",
     "escape": "Chiudi la scelta della cartella, altrimenti annulla la selezione",
     "escapeKey": "Esc",
     "sheet": "Mostra queste scorciatoie",

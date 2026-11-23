@@ -248,6 +248,8 @@ First, fixes carried over from 0.14.0 testing:
       putting sender, subject and date on one line.
   - [x] **Resizable list** — a divider between the list and the reading pane, by pointer or
         keyboard, its width kept per device and wider by default.
+  - [x] **Folder rail** — the folder pane folds to a rail of icons (a button or `[`, on its own
+        below `xl`), kept per device, and peeks over the list on hover or focus.
 - [ ] **Undo where it is seen** — the Undo send toast is easy to miss where it is now: centred at
       the bottom of the window, larger, with the seconds left.
 - [ ] **Profile layout** — the Profile uses the width of a desktop screen, its sections side by

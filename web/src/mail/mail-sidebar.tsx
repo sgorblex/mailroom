@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactElement } from 'react'
+import { useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
@@ -26,7 +26,8 @@ import { isSameFolder, useAccountFolders, useTriage } from './triage-context.ts'
 /**
  * The user's views, then their accounts; the one shown lists its folders with their unread counts,
  * and creates, renames, deletes and marks them read. `folder` is the folder shown, `null` while a
- * search or a view (`view`) is; `subfolders`, whether it is listed with its subfolders.
+ * search or a view (`view`) is; `subfolders`, whether it is listed with its subfolders. `header`
+ * goes above it all (the button folding it to its rail).
  */
 export function MailSidebar({
   accounts,
@@ -34,6 +35,9 @@ export function MailSidebar({
   folder,
   view,
   subfolders,
+  header,
+  hidden,
+  id,
   className,
 }: {
   accounts: Account[]
@@ -41,14 +45,20 @@ export function MailSidebar({
   folder: string | null
   view: ViewKey | null
   subfolders: boolean
+  header?: ReactNode
+  hidden?: boolean
+  id?: string
   className?: string
 }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   return (
     <nav
+      id={id}
       aria-label={t('folders.label')}
+      hidden={hidden}
       className={cn('flex flex-col gap-4 p-3 lg:w-60 lg:shrink-0 lg:overflow-y-auto lg:border-r', className)}
     >
+      {header}
       <ViewsSection accounts={accounts} accountId={accountId} current={view} />
       <ScheduledEntry />
       <SnoozedEntry />
