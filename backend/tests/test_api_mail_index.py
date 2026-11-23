@@ -85,8 +85,10 @@ def test_every_folder_but_junk_is_indexed_from_first_sight(
     assert status["gmail"] is False
     assert (status["max_age_days"], status["max_age_cap_days"]) == (400, 400)
     folders = _by_path(status)
+    listed = {f["path"]: f for f in mailbox.get("/accounts/1/folders")["folders"]}
     assert folders["INBOX"] == {
         "path": "INBOX",
+        "delimiter": listed["INBOX"]["delimiter"],
         "role": "inbox",
         "indexed_as": "folder",
         "enabled": True,
@@ -102,9 +104,8 @@ def test_every_folder_but_junk_is_indexed_from_first_sight(
     assert folders["Junk"]["role"] == "junk"
     assert folders["Junk"]["enabled"] is False
     assert folders["Junk"]["state"] is None
-    assert [folder["path"] for folder in status["folders"]] == [
-        folder["path"] for folder in mailbox.get("/accounts/1/folders")["folders"]
-    ]
+    assert folders["Projects"]["delimiter"] == listed["Projects"]["delimiter"] is not None
+    assert [folder["path"] for folder in status["folders"]] == list(listed)
 
     # Seen again, a folder keeps the user's choice.
     _row(db_session, user, "INBOX").enabled = False

@@ -2108,16 +2108,24 @@ folder off the index is read live, as before the index.
   through the same service. When the index cannot be read at all, a first page and the counts go
   live (logged as `mail_index_read_failed`, with the exception's type only).
 - **Web.** The *Profile* page's *Index* section (with the mail client) sets the age limit (empty:
-  none) and, per account, lists the folders as a checklist: each one's switch (a Gmail label's and
-  a live folder's disabled; a label reads from All Mail while All Mail is on, else live) and a line
-  with its state, `indexed` out of `total` while it syncs (the list read again every 15 seconds
-  while a folder waits or syncs), its counts, day and last sync once ready, or the failure's code
-  in words. Saving the age limit reads every account's list again. Above the message list,
-  while a folder the list or search reads is waiting for or in its first sync (on Gmail, All Mail
-  for a label folder; with subfolders, each listed; in an all-accounts search, each account's), a
-  quiet line says how far it has come, from the route below with `totals=waiting` (*Indexing:
-  1,240 of 8,000 messages*, summed over those folders, the total only when each one's is known;
-  read again every 15 seconds); nothing once each is ready,
+  none) and, per account, shows the folders as a tree of checkboxes (nested lists, built as the
+  folder pane's tree: split on each folder's `delimiter`, roles first, a level the server did not
+  list added): a filter box above the accounts keeps the folders whose path has its text (any
+  case) and the levels above them; a parent's checkbox ticks or unticks it with every switchable
+  folder shown under it, one call per folder changed (a line counting them while there are more
+  than one, stopping at the first refused), and shows mixed (`indeterminate`) when only some are
+  on; *All* and *None* by each account's name switch every folder matching the filter. Switching
+  more than one folder off asks first, since it drops their indexed mail. Each checkbox is named
+  by the folder's whole path: each one's switch (a Gmail label's and a live folder's disabled,
+  showing its own state even with switchable folders under it; a label reads from All Mail while
+  All Mail is on, else live) and a line with its state, `indexed` out of `total` while it syncs
+  (the list read again every 15 seconds while a folder waits or syncs), its counts, day and last
+  sync once ready, or the failure's code in words. Saving the age limit reads every account's list
+  again. Above the message list, while a folder the list or search reads is waiting for or in its
+  first sync (on Gmail, All Mail for a label folder; with subfolders, each listed; in an
+  all-accounts search, each account's), a quiet line says how far it has come, from the route
+  below with `totals=waiting` (*Indexing: 1,240 of 8,000 messages*, summed over those folders, the
+  total only when each one's is known; read again every 15 seconds); nothing once each is ready,
   for a folder off the index, for a search of the text or with Gmail's syntax (always live), or
   when the status cannot be read.
 
@@ -2126,17 +2134,18 @@ Routes (under `/api/v1/mail`, as the rest of the [REST contract](#rest-contract)
 - `GET /index/accounts/{account_id}`: lists the account's folders (with STATUS, one command per
   folder), giving each one first seen its row, and answers `{"account_id", "gmail",
   "max_age_days", "max_age_cap_days", "folders"}`: the age limit in force and the cap, then each
-  selectable folder in the listing's order as `{"path", "role", "indexed_as", "enabled", "total",
-  "state", "error", "indexed", "unread", "oldest_indexed", "last_synced_at"}`. `indexed_as` is
-  `folder` (indexed on its own), `label` (Gmail, read from All Mail: `enabled` and the sync fields
-  are All Mail's, `indexed` and `unread` null) or `live` (never indexed, `enabled` false).
-  `total` is the server's count (null when its STATUS failed); `state` is `pending`, `syncing`,
-  `ready` or `failed` (with `error`, a mailbox failure's code); `indexed` and `unread` count what
-  the index holds, so `indexed` out of `total` is a first sync's progress (short of it under an
-  age limit); `oldest_indexed` is the age limit's day the last sync kept to. `state` and the
-  fields after it are null while the folder is off. With `?totals=waiting` (the message list's
-  indexing line) only the folders waiting for or in their sync are asked STATUS (the others'
-  `total` null) and no row is written. Errors as the folder listing's.
+  selectable folder in the listing's order as `{"path", "delimiter", "role", "indexed_as",
+  "enabled", "total", "state", "error", "indexed", "unread", "oldest_indexed", "last_synced_at"}`.
+  `indexed_as` is `folder` (indexed on its own), `label` (Gmail, read from All Mail: `enabled` and
+  the sync fields are All Mail's, `indexed` and `unread` null) or `live` (never indexed, `enabled`
+  false). `delimiter` is the server's hierarchy delimiter (null when it gives none); `total` is
+  the server's count (null when its STATUS failed); `state` is `pending`, `syncing`, `ready` or
+  `failed` (with `error`, a mailbox failure's code); `indexed` and `unread` count what the index
+  holds, so `indexed` out of `total` is a first sync's progress (short of it under an age limit);
+  `oldest_indexed` is the age limit's day the last sync kept to. `state` and the fields after it
+  are null while the folder is off. With `?totals=waiting` (the message list's indexing line) only
+  the folders waiting for or in their sync are asked STATUS (the others' `total` null) and no row
+  is written. Errors as the folder listing's.
 - `PUT /index/accounts/{account_id}/folders`, `{"folder": "Archive", "enabled": false}` (a JSON
   boolean; unknown fields 422; `INBOX` in any case): `{"account_id", "folder", "enabled"}`. A
   folder the index has not seen yet is looked up on the server first: one it does not list is 404

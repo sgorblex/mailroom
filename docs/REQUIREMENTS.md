@@ -99,9 +99,9 @@ menu) shows the health check through the Vite proxy. Engineering baseline:
   their accounts, which their messages from it start with
   ([`requirements/mail-client.md`](requirements/mail-client.md#signatures)).
 - **Index.** Each user picks on their *Profile* page how far back the mail index keeps their
-  mail and, per account, which folders it keeps, each with its sync state and counts; while a
-  folder the mail screen lists or searches is first being indexed, a line above the list says
-  how far it has come ([`requirements/mail-client.md`](requirements/mail-client.md) — *Index*).
+  mail and, per account, which folders it keeps, ticked in a tree with a filter and all/none,
+  each with its sync state and counts; while a folder the mail screen lists or searches is first
+  being indexed, a line above the list says how far it has come ([`requirements/mail-client.md`](requirements/mail-client.md) — *Index*).
 - **Single sign-on** (optional): "Sign in with …" an OpenID Connect provider, for users an admin
   already created; nobody signs up through it. A user links the provider's sign-in on their
   *Profile* page (and unlinks it there), or, when the instance says so, their first SSO sign-in

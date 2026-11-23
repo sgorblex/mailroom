@@ -1,27 +1,32 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState, type ReactElement, type SubmitEvent } from 'react'
+import { useId, useMemo, useState, type ReactElement, type SubmitEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 
-import { listAccounts, type Account, type AccountId } from '@/api/accounts.ts'
+import { listAccounts, type Account } from '@/api/accounts.ts'
 import { apiErrorMessage } from '@/api/http.ts'
 import { INDEX_MAX_AGE_DAYS, readIndexStatus, setIndexFolder, type IndexFolder } from '@/api/mail.ts'
 import { useAuth, useTimeZone } from '@/auth/auth-context.ts'
+import { ConfirmRemoval } from '@/components/confirm-removal.tsx'
 import { Button } from '@/components/ui/button.tsx'
 import { Input } from '@/components/ui/input.tsx'
 import { formatDateTime, formatDay } from '@/lib/format.ts'
 import { ACCOUNTS_KEY, INDEX_KEY, INDEXING_POLL_MS, indexStatusKey, READ_ON_MOUNT } from '@/mail/queries.ts'
 import { ACCOUNT_NOT_FOUND, mailCodeMessage, mailErrorMessage } from '@/mail/messages.ts'
 
+import { filterTree, indexTree, isSwitchable, matchingSwitchable, switchableUnder, tickState, type IndexNode } from './index-tree.ts'
+
 type Outcome = { kind: 'idle' } | { kind: 'saved' } | { kind: 'failed'; message: string }
 
 /**
  * The mail index's settings: how far back it keeps mail, and per account which folders it keeps,
- * each with its sync state and counts. A folder off the index is read live.
+ * as a tree with each folder's sync state and counts, narrowed by a filter shared by the accounts.
+ * A folder off the index is read live.
  */
 export function IndexSettings(): ReactElement {
   const { t } = useTranslation()
   const accounts = useQuery({ queryKey: ACCOUNTS_KEY, queryFn: ({ signal }) => listAccounts(signal), ...READ_ON_MOUNT })
+  const [query, setQuery] = useState('')
   return (
     <section aria-labelledby="mail-index" className="flex flex-col gap-3">
       <h3 id="mail-index" className="font-medium">
@@ -35,8 +40,27 @@ export function IndexSettings(): ReactElement {
         </p>
       )}
       {accounts.data?.length === 0 && <p className="text-sm text-muted-foreground">{t('accounts.none')}</p>}
+      {accounts.data !== undefined && accounts.data.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <label htmlFor="mail-index-filter" className="text-sm font-medium">
+            {t('mailIndex.filter')}
+          </label>
+          <Input
+            id="mail-index-filter"
+            type="search"
+            value={query}
+            aria-describedby="mail-index-filter-hint"
+            onChange={(event) => {
+              setQuery(event.target.value)
+            }}
+          />
+          <p id="mail-index-filter-hint" className="text-sm text-muted-foreground">
+            {t('mailIndex.filterHint')}
+          </p>
+        </div>
+      )}
       {accounts.data?.map((account) => (
-        <AccountIndex key={account.id} account={account} />
+        <AccountIndex key={account.id} account={account} query={query} />
       ))}
     </section>
   )
@@ -141,9 +165,8 @@ function folderState(t: TFunction, language: string, timeZone: string | undefine
   }
 }
 
-function AccountIndex({ account }: { account: Account }): ReactElement {
-  const { t, i18n } = useTranslation()
-  const timeZone = useTimeZone()
+function AccountIndex({ account, query }: { account: Account; query: string }): ReactElement {
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
   const queryKey = indexStatusKey(account.id)
   const status = useQuery({
@@ -155,29 +178,105 @@ function AccountIndex({ account }: { account: Account }): ReactElement {
         ? INDEXING_POLL_MS
         : false,
   })
-  const [switching, setSwitching] = useState<string | null>(null)
+  /** How far a batch of switches has come; `null` when none is running. */
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+  /** The folders waiting for the user to confirm they stop being indexed. */
+  const [confirming, setConfirming] = useState<readonly IndexFolder[] | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
+  const folders = status.data?.folders
+  const shown = useMemo(() => (folders === undefined ? [] : filterTree(indexTree(folders), query)), [folders, query])
+  const switching = progress !== null
+  const busy = switching || confirming !== null
 
-  async function toggle(id: AccountId, folder: string, enabled: boolean): Promise<void> {
-    setSwitching(folder)
+  /**
+   * Switches those of `targets` not yet `enabled` to it; switching more than one folder off, which
+   * drops their indexed mail, asks first.
+   */
+  function requestSwitch(targets: readonly IndexFolder[], enabled: boolean): void {
+    const changing = targets.filter((folder) => folder.enabled !== enabled)
+    if (changing.length === 0) {
+      return
+    }
     setFailure(null)
+    if (!enabled && changing.length > 1) {
+      setConfirming(changing)
+      return
+    }
+    void switchAll(changing, enabled)
+  }
+
+  /** Switches each of `changing` to `enabled` in turn, one call each, stopping at the first refused. */
+  async function switchAll(changing: readonly IndexFolder[], enabled: boolean): Promise<void> {
+    setConfirming(null)
+    setProgress({ done: 0, total: changing.length })
     try {
-      await setIndexFolder(id, folder, enabled)
+      for (const [done, folder] of changing.entries()) {
+        await setIndexFolder(account.id, folder.path, enabled)
+        setProgress({ done: done + 1, total: changing.length })
+      }
     } catch (error) {
       setFailure(mailErrorMessage(t, error, t('mailIndex.switchFailed')))
     } finally {
       await queryClient.invalidateQueries({ queryKey })
-      setSwitching(null)
+      setProgress(null)
     }
   }
 
   const headingId = `mail-index-${String(account.id)}`
   const data = status.data
+  const matching = matchingSwitchable(shown, query)
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-2">
-      <h4 id={headingId} className="text-sm font-medium">
-        {account.display_name}
-      </h4>
+      <div className="flex flex-wrap items-center gap-2">
+        <h4 id={headingId} className="mr-auto text-sm font-medium">
+          {account.display_name}
+        </h4>
+        {data !== undefined && (
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              aria-label={t('mailIndex.allOf', { account: account.display_name })}
+              disabled={busy || matching.every((folder) => folder.enabled)}
+              onClick={() => {
+                requestSwitch(matching, true)
+              }}
+            >
+              {t('mailIndex.all')}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              aria-label={t('mailIndex.noneOf', { account: account.display_name })}
+              disabled={busy || matching.every((folder) => !folder.enabled)}
+              onClick={() => {
+                requestSwitch(matching, false)
+              }}
+            >
+              {t('mailIndex.none')}
+            </Button>
+          </>
+        )}
+      </div>
+      {confirming !== null && (
+        <ConfirmRemoval
+          question={t('mailIndex.confirmOff', { count: confirming.length, account: account.display_name })}
+          confirmLabel={t('mailIndex.confirmOffYes')}
+          cancelLabel={t('mailIndex.cancel')}
+          pending={switching}
+          onConfirm={() => void switchAll(confirming, false)}
+          onCancel={() => {
+            setConfirming(null)
+          }}
+        />
+      )}
+      {progress !== null && progress.total > 1 && (
+        <p role="status" className="text-sm text-muted-foreground">
+          {t('mailIndex.switching', { done: progress.done, count: progress.total })}
+        </p>
+      )}
       {status.isPending && <p className="text-sm text-muted-foreground">{t('mailIndex.loading')}</p>}
       {status.isError && (
         <p role="alert" className="text-sm text-destructive">
@@ -193,32 +292,21 @@ function AccountIndex({ account }: { account: Account }): ReactElement {
             {data.max_age_cap_days !== null && ` ${t('mailIndex.cap', { count: data.max_age_cap_days })}`}
             {data.gmail && ` ${t('mailIndex.gmail')}`}
           </p>
-          <ul aria-label={t('mailIndex.folders', { account: account.display_name })} className="flex flex-col divide-y rounded-lg border">
-            {data.folders.map((folder, position) => {
-              const inputId = `${headingId}-${String(position)}`
-              return (
-                <li key={folder.path} className="flex items-start gap-3 p-3">
-                  <input
-                    id={inputId}
-                    type="checkbox"
-                    className="mt-1"
-                    checked={folder.enabled}
-                    disabled={folder.indexed_as !== 'folder' || switching !== null}
-                    aria-describedby={`${inputId}-state`}
-                    onChange={(event) => void toggle(account.id, folder.path, event.target.checked)}
-                  />
-                  <div className="min-w-0">
-                    <label htmlFor={inputId} className="block truncate text-sm font-medium">
-                      {folder.path}
-                    </label>
-                    <p id={`${inputId}-state`} className="text-xs text-muted-foreground">
-                      {folderState(t, i18n.language, timeZone, folder)}
-                    </p>
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
+          {shown.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t('mailIndex.noMatch')}</p>
+          ) : (
+            <ul aria-label={t('mailIndex.folders', { account: account.display_name })} className="flex flex-col rounded-lg border py-1">
+              {shown.map((node) => (
+                <IndexTreeItem
+                  key={node.path}
+                  node={node}
+                  idPrefix={headingId}
+                  disabled={busy}
+                  onSwitch={requestSwitch}
+                />
+              ))}
+            </ul>
+          )}
         </>
       )}
       {failure !== null && (
@@ -227,5 +315,70 @@ function AccountIndex({ account }: { account: Account }): ReactElement {
         </p>
       )}
     </section>
+  )
+}
+
+interface TreeItemProps {
+  node: IndexNode
+  /** Makes the checkbox's id unique on the page, with the node's path. */
+  idPrefix: string
+  disabled: boolean
+  onSwitch: (targets: readonly IndexFolder[], enabled: boolean) => void
+}
+
+/**
+ * A level of the tree: its checkbox ticks it and every switchable folder shown under it, and shows
+ * mixed when some of them are on; a folder the user cannot switch (a Gmail label, a live folder)
+ * shows its own state, disabled, even with switchable folders under it (their own checkboxes switch
+ * them). The checkbox is named by the whole path; the line under it says
+ * what the index holds of the folder.
+ */
+function IndexTreeItem({ node, idPrefix, disabled, onSwitch }: TreeItemProps): ReactElement {
+  const { t, i18n } = useTranslation()
+  const timeZone = useTimeZone()
+  const inputId = `${idPrefix}-${useId()}`
+  const { folder } = node
+  // A folder the user cannot switch has no tick of its own to take from the folders under it.
+  const tick = folder !== null && !isSwitchable(folder) ? null : tickState(node)
+  const described = folder === null ? undefined : `${inputId}-state`
+  return (
+    <li className="flex flex-col">
+      <div className="flex items-start gap-2 px-3 py-1.5">
+        <input
+          id={inputId}
+          type="checkbox"
+          className="mt-1"
+          ref={(input) => {
+            if (input !== null) {
+              input.indeterminate = tick === 'mixed'
+            }
+          }}
+          checked={tick === null ? (folder?.enabled ?? false) : tick === 'on'}
+          disabled={tick === null || disabled}
+          aria-label={node.path}
+          aria-describedby={described}
+          onChange={() => {
+            onSwitch(switchableUnder(node), tick !== 'on')
+          }}
+        />
+        <div className="min-w-0">
+          <label htmlFor={inputId} className="block truncate text-sm font-medium" title={node.path}>
+            {node.name}
+          </label>
+          {folder !== null && (
+            <p id={described} className="text-xs text-muted-foreground">
+              {folderState(t, i18n.language, timeZone, folder)}
+            </p>
+          )}
+        </div>
+      </div>
+      {node.children.length > 0 && (
+        <ul className="ml-5 flex flex-col border-l">
+          {node.children.map((child) => (
+            <IndexTreeItem key={child.path} node={child} idPrefix={idPrefix} disabled={disabled} onSwitch={onSwitch} />
+          ))}
+        </ul>
+      )}
+    </li>
   )
 }

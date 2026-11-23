@@ -608,6 +608,8 @@ export const INDEX_MAX_AGE_DAYS = 36500
 
 const indexFolderSchema = z.object({
   path: z.string(),
+  /** The server's hierarchy delimiter for the path; `null` when it gives none. */
+  delimiter: z.string().nullable(),
   role: z.enum(FOLDER_ROLES).nullable(),
   /** `folder`: indexed on its own; `label`: a Gmail folder read from All Mail, whose switch and sync it shows; `live`: never indexed. */
   indexed_as: z.enum(['folder', 'label', 'live']),
