@@ -20,7 +20,7 @@ import { folderName } from './messages.ts'
 import { matchItems, storedRecents, storeRecent, type PaletteItem } from './palette.ts'
 import { screenContext } from './shortcuts.ts'
 import { useTriageActions } from './triage-actions.ts'
-import { loadedFolders, useTriage } from './triage-context.ts'
+import { loadedFolders, useOpenMessage, useTriage } from './triage-context.ts'
 
 const GROUPS = ['recent', 'actions', 'folders', 'accounts', 'pages'] as const
 
@@ -190,6 +190,7 @@ function usePaletteItems(accounts: readonly Account[], accountId: AccountId): Pa
   const { t } = useTranslation(MAIL_NS)
   const triage = useTriage()
   const actions = useTriageActions()
+  const open = useOpenMessage()
   const compose = useCompose()
   const navigate = useNavigate()
   const auth = useContext(AuthContext)
@@ -205,7 +206,7 @@ function usePaletteItems(accounts: readonly Account[], accountId: AccountId): Pa
   const muting = useMuting()
   const snoozing = useSnoozing()
   const uGoesBack = useUGoesBack()
-  const context = { ...screenContext(triage, actions, compose, accountId), draftFilter, muting, snoozing }
+  const context = { ...screenContext(triage, open, actions, compose, accountId), draftFilter, muting, snoozing }
   const state = { busy: triage.busy, composing: compose.session !== null }
   const actionItems = MAIL_ACTIONS.filter(
     (action) => runnable(action, context, state) && (action.listed?.(context) ?? true),

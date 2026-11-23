@@ -297,10 +297,12 @@ export function ComposeProvider({
     }
   }, [key, param, navigate])
 
+  // A boolean, not the message: opening another one leaves the value as it was.
+  const shown = session !== null && shownOver === search.message
   const value = useMemo<Compose>(
     () => ({
       session,
-      shown: session !== null && shownOver === search.message,
+      shown,
       start,
       close,
       reveal,
@@ -330,8 +332,7 @@ export function ComposeProvider({
     }),
     [
       session,
-      shownOver,
-      search.message,
+      shown,
       start,
       close,
       reveal,

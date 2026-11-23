@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode, type RefObject } from 'react'
 import { useQueries, useQueryClient, type QueryObserverResult } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
@@ -36,6 +36,7 @@ import {
   folderState,
   isSameFolder,
   roleFolder,
+  OpenMessageContext,
   TriageContext,
   type Action,
   type Destination,
@@ -898,41 +899,85 @@ export function TriageProvider({
     [act, scope.newSender, sourceKey, updateScope],
   )
 
-  const value: Triage = {
-    accounts,
-    folders,
-    loadFolders,
-    flagsOf,
-    removed,
-    selection: scope.selection,
-    select,
-    clearSelection,
-    matching: scope.matching,
-    selectMatching,
-    bulk: scope.bulk,
-    setBulk,
-    bulkDone,
-    open,
-    setOpen,
-    setVisible,
-    visibleRows,
-    subscribeVisible,
-    targets: scope.selection.size > 0 ? [...scope.selection.values()] : open === null ? [] : [open],
-    busy,
-    outcome: scope.outcome,
-    dismissOutcome,
-    folderMarkedRead,
-    refreshed,
-    spamOffer,
-    dismissSpamOffer,
-    run,
-    newSender: scope.newSender,
-    answerNewSender,
-    picker: scope.picker,
-    setPicker,
-    accountPicker: scope.accountPicker,
-    accountPickerInto: scope.accountPickerInto,
-    setAccountPicker,
-  }
-  return <TriageContext value={value}>{children}</TriageContext>
+  const openMessage = useCallback(() => openRef.current, [openRef])
+
+  // The same object while nothing in it changes: opening a message changes `open` alone, which only
+  // what reads `OpenMessageContext` draws again for, not the folder tree and the list.
+  const value = useMemo<Triage>(
+    () => ({
+      accounts,
+      folders,
+      loadFolders,
+      flagsOf,
+      removed,
+      selection: scope.selection,
+      select,
+      clearSelection,
+      matching: scope.matching,
+      selectMatching,
+      bulk: scope.bulk,
+      setBulk,
+      bulkDone,
+      openMessage,
+      setOpen,
+      setVisible,
+      visibleRows,
+      subscribeVisible,
+      busy,
+      outcome: scope.outcome,
+      dismissOutcome,
+      folderMarkedRead,
+      refreshed,
+      spamOffer,
+      dismissSpamOffer,
+      run,
+      newSender: scope.newSender,
+      answerNewSender,
+      picker: scope.picker,
+      setPicker,
+      accountPicker: scope.accountPicker,
+      accountPickerInto: scope.accountPickerInto,
+      setAccountPicker,
+    }),
+    [
+      accounts,
+      folders,
+      loadFolders,
+      flagsOf,
+      removed,
+      scope.selection,
+      select,
+      clearSelection,
+      scope.matching,
+      selectMatching,
+      scope.bulk,
+      setBulk,
+      bulkDone,
+      openMessage,
+      setOpen,
+      setVisible,
+      visibleRows,
+      subscribeVisible,
+      busy,
+      scope.outcome,
+      dismissOutcome,
+      folderMarkedRead,
+      refreshed,
+      spamOffer,
+      dismissSpamOffer,
+      run,
+      scope.newSender,
+      answerNewSender,
+      scope.picker,
+      setPicker,
+      scope.accountPicker,
+      scope.accountPickerInto,
+      setAccountPicker,
+    ],
+  )
+  return (
+    <TriageContext value={value}>
+      <OpenMessageContext value={open}>{children}</OpenMessageContext>
+    </TriageContext>
+  )
 }

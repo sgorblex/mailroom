@@ -20,7 +20,7 @@ import { overlayOpen } from './shortcuts.ts'
 import { useSnoozing } from './snooze-context.ts'
 import { TriageButtons, TriagePickers } from './toolbar.tsx'
 import { useTriageActions } from './triage-actions.ts'
-import { useTriage } from './triage-context.ts'
+import { useOpenMessage, useTriage } from './triage-context.ts'
 
 type Picker = 'move' | 'account'
 
@@ -108,7 +108,8 @@ export function MessageActions({ account, messageRef }: { account: AccountId; me
   const bar = useRef<HTMLDivElement>(null)
   useDockedHeight(bar, docked)
   // The triage actions wait for the view to have set the open message (its flags, its row).
-  const open = triage.open?.ref === messageRef ? triage.open : null
+  const opened = useOpenMessage()
+  const open = opened?.ref === messageRef ? opened : null
   const actions = useTriageActions(open === null ? [] : [open])
   const shared = triage.selection.size === 0
   const [own, setOwn] = useState<Picker | null>(null)

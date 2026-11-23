@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState, type FocusEvent, type ReactElement, type RefObject } from 'react'
+import { memo, useCallback, useEffect, useId, useRef, useState, type FocusEvent, type ReactElement, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from '@tanstack/react-router'
 import { PanelLeftClose, PanelLeftOpen, type LucideIcon } from 'lucide-react'
@@ -25,7 +25,7 @@ const RAIL_ROLES: readonly FolderRole[] = ['inbox', 'flagged', 'drafts', 'sent',
  * this device's choice; folded, hovering or focusing the rail peeks the whole pane over the list,
  * taking no room, until the pointer or the focus leaves it, Escape, or a folder is picked.
  */
-export function FolderPane({
+export const FolderPane = memo(function FolderPane({
   accounts,
   accountId,
   folder,
@@ -202,7 +202,7 @@ export function FolderPane({
       />
     </div>
   )
-}
+})
 
 /** Folds the pane to its rail, or opens it again; `[` does the same. */
 function PaneToggle({
