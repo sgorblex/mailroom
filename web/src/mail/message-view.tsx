@@ -18,16 +18,25 @@ import { MAIL_NS } from './i18n.ts'
 import { MailingListRow } from './mailing-list.tsx'
 import { MessageActions } from './message-actions.tsx'
 import { mailErrorMessage } from './messages.ts'
-import { fetchPage, messageKey, READ_ON_MOUNT } from './queries.ts'
+import { fetchPage, messageKey, messageQuery, senderChanged } from './queries.ts'
 import { authenticationState, recipientSummary, resultText } from './sender-checks.ts'
 import { isSameFolder, loadedFolders, roleFolder, useTriage, type Target } from './triage-context.ts'
 
 /**
  * One message, mounted anew (by key) for each: its view choices are never carried over. Read as
  * the latest message of `conversation` (a row of the list), it stands for that row: its action
- * bar acts on the whole conversation, and opening it marks every message of it read.
+ * bar acts on the whole conversation, and opening it marks every message of it read. `leaving`:
+ * still shown while the next one loads (`ReadingView`), it is no longer the open message.
  */
-export function MessageView({ messageRef, conversation }: { messageRef: string; conversation?: Target }): ReactElement {
+export function MessageView({
+  messageRef,
+  conversation,
+  leaving = false,
+}: {
+  messageRef: string
+  conversation?: Target
+  leaving?: boolean
+}): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const [includeQuoted, setIncludeQuoted] = useState(false)
   // The remote images choice lives as long as this message's view, whatever is shown in it.
@@ -36,17 +45,13 @@ export function MessageView({ messageRef, conversation }: { messageRef: string; 
   const [original, setOriginal] = useState(false)
   // Each view says which choice it was read with: until the new one answers, the old one stays,
   // and nothing may page it with the new choice.
-  const query = useQuery({
-    queryKey: messageKey(messageRef, 0, includeQuoted),
-    queryFn: async ({ signal }) => ({ view: await readMessage(messageRef, { includeQuoted }, signal), includeQuoted }),
-    placeholderData: keepPreviousData,
-    ...READ_ON_MOUNT,
-  })
+  const query = useQuery({ ...messageQuery(messageRef, includeQuoted), placeholderData: keepPreviousData })
   const state = query.status
   const pending = state === 'pending' || (state === 'success' && query.data.includeQuoted !== includeQuoted)
   const { setOpen, flagsOf, run, folders, loadFolders, visibleRows } = useTriage()
   const { canCompose } = useCompose()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   // What opening it marked read: nothing yet, the message alone (`ran`: a request went), or its conversation.
   const marked = useRef<{ whole: boolean; ran: boolean } | null>(null)
   const view = state === 'success' ? query.data.view : null
@@ -63,7 +68,7 @@ export function MessageView({ messageRef, conversation }: { messageRef: string; 
   // failure leaves it unread without a word. A draft stays as it is, and opens in the composer
   // instead, unless its account can't save one (send mode off).
   useEffect(() => {
-    if (view === null) {
+    if (view === null || leaving) {
       return
     }
     // Acted on as its row in the list, under the folder it was listed under.
@@ -106,13 +111,16 @@ export function MessageView({ messageRef, conversation }: { messageRef: string; 
     if (unread) {
       void run({ kind: 'flag', change: { seen: true } }, [target], { silent: true })
     }
-  }, [view, conversation, accountFolders, canCompose, navigate, loadFolders, setOpen, flagsOf, run, visibleRows])
-  useEffect(
-    () => () => {
+  }, [view, conversation, accountFolders, canCompose, navigate, loadFolders, setOpen, flagsOf, run, visibleRows, leaving])
+  useEffect(() => {
+    // The keys must not act on the message left while the next one loads.
+    if (leaving) {
       setOpen(null)
-    },
-    [setOpen],
-  )
+    }
+    return () => {
+      setOpen(null)
+    }
+  }, [setOpen, leaving])
 
   return (
     <article className="flex flex-1 flex-col gap-4" aria-busy={pending}>
@@ -146,8 +154,13 @@ export function MessageView({ messageRef, conversation }: { messageRef: string; 
           onToggleQuoted={() => {
             setIncludeQuoted(!query.data.includeQuoted)
           }}
-          remote={query.data.view.remote_trusted ? 'sender' : remote}
-          onChooseRemote={setRemote}
+          remote={remote === 'blocked' && query.data.view.remote_trusted ? 'trusted' : remote}
+          onChooseRemote={(choice) => {
+            setRemote(choice)
+            if (choice === 'sender') {
+              senderChanged(queryClient, query.data.view.ref, query.data.view.from?.address, { remote_trusted: true })
+            }
+          }}
           original={original}
           onToggleOriginal={() => {
             setOriginal(!original)
@@ -188,6 +201,7 @@ function LoadedMessage({
   const [html, setHtml] = useState(view.has_html && (view.preferred_view === 'html' || view.text.content === ''))
   const [viewFailure, setViewFailure] = useState<string | null>(null)
   const lastChoice = useRef<Promise<void>>(Promise.resolve())
+  const queryClient = useQueryClient()
 
   // A switch is remembered for the sender: Text from now on, or HTML again.
   function choose(showHtml: boolean): void {
@@ -201,8 +215,12 @@ function LoadedMessage({
     }
     // One after another, so the server keeps the last choice whatever order requests land in.
     const chosen = showHtml ? 'html' : 'text'
+    const address = view.from.address
     lastChoice.current = lastChoice.current
       .then(() => chooseSenderView(view.ref, chosen))
+      .then(() => {
+        senderChanged(queryClient, view.ref, address, { preferred_view: chosen })
+      })
       .catch((error: unknown) => {
         setViewFailure(mailErrorMessage(t, error, t('message.senderViewFailed')))
       })

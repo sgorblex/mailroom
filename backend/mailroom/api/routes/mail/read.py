@@ -31,6 +31,9 @@ from mailroom_core.mail import DISPLAYED_IMAGES, FORWARDED, TO_SORT
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    from sqlalchemy.orm import Session
+
+    from mailroom.context import AppContext
     from mailroom_core.mail import MessageSummary, MessageView, Page, PageFailure
     from mailroom_core.render import Address
 
@@ -498,28 +501,50 @@ def html_document(fragment: str, *, dark: bool = False, sets_colours: bool = Fal
     return _DOCUMENT.format(style=style, body=_TARGET + fragment)
 
 
+Remote = bool | Literal["sender"]
+"""The HTML view's ``remote``: shown (the user asked, here and now) or not, or ``sender``,
+shown only if the message's sender is trusted as the request is answered (``shows_remote``)."""
+
+
+def shows_remote(ctx: AppContext, db: Session, user_id: int, ref: str, remote: Remote) -> bool:
+    """Whether the HTML view keeps remote images: ``remote`` as asked, or for ``sender``, whether
+    the user remembers the message's verified sender now, whatever a read the client kept said."""
+    if isinstance(remote, bool):
+        return remote
+    sender = service.checked_sender(ctx, user_id, ref)
+    return sender is not None and remote_senders.remembered(db, user_id, sender)
+
+
 @mail_router.get("/messages/{ref}/html", response_class=Response)
 def message_html(
-    ref: Ref, ctx: Context, user: CurrentUser, remote: bool = False, dark: bool = False
+    ref: Ref,
+    ctx: Context,
+    db: DbSession,
+    user: CurrentUser,
+    remote: Remote = False,
+    dark: bool = False,
 ) -> Response:
     """A standalone document for the client's sandboxed iframe, not JSON. Served as a document
     (not ``srcdoc``) so that it carries its own CSP rather than the SPA's. ``dark``: the
     message adapted to a dark theme, its original colours one fragment away
     (``html_document``)."""
-    safe = service.message_html(ctx, user.id, ref, remote=remote)
+    shown = shows_remote(ctx, db, user.id, ref, remote)
+    safe = service.message_html(ctx, user.id, ref, remote=shown)
     return Response(
         content=html_document(safe.html, dark=dark, sets_colours=safe.sets_colours),
         media_type="text/html; charset=utf-8",
-        headers=html_headers(remote=remote),
+        headers=html_headers(remote=shown),
     )
 
 
 @mail_router.get("/messages/{ref}/html/check", status_code=204, response_class=Response)
-def message_html_check(ref: Ref, ctx: Context, user: CurrentUser, remote: bool = False) -> Response:
+def message_html_check(
+    ref: Ref, ctx: Context, db: DbSession, user: CurrentUser, remote: Remote = False
+) -> Response:
     """204 when ``/html`` would answer the document, else its refusal, as JSON: the client asks
     this before it frames the document, so that a refusal is its own words, never the frame's.
     The view is kept (``service.message_html``), so the document then costs no second read."""
-    service.message_html(ctx, user.id, ref, remote=remote)
+    service.message_html(ctx, user.id, ref, remote=shows_remote(ctx, db, user.id, ref, remote))
     return Response(status_code=204)
 
 

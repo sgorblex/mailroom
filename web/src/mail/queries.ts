@@ -1,7 +1,17 @@
 import { useQueries, type QueryClient, type UseQueryOptions } from '@tanstack/react-query'
 
 import type { AccountId } from '@/api/accounts.ts'
-import { listMailFolders, listViews, type MailFolder, type SavedView } from '@/api/mail.ts'
+import {
+  listMailFolders,
+  listViews,
+  readMessage,
+  readThread,
+  type FlagChange,
+  type MailFolder,
+  type MessagePage,
+  type MessageView,
+  type SavedView,
+} from '@/api/mail.ts'
 
 /** The keys the mail screen's reads are cached under. */
 export const ACCOUNTS_KEY = ['accounts'] as const
@@ -71,8 +81,11 @@ export function threadKey(ref: string): readonly unknown[] {
   return [...ALL_THREADS_KEY, ref]
 }
 
+/** Every read of every message. */
+export const ALL_READS_KEY = ['message'] as const
+
 export function messageKey(ref: string, offset: number, includeQuoted: boolean): readonly unknown[] {
-  return ['message', ref, offset, includeQuoted]
+  return [...ALL_READS_KEY, ref, offset, includeQuoted]
 }
 
 /**
@@ -80,6 +93,122 @@ export function messageKey(ref: string, offset: number, includeQuoted: boolean):
  * it moved away are not written into it.
  */
 export const READ_ON_MOUNT = { gcTime: 0 } as const
+
+/** A message as opened, with the choice it was read with. */
+export interface OpenedMessage {
+  view: MessageView
+  includeQuoted: boolean
+}
+
+/**
+ * How long a message read is kept once nothing shows it, so going back to it, or opening the one
+ * hovered or next in the list, shows it at once; read again in the background when older than the
+ * default `staleTime` (`lib/query-client.ts`). The screen's own flag changes and moves are written
+ * into it (`setCachedReadFlags`, `forgetCachedReads`).
+ */
+const READ_GC_MS = 5 * 60_000
+
+/** How old a kept read saying its sender is trusted may be and still be shown without reading it again. */
+const TRUST_READ_MS = 5_000
+
+/**
+ * A list's first page (`messagesKey(source, null)`): kept as long as the reads, so coming back to
+ * the list (from Home, from another folder) shows it at once, and read again behind it each time
+ * it is shown. Triage and live events invalidate it as before; a kept page is never taken for the
+ * server's word on flags (`MessageList`'s `refreshed`).
+ */
+export const LIST_KEPT = { gcTime: READ_GC_MS, refetchOnMount: 'always' } as const
+
+/**
+ * The message `ref` from its start, as the message view opens it and a prefetch reads it ahead.
+ * A read once asked always lands in the cache: it takes no abort signal, which would let the last
+ * view leaving it (a remount, the reader moving on) cancel it and have the next view ask again.
+ */
+export function messageQuery(ref: string, includeQuoted: boolean): UseQueryOptions<OpenedMessage, Error, OpenedMessage> {
+  return {
+    queryKey: messageKey(ref, 0, includeQuoted),
+    queryFn: async () => ({ view: await readMessage(ref, { includeQuoted }), includeQuoted }),
+    gcTime: READ_GC_MS,
+    // Its remote content follows the trust the server finds as it serves the document
+    // (`RemoteChoice` 'trusted'); what the screen says of it is read again behind it.
+    refetchOnMount: (query) =>
+      query.state.data?.view.remote_trusted === true && Date.now() - query.state.dataUpdatedAt > TRUST_READ_MS
+        ? 'always'
+        : true,
+  }
+}
+
+/**
+ * Reads the message `ref` ahead (the row hovered or pressed, the next one of j/k), unless a fresh
+ * read is cached. Reading never marks it read: only showing it does.
+ */
+export function prefetchMessage(queryClient: QueryClient, ref: string): void {
+  // A failure is the open view's to show, should the message be opened.
+  void queryClient.query(messageQuery(ref, false)).catch(() => undefined)
+}
+
+/**
+ * Writes flags into the cached reads (`messageQuery`): for each message, what `change` answers,
+ * nothing where it answers `undefined`. So an action's flags show when the message opens again.
+ */
+export function setCachedReadFlags(
+  queryClient: QueryClient,
+  change: (view: MessageView) => FlagChange | undefined,
+): void {
+  for (const query of queryClient.getQueryCache().findAll({ queryKey: ALL_READS_KEY })) {
+    const data = query.state.data as OpenedMessage | undefined
+    const flags = query.queryKey[2] === 0 && data !== undefined ? change(data.view) : undefined
+    if (data !== undefined && flags !== undefined) {
+      queryClient.setQueryData<OpenedMessage>(query.queryKey, {
+        ...data,
+        view: { ...data.view, flags: { ...data.view.flags, ...flags } },
+      })
+    }
+  }
+}
+
+/**
+ * What the server remembers of the sender of the message `ref` changed (its remote images shown,
+ * the view it opens in): that message's cached reads take `fields`, and the sender's other
+ * messages are read again when they open.
+ */
+export function senderChanged(
+  queryClient: QueryClient,
+  ref: string,
+  address: string | undefined,
+  fields: Partial<Pick<MessageView, 'remote_trusted' | 'preferred_view'>>,
+): void {
+  const sender = address?.toLowerCase()
+  const fromSender = (view: MessageView): boolean =>
+    sender !== undefined && view.ref !== ref && view.from?.address.toLowerCase() === sender
+  for (const query of queryClient.getQueryCache().findAll({ queryKey: ALL_READS_KEY })) {
+    const data = query.state.data as OpenedMessage | undefined
+    if (query.queryKey[2] === 0 && data?.view.ref === ref) {
+      queryClient.setQueryData<OpenedMessage>(query.queryKey, { ...data, view: { ...data.view, ...fields } })
+    }
+  }
+  queryClient.removeQueries({
+    queryKey: ALL_READS_KEY,
+    type: 'inactive',
+    predicate: (query) => {
+      const data = query.state.data as OpenedMessage | undefined
+      return data?.view !== undefined && fromSender(data.view)
+    },
+  })
+}
+
+/** Drops the cached reads of messages moved away: their refs now name nothing, or another message. */
+export function forgetCachedReads(queryClient: QueryClient, refs: ReadonlySet<string>): void {
+  const picks = (key: readonly unknown[]): boolean => key[0] === ALL_READS_KEY[0] && refs.has(key[1] as string)
+  // The one still shown (its pane closing) is only marked stale: dropping it under its view would read it again.
+  void queryClient.invalidateQueries({ predicate: (query) => picks(query.queryKey), refetchType: 'none' })
+  queryClient.removeQueries({ predicate: (query) => picks(query.queryKey), type: 'inactive' })
+}
+
+/** The conversation of the message `ref` names, read again each time it is shown. */
+export function threadQuery(ref: string): UseQueryOptions<MessagePage, Error, MessagePage> {
+  return { queryKey: threadKey(ref), queryFn: ({ signal }) => readThread(ref, signal), ...READ_ON_MOUNT }
+}
 
 /** An account's folders: read again only when a caller asks (`invalidateQueries`, or `refetchOnMount`). */
 export function foldersQuery(account: AccountId): UseQueryOptions<MailFolder[], Error, MailFolder[]> {

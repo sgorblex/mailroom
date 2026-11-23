@@ -93,7 +93,9 @@ notifications](#desktop-notifications).
   whose DMARC passed for its one From at the account's own authentication server
   (`remote_trusted` and [`/remote-senders`](#remote-content-senders) below; the server checks,
   never the client). The web offers *Always for this sender* beside *Show remote images* only on
-  `dmarc_pass`, loads the HTML with `remote=1` at once when `remote_trusted`, and lists the
+  `dmarc_pass`, loads the HTML with `remote=sender` at once when `remote_trusted` (the server
+  checks the trust again as it serves it, so a read kept from before the sender was forgotten
+  elsewhere loads nothing remote; a click in the tab asks `remote=1`), and lists the
   remembered senders, each removable, on the *Profile* page. Beside the gate, a line says how many
   remote images are blocked (`remote_images`) or shown (`loadable_remote_images`, and whether for
   the message or its sender), and the gate offers to show them only when some can be. What is
@@ -535,9 +537,27 @@ MCP `message_read` still never set `\Seen`.
   works in the search fields, but not while typing in the composer nor over another dialog. Its
   input is marked as a search field that password managers should not offer to fill.
 - **Cache:** what the screen reads (accounts, folders, list pages, messages) goes through an
-  in-memory cache (TanStack Query), never persisted and dropped at sign-out; lists and messages are
-  still read again each time they are shown, and an account's folders whenever the sidebar mounts.
+  in-memory cache (TanStack Query), never persisted and dropped at sign-out. Conversations are
+  read again each time they are shown, and an account's folders whenever the sidebar mounts (the
+  live stream, opened again, reads them only when they were not read since it closed). A list's
+  first page is kept for five minutes once nothing shows it, so coming back to it (from Home,
+  another folder) shows it at once while it is read again behind it; only a page read while the
+  list is shown counts as the server's flags. The accounts are kept between visits to Mail, which
+  shows them at once and reads them again behind them; the held sends are read on mount when
+  older than 30 seconds. A message read is kept for five minutes once nothing shows it, and read
+  again when opened after 30 seconds (after 5 when it says its sender's remote content is shown),
+  shown meanwhile as kept; the screen's own flag changes (a
+  mark-read, a star, To sort, Undo, a folder marked read), the flags a list read again carries,
+  and the sender choices (remote images, Text or HTML) are written into it, and a message moved
+  away is dropped from it. A kept read never decides remote content: see *Remote content* above.
+  A row the mouse rests on, a row pressed, and the row after the one j or k opened are read ahead
+  the same way, and a read once asked always lands in the cache, so the message opened from it
+  (the first one too) is not read twice; reading never marks a message read, only opening it does.
   The cache reads nothing on its own: no retry of a failed read, no new read on focus or reconnect.
+- **Opening another message** keeps the one shown on screen, dimmed, out of reach (`inert`) and
+  `aria-busy`, until the next one has loaded, a status line telling a screen reader it is loading;
+  the keys and the action bar act on nothing meanwhile. Only the first message opened in the pane
+  shows *Loading the message…* in its place.
 
 ### REST routes
 
@@ -1821,7 +1841,7 @@ a failure too, with the app's code `password_missing`.
   `from_domain`.
 - `remote_trusted` is true when `dmarc_pass` is and the user remembers `from.address`
   ([remote content senders](#remote-content-senders)): the client then asks for the HTML view
-  with `remote=1` at once. The HTML route itself is unchanged: `remote` alone decides.
+  with `remote=sender` at once, which the HTML route decides again as it answers.
 - `one_click_unsubscribe` is true when [`POST /messages/{ref}/unsubscribe`](#one-click-unsubscribe)
   would post rather than refuse: the client then offers one click. The route checks again.
 - `preferred_view` is the view the message opens in: `html` when it has HTML, unless the user
@@ -1830,7 +1850,9 @@ a failure too, with the app's code `password_missing`.
 
 ### `GET /messages/{ref}/html?remote=0`
 
-A **standalone HTML document**, not JSON: `remote=0|1` (default `0`), and `dark=0|1` (default
+A **standalone HTML document**, not JSON: `remote=0|1|sender` (default `0`; `sender` keeps
+remote images only when, as the request is answered, DMARC passed for the message's one From and
+the user remembers it, as `remote_trusted` says; the CSP follows that decision), and `dark=0|1` (default
 `0`), which adapts it to a dark theme with CSS in the document alone: HTML that sets no
 background or text colour of its own (mailroom-core's `SafeHtml.sets_colours`) gets dark colours
 (`color-scheme: dark`, a dark page, light text and links); HTML that sets some is inverted (`filter:
@@ -1870,7 +1892,7 @@ the document and a switch to `dark` that follow it are not read from the server 
 
 ### `GET /messages/{ref}/html/check`
 
-`remote=0|1` as for `…/html`: 204 with no body when that document would be served, else its
+`remote=0|1|sender` as for `…/html`: 204 with no body when that document would be served, else its
 refusal (the same JSON body and status). The client asks it before it frames the document, the
 message view and the preview of designed mail alike; it never fetches the document itself.
 

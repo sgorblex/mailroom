@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Check } from 'lucide-react'
 
 import { ApiRequestError } from '@/api/http.ts'
-import { addRemoteSender, checkMessageHtml, messageHtmlUrl } from '@/api/mail.ts'
+import { addRemoteSender, checkMessageHtml, messageHtmlUrl, type RemoteRequest } from '@/api/mail.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { useLoad } from '@/lib/use-load.ts'
 import { cn } from '@/lib/utils.ts'
@@ -20,9 +20,11 @@ export const HTML_SANDBOX = 'allow-popups allow-popups-to-escape-sandbox'
 
 /**
  * Whether remote images are shown: `blocked`, for this `message` only (the choice dies with the
- * message view), or for its `sender`, whom the user remembers.
+ * message view), or for its `sender`, whom the reader chose to remember just now; both asked in
+ * this tab. `trusted`: the message's read says its sender is remembered, which the server checks
+ * again as it serves the document (it may have been forgotten since, elsewhere).
  */
-export type RemoteChoice = 'blocked' | 'message' | 'sender'
+export type RemoteChoice = 'blocked' | 'message' | 'sender' | 'trusted'
 
 /**
  * The API's standalone, sanitised HTML document in a sandboxed iframe, framed once its check
@@ -60,15 +62,16 @@ export function HtmlBody({
 }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const remote = choice !== 'blocked'
+  const request: RemoteRequest = choice === 'blocked' ? false : choice === 'trusted' ? 'sender' : true
   const darkTheme = useDark()
   const [trusting, setTrusting] = useState(false)
   const [trustFailure, setTrustFailure] = useState<string | null>(null)
   const check = useCallback(
     async (signal: AbortSignal) => {
-      await checkMessageHtml(messageRef, remote, signal)
-      return { remote }
+      await checkMessageHtml(messageRef, request, signal)
+      return { remote: request }
     },
-    [messageRef, remote],
+    [messageRef, request],
   )
   const { state, retry } = useLoad(check, (error) => mailErrorMessage(t, error, t('message.htmlFailed')))
 
@@ -129,7 +132,7 @@ export function HtmlBody({
       )}
       {remote && loadableRemoteImages > 0 && (
         <p className="text-xs text-muted-foreground">
-          {t(choice === 'sender' ? 'message.remoteShownSender' : 'message.remoteShown', {
+          {t(choice === 'message' ? 'message.remoteShown' : 'message.remoteShownSender', {
             count: loadableRemoteImages,
           })}
         </p>

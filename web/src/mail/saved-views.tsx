@@ -29,7 +29,7 @@ import { cn } from '@/lib/utils.ts'
 import { Buttons } from './folder-dialogs.tsx'
 import { MAIL_NS } from './i18n.ts'
 import { mailErrorMessage } from './messages.ts'
-import { messagesKey, READ_ON_MOUNT, useListedFolders, VIEWS_KEY, viewsQuery } from './queries.ts'
+import { LIST_KEPT, messagesKey, useListedFolders, VIEWS_KEY, viewsQuery } from './queries.ts'
 import { ALL_INBOXES_ICON } from './role-icons.ts'
 import { savableLine, viewUnread, type ShownView } from './views.ts'
 
@@ -498,7 +498,7 @@ export function NotIndexedNotice({
     queryFn: ({ signal }) => loadPage(null, signal),
     // The list's triage and live merges may write the cached page again without it.
     select: (page: Partial<ViewPage>) => page.not_indexed ?? [],
-    ...READ_ON_MOUNT,
+    ...LIST_KEPT,
   })
   const left = first.data ?? []
   if (left.length === 0) {

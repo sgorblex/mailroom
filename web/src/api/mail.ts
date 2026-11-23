@@ -448,6 +448,17 @@ export function readMessage(
 }
 
 /**
+ * Remote images in a message's HTML document: blocked (`false`), shown because the reader asked in
+ * this tab (`true`), or shown only if the server finds the sender trusted as it answers
+ * (`'sender'`): a read kept from before the sender was forgotten elsewhere loads nothing remote.
+ */
+export type RemoteRequest = boolean | 'sender'
+
+function remoteParam(remote: true | 'sender'): string {
+  return remote === true ? '1' : remote
+}
+
+/**
  * The standalone, sanitised HTML document of a message, for a sandboxed iframe's `src`; `dark`
  * adapts it to a dark theme (dark colours, or inverted with its images kept). The dark document
  * also holds the message's own colours, shown when its fragment is `#mailroom-original`
@@ -455,8 +466,8 @@ export function readMessage(
  * same-document navigation with no request, no reload and no script. Never no fragment at all,
  * which would load the document again.
  */
-export function messageHtmlUrl(ref: string, remote: boolean, dark = false, original = false): string {
-  const query = [...(remote ? ['remote=1'] : []), ...(dark ? ['dark=1'] : [])].join('&')
+export function messageHtmlUrl(ref: string, remote: RemoteRequest, dark = false, original = false): string {
+  const query = [...(remote === false ? [] : [`remote=${remoteParam(remote)}`]), ...(dark ? ['dark=1'] : [])].join('&')
   const fragment = dark ? (original ? '#mailroom-original' : '#mailroom-dark') : ''
   return `${getApiBaseUrl()}${messagePath(ref)}/html${query === '' ? '' : `?${query}`}${fragment}`
 }
@@ -466,8 +477,8 @@ export function messageHtmlUrl(ref: string, remote: boolean, dark = false, origi
  * view for the document) before a frame shows it: a refusal then throws, as any API call's, for
  * the client to word, instead of showing up inside the frame as the API's JSON.
  */
-export async function checkMessageHtml(ref: string, remote: boolean, signal?: AbortSignal): Promise<void> {
-  await apiGetJson(withQuery(`${messagePath(ref)}/html/check`, { remote: remote ? 1 : undefined }), {
+export async function checkMessageHtml(ref: string, remote: RemoteRequest, signal?: AbortSignal): Promise<void> {
+  await apiGetJson(withQuery(`${messagePath(ref)}/html/check`, { remote: remote === false ? undefined : remoteParam(remote) }), {
     init: { signal },
   })
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactElement } from 'react'
+import { useEffect, useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Clock } from 'lucide-react'
@@ -29,9 +29,14 @@ export function ScheduledEntry(): ReactElement {
     queryFn: ({ signal }) => listScheduled(signal),
     refetchInterval: REFRESH_MS,
   })
-  // A send, a held send's end or a closed composer may have changed what is held.
+  // A send, a held send's end or a closed composer may have changed what is held; mounting, the
+  // query reads it anyway.
+  const seenRevision = useRef(revision)
   useEffect(() => {
-    void queryClient.invalidateQueries({ queryKey: SCHEDULED_KEY })
+    if (seenRevision.current !== revision) {
+      seenRevision.current = revision
+      void queryClient.invalidateQueries({ queryKey: SCHEDULED_KEY })
+    }
   }, [revision, queryClient])
   const count = query.data?.length ?? 0
   return (

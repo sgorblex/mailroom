@@ -15,7 +15,6 @@ import { cn } from '@/lib/utils.ts'
 
 import { CommandPalette } from './command-palette.tsx'
 import { ComposeBar } from './compose-bar.tsx'
-import { ConversationView } from './conversation-view.tsx'
 import { useCompose } from './compose-context.ts'
 import { ComposeProvider } from './compose-provider.tsx'
 import { Composer } from './composer.tsx'
@@ -28,8 +27,8 @@ import { useLiveEvents, useLiveStatus, useLiveViewing } from './live-context.ts'
 import { ListPane } from './list-pane.tsx'
 import { MailHeader } from './mail-header.tsx'
 import { MessageList } from './message-list.tsx'
-import { MessageView } from './message-view.tsx'
 import { useReadingPane } from './reading-pane.ts'
+import { ReadingView } from './reading-view.tsx'
 import { SearchForm } from './search-form.tsx'
 import { BulkHost } from './select-matching.tsx'
 import { NewSenderHost } from './new-sender-dialog.tsx'
@@ -42,7 +41,7 @@ import { useMailShortcuts, usePaletteShortcut } from './shortcuts.ts'
 import { storedSubfolders } from './subfolder-view.ts'
 import { MuteProvider } from './mute-provider.tsx'
 import { SnoozeProvider } from './snooze-provider.tsx'
-import { ACCOUNTS_KEY, messagesKey, READ_ON_MOUNT, viewsQuery } from './queries.ts'
+import { ACCOUNTS_KEY, messagesKey, viewsQuery } from './queries.ts'
 import { ToastHost } from './toast.tsx'
 import { SpamFilterOffer } from './spam-filter-offer.tsx'
 import { OutcomeAnnouncer, Toolbar } from './toolbar.tsx'
@@ -68,7 +67,9 @@ export function MailScreen(): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const search = useSearch({ from: '/mail' })
   const navigate = useNavigate()
-  const accounts = useQuery({ queryKey: ACCOUNTS_KEY, queryFn: ({ signal }) => listAccounts(signal), ...READ_ON_MOUNT })
+  // Kept between visits, so coming back shows the screen at once; read again behind it, as the
+  // Accounts page changes them without this cache.
+  const accounts = useQuery({ queryKey: ACCOUNTS_KEY, queryFn: ({ signal }) => listAccounts(signal), refetchOnMount: 'always' })
   const [sheet, setSheet] = useState(false)
   const [palette, setPalette] = useState(false)
   const savedViews = useQuery(viewsQuery()).data
@@ -381,10 +382,8 @@ function MailPanes({
           {!shown &&
             (open === undefined ? (
               <p className="m-auto text-sm text-muted-foreground">{t('message.none')}</p>
-            ) : search.thread === undefined ? (
-              <MessageView key={open} messageRef={open} />
             ) : (
-              <ConversationView key={search.thread} threadRef={search.thread} messageRef={open} />
+              <ReadingView message={open} thread={search.thread} />
             ))}
         </section>
       </div>
