@@ -204,7 +204,10 @@ A message with HTML opens on the HTML view, unless the user reads its sender as 
 (`preferred_view`; a message whose text body is empty opens on the HTML view all the same). The
 Text/HTML switch stays, and a switch is remembered for the message's From
 ([sender views](#sender-views)): Text from then on, or HTML again. The *Profile* page lists the
-senders read as text, each removable. The HTML view is an `<iframe src="/api/v1/mail/messages/{ref}/html">` with `sandbox="allow-popups
+senders read as text, each removable. In a dark theme the frame asks for the `dark` document
+(below), following the theme as it changes; *Original colours* above it shows the message's own
+for as long as it is open, never remembered. The HTML view is an
+`<iframe src="/api/v1/mail/messages/{ref}/html">` with `sandbox="allow-popups
 allow-popups-to-escape-sandbox"`, never `allow-scripts` or `allow-same-origin`. Links open
 top-level with `noopener noreferrer`. Security:
 [`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *HTML mail*.
@@ -986,10 +989,10 @@ composer to server.
   composer. There its body is not edited: in its place are the checks, worded by `code` (the
   server's `text` for a code the client does not know, the `items` after it), and a preview
   through the message view's sandboxed frame (`GET /messages/{ref}/html`, remote images blocked),
-  at the pane's width or a phone's (375 px), light or dark (`dark=1`). Its attachments are listed,
-  with nothing to add or remove. From, the recipients and the subject are edited as in any draft
-  and saved by keeping it as built (`?import=kept`), so Send, Undo and Send later work as for any
-  other draft. *Send a test to me* sends it as stored to the account's default identity, subject
+  at the pane's width or a phone's (375 px), light or dark (`dark=1`, as the message view shows
+  it in a dark theme). Its attachments are listed, with nothing to add or remove. From, the
+  recipients and the subject are edited as in any draft and saved by keeping it as built
+  (`?import=kept`), so Send, Undo and Send later work as for any other draft. *Send a test to me* sends it as stored to the account's default identity, subject
   prefixed `[Test]` (`POST /drafts/{ref}/test`), the draft left as it is: through the send gate
   as the user, audited and filed in Sent as any send (Gmail would file it anyway), with a new
   Message-ID, so the real send keeps its own thread. *Replace* imports a file again over the
@@ -1825,9 +1828,11 @@ a failure too, with the app's code `password_missing`.
 ### `GET /messages/{ref}/html?remote=0`
 
 A **standalone HTML document**, not JSON: `remote=0|1` (default `0`), and `dark=0|1` (default
-`0`), which only gives the document's page dark colours (`color-scheme: dark`), for the preview
-of designed mail: the message's own colours stay, as in a client in dark mode that changes only
-the page. The sanitised HTML body
+`0`), which adapts it to a dark theme with CSS in the document alone: HTML that sets no
+background or text colour of its own (mailroom-core's `SafeHtml.sets_colours`) gets dark colours
+(`color-scheme: dark`, a dark page, light text and links); HTML that sets some is inverted (`filter:
+invert(1) hue-rotate(180deg)`, which keeps its hues) with its images inverted back. The message
+view and the preview of designed mail both use it. The sanitised HTML body
 (mailroom-core's `safe_html`: allowlisted tags, attributes and CSS properties; no script, forms,
 frames, `base`, event handlers). `cid:` images are inlined as `data:` up to a total budget; past
 it an image loses its `src` and keeps its alt text, with no placeholder. Remote (`http(s)`) image

@@ -32,6 +32,8 @@ export function MessageView({ messageRef, conversation }: { messageRef: string; 
   const [includeQuoted, setIncludeQuoted] = useState(false)
   // The remote images choice lives as long as this message's view, whatever is shown in it.
   const [remote, setRemote] = useState<RemoteChoice>('blocked')
+  // So does the choice of the HTML's original colours over its dark adaptation.
+  const [original, setOriginal] = useState(false)
   // Each view says which choice it was read with: until the new one answers, the old one stays,
   // and nothing may page it with the new choice.
   const query = useQuery({
@@ -146,6 +148,10 @@ export function MessageView({ messageRef, conversation }: { messageRef: string; 
           }}
           remote={query.data.view.remote_trusted ? 'sender' : remote}
           onChooseRemote={setRemote}
+          original={original}
+          onToggleOriginal={() => {
+            setOriginal(!original)
+          }}
         />
       )}
     </article>
@@ -160,6 +166,8 @@ function LoadedMessage({
   onToggleQuoted,
   remote,
   onChooseRemote,
+  original,
+  onToggleOriginal,
 }: {
   view: MessageData
   /** It is in the account's Sent or Drafts folder: it has no authentication to show. */
@@ -171,6 +179,8 @@ function LoadedMessage({
   onToggleQuoted: () => void
   remote: RemoteChoice
   onChooseRemote: (choice: RemoteChoice) => void
+  original: boolean
+  onToggleOriginal: () => void
 }): ReactElement {
   const { t, i18n } = useTranslation(MAIL_NS)
   const timeZone = useTimeZone()
@@ -279,6 +289,8 @@ function LoadedMessage({
           choice={remote}
           canTrustSender={view.authentication.dmarc_pass}
           onChoose={onChooseRemote}
+          original={original}
+          onToggleOriginal={onToggleOriginal}
         />
       ) : (
         <TextBody

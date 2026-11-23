@@ -399,3 +399,34 @@ def test_marks_links_on_a_wide_body_quickly():
 def test_reads_only_the_start_of_a_link_s_text():
     out = link(f'<a href="https://example.org/">{"word " * 400_000}paypal.com</a>')
     assert "⚠" not in out
+
+
+def test_reports_whether_the_kept_html_sets_its_own_colours():
+    assert not clean(
+        "<p>plain <b>text</b> <a href='https://example.org/'>link</a></p>"
+    ).sets_colours
+    for coloured in (
+        '<table bgcolor="#000"><tr><td>a</td></tr></table>',
+        '<font color="red">a</font>',
+        '<div style="background-color: #222">a</div>',
+        '<p style="font-size:12px; COLOR:#333">a</p>',
+    ):
+        assert clean(coloured).sets_colours, coloured
+
+
+def test_colours_that_are_dropped_or_set_nothing_do_not_count():
+    for plain in (
+        "<style>body{background:#000;color:#fff}</style><p>a</p>",
+        '<body bgcolor="#000"><p>a</p></body>',
+        '<div style="background:#000">shorthand, dropped</div>',
+        '<div style="background-color:transparent;color:inherit;border-color:red">a</div>',
+        '<p style="color:url(https://t.example/x)">a</p>',
+    ):
+        assert not clean(plain).sets_colours, plain
+
+
+def test_the_link_marker_is_not_the_senders_colours():
+    out = clean('<a href="https://evil.example/">https://bank.example/</a>')
+    assert "evil.example" in out.html
+    assert "background-color" in out.html
+    assert not out.sets_colours

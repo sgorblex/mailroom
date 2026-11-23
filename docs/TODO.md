@@ -273,7 +273,7 @@ First, fixes carried over from 0.14.0 testing:
 - [x] **Accounts apart from folders** — an account switcher at the top of the sidebar, the tree
       showing the chosen account's folders only, so changing account never means scrolling past
       another's folders; All inboxes and the views stay above it.
-- [ ] **Dark mode for HTML mail** — the sandboxed frame's colours adapted to a dark theme, off
+- [x] **Dark mode for HTML mail** — the sandboxed frame's colours adapted to a dark theme, off
       for a message with one click.
 - [x] **HTML first** — a message with an HTML version opens in it, not in its text version (with
       *Dark mode for HTML mail*); the Text/HTML switch stays, and a switch away is remembered per

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -689,6 +689,43 @@ describe('MailScreen', () => {
     expect(frame).toHaveAttribute('referrerpolicy', 'no-referrer')
     expect(frame).toHaveAttribute('src', `/api/v1/mail/messages/${html.ref}/html`)
     expect(frame).not.toHaveAttribute('srcdoc')
+  })
+
+  it('shows HTML in dark colours in a dark theme, with the original colours a click away for that message', async () => {
+    document.documentElement.classList.add('dark')
+    try {
+      const fake = state()
+      fake.views[html.ref] = messageView(html, { has_html: true, preferred_view: 'html' })
+      stubMailApi(fake)
+      renderMailApp(`/mail?message=${html.ref}`)
+
+      const url = `/api/v1/mail/messages/${html.ref}/html`
+      expect(await screen.findByTitle(`HTML version of ${html.subject}`)).toHaveAttribute('src', `${url}?dark=1`)
+      const original = screen.getByRole('button', { name: 'Original colours' })
+      expect(original).toHaveAttribute('aria-pressed', 'false')
+      await userEvent.click(original)
+      expect(original).toHaveAttribute('aria-pressed', 'true')
+      expect(await screen.findByTitle(`HTML version of ${html.subject}`)).toHaveAttribute('src', url)
+      // The choice outlives a look at the text, as long as the message is open.
+      await userEvent.click(screen.getByRole('button', { name: 'Text' }))
+      await userEvent.click(await screen.findByRole('button', { name: 'HTML' }))
+      expect(await screen.findByTitle(`HTML version of ${html.subject}`)).toHaveAttribute('src', url)
+      expect(screen.getByRole('button', { name: 'Original colours' })).toHaveAttribute('aria-pressed', 'true')
+      await userEvent.click(screen.getByRole('button', { name: 'Original colours' }))
+      expect(await screen.findByTitle(`HTML version of ${html.subject}`)).toHaveAttribute('src', `${url}?dark=1`)
+
+      // The theme turning light follows at once, and the toggle goes with it.
+      await act(async () => {
+        document.documentElement.classList.remove('dark')
+        await Promise.resolve()
+      })
+      await waitFor(() => {
+        expect(screen.getByTitle(`HTML version of ${html.subject}`)).toHaveAttribute('src', url)
+      })
+      expect(screen.queryByRole('button', { name: 'Original colours' })).not.toBeInTheDocument()
+    } finally {
+      document.documentElement.classList.remove('dark')
+    }
   })
 
   it('reveals remote images for that message only, never remembered', async () => {

@@ -40,6 +40,10 @@ and may try to run script, track the reader, phish, or — through the MCP — i
 - The iframe document carries its **own strict CSP** (`default-src 'none'`; images only from
   `data:` (the inlined `cid:` parts), unless the user reveals remote content; no scripts, no
   forms, no frames, `base-uri 'none'`), in addition to server-side sanitisation of the HTML.
+- **Dark mode is CSS in that document.** `?dark=1` changes only the served document's own
+  `<style>` (dark colours, or an inverting `filter` with images inverted back), under the same
+  CSP (`style-src 'unsafe-inline'`) and sandbox: no script in the frame or the app touches the
+  message, and nothing of it reaches the app shell, which only picks the URL from its theme.
 - The one HTML body shown outside that iframe is the **printable page** (`GET
   /api/v1/mail/messages/{ref}/print`), a tab of its own for the browser's print: the same
   sanitised HTML without remote images, boxed in so it paints nothing outside its own box and
@@ -86,7 +90,7 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   `invalid_argument`, so nothing of the file reaches a log. The checks' Content-IDs and file
   names go to the user, and to an agent inside the untrusted envelope. It is previewed only
   through the message view's sanitiser and sandbox (`GET /messages/{ref}/html`, whose `dark` only
-  colours the document's page, its CSP and the frame's sandbox the same), and sent only through
+  changes the document's CSS, its CSP and the frame's sandbox the same), and sent only through
   the send gate, a test to the user's own address included.
 - Plain-text rendering is the fallback and the default for the index.
 - **No request on mail's behalf, but one.** Nothing a message names is fetched, with one

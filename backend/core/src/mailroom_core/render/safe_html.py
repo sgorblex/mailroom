@@ -13,6 +13,9 @@ another page, or load anything except:
   the `<img>` sources alone, the ones `remote` shows.
 
 Styles keep layout and colour only: no `url()`, `expression()` or escapes in any declaration.
+`sets_colours` says whether what is kept sets a background or text colour (a `bgcolor` or `color`
+attribute, `background-color` or `color` in a `style`; `<style>` elements are dropped), so that a
+host can choose how to show it in dark mode.
 Links open a new top-level browsing context, without opener or referrer. Each link's `title` is
 the host it goes to (IDNA form), never the sender's, and a link whose text names another host
 (`render.hosts`) is followed by a marker naming the real one. The host still serves the result
@@ -64,6 +67,25 @@ _MARK_STYLE: Final = (
     "white-space:nowrap;vertical-align:baseline;direction:ltr"
 )
 """The link marker's look, set in full so that a style the sender put around it cannot hide it."""
+_COLOUR_ATTRIBUTES: Final = frozenset({"bgcolor", "color"})
+_COLOUR_PROPERTIES: Final = frozenset({"background-color", "color"})
+_NO_COLOUR: Final = frozenset(
+    {"", "currentcolor", "inherit", "initial", "revert", "transparent", "unset"}
+)
+"""Values that set no colour of their own."""
+
+
+def _sets_colour(value: str) -> bool:
+    return value.strip().lower() not in _NO_COLOUR
+
+
+def _style_sets_colour(declarations: list[str]) -> bool:
+    """A declaration kept by the property allowlist sets a background or text colour."""
+    for declaration in declarations:
+        name, colon, value = declaration.partition(":")
+        if colon and name.strip().lower() in _COLOUR_PROPERTIES and _sets_colour(value):
+            return True
+    return False
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +99,8 @@ class SafeHtml:
     `remote`, loaded if it was set; the others are removed either way."""
     loadable_remote_images: int
     """Of those, the `<img>` sources: what `remote` would show."""
+    sets_colours: bool
+    """What is kept sets a background or text colour of its own (module docstring)."""
 
 
 class _Filter:
@@ -89,6 +113,7 @@ class _Filter:
         self.remote = remote
         self.budget = max_inline_bytes
         self.inlined: dict[str, str] = {}
+        self.sets_colours = False
         self.title_prefix = f"\ue000{secrets.token_hex(8)}\ue000"
         """What `_prepare` puts before a link title it wrote: any other title on a link is the
         sender's, through a tree that nh3 reads differently from lxml, and is dropped."""
@@ -97,8 +122,14 @@ class _Filter:
         if tag == "a" and attribute == "title":
             prefix = self.title_prefix
             return value.removeprefix(prefix) if value.startswith(prefix) else None
+        if attribute in _COLOUR_ATTRIBUTES:
+            self.sets_colours = self.sets_colours or _sets_colour(value)
+            return value
         if attribute == "style":
             kept = [decl for decl in value.split(";") if not UNSAFE_CSS.search(decl)]
+            # The link marker is Mailroom's own, not the sender's colours.
+            if value != _MARK_STYLE and _style_sets_colour(kept):
+                self.sets_colours = True
             return ";".join(kept) or None
         if tag == "img" and attribute == "src":
             return self._image(browser_url(value))
@@ -233,4 +264,4 @@ def safe_html(
         set_tag_attribute_values={"a": {"target": "_blank"}},
         filter_style_properties=set(CSS_PROPERTIES),
     )
-    return SafeHtml(cleaned, remote_images, loadable)
+    return SafeHtml(cleaned, remote_images, loadable, attribute_filter.sets_colours)

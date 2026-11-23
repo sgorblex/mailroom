@@ -22,7 +22,7 @@ import pytest
 from sqlalchemy import select
 
 from mailroom.accounts.store import load_accounts, user_store
-from mailroom.api.routes.mail.read import PRINT_CSP, download_name, served_type
+from mailroom.api.routes.mail.read import PRINT_CSP, download_name, html_document, served_type
 from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
 from mailroom.auth.users import create_user
 from mailroom.mail.pool import DeadlineExceeded, MailPool
@@ -907,6 +907,32 @@ def test_the_html_view_is_a_sanitised_standalone_document(mailbox: Mailbox) -> N
     assert dark.headers["content-security-policy"] == NO_REMOTE_CSP
     assert ":root{color-scheme:dark}" in dark.text
     assert dark.text.split("<body>", 1)[1] == body
+
+
+def test_dark_html_inverts_a_message_that_sets_its_own_colours(mailbox: Mailbox) -> None:
+    mailbox.seed(
+        related_html('<table bgcolor="#fff"><tr><td><img src="cid:logo@x">Hi</td></tr></table>')
+    )
+    [ref] = mailbox.refs()
+    light = mailbox.client.get(f"{MAIL}/messages/{ref}/html").text
+    dark = mailbox.client.get(f"{MAIL}/messages/{ref}/html", params={"dark": "1"})
+    assert dark.headers["content-security-policy"] == NO_REMOTE_CSP
+    assert "filter:invert(1) hue-rotate(180deg)" in dark.text
+    assert "filter" not in light
+    assert dark.text.split("<body>", 1)[1] == light.split("<body>", 1)[1]
+
+
+def test_the_dark_document_is_css_alone() -> None:
+    plain = html_document("<p>hi</p>", dark=True)
+    assert ":root{color-scheme:dark}" in plain
+    assert "a{color:#8ab4f8}" in plain
+    assert "invert" not in plain
+    inverted = html_document("<p>hi</p>", dark=True, sets_colours=True)
+    assert "img{filter:invert(1) hue-rotate(180deg)}" in inverted
+    assert html_document("<p>hi</p>", sets_colours=True) == html_document("<p>hi</p>")
+    for page in (plain, inverted):
+        assert "<script" not in page
+        assert page.count("<style>") == 1
 
 
 def test_a_message_without_html_has_no_html_view(mailbox: Mailbox) -> None:
