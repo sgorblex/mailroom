@@ -1,21 +1,26 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { ACCENTS, DENSITIES, TEXT_SIZES, THEMES, type Appearance } from '@/api/auth.ts'
+import { ACCENTS, DENSITIES, READING_PANES, TEXT_SIZES, THEMES, type Appearance } from '@/api/auth.ts'
 import { apiErrorMessage } from '@/api/http.ts'
 import { useAppearance } from '@/auth/auth-context.ts'
 import { lookOf, setLook, type Look } from '@/theme/look.ts'
 
 type Outcome = { kind: 'idle' } | { kind: 'saved' } | { kind: 'failed'; message: string }
 
-/** What this section chooses: the look of the whole page and the density of the mail lists. */
-type Shown = Look & Pick<Appearance, 'density'>
+/** What this section chooses: the look of the whole page, the density of the mail lists and where a message opens. */
+type Shown = Look & Pick<Appearance, 'density' | 'reading_pane'>
 
-const shownOf = (appearance: Appearance): Shown => ({ ...lookOf(appearance), density: appearance.density })
+const shownOf = (appearance: Appearance): Shown => ({
+  ...lookOf(appearance),
+  density: appearance.density,
+  reading_pane: appearance.reading_pane,
+})
 
 /**
- * The user's theme, accent, text size and density, the same on every device. A choice shows at
- * once and is saved; when the save fails the saved look comes back and the section says so.
+ * The user's theme, accent, text size, density and reading pane, the same on every device. A
+ * choice shows at once and is saved; when the save fails the saved look comes back and the
+ * section says so.
  */
 export function AppearanceSettings(): ReactElement {
   const { t } = useTranslation()
@@ -135,6 +140,24 @@ export function AppearanceSettings(): ReactElement {
             {t(`appearance.densities.${density}`)}
           </label>
         ))}
+      </fieldset>
+      <fieldset className="flex flex-col gap-1.5" aria-describedby="appearance-reading-pane-phones">
+        <legend className="mb-1.5 text-sm font-medium">{t('appearance.readingPane')}</legend>
+        {READING_PANES.map((position) => (
+          <label key={position} className="flex items-center gap-2 text-sm">
+            <input
+              type="radio"
+              name="appearance-reading-pane"
+              value={position}
+              checked={shown.reading_pane === position}
+              onChange={() => void choose({ reading_pane: position })}
+            />
+            {t(`appearance.readingPanes.${position}`)}
+          </label>
+        ))}
+        <p id="appearance-reading-pane-phones" className="text-xs text-muted-foreground">
+          {t('appearance.readingPanePhones')}
+        </p>
       </fieldset>
       {outcome.kind === 'failed' && (
         <p role="alert" className="text-sm text-destructive">

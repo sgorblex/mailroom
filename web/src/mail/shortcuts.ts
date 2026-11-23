@@ -7,6 +7,7 @@ import { MAIL_ACTIONS, shortcutAction, type ActionContext, type MailAction } fro
 import { useCompose, type Compose } from './compose-context.ts'
 import { opened } from './conversations.ts'
 import { toggleFolderPane } from './folder-pane.ts'
+import { uGoesBack, useReadingPane } from './reading-pane.ts'
 import { NO_TRIAGE_ACTIONS, useTriageActions, type TriageActions } from './triage-actions.ts'
 import { useTriage, type Triage } from './triage-context.ts'
 
@@ -128,11 +129,11 @@ export function usePaletteShortcut(onToggle: () => void): void {
 
 /**
  * The mail screen's keyboard shortcuts (`docs/requirements/mail-client.md`): j/k move through
- * the list, x selects, `[` folds or opens the folder pane, Escape closes a picker or clears the
- * selection, `?` calls `onHelp` (the shortcut sheet); the other keys are the action registry's, on
- * the selection or the open message (a reply on the open one, a new message on `accountId`). None
- * while typing, none with Ctrl or Meta (but for AltGr, which types characters), and no letter with
- * Alt.
+ * the list, x selects, `[` folds or opens the folder pane, Escape closes a picker, clears the
+ * selection or, in full view, goes back to the list (as `u` does there), `?` calls `onHelp` (the
+ * shortcut sheet); the other keys are the action registry's, on the selection or the open message
+ * (a reply on the open one, a new message on `accountId`). None while typing, none with Ctrl or
+ * Meta (but for AltGr, which types characters), and no letter with Alt.
  */
 export function useMailShortcuts(accountId: AccountId, onHelp: () => void): void {
   const triage = useTriage()
@@ -143,9 +144,10 @@ export function useMailShortcuts(accountId: AccountId, onHelp: () => void): void
   // The row of an open conversation is its own while another of its messages is read.
   const { message: shownMessage, thread } = useSearch({ from: '/mail' })
   const message = thread ?? shownMessage
-  const latest = useRef({ triage, actions, navigate, message, compose, accountId, onHelp })
+  const { fullView } = useReadingPane()
+  const latest = useRef({ triage, actions, navigate, message, compose, accountId, onHelp, fullView })
   useEffect(() => {
-    latest.current = { triage, actions, navigate, message, compose, accountId, onHelp }
+    latest.current = { triage, actions, navigate, message, compose, accountId, onHelp, fullView }
   })
 
   useEffect(() => {
@@ -161,8 +163,21 @@ export function useMailShortcuts(accountId: AccountId, onHelp: () => void): void
       return true
     }
 
+    /** Back to the list from a message open in its place (full view); `false` when none is. */
+    function back(current: typeof latest.current): boolean {
+      if (!current.fullView || current.message === undefined || current.compose.shown) {
+        return false
+      }
+      void current.navigate({ to: '/mail', search: (previous) => ({ ...previous, message: undefined, thread: undefined }) })
+      return true
+    }
+
     function handled(key: string, current: typeof latest.current): boolean {
       const { triage: state, actions: offered, compose: writer } = current
+      // In full view `u` goes back, as Escape does; on a selection it still marks it unread.
+      if (key === 'u' && uGoesBack(current.fullView, state.selection.size, current.message, writer.shown) && back(current)) {
+        return true
+      }
       switch (key) {
         case 'j':
           return openAt(1)
@@ -194,7 +209,7 @@ export function useMailShortcuts(accountId: AccountId, onHelp: () => void): void
             state.clearSelection()
             return true
           }
-          return false
+          return back(current)
       }
       const context = screenContext(state, offered, writer, current.accountId)
       const action = shortcutAction(key, context, { busy: state.busy, composing: writer.session !== null })

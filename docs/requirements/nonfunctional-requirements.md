@@ -437,8 +437,9 @@ bounded to one minor because the server relies on its handlers.
   `auth/me`'s `user` carries every choice, a default where none was made or where a stored one is
   no longer an option. An unknown choice or option is a 422; logged as `appearance_changed`. The
   web reads an option it does not know as its default too (`web/src/api/auth.ts`), so neither an
-  older nor a newer API breaks sign-in. What suits one device only (a pane's width, a collapsed
-  folder pane, the account Mail last showed) stays in that browser, under `mailroom.ui.<name>` (`web/src/lib/device-prefs.ts`).
+  older nor a newer API breaks sign-in. What suits one device only (a pane's width or height, a
+  collapsed folder pane, the account Mail last showed) stays in that browser, under
+  `mailroom.ui.<name>` (`web/src/lib/device-prefs.ts`).
   The theme, accent and text size are also copied there (`mailroom.ui.look`, `web/src/theme/look.ts`)
   so a load starts in them before `auth/me` answers; the server's value then replaces the copy.
   Every accent, light and dark, meets WCAG AA (4.5:1) for its text pairs, which

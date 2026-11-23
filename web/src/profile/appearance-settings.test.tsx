@@ -93,6 +93,22 @@ describe('AppearanceSettings', () => {
     expect(within(density).getByRole('radio', { name: /^Compact/ })).toBeChecked()
   })
 
+  it('saves where a message opens, and says a narrow screen always opens it in full', async () => {
+    const fetchMock = stubApi(200)
+    renderSignedIn(<AppearanceSettings />, ALICE)
+    const pane = screen.getByRole('group', { name: 'Reading pane' })
+    expect(pane).toHaveAccessibleDescription(
+      'On a narrow screen (a phone, or a window under 1,024 px) a message always opens in place of the list.',
+    )
+    expect(screen.getByRole('radio', { name: 'On the right of the list' })).toBeChecked()
+    await userEvent.click(screen.getByRole('radio', { name: 'Below the list' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Saved.')
+    expect(fetchMock).toHaveBeenLastCalledWith(PATH, expect.objectContaining({ body: JSON.stringify({ reading_pane: 'below' }) }))
+    await userEvent.click(screen.getByRole('radio', { name: /^Off/ }))
+    expect(fetchMock).toHaveBeenLastCalledWith(PATH, expect.objectContaining({ body: JSON.stringify({ reading_pane: 'off' }) }))
+    expect(screen.getByRole('radio', { name: /^Off/ })).toBeChecked()
+  })
+
   it('puts the saved look back when the choice could not be saved', async () => {
     stubApi(500)
     renderSignedIn(<AppearanceSettings />, ALICE)

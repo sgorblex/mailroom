@@ -8,6 +8,7 @@ import { SEARCH_FLAG_FIELDS, type SearchQuery } from '@/api/mail.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { buttonVariants } from '@/components/ui/button-variants.ts'
 import { Input } from '@/components/ui/input.tsx'
+import { cn } from '@/lib/utils.ts'
 
 import { useFiltersOffered } from './filter-draft.ts'
 import { SaveViewButton } from './saved-views.tsx'
@@ -65,7 +66,7 @@ function lineOfQuery(query: SearchQuery | undefined, accounts: Account[], accoun
  * options" holds the same search as a form, every change written back into the line. Gmail's own
  * search sits only in the form. A search shown can become a filter, where the instance runs them.
  * Remounted (by key) when the search in the URL changes, so it always shows the search the list
- * is showing.
+ * is showing. `compact`, the box and its buttons share one row, what else it shows under them.
  */
 export function SearchForm({
   accounts,
@@ -74,6 +75,7 @@ export function SearchForm({
   subfolders,
   query,
   only,
+  compact = false,
 }: {
   accounts: Account[]
   accountId: AccountId
@@ -83,6 +85,8 @@ export function SearchForm({
   query: SearchQuery | undefined
   /** The quick filters on: a search kept as a view keeps them as its own terms. */
   only?: readonly QuickFilter[] | undefined
+  /** On one row with the box, the rest wrapping under it: with the reading pane below the list. */
+  compact?: boolean
 }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const navigate = useNavigate()
@@ -189,56 +193,8 @@ export function SearchForm({
   const chips = lexed.terms.filter((term) => term.key !== null || term.value !== '')
   // A quote left open hides where the line's terms end: the form waits for it to be closed.
   const locked = lexed.unterminated
-  return (
-    <form role="search" aria-label={t('search.label')} onSubmit={submit} className="flex flex-col gap-2">
-      <div className="flex gap-2">
-        <Input
-          ref={box}
-          type="search"
-          name="q"
-          aria-label={t('search.text')}
-          placeholder={t('search.placeholder')}
-          autoComplete="off"
-          spellCheck={false}
-          value={line}
-          aria-invalid={problem !== null}
-          aria-describedby={problem === null ? undefined : problemId}
-          onChange={(event) => {
-            setLine(event.target.value)
-          }}
-        />
-        <Button type="submit" variant="outline" size="icon" aria-label={t('search.submit')}>
-          <Search aria-hidden="true" />
-        </Button>
-      </div>
-      {problem !== null && (
-        <p id={problemId} className="text-xs text-destructive">
-          {problem}
-        </p>
-      )}
-      {chips.length > 0 && (
-        <ul aria-label={t('search.terms')} className="flex flex-wrap gap-1">
-          {chips.map((term) => {
-            const label = chipLabel(term)
-            return (
-              <li key={term.start} className="flex max-w-full items-center gap-1 rounded-md border py-0.5 pr-0.5 pl-2 text-xs">
-                <span className="min-w-0 truncate">{label}</span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label={t('search.removeTerm', { term: label })}
-                  onClick={() => {
-                    setLine(withoutTerm(line, term))
-                  }}
-                >
-                  <X aria-hidden="true" />
-                </Button>
-              </li>
-            )
-          })}
-        </ul>
-      )}
+  // Under the box, or beside it when compact.
+  const buttons = (
       <div className="flex flex-wrap items-center gap-2">
         <Button
           type="button"
@@ -275,7 +231,62 @@ export function SearchForm({
           </Button>
         )}
       </div>
-      <div id={optionsId} hidden={!expanded} className="grid grid-cols-2 gap-2">
+  )
+  return (
+    <form role="search" aria-label={t('search.label')} onSubmit={submit}
+      className={cn('flex gap-2', compact ? 'flex-wrap items-center' : 'flex-col')}
+    >
+      <div className={cn('flex gap-2', compact && 'min-w-48 flex-1')}>
+        <Input
+          ref={box}
+          type="search"
+          name="q"
+          aria-label={t('search.text')}
+          placeholder={t('search.placeholder')}
+          autoComplete="off"
+          spellCheck={false}
+          value={line}
+          aria-invalid={problem !== null}
+          aria-describedby={problem === null ? undefined : problemId}
+          onChange={(event) => {
+            setLine(event.target.value)
+          }}
+        />
+        <Button type="submit" variant="outline" size="icon" aria-label={t('search.submit')}>
+          <Search aria-hidden="true" />
+        </Button>
+      </div>
+      {compact && buttons}
+      {problem !== null && (
+        <p id={problemId} className={cn('text-xs text-destructive', compact && 'basis-full')}>
+          {problem}
+        </p>
+      )}
+      {chips.length > 0 && (
+        <ul aria-label={t('search.terms')} className={cn('flex flex-wrap gap-1', compact && 'basis-full')}>
+          {chips.map((term) => {
+            const label = chipLabel(term)
+            return (
+              <li key={term.start} className="flex max-w-full items-center gap-1 rounded-md border py-0.5 pr-0.5 pl-2 text-xs">
+                <span className="min-w-0 truncate">{label}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={t('search.removeTerm', { term: label })}
+                  onClick={() => {
+                    setLine(withoutTerm(line, term))
+                  }}
+                >
+                  <X aria-hidden="true" />
+                </Button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {!compact && buttons}
+      <div id={optionsId} hidden={!expanded} className={cn('grid grid-cols-2 gap-2', compact && 'basis-full')}>
         <Field id={`${id}-account`} label={t('search.account')}>
           <select
             id={`${id}-account`}

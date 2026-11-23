@@ -316,6 +316,7 @@ export const MAIL_ACTIONS: readonly MailAction[] = [
     label: () => 'triage.markUnread',
     icon: () => Mail,
     shortcut: 'u',
+    sheetLabel: 'shortcuts.markUnread',
     available: ({ actions }) => actions.markUnread !== null,
     listed: ({ actions }) => actions.read?.seen === false || actions.matching !== null,
     run: ({ actions }) => actions.markUnread?.(),

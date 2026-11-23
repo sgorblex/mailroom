@@ -10,9 +10,10 @@ const BIG_STEP = 64
 /**
  * A divider between two panes that sets the size of the one before it (`controls`), in pixels:
  * dragged with a pointer, or moved with the arrow keys (Shift for bigger steps), Home and End;
- * a double-click gives `onReset`. A vertical line, for panes side by side. A drag reports each
- * size on the way (`onChange`) and the one it ends on once (`onCommit`), so only that is kept; a
- * key gives both at once.
+ * a double-click gives `onReset`. A vertical line for panes side by side (their width, with Left
+ * and Right), or a horizontal one for a pane above another (its height, with Up and Down). A drag
+ * reports each size on the way (`onChange`) and the one it ends on once (`onCommit`), so only that
+ * is kept; a key gives both at once.
  */
 export function Splitter({
   value,
@@ -24,6 +25,7 @@ export function Splitter({
   controls,
   label,
   valueText,
+  orientation = 'vertical',
   className,
 }: {
   value: number
@@ -39,10 +41,13 @@ export function Splitter({
   label: string
   /** The size in words, for a screen reader. */
   valueText?: string
+  orientation?: 'vertical' | 'horizontal'
   className?: string
 }): ReactElement {
-  // Where a drag started (the pointer's x and the size then), and the size it last reported.
-  const drag = useRef<{ x: number; value: number; last: number | null } | null>(null)
+  const vertical = orientation === 'vertical'
+  // Where a drag started (the pointer's position along the size and the size then), and the size
+  // it last reported.
+  const drag = useRef<{ at: number; value: number; last: number | null } | null>(null)
   const change = (next: number): number | null => {
     const kept = clamp(Math.round(next), min, max)
     if (kept === value) {
@@ -55,9 +60,9 @@ export function Splitter({
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
     const step = event.shiftKey ? BIG_STEP : STEP
     const next =
-      event.key === 'ArrowLeft'
+      event.key === (vertical ? 'ArrowLeft' : 'ArrowUp')
         ? value - step
-        : event.key === 'ArrowRight'
+        : event.key === (vertical ? 'ArrowRight' : 'ArrowDown')
           ? value + step
           : event.key === 'Home'
             ? min
@@ -80,12 +85,13 @@ export function Splitter({
     event.preventDefault()
     event.currentTarget.setPointerCapture(event.pointerId)
     event.currentTarget.focus()
-    drag.current = { x: event.clientX, value, last: null }
+    drag.current = { at: vertical ? event.clientX : event.clientY, value, last: null }
   }
 
   function onPointerMove(event: PointerEvent<HTMLDivElement>): void {
     if (drag.current !== null) {
-      drag.current.last = change(drag.current.value + event.clientX - drag.current.x) ?? drag.current.last
+      drag.current.last =
+        change(drag.current.value + (vertical ? event.clientX : event.clientY) - drag.current.at) ?? drag.current.last
     }
   }
 
@@ -104,7 +110,7 @@ export function Splitter({
     <div
       role="separator"
       tabIndex={0}
-      aria-orientation="vertical"
+      aria-orientation={orientation}
       aria-valuenow={value}
       aria-valuemin={min}
       aria-valuemax={max}
@@ -119,8 +125,10 @@ export function Splitter({
       onDoubleClick={onReset}
       className={cn(
         // A thin line with a wider grip around it; the ring shows where focus is.
-        'relative z-10 w-px shrink-0 cursor-col-resize touch-none bg-border outline-none select-none',
-        'before:absolute before:inset-y-0 before:-right-1.5 before:-left-1.5 before:content-[""]',
+        'relative z-10 shrink-0 touch-none bg-border outline-none select-none before:absolute before:content-[""]',
+        vertical
+          ? 'w-px cursor-col-resize before:inset-y-0 before:-right-1.5 before:-left-1.5'
+          : 'h-px cursor-row-resize before:inset-x-0 before:-top-1.5 before:-bottom-1.5',
         'hover:bg-primary/60 focus-visible:bg-primary focus-visible:ring-[3px] focus-visible:ring-ring/50',
         className,
       )}

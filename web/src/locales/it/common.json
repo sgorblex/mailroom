@@ -291,6 +291,13 @@
       "comfortable": "Comoda",
       "compact": "Compatta, senza l'inizio di ogni messaggio"
     },
+    "readingPane": "Riquadro di lettura",
+    "readingPanes": {
+      "right": "A destra dell'elenco",
+      "below": "Sotto l'elenco",
+      "off": "Spento: un messaggio si apre al posto dell'elenco"
+    },
+    "readingPanePhones": "Su uno schermo stretto (un telefono, o una finestra sotto i 1.024 px) un messaggio si apre sempre al posto dell'elenco.",
     "saved": "Salvato.",
     "saveFailed": "Impossibile salvare questa scelta."
   },

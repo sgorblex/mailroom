@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate } from '@tanstack/react-router'
-import { ArrowLeft, ShieldAlert, ShieldCheck, ShieldQuestionMark, TriangleAlert } from 'lucide-react'
+import { useNavigate } from '@tanstack/react-router'
+import { ShieldAlert, ShieldCheck, ShieldQuestionMark, TriangleAlert } from 'lucide-react'
 
 import { readMessage, type MailAddress, type MessageView as MessageData } from '@/api/mail.ts'
 import { useTimeZone } from '@/auth/auth-context.ts'
@@ -114,14 +114,6 @@ export function MessageView({ messageRef, conversation }: { messageRef: string; 
 
   return (
     <article className="flex flex-1 flex-col gap-4" aria-busy={pending}>
-      <Link
-        to="/mail"
-        search={(previous) => ({ ...previous, message: undefined, thread: undefined })}
-        className="flex items-center gap-1 self-start text-sm text-muted-foreground hover:text-foreground lg:hidden"
-      >
-        <ArrowLeft aria-hidden="true" className="size-4" />
-        {t('message.back')}
-      </Link>
       {state === 'pending' && (
         <p role="status" className="text-sm text-muted-foreground">
           {t('message.loading')}

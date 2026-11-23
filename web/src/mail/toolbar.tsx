@@ -13,6 +13,7 @@ import { AccountMovePicker, MoveForGoodDialog } from './account-move-picker.tsx'
 import { listedActions, unavailableReason, type ActionContext } from './action-registry.ts'
 import { useCompose } from './compose-context.ts'
 import { MAIL_NS } from './i18n.ts'
+import { useUGoesBack } from './reading-pane.ts'
 import { folderName, mailCodeMessage, mailErrorMessage } from './messages.ts'
 import { useTriageActions } from './triage-actions.ts'
 import { failureKey, isSameFolder, loadedFolders, useTriage, type Action, type Outcome } from './triage-context.ts'
@@ -33,6 +34,7 @@ export function Toolbar({ className }: { className?: string }): ReactElement | n
   const triage = useTriage()
   const actions = useTriageActions()
   const compose = useCompose()
+  const uGoesBack = useUGoesBack()
   const trigger = useRef<HTMLButtonElement>(null)
   const pickerWasOpen = useRef(false)
   const picker = triage.picker && actions.moveChoices !== null
@@ -102,7 +104,7 @@ export function Toolbar({ className }: { className?: string }): ReactElement | n
                 key={action.id}
                 ref={action.picker === 'move' ? trigger : action.picker === 'account' ? accountTrigger : undefined}
                 label={t(action.label(context))}
-                shortcut={action.shortcut}
+                shortcut={action.id === 'markUnread' && uGoesBack ? undefined : action.shortcut}
                 disabled={disabled}
                 unavailable={reason === null ? undefined : t(reason)}
                 expanded={action.picker === 'move' ? picker : action.picker === 'account' ? showAccountPicker : undefined}
