@@ -76,6 +76,7 @@ from mailroom.mail.service.organize import (
 from mailroom.mail.service.read import (
     ALL_ACCOUNTS,
     AllAccounts,
+    HtmlViews,
     KeywordFailures,
     Printable,
     Quotas,
@@ -148,6 +149,7 @@ __all__ = [
     "DraftFields",
     "DraftView",
     "FolderRenamed",
+    "HtmlViews",
     "ImportFields",
     "KeywordFailures",
     "ListedSummary",

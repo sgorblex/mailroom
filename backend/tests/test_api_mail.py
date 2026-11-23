@@ -32,8 +32,11 @@ from mailroom.api.routes.mail.read import (
 from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
 from mailroom.auth.users import create_user
 from mailroom.mail.pool import DeadlineExceeded, MailPool
+from mailroom.mail.service import read as read_service
+from mailroom.mail.service.read import HTML_VIEW_SECONDS, HtmlKey, HtmlViews
 from mailroom.models import Filter, MutedThread, RuleSet
 from mailroom.net.safe_fetch import safe_fetch
+from mailroom_core import mail as mail_core
 from mailroom_core.crypto import secrets_subkey
 from mailroom_core.mail import (
     MESSAGES,
@@ -49,6 +52,7 @@ from mailroom_core.mail import (
     format_ref,
     parse_ref,
 )
+from mailroom_core.render import SafeHtml
 from mailroom_core.store import SecretChanges
 from mailroom_core.testing import (
     MimeAttachment,
@@ -964,6 +968,78 @@ def test_a_message_without_html_has_no_html_view(mailbox: Mailbox) -> None:
     mailbox.seed(mime("plain", text="hello"))
     [ref] = mailbox.refs()
     assert detail(mailbox.client.get(f"{MAIL}/messages/{ref}/html")) == (404, "not_found")
+    check = mailbox.client.get(f"{MAIL}/messages/{ref}/html/check")
+    assert detail(check) == (404, "not_found")
+    assert check.headers["cache-control"] == "private, no-store"
+
+
+def test_the_html_view_of_a_message_just_read_is_not_read_again(
+    mailbox: Mailbox, application: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mailbox.seed(related_html('<p>Hi <img src="cid:logo@x"> <img src="https://t.example/p.gif">'))
+    [ref] = mailbox.refs()
+    clock = SimpleNamespace(now=0.0)
+    monkeypatch.setattr(application.state, "html_views", HtmlViews(lambda: clock.now))
+    made: list[bool] = []
+    html_view = mail_core.html_view
+
+    def counted(*args: Any, remote: bool, **kwargs: Any) -> Any:
+        made.append(remote)
+        return html_view(*args, remote=remote, **kwargs)
+
+    monkeypatch.setattr(mail_core, "html_view", counted)
+    client = mailbox.client
+
+    assert mailbox.get(f"/messages/{ref}")["remote_images"] == 1
+    check = client.get(f"{MAIL}/messages/{ref}/html/check")
+    assert (check.status_code, check.content) == (204, b"")
+    assert check.headers["cache-control"] == "private, no-store"
+    light = client.get(f"{MAIL}/messages/{ref}/html").text
+    dark = client.get(f"{MAIL}/messages/{ref}/html", params={"dark": "1"}).text
+    # The read's own sanitising pass, cid: image inlined, serves the check and both documents.
+    assert made == []
+    assert "data:image/png;base64," in light
+    assert dark.split("<body>", 1)[1] == TARGET + light.split("<body>", 1)[1]
+
+    # Remote images shown are another view, read once.
+    for _ in range(2):
+        shown = client.get(f"{MAIL}/messages/{ref}/html", params={"remote": "1"})
+        assert "https://t.example/p.gif" in shown.text
+    assert made == [True]
+
+    clock.now = HTML_VIEW_SECONDS
+    assert client.get(f"{MAIL}/messages/{ref}/html").text == light
+    assert made == [True, False]
+
+
+def test_kept_html_views_are_each_users_own_and_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = SimpleNamespace(now=0.0)
+    views = HtmlViews(lambda: clock.now)
+    message = MessageRef(account=1, folder="INBOX", uid_validity=7, uid=3)
+    mine = HtmlKey.of(1, 0, message, remote=False)
+    view = SafeHtml("<p>mine</p>", 0, 0, sets_colours=False)
+    views.put(mine, view)
+    assert views.get(mine) is view
+    # Another user with the same account id and ref, a changed account, remote content shown,
+    # another UIDVALIDITY: none of them is the view kept.
+    for other in (
+        HtmlKey.of(2, 0, message, remote=False),
+        HtmlKey.of(1, 1, message, remote=False),
+        HtmlKey.of(1, 0, message, remote=True),
+        HtmlKey.of(1, 0, replace(message, uid_validity=8), remote=False),
+    ):
+        assert views.get(other) is None
+    clock.now = HTML_VIEW_SECONDS
+    assert views.get(mine) is None
+
+    monkeypatch.setattr(read_service, "HTML_VIEW_CHARS", 25)
+    first, second = (HtmlKey.of(1, 0, replace(message, uid=uid), remote=False) for uid in (1, 2))
+    views.put(first, SafeHtml("x" * 15, 0, 0, sets_colours=False))
+    views.put(second, SafeHtml("y" * 15, 0, 0, sets_colours=False))
+    # The oldest made room; a view past the whole budget is not kept at all.
+    assert (views.get(first), views.get(second) is not None) == (None, True)
+    views.put(mine, SafeHtml("z" * 26, 0, 0, sets_colours=False))
+    assert (views.get(mine), views.get(second) is not None) == (None, True)
 
 
 def test_parts_download_as_files(mailbox: Mailbox, migrated_engine: Any, user: User) -> None:

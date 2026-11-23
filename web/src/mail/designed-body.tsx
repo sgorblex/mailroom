@@ -73,10 +73,9 @@ export function DesignedBody({
 
   const check = useCallback(
     async (signal: AbortSignal) => {
-      await checkMessageHtml(draftRef, false, signal, dark)
-      return messageHtmlUrl(draftRef, false, dark)
+      await checkMessageHtml(draftRef, false, signal)
     },
-    [draftRef, dark],
+    [draftRef],
   )
   const preview = useLoad(check, (error) => mailErrorMessage(t, error, t('designed.previewFailed')))
   const loadFindings = useCallback((signal: AbortSignal) => draftFindings(draftRef, signal), [draftRef])
@@ -218,7 +217,7 @@ export function DesignedBody({
       {preview.state.kind === 'loaded' && (
         <iframe
           title={t('designed.previewTitle', { subject: subject === '' ? t('message.noSubject') : subject })}
-          src={preview.state.value}
+          src={messageHtmlUrl(draftRef, false, dark)}
           sandbox={HTML_SANDBOX}
           referrerPolicy="no-referrer"
           style={phone ? { width: PHONE_WIDTH } : undefined}

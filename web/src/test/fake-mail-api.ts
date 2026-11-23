@@ -1494,12 +1494,15 @@ export function stubMailApi(state: FakeMailState): Mock {
         .sort((a, b) => uidOf(b) - uidOf(a))
       return rows.length === 0 ? notFound() : json(200, { messages: rows, next_cursor: null, failures: [] })
     }
-    match = /^\/api\/v1\/mail\/messages\/([^/]+)\/html$/.exec(path)
+    match = /^\/api\/v1\/mail\/messages\/([^/]+)\/html(\/check)?$/.exec(path)
     if (match !== null) {
       const ref = decodeURIComponent(match[1] ?? '')
       const view = state.views[ref]
       if (view?.has_html !== true && state.drafts?.some((each) => each.ref === ref && each.designed) !== true) {
         return notFound()
+      }
+      if (match[2] !== undefined) {
+        return new Response(null, { status: 204 })
       }
       return new Response('<!doctype html><p>HTML</p>', { status: 200, headers: { 'Content-Type': 'text/html' } })
     }

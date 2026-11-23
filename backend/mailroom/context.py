@@ -4,7 +4,7 @@ instance's features.
 
 ``mailroom.api.main``'s lifespan builds them once and keeps them on ``app.state``
 (``database_engine``, ``session_maker``, ``secrets_subkey``, ``mail_ssl_context``,
-``mail_pool``, ``send_runner``; ``features`` and ``keyword_failures`` are
+``mail_pool``, ``send_runner``; ``features``, ``keyword_failures`` and ``html_views`` are
 ``create_application``'s); ``app_context`` reads them back as one ``AppContext``.
 """
 
@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 from mailroom.accounts.store import user_store
 from mailroom.auth.users import time_zone_of
 from mailroom.config.features import ALL_FEATURES
-from mailroom.mail.service.read import KeywordFailures
+from mailroom.mail.service.read import HtmlViews, KeywordFailures
 
 if TYPE_CHECKING:
     import ssl
@@ -50,6 +50,8 @@ class AppContext:
     """What the instance runs (``MAILROOM_FEATURES``)."""
     keyword_failures: KeywordFailures = field(default_factory=KeywordFailures)
     """The accounts whose keywords listings leave alone for a while (``account_keywords``)."""
+    html_views: HtmlViews = field(default_factory=HtmlViews)
+    """Messages' sanitised HTML views, kept a minute (``message_html``)."""
 
     def store(self, user_id: int) -> AccountStore:
         """The user's accounts, as mailroom-core keeps them."""
@@ -80,4 +82,5 @@ def app_context(state: State) -> AppContext | None:
         send_runner=state.send_runner,
         features=state.features,
         keyword_failures=state.keyword_failures,
+        html_views=state.html_views,
     )

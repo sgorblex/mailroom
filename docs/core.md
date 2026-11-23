@@ -200,7 +200,9 @@ reads them from one `BODY.PEEK[HEADER.FIELDS (…)]` of those fields cut past 25
 Gmail its `X-GM-THRID`; it never sets `\Seen`. A page item
 carries the arrival time as well as the Date header, and the size; a view carries `has_html` and,
 when the read asks for `remote_check` (off by default, as it costs the HTML's download and a
-sanitising pass), `remote_images` and `loadable_remote_images`. A ref's error names no tool. A view also carries `headers`
+sanitising pass), `remote_images` and `loadable_remote_images`; with `inline_bytes` too, that
+pass is `html_view(remote=False)`'s, its `cid:` images downloaded, and the view keeps it
+(`html_view`) for a host that shows the HTML next. A ref's error names no tool. A view also carries `headers`
 (`mail.message_headers`), parsed from one `BODY.PEEK[HEADER.FIELDS (…)]<0.65536>` fetched with
 it: From, the List-* fields, Authentication-Results, DKIM-Signature, Delivered-To and
 X-Original-To. Deliberate choices:

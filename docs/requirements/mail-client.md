@@ -1861,8 +1861,18 @@ Cache-Control: private, no-store
 With `remote=1` the CSP's `img-src` is `data: http: https:` instead (an `http:` image on an
 `https` page is the browser's mixed content: it upgrades or blocks it). The SPA may frame the
 document and nothing else may; the nginx `/api/` location adds no CSP of its own. Errors are the
-usual JSON bodies with their statuses. The client fetches the document first and frames it only
-once that answered 200, so a failure shows as the client's own error, never inside the frame.
+usual JSON bodies with their statuses. The client asks [`…/html/check`](#get-messagesrefhtmlcheck)
+first and frames the document only once that answered, so a failure shows as the client's own
+error, never inside the frame. The sanitised view is kept for a minute
+([`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *HTML views kept*): the
+message read's remote check makes it without `remote` (its `cid:` images inlined), so the check,
+the document and a switch to `dark` that follow it are not read from the server again.
+
+### `GET /messages/{ref}/html/check`
+
+`remote=0|1` as for `…/html`: 204 with no body when that document would be served, else its
+refusal (the same JSON body and status). The client asks it before it frames the document, the
+message view and the preview of designed mail alike; it never fetches the document itself.
 
 ### `GET /messages/{ref}/parts/{part}`
 

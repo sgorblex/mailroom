@@ -11,7 +11,6 @@ import {
   apiPostForm,
   apiPostJson,
   apiPutJson,
-  reportSessionEnded,
 } from './http.ts'
 
 /** The REST contract of `docs/requirements/mail-client.md`. Refs and cursors are opaque strings. */
@@ -463,25 +462,14 @@ export function messageHtmlUrl(ref: string, remote: boolean, dark = false, origi
 }
 
 /**
- * Asks for the HTML document before a frame shows it: a refusal then throws, as any API call's,
- * for the client to word, instead of showing up inside the frame as the API's JSON.
+ * Asks whether the HTML document would be served (`/html/check`, 204, which keeps the server's
+ * view for the document) before a frame shows it: a refusal then throws, as any API call's, for
+ * the client to word, instead of showing up inside the frame as the API's JSON.
  */
-export async function checkMessageHtml(ref: string, remote: boolean, signal?: AbortSignal, dark = false): Promise<void> {
-  const response = await fetch(messageHtmlUrl(ref, remote, dark), { credentials: 'include', signal })
-  if (response.ok) {
-    await response.body?.cancel()
-    return
-  }
-  if (response.status === 401) {
-    reportSessionEnded()
-  }
-  let body: unknown = null
-  try {
-    body = await response.json()
-  } catch {
-    // Not the API's JSON (a proxy's page): the status alone words it.
-  }
-  throw new ApiRequestError(response.status, body, `HTTP ${String(response.status)}`)
+export async function checkMessageHtml(ref: string, remote: boolean, signal?: AbortSignal): Promise<void> {
+  await apiGetJson(withQuery(`${messagePath(ref)}/html/check`, { remote: remote ? 1 : undefined }), {
+    init: { signal },
+  })
 }
 
 const rememberedSenderSchema = z.object({ address: z.string(), created_at: z.string() })

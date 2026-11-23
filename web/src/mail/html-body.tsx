@@ -25,8 +25,8 @@ export const HTML_SANDBOX = 'allow-popups allow-popups-to-escape-sandbox'
 export type RemoteChoice = 'blocked' | 'message' | 'sender'
 
 /**
- * The API's standalone, sanitised HTML document in a sandboxed iframe, framed once a request for
- * it answered: a refusal is worded here, never shown inside the frame. Remote images stay
+ * The API's standalone, sanitised HTML document in a sandboxed iframe, framed once its check
+ * answered: a refusal is worded here, never shown inside the frame. Remote images stay
  * blocked until the reader asks, for this message or, when `canTrustSender` (DMARC passed for its
  * one From), always for its sender; the server checks that again before it remembers one. In a
  * dark theme the frame shows the server's `dark` document, unless the reader asks for the original
@@ -65,10 +65,10 @@ export function HtmlBody({
   const [trustFailure, setTrustFailure] = useState<string | null>(null)
   const check = useCallback(
     async (signal: AbortSignal) => {
-      await checkMessageHtml(messageRef, remote, signal, darkTheme)
-      return { remote, dark: darkTheme }
+      await checkMessageHtml(messageRef, remote, signal)
+      return { remote }
     },
-    [messageRef, remote, darkTheme],
+    [messageRef, remote],
   )
   const { state, retry } = useLoad(check, (error) => mailErrorMessage(t, error, t('message.htmlFailed')))
 
@@ -135,7 +135,7 @@ export function HtmlBody({
         </p>
       )}
       {/* Only beside a dark document in the frame: next to an error or a light one it does nothing. */}
-      {state.kind === 'loaded' && state.value.dark && (
+      {state.kind === 'loaded' && darkTheme && (
         <Button
           variant={original ? 'secondary' : 'outline'}
           size="xs"
@@ -167,12 +167,12 @@ export function HtmlBody({
       {state.kind === 'loaded' && (
         <iframe
           title={t('message.htmlTitle', { subject: subject === '' ? t('message.noSubject') : subject })}
-          src={messageHtmlUrl(messageRef, state.value.remote, state.value.dark, original)}
+          src={messageHtmlUrl(messageRef, state.value.remote, darkTheme, original)}
           sandbox={HTML_SANDBOX}
           referrerPolicy="no-referrer"
           className={cn(
             'min-h-[60vh] w-full flex-1 rounded-md border',
-            state.value.dark && !original ? 'bg-[#121212]' : 'bg-white',
+            darkTheme && !original ? 'bg-[#121212]' : 'bg-white',
           )}
         />
       )}

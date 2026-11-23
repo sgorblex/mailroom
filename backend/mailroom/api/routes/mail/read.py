@@ -514,6 +514,15 @@ def message_html(
     )
 
 
+@mail_router.get("/messages/{ref}/html/check", status_code=204, response_class=Response)
+def message_html_check(ref: Ref, ctx: Context, user: CurrentUser, remote: bool = False) -> Response:
+    """204 when ``/html`` would answer the document, else its refusal, as JSON: the client asks
+    this before it frames the document, so that a refusal is its own words, never the frame's.
+    The view is kept (``service.message_html``), so the document then costs no second read."""
+    service.message_html(ctx, user.id, ref, remote=remote)
+    return Response(status_code=204)
+
+
 def served_type(kind: str) -> str:
     """The type a download is served as: displayed images and plain-text kinds as they are
     (mailroom-core's ``content_type`` checked the images' bytes), anything else, HTML and SVG
