@@ -4,20 +4,20 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { renderSignedIn } from '@/test/signed-in.tsx'
 
-import { RemoteSenders } from './remote-senders.tsx'
+import { RemoteSenders, TextSenders } from './remembered-senders.tsx'
 
 const ALICE = { username: 'alice', is_admin: false, time_zone: 'UTC', mark_read_subfolders: true, index_max_age_days: null, conversations: true, undo_send_seconds: 10 }
 const LIST = '/api/v1/mail/remote-senders'
 const REMOVE = '/api/v1/mail/remote-senders/remove'
 
 /** The remembered senders, `removeStatus` answering each removal (and taking the sender out on 204). */
-function stubApi(addresses: string[], removeStatus = 204): ReturnType<typeof vi.fn> {
+function stubApi(addresses: string[], removeStatus = 204, list = LIST, removePath = REMOVE): ReturnType<typeof vi.fn> {
   let senders = addresses.map((address) => ({ address, created_at: '2026-11-18T10:00:00+00:00' }))
   const fetchMock = vi.fn((path: string, init?: RequestInit) => {
-    if (path === LIST) {
+    if (path === list) {
       return Promise.resolve(new Response(JSON.stringify({ senders }), { status: 200 }))
     }
-    if (path === REMOVE) {
+    if (path === removePath) {
       const { address } = JSON.parse(init?.body as string) as { address: string }
       if (removeStatus === 404) {
         // Removed elsewhere just before.
@@ -79,5 +79,24 @@ describe('RemoteSenders', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Remove news@shop.example' }))
     expect(await screen.findByRole('alert')).toBeInTheDocument()
     expect(screen.getByText('news@shop.example')).toBeInTheDocument()
+  })
+})
+
+describe('TextSenders', () => {
+  const textList = '/api/v1/mail/sender-views'
+  const textRemove = '/api/v1/mail/sender-views/remove'
+
+  it('lists the senders read as text and removes one', async () => {
+    const fetchMock = stubApi(['news@shop.example'], 204, textList, textRemove)
+    renderSignedIn(<TextSenders />, ALICE)
+
+    const list = await screen.findByRole('list', { name: 'Read as text' })
+    expect(within(list).getByText('news@shop.example')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Remove news@shop.example' }))
+    expect(fetchMock).toHaveBeenCalledWith(
+      textRemove,
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ address: 'news@shop.example' }) }),
+    )
+    expect(await screen.findByText(/No senders yet: choose “Text”/)).toBeInTheDocument()
   })
 })

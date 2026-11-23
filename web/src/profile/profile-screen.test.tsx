@@ -13,6 +13,7 @@ const NEXT = 'a brand new passphrase'
 const PASSWORD_PATH = '/api/v1/auth/password'
 const LIMITS_PATH = '/api/v1/me/limits'
 const REMOTE_SENDERS_PATH = '/api/v1/mail/remote-senders'
+const TEXT_SENDERS_PATH = '/api/v1/mail/sender-views'
 
 /**
  * Anything but the password change: the default limits, no connected apps (the MCP server off),
@@ -23,7 +24,7 @@ function otherSections(path: string): Promise<Response> {
     const limits = { send_per_hour: 20, max_recipients: 10, body_chars: 6000, attachment_max_mb: 10, move_max_mb: 25 }
     return Promise.resolve(new Response(JSON.stringify(limits), { status: 200 }))
   }
-  if (path === REMOTE_SENDERS_PATH) {
+  if (path === REMOTE_SENDERS_PATH || path === TEXT_SENDERS_PATH) {
     return Promise.resolve(new Response('{"senders":[]}', { status: 200 }))
   }
   if (path === '/api/v1/accounts') {
@@ -147,12 +148,14 @@ describe('ProfileScreen', () => {
   it.each([
     { features: ['mail' as const], shown: true },
     { features: ['mcp' as const], shown: false },
-  ])('lists remote content senders only with the mail client ($features)', async ({ features, shown }) => {
+  ])('lists remembered senders only with the mail client ($features)', async ({ features, shown }) => {
     const fetchMock = stubApi()
     renderSignedIn(<ProfileScreen />, ALICE, features)
     expect(await screen.findByRole('heading', { name: 'Change your password' })).toBeInTheDocument()
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(screen.queryByRole('heading', { name: 'Remote images' }) !== null).toBe(shown)
+    expect(screen.queryByRole('heading', { name: 'Read as text' }) !== null).toBe(shown)
     expect(fetchMock.mock.calls.some(([path]) => path === REMOTE_SENDERS_PATH)).toBe(shown)
+    expect(fetchMock.mock.calls.some(([path]) => path === TEXT_SENDERS_PATH)).toBe(shown)
   })
 })

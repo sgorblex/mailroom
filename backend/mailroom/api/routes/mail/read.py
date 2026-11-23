@@ -24,7 +24,7 @@ from mailroom.api.routes.mail._shared import (
     mail_router,
 )
 from mailroom.filters.drafts import MessageDraft, message_draft
-from mailroom.mail import remote_senders, service, unsubscribe
+from mailroom.mail import remote_senders, sender_views, service, unsubscribe
 from mailroom.mail.print_page import printable_page
 from mailroom_core.mail import DISPLAYED_IMAGES, FORWARDED, TO_SORT
 
@@ -308,10 +308,18 @@ class MessageDetail(BaseModel):
     message's one From: the client asks for the HTML with ``remote=1``."""
     one_click_unsubscribe: bool
     """``POST /messages/{ref}/unsubscribe`` would post: the account's server vouches for it."""
+    preferred_view: sender_views.View
+    """The view the message opens in: ``html`` when it has HTML, unless the user reads its
+    sender as text (``/sender-views``)."""
 
     @classmethod
     def of(
-        cls, view: MessageView, *, remote_trusted: bool, one_click_unsubscribe: bool
+        cls,
+        view: MessageView,
+        *,
+        remote_trusted: bool,
+        one_click_unsubscribe: bool,
+        preferred_view: sender_views.View,
     ) -> MessageDetail:
         body = view.body
         return cls(
@@ -352,6 +360,7 @@ class MessageDetail(BaseModel):
             authentication=AuthenticationVerdict.model_validate(view.authentication),
             remote_trusted=remote_trusted,
             one_click_unsubscribe=one_click_unsubscribe,
+            preferred_view=preferred_view,
         )
 
 
@@ -436,6 +445,7 @@ def message(
         view,
         remote_trusted=trusted,
         one_click_unsubscribe=unsubscribe.offered(ctx, user.id, view),
+        preferred_view=sender_views.preferred_view(db, user.id, view),
     )
 
 

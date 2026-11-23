@@ -275,7 +275,7 @@ First, fixes carried over from 0.14.0 testing:
       another's folders; All inboxes and the views stay above it.
 - [ ] **Dark mode for HTML mail** — the sandboxed frame's colours adapted to a dark theme, off
       for a message with one click.
-- [ ] **HTML first** — a message with an HTML version opens in it, not in its text version (with
+- [x] **HTML first** — a message with an HTML version opens in it, not in its text version (with
       *Dark mode for HTML mail*); the Text/HTML switch stays, and a switch away is remembered per
       sender.
 - [x] **Mobile and installable** — a layout pass for phones, and a web app manifest (with

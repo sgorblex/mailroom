@@ -6,7 +6,7 @@ import pytest
 
 from mailroom.auth.password import password_matches
 from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session, session_user
-from mailroom.mail import remote_senders
+from mailroom.mail import remote_senders, sender_views
 from tests.conftest import ADMIN_USERNAME, PASSWORD, USERNAME
 
 if TYPE_CHECKING:
@@ -116,12 +116,14 @@ def test_removing_a_user_ends_their_sessions(
     assert session_user(db_session, token) is None
 
 
-def test_removing_a_user_forgets_their_remote_content_senders(
+def test_removing_a_user_forgets_the_senders_they_remembered(
     admin_client: TestClient, db_session: Session, user: User
 ) -> None:
     remote_senders.remember(db_session, user.id, "news@shop.example")
+    sender_views.remember(db_session, user.id, "news@shop.example")
     assert admin_client.delete(f"/api/v1/users/{user.id}").status_code == 204
     assert remote_senders.senders(db_session, user.id) == []
+    assert sender_views.senders(db_session, user.id) == []
 
 
 def test_a_reset_signs_them_out_and_sets_the_new_password(

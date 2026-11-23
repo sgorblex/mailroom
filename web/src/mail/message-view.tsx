@@ -4,7 +4,7 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import { useNavigate } from '@tanstack/react-router'
 import { ShieldAlert, ShieldCheck, ShieldQuestionMark, TriangleAlert } from 'lucide-react'
 
-import { readMessage, type MailAddress, type MessageView as MessageData } from '@/api/mail.ts'
+import { chooseSenderView, readMessage, type MailAddress, type MessageView as MessageData } from '@/api/mail.ts'
 import { useTimeZone } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { formatDateTime } from '@/lib/format.ts'
@@ -174,8 +174,29 @@ function LoadedMessage({
 }): ReactElement {
   const { t, i18n } = useTranslation(MAIL_NS)
   const timeZone = useTimeZone()
-  // The text is the default; a message whose text body is empty opens on its HTML.
-  const [html, setHtml] = useState(view.has_html && view.text.content === '')
+  // HTML first, unless the user reads its sender as text; an empty text body opens on the HTML.
+  const [html, setHtml] = useState(view.has_html && (view.preferred_view === 'html' || view.text.content === ''))
+  const [viewFailure, setViewFailure] = useState<string | null>(null)
+  const lastChoice = useRef<Promise<void>>(Promise.resolve())
+
+  // A switch is remembered for the sender: Text from now on, or HTML again.
+  function choose(showHtml: boolean): void {
+    if (showHtml === html) {
+      return
+    }
+    setHtml(showHtml)
+    setViewFailure(null)
+    if (view.from === null) {
+      return
+    }
+    // One after another, so the server keeps the last choice whatever order requests land in.
+    const chosen = showHtml ? 'html' : 'text'
+    lastChoice.current = lastChoice.current
+      .then(() => chooseSenderView(view.ref, chosen))
+      .catch((error: unknown) => {
+        setViewFailure(mailErrorMessage(t, error, t('message.senderViewFailed')))
+      })
+  }
 
   return (
     <>
@@ -227,7 +248,7 @@ function LoadedMessage({
             size="xs"
             aria-pressed={!html}
             onClick={() => {
-              setHtml(false)
+              choose(false)
             }}
           >
             {t('message.showText')}
@@ -237,12 +258,17 @@ function LoadedMessage({
             size="xs"
             aria-pressed={html}
             onClick={() => {
-              setHtml(true)
+              choose(true)
             }}
           >
             {t('message.showHtml')}
           </Button>
         </div>
+      )}
+      {viewFailure !== null && (
+        <p role="alert" className="text-sm text-destructive">
+          {viewFailure}
+        </p>
       )}
       {html ? (
         <HtmlBody

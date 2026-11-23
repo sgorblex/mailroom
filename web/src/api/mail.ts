@@ -204,6 +204,8 @@ const messageViewSchema = z.object({
   remote_trusted: z.boolean(),
   /** `unsubscribe` would post: the account's own authentication server vouches for the list's one-click fields. */
   one_click_unsubscribe: z.boolean(),
+  /** The view it opens in: `html` when it has HTML, unless the user reads its sender as text. */
+  preferred_view: z.enum(['html', 'text']),
 })
 export type MessageView = z.infer<typeof messageViewSchema>
 
@@ -477,14 +479,14 @@ export async function checkMessageHtml(ref: string, remote: boolean, signal?: Ab
   throw new ApiRequestError(response.status, body, `HTTP ${String(response.status)}`)
 }
 
-const remoteSenderSchema = z.object({ address: z.string(), created_at: z.string() })
-export type RemoteSender = z.infer<typeof remoteSenderSchema>
+const rememberedSenderSchema = z.object({ address: z.string(), created_at: z.string() })
+export type RememberedSender = z.infer<typeof rememberedSenderSchema>
 
 /** The senders whose remote images the user shows without asking, by address. */
-export async function listRemoteSenders(signal?: AbortSignal): Promise<RemoteSender[]> {
+export async function listRemoteSenders(signal?: AbortSignal): Promise<RememberedSender[]> {
   const answer = await apiGetJson(`${base}/remote-senders`, {
     init: { signal },
-    schema: z.object({ senders: z.array(remoteSenderSchema) }),
+    schema: z.object({ senders: z.array(rememberedSenderSchema) }),
   })
   return answer.senders
 }
@@ -493,12 +495,30 @@ export async function listRemoteSenders(signal?: AbortSignal): Promise<RemoteSen
  * Remembers the From of the message `ref` names: the server reads it and refuses
  * (`sender_not_verified`) unless DMARC passed for that one From.
  */
-export function addRemoteSender(ref: string): Promise<RemoteSender> {
-  return apiPostJson(`${base}/remote-senders`, { ref }, { schema: remoteSenderSchema })
+export function addRemoteSender(ref: string): Promise<RememberedSender> {
+  return apiPostJson(`${base}/remote-senders`, { ref }, { schema: rememberedSenderSchema })
 }
 
 export async function removeRemoteSender(address: string): Promise<void> {
   await apiPostJson(`${base}/remote-senders/remove`, { address })
+}
+
+/** The senders whose mail the user reads as text, by address. */
+export async function listTextSenders(signal?: AbortSignal): Promise<RememberedSender[]> {
+  const answer = await apiGetJson(`${base}/sender-views`, {
+    init: { signal },
+    schema: z.object({ senders: z.array(rememberedSenderSchema) }),
+  })
+  return answer.senders
+}
+
+/** The view the From of the message `ref` names opens in, read by the server: `text` remembers it, `html` forgets it. */
+export async function chooseSenderView(ref: string, view: 'html' | 'text'): Promise<void> {
+  await apiPostJson(`${base}/sender-views`, { ref, view })
+}
+
+export async function removeTextSender(address: string): Promise<void> {
+  await apiPostJson(`${base}/sender-views/remove`, { address })
 }
 
 const suggestedAddressSchema = addressSchema.extend({ sent: z.boolean() })

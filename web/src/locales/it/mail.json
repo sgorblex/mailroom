@@ -284,6 +284,7 @@
     "format": "Mostra come",
     "showText": "Testo",
     "showHtml": "HTML",
+    "senderViewFailed": "Impossibile ricordare questa vista per il mittente.",
     "body": "Corpo del messaggio",
     "noText": "Questo messaggio non ha testo.",
     "removedChars_one": "Da questo messaggio è stato rimosso {{count}} carattere invisibile.",

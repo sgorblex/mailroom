@@ -284,6 +284,7 @@
     "format": "Show as",
     "showText": "Text",
     "showHtml": "HTML",
+    "senderViewFailed": "Could not remember this view for the sender.",
     "body": "Message body",
     "noText": "This message has no text.",
     "removedChars_one": "{{count}} invisible character was removed from this message.",

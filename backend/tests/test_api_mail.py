@@ -498,6 +498,58 @@ def test_remote_content_is_remembered_only_for_a_verified_sender(
     assert cross_site.status_code == 403
 
 
+def test_html_mail_opens_as_html_unless_its_sender_is_read_as_text(
+    mailbox: Mailbox, caplog: pytest.LogCaptureFixture
+) -> None:
+    mailbox.seed(mime("Sale", sender="Shop <News@Shop.example>", html="<p>Sale</p>"))
+    mailbox.seed(mime("Later", sender="news@shop.example", html="<p>Later</p>"))
+    mailbox.seed(mime("Plain", sender="news@shop.example"))
+    plain, later, sale = mailbox.refs()
+    views = f"{MAIL}/sender-views"
+
+    def preferred(ref: str) -> str:
+        return cast("str", mailbox.get(f"/messages/{ref}")["preferred_view"])
+
+    assert (preferred(sale), preferred(later), preferred(plain)) == ("html", "html", "text")
+    # The server reads the From itself: any From, no verification asked.
+    with caplog.at_level(logging.INFO, logger="mailroom"):
+        chosen = mailbox.client.post(views, json={"ref": sale, "view": "text"})
+        again = mailbox.client.post(views, json={"ref": later, "view": "text"})
+    assert chosen.status_code == 200, chosen.text
+    assert chosen.json() == {"address": "news@shop.example", "view": "text"}
+    assert again.json() == chosen.json()
+    assert "shop.example" not in caplog.text
+    listed = mailbox.client.get(views).json()["senders"]
+    assert [each["address"] for each in listed] == ["news@shop.example"]
+    assert (preferred(sale), preferred(later)) == ("text", "text")
+
+    back = mailbox.client.post(views, json={"ref": later, "view": "html"})
+    assert back.json() == {"address": "news@shop.example", "view": "html"}
+    assert mailbox.client.get(views).json() == {"senders": []}
+    assert preferred(sale) == "html"
+
+    assert mailbox.client.post(views, json={"ref": sale, "view": "text"}).status_code == 200
+    removed = mailbox.client.post(f"{views}/remove", json={"address": "NEWS@shop.example"})
+    assert removed.status_code == 204
+    gone = mailbox.client.post(f"{views}/remove", json={"address": "news@shop.example"})
+    assert gone.status_code == 404
+    assert preferred(sale) == "html"
+    bad = mailbox.client.post(views, json={"ref": sale, "view": "pdf"})
+    assert bad.status_code == 422
+    cross_site = mailbox.client.post(
+        views, json={"ref": sale, "view": "text"}, headers={"Sec-Fetch-Site": "cross-site"}
+    )
+    assert cross_site.status_code == 403
+
+
+def test_a_sender_view_is_refused_for_a_message_without_a_from(mailbox: Mailbox) -> None:
+    mailbox.seed(mime("Nobody", sender="undisclosed-recipients:;", html="<p>Hi</p>"))
+    (ref,) = mailbox.refs()
+    refused = mailbox.client.post(f"{MAIL}/sender-views", json={"ref": ref, "view": "text"})
+    assert detail(refused) == (400, "no_sender"), refused.text
+    assert mailbox.client.get(f"{MAIL}/sender-views").json() == {"senders": []}
+
+
 def test_one_click_unsubscribe_posts_only_where_the_accounts_server_vouches(
     mailbox: Mailbox,
     audited: Callable[[int], list[AuditRecord]],

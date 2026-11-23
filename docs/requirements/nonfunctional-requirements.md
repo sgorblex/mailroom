@@ -56,6 +56,11 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   `remote_sender_added` / `remote_sender_removed` with `user_id`, never the address. What is removed
   whatever the user chooses: [`mail-client.md`](mail-client.md), the HTML route. Links open in a new
   top-level context with `noopener` and `noreferrer`.
+- **HTML first, still in the frame.** A message with HTML opens on its HTML view, unless the user
+  reads its sender as text (`app.sender_view_preference(user_id, address, view, created_at)`, one
+  row per user and address, `view` only `text`). That choice only changes which view opens, so
+  any From counts; it never loads remote content nor takes the HTML out of the sandboxed frame.
+  Logged as `sender_view_text` / `sender_view_html` with `user_id`, never the address.
 - **Links show where they go.** A link's `title` is always the host it goes to (IDNA as a browser
   computes it, UTS #46, so a lookalike in another script shows as `xn--…`), or none when no
   browser would take it for a host; the sender's is dropped. A link whose text names
@@ -588,8 +593,8 @@ bounded to one minor because the server relies on its handlers.
   for the MCP server); `account_autoconfig` with `user_id` and `outcome` (the source, or
   `none`); never a login, a host or a password.
 - **Removing a user** removes, in the same transaction, the app's rows about their accounts (and the
-  senders whose remote content they show, and the ledger of copies their filters moved between
-  accounts) and mailroom-core's (`forget_user`: settings with their
+  senders whose remote content they show and those whose mail they read as text, and the ledger
+  of copies their filters moved between accounts) and mailroom-core's (`forget_user`: settings with their
   history, sealed passwords, send log). While a save of their accounts holds them past
   mailroom-core's lock timeout, nothing is removed: 503 `user_accounts_busy`.
 - **Known risk — outbound connections:** a login test or a folder listing connects to whatever

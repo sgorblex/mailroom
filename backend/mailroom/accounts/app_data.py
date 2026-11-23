@@ -1,8 +1,8 @@
 """The app's own rows about a user's accounts (schema ``app``), beside mailroom-core's: the Run
 filters switch, and forgetting all of it when an account or its user goes (the user's remembered
-remote-content senders, muted threads, ledger of copies moved between accounts, mail index,
-notification folders, signatures, held sends, snoozes and vacation replies, and its folders in
-the saved views too)."""
+remote-content senders and senders read as text, muted threads, ledger of copies moved between
+accounts, mail index, notification folders, signatures, held sends, snoozes and vacation
+replies, and its folders in the saved views too)."""
 
 from __future__ import annotations
 
@@ -25,6 +25,7 @@ from mailroom.models import (
     RemoteContentSender,
     RuleSet,
     SavedView,
+    SenderViewPreference,
     TransferLedger,
 )
 from mailroom_core.store import forget_user
@@ -154,6 +155,7 @@ def forget_user_accounts(db: Session, user_id: int) -> None:
     db.execute(delete(MailIndexFolder).where(MailIndexFolder.user_id == user_id))
     db.execute(delete(MailNotificationFolders).where(MailNotificationFolders.user_id == user_id))
     db.execute(delete(RemoteContentSender).where(RemoteContentSender.user_id == user_id))
+    db.execute(delete(SenderViewPreference).where(SenderViewPreference.user_id == user_id))
     db.execute(delete(SavedView).where(SavedView.user_id == user_id))
     db.execute(delete(IdentitySignature).where(IdentitySignature.user_id == user_id))
     _forget_scheduled(db, user_id)

@@ -228,7 +228,7 @@ function byConversation(state: FakeMailState, rows: MessageItem[]): Pick<Message
   }
 }
 
-/** A message view of `item`, plain text unless `fields` say otherwise. */
+/** A message view of `item`, plain text unless `fields` say otherwise; one with HTML opens in it, as the server's. */
 export function messageView(item: MessageItem, fields: Partial<MessageView> = {}): MessageView {
   return {
     ref: item.ref,
@@ -276,6 +276,7 @@ export function messageView(item: MessageItem, fields: Partial<MessageView> = {}
     },
     remote_trusted: false,
     one_click_unsubscribe: false,
+    preferred_view: fields.has_html === true ? 'html' : 'text',
     ...fields,
   }
 }
@@ -1360,6 +1361,20 @@ export function stubMailApi(state: FakeMailState): Mock {
       const starts = (each: SuggestedAddress): boolean =>
         [each.address, ...each.name.split(/\s+/)].some((word) => word.toLowerCase().startsWith(prefix))
       return json(200, { addresses: (state.addressBook ?? []).filter(starts).slice(0, 10) })
+    }
+    if (path === '/api/v1/mail/sender-views' && init?.method === 'POST') {
+      // The From's mail opens in `view` from now on, each of its views with HTML says so.
+      const { ref, view: chosen } = JSON.parse(init.body as string) as { ref: string; view: 'html' | 'text' }
+      const address = state.views[ref]?.from?.address
+      if (address === undefined) {
+        return notFound()
+      }
+      for (const each of Object.values(state.views)) {
+        if (each.from?.address === address && each.has_html) {
+          each.preferred_view = chosen
+        }
+      }
+      return json(200, { address, view: chosen })
     }
     if (path === '/api/v1/mail/remote-senders' && init?.method === 'POST') {
       // Remembered when DMARC passed for the message's From; its views then say so.
