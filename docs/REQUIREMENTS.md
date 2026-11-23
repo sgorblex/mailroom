@@ -18,8 +18,8 @@ Each capability carries a **maturity**:
 
 **Maturity: Done** — FastAPI API with `GET /api/v1/health` (liveness for the SPA), `/healthz`
 (container healthcheck), `/api/v1/ready` (database reachable) and `/api/v1/version`; Alembic in
-schema `app` with its own version table; the web app's placeholder screen shows the health check
-through the Vite proxy. Engineering baseline:
+schema `app` with its own version table; the web app's *API status* page (`/health`, in the user
+menu) shows the health check through the Vite proxy. Engineering baseline:
 [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md).
 
 ## Users and accounts
@@ -54,7 +54,8 @@ through the Vite proxy. Engineering baseline:
   ([`requirements/mail-client.md`](requirements/mail-client.md) — *Sender views*).
 - **Appearance.** Each user picks on their *Profile* page the web's theme (light, dark, or as the
   device), its accent colour (teal by default, blue, violet, green, terracotta or rose), its text
-  size (small, default, large), the density of the message lists (comfortable, or compact rows
+  size (small, default, large), the page the web opens on (Home, or Mail, Filters, Accounts or
+  Activity), the density of the message lists (comfortable, or compact rows
   without each message's opening) and where an open message shows on a wide screen (right of the
   list, below it, or off: in the list's place), and what swiping a message row left or right does on
   a touch screen (trash and archive by default; mark read, star, To sort or nothing —
@@ -63,12 +64,18 @@ through the Vite proxy. Engineering baseline:
   — *Own appearance*.
 - **Navigation.** Every signed-in page sits under one header: the Mailroom mark, the instance's
   pages with an icon each (Mail, Filters and Activity only where it runs them, Users only to an
-  admin), the current one marked, and a user menu with the Profile and Sign out. On a phone the
+  admin), the current one marked, and a user menu with the Profile, the API status and Sign out. On a phone the
   header keeps the mark and the user menu, and a tab bar at the bottom holds Home, Mail and Filters
   (as the instance has them), with the other pages, the Profile and Sign out under More. Both menus
   work from the keyboard (the ARIA menu button pattern). The web app installs on a phone's home
   screen or as a desktop app, with Mailroom's icon (on staging, as *Mailroom staging* with the icon
   banded in amber); it still needs the server, nothing works offline.
+- **Home.** The web opens on a summary of the user's mail and filters: unread mail per account
+  inbox and in all, what waits on them (starred, To sort, snoozed coming back today, scheduled
+  sends), each rule set's recent runs and failures and its week's messages acted on, and a tile
+  per page, each part only where the instance runs its feature. The Profile's *Open on* makes the
+  app open on Mail, Filters, Accounts or Activity instead, Home in the nav still showing the
+  summary ([`requirements/mail-client.md`](requirements/mail-client.md#home)).
 - **Undo send.** Each user picks on their *Profile* page how long the web's Send holds a
   message for an Undo, 0 (off) to 30 seconds, 10 by default
   ([`requirements/mail-client.md`](requirements/mail-client.md#undo-send)).

@@ -96,4 +96,22 @@ describe('snoozing a message', () => {
     expect(bodiesTo(fetchMock, '/api/v1/mail/snoozes/7/wake')).toEqual([null])
     expect(await within(dialog).findByText('Nothing is snoozed.')).toBeInTheDocument()
   })
+
+  it('opens the Snoozed list from the address, as Home links to it, and closes it there', async () => {
+    stubMailApi(
+      state({
+        snoozes: [
+          { snooze_id: '7', account: WORK, subject: 'Invoice', sender: null, folder: 'INBOX', until: '2026-11-23T07:00:00+00:00', code: null },
+        ],
+      }),
+    )
+    const history = renderMailApp('/mail?list=snoozed', { user: ALICE, features: ['mail'] })
+    const dialog = await screen.findByRole('dialog', { name: 'Snoozed' })
+    expect(await within(dialog).findByText('Invoice')).toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Close' }))
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Snoozed' })).not.toBeInTheDocument()
+    })
+    expect(history.location.search).not.toContain('list')
+  })
 })

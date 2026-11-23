@@ -10,7 +10,8 @@ export type QuickFilter = (typeof QUICK_FILTERS)[number]
  * the account and folder shown, whether with its subfolders (`sub`; absent, as this browser last
  * listed it), the open message (its ref) and, when it was opened as a conversation's row, that
  * row's ref (`thread`), a search or a view (`view`) in place of the folder, the
- * quick filters narrowing a folder or a search (`only`), and the composer: `compose-session.ts` says what `compose` holds.
+ * quick filters narrowing a folder or a search (`only`), the Snoozed or Scheduled list open over
+ * it (`list`, as Home links to them), and the composer: `compose-session.ts` says what `compose` holds.
  * Kept out of the screen's own chunk: the router validates it before the screen loads.
  */
 export interface MailSearch {
@@ -22,8 +23,13 @@ export interface MailSearch {
   q?: SearchQuery
   view?: ViewKey
   only?: QuickFilter[]
+  list?: MailList
   compose?: string
 }
+
+/** The lists the sidebar opens in a dialog, rather than in the message list. */
+export const MAIL_LISTS = ['snoozed', 'scheduled'] as const
+export type MailList = (typeof MAIL_LISTS)[number]
 
 export function text(value: unknown): string | undefined {
   // The router parses `?folder=2026` as a number: a folder name it is all the same.
@@ -111,6 +117,7 @@ export function validateMailSearch(raw: Record<string, unknown>): MailSearch {
   const view = viewKey(raw['view'])
   const only = quickFilters(raw['only'])
   const compose = text(raw['compose'])
+  const list = MAIL_LISTS.find((each) => each === raw['list'])
   if (account !== undefined) {
     search.account = account
   }
@@ -134,6 +141,9 @@ export function validateMailSearch(raw: Record<string, unknown>): MailSearch {
   }
   if (only !== undefined) {
     search.only = only
+  }
+  if (list !== undefined) {
+    search.list = list
   }
   if (compose !== undefined) {
     search.compose = compose

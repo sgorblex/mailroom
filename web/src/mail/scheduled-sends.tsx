@@ -70,6 +70,12 @@ export function ScheduledEntry(): ReactElement {
   )
 }
 
+/** The Scheduled list on its own, as Home opens it (`list=scheduled` in the mail URL). */
+export function ScheduledList({ onClose }: { onClose: () => void }): ReactElement {
+  const query = useQuery({ queryKey: SCHEDULED_KEY, queryFn: ({ signal }) => listScheduled(signal) })
+  return <ScheduledDialog sends={query.data ?? null} failed={query.isError} onClose={onClose} />
+}
+
 function ScheduledDialog({ sends, failed, onClose }: { sends: ScheduledSend[] | null; failed: boolean; onClose: () => void }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const queryClient = useQueryClient()

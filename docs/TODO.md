@@ -234,8 +234,11 @@ First, fixes carried over from 0.14.0 testing:
   - [ ] **Themes** (later) — alternative palettes to choose beside Soft (Sand, Lilac, Moss and Ink
         were proposed).
 - [x] **App shell** — a new header with icon nav and a user menu, and a bottom tab bar on phones.
-- [ ] **Home page** — a real start page after sign-in instead of landing straight in a mail
-      list, its content configurable (unread across accounts, flagged, recent filter runs, say).
+- [x] **Home page** — a real start page after sign-in instead of landing straight in a mail
+      list, its content configurable (unread across accounts, flagged, recent filter runs, say):
+      unread per inbox, what waits on the user, the filters' week and page tiles; the Profile's
+      *Open on* goes to Mail, Filters, Accounts or Activity instead. The API status moved to
+      `/health`.
 - [x] **Every message action in the reading pane** — each action on one message (move, archive,
       junk, To sort, mute, filter like this, print, `.eml`, reply and the rest) offered in the
       pane beside the message, not only some of them there and the rest elsewhere: an action bar

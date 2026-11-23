@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -107,6 +107,43 @@ describe('AppearanceSettings', () => {
     await userEvent.click(screen.getByRole('radio', { name: /^Off/ }))
     expect(fetchMock).toHaveBeenLastCalledWith(PATH, expect.objectContaining({ body: JSON.stringify({ reading_pane: 'off' }) }))
     expect(screen.getByRole('radio', { name: /^Off/ })).toBeChecked()
+  })
+
+  it('saves the page the app opens on, among those the instance offers', async () => {
+    const fetchMock = stubApi(200)
+    renderSignedIn(<AppearanceSettings />, ALICE)
+    const home = screen.getByRole('combobox', { name: 'Open on' })
+    expect(home).toHaveValue('dashboard')
+    expect(within(home).getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'Home (a summary of your mail and filters)',
+      'Mail',
+      'Filters',
+      'Accounts',
+      'Activity',
+    ])
+    await userEvent.selectOptions(home, 'Mail')
+    expect(await screen.findByRole('status')).toHaveTextContent('Saved.')
+    expect(fetchMock).toHaveBeenLastCalledWith(PATH, expect.objectContaining({ body: JSON.stringify({ home: 'mail' }) }))
+    expect(home).toHaveValue('mail')
+  })
+
+  it('offers no home page the instance does not run, but keeps the saved one', () => {
+    stubApi(200)
+    renderSignedIn(<AppearanceSettings />, { ...ALICE, appearance: { ...ALICE.appearance, home: 'mail' } }, ['filters'])
+    const home = screen.getByRole('combobox', { name: 'Open on' })
+    expect(within(home).getAllByRole('option').map((option) => option.getAttribute('value'))).toEqual([
+      'dashboard',
+      'mail',
+      'filters',
+      'accounts',
+      'activity',
+    ])
+    cleanup()
+    renderSignedIn(<AppearanceSettings />, ALICE, [])
+    expect(within(screen.getByRole('combobox', { name: 'Open on' })).getAllByRole('option').map((option) => option.getAttribute('value'))).toEqual([
+      'dashboard',
+      'accounts',
+    ])
   })
 
   it('saves what swiping a row left or right does, saying it is on a touch screen', async () => {

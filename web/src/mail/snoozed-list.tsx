@@ -63,6 +63,12 @@ export function SnoozedEntry(): ReactElement {
   )
 }
 
+/** The Snoozed list on its own, as Home opens it (`list=snoozed` in the mail URL). */
+export function SnoozedList({ onClose }: { onClose: () => void }): ReactElement {
+  const query = useQuery({ queryKey: SNOOZES_KEY, queryFn: ({ signal }) => listSnoozes(signal) })
+  return <SnoozedDialog snoozes={query.data ?? null} failed={query.isError} onClose={onClose} />
+}
+
 function SnoozedDialog({ snoozes, failed, onClose }: { snoozes: Snooze[] | null; failed: boolean; onClose: () => void }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const queryClient = useQueryClient()

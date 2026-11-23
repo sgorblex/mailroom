@@ -39,6 +39,7 @@ from sqlalchemy import (
     and_,
     any_,
     func,
+    join,
     literal,
     not_,
     or_,
@@ -64,7 +65,7 @@ from mailroom_core.render import Address
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping, Sequence
 
-    from sqlalchemy import ColumnElement
+    from sqlalchemy import ColumnElement, Join
     from sqlalchemy.orm import InstrumentedAttribute, Session
 
     from mailroom_core.config import TimeZoneName
@@ -1015,3 +1016,68 @@ def label_counts(
         labelled.c.label
     )
     return {label: (total, unread) for label, total, unread in db.execute(query)}
+
+
+def _whole(user_id: int, accounts: Sequence[int]) -> list[ColumnElement[bool]]:
+    """The readable folders of ``accounts`` the index holds whole (no age limit), whose counts
+    stand for the server's (``counted_folders``)."""
+    return [
+        *_ready(user_id),
+        MailIndexFolder.account_id.in_(sorted(set(accounts))),
+        MailIndexFolder.oldest_indexed.is_(None),
+    ]
+
+
+def _rows_with_folders() -> Join:
+    return join(
+        MailIndexMessage,
+        MailIndexFolder,
+        and_(
+            MailIndexMessage.folder_id == MailIndexFolder.id,
+            MailIndexMessage.user_id == MailIndexFolder.user_id,
+        ),
+    )
+
+
+def inbox_unread(db: Session, user_id: int, accounts: Sequence[int]) -> dict[int, int]:
+    """Each account's unread INBOX count as the index holds it: its INBOX row's count, else on
+    Gmail (rows with a Gmail id) All Mail's unread rows carrying INBOX's label. Only a folder held
+    whole counts, as in ``counted_folders``: one indexed under an age limit leaves out the older
+    unread mail. An account with neither is left out."""
+    if not accounts:
+        return {}
+    inboxes = select(MailIndexFolder.account_id, MailIndexFolder.unread_count).where(
+        *_whole(user_id, accounts), MailIndexFolder.path == "INBOX"
+    )
+    # A Result has keys(): dict() would read it as a mapping.
+    counts: dict[int, int] = dict(db.execute(inboxes).all())
+    rest = [account for account in accounts if account not in counts]
+    if rest:
+        unread = _has(MailIndexMessage.labels, INBOX_LABEL) & not_(
+            _has(MailIndexMessage.flags, _SEEN)
+        )
+        gmail = (
+            select(MailIndexFolder.account_id, func.count().filter(unread))
+            .select_from(_rows_with_folders())
+            .where(*_whole(user_id, rest), MailIndexMessage.gm_msgid.is_not(None))
+            .group_by(MailIndexFolder.account_id)
+        )
+        counts.update(db.execute(gmail).all())
+    return counts
+
+
+def marked(db: Session, user_id: int, accounts: Sequence[int]) -> tuple[int, int]:
+    """Messages starred, and marked To sort, among the rows of the readable folders of
+    ``accounts`` (under an age limit, those since its day)."""
+    if not accounts:
+        return 0, 0
+    query = (
+        select(
+            func.count().filter(_has(MailIndexMessage.flags, _FLAGGED)),
+            func.count().filter(_has(MailIndexMessage.keywords, TO_SORT)),
+        )
+        .select_from(_rows_with_folders())
+        .where(*_ready(user_id), MailIndexFolder.account_id.in_(sorted(set(accounts))))
+    )
+    starred, to_sort = db.execute(query).one()
+    return starred, to_sort

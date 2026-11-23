@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button.tsx'
 
 type HealthState = { kind: 'checking' } | { kind: 'ok' } | { kind: 'failed'; message: string }
 
-/** Placeholder home: proves the SPA reaches `/api/v1/health` through the proxy. */
+/** Whether the SPA reaches `/api/v1/health` through the proxy, at `/health` (the user menu links it). */
 export function HealthScreen(): ReactElement {
   const { t } = useTranslation()
   const [state, setState] = useState<HealthState>({ kind: 'checking' })

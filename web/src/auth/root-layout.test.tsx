@@ -157,7 +157,7 @@ describe('RootLayout', () => {
     expect(await screen.findByText('Home page')).toBeInTheDocument()
     expect(linkNames(navs().header)).toEqual(['Home', 'Mail', 'Accounts', 'Filters', 'Activity'])
     const menu = await openUserMenu()
-    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Profile', 'Sign out'])
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Profile', 'API status', 'Sign out'])
     await userEvent.click(within(menu).getByRole('menuitem', { name: 'Sign out' }))
     expect(await screen.findByLabelText('Password')).toBeInTheDocument()
   })
@@ -342,6 +342,7 @@ describe('RootLayout', () => {
       'Activity',
       'Users',
       'Profile',
+      'API status',
       'Sign out',
     ])
     await userEvent.click(within(menu).getByRole('menuitem', { name: 'Profile' }))

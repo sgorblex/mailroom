@@ -36,7 +36,13 @@ MAIL = Features(mail=True, mcp=False, filters=False)
 MCP = Features(mail=False, mcp=True, filters=False)
 FILTERS = Features(mail=False, mcp=False, filters=True)
 
-BASE_PATHS = {"/api/v1/auth/me", "/api/v1/accounts", "/api/v1/users", "/api/v1/me/identities"}
+BASE_PATHS = {
+    "/api/v1/auth/me",
+    "/api/v1/accounts",
+    "/api/v1/users",
+    "/api/v1/me/identities",
+    "/api/v1/home",
+}
 # The user's limits come with the mail layer, which mail and MCP both bring.
 LIMITS_PATH = "/api/v1/me/limits"
 # The audit trail comes with anything that writes mail: the mail layer or filters.
@@ -250,6 +256,8 @@ def test_the_base_has_no_mail_layer_and_none_of_the_features(base: Instance, use
     ):
         assert client.get(path).status_code == 404, path
     assert client.post("/mcp", json={}).status_code == 404
+    # Home leaves out what the instance does not run.
+    assert client.get("/api/v1/home").json() == {"mail": None, "filters": None}
 
 
 def test_the_base_keeps_accounts_and_users(base: Instance, user: User, admin: User) -> None:
@@ -289,6 +297,8 @@ def test_a_filters_only_instance_needs_no_mail_layer(filters_only: Instance, use
     folders = client.get("/api/v1/accounts/1/folders")
     assert (folders.status_code, folders.json()["detail"]["code"]) == (502, "unreachable")
     assert client.get("/api/v1/mail/accounts/1/messages").status_code == 404
+    home = client.get("/api/v1/home").json()
+    assert (home["mail"], home["filters"]) == (None, {"rule_sets": []})
 
 
 def test_an_mcp_only_instance_serves_the_mail_tools(
