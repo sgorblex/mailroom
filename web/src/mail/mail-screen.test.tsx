@@ -642,6 +642,29 @@ describe('MailScreen', () => {
     expect(document.querySelector('iframe')).toBeNull()
   })
 
+  it('offers the original colours only beside a framed dark document, never beside an HTML error', async () => {
+    document.documentElement.classList.add('dark')
+    try {
+      const fake = state({ refuse: { [`GET /api/v1/mail/messages/${html.ref}/html`]: refusal(429, 'busy') } })
+      fake.views[html.ref] = messageView(html, { has_html: true, preferred_view: 'html' })
+      stubMailApi(fake)
+      renderMailApp(`/mail?message=${html.ref}`)
+
+      const body = await screen.findByRole('region', { name: 'Message body' })
+      expect(await within(body).findByRole('alert')).toHaveTextContent('The account is busy with another request.')
+      expect(within(body).getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Original colours' })).not.toBeInTheDocument()
+
+      // Once the document answers and is framed, the toggle is there.
+      delete fake.refuse?.[`GET /api/v1/mail/messages/${html.ref}/html`]
+      await userEvent.click(within(body).getByRole('button', { name: 'Try again' }))
+      expect(await screen.findByTitle(`HTML version of ${html.subject}`)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Original colours' })).toHaveAttribute('aria-pressed', 'false')
+    } finally {
+      document.documentElement.classList.remove('dark')
+    }
+  })
+
   it('ends the session when the HTML view answers 401', async () => {
     const ended = vi.fn()
     onSessionEnded(ended)
@@ -708,28 +731,44 @@ describe('MailScreen', () => {
     expect(frame).not.toHaveAttribute('srcdoc')
   })
 
-  it('shows HTML in dark colours in a dark theme, with the original colours a click away for that message', async () => {
+  it('shows HTML in dark colours in a dark theme, with the original colours a fragment away for that message', async () => {
     document.documentElement.classList.add('dark')
     try {
       const fake = state()
       fake.views[html.ref] = messageView(html, { has_html: true, preferred_view: 'html' })
-      stubMailApi(fake)
+      const fetchMock = stubMailApi(fake)
       renderMailApp(`/mail?message=${html.ref}`)
 
       const url = `/api/v1/mail/messages/${html.ref}/html`
-      expect(await screen.findByTitle(`HTML version of ${html.subject}`)).toHaveAttribute('src', `${url}?dark=1`)
+      const frame = await screen.findByTitle(`HTML version of ${html.subject}`)
+      expect(frame).toHaveAttribute('src', `${url}?dark=1#mailroom-dark`)
       const original = screen.getByRole('button', { name: 'Original colours' })
       expect(original).toHaveAttribute('aria-pressed', 'false')
+      expect(original).toHaveAttribute('data-variant', 'outline')
+      expect(original.querySelector('svg')).toBeNull()
+      const htmlRequests = (): number =>
+        fetchMock.mock.calls.filter(([input]) => String(input).includes(`${html.ref}/html`)).length
+      const requested = htmlRequests()
+      // The same document, its fragment alone switched: no request, the same frame.
       await userEvent.click(original)
       expect(original).toHaveAttribute('aria-pressed', 'true')
-      expect(await screen.findByTitle(`HTML version of ${html.subject}`)).toHaveAttribute('src', url)
+      expect(original).toHaveAttribute('data-variant', 'secondary')
+      // A check marks it pressed, more than the secondary variant does in a dark theme; the name stays.
+      expect(original.querySelector('svg.lucide-check')).toHaveAttribute('aria-hidden', 'true')
+      expect(screen.getByTitle(`HTML version of ${html.subject}`)).toBe(frame)
+      expect(frame).toHaveAttribute('src', `${url}?dark=1#mailroom-original`)
+      expect(htmlRequests()).toBe(requested)
       // The choice outlives a look at the text, as long as the message is open.
       await userEvent.click(screen.getByRole('button', { name: 'Text' }))
       await userEvent.click(await screen.findByRole('button', { name: 'HTML' }))
-      expect(await screen.findByTitle(`HTML version of ${html.subject}`)).toHaveAttribute('src', url)
+      expect(await screen.findByTitle(`HTML version of ${html.subject}`)).toHaveAttribute(
+        'src',
+        `${url}?dark=1#mailroom-original`,
+      )
       expect(screen.getByRole('button', { name: 'Original colours' })).toHaveAttribute('aria-pressed', 'true')
       await userEvent.click(screen.getByRole('button', { name: 'Original colours' }))
-      expect(await screen.findByTitle(`HTML version of ${html.subject}`)).toHaveAttribute('src', `${url}?dark=1`)
+      expect(screen.getByTitle(`HTML version of ${html.subject}`)).toHaveAttribute('src', `${url}?dark=1#mailroom-dark`)
+      expect(screen.getByRole('button', { name: 'Original colours' }).querySelector('svg')).toBeNull()
 
       // The theme turning light follows at once, and the toggle goes with it.
       await act(async () => {

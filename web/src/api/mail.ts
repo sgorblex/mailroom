@@ -450,11 +450,16 @@ export function readMessage(
 
 /**
  * The standalone, sanitised HTML document of a message, for a sandboxed iframe's `src`; `dark`
- * adapts it to a dark theme (dark colours, or inverted with its images kept).
+ * adapts it to a dark theme (dark colours, or inverted with its images kept). The dark document
+ * also holds the message's own colours, shown when its fragment is `#mailroom-original`
+ * (`original`), else `#mailroom-dark`: a frame switches between them with the fragment alone, a
+ * same-document navigation with no request, no reload and no script. Never no fragment at all,
+ * which would load the document again.
  */
-export function messageHtmlUrl(ref: string, remote: boolean, dark = false): string {
+export function messageHtmlUrl(ref: string, remote: boolean, dark = false, original = false): string {
   const query = [...(remote ? ['remote=1'] : []), ...(dark ? ['dark=1'] : [])].join('&')
-  return `${getApiBaseUrl()}${messagePath(ref)}/html${query === '' ? '' : `?${query}`}`
+  const fragment = dark ? (original ? '#mailroom-original' : '#mailroom-dark') : ''
+  return `${getApiBaseUrl()}${messagePath(ref)}/html${query === '' ? '' : `?${query}`}${fragment}`
 }
 
 /**
