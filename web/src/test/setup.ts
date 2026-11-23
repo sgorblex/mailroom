@@ -31,6 +31,9 @@ Object.assign(Range.prototype, {
 })
 Object.assign(Document.prototype, { elementFromPoint: () => null })
 
+// axe draws text on a canvas to tell icon fonts apart; jsdom has none, and says so on every run.
+Object.assign(HTMLCanvasElement.prototype, { getContext: () => null })
+
 afterEach(() => {
   cleanup()
   // What a screen keeps in the browser (the folder tree's open levels) does not leak into the next test.

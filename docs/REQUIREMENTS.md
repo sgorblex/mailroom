@@ -62,6 +62,11 @@ menu) shows the health check through the Vite proxy. Engineering baseline:
   [`requirements/mail-client.md`](requirements/mail-client.md)); a choice shows at once and is the same on every device they sign in
   on. How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md)
   — *Own appearance*.
+- **Accessibility.** The web is used by keyboard alone, shows where focus is, keeps AA contrast in
+  every theme and accent, and moves less for whoever asks their device for less motion; automated
+  checks run on every main screen. How:
+  [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md) —
+  *Accessibility*.
 - **Navigation.** Every signed-in page sits under one header: the Mailroom mark, the instance's
   pages with an icon each (Mail, Filters and Activity only where it runs them, Users only to an
   admin), the current one marked, and a user menu with the Profile, the API status and Sign out. On a phone the

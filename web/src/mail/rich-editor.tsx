@@ -419,7 +419,7 @@ export function RichEditor({
   }
 
   return (
-    <div className="flex flex-1 flex-col rounded-md border border-input shadow-xs focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50">
+    <div className="flex flex-1 flex-col rounded-md border border-input shadow-xs focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring">
       <div role="toolbar" aria-label={t('compose.formatting')} aria-controls={bodyId} className="flex flex-wrap items-center gap-0.5 border-b p-1">
         <ToolButton label={t('compose.bold')} pressed={active.bold} disabled={locked} onClick={run((chain) => chain.toggleBold())}>
           <Bold aria-hidden="true" />

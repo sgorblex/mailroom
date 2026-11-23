@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { UserJson } from '@/api/auth.ts'
 import type { ScheduledSend, SendResult } from '@/api/mail.ts'
 import { bodiesTo, fakeDraft, type FakeMailState, HOME, messageItem, messageView, plainTextsAsked, queriesTo, refusal, savesOf, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
+import { expectNoAxeViolations } from '@/test/axe.ts'
 import { openMessageMenu, renderMailApp } from '@/test/mail-app.tsx'
 
 import { PINNED_ALERT_ID, PINNED_STATUS_ID } from './toast.tsx'
@@ -89,6 +90,17 @@ afterEach(() => {
 })
 
 describe('composing', () => {
+  it('passes axe with the composer open, its toolbar and an attachment in the tray', async () => {
+    const user = userEvent.setup()
+    stubMailApi(state())
+    renderMailApp('/mail')
+    const form = await compose(user)
+    await body(form)
+    await user.upload(within(form).getByLabelText('Attach files'), new File(['hello'], 'notes.txt', { type: 'text/plain' }))
+    await within(form).findByText('notes.txt')
+    await expectNoAxeViolations()
+  })
+
   it('autosaves committed recipients only: a half-typed address cannot fail a save', async () => {
     const user = userEvent.setup()
     const fetchMock = stubMailApi(state())

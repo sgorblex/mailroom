@@ -123,7 +123,7 @@ export function CommandPalette({
           data-form-type="other"
           placeholder={t('palette.placeholder')}
           spellCheck={false}
-          className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring"
         />
         <ul {...getMenuProps({ 'aria-label': t('palette.results') })} className="max-h-80 overflow-y-auto">
           {groups.map((group, groupAt) => (

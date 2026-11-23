@@ -21,7 +21,7 @@ export function Switch({
         onCheckedChange(!checked)
       }}
       className={cn(
-        'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50 aria-checked:bg-primary',
+        'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring disabled:opacity-50 aria-checked:bg-primary',
         className,
       )}
       {...props}

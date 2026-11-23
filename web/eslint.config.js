@@ -67,6 +67,8 @@ export default defineConfig([
     },
     rules: {
       ...vitest.configs.recommended.rules,
+      // `src/test/axe.ts`: expects inside.
+      'vitest/expect-expect': ['error', { assertFunctionNames: ['expect', 'expectNoAxeViolations'] }],
       '@typescript-eslint/explicit-function-return-type': 'off',
       '@typescript-eslint/explicit-module-boundary-types': 'off',
     },

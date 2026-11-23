@@ -2,6 +2,7 @@ import { act, fireEvent, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { expectNoAxeViolations } from '@/test/axe.ts'
 import { renderSignedIn } from '@/test/signed-in.tsx'
 
 import { ProfileScreen } from './profile-screen.tsx'
@@ -149,6 +150,13 @@ afterEach(() => {
 })
 
 describe('ProfileScreen', () => {
+  it('passes axe', async () => {
+    stubApi()
+    renderSignedIn(<ProfileScreen />, ALICE)
+    await screen.findByLabelText('Current password')
+    await expectNoAxeViolations()
+  })
+
   it('asks to wait after too many wrong passwords', async () => {
     vi.stubGlobal(
       'fetch',

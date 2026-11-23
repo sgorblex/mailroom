@@ -252,7 +252,7 @@ export function FilterEditor({
               tabIndex={mode === which ? 0 : -1}
               className={cn(
                 '-mb-px border-b-2 border-transparent px-3 py-1.5 text-sm text-muted-foreground outline-none',
-                'hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                'hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring',
                 'aria-selected:border-foreground aria-selected:font-medium aria-selected:text-foreground',
               )}
               onClick={() => {
@@ -292,7 +292,7 @@ export function FilterEditor({
                 spellCheck={false}
                 className={cn(
                   'w-full rounded-md border bg-transparent p-3 font-mono text-sm outline-none',
-                  'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                  'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring',
                 )}
                 value={jsonText}
                 onChange={(event) => {

@@ -2,6 +2,7 @@ import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { expectNoAxeViolations } from '@/test/axe.ts'
 import { renderSignedIn } from '@/test/signed-in.tsx'
 
 import { UsersScreen } from './users-screen.tsx'
@@ -86,6 +87,7 @@ describe('UsersScreen', () => {
     await userEvent.type(within(form).getByLabelText('Password'), 'a long enough password')
     await userEvent.click(within(form).getByRole('button', { name: 'Add user' }))
     expect(await within(form).findByRole('alert')).toHaveTextContent('That username is taken.')
+    await expectNoAxeViolations()
 
     await userEvent.clear(within(form).getByLabelText('Username'))
     await userEvent.type(within(form).getByLabelText('Username'), 'bob')

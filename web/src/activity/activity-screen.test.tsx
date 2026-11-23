@@ -2,6 +2,7 @@ import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { expectNoAxeViolations } from '@/test/axe.ts'
 import { renderSignedIn } from '@/test/signed-in.tsx'
 
 import { ActivityScreen } from './activity-screen.tsx'
@@ -95,6 +96,7 @@ describe('ActivityScreen', () => {
     await userEvent.click(within(trashed).getByText('Moved to Trash'))
     expect(within(trashed).getByText('To folder')).toBeVisible()
     expect(within(trashed).getByText('UID')).toBeVisible()
+    await expectNoAxeViolations()
   })
 
   it('names each account by its name, and filters by its id', async () => {
