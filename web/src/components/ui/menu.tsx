@@ -37,16 +37,18 @@ function underAnchor(anchor: HTMLElement): { top?: number; bottom?: number; righ
  * A menu of actions under `anchor` (the ARIA menu pattern), or at `point` for a context menu: the
  * first item it can take gets focus, ↑ and ↓ move, Enter or a click chooses, Escape, Tab, focus
  * leaving it or a click outside closes it, and focus goes back to `anchor`. Mounted while open;
- * scrolling or resizing closes it.
+ * scrolling or resizing closes it. A `heading` shows over the items, for sight only: `label` says it.
  */
 export function Menu({
   label,
+  heading,
   anchor,
   point,
   items,
   onClose,
 }: {
   label: string
+  heading?: string
   anchor: HTMLElement
   point?: MenuPoint
   items: MenuItem[]
@@ -153,6 +155,11 @@ export function Menu({
       style={place}
       className="fixed z-50 flex min-w-48 max-w-72 flex-col rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
     >
+      {heading !== undefined && (
+        <p aria-hidden="true" className="mb-1 truncate border-b px-2 pt-1 pb-2 text-xs text-muted-foreground">
+          {heading}
+        </p>
+      )}
       {items.map((item) => {
         const disabled = item.disabledReason != null
         return (

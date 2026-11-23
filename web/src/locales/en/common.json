@@ -14,6 +14,7 @@
     "retry": "Try again",
     "signedInAs": "Signed in as {{username}}",
     "signOut": "Sign out",
+    "signingOut": "Signing out…",
     "signOutFailed": "Could not sign out. Try again."
   },
   "login": {
@@ -80,6 +81,8 @@
   },
   "nav": {
     "label": "Main",
+    "userMenu": "User menu",
+    "more": "More",
     "home": "Home",
     "mail": "Mail",
     "accounts": "Accounts",

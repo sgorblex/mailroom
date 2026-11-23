@@ -233,7 +233,7 @@ First, fixes carried over from 0.14.0 testing:
       Figtree font, light, dark or as the device, six accents and three text sizes, on the Profile.
   - [ ] **Themes** (later) — alternative palettes to choose beside Soft (Sand, Lilac, Moss and Ink
         were proposed).
-- [ ] **App shell** — a new header with a user menu, and a bottom tab bar on phones.
+- [x] **App shell** — a new header with icon nav and a user menu, and a bottom tab bar on phones.
 - [ ] **Home page** — a real start page after sign-in instead of landing straight in a mail
       list, its content configurable (unread across accounts, flagged, recent filter runs, say).
 - [ ] **Every message action in the reading pane** — each action on one message (move, archive,

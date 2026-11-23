@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClientProvider } from '@tanstack/react-query'
 import {
@@ -17,7 +17,7 @@ import { stubEventSource } from '@/test/fake-event-source.ts'
 import { AuthProvider } from './auth-provider.tsx'
 import { RootLayout } from './root-layout.tsx'
 
-function renderApp(): void {
+function renderApp(path = '/'): void {
   const rootRoute = createRootRoute({ component: RootLayout })
   const homeRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -31,9 +31,12 @@ function renderApp(): void {
       </>
     ),
   })
+  const pages = Object.entries({ '/profile': 'Profile page', '/accounts': 'Accounts page', '/filters/$ruleSetId': 'Rule set page' }).map(
+    ([at, text]) => createRoute({ getParentRoute: () => rootRoute, path: at, component: () => <p>{text}</p> }),
+  )
   const router = createRouter({
-    routeTree: rootRoute.addChildren([homeRoute]),
-    history: createMemoryHistory({ initialEntries: ['/'] }),
+    routeTree: rootRoute.addChildren([homeRoute, ...pages]),
+    history: createMemoryHistory({ initialEntries: [path] }),
   })
   // The router restores scroll positions, which jsdom does not implement.
   vi.stubGlobal('scrollTo', vi.fn())
@@ -50,6 +53,20 @@ function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status })
 }
 
+/** The header's nav and the phone tab bar: both are rendered, CSS shows one (`md:block`, `md:hidden`). */
+function navs(): { header: HTMLElement; tabs: HTMLElement } {
+  const [header, tabs] = screen.getAllByRole('navigation', { name: 'Main' })
+  if (header === undefined || tabs === undefined) throw new Error('Two navs expected')
+  return { header, tabs }
+}
+
+const linkNames = (nav: HTMLElement): string[] => within(nav).queryAllByRole('link').map((link) => link.textContent)
+
+async function openUserMenu(): Promise<HTMLElement> {
+  await userEvent.click(await screen.findByRole('button', { name: 'User menu' }))
+  return screen.getByRole('menu', { name: 'Signed in as alice' })
+}
+
 const ALICE = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null, conversations: true, undo_send_seconds: 10 }
 
 /**
@@ -62,9 +79,10 @@ function stubApi(
   features?: string[],
   timeZone: string | null = null,
   refuseZone = false,
+  { admin = false, failSignOut = false } = {},
 ): ReturnType<typeof vi.fn> {
   let signedIn = initiallySignedIn
-  let user: { username: string; is_admin: boolean; time_zone: string | null; mark_read_subfolders: boolean; index_max_age_days: number | null; conversations: boolean } = { ...ALICE, time_zone: timeZone }
+  let user: { username: string; is_admin: boolean; time_zone: string | null; mark_read_subfolders: boolean; index_max_age_days: number | null; conversations: boolean } = { ...ALICE, is_admin: admin, time_zone: timeZone }
   const fetchMock = vi.fn((path: string, init?: RequestInit) => {
       if (path === '/api/v1/auth/me') {
         return Promise.resolve(json(200, { user: signedIn ? user : null, features }))
@@ -88,6 +106,9 @@ function stubApi(
         return Promise.resolve(json(200, user))
       }
       if (path === '/api/v1/auth/logout') {
+        if (failSignOut) {
+          return Promise.resolve(json(500, { detail: 'Internal Server Error' }))
+        }
         signedIn = false
         return Promise.resolve(new Response(null, { status: 204 }))
       }
@@ -126,7 +147,7 @@ describe('RootLayout', () => {
     await userEvent.type(password, 'hunter2hunter2')
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
     expect(await screen.findByText('Home page')).toBeInTheDocument()
-    expect(screen.getByText('Signed in as alice')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'User menu' })).toHaveAttribute('title', 'Signed in as alice')
   })
 
   it('shows the page to a signed-in browser and signs out', async () => {
@@ -134,11 +155,10 @@ describe('RootLayout', () => {
     renderApp()
 
     expect(await screen.findByText('Home page')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Profile' })).toHaveAttribute('href', '/profile')
-    expect(screen.getByRole('link', { name: 'Mail' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Filters' })).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: 'Users' })).not.toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    expect(linkNames(navs().header)).toEqual(['Home', 'Mail', 'Accounts', 'Filters', 'Activity'])
+    const menu = await openUserMenu()
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Profile', 'Sign out'])
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Sign out' }))
     expect(await screen.findByLabelText('Password')).toBeInTheDocument()
   })
 
@@ -149,7 +169,7 @@ describe('RootLayout', () => {
 
     expect(await screen.findByText('Home page')).toBeInTheDocument()
     expect(sources.instances.map((source) => [source.url, source.withCredentials])).toEqual([['/api/v1/mail/events', true]])
-    await userEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    await userEvent.click(within(await openUserMenu()).getByRole('menuitem', { name: 'Sign out' }))
     expect(await screen.findByLabelText('Password')).toBeInTheDocument()
     expect(sources.current()).toBeUndefined()
   })
@@ -173,10 +193,14 @@ describe('RootLayout', () => {
     renderApp()
 
     expect(await screen.findByRole('link', { name: 'Accounts' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Profile' })).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: 'Mail' }) !== null).toBe(mail)
-    expect(screen.queryByRole('link', { name: 'Filters' }) !== null).toBe(filters)
-    expect(screen.queryByRole('link', { name: 'Activity' }) !== null).toBe(activity)
+    const { header, tabs } = navs()
+    expect(linkNames(header).includes('Mail')).toBe(mail)
+    expect(linkNames(header).includes('Filters')).toBe(filters)
+    expect(linkNames(header).includes('Activity')).toBe(activity)
+    expect(linkNames(header)).not.toContain('Profile')
+    // On phones: a tab for each of Home, Mail and Filters the instance has, then More.
+    expect(linkNames(tabs)).toEqual(['Home', ...(mail ? ['Mail'] : []), ...(filters ? ['Filters'] : [])])
+    expect(within(tabs).getByRole('button', { name: 'More' })).toHaveAttribute('aria-haspopup', 'menu')
   })
 
   it('keeps the features it learned while signed out once signed in', async () => {
@@ -186,7 +210,7 @@ describe('RootLayout', () => {
     await userEvent.type(await screen.findByLabelText('Username'), 'alice')
     await userEvent.type(screen.getByLabelText('Password'), 'hunter2hunter2')
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
-    expect(await screen.findByRole('link', { name: 'Filters' })).toBeInTheDocument()
+    expect(await screen.findAllByRole('link', { name: 'Filters' })).toHaveLength(2)
     expect(screen.queryByRole('link', { name: 'Mail' })).not.toBeInTheDocument()
   })
 
@@ -233,6 +257,99 @@ describe('RootLayout', () => {
     expect(await screen.findByText('Home page')).toBeInTheDocument()
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(zoneSaves(fetchMock)).toEqual([])
+  })
+
+  it('marks the page you are on, and a rule set as under Filters', async () => {
+    stubApi(true)
+    renderApp('/filters/7')
+
+    expect(await screen.findByText('Rule set page')).toBeInTheDocument()
+    const { header, tabs } = navs()
+    const current = within(header).getByRole('link', { name: 'Filters' })
+    expect(current).toHaveAttribute('aria-current', 'page')
+    expect(current).toHaveClass('bg-accent-soft', 'text-accent-soft-foreground')
+    expect(within(header).getByRole('link', { name: 'Home' })).not.toHaveAttribute('aria-current')
+    expect(within(tabs).getByRole('link', { name: 'Filters' })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('opens the user menu from the keyboard, goes to the Profile, and gives focus back on Escape', async () => {
+    stubApi(true)
+    renderApp()
+
+    const button = await screen.findByRole('button', { name: 'User menu' })
+    expect(button).toHaveTextContent('A')
+    button.focus()
+    await userEvent.keyboard('{ArrowDown}')
+    const menu = screen.getByRole('menu', { name: 'Signed in as alice' })
+    expect(button).toHaveAttribute('aria-expanded', 'true')
+    expect(within(menu).getByRole('menuitem', { name: 'Profile' })).toHaveFocus()
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(button).toHaveFocus()
+
+    await userEvent.keyboard('{Enter}')
+    await userEvent.keyboard('{Enter}')
+    expect(await screen.findByText('Profile page')).toBeInTheDocument()
+  })
+
+  it('says so when signing out fails', async () => {
+    stubApi(true, undefined, null, false, { failSignOut: true })
+    renderApp()
+
+    await userEvent.click(within(await openUserMenu()).getByRole('menuitem', { name: 'Sign out' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not sign out.')
+    expect(screen.getByText('Home page')).toBeInTheDocument()
+  })
+
+  it('disables Sign out while its request is out, and gives it back when it fails', async () => {
+    const api = stubApi(true, undefined, null, false, { failSignOut: true })
+    let answer = (): void => undefined
+    const answerOf = api as unknown as (path: string, init?: RequestInit) => Promise<Response>
+    vi.stubGlobal('fetch', (path: string, init?: RequestInit) =>
+      path === '/api/v1/auth/logout'
+        ? new Promise<Response>((resolve) => {
+            answer = () => {
+              resolve(answerOf(path, init))
+            }
+          })
+        : answerOf(path, init),
+    )
+    renderApp()
+
+    await userEvent.click(within(await openUserMenu()).getByRole('menuitem', { name: 'Sign out' }))
+    const pending = within(await openUserMenu()).getByRole('menuitem', { name: /^Sign out/ })
+    expect(pending).toHaveAttribute('aria-disabled', 'true')
+    expect(pending).toHaveTextContent('Signing out…')
+    await userEvent.click(pending)
+    answer()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not sign out.')
+    expect(api.mock.calls.filter(([path]) => path === '/api/v1/auth/logout')).toHaveLength(1)
+    // The menu stays open on a disabled item; its Sign out is back.
+    expect(screen.getByRole('menuitem', { name: 'Sign out' })).not.toHaveAttribute('aria-disabled')
+  })
+
+  it("lists the phone's other pages under More, Users to an admin, and marks More on one of them", async () => {
+    stubApi(true, ['mail'], null, false, { admin: true })
+    renderApp('/accounts')
+
+    expect(await screen.findByText('Accounts page')).toBeInTheDocument()
+    const more = within(navs().tabs).getByRole('button', { name: 'More' })
+    expect(more).toHaveClass('text-foreground')
+    await userEvent.click(more)
+    const menu = screen.getByRole('menu', { name: 'More' })
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'Accounts',
+      'Activity',
+      'Users',
+      'Profile',
+      'Sign out',
+    ])
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Profile' }))
+    expect(await screen.findByText('Profile page')).toBeInTheDocument()
+    expect(more).toHaveClass('text-foreground')
+    await userEvent.click(within(navs().tabs).getByRole('link', { name: 'Home' }))
+    expect(await screen.findByText('Home page')).toBeInTheDocument()
+    expect(more).toHaveClass('text-muted-foreground')
   })
 
   it('offers to try again when the API cannot be reached', async () => {

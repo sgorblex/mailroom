@@ -222,6 +222,23 @@
   body {
     @apply bg-background text-foreground antialiased;
   }
+
+  /* The phone tab bar's height (app-shell.tsx), over the safe area: what the page and anything
+     fixed at the bottom leave free. No bar from `md` up. */
+  :root {
+    --tab-bar: calc(3.75rem + env(safe-area-inset-bottom));
+  }
+
+  /* The deploy banner's height (deploy-banner.tsx sets it while shown): what anything sticking to
+     the top of the page leaves above it. */
+  :root {
+    --deploy-banner: 0px;
+  }
+  @media (width >= 48rem) {
+    :root {
+      --tab-bar: 0px;
+    }
+  }
 }
 
 /* The composer's rich-text body (TipTap): what preflight resets, as the message will show it. */

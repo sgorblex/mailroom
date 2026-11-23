@@ -53,6 +53,12 @@ through the Vite proxy. Engineering baseline:
   size (small, default, large); a choice shows at once and is the same on every device they sign in
   on. How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md)
   — *Own appearance*.
+- **Navigation.** Every signed-in page sits under one header: the Mailroom mark, the instance's
+  pages with an icon each (Mail, Filters and Activity only where it runs them, Users only to an
+  admin), the current one marked, and a user menu with the Profile and Sign out. On a phone the
+  header keeps the mark and the user menu, and a tab bar at the bottom holds Home, Mail and Filters
+  (as the instance has them), with the other pages, the Profile and Sign out under More. Both menus
+  work from the keyboard (the ARIA menu button pattern).
 - **Undo send.** Each user picks on their *Profile* page how long the web's Send holds a
   message for an Undo, 0 (off) to 30 seconds, 10 by default
   ([`requirements/mail-client.md`](requirements/mail-client.md#undo-send)).
