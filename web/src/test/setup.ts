@@ -1,4 +1,4 @@
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
 import { afterEach, vi } from 'vitest'
 
 import '@testing-library/jest-dom/vitest'
@@ -6,6 +6,11 @@ import i18n, { i18nReady } from '@/i18n/i18n.ts'
 
 // jsdom lays nothing out, so a virtualised list would show no row.
 vi.mock('@tanstack/react-virtual', () => import('./fake-virtualizer.ts'))
+
+// findBy* and waitFor give up after 1 s by default. A busy CI runner can take longer than that to
+// mount the mail screen and answer its first reads, and a wait that fails there says nothing about
+// the code; 3 s leaves room without hiding a real hang (each test still has testTimeout).
+configure({ asyncUtilTimeout: 3_000 })
 
 await i18nReady
 // Tests assert on the English copy whatever the machine's locale.
