@@ -1,86 +1,222 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
-/* Follows the OS: no theme toggle yet, and no inline script to set a class (strict CSP). */
-@custom-variant dark (@media (prefers-color-scheme: dark));
+/* Class-based: `src/theme/look.ts` sets `.dark` on <html> from the user's theme (or the OS's). */
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
-  --color-background: hsl(var(--background));
-  --color-foreground: hsl(var(--foreground));
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
-  --color-destructive: hsl(var(--destructive));
-  --color-destructive-foreground: hsl(var(--destructive-foreground));
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
+  --font-sans: 'Figtree Variable', ui-sans-serif, system-ui, sans-serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-soft-foreground: var(--accent-soft-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-star: var(--star);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* shadcn's zinc baseline; the real palette is a design task of its own. */
-:root {
-  --background: 0 0% 100%;
-  --foreground: 240 10% 3.9%;
-  --card: 0 0% 100%;
-  --card-foreground: 240 10% 3.9%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 240 10% 3.9%;
-  --primary: 240 5.9% 10%;
-  --primary-foreground: 0 0% 98%;
-  --secondary: 240 4.8% 95.9%;
-  --secondary-foreground: 240 5.9% 10%;
-  --muted: 240 4.8% 95.9%;
-  --muted-foreground: 240 3.8% 46.1%;
-  --accent: 240 4.8% 95.9%;
-  --accent-foreground: 240 5.9% 10%;
-  --destructive: 0 72% 51%;
-  --destructive-foreground: 0 0% 98%;
-  --border: 240 5.9% 90%;
-  --input: 240 5.9% 90%;
-  --ring: 240 5.9% 10%;
-  --radius: 0.625rem;
+/*
+ * The "Soft" palette. `primary` is the accent and `accent` the selected or hovered row (shadcn's
+ * names); `accent-soft` a tinted badge. Each `[data-accent]` below replaces only those, light and
+ * dark: on <html> for the app, on an element to show another accent (the Profile's swatches).
+ * Every pair is checked for WCAG AA in `src/theme/contrast.node.test.ts`; `src/theme/look.ts`
+ * repeats the two backgrounds for <meta name="theme-color">.
+ */
+:root,
+[data-accent='default'] {
+  color-scheme: light;
+  --background: #f1f6f5;
+  --foreground: #13302a;
+  --card: #ffffff;
+  --card-foreground: #13302a;
+  --popover: #ffffff;
+  --popover-foreground: #13302a;
+  --sidebar: #e5efec;
+  --sidebar-foreground: #13302a;
+  --secondary: #e5efec;
+  --secondary-foreground: #13302a;
+  --muted: #e5efec;
+  --muted-foreground: #4d6a63;
+  --primary: #0f766e;
+  --primary-foreground: #ffffff;
+  --accent: #e3f4f0;
+  --accent-foreground: #13302a;
+  --accent-soft: #d5efea;
+  --accent-soft-foreground: #0b5e57;
+  --ring: #0f766e;
+  --destructive: #b42318;
+  --destructive-foreground: #ffffff;
+  --success: #157a3b;
+  --warning: #b45309;
+  --star: #b45309;
+  --border: #d2e1dd;
+  --input: #d2e1dd;
+  --radius: 12px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 240 4.9% 83.9%;
-  }
+:root.dark,
+.dark [data-accent='default'] {
+  color-scheme: dark;
+  --background: #0f1a18;
+  --foreground: #e2f0ec;
+  --card: #15221f;
+  --card-foreground: #e2f0ec;
+  --popover: #15221f;
+  --popover-foreground: #e2f0ec;
+  --sidebar: #12201c;
+  --sidebar-foreground: #e2f0ec;
+  --secondary: #1b2c28;
+  --secondary-foreground: #e2f0ec;
+  --muted: #1b2c28;
+  --muted-foreground: #93b2ab;
+  --primary: #4fd1c1;
+  --primary-foreground: #06211d;
+  --accent: #183230;
+  --accent-foreground: #e2f0ec;
+  --accent-soft: #173a35;
+  --accent-soft-foreground: #7fe3d6;
+  --ring: #4fd1c1;
+  --destructive: #f97066;
+  --destructive-foreground: #2a0705;
+  --success: #4ade80;
+  --warning: #f0b95b;
+  --star: #f0b95b;
+  --border: #253a34;
+  --input: #253a34;
+}
+
+[data-accent='blue'] {
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+  --accent: #e6eefd;
+  --accent-soft: #dbe7fd;
+  --accent-soft-foreground: #1d4fc0;
+  --ring: #2563eb;
+}
+
+.dark[data-accent='blue'],
+.dark [data-accent='blue'] {
+  --primary: #6ea2ff;
+  --primary-foreground: #061533;
+  --accent: #1d2c45;
+  --accent-soft: #1b2c4d;
+  --accent-soft-foreground: #9dc0ff;
+  --ring: #6ea2ff;
+}
+
+[data-accent='violet'] {
+  --primary: #6d44c9;
+  --primary-foreground: #ffffff;
+  --accent: #efe9fb;
+  --accent-soft: #e9e1fa;
+  --accent-soft-foreground: #5733a8;
+  --ring: #6d44c9;
+}
+
+.dark[data-accent='violet'],
+.dark [data-accent='violet'] {
+  --primary: #b69cff;
+  --primary-foreground: #1a0e3a;
+  --accent: #2a2442;
+  --accent-soft: #2e2650;
+  --accent-soft-foreground: #cdbbff;
+  --ring: #b69cff;
+}
+
+[data-accent='green'] {
+  --primary: #3f6b2e;
+  --primary-foreground: #ffffff;
+  --accent: #e9f2e3;
+  --accent-soft: #e1edd9;
+  --accent-soft-foreground: #335724;
+  --ring: #3f6b2e;
+}
+
+.dark[data-accent='green'],
+.dark [data-accent='green'] {
+  --primary: #9bcb7e;
+  --primary-foreground: #11240a;
+  --accent: #20321d;
+  --accent-soft: #22351c;
+  --accent-soft-foreground: #b6dd9e;
+  --ring: #9bcb7e;
+}
+
+[data-accent='terracotta'] {
+  --primary: #b4532a;
+  --primary-foreground: #ffffff;
+  --accent: #faeae2;
+  --accent-soft: #f8e3d8;
+  --accent-soft-foreground: #8f3f1d;
+  --ring: #b4532a;
+}
+
+.dark[data-accent='terracotta'],
+.dark [data-accent='terracotta'] {
+  --primary: #f08a5d;
+  --primary-foreground: #2a0f04;
+  --accent: #36251e;
+  --accent-soft: #3d2419;
+  --accent-soft-foreground: #f6ac8a;
+  --ring: #f08a5d;
+}
+
+[data-accent='rose'] {
+  --primary: #be123c;
+  --primary-foreground: #ffffff;
+  --accent: #fce9ed;
+  --accent-soft: #fbe0e6;
+  --accent-soft-foreground: #9a0f31;
+  --ring: #be123c;
+}
+
+.dark[data-accent='rose'],
+.dark [data-accent='rose'] {
+  --primary: #fb7185;
+  --primary-foreground: #2d0710;
+  --accent: #3a2228;
+  --accent-soft: #3f1e26;
+  --accent-soft-foreground: #fda0ae;
+  --ring: #fb7185;
+}
+
+/* Text size: everything is sized in rem, so the root's size scales the whole app. */
+:root[data-text-size='small'] {
+  font-size: 87.5%;
+}
+
+:root[data-text-size='large'] {
+  font-size: 112.5%;
 }
 
 @layer base {
+  /* `accent-color` per element, so a `[data-accent]` swatch's own controls take its accent too. */
   * {
     @apply border-border outline-ring/50;
+    accent-color: var(--primary);
   }
 
   body {

@@ -259,6 +259,33 @@
     "saved": "Salvato.",
     "saveFailed": "Impossibile salvare questa scelta."
   },
+  "appearance": {
+    "title": "Aspetto",
+    "intro": "Come appare Mailroom, uguale su ogni dispositivo da cui accedi. Una scelta si vede subito.",
+    "theme": "Tema",
+    "themes": {
+      "system": "Come il dispositivo",
+      "light": "Chiaro",
+      "dark": "Scuro"
+    },
+    "accent": "Colore principale",
+    "accents": {
+      "default": "Verde acqua",
+      "blue": "Blu",
+      "violet": "Viola",
+      "green": "Verde",
+      "terracotta": "Terracotta",
+      "rose": "Rosa"
+    },
+    "textSize": "Dimensione del testo",
+    "textSizes": {
+      "small": "Piccola",
+      "default": "Normale",
+      "large": "Grande"
+    },
+    "saved": "Salvato.",
+    "saveFailed": "Impossibile salvare questa scelta."
+  },
   "conversations": {
     "title": "Conversazioni",
     "group": "Raggruppa i messaggi per conversazione",

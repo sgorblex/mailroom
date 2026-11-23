@@ -166,6 +166,9 @@ importers:
 
   .:
     dependencies:
+      '@fontsource-variable/figtree':
+        specifier: ^5.3.0
+        version: 5.3.0
       '@radix-ui/react-slot':
         specifier: ^1.4.0
         version: 1.4.0(@types/react@19.3.0)(react@19.3.0)
@@ -493,6 +496,9 @@ packages:
 
   '@floating-ui/utils@0.2.12':
     resolution: {integrity: sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==}
+
+  '@fontsource-variable/figtree@5.3.0':
+    resolution: {integrity: sha512-VRVodD7OiG7apQwE8/2fMjaqpY/a0qRJqL5HtYj8CKIVps+9amaFcdfKmDIf7iqYQx6iPLlArVXAfKeIZmVcNQ==}
 
   '@formatjs/cli-lib@8.7.13':
     resolution: {integrity: sha512-x2YS8zcuW0ojOXLD1d7HINVMng6amlcSDhqOyRgNB98LFYuP6q9UxWRYBnuB4CW3Qrzsr7LXDeZDbPwuBTtVqA==}
@@ -3083,6 +3089,8 @@ snapshots:
 
   '@floating-ui/utils@0.2.12':
     optional: true
+
+  '@fontsource-variable/figtree@5.3.0': {}
 
   '@formatjs/cli-lib@8.7.13':
     dependencies:
