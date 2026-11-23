@@ -124,7 +124,7 @@ notifications](#desktop-notifications).
   interstitial page. The text body marks such a link `[text](url) (⚠ host)`, MCP's too.
 
 The screens live under `/mail`: account and folder sidebar with counts, message list, message view
-(three panes on desktop, stacked on a phone; on desktop each pane scrolls on its own). On desktop
+(three panes on desktop, one at a time on a phone; on desktop each pane scrolls on its own). On desktop
 the **reading pane** sits where the user put it on the *Profile* (the same on every device): on
 the right of the list (the default), below it, or off. With it on the right, a divider between the
 list and the message view sets the list's width (30rem, 480 px, by default, from 320 to 960 px and
@@ -139,9 +139,27 @@ composer) takes the list's place, as wide as the list and the pane together, wit
 list* and, above the message, the toolbar acting on the selection; Escape, or `u` with nothing
 selected, goes back too (*Mark unread* then shows no shortcut). The list stays underneath, out of
 reach of the keyboard and screen readers (`inert`) and scrolled where it was, and going back puts
-the focus on the message's row (closing the composer, on *Compose*). A narrow screen (a phone, or a window
-under 1,024 px, `lg`) always opens a message in place of the list, with Back, Escape and `u`,
-whatever the choice. On desktop the sidebar folds to a **rail** of
+the focus on the message's row (closing the composer, on *Compose*). A narrow screen (a phone, or
+a window under 1,024 px, `lg`) always opens a message in place of the list, with Back, Escape and
+`u`, whatever the choice.
+
+**On a phone** (any window below `lg`, 1024 px, where the sidebar is no column) the list takes the
+width under a **Mail header**: ☰ (*Folders*), the name of what the list shows (the folder, the
+view, or *Search results*), *Search mail*, which shows the search form and puts the cursor in it
+(shown anyway while a search is, when it only puts the cursor there), and *Compose*. ☰ opens the **folders drawer**, the sidebar
+(account switcher, views, folder tree) sliding in from the left as a modal dialog: focus moves
+into it and stays there, the page behind out of reach; Escape, a tap on the scrim, its *Close
+the folders* button or a folder or view picked from it closes it, and the focus goes back to ☰;
+so does the composer taking the screen (*Edit* in its *Scheduled* list). A menu opened in it
+(the account switcher's, a folder's) opens inside the dialog, and Escape in a dialog opened from
+it closes that dialog alone. An open
+message takes the screen with Back, its action bar fixed at the foot of the screen, above the
+tab bar and the home indicator, with Reply, Reply all and Forward as icons (their names kept
+for screen readers) and what does not fit in *More actions*, as on desktop, the toasts showing above it; *Back to draft* and the
+sent or scheduled notice stay above the message. The composer takes the screen likewise. The phone has no
+rail and no shortcut button; the desktop layout is unchanged.
+
+On desktop the sidebar folds to a **rail** of
 icons (a button at its top, or `[`): *All inboxes* and the account's role folders (Inbox, Starred,
 Drafts, Sent, Archive, Junk, Trash, those it has), each a link named with its unread count and
 marked with a dot while it has unread mail. This browser keeps the choice
@@ -371,7 +389,7 @@ MCP `message_read` still never set `\Seen`.
   refusal states the new count and asks again; `too_many` and a folder that failed end it, saying
   how many were left unchanged. At the end the list and the folders are read again and the
   selection cleared; done in full, the toast says so, without Undo.
-- **The message's action bar**, at the top of the open message: Reply, Reply all and Forward
+- **The message's action bar**, at the top of the open message (fixed at the foot on a phone): Reply, Reply all and Forward
   as labelled buttons; its triage actions (the toolbar's, below) as icon buttons whose name and
   tooltip say the action and, while nothing is selected (the keys then act on the open message),
   its key; and *More actions*, a menu of the rest (Print, Download
@@ -379,7 +397,7 @@ MCP `message_read` still never set `\Seen`.
   the pane narrows, the buttons that do not fit move to the top of *More actions*, still naming
   their key, To sort first, then Report spam, Move to…, Move to another account…, Reply all and
   Forward; Reply, Archive, Trash, Star and Mark read or unread stay, giving way only on a bar too
-  narrow even for them (Reply never). It acts on the open
+  narrow even for them (Reply never); on a phone, the same at the screen's width. It acts on the open
   message (or the conversation its row stands for) whatever is selected in the list; with a
   selection its move pickers are its own, Escape closing them without clearing the selection.
 - **Toolbar** above the list, shown only while messages are selected and acting on them: Archive

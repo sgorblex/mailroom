@@ -1,4 +1,4 @@
-import { createElement, useEffect, useId, useRef, useState, type ReactElement } from 'react'
+import { createElement, useId, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FileUp, PenLine } from 'lucide-react'
 
@@ -6,36 +6,34 @@ import type { AccountId } from '@/api/accounts.ts'
 import { importDraft, type ImportSource } from '@/api/mail.ts'
 import { Button } from '@/components/ui/button.tsx'
 
-import { mailAction, unavailableReason, type ActionContext } from './action-registry.ts'
+import { useComposeAction } from './compose-action.ts'
 import { useCompose } from './compose-context.ts'
 import { MAIL_NS } from './i18n.ts'
 import { ImportDialog } from './import-dialog.tsx'
 import { ScheduledNotice, SentNotice } from './send-status.tsx'
-import { NO_TRIAGE_ACTIONS } from './triage-actions.ts'
-
-const COMPOSE = mailAction('compose')
 
 /**
  * Starts a message on the account shown, or imports one built elsewhere, or goes back to the draft
- * a message is in front of.
+ * a message is in front of, with the notices of what was sent or scheduled. `starts` narrows the
+ * buttons starting one: `import` alone on a narrow screen, whose header has Compose, and `none`
+ * there while a message takes the screen.
  */
-export function ComposeBar({ accountId }: { accountId: AccountId }): ReactElement {
+export function ComposeBar({
+  accountId,
+  starts = 'all',
+}: {
+  accountId: AccountId
+  starts?: 'all' | 'import' | 'none'
+}): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const compose = useCompose()
   const { session, shown, backToDraft } = compose
   const hintId = useId()
-  const button = useRef<HTMLButtonElement>(null)
-  const context: ActionContext = {
-    actions: NO_TRIAGE_ACTIONS,
-    message: null,
-    account: accountId,
-    compose,
-    openPicker: () => undefined,
-  }
-  const reason = unavailableReason(COMPOSE, context)
+  const { action, context, reason, run, button } = useComposeAction(accountId)
   const allowed = reason === null
   const open = session !== null
   const [importing, setImporting] = useState<string | null>(null)
+  const withCompose = starts === 'all'
 
   /** A new draft of the account shown, under `composeId`, opened in the composer once saved. */
   function imported(composeId: string, ref: string | null): void {
@@ -49,37 +47,26 @@ export function ComposeBar({ accountId }: { accountId: AccountId }): ReactElemen
       source,
     )
 
-  // The composer that had focus is gone.
-  const wasOpen = useRef(open)
-  useEffect(() => {
-    if (wasOpen.current && !open) {
-      button.current?.focus()
-    }
-    wasOpen.current = open
-  }, [open])
-
   return (
     <div className="flex flex-col gap-2">
-      {!open && (
+      {!open && starts !== 'none' && (
         <div className="flex flex-wrap gap-2">
-          <Button
-            ref={button}
-            type="button"
-            size="sm"
-            className="self-start"
-            title={`${t(COMPOSE.label(context))} (${COMPOSE.shortcut ?? ''})`}
-            aria-keyshortcuts={COMPOSE.shortcut}
-            aria-disabled={!allowed}
-            aria-describedby={allowed ? undefined : hintId}
-            onClick={() => {
-              if (allowed) {
-                COMPOSE.run(context)
-              }
-            }}
-          >
-            {createElement(COMPOSE.icon(context), { 'aria-hidden': true })}
-            {t(COMPOSE.label(context))}
-          </Button>
+          {withCompose && (
+            <Button
+              ref={button}
+              type="button"
+              size="sm"
+              className="self-start"
+              title={`${t(action.label(context))} (${action.shortcut ?? ''})`}
+              aria-keyshortcuts={action.shortcut}
+              aria-disabled={!allowed}
+              aria-describedby={allowed ? undefined : hintId}
+              onClick={run}
+            >
+              {createElement(action.icon(context), { 'aria-hidden': true })}
+              {t(action.label(context))}
+            </Button>
+          )}
           {allowed && (
             <Button
               type="button"
@@ -113,7 +100,7 @@ export function ComposeBar({ accountId }: { accountId: AccountId }): ReactElemen
           {t('compose.backToDraft')}
         </Button>
       )}
-      {reason !== null && !open && (
+      {reason !== null && !open && withCompose && (
         <p id={hintId} className="text-xs text-muted-foreground">
           {t(reason)}
         </p>

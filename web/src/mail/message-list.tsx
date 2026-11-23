@@ -15,6 +15,7 @@ import { useUnmountSignal } from '@/lib/use-unmount-signal.ts'
 import { cn } from '@/lib/utils.ts'
 
 import { ROW_ESTIMATE } from './list-size.ts'
+import { measureRow } from './row-measure.ts'
 import { listedActions, unavailableReason, type ActionContext } from './action-registry.ts'
 import { useCompose } from './compose-context.ts'
 import { isConversation, listRow, opened } from './conversations.ts'
@@ -144,6 +145,7 @@ export function MessageList({
     count: messages.length,
     getScrollElement: () => scroller.current,
     estimateSize: () => ROW_ESTIMATE[density],
+    measureElement: measureRow,
     getItemKey: (index) => messages[index]?.ref ?? index,
     overscan: 5,
     // A row whose menu is open stays rendered, scrolled out of view too: the menu gives focus back to it.
