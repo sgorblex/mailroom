@@ -1,15 +1,15 @@
 import { useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate } from '@tanstack/react-router'
+import { useNavigate } from '@tanstack/react-router'
 import { FolderPlus } from 'lucide-react'
 
-import { AccountName } from '@/accounts/account-name.tsx'
 import type { AccountId, Account } from '@/api/accounts.ts'
 import type { ViewKey } from '@/api/mail.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { cn } from '@/lib/utils.ts'
 
+import { AccountSwitcher } from './account-switcher.tsx'
 import { FolderDialogs, type FolderDialog, type FolderDone } from './folder-dialogs.tsx'
 import { accountDelimiter, isWithin, renamedPath } from './folder-tree.ts'
 import { FolderTree } from './folder-tree-view.tsx'
@@ -24,10 +24,10 @@ import { forgetStoredSubfolders, renameStoredSubfolders } from './subfolder-view
 import { isSameFolder, useAccountFolders, useTriage } from './triage-context.ts'
 
 /**
- * The user's views, then their accounts; the one shown lists its folders with their unread counts,
- * and creates, renames, deletes and marks them read. `folder` is the folder shown, `null` while a
- * search or a view (`view`) is; `subfolders`, whether it is listed with its subfolders. `header`
- * goes above it all (the button folding it to its rail).
+ * The account switcher, the user's views, then the folders of the account shown (`accountId`)
+ * alone, with their unread counts, where it creates, renames, deletes and marks them read.
+ * `folder` is the folder shown, `null` while a search or a view (`view`) is; `subfolders`, whether
+ * it is listed with its subfolders. `header` goes above it all (the button folding it to its rail).
  */
 export function MailSidebar({
   accounts,
@@ -51,6 +51,7 @@ export function MailSidebar({
   className?: string
 }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
+  const shown = accounts.find((account) => account.id === accountId)
   return (
     <nav
       id={id}
@@ -59,24 +60,14 @@ export function MailSidebar({
       className={cn('flex flex-col gap-4 p-3 lg:w-60 lg:shrink-0 lg:overflow-y-auto lg:border-r', className)}
     >
       {header}
+      <AccountSwitcher accounts={accounts} accountId={accountId} view={view} />
       <ViewsSection accounts={accounts} accountId={accountId} current={view} />
       <ScheduledEntry />
       <SnoozedEntry />
-      {accounts.map((account) =>
-        account.id === accountId ? (
-          <section key={account.id} aria-labelledby={`mail-account-${String(account.id)}`} className="flex flex-col gap-1">
-            <FolderList account={account} folder={folder} subfolders={subfolders} />
-          </section>
-        ) : (
-          <Link
-            key={account.id}
-            to="/mail"
-            search={{ account: account.id }}
-            className="flex rounded-md px-2 py-1 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
-          >
-            <AccountName account={account} />
-          </Link>
-        ),
+      {shown !== undefined && (
+        <section key={shown.id} aria-labelledby={`mail-account-${String(shown.id)}`} className="flex flex-col gap-1">
+          <FolderList account={shown} folder={folder} subfolders={subfolders} />
+        </section>
       )}
     </nav>
   )
@@ -212,7 +203,7 @@ function FolderList({
   const header = (
     <div className="flex items-center gap-1">
       <h2 id={`mail-account-${String(accountId)}`} className="flex min-w-0 flex-1 px-2 text-sm font-medium">
-        <AccountName account={account} />
+        {t('folders.title')}
       </h2>
       {state.kind === 'loaded' && (
         <Button

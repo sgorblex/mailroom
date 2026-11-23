@@ -259,7 +259,7 @@ First, fixes carried over from 0.14.0 testing:
       flat list.
 - [x] **Panes that scroll on their own** — the folder pane and the message list each scroll
       independently, as the reading pane does.
-- [ ] **Accounts apart from folders** — an account switcher at the top of the sidebar, the tree
+- [x] **Accounts apart from folders** — an account switcher at the top of the sidebar, the tree
       showing the chosen account's folders only, so changing account never means scrolling past
       another's folders; All inboxes and the views stay above it.
 - [ ] **Dark mode for HTML mail** — the sandboxed frame's colours adapted to a dark theme, off

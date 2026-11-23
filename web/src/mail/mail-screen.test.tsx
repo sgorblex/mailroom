@@ -92,7 +92,8 @@ describe('MailScreen', () => {
     expect(archive.tagName).toBe('SPAN')
     expect(archive).toHaveAttribute('aria-expanded', 'false')
     expect(within(folders).queryByRole('treeitem', { name: '2025' })).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'home' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Account: work. Switch account' })).toBeInTheDocument()
+    expect(screen.queryByRole('tree', { name: 'Folders of home' })).not.toBeInTheDocument()
 
     const list = await messagesList()
     expect(within(list).getAllByRole('listitem')).toHaveLength(25)
@@ -126,9 +127,13 @@ describe('MailScreen', () => {
 
     expect(await screen.findByRole('tree', { name: 'Folders of Work mail' })).toBeInTheDocument()
     const sidebar = screen.getByRole('navigation', { name: 'Accounts and folders' })
-    expect(within(sidebar).getByRole('heading', { name: 'Work mail' })).toBeInTheDocument()
+    expect(within(sidebar).getByRole('button', { name: 'Account: Work mail. Switch account' })).toBeInTheDocument()
     expect(within(sidebar).getByRole('button', { name: 'New folder in Work mail' })).toBeInTheDocument()
-    expect(within(sidebar).getByRole('link', { name: 'Home' })).toBeInTheDocument()
+    await userEvent.click(within(sidebar).getByRole('button', { name: /^Account: Work mail/ }))
+    const menu = screen.getByRole('menu', { name: 'Accounts' })
+    expect(within(menu).getByRole('menuitemcheckbox', { name: 'Work mail' })).toHaveAttribute('aria-checked', 'true')
+    expect(within(menu).getByRole('menuitemcheckbox', { name: 'Home' })).toHaveAttribute('aria-checked', 'false')
+    await userEvent.keyboard('{Escape}')
     expect(within(sidebar).queryByText('work')).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'More options' }))
     const accounts = within(screen.getByLabelText('Account')).getAllByRole('option')
@@ -212,9 +217,92 @@ describe('MailScreen', () => {
     expect(history.location.search).toContain('folder=Archive%2F2025')
     expect(within(folders).getByRole('treeitem', { name: '2025' })).toHaveAttribute('aria-current', 'page')
 
-    await userEvent.click(screen.getByRole('link', { name: 'home' }))
+    await userEvent.click(screen.getByRole('button', { name: /^Account: work/ }))
+    await userEvent.click(screen.getByRole('menuitemcheckbox', { name: 'home' }))
     expect(await screen.findByRole('link', { name: /From home/ })).toBeInTheDocument()
     expect(await screen.findByRole('tree', { name: 'Folders of home' })).toBeInTheDocument()
+    expect(screen.queryByRole('tree', { name: 'Folders of work' })).not.toBeInTheDocument()
+  })
+
+  it('switches account from the keyboard, and opens that account again on this device', async () => {
+    stubMailApi(state())
+    const user = userEvent.setup()
+    const first = renderMailApp('/mail')
+
+    const switcher = await screen.findByRole('button', { name: /^Account: work/ })
+    switcher.focus()
+    await user.keyboard('{Enter}')
+    expect(screen.getByRole('menuitemcheckbox', { name: 'work' })).toHaveFocus()
+    await user.keyboard('{ArrowDown}{Enter}')
+    expect(await screen.findByRole('tree', { name: 'Folders of home' })).toBeInTheDocument()
+    expect(first.location.search).toContain('account=2')
+    cleanup()
+
+    renderMailApp('/mail')
+    expect(await screen.findByRole('tree', { name: 'Folders of home' })).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: /From home/ })).toBeInTheDocument()
+  })
+
+  it('opens the first account when the one remembered is gone', async () => {
+    window.localStorage.setItem('mailroom.ui.mail.account', '99')
+    stubMailApi(state())
+    renderMailApp('/mail')
+
+    expect(await screen.findByRole('tree', { name: 'Folders of work' })).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: new RegExp(plain.subject) })).toBeInTheDocument()
+  })
+
+  it('neither answers nor follows another tab switching account', async () => {
+    const anotherTab = (): void => {
+      window.localStorage.setItem('mailroom.ui.mail.account', '2')
+      fireEvent(window, new StorageEvent('storage', { key: 'mailroom.ui.mail.account', newValue: '2' }))
+    }
+    stubMailApi(state())
+    renderMailApp('/mail?account=1')
+    expect(await screen.findByRole('tree', { name: 'Folders of work' })).toBeInTheDocument()
+    expect(window.localStorage.getItem('mailroom.ui.mail.account')).toBe('1')
+    anotherTab()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(window.localStorage.getItem('mailroom.ui.mail.account')).toBe('2')
+    cleanup()
+
+    window.localStorage.setItem('mailroom.ui.mail.account', '1')
+    renderMailApp('/mail')
+    expect(await screen.findByRole('tree', { name: 'Folders of work' })).toBeInTheDocument()
+    anotherTab()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(screen.getByRole('tree', { name: 'Folders of work' })).toBeInTheDocument()
+    expect(screen.queryByRole('tree', { name: 'Folders of home' })).not.toBeInTheDocument()
+  })
+
+  it('leads back from an account that is gone', async () => {
+    stubMailApi(state())
+    const history = renderMailApp('/mail?account=99')
+
+    await userEvent.click(await screen.findByRole('button', { name: /^Account: work/ }))
+    expect(screen.getByRole('menuitemcheckbox', { name: 'work' })).not.toBeChecked()
+    await userEvent.click(screen.getByRole('menuitemcheckbox', { name: 'work' }))
+    expect(await screen.findByRole('tree', { name: 'Folders of work' })).toBeInTheDocument()
+    expect(history.location.search).toContain('account=1')
+  })
+
+  it('links the only account when the URL names one that is gone', async () => {
+    stubMailApi(state({ accounts: [WORK] }))
+    renderMailApp('/mail?account=99')
+
+    await userEvent.click(await screen.findByRole('link', { name: 'work' }))
+    expect(await screen.findByRole('tree', { name: 'Folders of work' })).toBeInTheDocument()
+  })
+
+  it('keeps a view open when the account changes, listing the other account\'s folders', async () => {
+    stubMailApi(state())
+    const first = renderMailApp('/mail?view=all_inboxes')
+
+    await userEvent.click(await screen.findByRole('button', { name: /^Account: work/ }))
+    await userEvent.click(screen.getByRole('menuitemcheckbox', { name: 'home' }))
+    expect(await screen.findByRole('tree', { name: 'Folders of home' })).toBeInTheDocument()
+    expect(first.location.search).toContain('view=')
+    expect(first.location.search).toContain('account=2')
   })
 
   it('shows nested folders as a tree that opens, closes and remembers', async () => {
