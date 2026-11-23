@@ -101,6 +101,8 @@
     "flagged": "Speciali"
   },
   "list": {
+    "resize": "Ridimensiona l'elenco dei messaggi",
+    "width": "largo {{px}} px",
     "label": "Messaggi",
     "messages": "Messaggi",
     "results": "Risultati della ricerca",

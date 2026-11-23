@@ -119,7 +119,11 @@ notifications](#desktop-notifications).
   interstitial page. The text body marks such a link `[text](url) (⚠ host)`, MCP's too.
 
 The screens live under `/mail`: account and folder sidebar with counts, message list, message view
-(three panes on desktop, stacked on a phone). The sidebar shows an account's folders as a tree
+(three panes on desktop, stacked on a phone; on desktop each pane scrolls on its own). On desktop
+a divider between the list and the message view sets the list's width (30rem, 480 px, by default,
+from 320 to 960 px and always leaving the message view 480 px): dragged, or focused and moved
+with the arrow keys, and a double-click puts it back; this browser keeps the width. A window too
+narrow for it narrows the list only while it is. The sidebar shows an account's folders as a tree
 (the ARIA tree pattern, from `?all=true`): the folders with a role first, then the others by
 name; each level opens and closes, by mouse or with the arrow keys, and this browser remembers
 which are open per account (at first, those above the role folders; always those above the

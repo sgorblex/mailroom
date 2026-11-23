@@ -8,13 +8,14 @@ import { Button } from '@/components/ui/button.tsx'
 import { DeployBanner } from '@/components/deploy-banner.tsx'
 
 /** Every page sits behind sign-in, under the deploy banner; the nav shows only the instance's
- * features. */
+ * features. The banner and the page share the window's height, so a screen that fits it (mail)
+ * does not scroll as a whole. */
 export function RootLayout(): ReactElement {
   return (
-    <>
+    <div className="flex min-h-dvh flex-col">
       <DeployBanner />
       <SignedInLayout />
-    </>
+    </div>
   )
 }
 
@@ -31,7 +32,7 @@ function SignedInLayout(): ReactElement {
   }
   if (auth.status === 'unreachable') {
     return (
-      <main className="mx-auto flex min-h-dvh max-w-xl flex-col justify-center gap-3 p-6">
+      <main className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center gap-3 p-6">
         <p role="alert">{t('auth.unreachable')}</p>
         <Button className="self-start" variant="outline" size="sm" onClick={auth.recheck}>
           {t('auth.retry')}
