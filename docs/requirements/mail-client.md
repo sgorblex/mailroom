@@ -159,6 +159,21 @@ for screen readers) and what does not fit in *More actions*, as on desktop, the 
 sent or scheduled notice stay above the message. The composer takes the screen likewise. The phone has no
 rail and no shortcut button; the desktop layout is unchanged.
 
+On a touch screen (whatever its width) a **swipe** of a message row runs the action the user chose
+for that side on the *Profile* (the same on every device): left moves to Trash and right archives
+unless changed; each side may instead mark read or unread, star or unstar, mark To sort or sorted,
+or do nothing. It acts on that row alone, whatever is selected, through the same path as the
+toolbar, with its toast and Undo. While the finger moves, the action's icon and name show behind
+the row, in its colour once letting go would run it: past 35% of the row's width, or a quick
+flick of at least 40 px; short of that the row goes back. A swipe, acting or not, never opens
+the message; a keyboard or screen reader activation of the row right after one still does. Only
+a sideways move swipes: a move first more up or down than sideways is the list's scroll, which
+the browser keeps (`touch-action: pan-y`). A mouse never swipes (it drags the row to a folder),
+and a side whose action is *Nothing*, or not available there (no Archive folder), does not move.
+A long press to select, the selection toolbar and the open message's action bar stay the way to
+act without a swipe (WCAG 2.5.1, pointer gestures), and the row moves without its glide under
+*reduce motion*.
+
 On desktop the sidebar folds to a **rail** of
 icons (a button at its top, or `[`): *All inboxes* and the account's role folders (Inbox, Starred,
 Drafts, Sent, Archive, Junk, Trash, those it has), each a link named with its unread count and

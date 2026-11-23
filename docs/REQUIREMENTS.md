@@ -52,7 +52,9 @@ through the Vite proxy. Engineering baseline:
   device), its accent colour (teal by default, blue, violet, green, terracotta or rose), its text
   size (small, default, large), the density of the message lists (comfortable, or compact rows
   without each message's opening) and where an open message shows on a wide screen (right of the
-  list, below it, or off: in the list's place); a choice shows at once and is the same on every device they sign in
+  list, below it, or off: in the list's place), and what swiping a message row left or right does on
+  a touch screen (trash and archive by default; mark read, star, To sort or nothing —
+  [`requirements/mail-client.md`](requirements/mail-client.md)); a choice shows at once and is the same on every device they sign in
   on. How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md)
   — *Own appearance*.
 - **Navigation.** Every signed-in page sits under one header: the Mailroom mark, the instance's

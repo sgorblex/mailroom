@@ -298,6 +298,18 @@
       "off": "Off: a message opens in place of the list"
     },
     "readingPanePhones": "On a narrow screen (a phone, or a window under 1,024 px) a message always opens in place of the list.",
+    "swipe": "Swipe actions",
+    "swipeLeft": "Swipe left",
+    "swipeRight": "Swipe right",
+    "swipes": {
+      "none": "Nothing",
+      "archive": "Archive",
+      "trash": "Move to Trash",
+      "read": "Mark as read or unread",
+      "star": "Star or unstar",
+      "to_sort": "Mark To sort or sorted"
+    },
+    "swipeTouch": "What swiping a message row sideways does, on a touch screen. A mouse drags the row to a folder instead.",
     "saved": "Saved.",
     "saveFailed": "Could not save this choice."
   },

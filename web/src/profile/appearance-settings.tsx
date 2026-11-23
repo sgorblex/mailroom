@@ -1,26 +1,36 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { ACCENTS, DENSITIES, READING_PANES, TEXT_SIZES, THEMES, type Appearance } from '@/api/auth.ts'
+import { ACCENTS, DENSITIES, READING_PANES, SWIPE_ACTIONS, TEXT_SIZES, THEMES, type Appearance } from '@/api/auth.ts'
 import { apiErrorMessage } from '@/api/http.ts'
 import { useAppearance } from '@/auth/auth-context.ts'
 import { lookOf, setLook, type Look } from '@/theme/look.ts'
 
 type Outcome = { kind: 'idle' } | { kind: 'saved' } | { kind: 'failed'; message: string }
 
-/** What this section chooses: the look of the whole page, the density of the mail lists and where a message opens. */
-type Shown = Look & Pick<Appearance, 'density' | 'reading_pane'>
+/**
+ * What this section chooses: the look of the whole page, the density of the mail lists, where a
+ * message opens and what swiping a row does.
+ */
+type Shown = Look & Pick<Appearance, 'density' | 'reading_pane' | 'swipe_left' | 'swipe_right'>
+
+const SWIPES = [
+  ['swipe_left', 'appearance.swipeLeft'],
+  ['swipe_right', 'appearance.swipeRight'],
+] as const
 
 const shownOf = (appearance: Appearance): Shown => ({
   ...lookOf(appearance),
   density: appearance.density,
   reading_pane: appearance.reading_pane,
+  swipe_left: appearance.swipe_left,
+  swipe_right: appearance.swipe_right,
 })
 
 /**
- * The user's theme, accent, text size, density and reading pane, the same on every device. A
- * choice shows at once and is saved; when the save fails the saved look comes back and the
- * section says so.
+ * The user's theme, accent, text size, density, reading pane and swipe actions, the same on every
+ * device. A choice shows at once and is saved; when the save fails the saved look comes back and
+ * the section says so.
  */
 export function AppearanceSettings(): ReactElement {
   const { t } = useTranslation()
@@ -157,6 +167,35 @@ export function AppearanceSettings(): ReactElement {
         ))}
         <p id="appearance-reading-pane-phones" className="text-xs text-muted-foreground">
           {t('appearance.readingPanePhones')}
+        </p>
+      </fieldset>
+      {/* Shown on every device: the choice is the same on each, and a laptop may have a touch screen. */}
+      <fieldset className="flex flex-col gap-1.5" aria-describedby="appearance-swipe-touch">
+        <legend className="mb-1.5 text-sm font-medium">{t('appearance.swipe')}</legend>
+        {SWIPES.map(([side, label]) => (
+          <label key={side} className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="w-28">{t(label)}</span>
+            <select
+              name={`appearance-${side}`}
+              className="h-9 min-w-0 rounded-md border bg-background px-2 text-sm text-foreground"
+              value={shown[side]}
+              onChange={(event) => {
+                const choice = SWIPE_ACTIONS.find((action) => action === event.target.value)
+                if (choice !== undefined) {
+                  void choose({ [side]: choice })
+                }
+              }}
+            >
+              {SWIPE_ACTIONS.map((action) => (
+                <option key={action} value={action}>
+                  {t(`appearance.swipes.${action}`)}
+                </option>
+              ))}
+            </select>
+          </label>
+        ))}
+        <p id="appearance-swipe-touch" className="text-xs text-muted-foreground">
+          {t('appearance.swipeTouch')}
         </p>
       </fieldset>
       {outcome.kind === 'failed' && (

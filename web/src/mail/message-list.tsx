@@ -30,6 +30,7 @@ import { keptRows, keptTail, withKept, type Kept, type Tail } from './list-tail.
 import { useLongPress } from './long-press.ts'
 import { fetchPage, messagesKey, READ_ON_MOUNT } from './queries.ts'
 import { SelectMatching } from './select-matching.tsx'
+import { SwipeRow } from './swipe-row.tsx'
 import { TOAST_RETURN_ID } from './toast.tsx'
 import { useTriageActions } from './triage-actions.ts'
 import { useTriage, type Flags, type Target } from './triage-context.ts'
@@ -298,7 +299,7 @@ export function MessageList({
                     aria-posinset={row.index + 1}
                     aria-setsize={nextCursor === null ? messages.length : -1}
                     className={cn(
-                      'group/row absolute top-0 left-0 flex w-full items-start hover:bg-accent',
+                      'group/row absolute top-0 left-0 w-full hover:bg-accent',
                       // The whole row, its checkbox's gutter too.
                       message.ref === current && 'bg-accent',
                       // A finger held on it selects it: no text selection or link preview of the browser's.
@@ -341,52 +342,54 @@ export function MessageList({
                       }
                     }}
                   >
-                    <input
-                      type="checkbox"
-                      name="message"
-                      value={message.ref}
-                      aria-label={t('triage.select', { subject: message.subject === '' ? t('message.noSubject') : message.subject })}
-                      className={cn(
-                        'mr-0 ml-3 size-4 shrink-0 accent-primary',
-                        density === 'compact' ? 'my-2' : 'my-3',
-                        // Hidden, not removed: it keeps its place and the keyboard still reaches it. On a touch
-                        // screen it takes no width either until a row is selected (a finger held on one).
-                        !selecting &&
-                          'opacity-0 group-focus-within/row:opacity-100 group-hover/row:opacity-100 pointer-coarse:sr-only',
-                      )}
-                      checked={checked}
-                      onChange={(event) => {
-                        const from = event.nativeEvent instanceof MouseEvent && event.nativeEvent.shiftKey
-                          ? messages.findIndex((each) => each.ref === lastChecked.current)
-                          : -1
-                        lastChecked.current = message.ref
-                        triage.select(
-                          from === -1 ? [message] : messages.slice(Math.min(from, row.index), Math.max(from, row.index) + 1),
-                          event.target.checked,
-                        )
-                      }}
-                    />
-                    <MessageRow
-                      message={message}
-                      source={searching || view ? 'account' : subfolders ? 'folder' : null}
-                      compact={density === 'compact'}
-                    />
-                    {/* Over the row's end, taking no width, while the row is hovered or has focus; not on a
-                        touch screen, where the message's actions and a swipe star or mark it instead. */}
-                    <span
-                      className={cn(
-                        'absolute right-2 flex items-center gap-0.5 rounded-md border bg-background shadow-xs',
-                        density === 'compact' ? 'top-1' : 'top-2',
-                        // Hidden, it takes no click: a tap on the date opens the message.
-                        'pointer-events-none opacity-0 group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100',
-                        'group-hover/row:pointer-events-auto group-hover/row:opacity-100',
-                        // Still there for screen readers.
-                        'pointer-coarse:sr-only',
-                      )}
-                    >
-                      <StarToggle message={message} />
-                      <ToSortToggle message={message} />
-                    </span>
+                    <SwipeRow message={message}>
+                      <input
+                        type="checkbox"
+                        name="message"
+                        value={message.ref}
+                        aria-label={t('triage.select', { subject: message.subject === '' ? t('message.noSubject') : message.subject })}
+                        className={cn(
+                          'mr-0 ml-3 size-4 shrink-0 accent-primary',
+                          density === 'compact' ? 'my-2' : 'my-3',
+                          // Hidden, not removed: it keeps its place and the keyboard still reaches it. On a touch
+                          // screen it takes no width either until a row is selected (a finger held on one).
+                          !selecting &&
+                            'opacity-0 group-focus-within/row:opacity-100 group-hover/row:opacity-100 pointer-coarse:sr-only',
+                        )}
+                        checked={checked}
+                        onChange={(event) => {
+                          const from = event.nativeEvent instanceof MouseEvent && event.nativeEvent.shiftKey
+                            ? messages.findIndex((each) => each.ref === lastChecked.current)
+                            : -1
+                          lastChecked.current = message.ref
+                          triage.select(
+                            from === -1 ? [message] : messages.slice(Math.min(from, row.index), Math.max(from, row.index) + 1),
+                            event.target.checked,
+                          )
+                        }}
+                      />
+                      <MessageRow
+                        message={message}
+                        source={searching || view ? 'account' : subfolders ? 'folder' : null}
+                        compact={density === 'compact'}
+                      />
+                      {/* Over the row's end, taking no width, while the row is hovered or has focus; not on a
+                          touch screen, where the message's actions and a swipe star or mark it instead. */}
+                      <span
+                        className={cn(
+                          'absolute right-2 flex items-center gap-0.5 rounded-md border bg-background shadow-xs',
+                          density === 'compact' ? 'top-1' : 'top-2',
+                          // Hidden, it takes no click: a tap on the date opens the message.
+                          'pointer-events-none opacity-0 group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100',
+                          'group-hover/row:pointer-events-auto group-hover/row:opacity-100',
+                          // Still there for screen readers.
+                          'pointer-coarse:sr-only',
+                        )}
+                      >
+                        <StarToggle message={message} />
+                        <ToSortToggle message={message} />
+                      </span>
+                    </SwipeRow>
                   </li>
                 )
               })}

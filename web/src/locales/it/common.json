@@ -298,6 +298,18 @@
       "off": "Spento: un messaggio si apre al posto dell'elenco"
     },
     "readingPanePhones": "Su uno schermo stretto (un telefono, o una finestra sotto i 1.024 px) un messaggio si apre sempre al posto dell'elenco.",
+    "swipe": "Azioni di scorrimento",
+    "swipeLeft": "Scorri a sinistra",
+    "swipeRight": "Scorri a destra",
+    "swipes": {
+      "none": "Niente",
+      "archive": "Archivia",
+      "trash": "Sposta nel Cestino",
+      "read": "Segna come letto o non letto",
+      "star": "Aggiungi a Speciali o rimuovi",
+      "to_sort": "Segna da smistare o smistato"
+    },
+    "swipeTouch": "Cosa fa scorrere di lato la riga di un messaggio, su uno schermo touch. Con il mouse la riga si trascina invece su una cartella.",
     "saved": "Salvato.",
     "saveFailed": "Impossibile salvare questa scelta."
   },

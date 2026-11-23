@@ -109,6 +109,24 @@ describe('AppearanceSettings', () => {
     expect(screen.getByRole('radio', { name: /^Off/ })).toBeChecked()
   })
 
+  it('saves what swiping a row left or right does, saying it is on a touch screen', async () => {
+    const fetchMock = stubApi(200)
+    renderSignedIn(<AppearanceSettings />, ALICE)
+    expect(screen.getByRole('group', { name: 'Swipe actions' })).toHaveAccessibleDescription(/on a touch screen/)
+    const left = screen.getByRole('combobox', { name: 'Swipe left' })
+    const right = screen.getByRole('combobox', { name: 'Swipe right' })
+    expect(left).toHaveValue('trash')
+    expect(right).toHaveValue('archive')
+
+    await userEvent.selectOptions(left, 'Nothing')
+    expect(await screen.findByRole('status')).toHaveTextContent('Saved.')
+    expect(fetchMock).toHaveBeenLastCalledWith(PATH, expect.objectContaining({ body: JSON.stringify({ swipe_left: 'none' }) }))
+    await userEvent.selectOptions(right, 'Star or unstar')
+    expect(fetchMock).toHaveBeenLastCalledWith(PATH, expect.objectContaining({ body: JSON.stringify({ swipe_right: 'star' }) }))
+    expect(left).toHaveValue('none')
+    expect(right).toHaveValue('star')
+  })
+
   it('puts the saved look back when the choice could not be saved', async () => {
     stubApi(500)
     renderSignedIn(<AppearanceSettings />, ALICE)
