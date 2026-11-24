@@ -1,6 +1,6 @@
 import { createContext, useContext, useMemo } from 'react'
 
-import type { Feature, User } from '@/api/auth.ts'
+import { DEFAULT_APPEARANCE, type Appearance, type Feature, type User } from '@/api/auth.ts'
 import { writableTimeZone } from '@/lib/time-zone.ts'
 
 export type AuthState =
@@ -26,6 +26,8 @@ export type AuthContextValue = AuthState & {
   changeConversations: (conversations: boolean) => Promise<void>
   /** Saves how long Send holds a message for an Undo (0: none); rejects with the API error. */
   changeUndoSend: (seconds: number) => Promise<void>
+  /** Saves some of the appearance choices, kept over the others; rejects with the API error. */
+  changeAppearance: (change: Partial<Appearance>) => Promise<void>
   /** Ask the API again, after it could not be reached. */
   recheck: () => void
 }
@@ -76,6 +78,20 @@ export function useConversations(): boolean {
 export function useUndoSendSeconds(): number {
   const auth = useContext(AuthContext)
   return auth?.status === 'signed-in' ? auth.user.undo_send_seconds : 0
+}
+
+const notSignedIn = (): Promise<void> => Promise.reject(new Error('Not signed in'))
+
+/**
+ * How the app looks: the signed-in user's choices, the same on every device, else (signed out, or
+ * outside an `AuthProvider`) the defaults. `save` keeps some of them over the others and rejects
+ * with the API error, or when nobody is signed in.
+ */
+export function useAppearance(): { appearance: Appearance; save: (change: Partial<Appearance>) => Promise<void> } {
+  const auth = useContext(AuthContext)
+  const appearance = auth?.status === 'signed-in' ? auth.user.appearance : DEFAULT_APPEARANCE
+  const save = auth?.status === 'signed-in' ? auth.changeAppearance : notSignedIn
+  return useMemo(() => ({ appearance, save }), [appearance, save])
 }
 
 /**

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -16,6 +17,7 @@ from sqlalchemy import (
     text,
     true,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from mailroom.models.base import Base
@@ -45,6 +47,8 @@ class User(Base):
     conversations: Mapped[bool] = mapped_column(Boolean, server_default=true())
     # How long the web's Send holds a message for an Undo, in seconds; 0 sends at once.
     undo_send_seconds: Mapped[int] = mapped_column(Integer, server_default=text("10"))
+    # How the web looks, on every device: only the choices made (``mailroom.auth.appearance``).
+    appearance: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

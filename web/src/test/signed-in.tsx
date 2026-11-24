@@ -3,19 +3,19 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
 import { vi } from 'vitest'
 
-import { ALL_FEATURES, changeConversations, changeUndoSend, changeIndexMaxAge, changeMarkReadSubfolders, changeTimeZone, type Feature, type User } from '@/api/auth.ts'
+import { ALL_FEATURES, changeAppearance, changeConversations, changeUndoSend, changeIndexMaxAge, changeMarkReadSubfolders, changeTimeZone, userSchema, type Feature, type UserJson } from '@/api/auth.ts'
 import { AuthContext } from '@/auth/auth-context.ts'
 import { setRouteFeatures } from '@/auth/feature-route.tsx'
 import { createQueryClient } from '@/lib/query-client.ts'
 
 /**
  * Render `ui` as `user` would see it on an instance with `features`, without the sign-in round trip.
- * A time zone, mark-read default, index age limit, conversations or Undo delay change goes to the API but leaves `user` as it is. A cache of
+ * A time zone, mark-read default, index age limit, conversations, Undo delay or appearance change goes to the API but leaves `user` as it is. A cache of
  * its own, never retrying.
  */
 export function renderSignedIn(
   ui: ReactElement,
-  user: User,
+  user: UserJson,
   features: Iterable<Feature> = ALL_FEATURES,
 ): void {
   const reject = (): Promise<void> => Promise.reject(new Error('not in this test'))
@@ -25,7 +25,7 @@ export function renderSignedIn(
     <AuthContext
       value={{
         status: 'signed-in',
-        user,
+        user: userSchema.parse(user),
         features: enabled,
         signIn: reject,
         signOut: reject,
@@ -43,6 +43,9 @@ export function renderSignedIn(
         },
         changeUndoSend: async (seconds) => {
           await changeUndoSend(seconds)
+        },
+        changeAppearance: async (change) => {
+          await changeAppearance(change)
         },
         recheck: vi.fn(),
       }}

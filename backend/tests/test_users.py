@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 import pytest
 from sqlalchemy import func, select, update
 
+from mailroom.auth.appearance import AppearanceChange
 from mailroom.auth.password import password_matches
 from mailroom.auth.sessions import create_session, session_user
 from mailroom.auth.users import (
@@ -13,6 +14,7 @@ from mailroom.auth.users import (
     create_user,
     list_users,
     remove_user,
+    set_appearance,
     set_password,
     time_zone_of,
     user_by_username,
@@ -97,3 +99,20 @@ def test_a_stored_zone_this_machine_no_longer_knows_reads_as_the_default(
     db_session.execute(update(User).where(User.id == user.id).values(time_zone="Mars/Base"))
     db_session.commit()
     assert time_zone_of(db_session, user.id) == DEFAULT_TIME_ZONE
+
+
+def test_an_appearance_change_keeps_one_saved_since_the_user_was_read(db_session: Session) -> None:
+    user = create_user(db_session, "alice", "correct horse battery staple")
+    assert user.appearance == {}
+    # Another request (a second click, another tab) saves a choice after this one read the user.
+    db_session.execute(
+        update(User)
+        .where(User.id == user.id)
+        .values(appearance={"theme": "dark"})
+        .execution_options(synchronize_session=False)
+    )
+    set_appearance(db_session, user, AppearanceChange(accent="violet"))
+    db_session.expire_all()
+    stored = db_session.get(User, user.id)
+    assert stored is not None
+    assert stored.appearance == {"theme": "dark", "accent": "violet"}

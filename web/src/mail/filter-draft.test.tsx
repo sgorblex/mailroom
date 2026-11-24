@@ -2,11 +2,11 @@ import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { Feature, User } from '@/api/auth.ts'
+import type { Feature, UserJson } from '@/api/auth.ts'
 import { type FakeMailState, messageItem, messageView, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
 import { renderMailApp } from '@/test/mail-app.tsx'
 
-const ALICE: User = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null, conversations: true, undo_send_seconds: 10 }
+const ALICE: UserJson = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null, conversations: true, undo_send_seconds: 10 }
 const item = messageItem(WORK, 'INBOX', 1, { subject: 'Weekly' })
 
 function state(): FakeMailState {
@@ -31,7 +31,7 @@ function state(): FakeMailState {
   }
 }
 
-const withFilters: { user: User; features: Feature[] } = { user: ALICE, features: ['mail', 'filters'] }
+const withFilters: { user: UserJson; features: Feature[] } = { user: ALICE, features: ['mail', 'filters'] }
 
 afterEach(() => {
   vi.unstubAllGlobals()

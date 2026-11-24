@@ -2,11 +2,11 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { User } from '@/api/auth.ts'
+import type { UserJson } from '@/api/auth.ts'
 import { bodiesTo, type FakeMailState, messageItem, messageView, queriesTo, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
 import { renderMailApp } from '@/test/mail-app.tsx'
 
-const ALICE: User = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null, conversations: true, undo_send_seconds: 10 }
+const ALICE: UserJson = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null, conversations: true, undo_send_seconds: 10 }
 const UNREAD = { seen: false, flagged: false, answered: false, forwarded: false, draft: false, to_sort: false }
 
 // "plan" is three messages, the latest unread; "lunch" is one.

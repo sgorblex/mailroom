@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { User } from '@/api/auth.ts'
+import type { UserJson } from '@/api/auth.ts'
 import type { ScheduledSend, SendResult } from '@/api/mail.ts'
 import { bodiesTo, fakeDraft, type FakeMailState, HOME, messageItem, messageView, plainTextsAsked, queriesTo, refusal, savesOf, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
 import { renderMailApp } from '@/test/mail-app.tsx'
@@ -1972,7 +1972,7 @@ describe('sending', () => {
   })
 
   describe('held for an Undo', () => {
-    const undoing = (seconds: number): User => ({
+    const undoing = (seconds: number): UserJson => ({
       username: 'alice',
       is_admin: false,
       time_zone: null,

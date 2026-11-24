@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
 from mailroom.api.deps import CurrentUser, DbSession, SessionCookie
+from mailroom.auth.appearance import Appearance, AppearanceChange, appearance_of
 from mailroom.auth.password import MAX_PASSWORD_LENGTH, password_matches
 from mailroom.auth.sessions import (
     SESSION_COOKIE_NAME,
@@ -22,6 +23,7 @@ from mailroom.auth.throttle import LoginThrottle, client_key
 from mailroom.auth.users import (
     INDEX_MAX_AGE_DAYS,
     UNDO_SEND_SECONDS,
+    set_appearance,
     set_conversations,
     set_index_max_age,
     set_mark_read_subfolders,
@@ -57,6 +59,8 @@ class UserOut(BaseModel):
     """Whether the web's message lists are grouped by conversation."""
     undo_send_seconds: int
     """How long the web's Send holds a message for an Undo; 0 sends at once."""
+    appearance: Appearance
+    """How the web looks, on every device: every choice, a default where the user made none."""
 
     @classmethod
     def of(cls, user: User) -> UserOut:
@@ -68,6 +72,7 @@ class UserOut(BaseModel):
             index_max_age_days=user.index_max_age_days,
             conversations=user.conversations,
             undo_send_seconds=user.undo_send_seconds,
+            appearance=appearance_of(user.appearance),
         )
 
 
@@ -191,6 +196,16 @@ def change_undo_send(body: UndoSendChange, db: DbSession, user: CurrentUser) -> 
     The answer is the user."""
     set_undo_send(db, user, body.undo_send_seconds)
     logger.info("undo_send_changed", extra={"event": "undo_send_changed", "user_id": user.id})
+    return UserOut.of(user)
+
+
+@auth_router.put("/me/appearance")
+def change_appearance(body: AppearanceChange, db: DbSession, user: CurrentUser) -> UserOut:
+    """Some of the choices of how the web looks (at least one; null leaves one as it is), kept
+    over the others the user made. An unknown choice or option is a 422. The answer is the
+    user."""
+    set_appearance(db, user, body)
+    logger.info("appearance_changed", extra={"event": "appearance_changed", "user_id": user.id})
     return UserOut.of(user)
 
 

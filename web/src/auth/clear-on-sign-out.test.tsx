@@ -3,12 +3,13 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
+import { userSchema } from '@/api/auth.ts'
 import { createQueryClient } from '@/lib/query-client.ts'
 
 import { AuthContext, type AuthContextValue, type AuthState } from './auth-context.ts'
 import { ClearOnSignOut } from './clear-on-sign-out.ts'
 
-const ALICE = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null, conversations: true, undo_send_seconds: 10 }
+const ALICE = userSchema.parse({ username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null, conversations: true, undo_send_seconds: 10 })
 
 function signedAs(state: AuthState): AuthContextValue {
   const reject = (): Promise<void> => Promise.reject(new Error('not in this test'))
@@ -22,6 +23,7 @@ function signedAs(state: AuthState): AuthContextValue {
     changeIndexMaxAge: reject,
     changeConversations: reject,
     changeUndoSend: reject,
+    changeAppearance: reject,
     recheck: vi.fn(),
   }
 }

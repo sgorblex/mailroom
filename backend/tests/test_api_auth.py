@@ -20,6 +20,16 @@ if TYPE_CHECKING:
 
 
 EVERY_FEATURE = ["mail", "mcp", "filters"]
+APPEARANCE = {
+    "theme": "system",
+    "accent": "default",
+    "density": "comfortable",
+    "text_size": "default",
+    "reading_pane": "right",
+    "home": "dashboard",
+    "swipe_left": "trash",
+    "swipe_right": "archive",
+}
 SIGNED_IN = {
     "user": {
         "username": USERNAME,
@@ -29,6 +39,7 @@ SIGNED_IN = {
         "index_max_age_days": None,
         "conversations": True,
         "undo_send_seconds": 10,
+        "appearance": APPEARANCE,
     },
     "features": EVERY_FEATURE,
 }
@@ -280,6 +291,56 @@ def test_the_user_picks_how_long_send_waits_for_an_undo(
     assert user_client.put(route, json={"undo_send_seconds": 0}).json()["undo_send_seconds"] == 0
     api_client.cookies.clear()
     assert api_client.put(route, json={"undo_send_seconds": 5}).status_code == 401
+
+
+def test_the_user_picks_how_the_web_looks(
+    user_client: TestClient, api_client: TestClient, db_session: Session, user: User
+) -> None:
+    route = "/api/v1/auth/me/appearance"
+    response = user_client.put(route, json={"theme": "dark", "accent": "violet"})
+    assert response.status_code == 200
+    assert response.json()["appearance"] == {**APPEARANCE, "theme": "dark", "accent": "violet"}
+    response = user_client.put(route, json={"density": "compact", "theme": None})
+    assert response.json()["appearance"] == {
+        **APPEARANCE,
+        "theme": "dark",
+        "accent": "violet",
+        "density": "compact",
+    }
+    db_session.expire_all()
+    stored = db_session.get(User, user.id)
+    assert stored is not None
+    # Only the choices made: a later default reaches whoever never chose.
+    assert stored.appearance == {"theme": "dark", "accent": "violet", "density": "compact"}
+    for body in (
+        {},
+        {"theme": None},
+        {"theme": "sepia"},
+        {"font": "serif"},
+        {"swipe_left": "delete"},
+        {"text_size": 2},
+    ):
+        assert user_client.put(route, json=body).status_code == 422, body
+    api_client.cookies.clear()
+    assert api_client.put(route, json={"theme": "light"}).status_code == 401
+
+
+def test_a_choice_no_longer_offered_reads_as_its_default(
+    user_client: TestClient, db_session: Session, user: User
+) -> None:
+    db_session.execute(
+        update(User)
+        .where(User.id == user.id)
+        .values(appearance={"theme": "sepia", "accent": "rose", "retired": True})
+    )
+    db_session.commit()
+    me = user_client.get("/api/v1/auth/me").json()["user"]
+    assert me["appearance"] == {**APPEARANCE, "accent": "rose"}
+    user_client.put("/api/v1/auth/me/appearance", json={"home": "mail"})
+    db_session.expire_all()
+    stored = db_session.get(User, user.id)
+    assert stored is not None
+    assert stored.appearance == {"accent": "rose", "home": "mail"}
 
 
 def test_the_user_limits_the_index_to_recent_mail(

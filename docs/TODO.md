@@ -239,7 +239,7 @@ First, fixes carried over from 0.14.0 testing:
       comfortable rows.
 - [ ] **A message list wide enough to read** — on a laptop the list column is too narrow to tell
       messages apart, and the checkbox, star and To sort icons take part of it. The columns
-      resizable (widths kept per user), the folder pane collapsible or hidden until hovered, the
+      resizable (widths kept per device), the folder pane collapsible or hidden until hovered, the
       row's icons shown on hover or selection only (or folded into one menu), and a compact mode
       putting sender, subject and date on one line.
 - [ ] **Undo where it is seen** — the Undo send toast is easy to miss where it is now: centred at
