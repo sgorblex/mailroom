@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { DEFAULT_APPEARANCE, type UserJson } from '@/api/auth.ts'
 import { bodiesTo, type FakeMailState, HOME, messageItem, messageView, refusal, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
 import { scrollListToEnd } from '@/test/fake-virtualizer.ts'
 import { renderMailApp } from '@/test/mail-app.tsx'
@@ -40,7 +41,8 @@ function state(overrides: Partial<FakeMailState> = {}): FakeMailState {
   }
 }
 
-const messagesList = (): Promise<HTMLElement> => screen.findByRole('list', { name: 'Messages' })
+// The first wait after a render: on a busy CI runner the cold mount of the mail screen alone can take a second.
+const messagesList = (): Promise<HTMLElement> => screen.findByRole('list', { name: 'Messages' }, { timeout: 3_000 })
 const FLAG = '/api/v1/mail/messages/flag'
 const TRASH = '/api/v1/mail/messages/trash'
 
@@ -609,6 +611,102 @@ describe('triage', () => {
     const group = await actions()
     expect(within(group).getByRole('button', { name: 'Move to Trash' })).toBeInTheDocument()
     expect(within(group).queryByRole('button', { name: 'Archive' })).not.toBeInTheDocument()
+  })
+})
+
+describe('rows', () => {
+  const STARRED = { seen: true, flagged: true, answered: false, forwarded: false, draft: false, to_sort: true }
+  const ALICE: UserJson = {
+    username: 'alice',
+    is_admin: false,
+    time_zone: null,
+    mark_read_subfolders: true,
+    index_max_age_days: null,
+    conversations: true,
+    undo_send_seconds: 10,
+    appearance: { ...DEFAULT_APPEARANCE, density: 'compact' },
+  }
+  const box = (list: HTMLElement, subject: string): HTMLElement => within(list).getByRole('checkbox', { name: `Select ${subject}` })
+
+  it('shows a checkbox on hover or focus until a row is selected, then on every row', async () => {
+    stubMailApi(state())
+    renderMailApp('/mail')
+
+    const list = await messagesList()
+    expect(box(list, 'Message 9')).toHaveClass('opacity-0', 'group-hover/row:opacity-100', 'group-focus-within/row:opacity-100')
+    // A touch screen neither hovers nor wants the width: no checkbox until one is selected.
+    expect(box(list, 'Message 9')).toHaveClass('pointer-coarse:sr-only')
+    expect(list).toHaveAttribute('data-density', 'comfortable')
+    expect(within(list).getByText('Preview of 9')).toBeInTheDocument()
+    await userEvent.click(box(list, 'Message 9'))
+    await waitFor(() => {
+      expect(box(list, 'Message 8')).not.toHaveClass('opacity-0')
+    })
+    expect(box(list, 'Message 8')).not.toHaveClass('pointer-coarse:sr-only')
+    await userEvent.click(box(list, 'Message 9'))
+    await waitFor(() => {
+      expect(box(list, 'Message 8')).toHaveClass('opacity-0')
+    })
+  })
+
+  it('shows a set star and To sort as marks by the date, the toggles over the row', async () => {
+    stubMailApi(state({ messages: { '1/INBOX': [messageItem(WORK, 'INBOX', 3, { flags: STARRED }), ...inbox.slice(1)] } }))
+    renderMailApp('/mail')
+
+    const list = await messagesList()
+    const marked = row(list, 'Message 3')
+    expect(within(marked).getByRole('img', { name: 'Starred' })).toHaveClass('text-star')
+    expect(within(marked).getByRole('img', { name: 'To sort' })).toBeInTheDocument()
+    const toggles = within(marked).getByRole('button', { name: 'Star', pressed: true }).parentElement
+    expect(toggles).toHaveClass('absolute', 'opacity-0', 'pointer-events-none')
+    // Not on a touch screen, where they would crowd the row: the message's actions and a swipe do it.
+    expect(toggles).toHaveClass('pointer-coarse:sr-only')
+    expect(toggles).not.toHaveClass('pointer-coarse:opacity-100')
+    // The date under them shows none of itself past their edge, but only where they show.
+    const date = within(marked).getByRole('img', { name: 'Starred' }).nextElementSibling
+    expect(date).toHaveClass('group-hover/row:text-transparent', 'group-focus-within/row:text-transparent', 'pointer-coarse:text-muted-foreground')
+    expect(within(row(list, 'Message 9')).queryByRole('img', { name: 'Starred' })).not.toBeInTheDocument()
+  })
+
+  it('selects a row a finger is held on, opening nothing', async () => {
+    stubMailApi(state())
+    renderMailApp('/mail')
+
+    const list = await messagesList()
+    const link = rowLink(list, 'Message 9')
+    fireEvent.pointerDown(link, { pointerId: 1, pointerType: 'touch', clientX: 50, clientY: 20 })
+    await waitFor(() => {
+      expect(box(list, 'Message 9')).toBeChecked()
+    })
+    // The browser's own long press (a menu) does nothing, and the lifted finger's click opens nothing.
+    expect(fireEvent.contextMenu(link)).toBe(false)
+    fireEvent.pointerUp(link, { pointerId: 1, pointerType: 'touch' })
+    fireEvent.click(link)
+    expect(link).not.toHaveAttribute('aria-current')
+    expect(box(list, 'Message 8')).not.toHaveClass('pointer-coarse:sr-only')
+  })
+
+  it('highlights the whole open row, its checkbox gutter too', async () => {
+    stubMailApi(state())
+    renderMailApp('/mail')
+
+    const list = await messagesList()
+    expect(row(list, 'Message 9')).not.toHaveClass('bg-accent')
+    await userEvent.click(rowLink(list, 'Message 9'))
+    await waitFor(() => {
+      expect(row(list, 'Message 9')).toHaveClass('bg-accent')
+    })
+    expect(row(list, 'Message 8')).not.toHaveClass('bg-accent')
+  })
+
+  it('leaves the opening out of a compact row', async () => {
+    stubMailApi(state())
+    renderMailApp('/mail', { user: ALICE })
+
+    const list = await messagesList()
+    expect(list).toHaveAttribute('data-density', 'compact')
+    expect(within(list).getByRole('link', { name: /Message 9/ })).toBeInTheDocument()
+    expect(within(list).queryByText('Preview of 9')).not.toBeInTheDocument()
   })
 })
 

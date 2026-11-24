@@ -286,6 +286,11 @@
       "default": "Normale",
       "large": "Grande"
     },
+    "density": "Densità",
+    "densities": {
+      "comfortable": "Comoda",
+      "compact": "Compatta, senza l'inizio di ogni messaggio"
+    },
     "saved": "Salvato.",
     "saveFailed": "Impossibile salvare questa scelta."
   },

@@ -241,6 +241,7 @@ First, fixes carried over from 0.14.0 testing:
       pane beside the message, not only some of them there and the rest elsewhere.
 - [ ] **Layout and density** — the reading pane on the right, below the list or off; compact or
       comfortable rows.
+  - [x] **Density** — comfortable or compact rows (less padding, no opening), on the Profile.
 - [ ] **A message list wide enough to read** — on a laptop the list column is too narrow to tell
       messages apart, and the checkbox, star and To sort icons take part of it. The columns
       resizable (widths kept per device), the folder pane collapsible or hidden until hovered, the
@@ -250,6 +251,11 @@ First, fixes carried over from 0.14.0 testing:
         keyboard, its width kept per device and wider by default.
   - [x] **Folder rail** — the folder pane folds to a rail of icons (a button or `[`, on its own
         below `xl`), kept per device, and peeks over the list on hover or focus.
+  - [x] **Calmer rows** — the checkbox on hover, focus or once selecting; the star and To sort
+        toggles over the row on hover, small marks by the date when set. On a touch screen
+        neither: a finger held on a row selects it.
+  - [ ] **One-line compact rows** (later) — sender, subject and date on one line; the compact
+        density for now keeps two lines.
 - [ ] **Undo where it is seen** — the Undo send toast is easy to miss where it is now: centred at
       the bottom of the window, larger, with the seconds left.
 - [ ] **Profile layout** — the Profile uses the width of a desktop screen, its sections side by
