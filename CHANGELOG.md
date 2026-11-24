@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.16.0](https://github.com/sgorblex/mailroom/compare/v0.15.0...v0.16.0) (2026-11-24)
+
+
+### Features
+
+* a home page with unread, waiting mail and filters at a glance ([#195](https://github.com/sgorblex/mailroom/issues/195)) ([a206f95](https://github.com/sgorblex/mailroom/commit/a206f9576236b4947f9a6b903f1ddc860b124d41))
+* **auth:** appearance preferences kept per user, the same on every device ([#180](https://github.com/sgorblex/mailroom/issues/180)) ([fefd813](https://github.com/sgorblex/mailroom/commit/fefd813a3fdc528217b29045d7fa097e5ebbb0fd))
+* **mail:** a phone layout with a folders drawer and full-view messages ([#191](https://github.com/sgorblex/mailroom/issues/191)) ([ee3c0a9](https://github.com/sgorblex/mailroom/commit/ee3c0a9b4bd29b28537ae4c4ddd62d7e44884d1b))
+* **mail:** act on the open message from its own action bar ([#189](https://github.com/sgorblex/mailroom/issues/189)) ([e27c466](https://github.com/sgorblex/mailroom/commit/e27c46635f07bb982c802829f7ae18fb129bc673))
+* **mail:** an account switcher above the folder tree ([#186](https://github.com/sgorblex/mailroom/issues/186)) ([5507f1d](https://github.com/sgorblex/mailroom/commit/5507f1d55704cbe1790c3724766b59aecf931bc5))
+* **mail:** calmer rows, hover controls and a compact density ([#187](https://github.com/sgorblex/mailroom/issues/187)) ([4622776](https://github.com/sgorblex/mailroom/commit/46227769b04278c0599f7a7ed008b5f8330dd9dc))
+* **mail:** drag the divider to widen the message list, kept per device ([#184](https://github.com/sgorblex/mailroom/issues/184)) ([f5ebbe0](https://github.com/sgorblex/mailroom/commit/f5ebbe0273256507dad02dcfb4bbb7ec1ee5e2e0))
+* **mail:** fold the folder pane into a rail that peeks on hover ([#185](https://github.com/sgorblex/mailroom/issues/185)) ([a7de0e6](https://github.com/sgorblex/mailroom/commit/a7de0e6c0ca611896f4714d4684de07f8b391224))
+* **mail:** HTML mail follows dark mode, with the original colours a click away ([#194](https://github.com/sgorblex/mailroom/issues/194)) ([b5e6a23](https://github.com/sgorblex/mailroom/commit/b5e6a23e0b644f70a327e25149872817b8837e73))
+* **mail:** open HTML mail as HTML, and remember senders read as text ([#193](https://github.com/sgorblex/mailroom/issues/193)) ([7c86355](https://github.com/sgorblex/mailroom/commit/7c863556a8728e3d7aad09f2c701490a7076c12c))
+* **mail:** reading pane on the right, below or off ([#188](https://github.com/sgorblex/mailroom/issues/188)) ([45e6e19](https://github.com/sgorblex/mailroom/commit/45e6e1938649a5c41005084bef40544dd82762d4))
+* **mail:** swipe a row to archive or trash on touch screens ([#192](https://github.com/sgorblex/mailroom/issues/192)) ([317ce27](https://github.com/sgorblex/mailroom/commit/317ce27ac14487997a974bfbb0b1b872a77cb7e5))
+* **mail:** switch to the original colours instantly, with a pressed toggle ([#201](https://github.com/sgorblex/mailroom/issues/201)) ([52c645b](https://github.com/sgorblex/mailroom/commit/52c645b8886ee158b72e1962bb187ddc05d0e613))
+* **mail:** Undo send in a toast at the bottom, with seconds left ([#190](https://github.com/sgorblex/mailroom/issues/190)) ([2b73899](https://github.com/sgorblex/mailroom/commit/2b73899f8cc36c1a44ba3d62c4c85cc9c20bdae3))
+* **profile:** pick indexed folders from a tree, with a filter ([#197](https://github.com/sgorblex/mailroom/issues/197)) ([46fdb5d](https://github.com/sgorblex/mailroom/commit/46fdb5d1dcc208cd966216e1b8dbed260bf6a9f6))
+* **profile:** sections with their own nav, in a wider layout ([#196](https://github.com/sgorblex/mailroom/issues/196)) ([b007c22](https://github.com/sgorblex/mailroom/commit/b007c226796dd04a0cc1ac9e3745dc207e50c9e8))
+* **web:** an app shell with icon nav, a user menu and a bottom tab bar on phones ([#182](https://github.com/sgorblex/mailroom/issues/182)) ([ef8a3a2](https://github.com/sgorblex/mailroom/commit/ef8a3a2a92fedff47e0b326962dce93e96ca8441))
+* **web:** installable on phones, with a manifest and icons ([#183](https://github.com/sgorblex/mailroom/issues/183)) ([b56981e](https://github.com/sgorblex/mailroom/commit/b56981e36824adff4fd2f5738feffc5c9a46f432))
+* **web:** show a staging banner, read from the API's deploy_env at runtime ([#172](https://github.com/sgorblex/mailroom/issues/172)) ([df1774f](https://github.com/sgorblex/mailroom/commit/df1774f5cf2976f9365eb82e1b066fd867fec860))
+* **web:** the Soft look, with accents, dark mode and text size ([#181](https://github.com/sgorblex/mailroom/issues/181)) ([3745ba1](https://github.com/sgorblex/mailroom/commit/3745ba15cb3b003fd5a93e2a98d0ce9e9524e7f2))
+
+
+### Bug Fixes
+
+* **mail:** date a sent draft when it goes out, not when it was saved ([#177](https://github.com/sgorblex/mailroom/issues/177)) ([c106442](https://github.com/sgorblex/mailroom/commit/c1064427891b80afb6c2dc0e0b904caad8210f8b))
+
+
+### Performance Improvements
+
+* **mail:** keep message reads cached, the last one on show and the next read ahead ([#203](https://github.com/sgorblex/mailroom/issues/203)) ([d769e42](https://github.com/sgorblex/mailroom/commit/d769e42f93b3a5d543b742cf5b33cc8080c7397a))
+* **mail:** open a message without drawing the folder tree and the list again ([#204](https://github.com/sgorblex/mailroom/issues/204)) ([a741efc](https://github.com/sgorblex/mailroom/commit/a741efc8235f328fd46e52d27d90bb603c84d9c6))
+* **mail:** read and sanitise a message's HTML once per open ([#202](https://github.com/sgorblex/mailroom/issues/202)) ([63c4599](https://github.com/sgorblex/mailroom/commit/63c4599a6a0a7bfcca8fa55eedd4fb392366f248))
+
 ## [0.15.0](https://github.com/sgorblex/mailroom/compare/v0.14.0...v0.15.0) (2026-11-22)
 
 
