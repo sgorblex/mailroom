@@ -4,6 +4,7 @@ drafted from it."""
 
 from __future__ import annotations
 
+import math
 import unicodedata
 from datetime import datetime
 from typing import TYPE_CHECKING, Annotated, Final, Literal
@@ -74,10 +75,21 @@ _DOCUMENT: Final = (
     "img{{max-width:100%;height:auto}}</style>"
     "</head><body>{body}</body></html>\n"
 )
+_PADDING: Final = 12
+_FIT: Final = ".mailroom-fit"
+"""The block ``html_document`` wraps the message in: ``safe_html`` keeps no ``class``, so no
+element of the message can be it."""
 _LIGHT: Final = (
     ":root{color-scheme:light}"
-    "body{margin:0;padding:12px;background:#fff;color:#000;overflow-wrap:anywhere}"
+    f"body{{margin:0;padding:{_PADDING}px;background:#fff;color:#000;overflow-wrap:anywhere}}"
+    f"{_FIT}{{overflow-x:auto}}"
 )
+"""The light document's styles; the fit block scrolls sideways whatever is wider than the frame,
+the fallback when the message's layout width is unknown or past what ``_fit_style`` fits."""
+_FIT_STEP: Final = 20
+_FIT_FLOOR: Final = 280
+"""``_fit_style`` steps the zoom every ``_FIT_STEP`` pixels of frame width down to
+``_FIT_FLOOR``, narrower than any phone: below it the zoom stays the floor's."""
 ORIGINAL_TARGET: Final = "mailroom-original"
 """The id the dark document gives its fragment target: ``#mailroom-original`` shows the message's
 own colours, any other fragment the dark ones, so that the client switches with the URL's fragment
@@ -488,17 +500,42 @@ def html_headers(*, remote: bool) -> dict[str, str]:
     }
 
 
-def html_document(fragment: str, *, dark: bool = False, sets_colours: bool = False) -> str:
+def _fit_style(width: int) -> str:
+    """Rules that fit a message laid out ``width`` pixels wide (``SafeHtml.layout_width``) to a
+    narrower frame, as phone mail apps do: the fit block at least that wide, zoomed out in steps
+    of frame width (``_FIT_STEP``), each step's zoom the one that fits its narrowest frame. Media
+    queries and ``zoom``, so nothing in the frame runs; a browser without ``zoom`` scrolls."""
+    rules = [f"{_FIT}{{min-width:{width}px}}"]
+    edge = width + 2 * _PADDING
+    while edge > _FIT_FLOOR:
+        lower = max(edge - _FIT_STEP, _FIT_FLOOR)
+        zoom = math.floor((lower - 2 * _PADDING) * 1000 / width) / 1000
+        rules.append(f"@media (width<{edge}px){{{_FIT}{{zoom:{zoom:.3f}}}}}")
+        edge = lower
+    return "".join(rules)
+
+
+def html_document(
+    fragment: str,
+    *,
+    dark: bool = False,
+    sets_colours: bool = False,
+    layout_width: int | None = None,
+) -> str:
     """mailroom-core's sanitised fragment in a minimal document: UTF-8, links in a new
-    top-level context (``safe_html`` also sets ``target`` and ``rel`` on each). ``dark`` adapts
-    it to a dark theme with CSS alone: dark colours when the fragment sets none of its own,
-    else (``sets_colours``) the inverted page with its images inverted back; the same document
-    shows the original colours when its URL's fragment is ``#mailroom-original``
+    top-level context (``safe_html`` also sets ``target`` and ``rel`` on each), the message in a
+    block that scrolls sideways what is wider than the frame and, given its ``layout_width``,
+    zooms it out to fit a narrower frame (``_fit_style``). ``dark`` adapts it to a dark theme
+    with CSS alone: dark colours when the fragment sets none of its own, else
+    (``sets_colours``) the inverted page with its images inverted back; the same document shows
+    the original colours when its URL's fragment is ``#mailroom-original``
     (``ORIGINAL_TARGET``)."""
+    style = _LIGHT if layout_width is None else _LIGHT + _fit_style(layout_width)
+    body = f'<div class="{_FIT[1:]}">{fragment}</div>'
     if not dark:
-        return _DOCUMENT.format(style=_LIGHT, body=fragment)
-    style = _LIGHT + (_INVERTED if sets_colours else _DARK)
-    return _DOCUMENT.format(style=style, body=_TARGET + fragment)
+        return _DOCUMENT.format(style=style, body=body)
+    style += _INVERTED if sets_colours else _DARK
+    return _DOCUMENT.format(style=style, body=_TARGET + body)
 
 
 Remote = bool | Literal["sender"]
@@ -531,7 +568,12 @@ def message_html(
     shown = shows_remote(ctx, db, user.id, ref, remote)
     safe = service.message_html(ctx, user.id, ref, remote=shown)
     return Response(
-        content=html_document(safe.html, dark=dark, sets_colours=safe.sets_colours),
+        content=html_document(
+            safe.html,
+            dark=dark,
+            sets_colours=safe.sets_colours,
+            layout_width=safe.layout_width,
+        ),
         media_type="text/html; charset=utf-8",
         headers=html_headers(remote=shown),
     )

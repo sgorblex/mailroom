@@ -159,7 +159,12 @@ host than its own (neither it nor a parent or child of it, no public-suffix list
 text body, MCP's included, carries the mark too. A backslash in an `http(s)` URL is read as a
 slash, as a browser does. `SafeHtml.sets_colours` says whether what nh3 keeps sets a background
 or text colour (`bgcolor` or `color` attributes, `background-color` or `color` in a `style`, the
-link marker's own aside), for a host's dark mode.
+link marker's own aside), for a host's dark mode. `SafeHtml.layout_width` is the widest fixed
+pixel width what nh3 keeps declares (`render._layout`: a `width` attribute, which a `style`
+width replaces as in a browser, limited by a `max-width` in pixels and left out under any other,
+or a `min-width`; not an image's or a table cell's `width`, nor anything dropped or hidden
+with `display:none`; at most 1600, a wider one not counting), None when there is none, for a host
+that fits a newsletter built for a desktop column to a phone's screen.
 
 Both sanitisers keep a `style` attribute's declarations themselves (`style_declarations`), rather
 than leave nh3 to drop the rest: an allowed property, in any case, whose value has nothing

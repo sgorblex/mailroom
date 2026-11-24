@@ -441,3 +441,70 @@ def test_the_link_marker_is_not_the_senders_colours():
     assert "evil.example" in out.html
     assert "background-color" in out.html
     assert not out.sets_colours
+
+
+def test_reports_the_widest_fixed_width_the_kept_html_declares():
+    newsletter = (
+        '<table width="600" align="center"><tr><td width="300">a</td>'
+        '<td style="width:300px !important">b</td></tr></table>'
+        '<div style="width:640px !important">b</div>'
+        '<div style="min-width: 700PX; width: 100%">c</div>'
+    )
+    assert clean(newsletter).layout_width == 700
+    assert clean('<table width="600px"><tr><td>a</td></tr></table>').layout_width == 600
+    assert clean('<div style="width:599.6px">a</div>').layout_width == 599
+    for limited, width in (
+        ('<div style="width:1200px;max-width:600px">a</div>', 600),
+        ('<div style="width:2000px;max-width:600px !important">a</div>', 600),
+        ('<div style="width:600px;max-width:800px">a</div>', 600),
+        ('<div style="width:600px;max-width:none">a</div>', 600),
+        # A min-width wins over both.
+        ('<div style="width:900px;max-width:100%;min-width:500px">a</div>', 500),
+        ('<table><tr><td width="900" style="min-width:500px">a</td></tr></table>', 500),
+        ('<table><tr><td style="display:block;width:640px">a</td></tr></table>', 640),
+        # What a fluid box or cell holds still counts.
+        ('<div style="max-width:100%"><table width="600"><tr><td>a</td></tr></table></div>', 600),
+        ('<table width="100%"><tr><td><table width="600"><tr><td>a', 600),
+    ):
+        assert clean(limited).layout_width == width, limited
+
+
+def test_fluid_html_has_no_layout_width():
+    for fluid in (
+        "<p>plain text</p>",
+        '<table width="100%"><tr><td width="50%">a</td></tr></table>',
+        '<div style="width:40em">ems are not pixels</div>',
+        '<div style="max-width:600px">a limit, not a width</div>',
+        # A style's width replaces the attribute, as in a browser: a responsive table.
+        '<table width="600" style="width:100%;max-width:600px"><tr><td>a</td></tr></table>',
+        # A limit relative to the screen: the box already fits it.
+        '<div style="width:600px;max-width:100%">a</div>',
+        '<div style="width:1200px;max-width:100% !important">a</div>',
+        '<div style="width:600px;max-width:100vw">a</div>',
+        '<div style="width:600px;max-width:calc(100% - 20px)">a</div>',
+        '<table width="600" style="max-width:100%"><tr><td>a</td></tr></table>',
+        # A cell's or column's width gives way to its table's.
+        '<table width="100%"><tr><td width="600">a</td></tr></table>',
+        '<table><colgroup><col width="600"></colgroup><tr><th style="width:600px">a</th></tr></table>',
+    ):
+        assert clean(fluid).layout_width is None, fluid
+
+
+def test_what_is_not_shown_has_no_layout_width():
+    for hidden in (
+        # The host shrinks images to their column.
+        '<img src="cid:a" width="1200" style="width:1200px">',
+        '<svg width="900"><rect width="900"/></svg>',
+        '<form><table width="900"><tr><td>a</td></tr></table></form>',
+        '<style>.x{width:900px}</style><p class="x">a</p>',
+        '<div style="display: none !important"><table width="900"><tr><td>a</td></tr></table></div>',
+        # A width past the cap is no column: left to scroll.
+        '<table width="1601"><tr><td>a</td></tr></table>',
+        '<div style="width:url(900px)">a</div>',
+        '<div width="9e2">a</div>',
+    ):
+        assert clean(hidden).layout_width is None, hidden
+    # A stripped tag keeps its content but not its style, so it hides nothing.
+    assert clean('<blink style="display:none"><div width="640">a</div></blink>').layout_width == 640
+    assert clean('<table width="1600"><tr><td>a</td></tr></table>').layout_width == 1600
+    assert clean('<img src="cid:a" style="min-width:800px">').layout_width == 800
