@@ -115,16 +115,17 @@ export interface Triage {
   setBulk: (action: MatchingAction | null) => void
   /** A bulk action ended, having touched `accounts`: the list and their folders are read again, the selection cleared. */
   bulkDone: (accounts: AccountId[]) => void
-  /** The open message, once its view has loaded. */
-  open: Target | null
+  /**
+   * The open message as it is now, for code acting later (a key, an answer); what renders it reads
+   * `useOpenMessage`, apart, so opening one does not draw again all that reads this.
+   */
+  openMessage: () => Target | null
   setOpen: (target: Target | null) => void
   /** The list tells the rows it shows, in order, for moving through them by keyboard. */
   setVisible: (rows: Target[]) => void
   visibleRows: () => Target[]
   /** Calls `listener` with the rows each time the list tells them; answers the unsubscribe. */
   subscribeVisible: (listener: (rows: Target[]) => void) => () => void
-  /** What the keys act on: the selection (the list toolbar's), else the open message (its action bar's). */
-  targets: Target[]
   busy: boolean
   outcome: Outcome | null
   dismissOutcome: () => void
@@ -158,6 +159,13 @@ export interface Triage {
 }
 
 export const TriageContext = createContext<Triage | null>(null)
+
+/** The open message, once its view has loaded: its own context, read only where it shows. */
+export const OpenMessageContext = createContext<Target | null>(null)
+
+export function useOpenMessage(): Target | null {
+  return useContext(OpenMessageContext)
+}
 
 export function useTriage(): Triage {
   const triage = useContext(TriageContext)

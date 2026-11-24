@@ -11,7 +11,7 @@ import { toggleFolderPane } from './folder-pane.ts'
 import { prefetchMessage } from './queries.ts'
 import { uGoesBack, useReadingPane } from './reading-pane.ts'
 import { NO_TRIAGE_ACTIONS, useTriageActions, type TriageActions } from './triage-actions.ts'
-import { useTriage, type Triage } from './triage-context.ts'
+import { useTriage, type Target, type Triage } from './triage-context.ts'
 
 /** Inputs whose keys are not text: a checkbox just ticked still lets `e` archive. */
 const KEYLESS_INPUTS = new Set(['checkbox', 'radio', 'button', 'submit', 'reset'])
@@ -84,10 +84,16 @@ export const SHEET_GROUPS: readonly { title: string; entries: SheetEntry[] }[] =
  * What the screen's keys and its command palette run an action with: the selection, else the open
  * message; a reply on the open one, a new message on `account`; a picker opens.
  */
-export function screenContext(triage: Triage, actions: TriageActions, compose: Compose, account: AccountId): ActionContext {
+export function screenContext(
+  triage: Triage,
+  message: Target | null,
+  actions: TriageActions,
+  compose: Compose,
+  account: AccountId,
+): ActionContext {
   return {
     actions,
-    message: triage.open,
+    message,
     account,
     compose,
     openPicker: (picker) => {
@@ -198,7 +204,7 @@ export function useMailShortcuts(accountId: AccountId, onHelp: () => void): void
         case 'k':
           return openAt(-1)
         case 'x': {
-          const open = state.open
+          const open = state.openMessage()
           if (open === null) {
             return false
           }
@@ -225,7 +231,7 @@ export function useMailShortcuts(accountId: AccountId, onHelp: () => void): void
           }
           return back(current)
       }
-      const context = screenContext(state, offered, writer, current.accountId)
+      const context = screenContext(state, state.openMessage(), offered, writer, current.accountId)
       const action = shortcutAction(key, context, { busy: state.busy, composing: writer.session !== null })
       if (action === undefined) {
         return false

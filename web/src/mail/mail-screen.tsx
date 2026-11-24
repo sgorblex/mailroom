@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactElement } from 'react'
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
@@ -46,7 +46,7 @@ import { ToastHost } from './toast.tsx'
 import { SpamFilterOffer } from './spam-filter-offer.tsx'
 import { OutcomeAnnouncer, Toolbar } from './toolbar.tsx'
 import { QuickFilters } from './quick-filters.tsx'
-import { listQuery } from './route-search.ts'
+import { listQuery, type MailSearch } from './route-search.ts'
 import { NotIndexedNotice } from './saved-views.tsx'
 import { isSameFolder, loadedFolders, roleFolder, useTriage } from './triage-context.ts'
 import { TriageProvider } from './triage-provider.tsx'
@@ -65,7 +65,7 @@ const LIST_PANE_ID = 'mail-list'
  */
 export function MailScreen(): ReactElement {
   const { t } = useTranslation(MAIL_NS)
-  const search = useSearch({ from: '/mail' })
+  const search = useSearch({ from: '/mail', select: screenSearch, structuralSharing: true })
   const navigate = useNavigate()
   // Kept between visits, so coming back shows the screen at once; read again behind it, as the
   // Accounts page changes them without this cache.
@@ -85,6 +85,13 @@ export function MailScreen(): ReactElement {
       writeDevicePref(ACCOUNT_PREF, routed)
     }
   }, [known, routed])
+  const accountIds = useMemo(() => accounts.data?.map((account) => account.id) ?? [], [accounts.data])
+  const openSheet = useCallback(() => {
+    setSheet(true)
+  }, [])
+  const togglePalette = useCallback(() => {
+    setPalette((open) => !open)
+  }, [])
 
   if (accounts.status === 'pending') {
     return (
@@ -129,11 +136,7 @@ export function MailScreen(): ReactElement {
     search.account ?? accounts.data.find((account) => account.id === remembered)?.id ?? first.id
   const folder = search.folder ?? DEFAULT_FOLDER
   const requested = search.sub ?? storedSubfolders(accountId, folder)
-  const accountIds = accounts.data.map((account) => account.id)
   const listed = listQuery(accountId, folder, search.q, search.only)
-  const openSheet = (): void => {
-    setSheet(true)
-  }
   const closeList = (): void => {
     void navigate({ to: '/mail', search: (previous) => ({ ...previous, list: undefined }), replace: true })
   }
@@ -156,13 +159,7 @@ export function MailScreen(): ReactElement {
             <SnoozeProvider>
               <ComposeProvider accounts={accounts.data} accountId={accountId}>
                 <HeldToasts />
-                <MailShortcuts
-                  accountId={accountId}
-                  onHelp={openSheet}
-                  onPalette={() => {
-                    setPalette((open) => !open)
-                  }}
-                />
+                <MailShortcuts accountId={accountId} onHelp={openSheet} onPalette={togglePalette} />
                 <MailPanes
                   accounts={accounts.data}
                   accountId={accountId}
@@ -220,7 +217,7 @@ function MailPanes({
   onHelp: () => void
 }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
-  const search = useSearch({ from: '/mail' })
+  const search = useSearch({ from: '/mail', select: panesSearch, structuralSharing: true })
   const subfolders = useListedSubfolders(accountId, folder, requested)
   const { session, shown } = useCompose()
   const { position, wide, fullView } = useReadingPane()
@@ -412,6 +409,24 @@ function useFocusClosedRow(overlaid: boolean, shown: string | undefined): void {
   }, [overlaid, shown])
 }
 
+/**
+ * What each part reads of the URL, a selection: opening a message draws again the panes, which
+ * show it, not the whole screen, and the list's own source not at all.
+ */
+function screenSearch({ account, folder, sub, q, only, view, list }: MailSearch): ScreenSearch {
+  return { account, folder, sub, q, only, view, list }
+}
+type ScreenSearch = Pick<MailSearch, 'account' | 'folder' | 'sub' | 'q' | 'only' | 'view' | 'list'>
+
+function panesSearch({ message, thread, q, only, view }: MailSearch): PanesSearch {
+  return { message, thread, q, only, view }
+}
+type PanesSearch = Pick<MailSearch, 'message' | 'thread' | 'q' | 'only' | 'view'>
+
+function listingSearch({ q, only }: MailSearch): Pick<MailSearch, 'q' | 'only'> {
+  return { q, only }
+}
+
 function MailShortcuts({
   accountId,
   onHelp,
@@ -473,7 +488,7 @@ function grouping(source: string, grouped: boolean): string {
  * The folder's messages, or the search's when there is one, narrowed by the quick filters, by
  * conversation when the user groups them; a new source starts over.
  */
-function Listing({
+const Listing = memo(function Listing({
   accounts,
   accountId,
   folder,
@@ -484,7 +499,7 @@ function Listing({
   folder: string
   subfolders: boolean
 }): ReactElement {
-  const { q, only } = useSearch({ from: '/mail' })
+  const { q, only } = useSearch({ from: '/mail', select: listingSearch, structuralSharing: true })
   const listed = listQuery(accountId, folder, q, only)
   const grouped = useConversations()
   const key = grouping(sourceKey(accountId, folder, subfolders, listed), grouped)
@@ -552,13 +567,13 @@ function Listing({
       />
     </>
   )
-}
+})
 
 /**
  * A view's messages, read from the index only: its folders left out are named above the list. A
  * change to one of its folders reads its first page again, as does one of them getting ready.
  */
-function ViewListing({ accounts, view }: { accounts: Account[]; view: ViewKey }): ReactElement {
+const ViewListing = memo(function ViewListing({ accounts, view }: { accounts: Account[]; view: ViewKey }): ReactElement {
   const grouped = useConversations()
   const source = grouping(viewSource(view), grouped)
   const loadPage = useCallback(
@@ -593,7 +608,7 @@ function ViewListing({ accounts, view }: { accounts: Account[]; view: ViewKey })
       <MessageList source={source} loadPage={loadPage} searching={false} view />
     </>
   )
-}
+})
 
 /** A quiet line while the live updates stream is down and being opened again. */
 function LiveNotice(): ReactElement | null {

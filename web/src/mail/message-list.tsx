@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactElement } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearch } from '@tanstack/react-router'
@@ -29,6 +29,7 @@ import { ACCOUNT_NOT_FOUND, mailCodeMessage, mailErrorMessage } from './messages
 import { keptRows, keptTail, withKept, type Kept, type Tail } from './list-tail.ts'
 import { useLongPress } from './long-press.ts'
 import { fetchPage, LIST_KEPT, messagesKey, prefetchMessage } from './queries.ts'
+import type { MailSearch } from './route-search.ts'
 import { SelectMatching } from './select-matching.tsx'
 import { SwipeRow } from './swipe-row.tsx'
 import { TOAST_RETURN_ID } from './toast.tsx'
@@ -55,7 +56,7 @@ const HOVER_PREFETCH_MS = 100
  * view unless it was at the very top. Under quick filters, a row this screen changed so it no
  * longer matches stays too, until the source changes.
  */
-export function MessageList({
+export const MessageList = memo(function MessageList({
   source,
   loadPage,
   match,
@@ -192,8 +193,7 @@ export function MessageList({
     }
   })
   // The open row comes into view when it changes (j and k), or once the list is read.
-  const search = useSearch({ from: '/mail' })
-  const current = search.thread ?? search.message
+  const current = useSearch({ from: '/mail', select: currentRow })
   const latestMessages = useRef(messages)
   useEffect(() => {
     latestMessages.current = messages
@@ -453,6 +453,11 @@ export function MessageList({
       )}
     </div>
   )
+})
+
+/** The list's current row: the open conversation's, else the open message's. */
+function currentRow({ message, thread }: MailSearch): string | undefined {
+  return thread ?? message
 }
 
 /**
@@ -683,9 +688,9 @@ function MessageRow({
   const { t, i18n } = useTranslation(MAIL_NS)
   const timeZone = useTimeZone()
   const accountLabel = useAccountLabel()
-  const search = useSearch({ from: '/mail' })
-  // A conversation stays the current row while another of its messages is read.
-  const current = message.ref === (search.thread ?? search.message)
+  // A conversation stays the current row while another of its messages is read. Only whether it
+  // is: opening a message draws its row and the one before again, not every row.
+  const current = useSearch({ from: '/mail', select: (search) => message.ref === currentRow(search) })
   const flags = useTriage().flagsOf(message)
   const unread = !flags.seen
   const subject = message.subject === '' ? t('message.noSubject') : message.subject

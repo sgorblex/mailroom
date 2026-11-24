@@ -59,11 +59,11 @@ export function SnoozeProvider({ children }: { children: ReactNode }): ReactElem
         return
       }
       pending.current.add(ref)
-      const open = triage.open
+      const open = triage.openMessage()
       const listed = message.listed_folder ?? (open?.ref === ref ? open.listed_folder : undefined)
       snoozeMessage(ref, until, listed)
         .then((snoozed) => {
-          if (triage.open?.ref === ref) {
+          if (triage.openMessage()?.ref === ref) {
             triage.setOpen(null)
             void navigate({ to: '/mail', search: (previous) => ({ ...previous, message: undefined, thread: undefined }) })
           }

@@ -1,10 +1,10 @@
-import { useEffect } from 'react'
+import { use, useEffect } from 'react'
 
 import { useAccountKeywords } from '@/accounts/accounts-context.ts'
 import type { AccountId } from '@/api/accounts.ts'
 import type { MailFolder, MoveRemoval } from '@/api/mail.ts'
 
-import { isSameFolder, loadedFolders, roleFolder, useTriage, type Action, type Target } from './triage-context.ts'
+import { isSameFolder, loadedFolders, OpenMessageContext, roleFolder, useTriage, type Action, type Target } from './triage-context.ts'
 
 /** The actions the toolbars and the shortcuts offer for the current targets; `null` is not offered. */
 export interface TriageActions {
@@ -73,7 +73,9 @@ export function movableInto(folder: MailFolder): boolean {
 export function useTriageActions(of?: Target[]): TriageActions {
   const triage = useTriage()
   const { flagsOf, loadFolders, setBulk } = triage
-  const targets = of ?? triage.targets
+  // Read only for the keys' targets: a row's own actions do not draw again as messages open.
+  const open = of === undefined ? use(OpenMessageContext) : null
+  const targets = of ?? (triage.selection.size > 0 ? [...triage.selection.values()] : open === null ? [] : [open])
   const matching = of === undefined && triage.selection.size > 0 ? triage.matching : null
   const run = (action: Action, on: Target[]): Promise<void> => {
     if (matching !== null && (action.kind === 'flag' || action.kind === 'move' || action.kind === 'trash')) {
