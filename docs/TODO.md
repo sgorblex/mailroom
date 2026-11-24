@@ -225,17 +225,9 @@ First, fixes carried over from 0.14.0 testing:
     or failed, so none gets it twice. A real sandboxed engine with autoescape only if
     conditions are ever needed.
 
-### Milestone E: Profile, design, agents, integrations, operations
+### Milestone E: Layout and look
 
-#### 10. Profile, security and data
-
-- [ ] **Sessions** — the user's signed-in sessions on the profile, each one endable.
-- [ ] **Personal API tokens** — made and revoked on the profile, for scripts and the command-line
-      client (*Command-line tools*).
-- [ ] **Export** — the user's rule sets as JSON and their audit trail as CSV.
-- [ ] **Audit retention** — how long the audit trail is kept, a setting.
-
-#### 11. Design
+#### 10. Design
 
 - [ ] **Theme and design pass** — palette, typography, light/dark switch, app shell.
 - [ ] **Home page** — a real start page after sign-in instead of landing straight in a mail
@@ -267,12 +259,21 @@ First, fixes carried over from 0.14.0 testing:
 - [ ] **HTML first** — a message with an HTML version opens in it, not in its text version (with
       *Dark mode for HTML mail*); the Text/HTML switch stays, and a switch away is remembered per
       sender.
-- [ ] **Calendar invites** — an `.ics` invite shown as a card, with Accept, Tentative and Decline.
 - [ ] **Mobile and installable** — a layout pass for phones, and a web app manifest (with
       *Theme and design pass*).
 - [ ] **Swipe actions** — on phones, archive and trash by swiping, the actions configurable.
 - [ ] **Accessibility pass** — screen readers, keyboard focus and contrast across the app, with
       automated checks in CI.
+
+### Milestone F: Access, apps and data
+
+#### 11. Profile, security and data
+
+- [ ] **Sessions** — the user's signed-in sessions on the profile, each one endable.
+- [ ] **Personal API tokens** — made and revoked on the profile, for scripts and the command-line
+      client (*Command-line tools*), scoped with the same settings as a connected app's grant.
+- [ ] **Export** — the user's rule sets as JSON and their audit trail as CSV.
+- [ ] **Audit retention** — how long the audit trail is kept, a setting (90 days unless changed).
 
 #### 12. MCP extras
 
@@ -285,20 +286,26 @@ First, fixes carried over from 0.14.0 testing:
 - [ ] **Activity per app** (maybe) — the audit trail of one connected app, linked from Connected
       apps.
 
+### Milestone G: Integrations
+
 #### 13. Integrations
 
 - [ ] **Microsoft accounts over OAuth2** — Outlook.com and Microsoft 365 refuse a password over
       IMAP: sign-in through Microsoft, tokens stored and refreshed like passwords are kept.
-- [ ] **Contacts over CardDAV** — the user's address book for autocomplete and sender names.
+- [ ] **Contacts over CardDAV** (later) — the user's address book for autocomplete and sender names.
 - [ ] **Filter import** — Sieve scripts and Thunderbird filters turned into rule sets.
 - [ ] **Remote image proxy** (maybe) — allowed remote images fetched through the server, so the
       sender never sees the user's address or when they read. Its security comes first: no
       request to private or loopback addresses (SSRF), images only, size and time limits, never
       an open proxy.
+- [ ] **Calendar invites** — an `.ics` invite shown as a card, with Accept, Tentative and Decline.
+
+### Milestone H: Operations
 
 #### 14. Operations
 
-- [ ] **Staging pipeline** — a staging instance, deployed from CI.
+- [x] **Staging pipeline** — a staging instance on the same host, deployed from CI by pushing
+      to the `staging` branch (*ci-cd.md*, *Staging*).
 - [ ] **Admin page** — users, invites and instance settings in the web, not only on the command
       line.
 - [ ] **Instance health** — the worker's last run, its queue and the failing accounts, for the
