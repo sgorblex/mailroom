@@ -22,6 +22,9 @@ function stubApi(refuseRemoval?: { status: number; code: string }): ReturnType<t
   ]
   const fetchMock = vi.fn((path: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET'
+    if (path === '/api/v1/admin/settings') {
+      return Promise.resolve(json(200, { audit_retention_days: 90, session_ip: 'partial' }))
+    }
     if (path === '/api/v1/users' && method === 'GET') {
       return Promise.resolve(json(200, users))
     }
@@ -63,6 +66,7 @@ describe('UsersScreen', () => {
   it('tells a user who is not an admin that only admins manage users', () => {
     const fetchMock = stubApi()
     renderSignedIn(<UsersScreen />, { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null, conversations: true, undo_send_seconds: 10 })
+    expect(screen.queryByRole('region', { name: 'Instance' })).not.toBeInTheDocument()
     expect(screen.getByRole('alert')).toHaveTextContent('Only admins manage users.')
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -91,7 +95,7 @@ describe('UsersScreen', () => {
 
     await userEvent.clear(within(form).getByLabelText('Username'))
     await userEvent.type(within(form).getByLabelText('Username'), 'bob')
-    await userEvent.click(within(form).getByLabelText('Admin: may manage users'))
+    await userEvent.click(within(form).getByLabelText('Admin: may manage users and the instance'))
     await userEvent.click(within(form).getByRole('button', { name: 'Add user' }))
     expect(await within(list).findByText('bob')).toBeInTheDocument()
     expect(within(form).getByLabelText('Username')).toHaveValue('')
@@ -100,7 +104,13 @@ describe('UsersScreen', () => {
   it('offers to try again when the list does not load', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(() => Promise.resolve(json(503, { detail: 'Database unavailable' }))),
+      vi.fn((path: string) =>
+        Promise.resolve(
+          path === '/api/v1/admin/settings'
+            ? json(200, { audit_retention_days: 90, session_ip: 'partial' })
+            : json(503, { detail: 'Database unavailable' }),
+        ),
+      ),
     )
     renderSignedIn(<UsersScreen />, ROOT)
     expect(await screen.findByRole('alert')).toHaveTextContent('Database unavailable')

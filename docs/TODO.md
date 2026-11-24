@@ -329,7 +329,7 @@ Older than milestone E, seen in its browser check; fix before batch 11.
 - [ ] **Personal API tokens** — made and revoked on the profile, for scripts and the command-line
       client (*Command-line tools*), scoped with the same settings as a connected app's grant.
 - [ ] **Export** — the user's rule sets as JSON and their audit trail as CSV.
-- [ ] **Audit retention** — how long the audit trail is kept, a setting (90 days unless changed).
+- [x] **Audit retention** — how long the audit trail is kept, a setting (90 days unless changed).
 
 #### 12. MCP extras
 

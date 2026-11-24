@@ -14,6 +14,7 @@ from mailroom.models.filters import (
     RuleSet,
     TransferLedger,
 )
+from mailroom.models.instance import InstanceSetting
 from mailroom.models.mail_index import MailIndexFolder, MailIndexMessage, MailViewInterest
 from mailroom.models.notifications import MailNotificationFolders
 from mailroom.models.remote_content import RemoteContentSender
@@ -35,6 +36,7 @@ __all__ = [
     "FilterMatchDay",
     "FilterRun",
     "IdentitySignature",
+    "InstanceSetting",
     "Intent",
     "MailIndexFolder",
     "MailIndexMessage",

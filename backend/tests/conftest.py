@@ -199,6 +199,14 @@ def _cheap_password_hashing(monkeypatch: pytest.MonkeyPatch) -> None:
     password._dummy_hash.cache_clear()  # noqa: SLF001
 
 
+@pytest.fixture(autouse=True)
+def _instance_settings_read_again() -> None:
+    """Instance settings a test before this one kept in memory are gone with its transaction."""
+    from mailroom.config.instance_settings import CACHE
+
+    CACHE.drop()
+
+
 @pytest.fixture
 def numbered_accounts(monkeypatch: pytest.MonkeyPatch) -> None:
     """Accounts added in the test take the ids 1, 2, 3… in the order they are added, as on a new

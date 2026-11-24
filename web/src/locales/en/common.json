@@ -160,9 +160,26 @@
     "actionFailed": "That did not work. Try again.",
     "add": "Add a user",
     "addButton": "Add user",
-    "makeAdmin": "Admin: may manage users",
+    "makeAdmin": "Admin: may manage users and the instance",
     "passwordHint_one": "At least {{count}} character.",
     "passwordHint_other": "At least {{count}} characters."
+  },
+  "instance": {
+    "title": "Instance",
+    "intro": "These settings apply to every user of this Mailroom.",
+    "loading": "Loading the instance settings…",
+    "loadFailed": "Could not load the instance settings.",
+    "retry": "Try again",
+    "retention": "Days the activity is kept",
+    "retentionHint": "1 to {{max}} days. Older records of every user's activity are deleted for good, within the hour as new ones come in.",
+    "sessionIp": "IP address of a signed-in session",
+    "sessionIpHint": "What is recorded when a user signs in, for them to recognise their sessions. A change applies to later sign-ins.",
+    "sessionIpNone": "Not recorded",
+    "sessionIpPartial": "Partial: the last part hidden",
+    "sessionIpFull": "Full",
+    "save": "Save settings",
+    "saved": "Saved.",
+    "saveFailed": "Could not save the instance settings."
   },
   "accounts": {
     "title": "Mail accounts",

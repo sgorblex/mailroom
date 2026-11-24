@@ -13,6 +13,7 @@ import { createUser, listUsers, removeUser, resetPassword, type ListedUser } fro
 import { useAuth } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Input } from '@/components/ui/input.tsx'
+import { InstanceSettingsForm } from '@/users/instance-settings-form.tsx'
 import { userErrorMessage } from '@/users/messages.ts'
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@/users/password.ts'
 
@@ -21,7 +22,7 @@ type ListState =
   | { kind: 'failed'; message: string }
   | { kind: 'loaded'; users: ListedUser[] }
 
-/** Admins add and remove users and reset their passwords. */
+/** Admins add and remove users, reset their passwords and change the instance's settings. */
 export function UsersScreen(): ReactElement {
   const { t } = useTranslation()
   const auth = useAuth()
@@ -84,6 +85,7 @@ export function UsersScreen(): ReactElement {
         </ul>
       )}
       <AddUserForm onAdded={reload} />
+      <InstanceSettingsForm />
     </main>
   )
 }

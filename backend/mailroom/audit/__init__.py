@@ -4,15 +4,14 @@ to, from mailroom-core's ``AuditItem``s (the web and MCP) and from filter runs.
 Never a subject or a body: core gives a subject's hash only, and the senders and recipients in
 clear, which an investigation needs. Writing a record never fails the write it is about: a
 database error is logged (``audit_write_failed``, counts and codes only) and the write's answer
-stands. Records older than ``MAILROOM_AUDIT_RETENTION_DAYS`` are purged as new ones are written,
-at most once an hour in each process, so no scheduler is needed.
+stands. Records older than the instance's retention (``mailroom.config.instance_settings``) are
+purged as new ones are written, at most once an hour in each process, so no scheduler is needed.
 """
 
 from __future__ import annotations
 
 import contextlib
 import logging
-import os
 import threading
 import time
 from dataclasses import dataclass
@@ -21,6 +20,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal
 
 from sqlalchemy import delete, func, insert
 
+from mailroom.config.instance_settings import instance_settings
 from mailroom.models import AuditRecord
 
 if TYPE_CHECKING:
@@ -36,8 +36,6 @@ logger = logging.getLogger(__name__)
 Actor = Literal["user", "agent", "filter"]
 """Who acted: the user on the web, an agent through MCP, or a rule set's run."""
 
-RETENTION_DAYS_ENV: Final = "MAILROOM_AUDIT_RETENTION_DAYS"
-_DEFAULT_RETENTION_DAYS: Final = 365
 _PURGE_EVERY_SECONDS: Final = 3600.0
 
 
@@ -57,16 +55,6 @@ class Origin:
 WEB: Final = Origin()
 MCP: Final = Origin("mcp")
 """An MCP call whose app is not known: tests, and a ``ToolCall`` built outside ``call_tool``."""
-
-
-def retention() -> timedelta:
-    """``MAILROOM_AUDIT_RETENTION_DAYS`` (default 365, clamped to 1-3650)."""
-    raw = os.environ.get(RETENTION_DAYS_ENV, "").strip()
-    try:
-        days = int(raw) if raw else _DEFAULT_RETENTION_DAYS
-    except ValueError:
-        days = _DEFAULT_RETENTION_DAYS
-    return timedelta(days=min(max(days, 1), 3650))
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -109,8 +97,9 @@ PURGE: Final = _Purge()
 
 
 def purge_old(db: Session) -> None:
-    """Delete every user's records older than the retention."""
-    db.execute(delete(AuditRecord).where(AuditRecord.at < func.now() - retention()))
+    """Delete every user's records older than the instance's retention."""
+    kept = timedelta(days=instance_settings(db).audit_retention_days)
+    db.execute(delete(AuditRecord).where(AuditRecord.at < func.now() - kept))
 
 
 def write_records(sessions: sessionmaker[Session], user_id: int, entries: Iterable[Entry]) -> None:

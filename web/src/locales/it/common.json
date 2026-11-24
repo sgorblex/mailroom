@@ -160,9 +160,26 @@
     "actionFailed": "Operazione non riuscita. Riprova.",
     "add": "Aggiungi un utente",
     "addButton": "Aggiungi utente",
-    "makeAdmin": "Amministratore: può gestire gli utenti",
+    "makeAdmin": "Amministratore: può gestire gli utenti e l'istanza",
     "passwordHint_one": "Almeno {{count}} carattere.",
     "passwordHint_other": "Almeno {{count}} caratteri."
+  },
+  "instance": {
+    "title": "Istanza",
+    "intro": "Queste impostazioni valgono per tutti gli utenti di questo Mailroom.",
+    "loading": "Caricamento delle impostazioni dell'istanza…",
+    "loadFailed": "Impossibile caricare le impostazioni dell'istanza.",
+    "retry": "Riprova",
+    "retention": "Giorni di conservazione delle attività",
+    "retentionHint": "Da 1 a {{max}} giorni. I record più vecchi delle attività di ogni utente vengono eliminati definitivamente, entro l'ora man mano che ne arrivano di nuovi.",
+    "sessionIp": "Indirizzo IP di una sessione",
+    "sessionIpHint": "Cosa si registra quando un utente accede, perché possa riconoscere le proprie sessioni. Una modifica vale per gli accessi successivi.",
+    "sessionIpNone": "Non registrato",
+    "sessionIpPartial": "Parziale: l'ultima parte nascosta",
+    "sessionIpFull": "Completo",
+    "save": "Salva impostazioni",
+    "saved": "Salvato.",
+    "saveFailed": "Impossibile salvare le impostazioni dell'istanza."
   },
   "accounts": {
     "title": "Account di posta",
