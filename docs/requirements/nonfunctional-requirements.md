@@ -909,21 +909,34 @@ keeps it, with `mail`:
 - `dispatch_index`, a periodic task every 5 minutes, queues `sync_account(user_id, account_id)`
   for every account of every user (`queueing_lock` `index_account:<user id>:<account id>`). That
   job lists the account's folders (no STATUS), gives each one first seen its row and deletes the
-  rows of folders no longer listed (a rename is a folder gone and one first seen), then queues
-  `sync_folder(user_id, account_id, folder_id)` (`queueing_lock` `index_folder:<folder id>`) for
-  each folder on the index that is not `ready` or was last synced 5 minutes ago (4 minutes early:
-  a folder's job starts behind the account's listing and its other folders' jobs, yet is due at
-  the next turn). Both take the mailbox's `lock`, so one folder of an account syncs at a time,
-  between its rule set runs.
+  rows of folders no longer listed (a rename is a folder gone and one first seen), then queues one
+  `sync_due_folders(user_id, account_id, folder_ids)` (`queueing_lock`
+  `index_turn:<user id>:<account id>`), the turn, for all the folders on the index that are not
+  `ready` or were last synced 5 minutes ago (4 minutes early: a folder is synced behind the
+  account's listing and its other folders, yet is due at the next turn). While an earlier turn
+  still waits, it goes on instead of a new one, so a turn longer than 5 minutes reaches its last
+  folders.
+- A turn goes through its folders one after the other in shares of about 5 seconds, each a job that
+  queues the rest as the next: past its time a share begins no other folder, and no other batch of
+  the folder it is on. It passes over a folder synced, switched off or gone meanwhile, and leaves
+  one with more to fetch to a `sync_folder(user_id, account_id, folder_id)` (`queueing_lock`
+  `index_folder:<folder id>`) of its own. A folder IDLE, a write of the app or a held send asks for
+  is a `sync_folder` too, which keeps to the same time.
+- All of these take the mailbox's `lock`, so one folder of an account syncs at a time, between its
+  rule set runs. The routine ones (`sync_account`, the turn, a folder's later jobs) are queued at
+  priority -1, every other job at 0: a sync asked for, a filter run and a vacation reply go ahead of
+  them and wait at most for the share under way. A sync asked for while the folder's routine one
+  waits raises that one's priority.
 - A folder's job surveys it under EXAMINE (UIDVALIDITY, UIDNEXT, HIGHESTMODSEQ and the UIDs since
   the age limit's day, SINCE), deletes the rows whose UIDs it no longer lists (expunged, or older
   than the limit), and fetches the UIDs the index lacks newest first, 500 a batch, half a second
   between batches, each batch committed (the folder's counts with it, the first sync's progress).
   A batch that fails other than on the mailbox is fetched again one message at a time; a message
   that still fails is skipped (its UID and the exception's type logged), stays readable live, and
-  holds up no other. It fetches at most 20 batches, then queues the next job behind every other
-  one, so one large mailbox takes turns with the others.
-- The job that fetched all that was missing compares the flags: those changed since the stored
+  holds up no other. It fetches what its 5 seconds allow (one batch at least, 20 at most), then
+  queues the next job behind the others, so one large folder takes turns with them.
+- Only the job that ends the pass compares the flags, read after its batches when more than one
+  was missing: those changed since the stored
   HIGHESTMODSEQ where the folder has mod-sequences (CONDSTORE `CHANGEDSINCE`), else every
   message's (`UID FETCH 1:* (FLAGS)`); on Gmail each message's labels with them (`X-GM-LABELS`,
   whose changes Gmail counts as mod-sequence changes), so a message archived or labelled elsewhere

@@ -233,6 +233,25 @@ def test_a_write_while_its_folder_syncs_syncs_it_again(
     assert queued(db_session) == sorted([inbox, other])
 
 
+def test_a_write_while_a_turn_syncs_its_folder_syncs_it_again(
+    db_session: Session, sessions: sessionmaker[Session], user: User, account: int
+) -> None:
+    inbox = folder(db_session, user, account, "INBOX", (1,))
+    other = folder(db_session, user, account, "Other", (1,))
+    tasks.queue_turn(db_session, user.id, account, [other, inbox])
+    assert tasks.folder_syncs_running(db_session, [inbox]) == set()
+    with tasks.procrastinate_sql(db_session):
+        db_session.execute(
+            text("UPDATE procrastinate_jobs SET status = 'doing' WHERE task_name = :name"),
+            {"name": tasks.SYNC_DUE_FOLDERS},
+        )
+    db_session.commit()
+    item = AuditItem(account=account, folder="INBOX", uid=1, seen=True, result="ok")
+    group = GroupResult(account, "INBOX", count=1, new_refs=())
+    writes.organized(sessions, user.id, [item], [group], refs=[ref(account, "INBOX", 1)])
+    assert queued(db_session) == [inbox]
+
+
 def test_a_copy_older_than_the_destinations_age_limit_is_left_to_its_sync(
     db_session: Session, sessions: sessionmaker[Session], user: User, account: int
 ) -> None:

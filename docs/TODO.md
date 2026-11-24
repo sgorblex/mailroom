@@ -356,7 +356,7 @@ Older than milestone E, seen in its browser check; fix before batch 11.
       inboxes* it searches the remembered account's folder), shows its scope beside the box, and a
       *Search all mail* button widens it, with a way back.
 - [ ] **Fresh mail sooner**:
-  - [ ] **The index's turn in one job** — an account's due folders checked together, not one job
+  - [x] **The index's turn in one job** — an account's due folders checked together, not one job
         each, with the syncs asked by IDLE, a viewed folder or new mail, and filter runs, ahead of
         the routine ones.
   - [ ] **Index after a filter run** — the folders a run moved or flagged mail in synced right

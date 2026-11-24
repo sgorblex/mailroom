@@ -1,16 +1,18 @@
 """Keeping an indexed folder in step with its server: what the worker's index jobs run
-(``mailroom.worker.tasks``), one folder per job, under the mailbox's lock.
+(``mailroom.worker.tasks``), under the mailbox's lock: a folder asked for in a job of its own, the
+folders a turn finds due several to a job.
 
-A job surveys the folder under EXAMINE: its UIDVALIDITY, UIDNEXT and HIGHESTMODSEQ, and the UIDs
-the age limit keeps (``mailroom_core.mail.plan_index``). The rows whose UIDs it no longer lists
-go (expunged, or now older than the age limit). The UIDs the index lacks, new mail included, are
+A job surveys the folder under EXAMINE: its UIDVALIDITY, UIDNEXT and HIGHESTMODSEQ, and the UIDs the
+age limit keeps (``mailroom_core.mail.plan_index``). The rows whose UIDs it no longer lists go
+(expunged, or now older than the age limit). The UIDs the index lacks, new mail included, are
 fetched newest first, ``INDEX_BATCH`` at a time with a pause between batches, at most
-``SLICE_BATCHES`` batches per job: a job with more to fetch asks for another, which waits behind
-the other mailboxes' jobs. The job that ends a pass brings the stored flags up to date: those
-changed since the stored HIGHESTMODSEQ where the folder has mod-sequences (CONDSTORE), else every
-message's, and on Gmail the labels with them. A UIDVALIDITY that changed drops the folder's rows,
-which are then built again. A message that cannot be fetched or stored is skipped, its UID alone
-logged, and stays readable live. Nothing here changes mail: every read is under EXAMINE.
+``SLICE_BATCHES`` batches per job and none begun past the job's time (``until``): a job with more to
+fetch asks for another, which waits behind the mailbox's other jobs. The job that ends a pass brings
+the stored flags up to date: those changed since the stored HIGHESTMODSEQ where the folder has
+mod-sequences (CONDSTORE), else every message's, and on Gmail the labels with them. A UIDVALIDITY
+that changed drops the folder's rows, which are then built again. A message that cannot be fetched
+or stored is skipped, its UID alone logged, and stays readable live. Nothing here changes mail:
+every read is under EXAMINE.
 
 Each commit that changed the folder's rows or its state announces it on ``NOTIFY_CHANNEL``
 (``notify``), a batch with the range of the new mail it stored: the UIDs from the folder's
@@ -48,13 +50,13 @@ from mailroom_core.mail import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Sequence
     from datetime import date
 
     from sqlalchemy.orm import Session
 
     from mailroom_core.config import TimeZoneName
-    from mailroom_core.mail import IndexedMessage, MailboxContext, MailConnections
+    from mailroom_core.mail import FolderFlags, IndexedMessage, MailboxContext, MailConnections
     from mailroom_core.render import Address
 
 logger = logging.getLogger(__name__)
@@ -62,8 +64,8 @@ logger = logging.getLogger(__name__)
 RESYNC_EVERY: Final = timedelta(minutes=5)
 """How often a ready folder is synced again."""
 RESYNC_SLACK: Final = timedelta(minutes=4)
-"""A folder is due this much early: its job starts after the dispatcher's turn, behind the
-account's listing and the other folders' jobs, yet it is due again at the next turn."""
+"""A folder is due this much early: it is synced after the dispatcher's turn, behind the
+account's listing and the other folders, yet it is due again at the next turn."""
 SLICE_BATCHES: Final = 20
 """Batches one job fetches at most before it hands the mailbox to the next job."""
 BATCH_PAUSE_SECONDS: Final = 0.5
@@ -86,10 +88,11 @@ class _Survey:
     new_from: int | None
     """The UIDNEXT of the folder's last pass, under the same UIDVALIDITY: the UIDs from it on are
     new mail; None on a first sync or a rebuild."""
-    flags: Mapping[int, frozenset[str]] | None
-    """Flags to compare with the stored ones; None but on a pass's last job."""
-    labels: Mapping[int, tuple[str, ...]] | None
-    """On Gmail, the labels of the same messages as ``flags``."""
+    compare: bool
+    """Rows were stored under this UIDVALIDITY: the pass compares their flags before it ends."""
+    flags: FolderFlags | None
+    """The flags (on Gmail the labels too) to compare with the stored ones; None unless one batch
+    at most is missing, which the job surely fetches. Else the job that ends the pass reads them."""
 
 
 def since_day(max_age_days: int | None, now: datetime, zone: TimeZoneName) -> date | None:
@@ -127,10 +130,12 @@ def sync_folder(
     folder_id: int,
     *,
     now: datetime | None = None,
+    until: float | None = None,
 ) -> bool:
     """One job of the sync of the user's indexed folder ``folder_id``; whether another job has
-    more to fetch. A folder gone or switched off meanwhile is left alone. A mailbox failure fails
-    the folder (``state`` failed, ``error`` its code), as anything unexpected does
+    more to fetch. Past ``until`` (``time.monotonic``'s) it begins no batch but its first, so that
+    every job gets on. A folder gone or switched off meanwhile is left alone. A mailbox failure
+    fails the folder (``state`` failed, ``error`` its code), as anything unexpected does
     (``SYNC_FAILED``). Commits ``db``; no transaction stays open while the mailbox works."""
     now = now or datetime.now(UTC)
     row = _folder(db, user_id, account_id, folder_id)
@@ -152,7 +157,7 @@ def sync_folder(
     capacity = SLICE_BATCHES * INDEX_BATCH
 
     def survey(context: MailboxContext) -> _Survey:
-        return _survey(context, since, stored, (validity, modseq, uid_next), capacity)
+        return _survey(context, since, stored, (validity, modseq, uid_next))
 
     try:
         # An EXAMINE of its own: changes are asked since the HIGHESTMODSEQ it gives.
@@ -160,10 +165,20 @@ def sync_folder(
         rebuilt, removed, changed = _reconcile(db, user_id, account_id, folder_id, found)
         if rebuilt is None:
             return False
-        fetched = _fetch(db, connections, user_id, account_id, folder_id, path, found, capacity)
+        fetched = _fetch(
+            db, connections, user_id, account_id, folder_id, path, found, capacity, until
+        )
         if fetched is None:
             return False
         more = len(found.missing) > capacity or fetched < min(len(found.missing), capacity)
+        if not more and found.compare and found.flags is None:
+            flags = connections.with_mailbox(
+                account_id, path, True, lambda context: _flags(context, modseq), reselect=True
+            )
+            updated = _apply(db, user_id, account_id, folder_id, flags)
+            if updated is None:
+                return False
+            changed += updated
         if not _finish(db, user_id, account_id, folder_id, found, since, now, more=more):
             return False
     except MailError as exc:
@@ -201,7 +216,6 @@ def _survey(
     since: date | None,
     stored: frozenset[int],
     last: tuple[int | None, int | None, int | None],
-    capacity: int,
 ) -> _Survey:
     """``last``: the folder's UIDVALIDITY, HIGHESTMODSEQ and UIDNEXT at its last pass."""
     validity, modseq, uid_next = last
@@ -209,12 +223,6 @@ def _survey(
     listed = [uid for batch in plan.batches for uid in batch]
     held = stored if context.uid_validity == validity else frozenset()
     missing = tuple(uid for uid in listed if uid not in held)
-    flags = None
-    if held and len(missing) <= capacity:
-        if modseq is not None and context.highest_modseq is not None:
-            flags = changed_flags_of(context, modseq)
-        else:
-            flags = flags_of(context)
     return _Survey(
         uid_validity=plan.uid_validity,
         uid_next=context.uid_next,
@@ -222,9 +230,16 @@ def _survey(
         missing=missing,
         gone=held.difference(listed),
         new_from=uid_next if context.uid_validity == validity else None,
-        flags=None if flags is None else flags.flags,
-        labels=None if flags is None else flags.labels,
+        compare=bool(held),
+        flags=_flags(context, modseq) if held and len(missing) <= INDEX_BATCH else None,
     )
+
+
+def _flags(context: MailboxContext, modseq: int | None) -> FolderFlags:
+    """The flags changed since ``modseq``, every message's without mod-sequences."""
+    if modseq is not None and context.highest_modseq is not None:
+        return changed_flags_of(context, modseq)
+    return flags_of(context)
 
 
 def _reconcile(
@@ -254,8 +269,8 @@ def _reconcile(
         gone = messages.where(MailIndexMessage.uid == any_(uids))
         removed = len(db.scalars(gone.returning(MailIndexMessage.uid)).all())
     changed = 0
-    if found.flags and row.uid_validity == found.uid_validity:
-        changed = apply_flags(db, user_id, folder_id, found.flags, found.labels)
+    if found.flags is not None and row.uid_validity == found.uid_validity:
+        changed = apply_flags(db, user_id, folder_id, found.flags.flags, found.flags.labels)
     row.uid_validity = found.uid_validity
     if row.state != "ready":
         row.state, row.error = "syncing", None
@@ -264,6 +279,25 @@ def _reconcile(
         notify(db, user_id, account_id, folder_id)
     db.commit()
     return rebuilt, removed, changed
+
+
+def _apply(
+    db: Session, user_id: int, account_id: int, folder_id: int, flags: FolderFlags
+) -> int | None:
+    """Apply the flag and label changes read at a pass's end; how many (none once UIDVALIDITY
+    changed: the next sync rebuilds), None when the folder went off meanwhile."""
+    row = _folder(db, user_id, account_id, folder_id, lock=True)
+    if row is None:
+        db.rollback()
+        return None
+    changed = 0
+    if row.uid_validity == flags.uid_validity:
+        changed = apply_flags(db, user_id, folder_id, flags.flags, flags.labels)
+    if changed:
+        count_rows(db, row)
+        notify(db, user_id, account_id, folder_id)
+    db.commit()
+    return changed
 
 
 def _fetch(
@@ -275,15 +309,19 @@ def _fetch(
     path: str,
     found: _Survey,
     capacity: int,
+    until: float | None,
 ) -> int | None:
     """Fetch and store the job's share of the missing UIDs, batch by batch, each committed; how
-    many UIDs were asked (short of the share when UIDVALIDITY changed meanwhile: the next job
-    rebuilds), None when the folder went off meanwhile. A batch that fails other than on the
-    mailbox is fetched again one UID at a time, and a UID that still fails is skipped."""
+    many UIDs were asked (short of the share when its time ran out, or when UIDVALIDITY changed
+    meanwhile: the next job goes on, or rebuilds), None when the folder went off meanwhile.
+    A batch that fails other than on the mailbox is fetched again one UID at a time, and a UID that
+    still fails is skipped."""
     share = found.missing[:capacity]
     asked = 0
     for start in range(0, len(share), INDEX_BATCH):
         if start:
+            if until is not None and time.monotonic() >= until:
+                return asked
             time.sleep(BATCH_PAUSE_SECONDS)
         batch = share[start : start + INDEX_BATCH]
         try:

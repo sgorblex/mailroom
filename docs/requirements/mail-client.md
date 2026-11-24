@@ -2091,8 +2091,9 @@ folder off the index is read live, as before the index.
 - **Sync.** The worker keeps the index (with the mail client; it runs without filters too). Every 5
   minutes it lists each account's folders, giving a new one its row and dropping the rows of one
   gone or renamed, and syncs each folder on the index that is not ready or was synced 5 minutes
-  ago: a first sync fetches newest first in throttled batches (so `indexed` grows towards
-  `total`), taking turns with the user's other folders and accounts; a resync adds new mail,
+  ago, one after the other in jobs of about 5 seconds, behind any sync asked for (*Freshness*, *The
+  app's own writes*) and the filter runs: a first sync fetches newest first in throttled
+  batches (so `indexed` grows towards `total`), taking turns with the user's other folders and accounts; a resync adds new mail,
   drops what was expunged or is now older than the age limit, and brings flags up to date
   (CONDSTORE where the server has it), on Gmail the labels with them. A message that cannot be
   read into the index is skipped and stays readable live. A folder whose UIDVALIDITY changed is
