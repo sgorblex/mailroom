@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { SEND_MODES, accountIdSchema } from './accounts.ts'
 import { apiDelete, apiGetJson, apiPostJson, apiPutJson } from './http.ts'
 
 /** An MCP tool group the instance serves, as the user approves it for an app. */
@@ -12,12 +13,27 @@ export const toolGroupSchema = z.object({
 })
 export type ToolGroup = z.infer<typeof toolGroupSchema>
 
+/** One of the user's accounts an app can be narrowed to. */
+const accountChoiceSchema = z.object({ id: accountIdSchema, name: z.string() })
+export type AccountChoice = z.infer<typeof accountChoiceSchema>
+
+const limitsSchema = z.object({
+  /** The accounts it sees; `null` for every one, those added later too. */
+  account_ids: z.array(accountIdSchema).nullable().default(null),
+  /** The most it may do when it sends, whatever an account's mode; `null` for no ceiling. */
+  send_ceiling: z.enum(SEND_MODES).nullable().default(null),
+})
+/** What an app is limited to, beyond its tool groups. */
+export type AppLimits = z.infer<typeof limitsSchema>
+
 export const consentRequestSchema = z.object({
   client_name: z.string().nullable(),
   client_host: z.string().nullable(),
   redirect_host: z.string(),
   scopes: z.array(z.string()),
   groups: z.array(toolGroupSchema),
+  /** The user's accounts, for them to choose from. */
+  accounts: z.array(accountChoiceSchema).default([]),
   expires_at: z.string(),
 })
 export type ConsentRequest = z.infer<typeof consentRequestSchema>
@@ -34,18 +50,18 @@ export function fetchConsentRequest(requestId: string, signal?: AbortSignal): Pr
 }
 
 /**
- * Approve it for the tool groups chosen, or deny it; resolves to where the browser goes next,
+ * Approve it for the tool groups and within the limits chosen, or deny it; resolves to where the browser goes next,
  * back to the app.
  */
 export async function decideConsentRequest(
   requestId: string,
-  decision: { decision: 'approve'; groups: string[] } | { decision: 'deny' },
+  decision: ({ decision: 'approve'; groups: string[] } & AppLimits) | { decision: 'deny' },
 ): Promise<string> {
   const decided = await apiPostJson(requestPath(requestId), decision, { schema: decidedSchema })
   return decided.redirect_to
 }
 
-export const connectedAppSchema = z.object({
+export const connectedAppSchema = limitsSchema.extend({
   id: z.number(),
   client_name: z.string().nullable(),
   client_host: z.string().nullable(),
@@ -65,6 +81,8 @@ export const connectedAppsSchema = z.object({
   grants: z.array(connectedAppSchema),
   /** The tool groups served, which an app's are chosen from; none without the built-in server. */
   groups: z.array(toolGroupSchema),
+  /** The user's accounts, which an app can be narrowed to. */
+  accounts: z.array(accountChoiceSchema).default([]),
 })
 export type ConnectedApps = z.infer<typeof connectedAppsSchema>
 
@@ -81,4 +99,9 @@ export function revokeConnectedApp(id: number): Promise<null> {
 /** Make `groups` the tool groups the app is approved for: its next call sees them. */
 export function setConnectedAppGroups(id: number, groups: string[]): Promise<null> {
   return apiPutJson<null>(`/api/v1/oauth/grants/${String(id)}/groups`, { groups })
+}
+
+/** Make `limits` the app's, both of them: its next call sees them. */
+export function setConnectedAppLimits(id: number, limits: AppLimits): Promise<null> {
+  return apiPutJson<null>(`/api/v1/oauth/grants/${String(id)}/limits`, limits)
 }

@@ -31,6 +31,10 @@ const CLAUDE: ConsentRequest = {
   redirect_host: 'claude.ai',
   scopes: ['mailroom'],
   groups: GROUPS,
+  accounts: [
+    { id: 1, name: 'Work' },
+    { id: 2, name: 'Home' },
+  ],
   expires_at: '2026-10-25T12:10:00Z',
 }
 
@@ -109,7 +113,7 @@ describe('ConnectScreen', () => {
       REQUEST_PATH,
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ decision: 'approve', groups: ['mail_read', 'mail_organize'] }),
+        body: JSON.stringify({ decision: 'approve', groups: ['mail_read', 'mail_organize'], account_ids: null, send_ceiling: null }),
       }),
     )
     expect(leave).toHaveBeenCalledWith(`${CALLBACK}?code=c0de&state=s`)
@@ -149,9 +153,41 @@ describe('ConnectScreen', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       REQUEST_PATH,
       expect.objectContaining({
-        body: JSON.stringify({ decision: 'approve', groups: ['mail_read', 'mail_send'] }),
+        body: JSON.stringify({ decision: 'approve', groups: ['mail_read', 'mail_send'], account_ids: null, send_ceiling: null }),
       }),
     )
+  })
+
+  it('approves within the limits chosen', async () => {
+    const fetchMock = stubApi()
+    renderSignedIn(<ConnectScreen requestId="req-1" leave={vi.fn()} />, ALICE)
+    const every = await screen.findByRole('radio', { name: /All of them/ })
+    expect(every).toBeChecked()
+    // A ceiling limits nothing while the app may not write or send.
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Send mail' }))
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: 'Sending, at most' }),
+      'Drafts only',
+    )
+    await userEvent.click(screen.getByRole('radio', { name: 'Only these' }))
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Home' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Approve' }))
+    const [, init] = fetchMock.mock.calls.find(([, each]) => each?.method === 'POST') ?? []
+    expect(JSON.parse(init?.body as string)).toEqual({
+      decision: 'approve',
+      groups: ['mail_read', 'mail_organize', 'mail_send'],
+      account_ids: [2],
+      send_ceiling: 'drafts',
+    })
+  })
+
+  it('asks for no accounts when there are none to choose from', async () => {
+    stubApi({ ...CLAUDE, accounts: [] })
+    renderSignedIn(<ConnectScreen requestId="req-1" leave={vi.fn()} />, ALICE)
+    expect(await screen.findByRole('button', { name: 'Approve' })).toBeEnabled()
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument()
   })
 
   it('names every tool group in Italian too', () => {

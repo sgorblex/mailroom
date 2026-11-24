@@ -12,15 +12,18 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, Depends, Path, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from mailroom.api.deps import CurrentUser, DbSession, SessionCookie
+from mailroom.api.deps import Context, CurrentUser, DbSession, SessionCookie
 from mailroom.errors import Refusal
 from mailroom.mcp.groups import UnapprovableGroupsError, approvable
 from mailroom.oauth import consent
 from mailroom.oauth.grants import user_grants
 from mailroom.oauth.server import OAuthServer
-from mailroom.oauth.tokens import revoke_grant, set_grant_groups
+from mailroom.oauth.tokens import revoke_grant, set_grant_groups, set_grant_reach
+from mailroom.reach import Reach
+from mailroom_core.config import MAX_SAFE_INTEGER, SendMode
 
 if TYPE_CHECKING:
+    from mailroom.context import AppContext
     from mailroom.mcp.groups import ToolGroup
     from mailroom.mcp.settings import McpSettings
     from mailroom.mcp.verifier import AuthMode
@@ -33,6 +36,8 @@ RequestId = Annotated[str, Path(min_length=1, max_length=128, pattern=r"^[A-Za-z
 
 _NO_SUCH_REQUEST = Refusal("not_found", "request_not_found", "No such authorization request")
 MAX_GROUPS = 32
+MAX_ACCOUNTS = 1000
+AccountIdIn = Annotated[int, Field(strict=True, ge=1, le=MAX_SAFE_INTEGER)]
 GroupNameIn = Annotated[str, StringConstraints(min_length=1, max_length=64)]
 
 _NO_SUCH_GRANT = Refusal("not_found", "grant_not_found", "No such connected app")
@@ -51,6 +56,13 @@ class ToolGroupOut(BaseModel):
     good."""
 
 
+class AccountChoice(BaseModel):
+    """One of the user's accounts an app can be narrowed to."""
+
+    id: int
+    name: str
+
+
 class ConsentRequestOut(BaseModel):
     client_name: str | None
     """What the client calls itself: its own claim, not checked."""
@@ -61,16 +73,28 @@ class ConsentRequestOut(BaseModel):
     scopes: list[str]
     groups: list[ToolGroupOut]
     """The tool groups the instance serves, for the user to choose from."""
+    accounts: list[AccountChoice]
+    """The user's accounts, for them to choose from."""
     expires_at: datetime
 
 
-class Decision(BaseModel):
+class Limits(BaseModel):
+    """What an app is limited to, beyond its tool groups."""
+
     model_config = ConfigDict(extra="forbid")
 
+    account_ids: list[AccountIdIn] | None = Field(default=None, max_length=MAX_ACCOUNTS)
+    """The accounts it sees, at least one, each the user's; null for every one, those added
+    later too."""
+    send_ceiling: SendMode | None = None
+    """The most it may do when it sends, whatever an account's send mode; null for no ceiling."""
+
+
+class Decision(Limits):
     decision: Literal["approve", "deny"]
     groups: list[GroupNameIn] = Field(default_factory=list, max_length=MAX_GROUPS)
     """With ``approve``, the tool groups approved: at least one, each served, with what it
-    requires."""
+    requires. The limits count with ``approve`` only."""
 
 
 class GroupsIn(BaseModel):
@@ -122,12 +146,33 @@ def _approvable(chosen: list[str], served: tuple[ToolGroup, ...]) -> list[str]:
         raise Refusal("invalid", "groups_not_approvable", str(exc)) from None
 
 
+def _account_choices(ctx: AppContext, user_id: int) -> list[AccountChoice]:
+    return [
+        AccountChoice(id=account.id, name=account.name or account.login)
+        for account in ctx.accounts(user_id).settings.account
+    ]
+
+
+def _reach(ctx: AppContext, user_id: int, limits: Limits) -> Reach:
+    """The reach ``limits`` give: 400 ``accounts_not_approvable`` for accounts that are not all the
+    user's, or none."""
+    if limits.account_ids is None:
+        return Reach(None, limits.send_ceiling)
+    chosen = frozenset(limits.account_ids)
+    owned = {account.id for account in ctx.accounts(user_id).settings.account}
+    if not chosen or not chosen <= owned:
+        msg = "Choose at least one of your accounts" if not chosen else "Not all your accounts"
+        raise Refusal("invalid", "accounts_not_approvable", msg)
+    return Reach(chosen, limits.send_ceiling)
+
+
 @consent_router.get("/{request_id}")
 def consent_request(
     request: Request,
     request_id: RequestId,
     response: Response,
     server: BuiltinOAuthServer,
+    ctx: Context,
     db: DbSession,
     user: CurrentUser,
     session: SessionCookie = None,
@@ -150,6 +195,7 @@ def consent_request(
         redirect_host=_host(pending.redirect_origin),
         scopes=pending.scopes,
         groups=[_group_out(group) for group in _served(request)],
+        accounts=_account_choices(ctx, user.id),
         expires_at=pending.expires_at,
     )
 
@@ -160,18 +206,26 @@ def decide(
     request_id: RequestId,
     body: Decision,
     server: BuiltinOAuthServer,
+    ctx: Context,
     db: DbSession,
     user: CurrentUser,
     session: SessionCookie = None,
 ) -> Decided:
-    """Approve (a new connected app, for the tool groups chosen) or deny; either way the request
-    is used up. 400 ``groups_not_approvable`` for a choice that cannot be approved, before the
+    """Approve (a new connected app, for the tool groups and within the limits chosen) or deny;
+    either way the request is used up. 400 ``groups_not_approvable`` or
+    ``accounts_not_approvable`` for a choice that cannot be approved, before the
     request is touched; 409 ``sso_required`` as for the GET."""
     try:
         if body.decision == "approve":
             groups = _approvable(body.groups, _served(request))
             redirect_to = consent.approve(
-                db, server.settings, request_id, user.id, tool_groups=groups, session=session
+                db,
+                server.settings,
+                request_id,
+                user.id,
+                tool_groups=groups,
+                reach=_reach(ctx, user.id, body),
+                session=session,
             )
         else:
             redirect_to = consent.deny(db, server.settings, request_id, user.id, session=session)
@@ -192,6 +246,9 @@ class ConnectedAppOut(BaseModel):
     groups: list[str]
     """The served tool groups it is approved for; the others are added since, or left out at
     approval."""
+    account_ids: list[int] | None
+    """The accounts it is narrowed to (none, when they were all removed); null for every one."""
+    send_ceiling: SendMode | None
 
 
 class ConnectedAppsOut(BaseModel):
@@ -203,6 +260,8 @@ class ConnectedAppsOut(BaseModel):
     groups: list[ToolGroupOut]
     """The tool groups the instance serves, which an app's can be chosen from; none unless the
     built-in server grants access (``builtin`` or ``oidc``)."""
+    accounts: list[AccountChoice]
+    """The user's accounts, which an app can be narrowed to."""
 
 
 def _auth_mode(request: Request) -> AuthMode:
@@ -211,7 +270,9 @@ def _auth_mode(request: Request) -> AuthMode:
 
 
 @grants_router.get("")
-def connected_apps(request: Request, db: DbSession, user: CurrentUser) -> ConnectedAppsOut:
+def connected_apps(
+    request: Request, ctx: Context, db: DbSession, user: CurrentUser
+) -> ConnectedAppsOut:
     """The user's grants, whatever the mode: ones left from an earlier mode can still be revoked."""
     served = _served(request)
     auth = _auth_mode(request)
@@ -225,10 +286,13 @@ def connected_apps(request: Request, db: DbSession, user: CurrentUser) -> Connec
                 created_at=app.created_at,
                 last_used_at=app.last_used_at,
                 groups=[group.name for group in served if group.name in app.tool_groups],
+                account_ids=None if app.reach.accounts is None else sorted(app.reach.accounts),
+                send_ceiling=app.reach.ceiling,
             )
             for app in user_grants(db, user.id)
         ],
         groups=[_group_out(group) for group in served] if auth in ("builtin", "oidc") else [],
+        accounts=_account_choices(ctx, user.id),
     )
 
 
@@ -242,6 +306,16 @@ def set_connected_app_groups(
     groups = _approvable(body.groups, served)
     names = {group.name for group in served}
     if set_grant_groups(db, grant_id, user.id, groups, names) is None:
+        raise _NO_SUCH_GRANT
+
+
+@grants_router.put("/{grant_id}/limits", status_code=204)
+def set_connected_app_limits(
+    grant_id: GrantId, body: Limits, ctx: Context, db: DbSession, user: CurrentUser
+) -> None:
+    """Make these the app's limits, both of them: its next call sees them. 400
+    ``accounts_not_approvable`` as for a decision."""
+    if not set_grant_reach(db, grant_id, user.id, _reach(ctx, user.id, body)):
         raise _NO_SUCH_GRANT
 
 

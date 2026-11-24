@@ -16,7 +16,6 @@ from pydantic import BaseModel
 from sqlalchemy import func, not_, select
 from sqlalchemy.dialects.postgresql import distinct_on
 
-from mailroom.accounts.store import load_accounts
 from mailroom.auth.users import time_zone_of
 from mailroom.mail.index.reads import inbox_unread, marked
 from mailroom.models import (
@@ -109,14 +108,14 @@ def _next_midnight(now: datetime, zone: str) -> datetime:
 def mail_summary(
     ctx: AppContext, db: Session, user_id: int, zone: str, now: datetime
 ) -> MailSummary:
-    accounts = load_accounts(ctx.store(user_id)).settings.account
+    accounts = ctx.accounts(user_id).settings.account
     ids = [account.id for account in accounts]
     unread = inbox_unread(db, user_id, ids)
     starred, to_sort = marked(db, user_id, ids)
     tomorrow = _next_midnight(now, zone)
     snoozed, snoozed_today = db.execute(
         select(func.count(), func.count().filter(Snooze.until < tomorrow)).where(
-            Snooze.user_id == user_id
+            Snooze.user_id == user_id, ctx.reach.covers(Snooze.account_id)
         )
     ).one()
     waiting = ScheduledSend.state != "failed"
@@ -125,7 +124,7 @@ def mail_summary(
             func.count().filter(waiting),
             func.min(ScheduledSend.send_at).filter(waiting),
             func.count().filter(not_(waiting)),
-        ).where(ScheduledSend.user_id == user_id)
+        ).where(ScheduledSend.user_id == user_id, ctx.reach.covers(ScheduledSend.account_id))
     ).one()
     return MailSummary(
         inboxes=[
@@ -148,11 +147,15 @@ def mail_summary(
     )
 
 
-def filters_summary(db: Session, user_id: int, now: datetime) -> FiltersSummary:
+def filters_summary(ctx: AppContext, db: Session, user_id: int, now: datetime) -> FiltersSummary:
     rule_sets = list(
         db.scalars(
             select(RuleSet)
-            .where(RuleSet.user_id == user_id, RuleSet.kind == "user")
+            .where(
+                RuleSet.user_id == user_id,
+                RuleSet.kind == "user",
+                ctx.reach.covers(RuleSet.account_id),
+            )
             .order_by(RuleSet.name, RuleSet.id)
         )
     )
@@ -221,5 +224,5 @@ def home_summary(
     zone = time_zone_of(db, user_id)
     return HomeSummary(
         mail=mail_summary(ctx, db, user_id, zone, now) if ctx.features.mail else None,
-        filters=filters_summary(db, user_id, now) if ctx.features.filters else None,
+        filters=filters_summary(ctx, db, user_id, now) if ctx.features.filters else None,
     )

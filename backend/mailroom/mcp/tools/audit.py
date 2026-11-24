@@ -64,6 +64,7 @@ async def _audit_list(args: AuditListArguments, call: ToolCall) -> JsonObject:
         lambda db: listing.records(
             db,
             call.user_id,
+            reach=call.ctx.reach,
             cursor=args.cursor,
             limit=args.limit,
             account=args.account_id,

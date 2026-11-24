@@ -64,6 +64,11 @@ class OAuthGrant(Base):
     """One approval of a client by a user: a *connected app*. Its tokens go with it."""
 
     __tablename__ = "oauth_grant"
+    __table_args__ = (
+        CheckConstraint(
+            "send_ceiling IN ('off', 'drafts', 'approval', 'direct')", name="send_ceiling"
+        ),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
     user_id: Mapped[int] = mapped_column(
@@ -76,6 +81,10 @@ class OAuthGrant(Base):
     scopes: Mapped[list[str]] = mapped_column(ARRAY(Text))
     tool_groups: Mapped[list[str]] = mapped_column(ARRAY(Text))
     """The MCP tool groups the user approved: the client sees and calls only these."""
+    account_ids: Mapped[list[int] | None] = mapped_column(ARRAY(BigInteger))
+    """The user's accounts it is narrowed to; null for every one, those added later too."""
+    send_ceiling: Mapped[str | None] = mapped_column(Text)
+    """The most it may do when it sends, whatever an account's send mode; null for no ceiling."""
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

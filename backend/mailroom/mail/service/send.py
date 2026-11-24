@@ -372,8 +372,12 @@ def draft_unsettled(draft: Draft, filed: bool) -> tuple[gate.SendNote, ...]:
 
 
 def send_holds(ctx: AppContext, user_id: int, ref: str) -> bool:
-    """Whether a send holds the draft written elsewhere at ``ref``, there or not by now."""
-    return _holding_send(ctx, user_id, core.parse_ref(ref)) is not None
+    """Whether a send holds the draft written elsewhere at ``ref``, there or not by now; False
+    for one beyond the caller's reach."""
+    message = core.parse_ref(ref)
+    if not ctx.reach.includes(message.account):
+        return False
+    return _holding_send(ctx, user_id, message) is not None
 
 
 def _send_of_gone_draft(
@@ -480,7 +484,7 @@ def read_send(ctx: AppContext, user_id: int, send_id: str) -> SendView:
     send = None
     if _SEND_ID.fullmatch(send_id):
         send = ctx.store(user_id).send_state(int(send_id))
-    if send is None:
+    if send is None or not ctx.reach.includes(send.account):
         raise unknown_message()
     return _send_view(send)
 

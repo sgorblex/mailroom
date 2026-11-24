@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from mailroom.accounts.store import core_user_id, load_accounts, remove_account
@@ -28,6 +28,7 @@ from mailroom.models import (
     SenderViewPreference,
     TransferLedger,
 )
+from mailroom.oauth.models import OAuthGrant
 from mailroom_core.store import forget_user
 
 if TYPE_CHECKING:
@@ -110,12 +111,23 @@ def forget_account(store: AccountStore, db: Session, user_id: int, account_id: i
             IdentitySignature.user_id == user_id, IdentitySignature.account_id == account_id
         )
     )
+    _drop_from_grants(db, user_id, account_id)
     _drop_from_views(db, user_id, account_id)
     _forget_scheduled(db, user_id, account_id)
     _forget_snoozes(db, user_id, account_id)
     forget_vacation(db, user_id, account_id)
     db.commit()
     remove_account(store, account_id)
+
+
+def _drop_from_grants(db: Session, user_id: int, account_id: int) -> None:
+    """Take the account out of the connected apps narrowed to it; one left without any reaches
+    none (never all of them)."""
+    db.execute(
+        update(OAuthGrant)
+        .where(OAuthGrant.user_id == user_id, OAuthGrant.account_ids.contains([account_id]))
+        .values(account_ids=func.array_remove(OAuthGrant.account_ids, account_id))
+    )
 
 
 def _drop_from_views(db: Session, user_id: int, account_id: int) -> None:

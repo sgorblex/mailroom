@@ -25,6 +25,7 @@ from mailroom.mcp.settings import McpSettings
 from mailroom.models import SsoLoginState
 from mailroom.oauth.models import OAuthAuthorizationRequest, OAuthGrant
 from mailroom.oauth.throttle import Throttle
+from tests.test_api_accounts import new_account
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -441,7 +442,7 @@ def test_connected_apps_say_how_access_is_managed(
         )
     listed = user_client.get("/api/v1/oauth/grants")
     assert listed.status_code == 200, listed.text
-    assert listed.json() == {"auth": auth, "grants": [], "groups": []}
+    assert listed.json() == {"auth": auth, "grants": [], "groups": [], "accounts": []}
 
 
 def _set_groups(flow: Flow, grant_id: int, groups: list[str]) -> httpx.Response:
@@ -511,3 +512,140 @@ def test_a_connected_apps_groups_must_be_approvable(flow: Flow, user: User) -> N
     reply = _set_groups(flow, app["id"], ["mail_organize"])
     assert reply.status_code == 400
     assert reply.json()["detail"]["code"] == "groups_not_approvable"
+
+
+# Limits: the accounts an app is narrowed to, and its send ceiling
+
+
+@pytest.fixture
+def accounts(flow: Flow, user: User) -> list[int]:
+    """The user's accounts, work and home, on servers nothing reaches."""
+    flow.sign_in(user)
+    added = []
+    for label in ("work", "home"):
+        reply = flow.client.post("/api/v1/accounts", json=new_account(label))
+        assert reply.status_code == 201, reply.text
+        added.append(int(reply.json()["id"]))
+    flow.sign_out()
+    return added
+
+
+def _approve_limited(flow: Flow, request_id: str, **limits: Any) -> httpx.Response:
+    body = {"decision": "approve", "groups": ["mail_read"], **limits}
+    return flow.client.post(f"/api/v1/oauth/requests/{request_id}", json=body)
+
+
+def _set_limits(flow: Flow, grant_id: int, **limits: Any) -> httpx.Response:
+    return flow.client.put(f"/api/v1/oauth/grants/{grant_id}/limits", json=limits)
+
+
+def _accounts_listed(flow: Flow, token: str) -> list[tuple[int, str]]:
+    answer = flow.client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {"name": "accounts_list", "arguments": {}},
+        },
+        headers={**MCP_HEADERS, "authorization": f"Bearer {token}"},
+    )
+    listed = answer.json()["result"]["structuredContent"]["accounts"]
+    return [(account["id"], account["send_mode"]) for account in listed]
+
+
+def test_an_app_is_limited_at_consent_and_later(
+    flow: Flow, user: User, db_session: Session, accounts: list[int]
+) -> None:
+    work, home = accounts
+    flow.sign_in(user)
+    request_id = flow.authorize()
+    named = [{"id": work, "name": "work@example.org"}, {"id": home, "name": "home@example.org"}]
+    assert flow.show(request_id).json()["accounts"] == named
+    decided = _approve_limited(flow, request_id, account_ids=[home, home], send_ceiling="off")
+    assert decided.status_code == 200, decided.text
+    grant = db_session.scalars(select(OAuthGrant)).one()
+    assert (grant.account_ids, grant.send_ceiling) == ([home], "off")
+    code = _query(decided.json()["redirect_to"])["code"]
+    form = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": CALLBACK,
+        "client_id": flow.client_id,
+        "code_verifier": flow.verifier,
+    }
+    token = flow.client.post("/oauth/token", data=form).json()["access_token"]
+    assert _accounts_listed(flow, token) == [(home, "off")]
+
+    body = _grants(flow).json()
+    assert body["accounts"] == named
+    [app] = body["grants"]
+    assert (app["account_ids"], app["send_ceiling"]) == ([home], "off")
+    # The next call of the same token sees a change.
+    assert _set_limits(flow, app["id"], account_ids=None, send_ceiling=None).status_code == 204
+    assert _accounts_listed(flow, token) == [(work, "drafts"), (home, "drafts")]
+    assert (
+        _set_limits(flow, app["id"], account_ids=[work], send_ceiling="direct").status_code == 204
+    )
+    assert _accounts_listed(flow, token) == [(work, "drafts")]
+    db_session.refresh(grant)
+    assert grant.tool_groups == ["mail_read"]
+
+
+def test_an_app_approved_without_limits_has_none(
+    flow: Flow, user: User, db_session: Session
+) -> None:
+    flow.approved_tokens(user)
+    grant = db_session.scalars(select(OAuthGrant)).one()
+    assert (grant.account_ids, grant.send_ceiling) == (None, None)
+
+
+@pytest.mark.parametrize(
+    ("limits", "status", "code"),
+    [
+        ({"account_ids": []}, 400, "accounts_not_approvable"),
+        ({"account_ids": [999_999]}, 400, "accounts_not_approvable"),
+        ({"account_ids": ["1"]}, 422, None),
+        ({"account_ids": "all"}, 422, None),
+        ({"send_ceiling": "always"}, 422, None),
+        ({"extra": True}, 422, None),
+    ],
+)
+def test_limits_that_cannot_be_approved_change_nothing(
+    flow: Flow,
+    user: User,
+    db_session: Session,
+    limits: dict[str, Any],
+    status: int,
+    code: str | None,
+) -> None:
+    flow.approved_tokens(user)
+    flow.sign_in(user)
+    request_id = flow.authorize()
+    [app] = _grants(flow).json()["grants"]
+    for reply in (
+        _approve_limited(flow, request_id, **limits),
+        _set_limits(flow, app["id"], **limits),
+    ):
+        assert reply.status_code == status, reply.text
+        if code is not None:
+            assert reply.json()["detail"]["code"] == code
+    grant = db_session.scalars(select(OAuthGrant)).one()
+    assert (grant.account_ids, grant.send_ceiling) == (None, None)
+    assert flow.show(request_id).status_code == 200
+
+
+def test_another_users_app_or_accounts_are_not_there(
+    flow: Flow, user: User, admin: User, db_session: Session, accounts: list[int]
+) -> None:
+    flow.approved_tokens(user)
+    grant = db_session.scalars(select(OAuthGrant)).one()
+    assert _set_limits(flow, grant.id, account_ids=None).status_code == 401
+    flow.sign_in(admin)
+    assert _set_limits(flow, grant.id, account_ids=None, send_ceiling="off").status_code == 404
+    request_id = flow.authorize()
+    assert flow.show(request_id).json()["accounts"] == []
+    refused = _approve_limited(flow, request_id, account_ids=accounts)
+    assert refused.json()["detail"]["code"] == "accounts_not_approvable"
+    db_session.refresh(grant)
+    assert (grant.account_ids, grant.send_ceiling) == (None, None)

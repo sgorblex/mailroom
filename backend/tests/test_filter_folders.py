@@ -127,13 +127,13 @@ def test_naming_rule_sets_finds_a_rule_set_by_its_folder_or_a_filter_s(
     add_rule_set(db_session, bob, ["Projects"], name="bob's")
     # A rule set for all accounts names the folder on each of them.
     assert naming_rule_sets(db_session, user.id, 1, ["Projects"]) == [
-        RuleSetRef(on_it.id, "on it"),
-        RuleSetRef(below.id, "below"),
-        RuleSetRef(moving.id, "moving"),
-        RuleSetRef(every.id, "every"),
+        RuleSetRef(on_it.id, "on it", on_it.account_id),
+        RuleSetRef(below.id, "below", below.account_id),
+        RuleSetRef(moving.id, "moving", moving.account_id),
+        RuleSetRef(every.id, "every", every.account_id),
     ]
     assert naming_rule_sets(db_session, user.id, 1, ["Projects", "2026"]) == [
-        RuleSetRef(below.id, "below")
+        RuleSetRef(below.id, "below", below.account_id)
     ]
     assert naming_rule_sets(db_session, user.id, 1, ["Nowhere"]) == []
 
@@ -186,7 +186,7 @@ def test_a_move_to_another_account_names_that_accounts_folder(
     )
     add_rule_set(db_session, user, ["INBOX"], spec(to_account(3, "Projects")), account_id=2)
     assert naming_rule_sets(db_session, user.id, 1, ["Projects"]) == [
-        RuleSetRef(moving.id, "rules")
+        RuleSetRef(moving.id, "rules", moving.account_id)
     ]
     assert naming_rule_sets(db_session, user.id, 2, ["Projects"]) == []
     assert rewritten_spec(spec(to_account(1, "Old")), ["Old"], ["New"]) == spec(

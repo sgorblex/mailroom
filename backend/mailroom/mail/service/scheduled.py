@@ -47,6 +47,7 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
     from mailroom.context import AppContext
+    from mailroom.reach import Reach
     from mailroom_core.config import AccountConfig, TimeZoneName
     from mailroom_core.mail import Authoriser, MailConnections, MessageRef, Note
     from mailroom_core.store import AccountStore
@@ -238,11 +239,15 @@ def hold_send(ctx: AppContext, user_id: int, ref: str, delay: timedelta) -> Sche
         raise
 
 
-def _own(db: Session, user_id: int, scheduled_id: str, *, lock: bool = True) -> ScheduledSend:
+def _own(
+    ctx: AppContext, db: Session, user_id: int, scheduled_id: str, *, lock: bool = True
+) -> ScheduledSend:
     row = None
     if _ID.fullmatch(scheduled_id):
         query = select(ScheduledSend).where(
-            ScheduledSend.id == int(scheduled_id), ScheduledSend.user_id == user_id
+            ScheduledSend.id == int(scheduled_id),
+            ScheduledSend.user_id == user_id,
+            ctx.reach.covers(ScheduledSend.account_id),
         )
         row = db.scalar(query.with_for_update() if lock else query)
     if row is None:
@@ -258,7 +263,7 @@ def cancel_scheduled(
     from mailroom.worker.tasks import cancel_job
 
     with ctx.session_maker() as db:
-        row = _own(db, user_id, scheduled_id)
+        row = _own(ctx, db, user_id, scheduled_id)
         if row.state == "sending":
             raise Refusal("conflict", "send_started", SEND_STARTED)
         if row.job_id is not None:
@@ -273,7 +278,7 @@ def cancel_scheduled(
 def read_scheduled(ctx: AppContext, user_id: int, scheduled_id: str) -> ScheduledView:
     """The user's held send ``scheduled_id``; ``not_found`` once it went, or was cancelled."""
     with ctx.session_maker() as db:
-        return _view(db, _own(db, user_id, scheduled_id, lock=False))
+        return _view(db, _own(ctx, db, user_id, scheduled_id, lock=False))
 
 
 def scheduled_for(ctx: AppContext, user_id: int, ref: str) -> ScheduledView | None:
@@ -284,6 +289,7 @@ def scheduled_for(ctx: AppContext, user_id: int, ref: str) -> ScheduledView | No
         row = db.scalar(
             select(ScheduledSend).where(
                 ScheduledSend.user_id == user_id,
+                ctx.reach.covers(ScheduledSend.account_id),
                 ScheduledSend.ref == core.format_ref(core.parse_ref(ref)),
                 ScheduledSend.state.in_(("held", "sending")),
             )
@@ -296,7 +302,7 @@ def list_scheduled(ctx: AppContext, user_id: int) -> list[ScheduledView]:
     with ctx.session_maker() as db:
         rows = db.scalars(
             select(ScheduledSend)
-            .where(ScheduledSend.user_id == user_id)
+            .where(ScheduledSend.user_id == user_id, ctx.reach.covers(ScheduledSend.account_id))
             .order_by(ScheduledSend.send_at, ScheduledSend.id)
         )
         return [_view(db, row) for row in rows]
@@ -329,16 +335,18 @@ def send_held(
     by: Authoriser,
     time_zone: TimeZoneName,
     resync: Callable[[Sequence[str]], None],
+    reach: Reach,
 ) -> str:
-    """The worker's send of a held draft at ``ref``, held with ``key``, as ``by``, on the
-    connections ``lease`` gives for the accounts' revision: ``SENT``, or the code it ended with.
-    Once a send of ``key`` holds the draft, that send decides and the draft is not read. Once
-    this one is delivered, ``resync`` is given the account's folders it changed
-    (``settled_folders``), for the mail index; it must not raise."""
+    """The worker's send of a held draft at ``ref``, held with ``key``, as ``by``, within
+    ``reach`` (its app's as it is now, whose ceiling the gate keeps to), on the connections
+    ``lease`` gives for the accounts' revision: ``SENT``, or the code it ended with. Once a send of
+    ``key`` holds the draft, that send decides and the draft is not read. Once this one is
+    delivered, ``resync`` is given the account's folders it changed (``settled_folders``), for the
+    mail index; it must not raise."""
     earlier = store.send_state_by_key(key)
     if earlier is not None and earlier.state in SEND_HOLDS_THE_DRAFT:
         return SENT if earlier.state == "sent" else "delivery_unknown"
-    accounts = _Accounts(load_accounts(store))
+    accounts = _Accounts(reach.within(load_accounts(store)))
     account = accounts.config(account_id)
     with lease(accounts.revision) as connections:
         deps = gate.GateDeps(

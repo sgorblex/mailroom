@@ -40,7 +40,7 @@ if TYPE_CHECKING:
     from mailroom.context import AppContext
     from mailroom_core.config import AccountConfig, Limits
     from mailroom_core.crypto import SecretsSubkey
-    from mailroom_core.store import AccountStore, Json
+    from mailroom_core.store import Json
 
 logger = logging.getLogger(__name__)
 
@@ -129,10 +129,10 @@ def require_subkey(subkey: SecretsSubkey | None) -> SecretsSubkey:
     return subkey
 
 
-def require_account(store: AccountStore, account_id: int) -> AccountConfig:
-    """The store user's account ``account_id``, or ``not_found``."""
+def require_account(ctx: AppContext, user_id: int, account_id: int) -> AccountConfig:
+    """The user's account ``account_id``, within the caller's reach, or ``not_found``."""
     try:
-        return load_accounts(store).account(account_id)
+        return ctx.accounts(user_id).account(account_id)
     except AccountNotFound:
         raise account_not_found() from None
 
@@ -200,12 +200,12 @@ def listed_accounts(
     user_id: int,
     keywords: Mapping[int, bool | None] | None = None,
 ) -> list[ListedAccount]:
-    """The user's accounts, with each one's ``keywords`` as given (the mail service's
-    ``account_keywords``)."""
+    """The user's accounts within the caller's reach, each with the send mode the caller gets and
+    its ``keywords`` as given (the mail service's ``account_keywords``)."""
     store = ctx.store(user_id)
     passwords = accounts_with_password(store)
     by_account = _run_filters_by_account(ctx, db, user_id)
-    settings = load_accounts(store).settings
+    settings = ctx.accounts(user_id).settings
     return [
         _listed(
             account,
@@ -254,6 +254,7 @@ def change_account(
     via: Via = "web",
 ) -> ListedAccount:
     """Replace ``account_id``'s ``fields``; ``password`` None keeps the stored one."""
+    require_account(ctx, user_id, account_id)
     key = ctx.subkey if password is None else require_subkey(ctx.subkey)
     store = ctx.store(user_id)
     raw = password_account(account_id, fields)
@@ -286,6 +287,7 @@ def remove_account(
     ctx: AppContext, db: Session, user_id: int, account_id: int, *, via: Via = "web"
 ) -> None:
     """Remove the account with its rule sets and the app's rows about it."""
+    require_account(ctx, user_id, account_id)
     try:
         app_data.forget_account(ctx.store(user_id), db, user_id, account_id)
     except AccountNotFound:
@@ -305,15 +307,16 @@ def try_login(ctx: AppContext, user_id: int, account_id: int) -> tuple[str, str]
     key = require_subkey(ctx.subkey)
     store = ctx.store(user_id)
     try:
+        loaded = ctx.accounts(user_id)
+        loaded.account(account_id)
         reason = unusable(store, key, account_id)
-        revision = load_accounts(store).revision
     except AccountNotFound:
         raise account_not_found() from None
     if reason is not None:
         return reason
     pool = ctx.mail_pool
     try:
-        with pool.lease(ctx, user_id, revision) as connections:
+        with pool.lease(ctx, user_id, loaded.revision) as connections:
             # On no account's gate: the login takes none of the account's pooled connections, and
             # at the deadline there is nothing of the account's to cut (its replies are bounded).
             pool.call(connections, user_id, (), lambda: connections.test_login(account_id))

@@ -18,14 +18,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, cast
 
-from sqlalchemy import or_, select, true
+from sqlalchemy import and_, or_, select, true
 
+from mailroom.filters.transfers import moving_beyond
 from mailroom.models import Filter, RuleSet
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
     from sqlalchemy.orm import Session
+
+    from mailroom.reach import Reach
 
 _MOVES: Final = frozenset({"move_to", "trash"})
 """The actions whose ``folder`` is a path in the rule set's account (``trash``'s may be null: the
@@ -38,6 +41,8 @@ _TO_ACCOUNT: Final = "move_to_account"
 class RuleSetRef:
     id: int
     name: str
+    account_id: int | None
+    """None for a rule set for all accounts."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,7 +196,34 @@ def naming_rule_sets(
     ``segments`` or one under it, by their own folder or by a filter's action, and those of any
     account moving to it (``move_to_account``), enabled or not, in id order."""
     rule_sets = _rule_sets(db, user_id, account_id, lock=False, every=True)
-    return [RuleSetRef(r.id, r.name) for r in _naming(db, rule_sets, segments, account_id)]
+    return [
+        RuleSetRef(r.id, r.name, r.account_id) for r in _naming(db, rule_sets, segments, account_id)
+    ]
+
+
+def named_to(db: Session, named: Sequence[RuleSetRef], reach: Reach) -> list[RuleSetRef]:
+    """Those of ``named`` a caller of ``reach`` may be told of."""
+    beyond = moving_beyond(db, reach, [ref.id for ref in named])
+    return [ref for ref in named if reach.includes(ref.account_id) and ref.id not in beyond]
+
+
+def seen(db: Session, rewritten: Rewritten, reach: Reach) -> Rewritten:
+    """Of what a rename changed, what a caller of ``reach`` may be told of."""
+    if not reach.narrowed:
+        return rewritten
+    beyond = moving_beyond(db, reach, rewritten.rule_sets)
+    within = and_(reach.covers(RuleSet.account_id), RuleSet.id.not_in(beyond))
+    rule_sets = select(RuleSet.id).where(RuleSet.id.in_(rewritten.rule_sets), within)
+    filters = (
+        select(Filter.id)
+        .join(RuleSet, RuleSet.id == Filter.rule_set_id)
+        .where(Filter.id.in_(rewritten.filters), within)
+    )
+    return Rewritten(
+        rule_sets=sorted(db.scalars(rule_sets)),
+        filters=sorted(db.scalars(filters)),
+        all_accounts=[],
+    )
 
 
 def rewrite_folder(

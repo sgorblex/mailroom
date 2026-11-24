@@ -10,9 +10,18 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, cast
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from mailroom.audit import WEB, AuditTrail, Origin
 from mailroom.errors import Refusal
-from mailroom.filters.folders import Rewritten, naming_rule_sets, rewrite_folder, segments
+from mailroom.filters.folders import (
+    Rewritten,
+    named_to,
+    naming_rule_sets,
+    rewrite_folder,
+    seen,
+    segments,
+)
 from mailroom.filters.transfers import rename_in_ledger
 from mailroom.mail import notifications
 from mailroom.mail.index import reads as index_reads
@@ -264,6 +273,8 @@ def rename_folder(
             extra["all_accounts_rule_sets"] = rewritten.all_accounts
         for item in noted:
             trail.note(item, extra)
+        if rewritten is not None and ctx.reach.narrowed:
+            rewritten = _told(ctx, rewritten)
         return FolderRenamed(
             change=change,
             rule_sets=() if rewritten is None else tuple(rewritten.rule_sets),
@@ -282,14 +293,26 @@ def rename_folder(
         return renamed
 
 
-def _in_use(named: Sequence[RuleSetRef]) -> Refusal:
-    """``folder_in_use``, naming the first ``MAX_IN_USE_LISTED`` rule sets."""
-    listed = named[:MAX_IN_USE_LISTED]
-    names = ", ".join(f'"{clean_header(ref.name, 200)}"' for ref in listed)
-    more = len(named) - len(listed)
-    rest = f" and {more} more" if more else ""
+def _told(ctx: AppContext, rewritten: Rewritten) -> Rewritten:
+    """What the caller is told was rewritten (``seen``): nothing when that cannot be read, as the
+    rename stands."""
+    try:
+        with ctx.session_maker() as db:
+            return seen(db, rewritten, ctx.reach)
+    except SQLAlchemyError:
+        return Rewritten([], [], [])
+
+
+def _in_use(count: int, told: Sequence[RuleSetRef]) -> Refusal:
+    """``folder_in_use`` by ``count`` rule sets, naming the first ``MAX_IN_USE_LISTED`` of
+    ``told``, those the caller may be told of (``named_to``)."""
+    listed = told[:MAX_IN_USE_LISTED]
+    names = [f'"{clean_header(ref.name, 200)}"' for ref in listed]
+    more = count - len(listed)
+    rest = [f"{more} more"] if more else []
+    written = " and ".join([*([", ".join(names)] if names else []), *rest])
     message = (
-        f"Rule sets use this folder or one under it: {names}{rest}. "
+        f"Rule sets use this folder or one under it: {written}. "
         "Point them at another folder or remove them first."
     )
     return Refusal(
@@ -327,12 +350,13 @@ def delete_folder(
             split = segments(folder, connections.delimiter(account_id))
             with ctx.session_maker() as db:
                 named = naming_rule_sets(db, user_id, account_id, split)
+                told = named_to(db, named, ctx.reach)
         except Exception as error:
             noted(core.audit_result(error))
             raise
         if named:
             noted(cast("MailErrorCode", "folder_in_use"))  # the app's own code
-            raise _in_use(named)
+            raise _in_use(len(named), told)
         try:
             deleted = core.delete_folder(
                 connections, account_id, folder, messages=messages, note=trail.note

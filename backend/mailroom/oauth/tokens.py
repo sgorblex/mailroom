@@ -22,6 +22,8 @@ if TYPE_CHECKING:
 
     from sqlalchemy.orm import Session
 
+    from mailroom.reach import Reach
+
 logger = logging.getLogger(__name__)
 
 #: A grant's ``last_used_at`` is written at most this often.
@@ -55,6 +57,8 @@ class VerifiedAccess:
     resource: str
     scopes: list[str]
     tool_groups: list[str]
+    account_ids: list[int] | None
+    send_ceiling: str | None
     expires_at: int
 
 
@@ -86,6 +90,10 @@ def sweep_expired(db: Session, now: datetime) -> None:
     )
 
 
+def _kept_accounts(reach: Reach) -> list[int] | None:
+    return None if reach.accounts is None else sorted(reach.accounts)
+
+
 def create_grant_with_code(
     db: Session,
     *,
@@ -97,9 +105,10 @@ def create_grant_with_code(
     resource: str,
     scopes: list[str],
     tool_groups: list[str],
+    reach: Reach,
 ) -> str:
-    """A new grant for ``tool_groups`` and its authorization code (raw, returned). Leaves the
-    commit to the caller."""
+    """A new grant for ``tool_groups`` within ``reach`` and its authorization code (raw,
+    returned). Leaves the commit to the caller."""
     now = datetime.now(UTC)
     sweep_expired(db, now)
     grant = OAuthGrant(
@@ -108,6 +117,8 @@ def create_grant_with_code(
         resource=resource,
         scopes=scopes,
         tool_groups=tool_groups,
+        account_ids=_kept_accounts(reach),
+        send_ceiling=reach.ceiling,
     )
     db.add(grant)
     db.flush()
@@ -328,6 +339,8 @@ def verify_access_token(db: Session, raw_token: str) -> VerifiedAccess | None:
         resource=grant.resource,
         scopes=list(grant.scopes),
         tool_groups=list(grant.tool_groups),
+        account_ids=None if grant.account_ids is None else list(grant.account_ids),
+        send_ceiling=grant.send_ceiling,
         expires_at=int(expires_at.timestamp()),
     )
 
@@ -381,3 +394,27 @@ def set_grant_groups(
         },
     )
     return added, removed
+
+
+def set_grant_reach(db: Session, grant_id: int, user_id: int, reach: Reach) -> bool:
+    """Make ``reach`` what ``user_id``'s grant reaches; whether it is theirs and there. The
+    client's next call sees the change, and so does a held send of its when it goes."""
+    grant = db.get(OAuthGrant, grant_id, with_for_update=True)
+    if grant is None or grant.user_id != user_id:
+        db.rollback()
+        return False
+    grant.account_ids = _kept_accounts(reach)
+    grant.send_ceiling = reach.ceiling
+    db.commit()
+    logger.info(
+        "oauth_grant_limits_changed",
+        extra={
+            "event": "oauth_grant_limits_changed",
+            "user_id": user_id,
+            "client_id": grant.client_id,
+            "grant_id": grant_id,
+            "account_ids": grant.account_ids,
+            "send_ceiling": grant.send_ceiling,
+        },
+    )
+    return True

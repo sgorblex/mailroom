@@ -364,7 +364,7 @@ def test_a_busy_user_is_refused_at_once() -> None:
     tool = Tool("slow", "Slow", "Waits.", "filters_read", Arguments, READ, held)
     token = AccessToken(token="t", client_id="c", scopes=[], subject="1")
     slots = UserSlots(per_user=1)
-    ctx = cast("AppContext", object())
+    ctx = cast("AppContext", _AnyContext())
 
     async def call() -> Any:
         return await call_tool(
@@ -469,7 +469,7 @@ def test_a_call_to_a_tool_the_grant_did_not_approve_is_refused(
         return {}
 
     tool = Tool("moving", "Moving", "Moves.", "mail_organize", Arguments, READ, run)
-    ctx = cast("AppContext", object())
+    ctx = cast("AppContext", _AnyContext())
     caplog.set_level(logging.INFO, logger="mailroom.mcp.audit")
 
     async def call() -> Any:
@@ -507,6 +507,13 @@ def _summary(folder: str, uid: int) -> MessageSummary:
         preview=None,
         size=1,
     )
+
+
+class _AnyContext:
+    """A context for tools that use none of it."""
+
+    def within(self, _reach: object) -> _AnyContext:
+        return self
 
 
 class _ZonedContext:
@@ -672,7 +679,7 @@ def test_an_account_is_named_by_its_name_else_its_login(monkeypatch: pytest.Monk
     ]
     loaded = SimpleNamespace(loaded=SimpleNamespace(settings=SimpleNamespace(account=configs)))
     monkeypatch.setattr(service_read, "_accounts", lambda _ctx, _user_id: loaded)
-    ctx = cast("AppContext", object())
+    ctx = cast("AppContext", _AnyContext())
     assert service_read.account_by_name(ctx, 1, "C@Example.org") == 3
     assert service_read.account_by_name(ctx, 1, "*") == "*"
     assert service_read.account_by_name(ctx, 1, "12") == 12

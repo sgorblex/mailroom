@@ -24,6 +24,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from mailroom.auth.oidc import DEFAULT_LEEWAY_SECONDS, OidcError
 from mailroom.auth.sso import linked_user_id
+from mailroom.reach import reach_of
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -32,6 +33,7 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session, sessionmaker
 
     from mailroom.auth.oidc import OidcProvider
+    from mailroom.reach import Reach
 
 logger = logging.getLogger(__name__)
 
@@ -225,3 +227,15 @@ def approved_groups_of(token: AccessToken) -> frozenset[str] | None:
     if not isinstance(groups, list):
         return None
     return frozenset(str(name) for name in groups)
+
+
+ACCOUNT_IDS_CLAIM: Final = "account_ids"
+SEND_CEILING_CLAIM: Final = "send_ceiling"
+"""The claims carrying a grant's limits (the names ``mailroom.oauth.config`` gives them too)."""
+
+
+def reach_of_token(token: AccessToken | None) -> Reach:
+    """How far ``token``'s grant reaches; the whole for a token that names no limits (an external
+    issuer's, or none at all)."""
+    claims = {} if token is None else token.claims or {}
+    return reach_of(claims.get(ACCOUNT_IDS_CLAIM), claims.get(SEND_CEILING_CLAIM))

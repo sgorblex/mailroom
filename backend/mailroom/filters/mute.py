@@ -219,7 +219,9 @@ def unmute(
     its last one."""
     account_id = db.scalar(
         select(MutedThread.account_id).where(
-            MutedThread.id == muted_thread_id, MutedThread.user_id == user_id
+            MutedThread.id == muted_thread_id,
+            MutedThread.user_id == user_id,
+            ctx.reach.covers(MutedThread.account_id),
         )
     )
     if account_id is None:
@@ -264,9 +266,14 @@ def _not_found() -> Refusal:
     return Refusal("not_found", "muted_thread_not_found", "No such muted thread")
 
 
-def muted_threads(db: Session, user_id: int, account_id: int | None = None) -> list[MutedThreadOut]:
-    """The user's muted threads, oldest first; with ``account_id``, that account's only."""
-    query = select(MutedThread).where(MutedThread.user_id == user_id)
+def muted_threads(
+    ctx: AppContext, db: Session, user_id: int, account_id: int | None = None
+) -> list[MutedThreadOut]:
+    """The user's muted threads within the caller's reach, oldest first; with ``account_id``, that
+    account's only."""
+    query = select(MutedThread).where(
+        MutedThread.user_id == user_id, ctx.reach.covers(MutedThread.account_id)
+    )
     if account_id is not None:
         query = query.where(MutedThread.account_id == account_id)
     rows = db.scalars(query.order_by(MutedThread.id))

@@ -105,27 +105,27 @@ def test_another_users_rows_are_not_found(
             account,
             RuleSetFields(name="x", folder=["INBOX"], trigger="manual"),
         ),
-        lambda: filters.rule_set_detail(db_session, bob.id, rule_set_id),
+        lambda: filters.rule_set_detail(ctx, db_session, bob.id, rule_set_id),
         lambda: filters.change_rule_set(
             ctx, db_session, bob.id, rule_set_id, RuleSetPatch(name="x")
         ),
-        lambda: filters.remove_rule_set(db_session, bob.id, rule_set_id),
+        lambda: filters.remove_rule_set(ctx, db_session, bob.id, rule_set_id),
         lambda: filters.add_filter(
             ctx, db_session, bob.id, rule_set_id, FilterFields(name="x", spec=SHOP_SPEC)
         ),
-        lambda: filters.reorder_filters(db_session, bob.id, rule_set_id, [filter_id]),
+        lambda: filters.reorder_filters(ctx, db_session, bob.id, rule_set_id, [filter_id]),
         lambda: filters.change_filter(ctx, db_session, bob.id, filter_id, FilterPatch(name="x")),
-        lambda: filters.remove_filter(db_session, bob.id, filter_id),
+        lambda: filters.remove_filter(ctx, db_session, bob.id, filter_id),
         lambda: filters.dry_run(ctx, db_session, bob.id, rule_set_id),
         lambda: filters.run_now(ctx, db_session, bob.id, rule_set_id),
-        lambda: filters.runs(db_session, bob.id, rule_set_id, 20),
+        lambda: filters.runs(ctx, db_session, bob.id, rule_set_id, 20),
     ]
     for call in calls:
         assert refusal(call).kind == "not_found"
     assert accounts.listed_accounts(ctx, db_session, bob.id) == []
 
     # Alice's are untouched.
-    detail = filters.rule_set_detail(db_session, user.id, rule_set_id)
+    detail = filters.rule_set_detail(ctx, db_session, user.id, rule_set_id)
     assert (detail.name, [row.name for row in detail.filters]) == ("Newsletters", ["Shop"])
     assert [entry.id for entry in accounts.listed_accounts(ctx, db_session, user.id)] == [account]
 
@@ -138,7 +138,7 @@ def test_an_enabled_rule_set_is_refused_where_asked(
         lambda: filters.change_rule_set(
             ctx, db_session, user.id, rule_set_id, RuleSetPatch(name="x"), disabled_only=True
         ),
-        lambda: filters.remove_rule_set(db_session, user.id, rule_set_id, disabled_only=True),
+        lambda: filters.remove_rule_set(ctx, db_session, user.id, rule_set_id, disabled_only=True),
         lambda: filters.add_filter(
             ctx,
             db_session,
@@ -150,9 +150,9 @@ def test_an_enabled_rule_set_is_refused_where_asked(
         lambda: filters.change_filter(
             ctx, db_session, user.id, filter_id, FilterPatch(name="x"), disabled_only=True
         ),
-        lambda: filters.remove_filter(db_session, user.id, filter_id, disabled_only=True),
+        lambda: filters.remove_filter(ctx, db_session, user.id, filter_id, disabled_only=True),
         lambda: filters.reorder_filters(
-            db_session, user.id, rule_set_id, [filter_id], disabled_only=True
+            ctx, db_session, user.id, rule_set_id, [filter_id], disabled_only=True
         ),
     ]
     for call in calls:
@@ -162,7 +162,7 @@ def test_an_enabled_rule_set_is_refused_where_asked(
             "rule_set_enabled",
             "Disable the rule set first",
         )
-    detail = filters.rule_set_detail(db_session, user.id, rule_set_id)
+    detail = filters.rule_set_detail(ctx, db_session, user.id, rule_set_id)
     assert (detail.name, [row.name for row in detail.filters]) == ("Newsletters", ["Shop"])
 
     # Without the guard, as the web app asks, the change goes through; once disabled, so does
@@ -207,11 +207,11 @@ def test_one_dry_run_at_a_time(
     with dry_run_slot(ctx.engine, user.id):
         busy = refusal(lambda: filters.dry_run(ctx, db_session, user.id, rule_set_id))
     assert (busy.kind, busy.code) == ("busy", "dry_run_busy")
-    assert filters.runs(db_session, user.id, rule_set_id, 20) == []
+    assert filters.runs(ctx, db_session, user.id, rule_set_id, 20) == []
     # Port 9 on loopback is closed: the mailbox's refusal, recorded.
     unreachable = refusal(lambda: filters.dry_run(ctx, db_session, user.id, rule_set_id))
     assert (unreachable.kind, unreachable.code) == ("mail", "unreachable")
-    [run] = filters.runs(db_session, user.id, rule_set_id, 20)
+    [run] = filters.runs(ctx, db_session, user.id, rule_set_id, 20)
     assert run.error is not None
     assert run.error.startswith("unreachable: ")
 
@@ -227,9 +227,9 @@ def test_checks_refuse_as_invalid(
     assert refusal(
         lambda: filters.add_filter(ctx, db_session, user.id, rule_set_id, bad_spec)
     ).code == ("invalid_spec")
-    assert refusal(lambda: filters.reorder_filters(db_session, user.id, rule_set_id, [1])).code == (
-        "invalid_order"
-    )
+    assert refusal(
+        lambda: filters.reorder_filters(ctx, db_session, user.id, rule_set_id, [1])
+    ).code == ("invalid_order")
     taken = refusal(lambda: accounts.add_account(ctx, user.id, _fields(), "x"))
     assert (taken.kind, taken.code) == ("invalid", "invalid_account")
     assert {"path": ["login"], "message": 'duplicate login "work@example.org"'} in taken.issues

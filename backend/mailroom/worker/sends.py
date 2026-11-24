@@ -8,16 +8,16 @@ key began already (the draft sent at once meanwhile, from another tab or by an a
 draft at the row's ref, which must still be the version scheduled (the same send key), and takes
 it through ``admit`` with that key, ``deliver``, ``file_sent`` and ``settle_draft``, as the
 scheduler's ``by``, audited as its connected app. An agent's held send first needs its grant:
-revoked, or no longer approving ``mail_send``, it fails (``grant_revoked``, ``not_approved``)
-before the draft is read. A delivered send has the folders it changed synced again into the mail
-index (``index_writes.resync``). The key is claimed before SMTP, so the job run again after a worker
-stopped between the claim and the delivery finds that send and delivers nothing. Once the gate
-has delivered the key, or had delivered it before, the row goes: the send's own row says the rest.
-Anything else, an unexpected error too (``internal``), leaves it ``failed`` with its code, the
-draft where it was. A job that ends before the gate audited anything (the grant, the draft gone
-or changed, the account unusable, its password missing, an unexpected error) writes a refused
-record of its own, its code and the draft's folder and UID: nothing of the message, which it may
-not have read.
+revoked, or no longer approving ``mail_send`` or the account, it fails (``grant_revoked``,
+``not_approved``) before the draft is read; its send ceiling is the gate's to keep to. A delivered
+send has the folders it changed synced again into the mail index (``index_writes.resync``). The key
+is claimed before SMTP, so the job run again after a worker stopped between the claim and the
+delivery finds that send and delivers nothing. Once the gate has delivered the key, or had
+delivered it before, the row goes: the send's own row says the rest. Anything else, an unexpected
+error too (``internal``), leaves it ``failed`` with its code, the draft where it was. A job that
+ends before the gate audited anything (the grant, the draft gone or changed, the account unusable,
+its password missing, an unexpected error) writes a refused record of its own, its code and the
+draft's folder and UID: nothing of the message, which it may not have read.
 """
 
 from __future__ import annotations
@@ -37,13 +37,15 @@ from mailroom.mail.index import writes as index_writes
 from mailroom.mail.service.scheduled import SENT, send_held
 from mailroom.mail.service.send import smtp_sender
 from mailroom.models import ScheduledSend
-from mailroom.oauth.grants import grant_refusal
+from mailroom.oauth.grants import GrantRefusal, grant_reach
+from mailroom.reach import WHOLE
 from mailroom_core.mail import AuditItem, MailError, parse_ref
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session, sessionmaker
 
     from mailroom.accounts.service import Via
+    from mailroom.reach import Reach
     from mailroom.worker.context import Mailboxes
     from mailroom_core.config import TimeZoneName
     from mailroom_core.mail import AuditResult, Authoriser, Note
@@ -80,9 +82,9 @@ def send_scheduled(sessions: sessionmaker[Session], mailboxes: Mailboxes, schedu
         held, zone = taken
         audit = _Audit(sessions, held)
         try:
-            outcome = _ungranted(sessions, held) or _send(
-                sessions, mailboxes, held, zone, audit.note
-            )
+            outcome = _send(sessions, mailboxes, held, zone, audit.note, _reach(sessions, held))
+        except GrantRefusal as refusal:
+            outcome = refusal.code
         except Exception as error:
             # Its key keeps the draft from going out twice if the user schedules it again.
             logger.warning(
@@ -178,14 +180,14 @@ class _Audit:
         )
 
 
-def _ungranted(sessions: sessionmaker[Session], held: _Held) -> str | None:
-    """Why an agent's held send may no longer go: its grant revoked, or ``mail_send`` taken
-    back from it (``grant_refusal``); None for the user's, and an app's without a grant of
-    Mailroom's own (an external issuer's token)."""
+def _reach(sessions: sessionmaker[Session], held: _Held) -> Reach:
+    """How far the held send's app reaches now; the whole for the user's, and for an app without
+    a grant of Mailroom's own (an external issuer's token). Raises ``GrantRefusal`` when it may no
+    longer go: its grant revoked, or ``mail_send`` or the account taken back from it."""
     if held.grant_id is None:
-        return None
+        return WHOLE
     with sessions() as db:
-        return grant_refusal(db, held.user_id, held.grant_id, MAIL_SEND_GROUP)
+        return grant_reach(db, held.user_id, held.grant_id, MAIL_SEND_GROUP, held.account_id)
 
 
 def _send(
@@ -194,6 +196,7 @@ def _send(
     held: _Held,
     zone: TimeZoneName,
     note: Note,
+    reach: Reach,
 ) -> str:
     store = user_store(mailboxes.engine, held.user_id)
     try:
@@ -214,6 +217,7 @@ def _send(
             by=held.by,
             time_zone=zone,
             resync=partial(index_writes.resync, sessions, held.user_id, held.account_id),
+            reach=reach,
         )
     except MailError as error:
         return error.code

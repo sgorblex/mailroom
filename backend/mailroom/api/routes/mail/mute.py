@@ -26,8 +26,8 @@ def mute_thread(ref: Ref, ctx: Context, db: DbSession, user: CurrentUser) -> Mut
 
 
 @mail_router.get("/muted")
-def muted_threads(db: DbSession, user: CurrentUser) -> MutedThreads:
-    return MutedThreads(threads=mute.muted_threads(db, user.id))
+def muted_threads(ctx: Context, db: DbSession, user: CurrentUser) -> MutedThreads:
+    return MutedThreads(threads=mute.muted_threads(ctx, db, user.id))
 
 
 @mail_router.delete("/muted/{muted_thread_id}", status_code=204)

@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Query, Response
 
-from mailroom.api.deps import CurrentUser, DbSession
+from mailroom.api.deps import Context, CurrentUser, DbSession
 from mailroom.audit import listing
 from mailroom.audit.listing import MAX_PAGE_SIZE, PAGE_SIZE, RecordPage
 from mailroom_core.config import MAX_SAFE_INTEGER
@@ -20,6 +20,7 @@ Short = Annotated[str | None, Query(min_length=1, max_length=64)]
 
 @audit_router.get("")
 def audit_records(
+    ctx: Context,
     db: DbSession,
     user: CurrentUser,
     response: Response,
@@ -35,6 +36,7 @@ def audit_records(
     return listing.records(
         db,
         user.id,
+        reach=ctx.reach,
         cursor=cursor,
         limit=limit,
         account=account_id,

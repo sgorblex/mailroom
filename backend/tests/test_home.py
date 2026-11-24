@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
-from mailroom.accounts.store import user_store
+from mailroom.accounts.store import load_accounts, user_store
 from mailroom.auth.users import create_user
 from mailroom.config.features import ALL_FEATURES, Features
 from mailroom.home import home_summary
@@ -23,6 +23,7 @@ from mailroom.models import (
     ScheduledSend,
     Snooze,
 )
+from mailroom.reach import WHOLE
 from mailroom_core.mail import TO_SORT
 from tests.conftest import PASSWORD
 from tests.test_api_accounts import added, new_account
@@ -45,7 +46,12 @@ HOME = "/api/v1/home"
 def context(engine: Engine, features: Features = ALL_FEATURES) -> AppContext:
     return cast(
         "AppContext",
-        SimpleNamespace(features=features, store=lambda user_id: user_store(engine, user_id)),
+        SimpleNamespace(
+            features=features,
+            reach=WHOLE,
+            store=lambda user_id: user_store(engine, user_id),
+            accounts=lambda user_id: load_accounts(user_store(engine, user_id)),
+        ),
     )
 
 
