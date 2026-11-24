@@ -49,6 +49,17 @@ describe('DeployBanner', () => {
     await waitFor(() => { expect(document.title).toBe('[STAGING] Mailroom'); })
   })
 
+  it('sticks to the top of the window over the page, its height left to what sticks under it', async () => {
+    serve('staging')
+    const { unmount } = render(<DeployBanner />)
+    const banner = await screen.findByRole('note')
+    // jsdom lays nothing out: the classes are what keep it there.
+    expect(banner).toHaveClass('sticky', 'top-0', 'z-40', 'pt-[calc(0.125rem+env(safe-area-inset-top))]')
+    expect(document.documentElement.style.getPropertyValue('--deploy-banner')).toMatch(/^\d+px$/)
+    unmount()
+    expect(document.documentElement.style.getPropertyValue('--deploy-banner')).toBe('')
+  })
+
   it('shows nothing in production', async () => {
     serve('production')
     renderBanner()

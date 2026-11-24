@@ -86,7 +86,7 @@ function ToastCard({ toast, onClose }: { toast: Toast; onClose: () => void }): R
 
   const describedBy = toast.tone === 'error' ? ALERT_ID : STATUS_ID
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex justify-center px-4">
+    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(var(--tab-bar)+1rem)] z-50 flex justify-center px-4">
       <div
         className={cn(
           'pointer-events-auto flex max-w-md items-center gap-2 rounded-lg border bg-background p-2 pl-3 text-sm shadow-lg',
