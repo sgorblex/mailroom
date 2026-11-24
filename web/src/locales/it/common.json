@@ -119,6 +119,18 @@
     "cancel": "Annulla",
     "endFailed": "Impossibile disconnetterla. Riprova."
   },
+  "yourData": {
+    "title": "I tuoi dati",
+    "ruleSets": "Regole",
+    "ruleSetsHint": "Tutte le tue regole con i loro filtri. Gli account sono indicati dal loro nome utente.",
+    "downloadRuleSets": "Scarica le regole (JSON)",
+    "activity": "Attività",
+    "activityHint": "Ciò che è stato fatto alla tua posta, come nella pagina Attività. Lascia vuoti i giorni per averla tutta.",
+    "since": "Dal",
+    "until": "Al",
+    "reversed": "L'ultimo giorno precede il primo.",
+    "downloadActivity": "Scarica l'attività (CSV)"
+  },
   "apiTokens": {
     "title": "Token API",
     "activity": "Attività",

@@ -51,6 +51,7 @@ _EXTRA_LOG_KEYS = (
     "argument_keys",
     "code",
     "kind",
+    "what",
     "reason",
     # mailroom-core's mail and send loggers.
     "account",

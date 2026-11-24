@@ -81,7 +81,7 @@ menu) shows the health check through the Vite proxy. Engineering baseline:
   screen or as a desktop app, with Mailroom's icon (on staging, as *Mailroom staging* with the icon
   banded in amber); it still needs the server, nothing works offline.
 - **Profile.** The *Profile* page groups its settings as Account (password, time zone, linked
-  sign-ins), Appearance, Mail, Sending (Undo send, signatures, vacation reply, limits) and Apps
+  sign-ins, sessions, *Your data*), Appearance, Mail, Sending (Undo send, signatures, vacation reply, limits) and Apps
   (connected apps, API tokens), each group only where the instance has its settings, with a nav to them that
   marks the one in view; a link names a group as `/profile#<group>`.
 - **Home.** The web opens on a summary of the user's mail and filters: unread mail per account
@@ -285,6 +285,19 @@ authorization server with its `/connect` consent screen, connected apps on the p
   and tokens themselves are the signed-in user's only.
 - **Web SSO** over OIDC for users an admin created, through a [linked sign-in](GLOSSARY.md);
   nobody signs up through it.
+
+## Your data
+
+**Maturity: Done** — the exports; reading a rule sets' export back is not built.
+
+The profile's *Your data* downloads, for the signed-in user alone (or a script, with a personal API
+token):
+
+- every [rule set](GLOSSARY.md) with its filters, as JSON, its accounts named by login
+  ([`requirements/filters.md`](requirements/filters.md#export));
+- the [audit trail](#audit-trail), whole or of some days, as CSV
+  ([`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md) —
+  *Audit trail*).
 
 ## Audit trail
 
