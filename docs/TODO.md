@@ -283,7 +283,7 @@ First, fixes carried over from 0.14.0 testing:
   - [x] **Installable** — a web app manifest and icons; no service worker, no offline.
   - [x] **Phone layout** — a Mail header (☰ folders drawer, search, compose), the list full
         width, a message in full view with its action bar at the foot.
-- [ ] **Swipe actions** — on phones, archive and trash by swiping, the actions configurable.
+- [x] **Swipe actions** — on phones, archive and trash by swiping, the actions configurable.
 - [ ] **Accessibility pass** — screen readers, keyboard focus and contrast across the app, with
       automated checks in CI.
 
