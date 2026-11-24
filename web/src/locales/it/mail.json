@@ -113,6 +113,7 @@
   "list": {
     "resize": "Ridimensiona l'elenco dei messaggi",
     "width": "largo {{px}} px",
+    "height": "alto {{px}} px",
     "label": "Messaggi",
     "messages": "Messaggi",
     "results": "Risultati della ricerca",
@@ -595,14 +596,15 @@
     "previous": "Messaggio precedente",
     "select": "Seleziona o deseleziona il messaggio aperto",
     "folderPane": "Riduci o apri il riquadro delle cartelle",
-    "escape": "Chiudi la scelta della cartella, altrimenti annulla la selezione",
+    "escape": "Chiudi la scelta della cartella, altrimenti annulla la selezione, altrimenti torna all'elenco da un messaggio aperto al suo posto",
     "escapeKey": "Esc",
     "sheet": "Mostra queste scorciatoie",
     "star": "Aggiungi a Speciali o rimuovi",
     "toSort": "Segna da smistare o smistato",
     "palette": "Apri la palette dei comandi",
     "paletteKey": "Ctrl/⌘ K",
-    "close": "Chiudi"
+    "close": "Chiudi",
+    "markUnread": "Segna come non letto; torna all'elenco da un messaggio aperto al suo posto"
   },
   "palette": {
     "title": "Palette dei comandi",

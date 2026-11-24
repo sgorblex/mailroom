@@ -113,6 +113,7 @@
   "list": {
     "resize": "Resize the message list",
     "width": "{{px}} px wide",
+    "height": "{{px}} px high",
     "label": "Messages",
     "messages": "Messages",
     "results": "Search results",
@@ -595,14 +596,15 @@
     "previous": "Previous message",
     "select": "Select or deselect the open message",
     "folderPane": "Fold or open the folder pane",
-    "escape": "Close the picker, else clear the selection",
+    "escape": "Close the picker, else clear the selection, else go back to the list from a message open in its place",
     "escapeKey": "Esc",
     "sheet": "Show these shortcuts",
     "star": "Star or unstar",
     "toSort": "Mark To sort or sorted",
     "palette": "Open the command palette",
     "paletteKey": "Ctrl/⌘ K",
-    "close": "Close"
+    "close": "Close",
+    "markUnread": "Mark as unread; back to the list from a message open in its place"
   },
   "palette": {
     "title": "Command palette",

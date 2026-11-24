@@ -239,9 +239,12 @@ First, fixes carried over from 0.14.0 testing:
 - [ ] **Every message action in the reading pane** — each action on one message (move, archive,
       junk, To sort, mute, filter like this, print, `.eml`, reply and the rest) offered in the
       pane beside the message, not only some of them there and the rest elsewhere.
-- [ ] **Layout and density** — the reading pane on the right, below the list or off; compact or
+- [x] **Layout and density** — the reading pane on the right, below the list or off; compact or
       comfortable rows.
   - [x] **Density** — comfortable or compact rows (less padding, no opening), on the Profile.
+  - [x] **Reading pane position** — right, below (a horizontal divider, its height per device) or
+        off (the message over the list with Back, Escape or `u`), on the Profile; phones always
+        open a message in full.
 - [ ] **A message list wide enough to read** — on a laptop the list column is too narrow to tell
       messages apart, and the checkbox, star and To sort icons take part of it. The columns
       resizable (widths kept per device), the folder pane collapsible or hidden until hovered, the

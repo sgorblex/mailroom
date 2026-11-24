@@ -291,6 +291,13 @@
       "comfortable": "Comfortable",
       "compact": "Compact, without the opening of each message"
     },
+    "readingPane": "Reading pane",
+    "readingPanes": {
+      "right": "On the right of the list",
+      "below": "Below the list",
+      "off": "Off: a message opens in place of the list"
+    },
+    "readingPanePhones": "On a narrow screen (a phone, or a window under 1,024 px) a message always opens in place of the list.",
     "saved": "Saved.",
     "saveFailed": "Could not save this choice."
   },

@@ -8,13 +8,13 @@ import { Bookmark, Forward, Paperclip, Reply, Star } from 'lucide-react'
 import { AccountName } from '@/accounts/account-name.tsx'
 import { useAccountKeywords, useAccountLabel, useAccountName } from '@/accounts/accounts-context.ts'
 import type { MatchScope, MessageItem, MessagePage, SourceFailure } from '@/api/mail.ts'
-import type { Appearance } from '@/api/auth.ts'
 import { useAppearance, useTimeZone } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Menu, type MenuItem, type MenuPoint } from '@/components/ui/menu.tsx'
 import { useUnmountSignal } from '@/lib/use-unmount-signal.ts'
 import { cn } from '@/lib/utils.ts'
 
+import { ROW_ESTIMATE } from './list-size.ts'
 import { listedActions, unavailableReason, type ActionContext } from './action-registry.ts'
 import { useCompose } from './compose-context.ts'
 import { isConversation, listRow, opened } from './conversations.ts'
@@ -34,12 +34,6 @@ import { useTriageActions } from './triage-actions.ts'
 import { useTriage, type Flags, type Target } from './triage-context.ts'
 
 type More = { kind: 'idle' } | { kind: 'loading' } | { kind: 'failed'; message: string }
-
-/**
- * A row's height before it is measured, per density: a sender, a subject and an opening, or
- * without the opening and with less padding.
- */
-const ROW_ESTIMATE: Readonly<Record<Appearance['density'], number>> = { comfortable: 76, compact: 50 }
 
 /** How many rows short of the last loaded one the view may come before the next page is read. */
 const READ_AHEAD = 10
@@ -673,6 +667,7 @@ function MessageRow({
       to="/mail"
       search={(previous) => ({ ...previous, ...opened(message) })}
       aria-current={current ? 'true' : undefined}
+      data-ref={message.ref}
       aria-haspopup="menu"
       aria-keyshortcuts="Shift+F10"
       // The row drags its messages, not the link's URL.

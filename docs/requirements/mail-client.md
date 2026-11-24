@@ -125,10 +125,23 @@ notifications](#desktop-notifications).
 
 The screens live under `/mail`: account and folder sidebar with counts, message list, message view
 (three panes on desktop, stacked on a phone; on desktop each pane scrolls on its own). On desktop
-a divider between the list and the message view sets the list's width (30rem, 480 px, by default,
-from 320 to 960 px and always leaving the message view 480 px): dragged, or focused and moved
-with the arrow keys, and a double-click puts it back; this browser keeps the width. A window too
-narrow for it narrows the list only while it is. On desktop the sidebar folds to a **rail** of
+the **reading pane** sits where the user put it on the *Profile* (the same on every device): on
+the right of the list (the default), below it, or off. With it on the right, a divider between the
+list and the message view sets the list's width (30rem, 480 px, by default, from 320 to 960 px and
+always leaving the message view 480 px): dragged, or focused and moved with the arrow keys, and a
+double-click puts it back; this browser keeps the width. A window too narrow for it narrows the
+list only while it is. Below, the list's toolbar takes one row (*Compose*, the search box with its
+buttons, the shortcut sheet), and the same divider, a horizontal line, sets the list's height:
+until this browser keeps one, 40 % of the height the two share, and at least room for five rows
+(at the density chosen) where that still leaves the message view 240 px; from 160 to 1,200 px
+whatever the window. A double-click goes back to the share. Off, the list takes the room, and an open message (or the
+composer) takes the list's place, as wide as the list and the pane together, with *Back to the
+list* and, above the message, the toolbar acting on it; Escape, or `u` with nothing selected, goes
+back too (*Mark unread* then shows no shortcut). The list stays underneath, out of reach of the
+keyboard and screen readers (`inert`) and scrolled where it was, and going back puts the focus on
+the message's row (closing the composer, on *Compose*). A narrow screen (a phone, or a window
+under 1,024 px, `lg`) always opens a message in place of the list, with Back, Escape and `u`,
+whatever the choice. On desktop the sidebar folds to a **rail** of
 icons (a button at its top, or `[`): *All inboxes* and the account's role folders (Inbox, Starred,
 Drafts, Sent, Archive, Junk, Trash, those it has), each a link named with its unread count and
 marked with a dot while it has unread mail. This browser keeps the choice
@@ -432,7 +445,7 @@ MCP `message_read` still never set `\Seen`.
 | `j` / `k` | Next / previous message, scrolled into view |
 | `x` | Toggle selection of the current message |
 | `[` | Fold the folder pane to its rail, or open it again (desktop) |
-| `Escape` | Close the picker, else clear the selection |
+| `Escape` | Close the picker, else clear the selection, else go back to the list from a message open in its place (reading pane off, or a phone) |
 | `?` | Show the shortcut sheet |
 | Ctrl+K / ⌘+K | Open the command palette |
 | `r` / `a` / `f` | Reply / reply all / forward ([below](#keyboard-shortcuts)) |
@@ -443,7 +456,7 @@ MCP `message_read` still never set `\Seen`.
 | `v` | Open the move picker |
 | `s` | Star or unstar |
 | `t` | Mark To sort or sorted |
-| `u` | Mark unread |
+| `u` | Mark unread; with nothing selected and a message open in place of the list, go back to the list |
 
   Shortcuts are ignored while focus is in a text field (an input that takes text, a textarea, a
   select or a contenteditable element), with Ctrl or Meta held (AltGr aside), and with Alt on a

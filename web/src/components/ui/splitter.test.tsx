@@ -9,10 +9,12 @@ function Sized({
   initial = 400,
   onReset = () => undefined,
   onCommit = () => undefined,
+  orientation,
 }: {
   initial?: number
   onReset?: () => void
   onCommit?: (value: number) => void
+  orientation?: 'vertical' | 'horizontal'
 }): ReactElement {
   const [value, setValue] = useState(initial)
   return (
@@ -28,6 +30,7 @@ function Sized({
         controls="pane"
         label="Resize"
         valueText={`${String(value)} px`}
+        orientation={orientation}
       />
     </>
   )
@@ -95,5 +98,25 @@ describe('Splitter', () => {
     fireEvent.pointerDown(splitter, { button: 0, clientX: 100, pointerId: 1 })
     fireEvent.pointerUp(splitter, { clientX: 100, pointerId: 1 })
     expect(onCommit).toHaveBeenCalledOnce()
+  })
+
+  it('as a horizontal line, sizes the pane above with Up and Down and a vertical drag', async () => {
+    const user = userEvent.setup()
+    const onCommit = vi.fn()
+    render(<Sized orientation="horizontal" onCommit={onCommit} />)
+    const splitter = screen.getByRole('separator')
+    expect(splitter).toHaveAttribute('aria-orientation', 'horizontal')
+    expect(splitter).toHaveClass('h-px', 'cursor-row-resize')
+    splitter.focus()
+    await user.keyboard('{ArrowDown}')
+    expect(splitter).toHaveAttribute('aria-valuenow', '416')
+    await user.keyboard('{ArrowUp}{ArrowUp}{ArrowRight}')
+    expect(splitter).toHaveAttribute('aria-valuenow', '384')
+    splitter.setPointerCapture = vi.fn()
+    fireEvent.pointerDown(splitter, { button: 0, clientX: 0, clientY: 100, pointerId: 1 })
+    fireEvent.pointerMove(splitter, { clientX: 500, clientY: 80, pointerId: 1 })
+    expect(splitter).toHaveAttribute('aria-valuenow', '364')
+    fireEvent.pointerUp(splitter, { clientX: 500, clientY: 80, pointerId: 1 })
+    expect(onCommit).toHaveBeenLastCalledWith(364)
   })
 })

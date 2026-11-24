@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } 
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearch } from '@tanstack/react-router'
+import { ArrowLeft } from 'lucide-react'
 
 import { AccountsContext } from '@/accounts/accounts-context.ts'
 import { accountErrorMessage } from '@/accounts/messages.ts'
@@ -27,6 +28,7 @@ import { useLiveEvents, useLiveStatus, useLiveViewing } from './live-context.ts'
 import { ListPane } from './list-pane.tsx'
 import { MessageList } from './message-list.tsx'
 import { MessageView } from './message-view.tsx'
+import { useReadingPane } from './reading-pane.ts'
 import { SearchForm } from './search-form.tsx'
 import { BulkHost } from './select-matching.tsx'
 import { NewSenderHost } from './new-sender-dialog.tsx'
@@ -55,8 +57,8 @@ const LIST_PANE_ID = 'mail-list'
 
 /**
  * The mail client: accounts and folders, the message list (a folder or a search) and the open
- * message — three panes side by side on a wide screen, one after the other on a phone, where an
- * open message takes the screen.
+ * message — three panes on a wide screen (the message right of the list, below it, or over it, as
+ * the user chose), one after the other on a phone, where an open message takes the screen.
  */
 export function MailScreen(): ReactElement {
   const { t } = useTranslation(MAIL_NS)
@@ -183,7 +185,12 @@ export function MailScreen(): ReactElement {
   )
 }
 
-/** The three panes; on a phone an open message or composer takes the screen. */
+/**
+ * The three panes. The reading pane sits where the user put it, right of the list or below it; or,
+ * set off, an open message or the composer takes the list's place with Back (the message with the
+ * toolbar acting on it), the list scrolled where it was underneath. On a phone an open message or
+ * composer takes the screen.
+ */
 function MailPanes({
   accounts,
   accountId,
@@ -203,12 +210,17 @@ function MailPanes({
   const search = useSearch({ from: '/mail' })
   const subfolders = useListedSubfolders(accountId, folder, requested)
   const { session, shown } = useCompose()
+  const { position, wide, fullView } = useReadingPane()
   const open = search.message
   const covered = open !== undefined || shown
+  const overlaid = wide && position === 'off' && covered
+  // The list's toolbar on one row: above a reading pane below it.
+  const compact = wide && position === 'below'
   // A search or a view holds no folder's viewing interest.
   const showsFolder = search.q === undefined && search.view === undefined
   useLiveViewing(showsFolder ? { account: accountId, folder } : null)
   const readingPane = useRef<HTMLElement>(null)
+  useFocusClosedRow(overlaid, search.thread ?? open)
   return (
     // On a wide screen it takes the window's height left under the header and no more, each pane
     // scrolling on its own: a flex basis of 0 px, not flex-1's 0 %, which a column only as high as
@@ -223,70 +235,120 @@ function MailPanes({
         subfolders={subfolders}
         className={cn(covered && 'hidden lg:flex')}
       />
-      {/* On a phone the open message hides the list, but not the toolbar acting on it. */}
-      <ListPane
-        id={LIST_PANE_ID}
-        label={t('list.label')}
-        pane={readingPane}
-        className={cn('min-w-0 flex-col gap-3 border-t p-3 lg:flex lg:overflow-y-auto lg:border-t-0', shown ? 'hidden' : 'flex')}
-      >
-        <div className="flex items-start gap-2">
-          <div className="min-w-0 flex-1">
-            <ComposeBar accountId={accountId} />
-          </div>
-          <ShortcutSheetButton onClick={onHelp} />
-        </div>
-        <div className={cn('flex flex-col gap-3', covered && 'hidden lg:flex')}>
-          <SearchForm
-            key={JSON.stringify(search.q ?? null)}
-            accounts={accounts}
-            accountId={accountId}
-            folder={folder}
-            subfolders={subfolders}
-            query={search.q}
-            only={search.only}
-          />
-        </div>
-        <Toolbar />
-        <SpamFilterOffer />
-        {/* Takes what height the pane has left, the list scrolling within it. */}
-        <div className={cn('flex flex-col gap-3 lg:min-h-64 lg:flex-1', covered && 'hidden lg:flex')}>
-          {search.view === undefined ? (
-            <Listing accounts={accounts} accountId={accountId} folder={folder} subfolders={subfolders} />
-          ) : (
-            <ViewListing key={search.view} accounts={accounts} view={search.view} />
+      <div className={cn('relative flex min-w-0 flex-1 flex-col lg:min-h-0', position !== 'below' && 'lg:flex-row')}>
+        {/* On a phone the open message hides the list, but not the toolbar acting on it. */}
+        <ListPane
+          id={LIST_PANE_ID}
+          label={t('list.label')}
+          pane={readingPane}
+          position={position}
+          overlaid={overlaid}
+          className={cn(
+            'min-w-0 flex-col gap-3 border-t p-3 lg:flex lg:overflow-y-auto lg:border-t-0',
+            shown ? 'hidden' : 'flex',
           )}
-        </div>
-      </ListPane>
-      <section
-        ref={readingPane}
-        aria-label={t('message.label')}
-        className={cn(
-          'min-w-0 flex-1 flex-col p-3 lg:flex lg:overflow-y-auto',
-          covered ? 'flex' : 'hidden',
-        )}
-      >
-        {/* Stays mounted behind an open message: what is being written lives in it. */}
-        {session !== null && (
-          <div hidden={!shown} className={shown ? 'flex flex-1 flex-col' : undefined}>
-            <Composer key={session.id} session={session} />
+        >
+          {/* With the reading pane below, its height is short: Compose, the search and the
+              shortcut sheet share one row. */}
+          <div className={cn('flex gap-3', compact ? 'items-start' : 'flex-col')}>
+            <div className={cn('flex items-start gap-2', compact ? 'max-w-sm shrink-0' : 'min-w-0')}>
+              <div className="min-w-0 flex-1">
+                <ComposeBar accountId={accountId} />
+              </div>
+              {!compact && <ShortcutSheetButton onClick={onHelp} />}
+            </div>
+            <div className={cn('flex flex-col gap-3', compact && 'min-w-0 flex-1', covered && 'hidden lg:flex')}>
+              <SearchForm
+                key={JSON.stringify(search.q ?? null)}
+                accounts={accounts}
+                accountId={accountId}
+                folder={folder}
+                subfolders={subfolders}
+                query={search.q}
+                only={search.only}
+                compact={compact}
+              />
+            </div>
+            {compact && <ShortcutSheetButton onClick={onHelp} />}
           </div>
-        )}
-        {!shown &&
-          (open === undefined ? (
-            <p className="m-auto text-sm text-muted-foreground">{t('message.none')}</p>
-          ) : search.thread === undefined ? (
-            <MessageView key={open} messageRef={open} />
-          ) : (
-            <ConversationView key={search.thread} threadRef={search.thread} messageRef={open} />
-          ))}
-      </section>
+          {/* Over the list, the message carries the toolbar acting on it. */}
+          {!overlaid && <Toolbar />}
+          <SpamFilterOffer />
+          {/* Takes what height the pane has left, the list scrolling within it. */}
+          <div
+            className={cn(
+              'flex flex-col gap-3 lg:flex-1',
+              position === 'below' ? 'lg:min-h-32' : 'lg:min-h-64',
+              covered && 'hidden lg:flex',
+            )}
+          >
+            {search.view === undefined ? (
+              <Listing accounts={accounts} accountId={accountId} folder={folder} subfolders={subfolders} />
+            ) : (
+              <ViewListing key={search.view} accounts={accounts} view={search.view} />
+            )}
+          </div>
+        </ListPane>
+        <section
+          ref={readingPane}
+          aria-label={t('message.label')}
+          className={cn(
+            'min-w-0 flex-1 flex-col p-3 lg:min-h-0 lg:overflow-y-auto',
+            covered ? 'flex' : 'hidden',
+            position === 'off' ? 'lg:absolute lg:inset-0 lg:bg-background' : 'lg:flex',
+            position === 'off' && !covered && 'lg:hidden',
+          )}
+        >
+          {fullView && open !== undefined && !shown && (
+            <Link
+              to="/mail"
+              search={(previous) => ({ ...previous, message: undefined, thread: undefined })}
+              className="mb-4 flex items-center gap-1 self-start text-sm text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft aria-hidden="true" className="size-4" />
+              {t('message.back')}
+            </Link>
+          )}
+          {overlaid && !shown && <Toolbar className="mb-4" />}
+          {/* Stays mounted behind an open message: what is being written lives in it. */}
+          {session !== null && (
+            <div hidden={!shown} className={shown ? 'flex flex-1 flex-col' : undefined}>
+              <Composer key={session.id} session={session} />
+            </div>
+          )}
+          {!shown &&
+            (open === undefined ? (
+              <p className="m-auto text-sm text-muted-foreground">{t('message.none')}</p>
+            ) : search.thread === undefined ? (
+              <MessageView key={open} messageRef={open} />
+            ) : (
+              <ConversationView key={search.thread} threadRef={search.thread} messageRef={open} />
+            ))}
+        </section>
+      </div>
       <OutcomeAnnouncer />
       <ComposeAnnouncer />
       <BulkHost />
       <NewSenderHost />
     </main>
   )
+}
+
+/**
+ * Once the message open over the list (`overlaid`) closes, focus goes back to its row, where the
+ * reader left the list, rather than to the page.
+ */
+function useFocusClosedRow(overlaid: boolean, shown: string | undefined): void {
+  const last = useRef<string | undefined>(undefined)
+  const wasOverlaid = useRef(false)
+  useEffect(() => {
+    const closed = wasOverlaid.current && !overlaid && shown === undefined ? last.current : undefined
+    wasOverlaid.current = overlaid
+    last.current = shown
+    if (closed !== undefined) {
+      document.getElementById(LIST_PANE_ID)?.querySelector<HTMLElement>(`[data-ref="${CSS.escape(closed)}"]`)?.focus()
+    }
+  }, [overlaid, shown])
 }
 
 function MailShortcuts({
