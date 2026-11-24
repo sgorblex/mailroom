@@ -868,14 +868,14 @@ describe('MailScreen', () => {
     expect(bodiesTo(fetchMock, '/api/v1/mail/remote-senders')).toEqual([{ ref: html.ref }])
     expect(screen.getByText("3 remote images are shown: you always show this sender's.")).toBeInTheDocument()
 
-    // Another message, then back: the server now says the sender is trusted.
+    // Another message, then back: the read says the sender is trusted, which the server checks again.
     await userEvent.click(within(await messagesList()).getByRole('link', { name: /Message 99/ }))
     expect(await screen.findByText(`Body of ${plain.subject}`)).toBeInTheDocument()
     await userEvent.click(within(await messagesList()).getByRole('link', { name: /Message 98/ }))
     await userEvent.click(await screen.findByRole('button', { name: 'HTML' }))
     expect(await screen.findByTitle(`HTML version of ${html.subject}`)).toHaveAttribute(
       'src',
-      `/api/v1/mail/messages/${html.ref}/html?remote=1`,
+      `/api/v1/mail/messages/${html.ref}/html?remote=sender`,
     )
     expect(screen.queryByRole('button', { name: 'Show remote images' })).not.toBeInTheDocument()
   })
@@ -886,13 +886,53 @@ describe('MailScreen', () => {
     )
     renderMailApp(`/mail?message=${htmlOnly.ref}`)
 
+    // Shown if the server still trusts the sender as it serves the document.
     expect(await screen.findByTitle(`HTML version of ${htmlOnly.subject}`)).toHaveAttribute(
       'src',
-      `/api/v1/mail/messages/${htmlOnly.ref}/html?remote=1`,
+      `/api/v1/mail/messages/${htmlOnly.ref}/html?remote=sender`,
     )
-    expect(queriesTo(fetchMock, `/api/v1/mail/messages/${htmlOnly.ref}/html/check`).map((query) => query.get('remote'))).toEqual(['1'])
+    expect(queriesTo(fetchMock, `/api/v1/mail/messages/${htmlOnly.ref}/html/check`).map((query) => query.get('remote'))).toEqual(['sender'])
     expect(screen.getByText("1 remote image is shown: you always show this sender's.")).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Show remote images' })).not.toBeInTheDocument()
+  })
+
+  it('never loads remote images from a kept read whose sender was forgotten elsewhere', async () => {
+    const trusted = messageView(htmlOnly, {
+      has_html: true,
+      remote_images: 1,
+      loadable_remote_images: 1,
+      remote_trusted: true,
+      text: { content: '', removed_chars: 0, incomplete: false, next_offset: null, quoted_omitted: false },
+    })
+    const fake = state({ views: { [htmlOnly.ref]: trusted, [plain.ref]: messageView(plain) } })
+    const fetchMock = stubMailApi(fake)
+    renderMailApp(`/mail?message=${htmlOnly.ref}`)
+    expect(await screen.findByTitle(`HTML version of ${htmlOnly.subject}`)).toHaveAttribute(
+      'src',
+      `/api/v1/mail/messages/${htmlOnly.ref}/html?remote=sender`,
+    )
+    await userEvent.click(within(await messagesList()).getByRole('link', { name: /Message 99/ }))
+    expect(await screen.findByText(`Body of ${plain.subject}`)).toBeInTheDocument()
+
+    // Forgotten on another device a while later; the read kept here still says trusted.
+    fake.views[htmlOnly.ref] = { ...trusted, remote_trusted: false }
+    const now = Date.now()
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now + 60_000)
+    try {
+      await userEvent.click(within(await messagesList()).getByRole('link', { name: /Message 97/ }))
+      // Read again behind the kept one, it offers to show them again.
+      expect(await screen.findByRole('button', { name: 'Show remote images' })).toBeInTheDocument()
+      expect(screen.getByTitle(`HTML version of ${htmlOnly.subject}`)).toHaveAttribute(
+        'src',
+        `/api/v1/mail/messages/${htmlOnly.ref}/html`,
+      )
+    } finally {
+      clock.mockRestore()
+    }
+    // Nothing asked for remote content but the server's own check of the trust.
+    const asked = queriesTo(fetchMock, `/api/v1/mail/messages/${htmlOnly.ref}/html/check`).map((query) => query.get('remote'))
+    expect(asked).not.toContain('1')
+    expect(queriesTo(fetchMock, `/api/v1/mail/messages/${htmlOnly.ref}`)).toHaveLength(2)
   })
 
   it('says when the server would not remember the sender', async () => {

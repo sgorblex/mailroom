@@ -33,7 +33,13 @@ from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
 from mailroom.auth.users import create_user
 from mailroom.mail.pool import DeadlineExceeded, MailPool
 from mailroom.mail.service import read as read_service
-from mailroom.mail.service.read import HTML_VIEW_SECONDS, HtmlKey, HtmlViews
+from mailroom.mail.service.read import (
+    HTML_VIEW_SECONDS,
+    SENDER_SECONDS,
+    UNVERIFIED,
+    HtmlKey,
+    HtmlViews,
+)
 from mailroom.models import Filter, MutedThread, RuleSet
 from mailroom.net.safe_fetch import safe_fetch
 from mailroom_core import mail as mail_core
@@ -1040,6 +1046,101 @@ def test_kept_html_views_are_each_users_own_and_bounded(monkeypatch: pytest.Monk
     assert (views.get(first), views.get(second) is not None) == (None, True)
     views.put(mine, SafeHtml("z" * 26, 0, 0, sets_colours=False))
     assert (views.get(mine), views.get(second) is not None) == (None, True)
+
+
+def test_remote_content_by_sender_trust_follows_the_trust_as_the_document_is_asked(
+    mailbox: Mailbox, application: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``remote=sender``: the server decides, as each document is asked, whether the message's
+    verified sender is remembered, so a read the client kept from before a removal elsewhere
+    loads nothing remote; ``remote=1`` (a click in the tab) shows it whatever the trust."""
+    verified = (
+        "Authentication-Results: mx.google.com; dkim=pass header.d=example.org;\r\n"
+        " dmarc=pass header.from=example.org\r\n"
+    )
+    pixel = '<p>Hi <img src="https://t.example/p.gif"></p>'
+    mailbox.seed(verified + related_html(pixel))
+    mailbox.seed(
+        "Authentication-Results: mx.evil.example; dmarc=pass header.from=example.org\r\n"
+        + related_html(pixel)
+    )
+    account = new_account(login=mailbox.login, imap=endpoint(mailbox.server))
+    account = {key: value for key, value in account.items() if key != "password"}
+    changed = mailbox.client.put(
+        "/api/v1/accounts/1", json=account | {"authserv_id": "mx.google.com"}
+    )
+    assert changed.status_code == 200, changed.text
+    forged, real = mailbox.refs()
+    clock = SimpleNamespace(now=0.0)
+    monkeypatch.setattr(application.state, "html_views", HtmlViews(lambda: clock.now))
+    headers_read: list[int] = []
+    read_message = mail_core.read_message
+
+    def counted(*args: Any, body_chars: int = 6000, **kwargs: Any) -> Any:
+        if body_chars == 1:
+            headers_read.append(body_chars)
+        return read_message(*args, body_chars=body_chars, **kwargs)
+
+    monkeypatch.setattr(mail_core, "read_message", counted)
+    client = mailbox.client
+    remote_csp = NO_REMOTE_CSP.replace("img-src data:;", "img-src data: http: https:;")
+
+    def document(ref: str, remote: str) -> tuple[bool, str]:
+        check = client.get(f"{MAIL}/messages/{ref}/html/check", params={"remote": remote})
+        assert check.status_code == 204, check.text
+        page = client.get(f"{MAIL}/messages/{ref}/html", params={"remote": remote})
+        assert page.status_code == 200, page.text
+        shown = "https://t.example/p.gif" in page.text
+        assert page.headers["content-security-policy"] == (remote_csp if shown else NO_REMOTE_CSP)
+        return shown, page.headers["content-security-policy"]
+
+    assert not mailbox.get(f"/messages/{real}")["remote_trusted"]
+    assert document(real, "sender")[0] is False
+    added = client.post(f"{MAIL}/remote-senders", json={"ref": real})
+    assert added.status_code == 201, added.text
+    assert document(real, "sender")[0] is True
+    # Only for the message whose DMARC passed for its From.
+    assert document(forged, "sender")[0] is False
+
+    # Removed elsewhere: the remote view kept a minute does not outlive the trust.
+    removed = client.post(f"{MAIL}/remote-senders/remove", json={"address": "shop@example.org"})
+    assert removed.status_code == 204
+    assert document(real, "sender")[0] is False
+    # An explicit show in the tab still shows.
+    assert document(real, "1")[0] is True
+    # The sender as each read found it: only the forged message, never read, had its headers read.
+    assert headers_read == [1]
+
+    # Past what is kept, the headers are read again, once.
+    client.post(f"{MAIL}/remote-senders", json={"ref": real})
+    clock.now = SENDER_SECONDS
+    headers_read.clear()
+    assert document(real, "sender")[0] is True
+    assert headers_read == [1]
+    bad = client.get(f"{MAIL}/messages/{real}/html", params={"remote": "maybe"})
+    assert bad.status_code == 422
+
+
+def test_kept_senders_are_each_messages_own_and_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = SimpleNamespace(now=0.0)
+    views = HtmlViews(lambda: clock.now)
+    message = MessageRef(account=1, folder="INBOX", uid_validity=7, uid=3)
+    mine = HtmlKey.of(1, 0, message, remote=False)
+    assert views.sender(mine) is None
+    views.put_sender(mine, "a@example.org")
+    assert views.sender(mine) == "a@example.org"
+    assert views.sender(HtmlKey.of(2, 0, message, remote=False)) is None
+    views.put_sender(mine, None)
+    assert views.sender(mine) == UNVERIFIED
+    clock.now = SENDER_SECONDS
+    assert views.sender(mine) is None
+
+    monkeypatch.setattr(read_service, "SENDERS_KEPT", 2)
+    keys = [HtmlKey.of(1, 0, replace(message, uid=uid), remote=False) for uid in (1, 2, 3)]
+    for key in keys:
+        views.put_sender(key, "a@example.org")
+    # The oldest made room.
+    assert [views.sender(key) for key in keys] == [None, "a@example.org", "a@example.org"]
 
 
 def test_parts_download_as_files(mailbox: Mailbox, migrated_engine: Any, user: User) -> None:

@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Final, Literal, cast
 from mailroom.accounts.service import require_subkey
 from mailroom.auth.users import time_zone_of
 from mailroom.errors import Refusal, mail_refusal
+from mailroom.mail import remote_senders
 from mailroom.mail.connections import PASSWORD_MISSING, PASSWORD_MISSING_TEXT, PasswordMissing
 from mailroom.mail.index import reads as index_reads
 from mailroom.mail.index.reads import Conversation
@@ -806,7 +807,26 @@ def read_headers(
         message.account,
         lambda connections: core.read_message(connections, message, body_chars=1, account=account),
     )
+    _keep_sender(ctx, HtmlKey.of(user_id, accounts.revision, message, remote=False), view)
     return view, account
+
+
+def _keep_sender(ctx: AppContext, key: HtmlKey, view: MessageView) -> None:
+    ctx.html_views.put_sender(key, remote_senders.verified_sender(view))
+
+
+def checked_sender(ctx: AppContext, user_id: int, ref: str, *, via: Via = "web") -> str | None:
+    """The message's one From, lowercase, when DMARC passed for it at its account's
+    authentication server (``remote_senders.verified_sender``); None otherwise. As its last read
+    found it while ``ctx.html_views`` keeps that (the message's content never changes), else read
+    from its headers now."""
+    accounts = _accounts(ctx, user_id)
+    message = _message_ref(ctx, user_id, accounts, ref)
+    kept = ctx.html_views.sender(HtmlKey.of(user_id, accounts.revision, message, remote=False))
+    if kept is None:
+        view, _ = read_headers(ctx, user_id, ref, event="mail_sender_checked", via=via)
+        return remote_senders.verified_sender(view)
+    return kept or None
 
 
 def read_message(
@@ -855,6 +875,7 @@ def read_message(
     )
     if view.html_view is not None:
         ctx.html_views.put(key, view.html_view)
+    _keep_sender(ctx, key, view)
     return view
 
 
@@ -1151,6 +1172,13 @@ HTML_VIEW_SECONDS: Final = 60.0
 HTML_VIEW_CHARS: Final = 32 * 1024 * 1024
 """The sanitised HTML ``HtmlViews`` holds in all, in characters (its inlined images
 included); the oldest views make room for a new one, and a larger one is not kept."""
+SENDER_SECONDS: Final = 600.0
+"""How long a message's verified sender is answered from ``HtmlViews``: the message read's
+own, kept for the remote content its sender's trust may show (``checked_sender``)."""
+SENDERS_KEPT: Final = 4096
+"""The verified senders ``HtmlViews`` holds at most; the oldest make room for a new one."""
+UNVERIFIED: Final = ""
+"""A message kept as having no verified sender (``remote_senders.verified_sender`` was None)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -1185,12 +1213,35 @@ class HtmlViews:
     """Messages' sanitised HTML views as last made, each for ``HTML_VIEW_SECONDS`` and
     ``HTML_VIEW_CHARS`` in all, in this process's memory alone: opening a message reads it, then
     its frame (and a switch to the dark document) asks for the same view, which is not read and
-    sanitised again. Keyed per user (``HtmlKey``): never answered to another."""
+    sanitised again. With them, each message's verified sender as its read found it
+    (``SENDER_SECONDS``, ``SENDERS_KEPT``), for the frame that asks for remote content if its
+    sender is trusted (``checked_sender``). Keyed per user (``HtmlKey``): never answered to
+    another."""
 
     def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
         self._clock = clock
         self._lock = threading.Lock()
         self._kept: dict[HtmlKey, tuple[float, SafeHtml]] = {}
+        self._senders: dict[HtmlKey, tuple[float, str]] = {}
+
+    def sender(self, key: HtmlKey) -> str | None:
+        """The message's kept verified sender, ``UNVERIFIED`` when it has none; None when
+        nothing fresh is kept."""
+        with self._lock:
+            kept = self._senders.get(key)
+            if kept is None or kept[0] <= self._clock():
+                return None
+            return kept[1]
+
+    def put_sender(self, key: HtmlKey, sender: str | None) -> None:
+        now = self._clock()
+        with self._lock:
+            kept = {k: v for k, v in self._senders.items() if v[0] > now and k != key}
+            # Oldest first: a dict keeps insertion order.
+            while len(kept) >= SENDERS_KEPT:
+                kept.pop(next(iter(kept)))
+            kept[key] = (now + SENDER_SECONDS, sender or UNVERIFIED)
+            self._senders = kept
 
     def get(self, key: HtmlKey) -> SafeHtml | None:
         """The kept view; None when there is none still fresh."""

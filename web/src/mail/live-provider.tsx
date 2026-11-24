@@ -49,7 +49,7 @@ function applyEvent(queryClient: QueryClient, event: LiveEvent): void {
  * The signed-in user's live updates stream: one EventSource to `/mail/events`, opened again
  * with the folder the mail screen views when it changes, and after a failure with a backoff.
  * Events are not replayed, so what the screen shows is read again once it reconnects, and the
- * folders' counts once it is opened again for another folder. New mail shows as desktop
+ * folders' counts once it is opened again for another folder, but for those read since it closed. New mail shows as desktop
  * notifications (`DesktopNotifications`).
  */
 export function LiveUpdatesProvider({ children }: { children: ReactNode }): ReactElement {
@@ -59,6 +59,8 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }): Reac
   const listeners = useRef(new Set<(event: LiveEvent) => void>())
   const failures = useRef(0)
   const openedBefore = useRef(false)
+  // When the last stream closed: what was read since saw what it missed.
+  const closedAt = useRef(0)
 
   const setViewing = useCallback((next: Viewing | null) => {
     setViewingState((current) =>
@@ -87,8 +89,13 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }): Reac
           void queryClient.invalidateQueries({ queryKey: ALL_MESSAGES_KEY })
           void queryClient.invalidateQueries({ queryKey: INDEX_KEY })
         } else if (openedBefore.current) {
-          // Opened again for another folder: what changed while it was closed moved the counts.
-          void queryClient.invalidateQueries({ queryKey: ALL_FOLDERS_KEY })
+          // Opened again for another folder: what changed while it was closed moved the counts,
+          // unless they were read since (the sidebar reads them as it mounts).
+          const since = closedAt.current
+          void queryClient.invalidateQueries({
+            queryKey: ALL_FOLDERS_KEY,
+            predicate: (query) => query.state.fetchStatus === 'idle' && query.state.dataUpdatedAt < since,
+          })
         }
         failures.current = 0
         openedBefore.current = true
@@ -119,6 +126,7 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }): Reac
     return () => {
       clearTimeout(retry)
       source?.close()
+      closedAt.current = Date.now()
     }
   }, [viewing, queryClient])
 

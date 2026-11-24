@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 
 import type { AccountId } from '@/api/accounts.ts'
@@ -7,6 +8,7 @@ import { MAIL_ACTIONS, shortcutAction, type ActionContext, type MailAction } fro
 import { useCompose, type Compose } from './compose-context.ts'
 import { opened } from './conversations.ts'
 import { toggleFolderPane } from './folder-pane.ts'
+import { prefetchMessage } from './queries.ts'
 import { uGoesBack, useReadingPane } from './reading-pane.ts'
 import { NO_TRIAGE_ACTIONS, useTriageActions, type TriageActions } from './triage-actions.ts'
 import { useTriage, type Triage } from './triage-context.ts'
@@ -145,6 +147,7 @@ export function useMailShortcuts(accountId: AccountId, onHelp: () => void): void
   const actions = useTriageActions()
   const compose = useCompose()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   // The message in the URL is the current one at once; the open view is set only once it loads.
   // The row of an open conversation is its own while another of its messages is read.
   const { message: shownMessage, thread } = useSearch({ from: '/mail' })
@@ -160,11 +163,17 @@ export function useMailShortcuts(accountId: AccountId, onHelp: () => void): void
       const { triage: current, navigate: go, message: shown } = latest.current
       const rows = current.visibleRows()
       const at = shown === undefined ? -1 : rows.findIndex((row) => row.ref === shown)
-      const next = at === -1 ? (step === 1 ? rows[0] : undefined) : rows[at + step]
+      const index = at === -1 ? (step === 1 ? 0 : -1) : at + step
+      const next = rows[index]
       if (next === undefined) {
         return false
       }
       void go({ to: '/mail', search: (previous) => ({ ...previous, ...opened(next) }) })
+      // The one after it the same way is likely next: it is read ahead.
+      const after = rows[index + step]
+      if (after !== undefined) {
+        prefetchMessage(queryClient, after.ref)
+      }
       return true
     }
 
@@ -247,5 +256,5 @@ export function useMailShortcuts(accountId: AccountId, onHelp: () => void): void
     return () => {
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [])
+  }, [queryClient])
 }

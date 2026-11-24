@@ -28,7 +28,7 @@ import { endMessageDrag, startMessageDrag } from './message-drag.ts'
 import { ACCOUNT_NOT_FOUND, mailCodeMessage, mailErrorMessage } from './messages.ts'
 import { keptRows, keptTail, withKept, type Kept, type Tail } from './list-tail.ts'
 import { useLongPress } from './long-press.ts'
-import { fetchPage, messagesKey, READ_ON_MOUNT } from './queries.ts'
+import { fetchPage, LIST_KEPT, messagesKey, prefetchMessage } from './queries.ts'
 import { SelectMatching } from './select-matching.tsx'
 import { SwipeRow } from './swipe-row.tsx'
 import { TOAST_RETURN_ID } from './toast.tsx'
@@ -40,11 +40,15 @@ type More = { kind: 'idle' } | { kind: 'loading' } | { kind: 'failed'; message: 
 /** How many rows short of the last loaded one the view may come before the next page is read. */
 const READ_AHEAD = 10
 
+/** How long the mouse rests on a row before its message is read ahead: not every row it crosses. */
+const HOVER_PREFETCH_MS = 100
+
 /**
  * A folder's messages or a search's, newest first, a page at a time, in a virtualised list (only
  * the rows in view and a few around them are in the page): the next page is read, with the
  * cursor the last page gave, as the view nears the last row loaded. Mounted anew (by key) for each
- * source. Each row names where it is: its account and folder in a search, its folder in a folder's
+ * source; its first page is kept a while (`LIST_KEPT`), shown again at once and read again behind
+ * it. Each row names where it is: its account and folder in a search, its folder in a folder's
  * subfolders. A page grouped by conversation shows each one as a row (`listRow`), which actions
  * take whole. Invalidating its first page (`messagesKey`) reads the list again, keeping it on show
  * meanwhile: new rows come in at the top, and the rows loaded below it stay, as do the rows in
@@ -78,7 +82,7 @@ export function MessageList({
   const first = useQuery({
     queryKey: messagesKey(source, null),
     queryFn: ({ signal }) => loadPage(null, signal),
-    ...READ_ON_MOUNT,
+    ...LIST_KEPT,
   })
   const [tail, setTail] = useState<Tail | null>(null)
   const [more, setMore] = useState<More>({ kind: 'idle' })
@@ -120,17 +124,24 @@ export function MessageList({
     setMenu(null)
   }, [])
   const unmountSignal = useUnmountSignal()
+  const hovered = useRef<number | undefined>(undefined)
+  const stopHover = useCallback(() => {
+    window.clearTimeout(hovered.current)
+  }, [])
+  useEffect(() => stopHover, [stopHover])
   const page = first.status === 'success' ? first.data : null
   // Rows moved away since are gone in place.
   const messages = (page === null ? [] : shown(page, tail)).filter((message) => !removed.has(message.ref)).map(listRow)
   useEffect(() => {
     setVisible(messages)
   })
+  // Only a page read while the list is shown says the server's flags: the one kept from before may be older than the reads.
+  const fetchedHere = first.isFetchedAfterMount
   useEffect(() => {
-    if (page !== null) {
+    if (page !== null && fetchedHere) {
       refreshed(source, page.messages.map(listRow))
     }
-  }, [page, source, refreshed])
+  }, [page, fetchedHere, source, refreshed])
   useEffect(
     () => () => {
       setVisible([])
@@ -315,6 +326,19 @@ export function MessageList({
                       startMessageDrag(event.dataTransfer, targets, t('list.dragging', { count: targets.length }))
                     }}
                     onDragEnd={endMessageDrag}
+                    // Its message is read ahead while the mouse rests on it, or as soon as it is pressed.
+                    onPointerEnter={(event) => {
+                      if (event.pointerType === 'mouse') {
+                        stopHover()
+                        hovered.current = window.setTimeout(() => {
+                          prefetchMessage(queryClient, message.ref)
+                        }, HOVER_PREFETCH_MS)
+                      }
+                    }}
+                    onPointerLeave={stopHover}
+                    onPointerDownCapture={() => {
+                      prefetchMessage(queryClient, message.ref)
+                    }}
                     {...longPress.bind(() => {
                       lastChecked.current = message.ref
                       triage.select([message], !checked)

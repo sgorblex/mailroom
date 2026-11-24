@@ -52,7 +52,9 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   once: the read's remote check makes the view, and the frame's check and document, light or
   dark, take it. Keyed by the user and their accounts' revision, the message's account, folder,
   UIDVALIDITY and UID (whose content never changes) and whether remote images are shown: never
-  answered to another user, nothing written to disk, gone with the process.
+  answered to another user, nothing written to disk, gone with the process. With them, for ten
+  minutes, each message's verified sender (DMARC passed for its one From) as its read found it,
+  for `remote=sender` below; never whether the user trusts it, which is asked each time.
 - The one HTML body shown outside that iframe is the **printable page** (`GET
   /api/v1/mail/messages/{ref}/print`), a tab of its own for the browser's print: the same
   sanitised HTML without remote images, boxed in so it paints nothing outside its own box and
@@ -61,7 +63,10 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   frame it. The source download (`…/source`) is a file, served as a part is.
 - **No remote content by default.** Remote images are removed from the document and refused by its
   CSP until the user reveals them for that message (`?remote=1`); tracking pixels therefore never
-  fire on open. The only thing remembered is a **sender** the user chose
+  fire on open. A remembered sender's message asks `?remote=sender`: the server keeps remote
+  images only if, as it serves that document, the user still remembers the message's verified
+  sender, so a read the client kept (or another tab's) never shows remote content under a trust
+  since removed. The only thing remembered is a **sender** the user chose
   (`app.remote_content_sender(user_id, address, created_at)`, one row per user and address), and
   only from a message whose DMARC passed at the account's own authentication server for its one
   From, which the server checks itself; it counts again only for such a message (`remote_trusted` in

@@ -21,7 +21,14 @@ import { useUnmountSignal } from '@/lib/use-unmount-signal.ts'
 
 import { asksFirst, isConversation, listedFolderOf, mixedFlags, newSenderIn, refsOf, shownOnly } from './conversations.ts'
 import { MAIL_NS } from './i18n.ts'
-import { ALL_MESSAGES_KEY, ALL_THREADS_KEY, foldersKey, foldersQuery } from './queries.ts'
+import {
+  ALL_MESSAGES_KEY,
+  ALL_THREADS_KEY,
+  foldersKey,
+  foldersQuery,
+  forgetCachedReads,
+  setCachedReadFlags,
+} from './queries.ts'
 import { useToast } from './toast-context.ts'
 import { DoneMessage } from './toolbar.tsx'
 import {
@@ -395,6 +402,7 @@ export function TriageProvider({
       if (plan.kind === 'move') {
         reloadLists()
       } else {
+        setCachedReadFlags(queryClient, (view) => restored.get(view.ref))
         updateScope(currentKey.current, (current) => {
           const overrides = new Map(current.overrides)
           // Only the flags set back: another changed since stays as it is now.
@@ -409,7 +417,7 @@ export function TriageProvider({
       }
       toast.show(failed ? { message: t('undo.failed'), tone: 'error' } : { message: t('undo.done') })
     },
-    [setBusyState, unmountSignal, loadFolders, reloadLists, updateScope, toast, t],
+    [setBusyState, unmountSignal, loadFolders, reloadLists, updateScope, toast, t, queryClient],
   )
 
   const folderMarkedRead = useCallback(
@@ -422,13 +430,23 @@ export function TriageProvider({
       updateScope(currentKey.current, (current) => ({
         overrides: new Map([...current.overrides].filter(([ref, flags]) => flags.seen || !inFolder.has(ref))),
       }))
+      setCachedReadFlags(queryClient, (view) =>
+        view.account_id === account && folders.some((folder) => isSameFolder(view.folder, folder)) ? { seen: true } : undefined,
+      )
       reloadLists()
     },
-    [updateScope, reloadLists],
+    [updateScope, reloadLists, queryClient],
   )
 
   const refreshed = useCallback(
     (key: string, rows: readonly Target[]) => {
+      // The flags as the server read them now: a message opened again shows them. A conversation's
+      // row says its messages' together, not its latest's.
+      const read = new Map(rows.filter((row) => !isConversation(row)).map((row) => [row.ref, row.flags]))
+      setCachedReadFlags(queryClient, (view) => {
+        const flags = read.get(view.ref)
+        return flags === undefined ? undefined : { seen: flags.seen, flagged: flags.flagged, to_sort: flags.to_sort }
+      })
       const current = scopedRef.current
       const shown = openRef.current?.ref
       const fresh = rows.filter((row) => row.ref === shown || (current.key === key && current.overrides.has(row.ref)))
@@ -443,7 +461,7 @@ export function TriageProvider({
         return { overrides }
       })
     },
-    [scopedRef, openRef, updateScope],
+    [scopedRef, openRef, updateScope, queryClient],
   )
 
   const act = useCallback(
@@ -658,6 +676,7 @@ export function TriageProvider({
             to_sort: read?.to_sort ?? change.to_sort ?? before.to_sort,
           }
           next.set(target.ref, after)
+          setCachedReadFlags(queryClient, (view) => (view.ref === target.ref ? after : undefined))
           unread += Number(!after.seen) - Number(!before.seen)
           if (undo?.kind === 'flag') {
             undo.before.push([target.ref, before])
@@ -681,6 +700,7 @@ export function TriageProvider({
 
       function applyMove(group: OrganizeGroup, members: Target[], move: Action): void {
         const refs = new Set(members.map((target) => target.ref))
+        forgetCachedReads(queryClient, refs)
         const changed = overridesOf(key)
         const unread = members.filter((target) => !(changed.get(target.ref) ?? target.flags).seen).length
         setRemoved((value) => new Set([...value, ...refs]))
@@ -728,6 +748,7 @@ export function TriageProvider({
         }
         if (done.kind !== 'flag') {
           const refs = new Set(rows.flatMap((row) => [row.ref, ...refsOf(row)]))
+          forgetCachedReads(queryClient, refs)
           setRemoved((value) => new Set([...value, ...refs]))
           updateScope(key, (current) => ({
             selection: new Map([...current.selection].filter(([ref]) => !refs.has(ref))),
@@ -736,6 +757,8 @@ export function TriageProvider({
           return
         }
         const { change } = done
+        const members = new Set(rows.flatMap((row) => [row.ref, ...refsOf(row)]))
+        setCachedReadFlags(queryClient, (view) => (members.has(view.ref) ? change : undefined))
         const changed = overridesOf(key)
         const next = new Map(changed)
         for (const row of rows) {

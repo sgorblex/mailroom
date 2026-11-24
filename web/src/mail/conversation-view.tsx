@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 
-import { readThread } from '@/api/mail.ts'
 import { useTimeZone } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { cn } from '@/lib/utils.ts'
@@ -14,7 +13,7 @@ import { addressLabel, formatListDate } from './format.ts'
 import { MAIL_NS } from './i18n.ts'
 import { MessageView } from './message-view.tsx'
 import { mailErrorMessage } from './messages.ts'
-import { READ_ON_MOUNT, threadKey } from './queries.ts'
+import { threadKey, threadQuery } from './queries.ts'
 import { useTriage, type Target } from './triage-context.ts'
 
 function conversationRow(rows: Target[], ref: string): Target | undefined {
@@ -23,18 +22,23 @@ function conversationRow(rows: Target[], ref: string): Target | undefined {
 
 /**
  * A conversation opened from its row (`threadRef`, its latest message): its messages, read live,
- * oldest first, each to read in turn, above the one being read (`messageRef`).
+ * oldest first, each to read in turn, above the one being read (`messageRef`). `leaving` as for
+ * `MessageView`.
  */
-export function ConversationView({ threadRef, messageRef }: { threadRef: string; messageRef: string }): ReactElement {
+export function ConversationView({
+  threadRef,
+  messageRef,
+  leaving = false,
+}: {
+  threadRef: string
+  messageRef: string
+  leaving?: boolean
+}): ReactElement {
   const { t, i18n } = useTranslation(MAIL_NS)
   const timeZone = useTimeZone()
   const { visibleRows, subscribeVisible } = useTriage()
   const queryClient = useQueryClient()
-  const thread = useQuery({
-    queryKey: threadKey(threadRef),
-    queryFn: ({ signal }) => readThread(threadRef, signal),
-    ...READ_ON_MOUNT,
-  })
+  const thread = useQuery(threadQuery(threadRef))
   // The list's row, which the message stands for while it is the one read: found once the list
   // shows it, which a link followed into the screen may load after this view.
   const [row, setRow] = useState<Target | undefined>(() => conversationRow(visibleRows(), threadRef))
@@ -113,7 +117,7 @@ export function ConversationView({ threadRef, messageRef }: { threadRef: string;
           </>
         )}
       </nav>
-      <MessageView key={messageRef} messageRef={messageRef} conversation={row} />
+      <MessageView key={messageRef} messageRef={messageRef} conversation={row} leaving={leaving} />
     </div>
   )
 }

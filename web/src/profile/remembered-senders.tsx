@@ -1,5 +1,6 @@
 import { useCallback, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useQueryClient } from '@tanstack/react-query'
 
 import { ApiRequestError, apiErrorMessage } from '@/api/http.ts'
 import {
@@ -13,6 +14,7 @@ import { useTimeZone } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { formatDateTime } from '@/lib/format.ts'
 import { useLoad } from '@/lib/use-load.ts'
+import { ALL_READS_KEY } from '@/mail/queries.ts'
 
 /**
  * The senders whose remote images the user shows without asking, each removable. They are added
@@ -77,6 +79,7 @@ function SenderList({
   const [reloadKey, setReloadKey] = useState(0)
   const [pending, setPending] = useState<string | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
+  const queryClient = useQueryClient()
   const load = useCallback((signal: AbortSignal) => list(signal), [list])
   const { state } = useLoad(load, (error) => apiErrorMessage(error, t('rememberedSenders.loadFailed')), reloadKey)
 
@@ -91,6 +94,8 @@ function SenderList({
         setFailure(apiErrorMessage(error, t('rememberedSenders.removeFailed')))
       }
     } finally {
+      // The messages read before say what the server remembered then: they are read again.
+      queryClient.removeQueries({ queryKey: ALL_READS_KEY })
       setPending(null)
       setReloadKey((value) => value + 1)
     }
