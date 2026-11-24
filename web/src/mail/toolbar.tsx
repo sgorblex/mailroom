@@ -1,4 +1,4 @@
-import { createElement, useEffect, useRef, useState, type ReactElement, type ReactNode, type Ref } from 'react'
+import { createElement, useEffect, useRef, useState, type ReactElement, type ReactNode, type Ref, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { X } from 'lucide-react'
@@ -10,13 +10,13 @@ import { Button } from '@/components/ui/button.tsx'
 import { cn } from '@/lib/utils.ts'
 
 import { AccountMovePicker, MoveForGoodDialog } from './account-move-picker.tsx'
-import { listedActions, unavailableReason, type ActionContext } from './action-registry.ts'
+import { listedActions, triageShortcut, unavailableReason, type ActionContext } from './action-registry.ts'
 import { useCompose } from './compose-context.ts'
 import { MAIL_NS } from './i18n.ts'
 import { useUGoesBack } from './reading-pane.ts'
 import { folderName, mailCodeMessage, mailErrorMessage } from './messages.ts'
-import { useTriageActions } from './triage-actions.ts'
-import { failureKey, isSameFolder, loadedFolders, useTriage, type Action, type Outcome } from './triage-context.ts'
+import { useTriageActions, type TriageActions } from './triage-actions.ts'
+import { failureKey, isSameFolder, loadedFolders, useTriage, type Action, type Destination, type Outcome } from './triage-context.ts'
 
 /** `not_found` of a batch: messages that left the folder since the list was read. */
 const GONE = 'triage.gone'
@@ -25,45 +25,22 @@ const STATUS_ID = 'triage-outcome-status'
 const ALERT_ID = 'triage-outcome-alert'
 
 /**
- * The actions on the selection, or on the open message when nothing is selected, with what the
- * last one did when it did not go through in full (shown here, announced by `OutcomeAnnouncer`;
- * one that did is the toast's). Each button names its keyboard shortcut.
+ * The actions on the selection (the open message has its own, `MessageActions`), with what the
+ * last action did when it did not go through in full (shown here, announced by
+ * `OutcomeAnnouncer`; one that did is the toast's). Each button names its keyboard shortcut.
  */
 export function Toolbar({ className }: { className?: string }): ReactElement | null {
   const { t } = useTranslation(MAIL_NS)
   const triage = useTriage()
   const actions = useTriageActions()
   const compose = useCompose()
-  const uGoesBack = useUGoesBack()
   const trigger = useRef<HTMLButtonElement>(null)
-  const pickerWasOpen = useRef(false)
-  const picker = triage.picker && actions.moveChoices !== null
   const accountTrigger = useRef<HTMLButtonElement>(null)
-  const accountPickerWasOpen = useRef(false)
-  const showAccountPicker = triage.accountPicker && actions.otherAccounts !== null
-  // A move to another account that deletes the originals for good, waiting for the user's yes.
-  const [forGood, setForGood] = useState<{ account: AccountId; folder: MailFolder } | null>(null)
+  const selecting = triage.selection.size > 0 && actions.targets.length > 0
+  const picker = selecting && triage.picker
+  const accountPicker = selecting && triage.accountPicker
 
-  // Closing a picker puts focus back on its button, unless focus went somewhere else.
-  useEffect(() => {
-    if (pickerWasOpen.current && !picker && (document.activeElement === null || document.activeElement === document.body)) {
-      trigger.current?.focus()
-    }
-    pickerWasOpen.current = picker
-  }, [picker])
-  useEffect(() => {
-    if (
-      accountPickerWasOpen.current &&
-      !showAccountPicker &&
-      forGood === null &&
-      (document.activeElement === null || document.activeElement === document.body)
-    ) {
-      accountTrigger.current?.focus()
-    }
-    accountPickerWasOpen.current = showAccountPicker
-  }, [showAccountPicker, forGood])
-
-  if (actions.targets.length === 0 && triage.outcome === null) {
+  if (!selecting && triage.outcome === null) {
     return null
   }
   const context: ActionContext = {
@@ -76,53 +53,166 @@ export function Toolbar({ className }: { className?: string }): ReactElement | n
       if (kind === 'move') {
         triage.setPicker(!picker)
       } else {
-        triage.setAccountPicker(!showAccountPicker)
+        triage.setAccountPicker(!accountPicker)
       }
     },
   }
-  const disabled = triage.busy
   return (
     <div className={cn('flex flex-col gap-2', className)}>
-      {actions.targets.length > 0 && (
+      {selecting && (
         <div
           role="group"
-          aria-label={t('triage.label')}
-          aria-busy={disabled}
+          aria-label={t('triage.selectionLabel')}
+          aria-busy={triage.busy}
           className="flex flex-wrap items-center gap-1"
         >
           <span className="mr-auto text-sm text-muted-foreground">
             {actions.matching !== null
               ? t('matching.selected', { count: actions.matching })
-              : triage.selection.size > 0
-                ? t('triage.selected', { count: triage.selection.size })
-                : t('triage.thisMessage')}
+              : t('triage.selected', { count: triage.selection.size })}
           </span>
-          {listedActions('triage', context).map((action) => {
-            const reason = unavailableReason(action, context)
-            return (
-              <ToolButton
-                key={action.id}
-                ref={action.picker === 'move' ? trigger : action.picker === 'account' ? accountTrigger : undefined}
-                label={t(action.label(context))}
-                shortcut={action.id === 'markUnread' && uGoesBack ? undefined : action.shortcut}
-                disabled={disabled}
-                unavailable={reason === null ? undefined : t(reason)}
-                expanded={action.picker === 'move' ? picker : action.picker === 'account' ? showAccountPicker : undefined}
-                onClick={() => {
-                  action.run(context)
-                }}
-              >
-                {createElement(action.icon(context), { 'aria-hidden': true })}
-              </ToolButton>
-            )
-          })}
+          <TriageButtons
+            context={context}
+            busy={triage.busy}
+            shortcuts
+            picker={picker}
+            accountPicker={accountPicker}
+            trigger={trigger}
+            accountTrigger={accountTrigger}
+          />
         </div>
       )}
-      {picker && actions.moveChoices !== null && (
+      {selecting && (
+        <TriagePickers
+          actions={actions}
+          picker={picker}
+          accountPicker={accountPicker}
+          into={triage.accountPickerInto}
+          onClosePicker={() => {
+            triage.setPicker(false)
+          }}
+          onCloseAccountPicker={() => {
+            triage.setAccountPicker(false)
+          }}
+          trigger={trigger}
+          accountTrigger={accountTrigger}
+        />
+      )}
+      {triage.outcome !== null && <OutcomeNotice outcome={triage.outcome} onDismiss={triage.dismissOutcome} />}
+    </div>
+  )
+}
+
+/**
+ * The registry's triage actions listed for `context`, as icon buttons naming their shortcuts where
+ * `shortcuts` (the keys act on these buttons' targets); a picker's button says whether it is open.
+ * Each button carries its action's id (`data-action`); those in `overflow` are hidden, kept in
+ * place for their width and their focus.
+ */
+export function TriageButtons({
+  context,
+  busy,
+  shortcuts,
+  picker,
+  accountPicker,
+  trigger,
+  accountTrigger,
+  overflow,
+}: {
+  context: ActionContext
+  busy: boolean
+  shortcuts: boolean
+  picker: boolean
+  accountPicker: boolean
+  trigger: Ref<HTMLButtonElement>
+  accountTrigger: Ref<HTMLButtonElement>
+  overflow?: ReadonlySet<string>
+}): ReactElement {
+  const { t } = useTranslation(MAIL_NS)
+  const uGoesBack = useUGoesBack()
+  return (
+    <>
+      {listedActions('triage', context).map((action) => {
+        const reason = unavailableReason(action, context)
+        return (
+          <ToolButton
+            key={action.id}
+            ref={action.picker === 'move' ? trigger : action.picker === 'account' ? accountTrigger : undefined}
+            action={action.id}
+            hidden={overflow?.has(action.id) === true}
+            label={t(action.label(context))}
+            shortcut={triageShortcut(action, shortcuts, uGoesBack)}
+            disabled={busy}
+            unavailable={reason === null ? undefined : t(reason)}
+            expanded={action.picker === 'move' ? picker : action.picker === 'account' ? accountPicker : undefined}
+            onClick={() => {
+              action.run(context)
+            }}
+          >
+            {createElement(action.icon(context), { 'aria-hidden': true })}
+          </ToolButton>
+        )
+      })}
+    </>
+  )
+}
+
+/**
+ * The move picker and the account move picker on `actions`' targets, while open (the account one
+ * on `into` where a drop opened it), and the confirmation of a move that deletes the originals for
+ * good. Closing a picker puts focus back on its button, unless focus went somewhere else.
+ */
+export function TriagePickers({
+  actions,
+  picker,
+  accountPicker,
+  into,
+  onClosePicker,
+  onCloseAccountPicker,
+  trigger,
+  accountTrigger,
+}: {
+  actions: TriageActions
+  picker: boolean
+  accountPicker: boolean
+  into: Destination | null
+  onClosePicker: () => void
+  onCloseAccountPicker: () => void
+  trigger: RefObject<HTMLButtonElement | null>
+  accountTrigger: RefObject<HTMLButtonElement | null>
+}): ReactElement {
+  const showPicker = picker && actions.moveChoices !== null
+  const showAccountPicker = accountPicker && actions.otherAccounts !== null
+  const pickerWasOpen = useRef(false)
+  const accountPickerWasOpen = useRef(false)
+  // A move to another account that deletes the originals for good, waiting for the user's yes.
+  const [forGood, setForGood] = useState<{ account: AccountId; folder: MailFolder } | null>(null)
+
+  useEffect(() => {
+    if (pickerWasOpen.current && !showPicker && (document.activeElement === null || document.activeElement === document.body)) {
+      trigger.current?.focus()
+    }
+    pickerWasOpen.current = showPicker
+  }, [showPicker, trigger])
+  useEffect(() => {
+    if (
+      accountPickerWasOpen.current &&
+      !showAccountPicker &&
+      forGood === null &&
+      (document.activeElement === null || document.activeElement === document.body)
+    ) {
+      accountTrigger.current?.focus()
+    }
+    accountPickerWasOpen.current = showAccountPicker
+  }, [showAccountPicker, forGood, accountTrigger])
+
+  return (
+    <>
+      {showPicker && actions.moveChoices !== null && (
         <MovePicker
           folders={actions.moveChoices}
           onChoose={(folder) => {
-            triage.setPicker(false)
+            onClosePicker()
             actions.move(folder)
           }}
         />
@@ -130,11 +220,11 @@ export function Toolbar({ className }: { className?: string }): ReactElement | n
       {showAccountPicker && actions.otherAccounts !== null && (
         <AccountMovePicker
           // A drop on another folder opens it anew there.
-          key={triage.accountPickerInto === null ? '' : `${String(triage.accountPickerInto.account)} ${triage.accountPickerInto.folder.path}`}
+          key={into === null ? '' : `${String(into.account)} ${into.folder.path}`}
           accounts={actions.otherAccounts}
-          into={triage.accountPickerInto}
+          into={into}
           onChoose={(account: AccountId, folder: MailFolder, removal: MoveRemoval) => {
-            triage.setAccountPicker(false)
+            onCloseAccountPicker()
             if (removal === 'delete') {
               setForGood({ account, folder })
             } else {
@@ -158,13 +248,14 @@ export function Toolbar({ className }: { className?: string }): ReactElement | n
           }}
         />
       )}
-      {triage.outcome !== null && <OutcomeNotice outcome={triage.outcome} onDismiss={triage.dismissOutcome} />}
-    </div>
+    </>
   )
 }
 
 /** A toolbar action; `unavailable`, the reason it cannot be done here, greys it out and says why. */
 function ToolButton({
+  action,
+  hidden,
   label,
   shortcut,
   disabled,
@@ -174,6 +265,8 @@ function ToolButton({
   ref,
   children,
 }: {
+  action: string
+  hidden: boolean
   label: string
   shortcut: string | undefined
   disabled: boolean
@@ -187,6 +280,8 @@ function ToolButton({
   return (
     <Button
       ref={ref}
+      data-action={action}
+      hidden={hidden}
       variant="ghost"
       size="icon-sm"
       aria-label={label}

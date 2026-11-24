@@ -123,7 +123,7 @@ export interface Triage {
   visibleRows: () => Target[]
   /** Calls `listener` with the rows each time the list tells them; answers the unsubscribe. */
   subscribeVisible: (listener: (rows: Target[]) => void) => () => void
-  /** What the toolbar acts on: the selection, else the open message. */
+  /** What the keys act on: the selection (the list toolbar's), else the open message (its action bar's). */
   targets: Target[]
   busy: boolean
   outcome: Outcome | null

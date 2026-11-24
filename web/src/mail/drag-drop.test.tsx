@@ -166,7 +166,7 @@ describe('dragging messages onto a folder', () => {
     expect(within(picker).getByRole('radio', { name: 'go to Trash here' })).toBeChecked()
     expect(bodiesTo(fetchMock, MOVE_TO_ACCOUNT)).toEqual([])
     // The row dragged alone is what the picker acts on.
-    expect(screen.getByRole('group', { name: 'Message actions' })).toHaveTextContent('1 selected')
+    expect(screen.getByRole('group', { name: 'Selected messages' })).toHaveTextContent('1 selected')
 
     await userEvent.click(target)
     await waitFor(() => {

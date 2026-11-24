@@ -245,6 +245,7 @@
     }
   },
   "message": {
+    "more": "Altre azioni",
     "label": "Messaggio",
     "none": "Scegli un messaggio per leggerlo.",
     "back": "Torna all'elenco",
@@ -336,12 +337,12 @@
     "downloadInvite": "Scarica l'invito"
   },
   "triage": {
+    "selectionLabel": "Messaggi selezionati",
     "label": "Azioni sui messaggi",
     "selectAll": "Seleziona tutti",
     "select": "Seleziona {{subject}}",
     "selected_one": "{{count}} selezionato",
     "selected_other": "{{count}} selezionati",
-    "thisMessage": "Questo messaggio",
     "archive": "Archivia",
     "reportSpam": "Segnala come spam",
     "trash": "Sposta nel Cestino",
@@ -479,7 +480,6 @@
     "forward": "Inoltra",
     "unsubscribe": "Annulla iscrizione",
     "draft": "Bozza",
-    "replyActions": "Rispondi, inoltra, stampa e scarica",
     "backToDraft": "Torna alla bozza",
     "offHint": "L'invio è disattivato per questo account, quindi non può scrivere posta. Puoi cambiarlo in Account.",
     "loading": "Apertura dell'editor…",

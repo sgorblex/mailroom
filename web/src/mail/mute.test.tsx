@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { Feature, UserJson } from '@/api/auth.ts'
 import { type FakeMailState, messageItem, messageView, refusal, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
-import { renderMailApp } from '@/test/mail-app.tsx'
+import { openMessageMenu, renderMailApp } from '@/test/mail-app.tsx'
 
 const ALICE: UserJson = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null, conversations: true, undo_send_seconds: 10 }
 const withFilters: { user: UserJson; features: Feature[] } = { user: ALICE, features: ['mail', 'filters'] }
@@ -29,8 +29,6 @@ function region(id: 'toast-status' | 'toast-alert'): HTMLElement {
   return found
 }
 
-const actions = (): Promise<HTMLElement> => screen.findByRole('group', { name: 'Reply, forward, print and download' })
-
 /** The requests sent to the mute routes. */
 function muteRequests(fetchMock: ReturnType<typeof stubMailApi>): string[] {
   return fetchMock.mock.calls
@@ -48,7 +46,7 @@ describe('muting a conversation', () => {
     const fetchMock = stubMailApi(fake)
     renderMailApp(`/mail?message=${item.ref}`, withFilters)
 
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Mute conversation' }))
+    await userEvent.click(within(await openMessageMenu()).getByRole('menuitem', { name: 'Mute conversation' }))
     await waitFor(() => {
       expect(region('toast-status')).toHaveTextContent(
         'Conversation muted: its new messages in the inbox will arrive marked read. Run filters is off for work: muting has no effect until it is on.',
@@ -57,11 +55,11 @@ describe('muting a conversation', () => {
     expect(screen.getByText(/This conversation is muted/)).toHaveTextContent(/Run filters is off for work/)
     expect(fake.muted).toHaveLength(1)
 
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Unmute conversation' }))
+    await userEvent.click(within(await openMessageMenu()).getByRole('menuitem', { name: 'Unmute conversation' }))
     await waitFor(() => {
       expect(region('toast-status')).toHaveTextContent('Conversation unmuted.')
     })
-    expect(within(await actions()).getByRole('button', { name: 'Mute conversation' })).toBeInTheDocument()
+    expect(within(await openMessageMenu()).getByRole('menuitem', { name: 'Mute conversation' })).toBeInTheDocument()
     expect(screen.queryByText(/This conversation is muted/)).not.toBeInTheDocument()
     expect(muteRequests(fetchMock)).toEqual([MUTE, 'DELETE /api/v1/mail/muted/1'])
     expect(fake.muted).toEqual([])
@@ -72,7 +70,7 @@ describe('muting a conversation', () => {
     stubMailApi(fake)
     renderMailApp(`/mail?message=${item.ref}`, withFilters)
 
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Mute conversation' }))
+    await userEvent.click(within(await openMessageMenu()).getByRole('menuitem', { name: 'Mute conversation' }))
     await waitFor(() => {
       expect(region('toast-status')).toHaveTextContent('Conversation muted')
     })
@@ -90,13 +88,13 @@ describe('muting a conversation', () => {
     stubMailApi(state({ refuse: { [MUTE]: refusal(400, 'nothing_to_mute') } }))
     renderMailApp(`/mail?message=${item.ref}`, withFilters)
 
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Mute conversation' }))
+    await userEvent.click(within(await openMessageMenu()).getByRole('menuitem', { name: 'Mute conversation' }))
     await waitFor(() => {
       expect(region('toast-alert')).toHaveTextContent(
         'This message has no Message-ID to follow, so its conversation cannot be muted.',
       )
     })
-    expect(within(await actions()).getByRole('button', { name: 'Mute conversation' })).toBeInTheDocument()
+    expect(within(await openMessageMenu()).getByRole('menuitem', { name: 'Mute conversation' })).toBeInTheDocument()
   })
 
   it('takes the muted state off every message of the conversation unmuted', async () => {
@@ -121,7 +119,7 @@ describe('muting a conversation', () => {
     expect(fake.muted).toHaveLength(1)
 
     await userEvent.click(within(list).getByRole('link', { name: /Endless reply/ }))
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Unmute conversation' }))
+    await userEvent.click(within(await openMessageMenu()).getByRole('menuitem', { name: 'Unmute conversation' }))
     await waitFor(() => {
       expect(region('toast-status')).toHaveTextContent('Conversation unmuted.')
     })
@@ -129,7 +127,7 @@ describe('muting a conversation', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'Endless thread' })).toBeInTheDocument()
     })
-    expect(within(await actions()).getByRole('button', { name: 'Mute conversation' })).toBeInTheDocument()
+    expect(within(await openMessageMenu()).getByRole('menuitem', { name: 'Mute conversation' })).toBeInTheDocument()
     expect(screen.queryByText(/This conversation is muted/)).not.toBeInTheDocument()
   })
 
@@ -138,16 +136,16 @@ describe('muting a conversation', () => {
     stubMailApi(fake)
     renderMailApp(`/mail?message=${item.ref}`, withFilters)
 
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Mute conversation' }))
+    await userEvent.click(within(await openMessageMenu()).getByRole('menuitem', { name: 'Mute conversation' }))
     await waitFor(() => {
       expect(region('toast-status')).toHaveTextContent('Conversation muted')
     })
     fake.muted = []
-    await userEvent.click(within(await actions()).getByRole('button', { name: 'Unmute conversation' }))
+    await userEvent.click(within(await openMessageMenu()).getByRole('menuitem', { name: 'Unmute conversation' }))
     await waitFor(() => {
       expect(region('toast-status')).toHaveTextContent('Conversation unmuted.')
     })
-    expect(within(await actions()).getByRole('button', { name: 'Mute conversation' })).toBeInTheDocument()
+    expect(within(await openMessageMenu()).getByRole('menuitem', { name: 'Mute conversation' })).toBeInTheDocument()
   })
 
   it('offers muting in the row menu', async () => {
@@ -168,7 +166,7 @@ describe('muting a conversation', () => {
     stubMailApi(state())
     renderMailApp(`/mail?message=${item.ref}`, { user: ALICE })
 
-    expect(within(await actions()).getByRole('button', { name: 'Print' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Mute conversation' })).not.toBeInTheDocument()
+    expect(within(await openMessageMenu()).getByRole('menuitem', { name: 'Print' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'Mute conversation' })).not.toBeInTheDocument()
   })
 })

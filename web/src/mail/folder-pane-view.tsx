@@ -13,17 +13,12 @@ import { MAIL_NS } from './i18n.ts'
 import { MailSidebar } from './mail-sidebar.tsx'
 import { useListedFolders } from './queries.ts'
 import { ALL_INBOXES_ICON, ROLE_ICONS } from './role-icons.ts'
-import { isTyping } from './shortcuts.ts'
+import { isTyping, overlayOpen } from './shortcuts.ts'
 import { isSameFolder, loadedFolders, roleFolder, useTriage } from './triage-context.ts'
 import { viewUnread } from './views.ts'
 
 /** The role folders the rail shows, those the account has, in this order. */
 const RAIL_ROLES: readonly FolderRole[] = ['inbox', 'flagged', 'drafts', 'sent', 'archive', 'junk', 'trash']
-
-/** A menu or a dialog is open, which a peek stays open under: they are its own, or over it. */
-function overlayOpen(): boolean {
-  return document.querySelector('dialog[open], [role="menu"]') !== null
-}
 
 /**
  * The folder pane (`MailSidebar`), which a button or `[` folds to a rail of icons on a wide screen,

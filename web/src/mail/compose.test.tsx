@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { UserJson } from '@/api/auth.ts'
 import type { ScheduledSend, SendResult } from '@/api/mail.ts'
 import { bodiesTo, fakeDraft, type FakeMailState, HOME, messageItem, messageView, plainTextsAsked, queriesTo, refusal, savesOf, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
-import { renderMailApp } from '@/test/mail-app.tsx'
+import { openMessageMenu, renderMailApp } from '@/test/mail-app.tsx'
 
 const inbox = [messageItem(WORK, 'INBOX', 2), messageItem(WORK, 'INBOX', 1)]
 const [first] = inbox
@@ -183,10 +183,10 @@ describe('composing', () => {
     renderMailApp(`/mail?message=${firstRef}`)
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
     try {
-      const print = await screen.findByRole('button', { name: 'Print' })
+      const print = within(await openMessageMenu()).getByRole('menuitem', { name: 'Print' })
       expect(print).not.toHaveAttribute('aria-disabled')
       await user.click(print)
-      await user.click(screen.getByRole('button', { name: 'Download .eml' }))
+      await user.click(within(await openMessageMenu()).getByRole('menuitem', { name: 'Download .eml' }))
       const [printed, saved] = click.mock.instances as unknown as HTMLAnchorElement[]
       expect(printed?.href).toMatch(/\/print$/)
       expect(printed?.target).toBe('_blank')

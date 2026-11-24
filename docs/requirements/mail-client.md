@@ -106,15 +106,15 @@ notifications](#desktop-notifications).
   `mailto:` address in the composer ([prefill](#compose) `unsubscribe`), when the account can
   write mail; else the `https:` link in a new tab. *Filter instead* beside it opens the filter
   [drafted from the message](filters.md#filter-drafts), when the instance runs filters.
-- **Print and download:** beside Reply, Reply all and Forward, *Print* opens the message's
+- **Print and download:** in the open message's *More actions* menu, *Print* opens the message's
   [printable page](#get-messagesrefprint) in a new tab, for the browser's own print, and
   *Download .eml* saves [its source](#get-messagesrefsource), and *Filter messages like this*
   opens the filter [drafted from it](filters.md#filter-drafts) where the instance runs filters;
   the row's context menu and the command palette offer them too, the composer open or not.
-- **Mute conversation:** beside them too, where the instance runs filters, it
+- **Mute conversation:** in that menu too, where the instance runs filters, it
   [mutes](#muted-threads) the message's conversation; the toast says so, with Undo, and when the
   account's Run filters is off, that muting has no effect until it is on. The message then shows
-  it is muted (and that note) with *Unmute conversation* in place of the button. Only a mute made
+  it is muted (and that note), the menu offering *Unmute conversation* instead. Only a mute made
   on the mail screen since it opened is known there: the API names no thread by message. The
   Filters page lists every muted conversation under its account, with when it was muted, the
   same note, and *Unmute*. The row's context menu and the command palette offer both.
@@ -136,10 +136,10 @@ until this browser keeps one, 40 % of the height the two share, and at least roo
 (at the density chosen) where that still leaves the message view 240 px; from 160 to 1,200 px
 whatever the window. A double-click goes back to the share. Off, the list takes the room, and an open message (or the
 composer) takes the list's place, as wide as the list and the pane together, with *Back to the
-list* and, above the message, the toolbar acting on it; Escape, or `u` with nothing selected, goes
-back too (*Mark unread* then shows no shortcut). The list stays underneath, out of reach of the
-keyboard and screen readers (`inert`) and scrolled where it was, and going back puts the focus on
-the message's row (closing the composer, on *Compose*). A narrow screen (a phone, or a window
+list* and, above the message, the toolbar acting on the selection; Escape, or `u` with nothing
+selected, goes back too (*Mark unread* then shows no shortcut). The list stays underneath, out of
+reach of the keyboard and screen readers (`inert`) and scrolled where it was, and going back puts
+the focus on the message's row (closing the composer, on *Compose*). A narrow screen (a phone, or a window
 under 1,024 px, `lg`) always opens a message in place of the list, with Back, Escape and `u`,
 whatever the choice. On desktop the sidebar folds to a **rail** of
 icons (a button at its top, or `[`): *All inboxes* and the account's role folders (Inbox, Starred,
@@ -371,7 +371,18 @@ MCP `message_read` still never set `\Seen`.
   refusal states the new count and asks again; `too_many` and a folder that failed end it, saying
   how many were left unchanged. At the end the list and the folders are read again and the
   selection cleared; done in full, the toast says so, without Undo.
-- **Toolbar** acting on the selection, or on the open message when nothing is selected: Archive
+- **The message's action bar**, at the top of the open message: Reply, Reply all and Forward
+  as labelled buttons; its triage actions (the toolbar's, below) as icon buttons whose name and
+  tooltip say the action and, while nothing is selected (the keys then act on the open message),
+  its key; and *More actions*, a menu of the rest (Print, Download
+  .eml, Filter messages like this, Mute or Unmute conversation, Snooze). It keeps to one row: as
+  the pane narrows, the buttons that do not fit move to the top of *More actions*, still naming
+  their key, To sort first, then Report spam, Move to…, Move to another account…, Reply all and
+  Forward; Reply, Archive, Trash, Star and Mark read or unread stay, giving way only on a bar too
+  narrow even for them (Reply never). It acts on the open
+  message (or the conversation its row stands for) whatever is selected in the list; with a
+  selection its move pickers are its own, Escape closing them without clearing the selection.
+- **Toolbar** above the list, shown only while messages are selected and acting on them: Archive
   (hidden when the account has no selectable archive-role folder), Report spam (likewise without a
   junk-role one), Trash, Move to… (a picker over
   the account's selectable folders, Drafts, Sent and the folder the messages are in left out),
@@ -385,7 +396,8 @@ MCP `message_read` still never set `\Seen`.
   each naming its key. On a selected row it acts on the selection; on any other row, on that row
   alone, the selection left as it was, but for Move to… and Move to another account…, whose picker
   makes the row the selection. Shift+right-click keeps the browser's own menu. The toolbar, the
-  shortcuts, the reply buttons and these menus read one list of actions.
+  shortcuts, the message's action bar and these menus read one list of actions; the keys act on
+  the selection, or on the open message when nothing is selected.
 - **Drag and drop:** a row dragged onto a folder of the sidebar's tree moves the selection when the
   row is in it, else that row alone; a folder they cannot go to (one Move to… leaves out, a
   level that holds only folders) does not take the drop, and one that does is highlighted while

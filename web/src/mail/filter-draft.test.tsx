@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { Feature, UserJson } from '@/api/auth.ts'
 import { type FakeMailState, messageItem, messageView, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
-import { renderMailApp } from '@/test/mail-app.tsx'
+import { openMessageMenu, renderMailApp } from '@/test/mail-app.tsx'
 
 const ALICE: UserJson = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null, conversations: true, undo_send_seconds: 10 }
 const item = messageItem(WORK, 'INBOX', 1, { subject: 'Weekly' })
@@ -42,7 +42,7 @@ describe('drafting a filter from the mail screen', () => {
     stubMailApi(state())
     const history = renderMailApp(`/mail?message=${item.ref}`, withFilters)
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Filter messages like this' }))
+    await userEvent.click(within(await openMessageMenu()).getByRole('menuitem', { name: 'Filter messages like this' }))
     expect(await screen.findByText('Filter draft page')).toBeInTheDocument()
     const search = new URLSearchParams(history.location.search)
     expect(search.get('account')).toBe(String(WORK))
@@ -75,8 +75,9 @@ describe('drafting a filter from the mail screen', () => {
     renderMailApp(`/mail?message=${item.ref}&q=${encodeURIComponent('{"from":"news"}')}`, { user: ALICE })
 
     const search = await screen.findByRole('search')
-    await screen.findByRole('button', { name: 'Print' })
-    expect(screen.queryByRole('button', { name: 'Filter messages like this' })).not.toBeInTheDocument()
+    const menu = await openMessageMenu()
+    expect(within(menu).getByRole('menuitem', { name: 'Print' })).toBeInTheDocument()
+    expect(within(menu).queryByRole('menuitem', { name: 'Filter messages like this' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Filter instead' })).not.toBeInTheDocument()
     expect(within(search).queryByRole('link', { name: 'Create filter from this search' })).not.toBeInTheDocument()
   })

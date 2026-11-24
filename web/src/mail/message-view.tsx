@@ -16,16 +16,16 @@ import { addressFull } from './format.ts'
 import { HtmlBody, type RemoteChoice } from './html-body.tsx'
 import { MAIL_NS } from './i18n.ts'
 import { MailingListRow } from './mailing-list.tsx'
+import { MessageActions } from './message-actions.tsx'
 import { mailErrorMessage } from './messages.ts'
 import { fetchPage, messageKey, READ_ON_MOUNT } from './queries.ts'
-import { ReplyActions } from './reply-actions.tsx'
 import { authenticationState, recipientSummary, resultText } from './sender-checks.ts'
 import { isSameFolder, loadedFolders, roleFolder, useTriage, type Target } from './triage-context.ts'
 
 /**
  * One message, mounted anew (by key) for each: its view choices are never carried over. Read as
- * the latest message of `conversation` (a row of the list), it stands for that row: the toolbar
- * acts on the whole conversation, and opening it marks every message of it read.
+ * the latest message of `conversation` (a row of the list), it stands for that row: its action
+ * bar acts on the whole conversation, and opening it marks every message of it read.
  */
 export function MessageView({ messageRef, conversation }: { messageRef: string; conversation?: Target }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
@@ -57,7 +57,7 @@ export function MessageView({ messageRef, conversation }: { messageRef: string; 
       return folder !== undefined && isSameFolder(folder.path, view.folder)
     })
 
-  // The toolbar acts on the open message; opening an unread one marks it read, once, and a
+  // The action bar and the keys act on the open message; opening an unread one marks it read, once, and a
   // failure leaves it unread without a word. A draft stays as it is, and opens in the composer
   // instead, unless its account can't save one (send mode off).
   useEffect(() => {
@@ -179,6 +179,7 @@ function LoadedMessage({
 
   return (
     <>
+      <MessageActions account={view.account_id} messageRef={view.ref} />
       <header className="flex flex-col gap-2">
         <h2 className="text-xl font-semibold tracking-tight break-words">
           {view.subject === '' ? t('message.noSubject') : view.subject}
@@ -219,7 +220,6 @@ function LoadedMessage({
           <MailingListRow view={view} />
         </dl>
       </header>
-      <ReplyActions account={view.account_id} messageRef={view.ref} />
       {view.has_html && (
         <div role="group" aria-label={t('message.format')} className="flex gap-1 self-start rounded-md border p-0.5">
           <Button

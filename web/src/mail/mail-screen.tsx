@@ -188,8 +188,8 @@ export function MailScreen(): ReactElement {
 /**
  * The three panes. The reading pane sits where the user put it, right of the list or below it; or,
  * set off, an open message or the composer takes the list's place with Back (the message with the
- * toolbar acting on it), the list scrolled where it was underneath. On a phone an open message or
- * composer takes the screen.
+ * toolbar acting on the selection), the list scrolled where it was underneath. On a phone an open
+ * message or composer takes the screen.
  */
 function MailPanes({
   accounts,
@@ -236,7 +236,7 @@ function MailPanes({
         className={cn(covered && 'hidden lg:flex')}
       />
       <div className={cn('relative flex min-w-0 flex-1 flex-col lg:min-h-0', position !== 'below' && 'lg:flex-row')}>
-        {/* On a phone the open message hides the list, but not the toolbar acting on it. */}
+        {/* On a phone the open message hides the list, but not the toolbar acting on the selection. */}
         <ListPane
           id={LIST_PANE_ID}
           label={t('list.label')}
@@ -271,7 +271,7 @@ function MailPanes({
             </div>
             {compact && <ShortcutSheetButton onClick={onHelp} />}
           </div>
-          {/* Over the list, the message carries the toolbar acting on it. */}
+          {/* Over the list, the message carries the toolbar acting on the selection. */}
           {!overlaid && <Toolbar />}
           <SpamFilterOffer />
           {/* Takes what height the pane has left, the list scrolling within it. */}
