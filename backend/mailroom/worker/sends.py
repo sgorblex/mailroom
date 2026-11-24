@@ -9,7 +9,8 @@ draft at the row's ref, which must still be the version scheduled (the same send
 it through ``admit`` with that key, ``deliver``, ``file_sent`` and ``settle_draft``, as the
 scheduler's ``by``, audited as its connected app. An agent's held send first needs its grant:
 revoked, or no longer approving ``mail_send`` or the account, it fails (``grant_revoked``,
-``not_approved``) before the draft is read; its send ceiling is the gate's to keep to. A delivered
+``not_approved``; its API token instead: ``token_revoked`` once revoked or expired) before the
+draft is read; its send ceiling is the gate's to keep to. A delivered
 send has the folders it changed synced again into the mail index (``index_writes.resync``). The key
 is claimed before SMTP, so the job run again after a worker stopped between the claim and the
 delivery finds that send and delivers nothing. Once the gate has delivered the key, or had
@@ -31,6 +32,7 @@ from sqlalchemy import delete, update
 
 from mailroom.accounts.store import AccountNotFound, user_store
 from mailroom.audit import AuditTrail, Origin
+from mailroom.auth.api_tokens import token_reach
 from mailroom.auth.users import time_zone_of
 from mailroom.mail.connections import PASSWORD_MISSING, PasswordMissing, unusable
 from mailroom.mail.index import writes as index_writes
@@ -67,10 +69,11 @@ class _Held:
     via: Via
     client_id: str | None
     grant_id: str | None
+    token_id: int | None
 
     @property
     def by(self) -> Authoriser:
-        return "agent" if self.via == "mcp" else "user"
+        return "user" if self.via == "web" else "agent"
 
 
 def send_scheduled(sessions: sessionmaker[Session], mailboxes: Mailboxes, scheduled_id: int) -> str:
@@ -130,6 +133,7 @@ def _take(sessions: sessionmaker[Session], scheduled_id: int) -> tuple[_Held, Ti
                 ScheduledSend.via,
                 ScheduledSend.client_id,
                 ScheduledSend.grant_id,
+                ScheduledSend.token_id,
             )
         ).one_or_none()
         db.commit()
@@ -144,6 +148,7 @@ def _take(sessions: sessionmaker[Session], scheduled_id: int) -> tuple[_Held, Ti
             cast("Via", taken.via),
             taken.client_id,
             taken.grant_id,
+            taken.token_id,
         )
         return held, time_zone_of(db, held.user_id)
 
@@ -153,7 +158,7 @@ class _Audit:
     record of a held send that ended before it did."""
 
     def __init__(self, sessions: sessionmaker[Session], held: _Held) -> None:
-        origin = Origin(held.via, held.client_id, held.grant_id)
+        origin = Origin(held.via, held.client_id, held.grant_id, held.token_id)
         self._trail = AuditTrail(sessions, held.user_id, origin, "send")
         self._held = held
         self.noted = False
@@ -183,7 +188,11 @@ class _Audit:
 def _reach(sessions: sessionmaker[Session], held: _Held) -> Reach:
     """How far the held send's app reaches now; the whole for the user's, and for an app without
     a grant of Mailroom's own (an external issuer's token). Raises ``GrantRefusal`` when it may no
-    longer go: its grant revoked, or ``mail_send`` or the account taken back from it."""
+    longer go: its grant or API token revoked (a token expired, too), or ``mail_send`` or the
+    account taken back from it."""
+    if held.token_id is not None:
+        with sessions() as db:
+            return token_reach(db, held.user_id, held.token_id, MAIL_SEND_GROUP, held.account_id)
     if held.grant_id is None:
         return WHOLE
     with sessions() as db:

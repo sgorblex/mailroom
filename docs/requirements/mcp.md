@@ -272,6 +272,8 @@ originals, the other deletes them for good, and says so as `folder_delete` does.
 `MAILROOM_MCP_AUTH` picks the mode. `/mcp` takes a bearer token only, never the session cookie;
 without a valid one it answers 401 with `WWW-Authenticate` pointing at the protected-resource
 metadata (RFC 9728). The token's subject is a Mailroom [user](../GLOSSARY.md).
+In every mode but `off` it also takes the users' [personal API tokens](../GLOSSARY.md), scoped as a
+grant is ([`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *Personal API tokens*).
 
 | Mode | Who issues tokens | |
 | --- | --- | --- |

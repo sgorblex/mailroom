@@ -26,6 +26,7 @@ from mailroom.api.csrf import CrossSiteRequestMiddleware
 from mailroom.api.deps import require_user
 from mailroom.api.refusals import http_refusal
 from mailroom.api.routes.accounts import accounts_router
+from mailroom.api.routes.api_tokens import api_tokens_router
 from mailroom.api.routes.audit import audit_router
 from mailroom.api.routes.auth import auth_router
 from mailroom.api.routes.filters import filters_router
@@ -52,8 +53,9 @@ from mailroom.mail.pool import MailPool
 from mailroom.mail.sends import SendRunner
 from mailroom.mail.service import HtmlViews, KeywordFailures, Quotas
 from mailroom.mcp.app import METADATA_PATH, McpEndpoint
+from mailroom.mcp.groups import TOOL_GROUPS_ENV, offered_groups
 from mailroom.mcp.settings import mcp_settings_from_env
-from mailroom.mcp.verifier import ExternalJwtVerifier, token_verifier
+from mailroom.mcp.verifier import ExternalJwtVerifier, PersonalTokenVerifier, token_verifier
 from mailroom.oauth.config import oauth_settings_from_env
 from mailroom.oauth.server import OAuthServer
 from mailroom.observability.http_request_logging import CorrelationLoggingMiddleware
@@ -222,6 +224,12 @@ async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
         verifier = token_verifier(
             mcp_settings.auth, builtin=application.state.oauth_server, external=external
         )
+    if verifier is not None and mcp_settings is not None:
+        verifier = PersonalTokenVerifier(
+            verifier,
+            resource=mcp_settings.resource,
+            session_maker=lambda: application.state.session_maker,
+        )
     mcp: McpEndpoint | None = application.state.mcp
     try:
         async with nullcontext() if mcp is None else mcp.running(mcp_settings, verifier):
@@ -297,6 +305,11 @@ def create_application(
     application.state.features = features
     application.state.public_url = public_url
     application.state.mcp_settings = mcp_settings
+    application.state.tool_groups = offered_groups(
+        None if mcp_settings is None else mcp_settings.groups,
+        features,
+        os.environ.get(TOOL_GROUPS_ENV),
+    )
     application.state.mcp_verifier = mcp_verifier
     application.state.mcp_oidc_transport = mcp_oidc_transport
     application.state.mail_events = None
@@ -359,6 +372,7 @@ def create_application(
     protected_v1 = APIRouter(prefix="/api/v1", dependencies=[Depends(require_user)])
     protected_v1.include_router(own_password_router)
     protected_v1.include_router(sessions_router)
+    protected_v1.include_router(api_tokens_router)
     protected_v1.include_router(users_router)
     protected_v1.include_router(instance_settings_router)
     protected_v1.include_router(accounts_router)

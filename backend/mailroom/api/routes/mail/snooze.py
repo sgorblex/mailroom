@@ -12,6 +12,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from mailroom.api.deps import Context, CurrentUser
 from mailroom.api.routes.mail._shared import Ref, mail_router
+from mailroom.api.token_access import open_to_tokens
 from mailroom.mail import service
 
 if TYPE_CHECKING:
@@ -55,15 +56,24 @@ class SnoozeList(BaseModel):
 
 
 @mail_router.post("/messages/{ref}/snooze", status_code=201)
+@open_to_tokens("mail_organize")
 def snooze_message(
     ref: Ref, request: SnoozeRequest, ctx: Context, user: CurrentUser
 ) -> SnoozeAnswer:
     return SnoozeAnswer.of(
-        service.snooze(ctx, user.id, ref, request.until, source_folder=request.source_folder)
+        service.snooze(
+            ctx,
+            user.id,
+            ref,
+            request.until,
+            source_folder=request.source_folder,
+            origin=ctx.origin,
+        )
     )
 
 
 @mail_router.get("/snoozes")
+@open_to_tokens("mail_organize")
 def list_snoozes(ctx: Context, user: CurrentUser) -> SnoozeList:
     """The user's snoozed messages, soonest back first."""
     listed = service.list_snoozes(ctx, user.id)
@@ -71,6 +81,7 @@ def list_snoozes(ctx: Context, user: CurrentUser) -> SnoozeList:
 
 
 @mail_router.post("/snoozes/{snooze_id}/wake")
+@open_to_tokens("mail_organize")
 def wake_snooze(snooze_id: SnoozeId, ctx: Context, user: CurrentUser) -> SnoozeAnswer:
     """Bring the snoozed message back now: the worker moves it, in a moment."""
-    return SnoozeAnswer.of(service.wake_now(ctx, user.id, snooze_id))
+    return SnoozeAnswer.of(service.wake_now(ctx, user.id, snooze_id, origin=ctx.origin))

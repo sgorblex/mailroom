@@ -24,6 +24,7 @@ from mailroom.api.routes.mail._shared import (
     Ref,
     mail_router,
 )
+from mailroom.api.token_access import open_to_tokens
 from mailroom.filters.drafts import MessageDraft, message_draft
 from mailroom.mail import remote_senders, sender_views, service, unsubscribe
 from mailroom.mail.print_page import printable_page
@@ -406,6 +407,7 @@ class MessageDetail(BaseModel):
 
 
 @mail_router.get("/accounts/{account_id}/messages")
+@open_to_tokens("mail_read")
 def messages(
     account_id: AccountId,
     ctx: Context,
@@ -425,6 +427,7 @@ def messages(
         cursor=cursor,
         subfolders=subfolders,
         group=group == "thread",
+        via=ctx.origin.via,
     )
     return MessagePage.of(page)
 
@@ -436,6 +439,7 @@ class SearchRequest(MatchRequest):
 
 
 @mail_router.post("/search")
+@open_to_tokens("mail_read")
 def search(request: SearchRequest, ctx: Context, user: CurrentUser) -> MessagePage:
     page = service.search(
         ctx,
@@ -447,11 +451,13 @@ def search(request: SearchRequest, ctx: Context, user: CurrentUser) -> MessagePa
         cursor=request.cursor,
         subfolders=request.subfolders,
         group=request.group == "thread",
+        via=ctx.origin.via,
     )
     return MessagePage.of(page)
 
 
 @mail_router.get("/messages/{ref}/thread")
+@open_to_tokens("mail_read")
 def thread(
     ref: Ref,
     ctx: Context,
@@ -460,10 +466,11 @@ def thread(
 ) -> MessagePage:
     """The conversation of the message ``ref`` names, newest first, read live: its folder and
     Sent (on Gmail, its thread in All Mail)."""
-    return MessagePage.of(service.thread(ctx, user.id, ref, limit=limit))
+    return MessagePage.of(service.thread(ctx, user.id, ref, limit=limit, via=ctx.origin.via))
 
 
 @mail_router.get("/messages/{ref}")
+@open_to_tokens("mail_read")
 def message(
     ref: Ref,
     ctx: Context,
@@ -479,6 +486,7 @@ def message(
         offset=offset,
         include_quoted=include_quoted,
         remote_check=True,
+        via=ctx.origin.via,
     )
     sender = remote_senders.verified_sender(view)
     trusted = sender is not None and remote_senders.remembered(db, user.id, sender)
@@ -548,11 +556,12 @@ def shows_remote(ctx: AppContext, db: Session, user_id: int, ref: str, remote: R
     the user remembers the message's verified sender now, whatever a read the client kept said."""
     if isinstance(remote, bool):
         return remote
-    sender = service.checked_sender(ctx, user_id, ref)
+    sender = service.checked_sender(ctx, user_id, ref, via=ctx.origin.via)
     return sender is not None and remote_senders.remembered(db, user_id, sender)
 
 
 @mail_router.get("/messages/{ref}/html", response_class=Response)
+@open_to_tokens("mail_read")
 def message_html(
     ref: Ref,
     ctx: Context,
@@ -566,7 +575,7 @@ def message_html(
     message adapted to a dark theme, its original colours one fragment away
     (``html_document``)."""
     shown = shows_remote(ctx, db, user.id, ref, remote)
-    safe = service.message_html(ctx, user.id, ref, remote=shown)
+    safe = service.message_html(ctx, user.id, ref, remote=shown, via=ctx.origin.via)
     return Response(
         content=html_document(
             safe.html,
@@ -580,13 +589,16 @@ def message_html(
 
 
 @mail_router.get("/messages/{ref}/html/check", status_code=204, response_class=Response)
+@open_to_tokens("mail_read")
 def message_html_check(
     ref: Ref, ctx: Context, db: DbSession, user: CurrentUser, remote: Remote = False
 ) -> Response:
     """204 when ``/html`` would answer the document, else its refusal, as JSON: the client asks
     this before it frames the document, so that a refusal is its own words, never the frame's.
     The view is kept (``service.message_html``), so the document then costs no second read."""
-    service.message_html(ctx, user.id, ref, remote=shows_remote(ctx, db, user.id, ref, remote))
+    service.message_html(
+        ctx, user.id, ref, remote=shows_remote(ctx, db, user.id, ref, remote), via=ctx.origin.via
+    )
     return Response(status_code=204)
 
 
@@ -612,6 +624,7 @@ def download_name(name: str | None, fallback: str) -> str:
 
 
 @mail_router.get("/messages/{ref}/parts/{part}", response_class=Response)
+@open_to_tokens("mail_read")
 def message_part(
     ref: Ref,
     part: Annotated[str, Path(pattern=_PART, max_length=64)],
@@ -620,7 +633,7 @@ def message_part(
 ) -> Response:
     """One attachment, inline part or the calendar part, transfer encoding decoded, as a
     download."""
-    attachment = service.attachment(ctx, user.id, ref, part)
+    attachment = service.attachment(ctx, user.id, ref, part, via=ctx.origin.via)
     filename = quote(download_name(attachment.name, f"attachment-{part}"), safe="")
     return Response(
         content=attachment.data,
@@ -634,9 +647,10 @@ def message_part(
 
 
 @mail_router.get("/messages/{ref}/source", response_class=Response)
+@open_to_tokens("mail_read")
 def message_source(ref: Ref, ctx: Context, user: CurrentUser) -> Response:
     """The whole message as stored, as a ``.eml`` download named after its subject."""
-    raw = service.message_source(ctx, user.id, ref)
+    raw = service.message_source(ctx, user.id, ref, via=ctx.origin.via)
     filename = quote(f"{download_name(raw.subject, 'message')}.eml", safe="")
     return Response(
         content=raw.source,

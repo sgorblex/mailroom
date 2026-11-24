@@ -297,7 +297,8 @@ What they are: [`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Editions*. Code:
 
 Specification: [`mcp.md`](mcp.md). Code: `mailroom.mcp`.
 
-- **`/mcp` takes a bearer token only**, never the session cookie, so a browser's ambient
+- **`/mcp` takes a bearer token only** (an OAuth access token, or a personal API token in every
+  mode: *Personal API tokens*), never the session cookie, so a browser's ambient
   credentials never reach it. The verifier maps a token to a user id (`AccessToken.subject`) and
   must have issued it for `{MAILROOM_PUBLIC_URL}/mcp`; every tool then goes through the service
   layer as that user. In external mode the token's `aud` stands for the resource: an
@@ -322,7 +323,7 @@ Specification: [`mcp.md`](mcp.md). Code: `mailroom.mcp`.
   (the mail pool's: the account's connections in use are cut, a `timeout` refusal; *Mail
   client* below).
 - **Logs:** one `mcp_tool_called` per call, with `tool`, `user_id`, `client_id`, `grant_id`,
-  `outcome` (`ok`, `refused`, `invalid_arguments`, `unknown_tool`, `failed`), `code`,
+  `token_id`, `outcome` (`ok`, `refused`, `invalid_arguments`, `unknown_tool`, `failed`), `code`,
   `duration_ms` and `argument_keys`: the arguments' names, never their values. Changes log as from
   the web app, with `via` `mcp`.
 
@@ -426,8 +427,8 @@ bounded to one minor because the server relies on its handlers.
   lifetime of `MAILROOM_SESSION_TTL_DAYS` (default 14), no sliding renewal; signing out deletes the
   row, and a login sweeps expired ones. Every route but health, readiness, version, login, logout
   (idempotent, so an expired tab can still sign out), `auth/me` (which answers `{"user": …, "features": […]}`) and
-  SSO's `auth/oidc/*` depends on `require_user` (`backend/mailroom/api/deps.py`) and answers 401 without a valid
-  session.
+  SSO's `auth/oidc/*` depends on `require_caller` (`backend/mailroom/api/deps.py`) and answers 401 without a valid
+  session, or a personal API token where the route is open to them (below).
 - **Sessions list** (`GET /api/v1/auth/sessions`, `DELETE …/{id}`, `POST …/end-others`; the cookie
   only, the user's own only; revision `202611241100`): each live session's `device`, `ip`,
   `created_at`, `last_seen_at`, `expires_at` and whether it is `current`, that one first. `device`
@@ -446,6 +447,7 @@ bounded to one minor because the server relies on its handlers.
   (403) a state-changing `/api/` request whose `Sec-Fetch-Site` is not `same-origin`, or, without
   that header, whose `Origin` names another host. Add a token only if the API ever serves another
   origin.
+  A personal API token changes nothing here: the check comes before, whoever the request speaks for.
 - **Login throttling:** after n consecutive failures a client waits 2^(n-1) s, capped at 15 min,
   before an attempt is even checked (429 with `Retry-After`); an attempt counts from the moment it
   is let through, so parallel guesses wait too, and a success resets it. A client is an IPv4
@@ -457,7 +459,10 @@ bounded to one minor because the server relies on its handlers.
   order first, so two admins removing each other at once leave one: there is always an admin. A
   reset ends all of that user's sessions, and is not for the admin's own password; removing a
   user deletes their sessions with them. A reset lets an admin sign in as that user, so it is
-  logged; a reset that the user must complete themselves is a later option, not a promise.
+  logged; a reset that the user must complete themselves is a later option, not a promise. With
+  `revoke_access` (false when absent; the web's form has it ticked) it also revokes all their API
+  tokens and their grants, in the same transaction (`mailroom.auth.app_access`), logged as each
+  is alone (an external issuer's tokens are not Mailroom's to revoke).
 - **Instance settings** (`GET`/`PUT /api/v1/admin/settings`, admins only, as above;
   `app.instance_setting`, revision `202611241000`): `audit_retention_days` (a JSON integer, 1-3650;
   until set, `MAILROOM_AUDIT_RETENTION_DAYS`, 90 without it) and `session_ip` (`none`, `partial`,
@@ -470,7 +475,7 @@ bounded to one minor because the server relies on its handlers.
   *Users* page's *Instance* section.
 - **Own password** (`POST /api/v1/auth/password`): needs the current one, checked through the
   login throttle (the same per-client counter as sign-in) so a borrowed session cannot guess it;
-  keeps this session and ends the others.
+  keeps this session and ends the others. `revoke_access` as in a reset, unticked in the web.
 - **Own time zone** (`PUT /api/v1/auth/me/time-zone`, `{"time_zone": "Europe/Rome"}`): any
   letter case, kept as the IANA name; an unknown zone is a 422, `null` unsets it. `auth/me`'s
   `user` carries it (`time_zone`, null until set). The MCP read tools, reply and forward quotes,
@@ -526,6 +531,46 @@ bounded to one minor because the server relies on its handlers.
   `password_change_failed`, `sso_refused` and `sso_failed` (with the
   `outcome`), `sso_not_linked`, `sso_identity_linked` (with `user_id` and `via`: `profile` or the
   link claim), `sso_identity_unlinked`; never a password, a token, or a username.
+
+### Personal API tokens
+
+Code: `mailroom.auth.api_tokens`, `mailroom.api.deps`, `mailroom.api.token_access`,
+`mailroom.mcp.verifier`.
+
+- **Token** (`app.api_token`, revision `202611241300`; deleted with its user): `mrt_<prefix>_<secret>`,
+  8 hex digits and 256 random bits. The row keeps the prefix, to show, and the whole only as its
+  SHA-256, with its name, `tool_groups`, `account_ids` and `send_ceiling` (as a grant's:
+  [`mcp.md`](mcp.md) — *Limits*), `last_used_at` (written at most once a minute) and `expires_at`
+  (null for never). Revoking deletes the row, so the next request is a 401; an expired one is a
+  401 too and stays listed until revoked. A removed account leaves the tokens narrowed to it, and
+  one left without any reaches none. Never logged.
+- **Managing** (`GET`/`POST /api/v1/me/api-tokens`, `DELETE …/{id}`; the cookie only, the user's
+  own only): a `POST` takes `name`, `groups` (checked as at consent, 400 `groups_not_approvable`),
+  `account_ids` and `send_ceiling` (400 `accounts_not_approvable`), and `expires_in_days` (30, 90,
+  365 or null), and answers the `token` that once. 50 per user (409 `too_many_tokens`). The groups
+  offered are those the MCP server serves or, with it off, those `MAILROOM_MCP_TOOL_GROUPS`
+  selects that the instance has REST routes for; one no longer offered is not held.
+- **On the REST API:** `Authorization: Bearer`, without the session cookie. Both at once is a 400
+  `two_credentials` rather than one quietly winning (other schemes' credentials are not read). A
+  route refuses every token (403 `token_not_accepted`) unless marked `open_to_tokens` with the
+  tool groups that open it, one of which the token must hold (403 `token_not_approved`): those
+  with an MCP counterpart, and reads and organize writes of the same kind; and cancelling a held send the same
+  token scheduled, any other being `not_found` to it (audited as `send_cancel`, refused
+  ones too once the worker has taken it). Closed, so the
+  cookie's only: password, profile settings, sessions, linked sign-ins, users, instance settings,
+  grants and consent, tokens; an account's settings, test, quota, signatures and vacation reply, and
+  the user's limits (a token could widen itself through them); the test send, one-click
+  unsubscribe, live updates, and what only serves the web's screens. A test lists the open routes,
+  so a new one is a decision.
+- **It acts as an agent, not as the user:** its reach narrows `AppContext` as a grant's does; the
+  send gate takes its sends as an agent's (the account's send mode and the ceiling apply, and
+  `confirm_resend` is ignored), whatever the route says; `/accounts` gives what `accounts_list`
+  does; filters change only on a disabled rule set, and enabling one takes `filters_run`. Its held send
+  keeps the token and fails once that is revoked or expired (`token_revoked`) or no longer allows it
+  (`not_approved`). Its records say `agent` with the `token_id`, named after it while it exists.
+  One `api_token_request` line per request: `user_id`, `token_id`, `outcome`.
+- **On `/mcp`**, in every mode: `PersonalTokenVerifier` takes a token of that form first and leaves
+  any other to the mode's own verifier; its `AccessToken` carries the claims a grant's does.
 
 ### Single sign-on
 
@@ -796,9 +841,10 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   clear, the subject's SHA-256, destination, flags, junk, removal, send mode and delivery stage,
   a deleted folder's confirmed message count, the count a folder's mark read marked, an
   account's match count on a refused bulk call, the rule sets and filters a rename changed) with
-  who acted (`user` on the web, `agent` with the MCP `client_id` and `grant_id`, or `filter`, a
+  who acted (`user` on the web, `agent` with the MCP `client_id` and `grant_id` or the personal API token's `token_id`, or `filter`, a
   real run, with its `rule_set_id` and `run_id`), the action (`move`, `move_to_account`,
-  `archive`, `junk`, `trash`, `flag`, `draft_save`, `draft_remove`, `send`, `folder_create`,
+  `archive`, `junk`, `trash`, `flag`, `draft_save`, `draft_remove`, `send`,
+  `send_cancel` (a token's cancel of its own held send: the draft's folder and UID), `folder_create`,
   `folder_rename`, `folder_delete`, `mark_folder_read`, `bulk_flag`, `bulk_move`, `bulk_trash`,
   `unsubscribe` (the list's id, the URL's host and the status it answered, never the URL),
   `mute` and `unmute` (the `muted_thread_id`; a mute's folder and UID), `snooze` (the move into
@@ -827,7 +873,7 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   layer or filters; `Cache-Control: private, no-store`) lists the user's own, newest first,
   `limit` (1-100, default 50) at a time with an opaque `cursor` (400 `invalid_cursor` for any
   other), filtered by `account_id`, `action`, `actor` and `result` (`failed`: every result but
-  `ok`, refusals included); each carries the connected app's name and the rule set's while they
+  `ok`, refusals included); each carries the connected app's or API token's name and the rule set's while they
   exist; the web's *Activity* page (`/activity`, with mail, MCP or filters) reads it. MCP's
   `audit_list` lists the same ([`mcp.md`](mcp.md)).
 

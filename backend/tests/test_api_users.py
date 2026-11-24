@@ -1,12 +1,24 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 import pytest
 
+from mailroom.auth.api_tokens import create_token, token_access
 from mailroom.auth.password import password_matches
 from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session, session_user
 from mailroom.mail import remote_senders, sender_views
+from mailroom.oauth.models import OAuthAuthorizationCode, OAuthClient
+from mailroom.oauth.tokens import (
+    create_grant_with_code,
+    issue_for_code,
+    secret_hash,
+    take_code,
+    verify_access_token,
+    verify_refresh_token,
+)
+from mailroom.reach import WHOLE
 from tests.conftest import ADMIN_USERNAME, PASSWORD, USERNAME
 
 if TYPE_CHECKING:
@@ -179,3 +191,86 @@ def test_a_short_new_password_changes_nothing(user_client: TestClient, user: Use
     # The current password was right, so the throttle holds nothing against this client.
     change = {"current_password": PASSWORD, "new_password": NEW_PASSWORD}
     assert user_client.post("/api/v1/auth/password", json=change).status_code == 204
+
+
+def _access(db: Session, user: User) -> tuple[str, dict[str, str], str]:
+    """An API token of the user's, and a connected app's tokens and unspent code."""
+    client_id = f"app-{user.username}"
+    db.add(OAuthClient(client_id=client_id, kind="dcr", redirect_uris=[], metadata_={}))
+    db.flush()
+
+    def code() -> str:
+        return create_grant_with_code(
+            db,
+            user_id=user.id,
+            client_id=client_id,
+            redirect_uri="https://app.example/cb",
+            redirect_uri_explicit=True,
+            code_challenge="x" * 43,
+            resource="https://mailroom.example/mcp",
+            scopes=["mailroom"],
+            tool_groups=["mail_read"],
+            reach=WHOLE,
+        )
+
+    spent = take_code(db, client_id, code())
+    assert spent is not None
+    issued = issue_for_code(db, spent.grant_id)
+    assert issued is not None
+    unspent = code()
+    db.commit()
+    _, raw = create_token(
+        db, user.id, name="x", tool_groups=["mail_read"], reach=WHOLE, expires_in=None
+    )
+    return raw, {"access": issued.access_token, "refresh": issued.refresh_token}, unspent
+
+
+def _works(db: Session, user: User, access: tuple[str, dict[str, str], str]) -> set[bool]:
+    raw, issued, unspent = access
+    client_id = f"app-{user.username}"
+    return {
+        token_access(db, raw) is not None,
+        verify_access_token(db, issued["access"]) is not None,
+        verify_refresh_token(db, client_id, issued["refresh"]) is not None,
+        db.get(OAuthAuthorizationCode, secret_hash(unspent), populate_existing=True) is not None,
+    }
+
+
+@pytest.mark.parametrize("revoke", [True, False, None])
+def test_a_reset_revokes_tokens_and_apps_only_when_asked(
+    admin_client: TestClient,
+    db_session: Session,
+    user: User,
+    admin: User,
+    revoke: bool | None,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    theirs, admins = _access(db_session, user), _access(db_session, admin)
+    body = {"password": NEW_PASSWORD} | ({} if revoke is None else {"revoke_access": revoke})
+    with caplog.at_level(logging.INFO):
+        reset = admin_client.post(f"/api/v1/users/{user.id}/password", json=body)
+    assert reset.status_code == 204
+    assert _works(db_session, user, theirs) == {not revoke}
+    assert _works(db_session, admin, admins) == {True}
+    assert caplog.messages.count("api_token_revoked") == (1 if revoke else 0)
+    assert caplog.messages.count("oauth_grant_revoked") == (2 if revoke else 0)
+
+
+@pytest.mark.parametrize("revoke", [True, False, None])
+def test_ones_own_change_revokes_tokens_and_apps_only_when_asked(
+    user_client: TestClient, db_session: Session, user: User, revoke: bool | None
+) -> None:
+    access = _access(db_session, user)
+    change = {"current_password": PASSWORD, "new_password": NEW_PASSWORD}
+    body = change | ({} if revoke is None else {"revoke_access": revoke})
+    assert user_client.post("/api/v1/auth/password", json=body).status_code == 204
+    assert _works(db_session, user, access) == {not revoke}
+
+
+def test_a_refused_password_revokes_nothing(
+    user_client: TestClient, db_session: Session, user: User
+) -> None:
+    access = _access(db_session, user)
+    body = {"current_password": PASSWORD, "new_password": "short", "revoke_access": True}
+    assert user_client.post("/api/v1/auth/password", json=body).status_code == 400
+    assert _works(db_session, user, access) == {True}

@@ -104,6 +104,7 @@ function UserRow({
   const { t } = useTranslation()
   const [mode, setMode] = useState<RowMode>('idle')
   const [password, setPassword] = useState('')
+  const [revokeAccess, setRevokeAccess] = useState(true)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -133,6 +134,7 @@ function UserRow({
     }
     setMode(next)
     setPassword('')
+    setRevokeAccess(true)
     setError(null)
     setNotice(null)
   }
@@ -160,7 +162,7 @@ function UserRow({
   function reset(event: SubmitEvent<HTMLFormElement>): void {
     event.preventDefault()
     void run(
-      () => resetPassword(user.id, password),
+      () => resetPassword(user.id, password, revokeAccess),
       () => {
         enter('idle')
         setNotice(t('users.passwordReset'))
@@ -225,6 +227,16 @@ function UserRow({
               setPassword(event.target.value)
             }}
           />
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={revokeAccess}
+              onChange={(event) => {
+                setRevokeAccess(event.target.checked)
+              }}
+            />
+            {t('users.revokeAccess')}
+          </label>
           <Button type="submit" size="sm" disabled={pending}>
             {t('users.save')}
           </Button>

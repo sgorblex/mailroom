@@ -11,6 +11,7 @@ from mailroom.api.deps import Context, CurrentUser
 from mailroom.api.routes.mail._shared import MatchRequest, mail_router
 from mailroom.api.routes.mail.organize import GroupOutcome
 from mailroom.api.routes.mail.read import SourceFailure
+from mailroom.api.token_access import open_to_tokens
 from mailroom.mail import service
 from mailroom_core.mail import BulkAction, BulkFlag, BulkMove, BulkTrash
 
@@ -74,6 +75,7 @@ class BulkAnswer(BaseModel):
 
 
 @mail_router.post("/messages/count")
+@open_to_tokens("mail_organize")
 def count(request: CountRequest, ctx: Context, user: CurrentUser) -> MatchCount:
     matching = service.count_matching(
         ctx,
@@ -83,6 +85,7 @@ def count(request: CountRequest, ctx: Context, user: CurrentUser) -> MatchCount:
         request.query(),
         subfolders=request.subfolders,
         action=None if request.action is None else _action(request.action),
+        via=ctx.origin.via,
     )
     return MatchCount(
         total=matching.total,
@@ -91,6 +94,7 @@ def count(request: CountRequest, ctx: Context, user: CurrentUser) -> MatchCount:
 
 
 @mail_router.post("/messages/bulk")
+@open_to_tokens("mail_organize")
 def bulk(request: BulkRequest, ctx: Context, user: CurrentUser) -> BulkAnswer:
     result = service.act_on_matching(
         ctx,
@@ -101,6 +105,7 @@ def bulk(request: BulkRequest, ctx: Context, user: CurrentUser) -> BulkAnswer:
         _action(request.action),
         expected=request.expected,
         subfolders=request.subfolders,
+        origin=ctx.origin,
     )
     return BulkAnswer(
         done=result.done,

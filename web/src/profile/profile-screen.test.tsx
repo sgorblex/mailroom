@@ -18,7 +18,7 @@ const SESSIONS_PATH = '/api/v1/auth/sessions'
 const TEXT_SENDERS_PATH = '/api/v1/mail/sender-views'
 
 /**
- * Anything but the password change: the default limits, no connected apps (the MCP server off),
+ * Anything but the password change: the default limits, no connected apps (the MCP server off), no API tokens to make,
  * this browser's session alone, no remote content senders, no accounts to index or notify on, and nothing else found (the linked sign-ins section's requests).
  */
 function otherSections(path: string): Promise<Response> {
@@ -44,6 +44,9 @@ function otherSections(path: string): Promise<Response> {
   }
   if (path === '/api/v1/oauth/grants') {
     return Promise.resolve(new Response('{"auth":"off","grants":[],"groups":[]}', { status: 200 }))
+  }
+  if (path === '/api/v1/me/api-tokens') {
+    return Promise.resolve(new Response('{"tokens":[],"groups":[],"accounts":[]}', { status: 200 }))
   }
   return Promise.resolve(new Response('{"detail":"Not Found"}', { status: 404 }))
 }
@@ -204,12 +207,47 @@ describe('ProfileScreen', () => {
       PASSWORD_PATH,
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ current_password: CURRENT, new_password: NEXT }),
+        body: JSON.stringify({
+          current_password: CURRENT,
+          new_password: NEXT,
+          revoke_access: false,
+        }),
       }),
     )
     // The other sessions were signed out: list what is left.
     await vi.waitFor(() => {
       expect(fetchMock.mock.calls.filter(([path]) => path === SESSIONS_PATH)).toHaveLength(2)
+    })
+  })
+
+  it('revokes API tokens and connected apps too when asked, and lists them again', async () => {
+    const fetchMock = stubApi()
+    renderSignedIn(<ProfileScreen />, ALICE)
+    const listed = (): number =>
+      fetchMock.mock.calls.filter(([path]) => path === '/api/v1/me/api-tokens').length
+    await vi.waitFor(() => {
+      expect(listed()).toBe(1)
+    })
+    const revoke = await screen.findByRole('checkbox', {
+      name: 'Revoke API tokens and connected apps too',
+    })
+    expect(revoke).not.toBeChecked()
+    await userEvent.click(revoke)
+    await fill(CURRENT, NEXT, NEXT)
+    expect(await screen.findByRole('status')).toHaveTextContent('Password changed.')
+    expect(fetchMock).toHaveBeenCalledWith(
+      PASSWORD_PATH,
+      expect.objectContaining({
+        body: JSON.stringify({
+          current_password: CURRENT,
+          new_password: NEXT,
+          revoke_access: true,
+        }),
+      }),
+    )
+    expect(revoke).not.toBeChecked()
+    await vi.waitFor(() => {
+      expect(listed()).toBe(2)
     })
   })
 
@@ -255,7 +293,7 @@ describe('ProfileScreen', () => {
   it.each([
     { features: ['mail' as const, 'mcp' as const], groups: ['Account', 'Appearance', 'Mail', 'Sending', 'Apps'] },
     { features: ['mcp' as const], groups: ['Account', 'Appearance', 'Sending', 'Apps'] },
-    { features: ['filters' as const], groups: ['Account', 'Appearance'] },
+    { features: ['filters' as const], groups: ['Account', 'Appearance', 'Apps'] },
   ])('lists the groups the instance offers in the section nav ($features)', async ({ features, groups }) => {
     stubApi()
     renderSignedIn(<ProfileScreen />, ALICE, features)
@@ -337,14 +375,16 @@ describe('ProfileScreen', () => {
   it('says a group has nothing to set only once its sections have loaded with nothing', async () => {
     stubApi()
     renderSignedIn(<ProfileScreen />, ALICE, ['mcp'])
-    // Connected apps is still asking: its card is not empty, so neither is the group.
+    // Both are still asking: their cards are not empty, so neither is the group.
     expect(screen.getByText('Loading your connected apps…')).toBeInTheDocument()
-    expect(appsGroup().filled).toBe(1)
+    expect(screen.getByText('Loading your API tokens…')).toBeInTheDocument()
+    expect(appsGroup().filled).toBe(2)
     expect(appsGroup().empty).toBeInTheDocument()
     await vi.waitFor(() => {
       expect(screen.queryByText('Loading your connected apps…')).not.toBeInTheDocument()
+      expect(screen.queryByText('Loading your API tokens…')).not.toBeInTheDocument()
     })
-    // The MCP server off and nothing connected: the card renders nothing and the line stands alone.
+    // The MCP server off and nothing connected: the cards render nothing and the line stands alone.
     expect(appsGroup().filled).toBe(0)
     expect(appsGroup().empty.matches('.profile-card:not(:empty) ~ p')).toBe(false)
   })

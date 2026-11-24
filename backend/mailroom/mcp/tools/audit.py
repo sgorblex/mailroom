@@ -37,7 +37,8 @@ class AuditListArguments(Arguments):
         ),
     )
     actor: Literal["user", "agent", "filter"] | None = Field(
-        default=None, description="user (the web), agent (MCP) or filter (a rule set's run)."
+        default=None,
+        description="user (the web), agent (an app or API token) or filter (a rule set's run).",
     )
     result: str | None = Field(
         default=None,

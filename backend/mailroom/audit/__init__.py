@@ -34,22 +34,30 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 Actor = Literal["user", "agent", "filter"]
-"""Who acted: the user on the web, an agent through MCP, or a rule set's run."""
+"""Who acted: the user on the web, an agent (through MCP or a personal API token), or a rule
+set's run."""
 
 _PURGE_EVERY_SECONDS: Final = 3600.0
 
 
 @dataclass(frozen=True, slots=True)
 class Origin:
-    """Where a write came from: the web, or MCP with the connected app and grant that called."""
+    """Where a write came from: the web; MCP with the connected app and grant that called; or MCP
+    or the REST API (``api``) with the personal API token."""
 
     via: Via = "web"
     client_id: str | None = None
     grant_id: str | None = None
+    token_id: int | None = None
 
     @property
-    def actor(self) -> Actor:
-        return "agent" if self.via == "mcp" else "user"
+    def actor(self) -> Literal["user", "agent"]:
+        return "user" if self.via == "web" else "agent"
+
+    @property
+    def agent(self) -> bool:
+        """Not the user at the web: what only the user may do is not its to do."""
+        return self.actor == "agent"
 
 
 WEB: Final = Origin()
@@ -68,6 +76,7 @@ class Entry:
     detail: dict[str, Any]
     client_id: str | None = None
     grant_id: str | None = None
+    token_id: int | None = None
     rule_set_id: int | None = None
     run_id: int | None = None
 
@@ -167,6 +176,7 @@ def _row(user_id: int, entry: Entry) -> dict[str, Any]:
         "actor": entry.actor,
         "client_id": entry.client_id,
         "grant_id": entry.grant_id,
+        "token_id": entry.token_id,
         "rule_set_id": entry.rule_set_id,
         "run_id": entry.run_id,
         "action": entry.action,
@@ -210,6 +220,7 @@ class AuditTrail:
             detail=detail,
             client_id=self.origin.client_id,
             grant_id=self.origin.grant_id,
+            token_id=self.origin.token_id,
         )
 
 

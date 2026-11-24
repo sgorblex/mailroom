@@ -9,12 +9,20 @@ from datetime import date
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from mailroom.accounts import service
 from mailroom.accounts.autoconfig import Autoconfig, AutoconfigAnswer, address_domain
-from mailroom.accounts.service import ListedAccount, StoredAccount, StoredEndpoint, StoredIdentity
+from mailroom.accounts.service import (
+    AGENT_ACCOUNT_FIELDS,
+    ListedAccount,
+    StoredAccount,
+    StoredEndpoint,
+    StoredIdentity,
+)
 from mailroom.api.deps import AccountId, Context, CurrentUser, DbSession
+from mailroom.api.token_access import ACCOUNT_GROUPS, open_to_tokens
 from mailroom.errors import Refusal
 from mailroom.mail import service as mail
 from mailroom.mail import signatures, vacation
@@ -163,14 +171,21 @@ def _fields(body: AccountFields) -> dict[str, Json]:
     return fields
 
 
-@accounts_router.get("")
-def accounts(ctx: Context, db: DbSession, user: CurrentUser) -> list[ListedAccount]:
+@accounts_router.get("", response_model=list[ListedAccount])
+@open_to_tokens(*ACCOUNT_GROUPS)
+def accounts(ctx: Context, db: DbSession, user: CurrentUser) -> list[ListedAccount] | JSONResponse:
     """The user's accounts, without logging in to any of them: ``keywords`` is null, asked of the
-    servers by ``/accounts/keywords``."""
-    return service.listed_accounts(ctx, db, user.id)
+    servers by ``/accounts/keywords``. A token gets what MCP's ``accounts_list`` gives of each."""
+    listed = service.listed_accounts(ctx, db, user.id)
+    if ctx.origin.agent:
+        return JSONResponse(
+            [a.model_dump(mode="json", include=AGENT_ACCOUNT_FIELDS) for a in listed]
+        )
+    return listed
 
 
 @accounts_router.get("/keywords")
+@open_to_tokens(*ACCOUNT_GROUPS)
 def accounts_keywords(ctx: Context, user: CurrentUser) -> list[AccountKeywords]:
     """Whether each of the user's accounts keeps keywords, in the accounts' order: asked of its
     server (kept while the user's connections last), a few seconds at most."""

@@ -12,8 +12,9 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Path, Query
 from pydantic import BaseModel, Field
 
-from mailroom.api.deps import AccountId, Context, CurrentUser, DbSession
+from mailroom.api.deps import AccountId, Context, CurrentCaller, CurrentUser, DbSession
 from mailroom.api.routes.mail._shared import MatchRequest
+from mailroom.api.token_access import ACCOUNT_GROUPS, open_to_tokens
 from mailroom.filters import service
 from mailroom.filters.drafts import SearchDraft, search_draft
 from mailroom.filters.service import (
@@ -57,6 +58,7 @@ class FilterOrder(BaseModel):
 
 
 @filters_router.get("/filters/schema")
+@open_to_tokens("filters_read")
 def filter_schema() -> dict[str, Any]:
     """The JSON Schema (draft 2020-12) of a filter spec a user writes (``offered_schema``)."""
     return offered_schema()
@@ -70,11 +72,13 @@ def draft_from_search(body: MatchRequest, _user: CurrentUser) -> SearchDraft:
 
 
 @filters_router.get("/accounts/{account_id}/folders")
+@open_to_tokens(*ACCOUNT_GROUPS)
 def folders(account_id: AccountId, ctx: Context, user: CurrentUser) -> list[Folder]:
     return [Folder(path=path) for path in service.account_folders(ctx, user.id, account_id)]
 
 
 @filters_router.get("/accounts/{account_id}/filter-settings")
+@open_to_tokens("filters_read")
 def filter_settings(
     account_id: AccountId, ctx: Context, db: DbSession, user: CurrentUser
 ) -> FilterSettings:
@@ -82,14 +86,18 @@ def filter_settings(
 
 
 @filters_router.put("/accounts/{account_id}/filter-settings")
+@open_to_tokens("filters_run")
 def change_filter_settings(
     account_id: AccountId, body: FilterSettings, ctx: Context, db: DbSession, user: CurrentUser
 ) -> FilterSettings:
-    on = service.set_run_filters(ctx, db, user.id, account_id, on=body.run_filters)
+    on = service.set_run_filters(
+        ctx, db, user.id, account_id, on=body.run_filters, via=ctx.origin.via
+    )
     return FilterSettings(run_filters=on)
 
 
 @filters_router.get("/accounts/{account_id}/rule-sets")
+@open_to_tokens("filters_read")
 def rule_sets(
     account_id: Accounts, ctx: Context, db: DbSession, user: CurrentUser
 ) -> list[RuleSetOut]:
@@ -98,14 +106,24 @@ def rule_sets(
 
 
 @filters_router.post("/accounts/{account_id}/rule-sets", status_code=201)
+@open_to_tokens("filters_write")
 def add_rule_set(
-    account_id: Accounts, body: RuleSetFields, ctx: Context, db: DbSession, user: CurrentUser
+    account_id: Accounts,
+    body: RuleSetFields,
+    ctx: Context,
+    db: DbSession,
+    user: CurrentUser,
+    caller: CurrentCaller,
 ) -> RuleSetDetail:
-    """``all``: a rule set on INBOX of every account whose Run filters is on."""
-    return service.add_rule_set(ctx, db, user.id, account_id, body)
+    """``all``: a rule set on INBOX of every account whose Run filters is on. One made enabled
+    takes ``filters_run`` too from a token."""
+    if body.enabled:
+        caller.require("filters_run")
+    return service.add_rule_set(ctx, db, user.id, account_id, body, via=ctx.origin.via)
 
 
 @filters_router.get("/rule-sets/{rule_set_id}")
+@open_to_tokens("filters_read")
 def rule_set_detail(
     rule_set_id: RowId, ctx: Context, db: DbSession, user: CurrentUser
 ) -> RuleSetDetail:
@@ -113,44 +131,87 @@ def rule_set_detail(
 
 
 @filters_router.patch("/rule-sets/{rule_set_id}")
+@open_to_tokens("filters_write", "filters_run")
 def change_rule_set(
-    rule_set_id: RowId, body: RuleSetPatch, ctx: Context, db: DbSession, user: CurrentUser
+    rule_set_id: RowId,
+    body: RuleSetPatch,
+    ctx: Context,
+    db: DbSession,
+    user: CurrentUser,
+    caller: CurrentCaller,
 ) -> RuleSetOut:
-    return service.change_rule_set(ctx, db, user.id, rule_set_id, body)
+    """From a token as from an agent on MCP: turning it on takes ``filters_run``, anything else
+    ``filters_write``, and a change past the switch only on a disabled one."""
+    edits = body.model_fields_set - {"enabled"}
+    if body.enabled:
+        caller.require("filters_run")
+    if edits or not body.enabled:
+        caller.require("filters_write")
+    return service.change_rule_set(
+        ctx,
+        db,
+        user.id,
+        rule_set_id,
+        body,
+        disabled_only=ctx.origin.agent and bool(edits),
+        via=ctx.origin.via,
+    )
 
 
 @filters_router.delete("/rule-sets/{rule_set_id}", status_code=204)
+@open_to_tokens("filters_write")
 def delete_rule_set(rule_set_id: RowId, ctx: Context, db: DbSession, user: CurrentUser) -> None:
-    service.remove_rule_set(ctx, db, user.id, rule_set_id)
+    service.remove_rule_set(
+        ctx, db, user.id, rule_set_id, via=ctx.origin.via, disabled_only=ctx.origin.agent
+    )
 
 
 @filters_router.post("/rule-sets/{rule_set_id}/filters", status_code=201)
+@open_to_tokens("filters_write")
 def add_filter(
     rule_set_id: RowId, body: FilterFields, ctx: Context, db: DbSession, user: CurrentUser
 ) -> FilterOut:
-    return service.add_filter(ctx, db, user.id, rule_set_id, body)
+    return service.add_filter(
+        ctx, db, user.id, rule_set_id, body, via=ctx.origin.via, disabled_only=ctx.origin.agent
+    )
 
 
 @filters_router.patch("/filters/{filter_id}")
+@open_to_tokens("filters_write")
 def change_filter(
     filter_id: RowId, body: FilterPatch, ctx: Context, db: DbSession, user: CurrentUser
 ) -> FilterOut:
-    return service.change_filter(ctx, db, user.id, filter_id, body)
+    return service.change_filter(
+        ctx, db, user.id, filter_id, body, via=ctx.origin.via, disabled_only=ctx.origin.agent
+    )
 
 
 @filters_router.delete("/filters/{filter_id}", status_code=204)
+@open_to_tokens("filters_write")
 def delete_filter(filter_id: RowId, ctx: Context, db: DbSession, user: CurrentUser) -> None:
-    service.remove_filter(ctx, db, user.id, filter_id)
+    service.remove_filter(
+        ctx, db, user.id, filter_id, via=ctx.origin.via, disabled_only=ctx.origin.agent
+    )
 
 
 @filters_router.put("/rule-sets/{rule_set_id}/order")
+@open_to_tokens("filters_write")
 def reorder_filters(
     rule_set_id: RowId, body: FilterOrder, ctx: Context, db: DbSession, user: CurrentUser
 ) -> list[FilterOut]:
-    return service.reorder_filters(ctx, db, user.id, rule_set_id, body.filter_ids)
+    return service.reorder_filters(
+        ctx,
+        db,
+        user.id,
+        rule_set_id,
+        body.filter_ids,
+        via=ctx.origin.via,
+        disabled_only=ctx.origin.agent,
+    )
 
 
 @filters_router.post("/rule-sets/{rule_set_id}/dry-run")
+@open_to_tokens("filters_run")
 def dry_run_rule_set(
     rule_set_id: RowId,
     ctx: Context,
@@ -162,10 +223,11 @@ def dry_run_rule_set(
     joins the history. A rule set for all accounts needs ``account_id``. Mailbox failures answer
     as a folder listing does, 504 on time out; one dry run per user at a time (429
     ``dry_run_busy``, not recorded)."""
-    return service.dry_run(ctx, db, user.id, rule_set_id, account_id)
+    return service.dry_run(ctx, db, user.id, rule_set_id, account_id, via=ctx.origin.via)
 
 
 @filters_router.post("/rule-sets/{rule_set_id}/run", status_code=202)
+@open_to_tokens("filters_run")
 def run_rule_set_now(
     rule_set_id: RowId,
     ctx: Context,
@@ -176,10 +238,11 @@ def run_rule_set_now(
     """Queue a run for the worker: the run queued; for a rule set for all accounts the list of
     the runs queued, one per account without ``account_id``. Refused while the account's Run
     filters is off, for a disabled rule set, and while a run of it is already waiting."""
-    return service.run_now(ctx, db, user.id, rule_set_id, account_id)
+    return service.run_now(ctx, db, user.id, rule_set_id, account_id, via=ctx.origin.via)
 
 
 @filters_router.get("/rule-sets/{rule_set_id}/runs")
+@open_to_tokens("filters_read")
 def rule_set_runs(
     rule_set_id: RowId,
     ctx: Context,

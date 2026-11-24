@@ -22,6 +22,7 @@ def log_tool_call(
     user_id: int | None,
     client_id: str | None,
     grant_id: str | None,
+    token_id: int | None = None,
     argument_keys: Iterable[str],
     outcome: Outcome,
     code: str | None,
@@ -39,6 +40,8 @@ def log_tool_call(
         "duration_ms": round(duration_ms, 1),
         "via": "mcp",
     }
+    if token_id is not None:
+        extra["token_id"] = token_id
     if code is not None:
         extra["code"] = code
     logger.log(logging.ERROR if outcome == "failed" else logging.INFO, event, extra=extra)

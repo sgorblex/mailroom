@@ -141,6 +141,22 @@ def selected_groups(raw: str | None, features: Features = ALL_FEATURES) -> tuple
     return tuple(group for group in GROUPS if group.name in wanted)
 
 
+def offered_groups(
+    running: Sequence[ToolGroup] | None, features: Features, raw: str | None
+) -> tuple[ToolGroup, ...]:
+    """The groups a personal API token can hold: those the MCP server serves (``running``); with
+    it off (None), those ``raw`` selects that the REST API has routes for."""
+    if running is not None:
+        return tuple(running)
+    return tuple(
+        group
+        for group in selected_groups(raw, features)
+        if group.needs is not None
+        or features.mail
+        or (group.name == "audit_read" and (features.mail_layer or features.filters))
+    )
+
+
 def group_names(groups: Sequence[ToolGroup]) -> list[str]:
     """The names of ``groups``, in their order (for logs)."""
     return [group.name for group in groups]

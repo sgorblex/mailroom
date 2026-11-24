@@ -1,5 +1,6 @@
 """How far a caller reaches within its user's Mailroom: which of the user's accounts, and how far
-it may send. The user on the web has the whole reach; a connected app what its grant gives it.
+it may send. The user on the web has the whole reach; a connected app what its grant gives it, a
+personal API token what it was made with.
 
 An ``AppContext`` carries it (``AppContext.within``), and what the services read of the accounts
 comes through ``AppContext.accounts``, cut to it: an account outside it is as one that is not the
@@ -40,6 +41,11 @@ class Reach:
     def narrowed(self) -> bool:
         """Whether it leaves accounts out: the rule sets for all accounts are then beyond it."""
         return self.accounts is not None
+
+    @property
+    def account_ids(self) -> list[int] | None:
+        """``accounts`` as a grant or a token keeps them."""
+        return None if self.accounts is None else sorted(self.accounts)
 
     def includes(self, account_id: int | None) -> bool:
         return self.accounts is None or account_id in self.accounts

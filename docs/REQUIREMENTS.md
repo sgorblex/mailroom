@@ -35,7 +35,8 @@ menu) shows the health check through the Vite proxy. Engineering baseline:
   is shared. An [admin](GLOSSARY.md) adds and removes users and resets their passwords on the
   *Users* page (the first admin comes from `mise run create-user <name> --admin`), and changes the
   [instance settings](GLOSSARY.md) in its *Instance* section; there is no public
-  sign-up. Every user changes their own password on their *Profile* page.
+  sign-up. Every user changes their own password on their *Profile* page. Either can revoke the
+  user's API tokens and connected apps too.
 - **Sessions.** Each user sees on their *Profile* page the browsers they are signed in on (browser
   and system, when last seen and signed in, the IP address as far as the instance's setting goes,
   and which one is this device), and signs out one or every other one.
@@ -81,7 +82,7 @@ menu) shows the health check through the Vite proxy. Engineering baseline:
   banded in amber); it still needs the server, nothing works offline.
 - **Profile.** The *Profile* page groups its settings as Account (password, time zone, linked
   sign-ins), Appearance, Mail, Sending (Undo send, signatures, vacation reply, limits) and Apps
-  (connected apps), each group only where the instance has its settings, with a nav to them that
+  (connected apps, API tokens), each group only where the instance has its settings, with a nav to them that
   marks the one in view; a link names a group as `/profile#<group>`.
 - **Home.** The web opens on a summary of the user's mail and filters: unread mail per account
   inbox and in all, what waits on them (starred, To sort, snoozed coming back today, scheduled
@@ -176,7 +177,8 @@ features.
 - **Turning a feature off keeps its data.** Rule sets, and runs already queued, wait until
   `filters` is back. Connected apps cannot be revoked while `mcp` is off, and their unexpired
   grants work again when it comes back: revoke them first. (`MAILROOM_MCP_AUTH=off` with `mcp`
-  on turns off only `/mcp`; connected apps can still be revoked.)
+  on turns off only `/mcp`; connected apps can still be revoked.) Personal API tokens are listed
+  and revoked on every instance, and work on the REST routes it has.
 
 How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md) —
 *Editions*.
@@ -276,6 +278,11 @@ authorization server with its `/connect` consent screen, connected apps on the p
   then approve the client; or, on the instance's say-so, through SSO only, for every connection),
   or tokens from an external issuer such as Authentik; each approval is
   a [connected app](GLOSSARY.md) the user can revoke.
+- **Personal API tokens:** a user makes a [token](GLOSSARY.md) on their profile for a script or a
+  command-line client, with the tool groups, accounts and send ceiling an app would get, and an
+  expiry if they like; it is shown once and revoked there. It works on the REST API, where it
+  reaches what the tool groups cover, and on `/mcp`; account settings, sign-in, users, sessions
+  and tokens themselves are the signed-in user's only.
 - **Web SSO** over OIDC for users an admin created, through a [linked sign-in](GLOSSARY.md);
   nobody signs up through it.
 
@@ -285,7 +292,7 @@ authorization server with its `/connect` consent screen, connected apps on the p
 
 - Every write to a user's mail leaves an [audit record](GLOSSARY.md) per message: a move,
   archive, trash, flag, draft or send from the web or an agent, and what a filter run did,
-  refused attempts included; a move to another account leaves one in each account. It says who acted (the user, an agent and its connected app, or a
+  refused attempts included; a move to another account leaves one in each account. It says who acted (the user, an agent and its connected app or API token, or a
   rule set), what, and how it ended; never a subject or a body. The web's draft saves are left
   out, being the user typing.
 - Records outlive a removed account, go with their user, and are kept 90 days unless the instance says otherwise.

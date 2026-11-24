@@ -18,7 +18,7 @@ from mailroom.oauth.config import ACCESS_TOKEN_TTL, CODE_TTL, REFRESH_TOKEN_TTL
 from mailroom.oauth.models import OAuthAuthorizationCode, OAuthGrant, OAuthToken
 
 if TYPE_CHECKING:
-    from collections.abc import Collection
+    from collections.abc import Callable, Collection
 
     from sqlalchemy.orm import Session
 
@@ -90,10 +90,6 @@ def sweep_expired(db: Session, now: datetime) -> None:
     )
 
 
-def _kept_accounts(reach: Reach) -> list[int] | None:
-    return None if reach.accounts is None else sorted(reach.accounts)
-
-
 def create_grant_with_code(
     db: Session,
     *,
@@ -117,7 +113,7 @@ def create_grant_with_code(
         resource=resource,
         scopes=scopes,
         tool_groups=tool_groups,
-        account_ids=_kept_accounts(reach),
+        account_ids=reach.account_ids,
         send_ceiling=reach.ceiling,
     )
     db.add(grant)
@@ -355,16 +351,36 @@ def revoke_grant(db: Session, grant_id: int, *, user_id: int | None = None) -> b
     db.commit()
     if gone is None:
         return False
+    _log_revoked(gone.user_id, gone.client_id, grant_id)
+    return True
+
+
+def delete_user_grants(db: Session, user_id: int) -> Callable[[], None]:
+    """Delete every grant of the user, with its codes and tokens. Leaves the commit to the caller
+    (``mailroom.auth.app_access.revoke_app_access``), and returns what logs it."""
+    gone = db.execute(
+        delete(OAuthGrant)
+        .where(OAuthGrant.user_id == user_id)
+        .returning(OAuthGrant.id, OAuthGrant.client_id)
+    ).all()
+
+    def log() -> None:
+        for grant_id, client_id in gone:
+            _log_revoked(user_id, client_id, grant_id)
+
+    return log
+
+
+def _log_revoked(user_id: int, client_id: str, grant_id: int) -> None:
     logger.info(
         "oauth_grant_revoked",
         extra={
             "event": "oauth_grant_revoked",
-            "user_id": gone.user_id,
-            "client_id": gone.client_id,
+            "user_id": user_id,
+            "client_id": client_id,
             "grant_id": grant_id,
         },
     )
-    return True
 
 
 def set_grant_groups(
@@ -403,7 +419,7 @@ def set_grant_reach(db: Session, grant_id: int, user_id: int, reach: Reach) -> b
     if grant is None or grant.user_id != user_id:
         db.rollback()
         return False
-    grant.account_ids = _kept_accounts(reach)
+    grant.account_ids = reach.account_ids
     grant.send_ceiling = reach.ceiling
     db.commit()
     logger.info(

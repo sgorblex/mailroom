@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from mailroom.api.deps import Context, CurrentUser
 from mailroom.api.routes.mail._shared import BatchRef, mail_router
+from mailroom.api.token_access import open_to_tokens
 from mailroom.errors import mail_refusal
 from mailroom.mail import service
 from mailroom_core.config import MAX_SAFE_INTEGER
@@ -124,6 +125,7 @@ def organize_answer(result: OrganizeResult, *, copies_answer: bool = False) -> O
 
 
 @mail_router.post("/messages/move")
+@open_to_tokens("mail_organize")
 def move(request: MoveRequest, ctx: Context, user: CurrentUser) -> OrganizeAnswer:
     return organize_answer(
         service.move(
@@ -133,23 +135,32 @@ def move(request: MoveRequest, ctx: Context, user: CurrentUser) -> OrganizeAnswe
             request.folder,
             source_folder=request.source_folder,
             source_folders=request.source_folders,
+            origin=ctx.origin,
         )
     )
 
 
 @mail_router.post("/messages/move-to-account")
+@open_to_tokens("mail_transfer")
 def move_to_account(
     request: MoveToAccountRequest, ctx: Context, user: CurrentUser
 ) -> OrganizeAnswer:
     return organize_answer(
         service.move_to_account(
-            ctx, user.id, request.refs, request.account, request.folder, request.removal
+            ctx,
+            user.id,
+            request.refs,
+            request.account,
+            request.folder,
+            request.removal,
+            origin=ctx.origin,
         ),
         copies_answer=True,
     )
 
 
 @mail_router.post("/messages/archive")
+@open_to_tokens("mail_organize")
 def archive(request: ViewRefsRequest, ctx: Context, user: CurrentUser) -> OrganizeAnswer:
     return organize_answer(
         service.archive(
@@ -158,11 +169,13 @@ def archive(request: ViewRefsRequest, ctx: Context, user: CurrentUser) -> Organi
             request.refs,
             source_folder=request.source_folder,
             source_folders=request.source_folders,
+            origin=ctx.origin,
         )
     )
 
 
 @mail_router.post("/messages/junk")
+@open_to_tokens("mail_organize")
 def junk(request: ViewRefsRequest, ctx: Context, user: CurrentUser) -> OrganizeAnswer:
     return organize_answer(
         service.junk(
@@ -171,11 +184,13 @@ def junk(request: ViewRefsRequest, ctx: Context, user: CurrentUser) -> OrganizeA
             request.refs,
             source_folder=request.source_folder,
             source_folders=request.source_folders,
+            origin=ctx.origin,
         )
     )
 
 
 @mail_router.post("/messages/trash")
+@open_to_tokens("mail_organize")
 def trash(request: ViewRefsRequest, ctx: Context, user: CurrentUser) -> OrganizeAnswer:
     return organize_answer(
         service.trash(
@@ -184,11 +199,13 @@ def trash(request: ViewRefsRequest, ctx: Context, user: CurrentUser) -> Organize
             request.refs,
             source_folder=request.source_folder,
             source_folders=request.source_folders,
+            origin=ctx.origin,
         )
     )
 
 
 @mail_router.post("/messages/flag")
+@open_to_tokens("mail_organize")
 def flag(request: FlagRequest, ctx: Context, user: CurrentUser) -> OrganizeAnswer:
     return organize_answer(
         service.flag(
@@ -198,5 +215,6 @@ def flag(request: FlagRequest, ctx: Context, user: CurrentUser) -> OrganizeAnswe
             seen=request.seen,
             flagged=request.flagged,
             to_sort=request.to_sort,
+            origin=ctx.origin,
         )
     )

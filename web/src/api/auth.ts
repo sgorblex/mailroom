@@ -87,11 +87,16 @@ export function logout(): Promise<null> {
   return apiPostJson('/api/v1/auth/logout')
 }
 
-/** Keeps this session and ends the others. */
-export function changePassword(currentPassword: string, newPassword: string): Promise<null> {
+/** Keeps this session and ends the others, the API tokens and connected apps too if `revokeAccess`. */
+export function changePassword(
+  currentPassword: string,
+  newPassword: string,
+  revokeAccess: boolean,
+): Promise<null> {
   return apiPostJson('/api/v1/auth/password', {
     current_password: currentPassword,
     new_password: newPassword,
+    revoke_access: revokeAccess,
   })
 }
 

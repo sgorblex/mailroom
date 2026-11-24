@@ -16,6 +16,7 @@ export const MAIL_ACTIONS = [
   'draft_save',
   'draft_remove',
   'send',
+  'send_cancel',
   'folder_create',
   'folder_rename',
   'folder_delete',
@@ -35,9 +36,11 @@ export const auditRecordSchema = z.object({
   id: z.number(),
   at: z.string(),
   actor: z.string(),
-  /** The connected app's name (or id), for an agent's record. */
+  /** The connected app's name (or id), or the API token's while it exists, for an agent's record. */
   app: z.string().nullable(),
   client_id: z.string().nullable(),
+  /** The personal API token's id, for what came through one. */
+  token_id: z.number().nullable().default(null),
   /** The rule set's name while it exists, for a filter's record. */
   rule_set: z.string().nullable(),
   rule_set_id: z.number().nullable(),
