@@ -265,6 +265,7 @@ First, fixes carried over from 0.14.0 testing:
       sender.
 - [ ] **Mobile and installable** — a layout pass for phones, and a web app manifest (with
       *Theme and design pass*).
+  - [x] **Installable** — a web app manifest and icons; no service worker, no offline.
 - [ ] **Swipe actions** — on phones, archive and trash by swiping, the actions configurable.
 - [ ] **Accessibility pass** — screen readers, keyboard focus and contrast across the app, with
       automated checks in CI.

@@ -124,6 +124,21 @@ run = "node --test 'scripts/lib/*.test.mjs'"
 description = "Report the Chrome/Chromium chrome-devtools-mcp will drive (--launch also starts it headless)"
 run = "node scripts/browser-check.mjs"
 
+# rsvg-convert (librsvg) is an operator install; the PNGs are committed, so only a change to the mark needs it.
+[tasks.web-icons]
+description = "Render web/public's PNG icons, production's and staging's, from their SVGs (needs rsvg-convert)"
+dir = "web"
+run = [
+  "rsvg-convert -w 192 -h 192 public/icon.svg -o public/icon-192.png",
+  "rsvg-convert -w 512 -h 512 public/icon.svg -o public/icon-512.png",
+  "rsvg-convert -w 512 -h 512 icons/icon-maskable.svg -o public/icon-maskable-512.png",
+  "rsvg-convert -w 180 -h 180 icons/icon-maskable.svg -o public/apple-touch-icon.png",
+  "rsvg-convert -w 192 -h 192 public/icon-staging.svg -o public/icon-staging-192.png",
+  "rsvg-convert -w 512 -h 512 public/icon-staging.svg -o public/icon-staging-512.png",
+  "rsvg-convert -w 512 -h 512 icons/icon-staging-maskable.svg -o public/icon-staging-maskable-512.png",
+  "rsvg-convert -w 180 -h 180 icons/icon-staging-maskable.svg -o public/apple-touch-icon-staging.png",
+]
+
 [tasks.check-web-types]
 description = "TypeScript only for web — the fast inner loop; `check-web` covers it too"
 depends = ["setup-node-web"]

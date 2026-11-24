@@ -97,7 +97,9 @@ One staging instance, `https://mailroom.staging.aclerici.me`, runs whatever Gite
 branch points to: `git push -f ag <commit>:staging` deploys it, and pushing an older commit goes
 back. It is a test instance with its own empty database, secrets key, sign-in client and test
 mailboxes, never production's data. Its API answers `deploy_env: staging`, which the web app shows
-as a banner over every page, kept at the top of the window as the page scrolls.
+as a banner over every page, kept at the top of the window as the page scrolls, and in the tab's
+title and icon; installed, it is *Mailroom staging*, its icon banded in the banner's amber
+([NFR — *Staging installs as Mailroom staging*](nonfunctional-requirements.md)).
 
 On that push the host looks for `mailroom-{api,web}:git-<sha7>` in the registry, labelled with the
 commit's full sha (`org.opencontainers.image.revision`). Missing, it starts a manual run of

@@ -58,7 +58,9 @@ through the Vite proxy. Engineering baseline:
   admin), the current one marked, and a user menu with the Profile and Sign out. On a phone the
   header keeps the mark and the user menu, and a tab bar at the bottom holds Home, Mail and Filters
   (as the instance has them), with the other pages, the Profile and Sign out under More. Both menus
-  work from the keyboard (the ARIA menu button pattern).
+  work from the keyboard (the ARIA menu button pattern). The web app installs on a phone's home
+  screen or as a desktop app, with Mailroom's icon (on staging, as *Mailroom staging* with the icon
+  banded in amber); it still needs the server, nothing works offline.
 - **Undo send.** Each user picks on their *Profile* page how long the web's Send holds a
   message for an Undo, 0 (off) to 30 seconds, 10 by default
   ([`requirements/mail-client.md`](requirements/mail-client.md#undo-send)).

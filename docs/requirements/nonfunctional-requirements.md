@@ -121,6 +121,28 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   (decided; revisit if that stops being needed). The production build fails on a chunk that
   evaluates strings (`eval`, `new Function`; `web/vite.config.ts`), which `script-src 'self'`
   would refuse at run time.
+- **Installable, not offline.** `web/public/manifest.webmanifest` (standalone, at `/`, the light
+  background as its colours) and its icons, drawn from the header's mark (an SVG, PNGs at 192 and
+  512, a maskable 512, and a 180 `apple-touch-icon`), let a phone or a desktop browser install the
+  app. nginx serves the manifest as `application/manifest+json`, which its stock types lack;
+  `default-src 'self'` covers loading it, so the CSP names no `manifest-src`. There is no service
+  worker: the installed app needs the server as the tab does. `web/src/manifest.node.test.ts`
+  checks the manifest, its icons' sizes, the links in `index.html` and the nginx location. The
+  PNGs are committed; `mise run web-icons` renders them again with `rsvg-convert`, the 192 and 512
+  from `web/public/icon.svg` and the maskable 512 and `apple-touch-icon` from the full-bleed
+  `web/icons/icon-maskable.svg` (kept outside `public/`, so it is not shipped).
+- **Staging installs as Mailroom staging.** `web/public/manifest-staging.webmanifest` is the same
+  manifest named *Mailroom staging*, its icons the same mark with a band of the deploy banner's
+  amber along the bottom (`*-staging*` beside each production file, rendered by the same
+  `web-icons` task). One image serves every environment, so `index.html` names production's;
+  once `/api/v1/version` answers an environment the deploy banner shows (anything but production
+  and development), the banner points the head's manifest, favicon, `apple-touch-icon` and
+  `apple-mobile-web-app-title` at staging's. Production, and a page whose `/version` has not
+  answered, keep production's, so production never shows the staging icon. Chrome reads the
+  manifest link when it installs and Safari reads the head when a page is added to the home screen
+  or the Dock, both after the swap; the favicon changes in the tab once the API answers. The
+  manifests carry no `id`: an app's identity is per origin, and staging's origin is not
+  production's, so the two install side by side. nginx serves both manifests from one location.
 - The SPA and API are **same-origin** (Vite proxy in dev, nginx in the image), so `/api/` has no
   CORS configuration at all. Only the OAuth metadata, token, register and revoke endpoints answer
   CORS (any origin, no credentials), for browser-based MCP clients.
