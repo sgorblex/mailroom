@@ -190,7 +190,7 @@ class _EnablingClient:
     def __init__(self, refusal: Exception) -> None:
         self.refusal = refusal
         self.shut = False
-        self._imap = SimpleNamespace(state="AUTH")
+        self._imap = SimpleNamespace(state="AUTH", untagged_responses={})
 
     def capabilities(self) -> tuple[bytes, ...]:
         return (b"IMAP4REV1", b"CONDSTORE", b"ENABLE", b"UNSELECT")

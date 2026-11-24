@@ -289,6 +289,7 @@ from mailroom_core.mail.snooze import (
     wake_snoozed,
 )
 from mailroom_core.mail.structure import InlinePart, MimePart, Structure, analyse_structure
+from mailroom_core.mail.structure_cache import StructureCache
 from mailroom_core.mail.text import (
     ATTACHMENT_FILE_NOTE,
     ToolNames,
@@ -431,6 +432,7 @@ __all__ = [
     "SnoozeTarget",
     "Source",
     "Structure",
+    "StructureCache",
     "ThreadKey",
     "Threading",
     "Timeouts",

@@ -413,11 +413,15 @@ class _Reading:
         path: str,
         read_only: bool,
         fn: Callable[[MailboxContext], T],
+        *,
+        reselect: bool = False,
     ) -> T:
         with self._lock:
             self._open[account_id] += 1
         try:
-            return self._connections.with_mailbox(account_id, path, read_only, fn)
+            return self._connections.with_mailbox(
+                account_id, path, read_only, fn, reselect=reselect
+            )
         except MailError as error:
             with self._lock:
                 cut = account_id in self._cut

@@ -13,9 +13,11 @@ from mailroom_core.mail import (
     ALL_FOLDERS,
     MailConnections,
     MailError,
+    MessageRef,
     SearchQuery,
     ToolNames,
     folders_block,
+    format_ref,
     html_view,
     list_messages,
     page_text,
@@ -625,8 +627,12 @@ def test_refuses_an_attachment_over_the_cap_before_downloading_it(
     with pytest.raises(MailError) as raised:
         read_attachment(mail, ref, "2", max_bytes=100_000)
     assert raised.value.code == "too_large"
-    assert fetched
-    assert not [item for item in fetched if "BODY" in item and "BODYSTRUCTURE" not in item]
+    # The listing's structure was kept: nothing at all is fetched, the part least of all.
+    assert fetched == []
+    mail.close(1)
+    with pytest.raises(MailError):
+        read_attachment(mail, ref, "2", max_bytes=100_000)
+    assert fetched == ["BODYSTRUCTURE"]
 
 
 def test_reads_the_whole_source_capped_without_marking_read(imap_server, harness) -> None:
@@ -765,3 +771,59 @@ def test_html_view_inlines_cid_images_and_holds_remote_ones_back(imap_server, ha
         html_view(other, plain_ref, remote=False, max_inline_bytes=0)
     assert raised.value.code == "not_found"
     assert parse_ref(plain_ref).account == 3
+
+
+def test_fetches_a_messages_structure_once_for_all_its_reads(
+    imap_server, harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from imapclient import IMAPClient
+
+    user = imap_server.unique_user("structure")
+    files = [MimeAttachment("doc.pdf", "application/pdf", PDF)]
+    uid = seed(imap_server, user, "INBOX", mime("one", html="<p>Hi</p>", attachments=files))
+    mail = harness((1, user))
+    validity = mail.with_mailbox(1, "INBOX", True, lambda ctx: ctx.uid_validity)
+    ref = format_ref(MessageRef(1, "INBOX", validity, uid))
+    asked: list[list[str]] = []
+    fetch = IMAPClient.fetch
+
+    def spy(self: IMAPClient, messages: object, data: list[str], *args: object, **kwargs: object):
+        asked.append([str(item) for item in data])
+        return fetch(self, messages, data, *args, **kwargs)
+
+    def structures() -> int:
+        return sum("BODYSTRUCTURE" in items for items in asked)
+
+    monkeypatch.setattr(IMAPClient, "fetch", spy)
+    view = read_message(mail, ref)
+    assert structures() == 1
+    assert html_view(mail, ref, remote=False, max_inline_bytes=0).html
+    assert read_attachment(mail, ref, "2", max_bytes=1000).data == PDF
+    again = read_message(mail, ref)
+    assert structures() == 1
+    # What is not kept is still fetched: the second read has its envelope and flags.
+    assert (again.subject, again.flags, again.attachments) == (
+        view.subject,
+        view.flags,
+        view.attachments,
+    )
+
+    # A listing keeps the structures it fetched for the messages it shows.
+    second = seed(imap_server, user, "INBOX", mime("two", text="x", attachments=files))
+    list_messages(mail, 1)
+    asked.clear()
+    other = format_ref(MessageRef(1, "INBOX", validity, second))
+    assert read_attachment(mail, other, "2", max_bytes=1000).data == PDF
+    assert structures() == 0
+
+    # A message gone meanwhile is not found, though its structure was kept.
+    with raw_client(imap_server, user) as client:
+        client.select_folder("INBOX")
+        client.delete_messages([uid])
+        client.expunge()
+    with pytest.raises(MailError) as raised:
+        read_attachment(mail, ref, "2", max_bytes=1000)
+    assert raised.value.code == "not_found"
+    with pytest.raises(MailError) as raised:
+        read_message(mail, ref)
+    assert raised.value.code == "not_found"

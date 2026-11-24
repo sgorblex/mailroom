@@ -102,7 +102,7 @@ def original_message(
         check_fresh(ref, context.uid_validity)
         client = context.client
         fields = f"BODY.PEEK[HEADER.FIELDS ({' '.join(_HEADERS)})]"
-        data, structure = fetch_structure(client, ref.uid, ["ENVELOPE", fields])
+        data, structure = fetch_structure(context, ref.uid, ["ENVELOPE", fields])
         headers = fetched_headers(data)
         text = ""
         content = b""

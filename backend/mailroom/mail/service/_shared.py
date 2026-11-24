@@ -254,6 +254,8 @@ class _Stoppable:
         path: str,
         read_only: bool,
         fn: Callable[[MailboxContext], T],
+        *,
+        reselect: bool = False,
     ) -> T:
         self._check()
 
@@ -261,7 +263,9 @@ class _Stoppable:
             self._check()
             return fn(context)
 
-        return self._connections.with_mailbox(account_id, path, read_only, checked)
+        return self._connections.with_mailbox(
+            account_id, path, read_only, checked, reselect=reselect
+        )
 
     def with_connection[T](self, account_id: int, fn: Callable[[IMAPClient], T]) -> T:
         self._check()
