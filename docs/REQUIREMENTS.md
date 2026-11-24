@@ -36,6 +36,9 @@ menu) shows the health check through the Vite proxy. Engineering baseline:
   *Users* page (the first admin comes from `mise run create-user <name> --admin`), and changes the
   [instance settings](GLOSSARY.md) in its *Instance* section; there is no public
   sign-up. Every user changes their own password on their *Profile* page.
+- **Sessions.** Each user sees on their *Profile* page the browsers they are signed in on (browser
+  and system, when last seen and signed in, the IP address as far as the instance's setting goes,
+  and which one is this device), and signs out one or every other one.
 - **Time zone.** Each user keeps a time zone (an IANA name), picked on their *Profile* page and
   filled from the browser's zone when they first sign in to the web; over MCP, UTC until set. The
   web's dates (a list's "today" included), the MCP read tools' dates (each answer names the zone),

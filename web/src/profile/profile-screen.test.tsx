@@ -14,11 +14,12 @@ const NEXT = 'a brand new passphrase'
 const PASSWORD_PATH = '/api/v1/auth/password'
 const LIMITS_PATH = '/api/v1/me/limits'
 const REMOTE_SENDERS_PATH = '/api/v1/mail/remote-senders'
+const SESSIONS_PATH = '/api/v1/auth/sessions'
 const TEXT_SENDERS_PATH = '/api/v1/mail/sender-views'
 
 /**
  * Anything but the password change: the default limits, no connected apps (the MCP server off),
- * no remote content senders, no accounts to index or notify on, and nothing else found (the linked sign-ins section's requests).
+ * this browser's session alone, no remote content senders, no accounts to index or notify on, and nothing else found (the linked sign-ins section's requests).
  */
 function otherSections(path: string): Promise<Response> {
   if (path === LIMITS_PATH) {
@@ -27,6 +28,13 @@ function otherSections(path: string): Promise<Response> {
   }
   if (path === REMOTE_SENDERS_PATH || path === TEXT_SENDERS_PATH) {
     return Promise.resolve(new Response('{"senders":[]}', { status: 200 }))
+  }
+  if (path === SESSIONS_PATH) {
+    const session = {
+      id: 1, current: true, device: 'Firefox · Linux', ip: null,
+      created_at: '2026-11-20T10:00:00Z', last_seen_at: '2026-11-24T10:00:00Z', expires_at: '2026-12-04T10:00:00Z',
+    }
+    return Promise.resolve(new Response(JSON.stringify([session]), { status: 200 }))
   }
   if (path === '/api/v1/accounts') {
     return Promise.resolve(new Response('[]', { status: 200 }))
@@ -192,13 +200,17 @@ describe('ProfileScreen', () => {
     await fill(CURRENT, NEXT, NEXT)
     expect(await screen.findByRole('status')).toHaveTextContent('Password changed.')
     expect(screen.getByLabelText('Current password')).toHaveValue('')
-    expect(fetchMock).toHaveBeenLastCalledWith(
+    expect(fetchMock).toHaveBeenCalledWith(
       PASSWORD_PATH,
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ current_password: CURRENT, new_password: NEXT }),
       }),
     )
+    // The other sessions were signed out: list what is left.
+    await vi.waitFor(() => {
+      expect(fetchMock.mock.calls.filter(([path]) => path === SESSIONS_PATH)).toHaveLength(2)
+    })
   })
 
   it.each([

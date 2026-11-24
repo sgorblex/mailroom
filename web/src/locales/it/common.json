@@ -99,6 +99,26 @@
       "failed": "L'accesso tramite il provider di identità non è riuscito."
     }
   },
+  "sessions": {
+    "title": "Sessioni",
+    "intro": "I browser da cui hai effettuato l'accesso.",
+    "loading": "Caricamento delle tue sessioni…",
+    "loadFailed": "Impossibile caricare le tue sessioni.",
+    "retry": "Riprova",
+    "thisDevice": "Questo dispositivo",
+    "unknownDevice": "Browser sconosciuto",
+    "lastSeen": "Ultima attività: {{when}}",
+    "signedIn": "accesso: {{when}}",
+    "ip": "IP {{ip}}",
+    "end": "Disconnetti",
+    "endNamed": "Disconnetti {{device}}, ultima attività: {{when}}",
+    "confirmEnd": "Disconnettere {{device}}?",
+    "endOthers": "Disconnetti tutte le altre sessioni",
+    "confirmEndOthers": "Disconnettere tutte le sessioni tranne questa?",
+    "confirm": "Disconnetti",
+    "cancel": "Annulla",
+    "endFailed": "Impossibile disconnetterla. Riprova."
+  },
   "connectedApps": {
     "title": "App collegate",
     "loading": "Caricamento delle app collegate…",
@@ -173,7 +193,7 @@
     "retention": "Giorni di conservazione delle attività",
     "retentionHint": "Da 1 a {{max}} giorni. I record più vecchi delle attività di ogni utente vengono eliminati definitivamente, entro l'ora man mano che ne arrivano di nuovi.",
     "sessionIp": "Indirizzo IP di una sessione",
-    "sessionIpHint": "Cosa si registra quando un utente accede, perché possa riconoscere le proprie sessioni. Una modifica vale per gli accessi successivi.",
+    "sessionIpHint": "Cosa si registra quando un utente accede, perché possa riconoscere le proprie sessioni. Una modifica vale per gli accessi successivi; una scelta più restrittiva nasconde anche parte di quanto già registrato.",
     "sessionIpNone": "Non registrato",
     "sessionIpPartial": "Parziale: l'ultima parte nascosta",
     "sessionIpFull": "Completo",

@@ -62,3 +62,11 @@ class UserSession(Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    # When it last reached the API, to within ``mailroom.auth.sessions.SEEN_EVERY``.
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    # Browser and system, as ``mailroom.auth.sign_in_client`` names them; None: not recognised.
+    device: Mapped[str | None] = mapped_column(String(64))
+    # As much of it as the instance's ``session_ip`` let be recorded at sign-in.
+    ip: Mapped[str | None] = mapped_column(String(45))

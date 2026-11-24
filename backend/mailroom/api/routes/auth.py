@@ -19,6 +19,7 @@ from mailroom.auth.sessions import (
     session_ttl,
     session_user,
 )
+from mailroom.auth.sign_in_client import sign_in_client
 from mailroom.auth.throttle import LoginThrottle, client_key
 from mailroom.auth.users import (
     INDEX_MAX_AGE_DAYS,
@@ -32,6 +33,7 @@ from mailroom.auth.users import (
     user_by_username,
 )
 from mailroom.config.features import Feature, Features
+from mailroom.config.instance_settings import stored_settings
 from mailroom.models import User
 from mailroom_core.config import TimeZone
 
@@ -128,7 +130,7 @@ def login(body: LoginRequest, request: Request, response: Response, db: DbSessio
     throttle.record_success(client)
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
-        value=create_session(db, user),
+        value=create_session(db, user, sign_in_client(request, stored_settings(db).session_ip)),
         max_age=int(session_ttl().total_seconds()),
         **session_cookie_attributes(),
     )

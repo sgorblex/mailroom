@@ -25,6 +25,7 @@ from mailroom.auth.sessions import (
     session_ttl,
     session_user,
 )
+from mailroom.auth.sign_in_client import sign_in_client
 from mailroom.auth.sso import (
     BINDING_COOKIE_NAME,
     BINDING_COOKIE_PATH,
@@ -43,6 +44,7 @@ from mailroom.auth.sso import (
     with_query,
 )
 from mailroom.auth.throttle import RateLimit, client_key
+from mailroom.config.instance_settings import stored_settings
 from mailroom.errors import Refusal
 from mailroom.models import ExternalIdentity, Intent
 from mailroom.oauth import consent
@@ -248,7 +250,9 @@ def sso_callback(
         response = _redirect(done.return_to)
     response.delete_cookie(BINDING_COOKIE_NAME, **_binding_cookie_attributes())
     if done.intent in ("login", "mcp"):
-        session = create_session(db, done.user)
+        session = create_session(
+            db, done.user, sign_in_client(request, stored_settings(db).session_ip)
+        )
         if done.intent == "mcp" and not _claim(request, db, done, session):
             end_session(db, session)
             return _failed(SsoError("request_gone", done.return_to))

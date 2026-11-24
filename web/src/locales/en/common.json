@@ -99,6 +99,26 @@
       "failed": "Signing in through the identity provider failed."
     }
   },
+  "sessions": {
+    "title": "Sessions",
+    "intro": "The browsers you are signed in on.",
+    "loading": "Loading your sessions…",
+    "loadFailed": "Could not load your sessions.",
+    "retry": "Try again",
+    "thisDevice": "This device",
+    "unknownDevice": "Unknown browser",
+    "lastSeen": "Last seen {{when}}",
+    "signedIn": "signed in {{when}}",
+    "ip": "IP {{ip}}",
+    "end": "Sign out",
+    "endNamed": "Sign out {{device}}, last seen {{when}}",
+    "confirmEnd": "Sign out {{device}}?",
+    "endOthers": "Sign out all other sessions",
+    "confirmEndOthers": "Sign out every session but this one?",
+    "confirm": "Sign out",
+    "cancel": "Cancel",
+    "endFailed": "Could not sign it out. Try again."
+  },
   "connectedApps": {
     "title": "Connected apps",
     "loading": "Loading your connected apps…",
@@ -173,7 +193,7 @@
     "retention": "Days the activity is kept",
     "retentionHint": "1 to {{max}} days. Older records of every user's activity are deleted for good, within the hour as new ones come in.",
     "sessionIp": "IP address of a signed-in session",
-    "sessionIpHint": "What is recorded when a user signs in, for them to recognise their sessions. A change applies to later sign-ins.",
+    "sessionIpHint": "What is recorded when a user signs in, for them to recognise their sessions. A change applies to later sign-ins; a stricter choice also hides more of what is already recorded.",
     "sessionIpNone": "Not recorded",
     "sessionIpPartial": "Partial: the last part hidden",
     "sessionIpFull": "Full",

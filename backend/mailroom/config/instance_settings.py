@@ -45,7 +45,7 @@ class InstanceSettings(BaseModel):
     audit_retention_days: RetentionDays
     """Audit records older than this many days are purged."""
     session_ip: SessionIp
-    """What of the client's IP address a session records at sign-in."""
+    """What of the client's IP address a session records at sign-in, and at most shows."""
 
 
 class InstanceSettingsChange(BaseModel):
