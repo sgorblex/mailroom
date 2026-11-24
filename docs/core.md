@@ -537,7 +537,12 @@ encoded word, so the message's own headers are written by hand. Deliberate choic
   carry: a header word is never split, so a longer one could pass the limit of a line.
 - `attachments_from` takes attachment and calendar parts, not what the HTML shows in place, which
   core does not list as attachments, unless the source says `inline`: then it takes only such a
-  part, with its Content-ID, for a forward or a draft's next version that keeps that HTML.
+  part, with its Content-ID, for a forward or a draft's next version that keeps that HTML. A
+  source's `name` replaces the part's own.
+- **Types of new files.** `upload_type` labels one by its bytes as `content_type` does a part, and
+  never refuses; `given_type`, for a file an agent gives, answers None when the bytes contradict
+  the type declared. Under a name an agent chose, a kept part's too (`named_type`), binary bytes
+  are never made text by the extension.
 - **HTML bodies.** With `MessageInput.html`, the body is multipart/alternative of a text part,
   `html_to_text` over the sanitised HTML (`text` is not used; `html_text` gives it alone, for a
   client's switch to plain text), and that HTML; wrapped in a
@@ -843,7 +848,8 @@ share of the defence:
   write.
 - **Audit items:** each write and send, refused ones included, yields items (which the app keeps
   in its audit trail) naming the account, folder, UID, Message-ID, sender and recipients in
-  clear, and the subject only as a SHA-256; a move to another account yields one in each.
+  clear, and the subject only as a SHA-256; the attachments as a count, and those whose names an agent
+  gave (`OutgoingAttachment.given`) by name and size (`files`); a move to another account yields one in each.
 - **Errors** are `MailError` codes with fixed messages, never the server's or a library's wording.
   An `unreachable` caused by a certificate that did not verify (itself, or wrapped in a login
   error) ends with the fixed `CERTIFICATE_DETAIL`, which a host may recognise. A server's

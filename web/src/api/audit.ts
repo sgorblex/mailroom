@@ -54,6 +54,9 @@ export const auditRecordSchema = z.object({
 })
 export type AuditRecord = z.infer<typeof auditRecordSchema>
 
+/** A record's `files`: those an agent attached or renamed. */
+export const auditFilesSchema = z.array(z.object({ name: z.string(), size: z.number() }))
+
 const pageSchema = z.object({ records: z.array(auditRecordSchema), next_cursor: z.string().nullable() })
 export type AuditPage = z.infer<typeof pageSchema>
 

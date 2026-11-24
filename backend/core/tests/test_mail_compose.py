@@ -121,7 +121,9 @@ def test_collects_threading_addressing_text_and_attachments(imap_server, harness
     [attachment] = attachments_from(mail, [AttachmentSource(ref, "2")], 1024 * 1024)
     assert attachment.filename == "plan.pdf"
     assert attachment.content_type == "application/pdf"
-    assert attachment.content == PDF
+    assert (attachment.content, attachment.given) == (PDF, False)
+    [renamed] = attachments_from(mail, [AttachmentSource(ref, "2", name="new.pdf")], 1024 * 1024)
+    assert (renamed.filename, renamed.content, renamed.given) == ("new.pdf", PDF, True)
 
     with pytest.raises(MailError, match="not an attachment"):
         attachments_from(mail, [AttachmentSource(ref, "1")], 1024 * 1024)

@@ -8,7 +8,7 @@ import hashlib
 import threading
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Final, Literal, cast
+from typing import TYPE_CHECKING, Final, Literal, NamedTuple, cast
 
 from mailroom.audit import WEB, AuditTrail, Origin, kept_nowhere
 from mailroom.errors import Refusal, mail_refusal
@@ -106,6 +106,17 @@ class Prefill:
     """For a forward, the original's inline parts ``html`` shows, to keep as inline."""
 
 
+class KeptPart(NamedTuple):
+    """A part of an existing message to attach."""
+
+    ref: str
+    part: str
+    name: str | None = None
+    """The name to attach it under, an agent's, instead of its own."""
+    content_id: str | None = None
+    """On an import, what makes it an inline part of the HTML."""
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class DraftFields:
     """A draft as the user wrote it. Its addresses are checked here; the caps on the text, the HTML
@@ -125,10 +136,10 @@ class DraftFields:
     html: str | None = None
     """The body as HTML, sanitised when composed; the text is then derived from it and ``text``
     is not used."""
-    keep: Sequence[tuple[str, str]] = ()
-    """``(ref, part)`` of the existing parts it keeps, its previous version's included."""
-    keep_inline: Sequence[tuple[str, str]] = ()
-    """``(ref, part)`` of existing inline parts ``html`` shows: its previous version's, or the
+    keep: Sequence[KeptPart] = ()
+    """The existing parts it keeps, its previous version's included."""
+    keep_inline: Sequence[KeptPart] = ()
+    """The existing inline parts ``html`` shows: its previous version's, or the
     forwarded message's."""
 
 
@@ -477,7 +488,7 @@ def save_draft(
     accounts = _accounts(ctx, user_id)
     _usable(ctx, user_id, accounts, fields.account)
     kept = (*fields.keep, *fields.keep_inline)
-    named = [fields.ref, fields.answers, fields.forwards, *(ref for ref, _part in kept)]
+    named = [fields.ref, fields.answers, fields.forwards, *(part.ref for part in kept)]
     used = _ref_accounts(ctx, user_id, accounts, [ref for ref in named if ref is not None])
     account = accounts.config(fields.account)
     limits = accounts.write_limits
@@ -554,8 +565,8 @@ class ImportFields:
     """A message built elsewhere, to save as a draft as it is (``core.import_draft``): an .eml, an
     HTML file with its files, or neither, for the draft ``ref`` imported earlier, kept as built
     under new fields. From, recipients and subject left None are the .eml's (From never: the
-    default identity); ``keep`` names parts of existing messages as ``(ref, part, content_id)``,
-    a Content-ID making one an inline part of the HTML."""
+    default identity); ``keep`` names parts of existing messages, a Content-ID making
+    one an inline part of the HTML."""
 
     account: int
     compose_id: str
@@ -567,7 +578,7 @@ class ImportFields:
     subject: str | None = None
     eml: bytes | None = None
     html: str | None = None
-    keep: Sequence[tuple[str, str, str | None]] = ()
+    keep: Sequence[KeptPart] = ()
 
 
 def import_draft(
@@ -592,7 +603,7 @@ def import_draft(
         raise mail_refusal("invalid_argument", "Import an .eml, or an HTML file with its files.")
     accounts = _accounts(ctx, user_id)
     _usable(ctx, user_id, accounts, fields.account)
-    named = [fields.ref, *(ref for ref, _part, _cid in fields.keep)]
+    named = [fields.ref, *(part.ref for part in fields.keep)]
     used = _ref_accounts(ctx, user_id, accounts, [ref for ref in named if ref is not None])
     account = accounts.config(fields.account)
     limits = accounts.write_limits
@@ -609,7 +620,7 @@ def import_draft(
     replaces = None if fields.ref is None else core.parse_ref(fields.ref)
     if replaces is not None and replaces.account != account.id:
         raise mail_refusal("invalid_argument", "That message belongs to another account.")
-    sources = [core.AttachmentSource(core.parse_ref(ref), part) for ref, part, _cid in fields.keep]
+    sources = _attachment_sources(fields.keep)
     note = (
         kept_nowhere
         if origin.via == "web"
@@ -624,7 +635,7 @@ def import_draft(
         kept = core.attachments_from(connections, sources, cap, used=used_bytes)
         files = (
             *uploads,
-            *(replace(a, content_id=k[2]) for a, k in zip(kept, fields.keep, strict=True)),
+            *(replace(a, content_id=k.content_id) for a, k in zip(kept, fields.keep, strict=True)),
         )
         if replaces is not None and as_stored:
             built = core.stored_design(connections, replaces, limits)
@@ -798,6 +809,6 @@ def delete_draft(ctx: AppContext, user_id: int, ref: str, *, origin: Origin = WE
 
 
 def _attachment_sources(
-    refs: Iterable[tuple[str, str]], *, inline: bool = False
+    kept: Iterable[KeptPart], *, inline: bool = False
 ) -> list[AttachmentSource]:
-    return [core.AttachmentSource(core.parse_ref(ref), part, inline) for ref, part in refs]
+    return [core.AttachmentSource(core.parse_ref(k.ref), k.part, inline, k.name) for k in kept]

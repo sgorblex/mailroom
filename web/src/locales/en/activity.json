@@ -80,6 +80,7 @@
     "uid": "UID",
     "subject_sha256": "Subject (hash)",
     "attachments": "Attachments",
+    "files": "Files given by the agent",
     "delivery": "Delivery",
     "filed": "Filed in Sent",
     "rejected": "Refused recipients",

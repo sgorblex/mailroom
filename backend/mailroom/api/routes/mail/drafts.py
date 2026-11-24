@@ -43,6 +43,7 @@ from mailroom_core.mail import (
     Mailbox,
     OutgoingAttachment,
     format_ref,
+    upload_type,
 )
 
 if TYPE_CHECKING:
@@ -198,8 +199,8 @@ class DraftRequest(BaseModel):
             subject=self.subject,
             text=self.text,
             html=html,
-            keep=[(kept.ref, kept.part) for kept in self.keep if not kept.inline],
-            keep_inline=[(kept.ref, kept.part) for kept in self.keep if kept.inline],
+            keep=[service.KeptPart(k.ref, k.part) for k in self.keep if not k.inline],
+            keep_inline=[service.KeptPart(k.ref, k.part) for k in self.keep if k.inline],
         )
 
 
@@ -483,13 +484,14 @@ def _draft_request[T: BaseModel](value: object, model: type[T]) -> T:
         ) from None
 
 
-async def _attachment(upload: UploadFile, content_id: str | None) -> OutgoingAttachment:
-    return OutgoingAttachment(
-        upload.filename or "",
-        upload.content_type or _UPLOAD_TYPE,
-        await upload.read(),
-        content_id,
-    )
+async def _attachment(
+    upload: UploadFile, content_id: str | None, *, given: bool
+) -> OutgoingAttachment:
+    """``upload`` under the type its bytes show, as a kept part is (``upload_type``); ``given``
+    by an agent or not."""
+    name, content = upload.filename or "", await upload.read()
+    kind = upload_type(content, upload.content_type or _UPLOAD_TYPE, name)
+    return OutgoingAttachment(name, kind, content, content_id, given)
 
 
 @mail_router.post("/drafts/prefill")
@@ -554,7 +556,10 @@ async def _import(
                         raise mail_refusal("invalid_argument", MESSAGES["invalid_argument"])
                     html = given
                     marks = [*draft.content_ids, *[None] * (len(files) - len(draft.content_ids))]
-                    uploads = [await _attachment(f, c) for f, c in zip(files, marks, strict=True)]
+                    uploads = [
+                        await _attachment(f, c, given=ctx.origin.agent)
+                        for f, c in zip(files, marks, strict=True)
+                    ]
         except HTTPException:  # how Starlette words a malformed body or too many parts
             raise mail_refusal("invalid_argument", MESSAGES["invalid_argument"]) from None
         fields = draft.fields(eml=eml, html=html)
@@ -614,7 +619,10 @@ async def save_draft(
                 if len(draft.content_ids) > len(files):
                     raise mail_refusal("invalid_argument", MESSAGES["invalid_argument"])
                 marks = [*draft.content_ids, *[None] * (len(files) - len(draft.content_ids))]
-                uploads = [await _attachment(f, cid) for f, cid in zip(files, marks, strict=True)]
+                uploads = [
+                    await _attachment(f, cid, given=ctx.origin.agent)
+                    for f, cid in zip(files, marks, strict=True)
+                ]
         except HTTPException:  # how Starlette words a malformed body or too many parts
             raise mail_refusal("invalid_argument", MESSAGES["invalid_argument"]) from None
         fields = draft.fields(html)

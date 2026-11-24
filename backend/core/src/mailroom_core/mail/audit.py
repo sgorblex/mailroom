@@ -10,14 +10,14 @@ import hashlib
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Final, Literal
 
-from mailroom_core.mail._mime import addresses, decode_words, text_value
+from mailroom_core.mail._mime import addresses, decode_words, text_value, well_formed
 from mailroom_core.mail.errors import MailError
 from mailroom_core.render import clean_header
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
-    from mailroom_core.mail.compose import MessageInput
+    from mailroom_core.mail.compose import MessageInput, OutgoingAttachment
     from mailroom_core.mail.errors import MailErrorCode
 
 type AuditResult = Literal["ok", "internal"] | MailErrorCode
@@ -65,6 +65,14 @@ class AuditRecipients:
     bcc: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True, slots=True)
+class AuditFile:
+    """A file an agent attached, or named: never its content."""
+
+    name: str
+    size: int
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class AuditItem:
     """One message, or one folder, in a write call's audit record, with what happened to it."""
@@ -80,6 +88,8 @@ class AuditItem:
     subject_sha256: str | None = None
     attachments: int | None = None
     """How many an outgoing message carries."""
+    files: tuple[AuditFile, ...] | None = None
+    """Those of them an agent gave or renamed."""
     destination: str | None = None
     """Where a move took it."""
     destination_account: int | None = None
@@ -182,6 +192,15 @@ def message_item(
     )
 
 
+def given_files(attachments: Iterable[OutgoingAttachment]) -> tuple[AuditFile, ...]:
+    """Those of `attachments` an agent gave or renamed, as an audit record names them."""
+    return tuple(
+        AuditFile(clean_header(well_formed(a.filename), 200), len(a.content))
+        for a in attachments
+        if a.given
+    )
+
+
 def outgoing_item(
     account: int,
     message: MessageInput,
@@ -191,7 +210,8 @@ def outgoing_item(
     message_id: str | None = None,
 ) -> AuditItem:
     """The record of an outgoing message: who it is from and to in clear, the subject hashed, and
-    how many files it attaches (its HTML's inline parts are not counted)."""
+    how many files it attaches (its HTML's inline parts are not counted), those whose names an agent
+    gave by name and size."""
     return AuditItem(
         account=account,
         folder=folder,
@@ -204,6 +224,7 @@ def outgoing_item(
         ),
         subject_sha256=subject_sha256(message.subject),
         attachments=sum(a.content_id is None for a in message.attachments),
+        files=given_files(message.attachments) or None,
         result=result,
     )
 

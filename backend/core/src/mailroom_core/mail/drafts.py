@@ -56,6 +56,7 @@ if TYPE_CHECKING:
 
     from mailroom_core.config import AccountConfig, Limits
     from mailroom_core.mail.attachments import AttachmentSource
+    from mailroom_core.mail.audit import AuditFile
     from mailroom_core.mail.compose import Composed, MessageInput
     from mailroom_core.mail.imap import MailboxContext, MailConnections
     from mailroom_core.mail.recipients import Mailbox
@@ -479,17 +480,21 @@ def store_draft(
     note: Note,
     replaces: MessageRef | None = None,
     attachments: int | None = None,
+    files: tuple[AuditFile, ...] = (),
 ) -> SavedDraft:
     """APPENDs `composed`, the draft `draft` composed, to Drafts and removes `replaces` once it is
     confirmed: the end of a save, its checks done (`save_draft`), `check_removable` included.
-    `attachments` counts the files of a body built elsewhere, for its audit item."""
+    `attachments` counts the files of a body built elsewhere and `files` names those an agent gave
+    or renamed, for its audit item."""
     autosave = connections.capabilities(account).uidplus
     folder = connections.special_folder(account, "drafts").path
     located = _append(
         connections, account, folder, composed.stored, DRAFT_FLAGS, composed.message_id
     )
     item = outgoing_item(account, draft, "ok", folder=folder, message_id=composed.message_id)
-    note(item if attachments is None else replace(item, attachments=attachments))
+    if attachments is not None:
+        item = replace(item, attachments=attachments, files=files or None)
+    note(item)
     ref = None if located is None else located[0]
     replaced: Removal | None = None
     if replaces is not None and ref is not None and ref != replaces:

@@ -954,7 +954,7 @@ images, and the web composer writes either ([Web editor](#web-editor)).
   elsewhere open in plain text. The editor loads with the composer, not with the mail screen, and
   runs under the SPA's CSP: the production build fails on a chunk that evaluates strings.
 - **Attachments** are new uploads (`files[]`) or parts of existing messages (`keep`: `ref` and
-  `part`); an agent never passes file content (MCP). Only attachment and calendar parts of a
+  `part`); an agent's are in [`mcp.md`](mcp.md#files-from-agents). Only attachment and calendar parts of a
   message can be kept as attachments, inline parts only as inline parts, never the body parts.
   Limits are in [Limits](#limits).
 - **Headers** are one line: CR and LF are stripped from every header value built from user input
@@ -1370,11 +1370,11 @@ set on their *Profile* page ([`../REQUIREMENTS.md`](../REQUIREMENTS.md)).
 | Recipients of one message | the user's `max_recipients` (default 10), over To, Cc and Bcc |
 | Sends per hour | the user's `send_per_hour` (default 20), across their accounts; counted when claimed |
 | Body text | 100,000 characters |
-| Body HTML | 3 MiB of UTF-8 (`MAX_HTML_BYTES`), its `data:` images included, an agent's quoted or forwarded original too; the same cap in a save's `html` part, which is raw UTF-8; over MCP the 1 MiB request comes first |
+| Body HTML | 3 MiB of UTF-8 (`MAX_HTML_BYTES`), its `data:` images included, an agent's quoted or forwarded original too; the same cap in a save's `html` part, which is raw UTF-8 |
 | The `draft` part of a save | 1 MiB, the HTML not in it (`400 invalid_argument` beyond) |
-| MCP request | 1 MiB (the app's MCP endpoint) |
+| MCP request | 40 MiB for a caller who may attach files ([`mcp.md`](mcp.md#files-from-agents)), 1 MiB otherwise |
 | Subject | 998 characters |
-| New files per draft | 10, inline images included |
+| New files per draft | 10, inline images included; from an MCP tool, 10 with the parts kept |
 | Attachments, in total (uploads and kept parts) | the user's `attachment_max_mb` (default 10), at most 25 MB |
 | Upload request | attachments plus 5 MiB (the `html` and `draft` parts, the framing): 30 MiB at most at `/api/v1/mail/drafts`, the web image's nginx limit there, which the host's proxy must allow too; refused early on `Content-Length` |
 | Imported message (`POST /drafts?import=`) | within the upload request's limit; its HTML and its text 3 MiB each, its other parts the attachment total, 100 parts nested 16 deep (400 `invalid_argument` beyond, 413 `too_large` for the parts); `html` files 10, as a save's. An .eml must fit the request whole and encoded (base64 adds about a third), so its attachments come to about 70% of the cap in practice |
@@ -1385,7 +1385,7 @@ set on their *Profile* page ([`../REQUIREMENTS.md`](../REQUIREMENTS.md)).
 | Selection quoted (`quote`) | 20,000 characters (422 beyond it) |
 | HTML quoted or forwarded | 1 MiB of the original's HTML; a longer one goes as its text |
 | Existing parts kept (`keep`) in a save | 50 (422 beyond it) |
-| Attachments on an MCP tool | 10 (`attachments`, by ref and part) |
+| Attachments on an MCP tool | 10 (`attachments`, by ref and part); with `files`, 10 of both together, a forward's own included |
 | Send rows kept | keyed: at least 30 days; key-less: a day; pruned on the user's next send |
 | Concurrent sends | 4 in the process, 2 per user |
 
@@ -1393,7 +1393,7 @@ Over a field's cap, or over the recipient cap, is 400 `invalid_argument` (a send
 recipient too: "Name at least one recipient."); over the attachment total or the upload size, 413
 `too_large`; over the hourly limit, 429 `rate_limited`, whose message gives the time the next send
 is possible.
-The host's reverse proxy needs the same 30 MiB limit on that route, and no other beyond its
+The host's reverse proxy needs the same limits on that route and on `/mcp`, and no other beyond its
 default ([`../deploy.md`](../deploy.md)).
 
 One race stays open by choice: the check that a send holds a draft written elsewhere is not atomic
@@ -1517,7 +1517,8 @@ English sentence; `items` the Content-IDs or file names involved, at most 20.
 The `mail_draft` and `mail_send` groups ([`mcp.md`](mcp.md)) are the same service functions
 behind the same gate, with the agent as the one acting: the send mode limits them as in the
 [table above](#send-mode-and-who-is-acting), and the hourly limit and recipient cap bind them.
-Attachments are named by `ref` and `part` only: an agent never passes file content. A body is
+Attachments are parts of existing messages by `ref` and `part`, or new files in the call, their
+types checked against their content ([`mcp.md`](mcp.md#files-from-agents)). A body is
 `text` or `html`, sanitised as the web's is, its text part made from it. `draft_create`,
 `message_send`, `message_reply` and `message_forward` add the identity's
 [signature](#signatures) below the text and above a quote (in text and in HTML), unless

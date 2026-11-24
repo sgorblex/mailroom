@@ -2170,6 +2170,182 @@ def test_a_forward_carries_the_attachments_byte_for_byte(
     assert "\\Answered" not in flags
 
 
+def files_of(raw: bytes) -> list[tuple[str | None, str, bytes]]:
+    return [
+        (p.get_filename(), p.get_content_type(), p.get_payload(decode=True))  # type: ignore[misc]
+        for p in parsed(raw).walk()
+        if p.get_content_disposition() == "attachment"
+    ]
+
+
+NOTES = {"name": "notes.txt", "text": "caff\u00e8"}
+NOTES_PART = ("notes.txt", "text/plain", "caff\u00e8".encode())
+
+
+def given_pdf(name: str = "new.pdf") -> dict[str, str]:
+    return {"name": name, "base64": base64.b64encode(PDF).decode()}
+
+
+def test_a_draft_takes_new_files_and_an_update_adds_to_them(
+    mcp: Mcp, token: str, writer: Writer, db_session: Session, user: User
+) -> None:
+    writer.mail.seed(
+        writer.login,
+        mime("files", attachments=[MimeAttachment("a.pdf", "application/pdf", PDF)]),
+    )
+    kept = {"ref": inbox_ref(mcp, token), "part": "2", "name": "renamed.pdf"}
+    created = mcp.text(
+        token,
+        "draft_create",
+        subject="v1",
+        text="first",
+        attachments=[kept],
+        files=[given_pdf()],
+    )
+    assert "2 attachment(s). Not sent." in created
+    ours = [("renamed.pdf", "application/pdf", PDF), ("new.pdf", "application/pdf", PDF)]
+    assert files_of(writer.contents("Drafts")[0].source) == ours
+    updated = mcp.text(token, "draft_update", ref=draft_ref(created), files=[NOTES])
+    assert files_of(writer.contents("Drafts")[0].source) == [*ours, NOTES_PART]
+    replaced = mcp.text(
+        token, "draft_update", ref=draft_ref(updated), attachments=[], files=[NOTES]
+    )
+    assert files_of(writer.contents("Drafts")[0].source) == [NOTES_PART]
+    # Too many with what it keeps: nothing changes.
+    many = [{"name": f"{i}.txt", "text": "x"} for i in range(10)]
+    refused = mcp.error(token, "draft_update", ref=draft_ref(replaced), files=many)
+    assert "At most 10 attachments" in refused
+    assert files_of(writer.contents("Drafts")[0].source) == [NOTES_PART]
+    # The trail names what the agent gave or renamed, with sizes; never content.
+    records = db_session.scalars(
+        select(AuditRecord)
+        .where(AuditRecord.user_id == user.id, AuditRecord.action == "draft_save")
+        .order_by(AuditRecord.id)
+    ).all()
+    assert records[0].detail["files"] == [
+        {"name": "renamed.pdf", "size": len(PDF)},
+        {"name": "new.pdf", "size": len(PDF)},
+    ]
+    assert records[1].detail["files"] == [{"name": "notes.txt", "size": len("caff\u00e8".encode())}]
+    assert base64.b64encode(PDF).decode()[:20] not in str([r.detail for r in records])
+    [*_, listed] = mcp.call(token, "audit_list", action="draft_save")["records"]
+    assert ENVELOPE.search(listed["detail"]["files"][0]["name"])
+
+
+def test_the_send_tools_carry_new_files(
+    mcp: Mcp, token: str, writer: Writer, smtp_server: Any
+) -> None:
+    ana, bo, cy = stranger(), stranger(), stranger()
+    writer.mail.seed(
+        writer.login,
+        mime(
+            "Invoice",
+            sender=f"Ana <{ana}>",
+            to=writer.me,
+            attachments=[MimeAttachment("invoice.pdf", "application/pdf", PDF)],
+        ),
+    )
+    ref = inbox_ref(mcp, token)
+    mcp.text(token, "message_send", to=[bo], subject="s", text="t", files=[given_pdf(), NOTES])
+    assert files_of(smtp_server.delivered_to(bo)[0].raw) == [
+        ("new.pdf", "application/pdf", PDF),
+        NOTES_PART,
+    ]
+    mcp.text(
+        token,
+        "message_reply",
+        ref=ref,
+        html="<p>Here</p>",
+        attachments=[{"ref": ref, "part": "2"}],
+        files=[NOTES],
+    )
+    original = ("invoice.pdf", "application/pdf", PDF)
+    assert files_of(smtp_server.delivered_to(ana)[0].raw) == [original, NOTES_PART]
+    mcp.text(token, "message_forward", ref=ref, to=[cy], files=[NOTES])
+    renamed = {"ref": ref, "part": "2", "name": "2026.pdf"}
+    mcp.text(
+        token, "message_forward", ref=ref, to=[cy], include_attachments=False, attachments=[renamed]
+    )
+    whole, chosen = smtp_server.delivered_to(cy)
+    assert files_of(whole.raw) == [original, NOTES_PART]
+    assert files_of(chosen.raw) == [("2026.pdf", "application/pdf", PDF)]
+
+
+def test_files_the_content_or_the_caps_refuse_go_nowhere(
+    mcp: Mcp, token: str, writer: Writer, mail: MailAccounts, smtp_server: Any
+) -> None:
+    mail.limits(attachment_max_mb=1)
+    half = b"\x01" * (600 * 1024)
+    writer.mail.seed(
+        writer.login,
+        mime("big", attachments=[MimeAttachment("half.bin", "application/x-a", half)]),
+    )
+    ref, out = inbox_ref(mcp, token), stranger()
+    big = {"name": "big.bin", "base64": base64.b64encode(half).decode()}
+    fake = {"name": "a.png", "content_type": "image/png", "base64": "AAEC"}
+    eleven = [{"name": f"{i}.txt", "text": "x"} for i in range(11)]
+    kept = [{"ref": ref, "part": "2"}]
+    message: dict[str, Any] = {"to": [out], "subject": "s", "text": "t"}
+    answer = {"ref": ref, "text": "t"}
+    cases: list[tuple[str, dict[str, Any]]] = [
+        ("draft_create", message),
+        ("message_send", message),
+        ("message_reply", answer),
+        ("message_forward", {**answer, "to": [out], "include_attachments": False}),
+    ]
+    for tool, fields in cases:
+        assert "not of its content_type" in mcp.error(token, tool, **fields, files=[fake]), tool
+        invalid = mcp.error(token, tool, **fields, files=[{"name": "a", "base64": "?"}])
+        assert "base64 is not valid" in invalid, tool
+        assert "may total" in mcp.error(token, tool, **fields, files=[big, big]), tool
+        assert "Invalid arguments" in mcp.error(token, tool, **fields, files=eleven), tool
+        # Alone each fits; with the part beside it, not.
+        together = mcp.error(token, tool, **fields, files=[big], attachments=kept)
+        assert "may total" in together, tool
+        counted = mcp.error(token, tool, **fields, files=eleven[:10], attachments=kept)
+        assert "At most 10 attachments" in counted, tool
+    # A forward's own attachments count too.
+    forward = {"ref": ref, "to": [out]}
+    assert "may total" in mcp.error(token, "message_forward", **forward, files=[big])
+    assert "At most 10" in mcp.error(token, "message_forward", **forward, files=eleven[:10])
+    assert writer.contents("Drafts") == []
+    assert smtp_server.delivered_to(out) == []
+
+
+def test_the_send_mode_decides_for_new_files_too(
+    mcp: Mcp, token: str, writer: Writer, smtp_server: Any, ctx: AppContext, user: User
+) -> None:
+    out, team = stranger(), stranger()
+    message: dict[str, Any] = {"to": [out], "subject": "s", "text": "t", "files": [NOTES]}
+    set_mode(ctx, user, "drafts")
+    assert "NOT sent" in mcp.text(token, "message_send", **message)
+    set_mode(ctx, user, "approval", auto_approve=[team])
+    assert "NOT sent" in mcp.text(token, "message_send", **message)
+    assert smtp_server.delivered_to(out) == []
+    drafts = writer.contents("Drafts")
+    assert [files_of(draft.source) for draft in drafts] == [[NOTES_PART], [NOTES_PART]]
+    assert "Sent" in mcp.text(token, "message_send", **{**message, "to": [team]})
+    assert files_of(smtp_server.delivered_to(team)[0].raw) == [NOTES_PART]
+    set_mode(ctx, user, "off")
+    assert "send_mode off" in mcp.error(token, "message_send", **message)
+    assert "send_mode off" in mcp.error(token, "draft_create", **message)
+    assert smtp_server.delivered_to(out) == []
+
+
+def test_a_call_past_a_mebibyte_is_taken_from_an_app_that_may_attach_files(
+    mcp: Mcp, token: str, writer: Writer
+) -> None:
+    content = bytes(range(256)) * 12 * 1024
+    file = {"name": "data.bin", "base64": base64.b64encode(content).decode()}
+    mcp.text(token, "draft_create", text="t", files=[file])
+    [(_name, _type, stored_content)] = files_of(writer.contents("Drafts")[0].source)
+    assert stored_content == content
+    mcp.verifier.tokens[token].claims = {"grant_id": "7", "tool_groups": ["mail_read"]}
+    body = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {"x": file["base64"]}}
+    assert mcp.post(body, token).status_code == 413
+    assert mcp.post(body).status_code == 401
+
+
 def html_part(raw: bytes) -> str:
     [part] = [p for p in parsed(raw).walk() if p.get_content_type() == "text/html"]
     return str(part.get_content())
@@ -2388,7 +2564,7 @@ def test_an_imported_eml_is_kept_as_built_checked_and_sent_unchanged_in_structur
 
 
 def test_an_imported_html_carries_parts_of_existing_messages(
-    mcp: Mcp, token: str, writer: Writer
+    mcp: Mcp, token: str, writer: Writer, db_session: Session, user: User
 ) -> None:
     writer.mail.seed(
         writer.login,
@@ -2411,7 +2587,7 @@ def test_an_imported_html_carries_parts_of_existing_messages(
         subject="Designed",
         attachments=[
             {"ref": assets, "part": "2", "content_id": "brand"},
-            {"ref": assets, "part": "3"},
+            {"ref": assets, "part": "3", "name": "renamed.pdf"},
         ],
     )
     assert "1 attachment(s). Not sent." in imported
@@ -2420,7 +2596,15 @@ def test_an_imported_html_carries_parts_of_existing_messages(
     assert message["Subject"] == "Designed"
     [image] = [part for part in message.walk() if part["Content-ID"] == "<brand>"]
     assert image.get_content() == b"png"
-    assert [part.get_filename() for part in message.iter_attachments()] == ["terms.pdf"]
+    assert [part.get_filename() for part in message.iter_attachments()] == ["renamed.pdf"]
+    # The trail names the part the agent renamed, not the one it took as it was.
+    [record] = db_session.scalars(
+        select(AuditRecord).where(
+            AuditRecord.user_id == user.id, AuditRecord.action == "draft_save"
+        )
+    )
+    assert record.detail["attachments"] == 1
+    assert record.detail["files"] == [{"name": "renamed.pdf", "size": 4}]
     assert "Give eml, or html" in mcp.error(token, "draft_import", eml="x", html="<p>y</p>")
     refused = mcp.error(
         token,

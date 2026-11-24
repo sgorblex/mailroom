@@ -246,6 +246,26 @@ describe('ActivityScreen', () => {
     expect(within(row).queryByText('Error')).not.toBeInTheDocument()
   })
 
+  it('names the files an agent attached, with their sizes', async () => {
+    stubApi(() =>
+      json({
+        records: [
+          record(1, {
+            actor: 'agent',
+            action: 'send',
+            detail: { attachments: 2, files: [{ name: 'report.pdf', size: 40211 }, { name: 'notes.txt', size: 12 }] },
+          }),
+        ],
+        next_cursor: null,
+      }),
+    )
+    renderRouted(<ActivityScreen />, ALICE, '/activity')
+    const row = await screen.findByRole('listitem')
+    await userEvent.click(within(row).getByText('Sent'))
+    expect(within(row).getByText('Files given by the agent')).toBeVisible()
+    expect(within(row).getByText('report.pdf (39.3 kB), notes.txt (12 byte)')).toBeVisible()
+  })
+
   it('words a folder action and what it changed', async () => {
     stubApi(() =>
       json({

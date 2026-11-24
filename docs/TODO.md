@@ -333,7 +333,7 @@ Older than milestone E, seen in its browser check; fix before batch 11.
 
 #### 12. MCP extras
 
-- [ ] **Attachments from agents** — `draft_*` and the send tools take new files as content
+- [x] **Attachments from agents** — `draft_*` and the send tools take new files as content
       (size-capped, type checked against the content) and rename attachments kept from
       messages. Lifts the rule that attachments are named by `ref` and `part` only, so its
       reasons are weighed first: what an agent may attach unasked, and tool calls that size.

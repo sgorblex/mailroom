@@ -8,6 +8,7 @@ from mailroom_core.mail._mime import aware_date
 from mailroom_core.mail.attachments import AttachmentSource, attachments_from
 from mailroom_core.mail.audit import (
     REFUSALS,
+    AuditFile,
     AuditItem,
     AuditOutcome,
     AuditRecipients,
@@ -61,7 +62,13 @@ from mailroom_core.mail.compose import (
     new_message_id,
     without_headers,
 )
-from mailroom_core.mail.content_type import DISPLAYED_IMAGES, content_type, is_text_type
+from mailroom_core.mail.content_type import (
+    DISPLAYED_IMAGES,
+    content_type,
+    given_type,
+    is_text_type,
+    upload_type,
+)
 from mailroom_core.mail.designed import (
     GMAIL_CLIP_BYTES,
     MAX_IMPORT_PARTS,
@@ -353,6 +360,7 @@ __all__ = [
     "Addressed",
     "Attachment",
     "AttachmentSource",
+    "AuditFile",
     "AuditItem",
     "AuditOutcome",
     "AuditRecipients",
@@ -503,6 +511,7 @@ __all__ = [
     "forwarded_original",
     "forwarded_original_html",
     "from_identity",
+    "given_type",
     "gmail_label_ref",
     "gmail_label_refs",
     "gmail_uid",
@@ -586,6 +595,7 @@ __all__ = [
     "try_remove_draft",
     "uids_matching",
     "uids_of",
+    "upload_type",
     "vacation_refusal",
     "vacation_reply",
     "wake_snoozed",

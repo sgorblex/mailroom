@@ -14,8 +14,10 @@ from typing import TYPE_CHECKING, Annotated, Final
 from pydantic import Field
 
 from mailroom.errors import mail_refusal
+from mailroom.mail.service import KeptPart
 from mailroom.mcp.tool import AccountId as BareAccountId
 from mailroom.mcp.tool import Arguments
+from mailroom.mcp.tools.files import FileName  # noqa: TC001 -- Pydantic reads it at runtime
 from mailroom.mcp.tools.mail_read import RefText  # noqa: TC001 -- Pydantic reads it at runtime
 from mailroom_core.mail import (
     MAX_ADDRESSES,
@@ -93,13 +95,16 @@ class AttachmentRef(Arguments):
         max_length=64,
         description='Its part number in that message ("2" or "1.2").',
     )
+    name: FileName | None = Field(
+        default=None, description="Attach it under this file name instead of its own."
+    )
 
 
 Attachments = Annotated[
     list[AttachmentRef],
     Field(
         max_length=MAX_UPLOADS,
-        description="Attachments of existing messages to attach, by ref and part: never content.",
+        description="Attachments of existing messages to attach, by ref and part.",
     ),
 ]
 
@@ -114,9 +119,9 @@ def check_body(text: str | None, html: str | None, *, required: bool = True) -> 
         raise mail_refusal("invalid_argument", "Give the message as text or as html.")
 
 
-def keep_of(attachments: Sequence[AttachmentRef] | None) -> list[tuple[str, str]]:
-    """The ``(ref, part)`` pairs the service takes."""
-    return [(attachment.ref, attachment.part) for attachment in attachments or ()]
+def keep_of(attachments: Sequence[AttachmentRef] | None) -> list[KeptPart]:
+    """The parts the service takes."""
+    return [KeptPart(kept.ref, kept.part, kept.name) for kept in attachments or ()]
 
 
 def recipients(values: Sequence[str] | None) -> tuple[Mailbox, ...] | None:

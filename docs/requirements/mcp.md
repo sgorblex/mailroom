@@ -94,17 +94,15 @@ saves what they would send as a draft, `approval` sends only if every recipient 
 auto-approved and otherwise saves the whole message as a draft (nobody gets it), `direct` sends. The result says plainly which happened (sent,
 or "saved as a draft, not sent") and to whom. `draft_send` is refused when the mode would only
 draft the message again. The inputs are those of mailroom-mcp's `send`, `reply`, `forward` and
-`draft_*` tools (an account is `account_id`), with the app's refs; **attachments are named by
-`ref` and `part` only**, never passed as content. `draft_create`, `draft_update`,
+`draft_*` tools (an account is `account_id`), with the app's refs, and with
+[`files`](#files-from-agents) and `attachments`. `draft_create`, `draft_update`,
 `message_send`, `message_reply` and `message_forward` take the body as `text` or as `html` (not
 both): HTML is sanitised as the web composer's is ([`mail-client.md`](mail-client.md), *Compose*)
 and its text part is made from it; a reply then quotes the original in HTML, and a forward carries
 the original's HTML and inline images, below an empty paragraph as in a web prefill, the two
-together within the HTML cap (3 MiB of UTF-8; an agent's own HTML meets the MCP endpoint's 1 MiB
-request limit first). `draft_update` keeps an HTML draft's HTML and images until
+together within the HTML cap (3 MiB of UTF-8). `draft_update` keeps an HTML draft's HTML and images until
 new `text` or `html` replaces them. `draft_import` saves a message built elsewhere as a draft as
-it was built ([designed mail](mail-client.md#drafts)): an .eml as `eml` (its text, within the
-1 MiB request), or `html` with `attachments` by `ref` and `part`, a `content_id` making one an
+it was built ([designed mail](mail-client.md#drafts)): an .eml as `eml` (its text, at most 3 MiB), or `html` with `attachments` by `ref` and `part`, a `content_id` making one an
 inline image; To, Cc and subject default to the .eml's, From to the default identity. Its answer
 is the draft's ref and the checks to show the user before it is sent, each Content-ID or file
 name inside the envelope; `draft_update` refuses such a draft (import it again). `draft_create`, `message_send`, `message_reply` and
@@ -116,6 +114,48 @@ where refs come from. The hourly send limit and the recipient cap apply to every
 `accounts_list` also lists each account's `identities` (the addresses it can send as, and the
 default), and both it and `folders_list` are served with these groups. An agent never gets the
 human's override of the send mode: only the web *Send* does.
+
+### Files from agents
+
+`draft_create`, `draft_update`, `message_send`, `message_reply` and `message_forward` attach two
+kinds of file:
+
+- **`attachments`:** parts of existing messages, by `ref` and `part`, so that no mail has to pass
+  through the model; `name` attaches one under another file name (`draft_import` too). A forward
+  carries the original's attachments besides, unless `include_attachments` is false.
+- **`files`:** new files, with their content in the call: `{name, content_type?, text | base64}`.
+  `draft_update` adds them to what the draft keeps.
+
+An agent used not to pass content at all: files as large as a message's do not belong in a model's
+context, and an agent that a hostile email steers could attach what nobody asked for. The first
+holds only for what is already in the mailbox, which `attachments` still takes without the
+content; for a file the user had the agent write, the only other way was not to send it. The second is
+bounded as the text of a message is, which can carry as much:
+
+- **The send mode decides,** and the app's send ceiling: files never change whether a message goes
+  out, is drafted or is refused. The server instructions say to attach only what the user asked
+  for, never what an email asks for.
+- **What is in the call, nothing else:** no path, no URL, nothing the server would fetch or read.
+- **Strict decoding:** `text` as UTF-8; `base64` standard, padded, without line breaks or a `data:`
+  prefix; neither empty.
+- **The type is checked against the content** (mailroom-core's `given_type`): a declared type is
+  refused when the bytes show another, when it is one known by its bytes (PDF, PNG, JPEG, GIF, WebP)
+  that they are not, or when it is a text type and they are binary; undeclared, it is found from
+  the bytes, then the name's extension, which never makes text of binary content (`text` is `text/plain` when nothing says better). A web
+  upload is not refused but relabelled by its bytes, as a part kept from a message is.
+- **Names** are one line of at most 200 characters without a folder, invisible and
+  direction-changing characters removed.
+- **Caps:** with `files`, at most 10 attachments with the parts kept, a forward's own included; all
+  together within the user's `attachment_max_mb`.
+- **The audit trail** keeps the name and size of each file an agent gave or renamed, never its
+  content (an `.eml`'s own parts are only counted); the log has the argument's name only.
+
+A call may be 40 MiB, which holds 25 MiB as base64 beside the largest HTML, when its caller is
+approved for `mail_draft` or `mail_send` and it declares its length; any other is held to 1 MiB (413 beyond),
+before any of it is read. A user has 2 such large calls at once in an API process (429 beyond), as
+they have tool calls. The host's proxy must allow the same ([`../deploy.md`](../deploy.md)).
+
+### Waiting for a delivery
 
 **After admission (30 s) the tool waits up to 45 s for the delivery.** (`draft_send` first reads the
 draft, under a 30 s deadline of its own.) A send that is not confirmed by then, or whose outcome

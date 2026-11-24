@@ -72,6 +72,9 @@ class OutgoingAttachment:
     content_id: str | None = None
     """Set on an inline part: what the HTML shows as `cid:<content_id>` (angle brackets
     optional). It goes with an inline disposition, only while the HTML refers to it."""
+    given: bool = False
+    """An agent gave its name, with its content or for a part of a message: the audit record then
+    names it, as it never does what came from mail."""
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

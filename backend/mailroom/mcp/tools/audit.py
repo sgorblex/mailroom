@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from mailroom.mcp.tool import ToolCall
 
 _FROM_MAIL: Final = ("from", "to", "cc", "bcc", "message_id", "rejected")
-"""A record's fields that come from mail written by others."""
+"""A record's fields that come from mail written by others (a file's name may too)."""
 
 
 class AuditListArguments(Arguments):
@@ -78,6 +78,8 @@ def _record(record: ListedRecord) -> JsonObject:
             detail[key] = [untrusted(str(item)) for item in value]
         elif value:
             detail[key] = untrusted(str(value))
+    for file in detail.get("files") or ():
+        file["name"] = untrusted(str(file["name"]))
     return out
 
 
@@ -110,8 +112,8 @@ AUDIT_TOOLS: Final[tuple[Tool[Any], ...]] = (
             "What was done to the user's mail, newest first: each message a move, trash, flag, "
             "draft, send or filter run acted on or tried to, and each folder created, renamed "
             "or deleted; who acted (the user, an agent and its app, or a rule set) and the "
-            "result. Subjects only as a hash. Addresses come from mail, in untrusted_email "
-            "tags. Continue with next_cursor."
+            "result. Subjects only as a hash. Addresses come from mail, and files are named by the "
+            "agents that gave them, in untrusted_email tags. Continue with next_cursor."
         ),
         group="audit_read",
         arguments=AuditListArguments,
