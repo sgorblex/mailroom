@@ -2110,7 +2110,12 @@ folder off the index is read live, as before the index.
   and the Trash its originals went to), a folder whose sync was running as it was written (that
   sync may have read the flags before the write). On Gmail a folder read from All Mail queues All
   Mail's sync. The index is written once the call answered, outside its deadline (by the call's
-  own thread when the deadline cut it). Each folder whose rows changed or whose sync was queued
+  own thread when the deadline cut it). A write whose answer names only where it wrote queues
+  those folders' syncs once it went through: a send delivered (Sent, which it was filed in or the
+  server filed it in itself, the draft it sent and what it answers or forwards; by the send's own
+  thread, the worker's for a held send), a draft saved or imported (Drafts) or deleted (Drafts,
+  and Trash for one written elsewhere), and one an agent's send mode kept in Drafts; a send that
+  failed changed nothing and queues none. Each folder whose rows changed or whose sync was queued
   is announced on Postgres's `mailroom_index` channel (`pg_notify`,
   `{"user_id", "account_id", "folder_id"}`), for live updates. An index write that fails leaves the mail call's answer as it was (logged as
   `mail_index_write_failed`, with its exception's type only); the next sync puts the rows right.

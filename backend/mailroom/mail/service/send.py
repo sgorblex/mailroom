@@ -6,7 +6,8 @@ runs on a ``SendRunner`` thread, past the end of the request, and writes its out
 row. From the moment the server has taken the message nothing can make that a failure: filing it,
 removing its draft and marking what it answered are later calls, each of which at worst sets
 ``filed`` to false or adds a note. A draft that did not reach Sent stays where it is: it is the only
-copy the account has.
+copy the account has. Once delivered, the folders the send changed are synced again into the mail
+index (``index_writes.resync``): Sent, the draft and what it answers or forwards.
 
 An agent's direct send (``send_message``, ``send_reply``, ``send_forward``) goes the same way, by
 ``agent``, without a key: its Message-ID is fresh, so a repeat is a second message. Where the send
@@ -27,10 +28,12 @@ from mailroom.accounts.store import AccountNotFound, account_password, load_acco
 from mailroom.audit import WEB, AuditTrail, Origin
 from mailroom.errors import Refusal, mail_refusal
 from mailroom.mail import signatures
+from mailroom.mail.index import writes as index_writes
 from mailroom.mail.service._shared import (
     _Accounts,
     _accounts,
     _call,
+    _find_special_path,
     _message_ref,
     _ref_accounts,
     _run,
@@ -59,7 +62,7 @@ from mailroom_core.mail import MESSAGES, MailError
 
 if TYPE_CHECKING:
     import ssl
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Iterable, Sequence
 
     from mailroom.context import AppContext
     from mailroom.mail.sends import SendRunner
@@ -96,6 +99,8 @@ class _Outgoing:
     what failed."""
     unsettled: Callable[[bool], tuple[gate.SendNote, ...]]
     """The notes for when ``after`` did not run at all, given the same."""
+    changes: tuple[MessageRef | None, ...] = ()
+    """What ``after`` changes: the draft it removes, what it answers or forwards."""
 
 
 def _sending(ctx: AppContext, user_id: int, origin: Origin) -> AuditTrail:
@@ -152,6 +157,16 @@ class Delivery:
     code: str
     filed: bool | None = None
     rejected: int = 0
+
+
+def settled_folders(
+    account_id: int, sent_in: str | None, changed: Iterable[MessageRef | None]
+) -> list[str]:
+    """The account's folders a delivered send changed, for the mail index to sync again: Sent
+    (``sent_in``, None when it could not be found), and the folders of ``changed`` in the account
+    (the draft sent, what it answers or forwards)."""
+    folders = {ref.folder for ref in changed if ref is not None and ref.account == account_id}
+    return sorted(folders | ({sent_in} if sent_in is not None else set()))
 
 
 def deliver_admitted(
@@ -226,7 +241,8 @@ def _run_send(
     outgoing: _Outgoing,
     transfer: Transfer,
 ) -> None:
-    """A send's thread: ``deliver_admitted``, filing and settling each as its own call."""
+    """A send's thread: ``deliver_admitted``, filing and settling each as its own call, then the
+    mail index brought in step with what they changed."""
     started = time.monotonic()
     account_id = admitted.account.id
     trail = _sending(ctx, user_id, origin)
@@ -256,6 +272,10 @@ def _run_send(
         ),
         transfer=transfer,
     )
+    if delivered.state == "sent":
+        sent_in = _find_special_path(ctx, user_id, accounts, account_id, "sent")
+        folders = settled_folders(account_id, sent_in, outgoing.changes)
+        index_writes.resync(ctx.session_maker, user_id, account_id, folders)
     logger.info(
         "mail_send_finished",
         extra={
@@ -400,6 +420,7 @@ def send_draft(
                 settling, ready.draft, _sending(ctx, user_id, origin).note, filed=filed
             ),
             partial(draft_unsettled, ready.draft),
+            (ready.draft.ref, ready.draft.answers, ready.draft.forwards),
         )
 
     try:
@@ -514,6 +535,8 @@ def _dispatch(
     )
     [message] = built
     if isinstance(started, gate.Drafted):
+        if started.ref is not None:
+            index_writes.resync(ctx.session_maker, user_id, account.id, [started.ref.folder])
         return Dispatched(
             account=account.id, send_mode=account.send_mode, message=message, draft=started.ref
         )
@@ -683,7 +706,9 @@ def send_reply(
             note = gate.mark_original(settling, original_ref, _sending(ctx, user_id, origin).note)
             return () if note is None else (note,)
 
-        return _Outgoing(message, None, None, mark, lambda _filed: (gate.ORIGINAL_NOT_MARKED,))
+        return _Outgoing(
+            message, None, None, mark, lambda _filed: (gate.ORIGINAL_NOT_MARKED,), (original_ref,)
+        )
 
     return _dispatch(ctx, user_id, accounts, account, origin, build, on=used)
 
@@ -754,6 +779,6 @@ def send_forward(
             return () if note is None else (note,)
 
         unmarked = (gate.ORIGINAL_NOT_MARKED_FORWARDED,)
-        return _Outgoing(message, None, None, mark, lambda _filed: unmarked)
+        return _Outgoing(message, None, None, mark, lambda _filed: unmarked, (original_ref,))
 
     return _dispatch(ctx, user_id, accounts, account, origin, build, on=used)

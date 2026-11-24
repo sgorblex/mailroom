@@ -1,5 +1,6 @@
 """Writing mail: a reply's or a forward's prefill, drafts saved, read, found and deleted, and what
-a send shares with them."""
+a send shares with them. A draft saved, imported or deleted has its folders synced again into the
+mail index (``index_writes.resync``) once the call answered."""
 
 from __future__ import annotations
 
@@ -12,10 +13,12 @@ from typing import TYPE_CHECKING, Final, Literal, cast
 from mailroom.audit import WEB, AuditTrail, Origin, kept_nowhere
 from mailroom.errors import Refusal, mail_refusal
 from mailroom.mail import signatures
+from mailroom.mail.index import writes as index_writes
 from mailroom.mail.service._shared import (
     _Accounts,
     _accounts,
     _call,
+    _find_special_path,
     _message_ref,
     _ref_accounts,
     _Stoppable,
@@ -532,7 +535,7 @@ def save_draft(
             keep=keep,
         )
 
-    return _stoppable_call(
+    done = _stoppable_call(
         ctx,
         user_id,
         accounts,
@@ -542,6 +545,8 @@ def save_draft(
         saved,
         on=sorted({account.id, *used}),
     )
+    _resync_drafts(ctx, user_id, account.id, done.folder, replaces)
+    return done
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -656,7 +661,7 @@ def import_draft(
             replaces=replaces,
         )
 
-    return _stoppable_call(
+    done = _stoppable_call(
         ctx,
         user_id,
         accounts,
@@ -666,6 +671,16 @@ def import_draft(
         imported,
         on=sorted({account.id, *used}),
     )
+    _resync_drafts(ctx, user_id, account.id, done.saved.folder, replaces)
+    return done
+
+
+def _resync_drafts(
+    ctx: AppContext, user_id: int, account_id: int, folder: str, replaced: MessageRef | None
+) -> None:
+    """The mail index brought in step with a draft saved in ``folder`` over ``replaced``."""
+    folders = {folder} if replaced is None else {folder, replaced.folder}
+    index_writes.resync(ctx.session_maker, user_id, account_id, sorted(folders))
 
 
 def draft_findings(
@@ -760,12 +775,12 @@ def find_draft(
 
 def delete_draft(ctx: AppContext, user_id: int, ref: str, *, origin: Origin = WEB) -> str:
     """Removes a draft: ``expunged`` for one mailroom wrote, by its UID alone; ``trashed`` for
-    any other."""
+    any other. Its folder, and Trash for one trashed, are synced again into the mail index."""
     accounts = _accounts(ctx, user_id)
     message = _message_ref(ctx, user_id, accounts, ref)
     _writable(accounts.config(message.account))
     removed = AuditTrail(ctx.session_maker, user_id, origin, "draft_remove")
-    return _call(
+    done = _call(
         ctx,
         user_id,
         accounts,
@@ -774,6 +789,12 @@ def delete_draft(ctx: AppContext, user_id: int, ref: str, *, origin: Origin = WE
         message.account,
         lambda connections: core.remove_draft(connections, message, removed.note),
     )
+    folders = {message.folder}
+    if done != "expunged":
+        trash = _find_special_path(ctx, user_id, accounts, message.account, "trash")
+        folders |= {trash} if trash is not None else set()
+    index_writes.resync(ctx.session_maker, user_id, message.account, sorted(folders))
+    return done
 
 
 def _attachment_sources(

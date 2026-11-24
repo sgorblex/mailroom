@@ -27,7 +27,7 @@ from mailroom.worker.tasks import (
 )
 from mailroom_core import send as gate
 from mailroom_core.mail import parse_ref
-from mailroom_core.testing import SmtpTestServer, create_folders
+from mailroom_core.testing import SmtpTestServer, create_folders, raw_client
 from tests.support.mail import mail_servers_ssl_context
 from tests.test_api_compose import MAIL, Composer, add_account, address, detail, smtp_endpoint
 
@@ -552,6 +552,68 @@ def test_an_undoable_send_is_held_for_the_users_delay_and_undo_leaves_the_draft(
     assert smtp_server.delivered_to(to) == []
     assert composer.read(ref)["send"] is None
     assert row(db_session, held["scheduled_id"]) is None
+
+
+def test_undo_then_send_delivers_once_and_syncs_sent_and_drafts_again(
+    composer: Composer,
+    user: User,
+    db_session: Session,
+    sessions: sessionmaker[Session],
+    mailboxes: Mailboxes,
+    smtp_server: SmtpTestServer,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The draft the worker's send removed leaves the index's Drafts, and the copy it filed
+    reaches its Sent: before, both waited for the next sweep, so the sent draft stayed listed."""
+    from mailroom.mail.index import writes
+    from tests.test_mail_index_writes import folder, queued
+
+    drafts, sent = (folder(db_session, user, 1, path) for path in ("Drafts", "Sent"))
+    to = stranger()
+    ref = draft_to(composer, to)
+    first = composer.post_send(ref, undoable=True).json()
+    assert composer.client.delete(f"{MAIL}/scheduled/{first['scheduled_id']}").status_code == 200
+    again = composer.post_send(ref, undoable=True).json()
+    announced: list[int] = []
+    monkeypatch.setattr(
+        writes, "notify", lambda _db, _u, _a, folder_id: announced.append(folder_id)
+    )
+
+    assert send_scheduled(sessions, mailboxes, int(first["scheduled_id"])) == "gone"
+    assert announced == []
+    assert send_scheduled(sessions, mailboxes, int(again["scheduled_id"])) == "ok"
+
+    assert len(smtp_server.delivered_to(to)) == 1
+    assert composer.contents("Drafts") == []
+    assert sorted(announced) == sorted([drafts, sent])
+    assert set(queued(db_session)) >= {drafts, sent}
+
+
+def test_a_held_send_that_fails_syncs_nothing(
+    composer: Composer,
+    user: User,
+    db_session: Session,
+    sessions: sessionmaker[Session],
+    mailboxes: Mailboxes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mailroom.mail.index import writes
+    from tests.test_mail_index_writes import folder
+
+    folder(db_session, user, 1, "Drafts")
+    ref = draft_to(composer, stranger())
+    held = composer.post_send(ref, undoable=True).json()
+    with raw_client(composer.server, composer.login) as client:
+        client.select_folder("Drafts")
+        client.delete_messages([parse_ref(ref).uid])
+        client.expunge()
+    announced: list[int] = []
+    monkeypatch.setattr(
+        writes, "notify", lambda _db, _u, _a, folder_id: announced.append(folder_id)
+    )
+
+    assert send_scheduled(sessions, mailboxes, int(held["scheduled_id"])) == "not_found"
+    assert announced == []
 
 
 def test_send_while_the_draft_is_held_for_later_is_refused(composer: Composer, user: User) -> None:

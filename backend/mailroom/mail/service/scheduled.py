@@ -20,7 +20,13 @@ from sqlalchemy.exc import IntegrityError
 from mailroom.accounts.store import load_accounts
 from mailroom.audit import WEB, Origin
 from mailroom.errors import Refusal
-from mailroom.mail.service._shared import _Accounts, _accounts, _call, _message_ref
+from mailroom.mail.service._shared import (
+    _Accounts,
+    _accounts,
+    _call,
+    _message_ref,
+    _special_path,
+)
 from mailroom.mail.service.compose import (
     DRAFT_GONE,
     SEND_HOLDS_THE_DRAFT,
@@ -28,14 +34,14 @@ from mailroom.mail.service.compose import (
     _send_key,
     _writable,
 )
-from mailroom.mail.service.send import deliver_admitted, draft_unsettled
+from mailroom.mail.service.send import deliver_admitted, draft_unsettled, settled_folders
 from mailroom.models import ScheduledSend
 from mailroom.oauth.models import OAuthClient
 from mailroom_core import mail as core
 from mailroom_core import send as gate
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
     from contextlib import AbstractContextManager
 
     from sqlalchemy.orm import Session
@@ -322,10 +328,13 @@ def send_held(
     key: str,
     by: Authoriser,
     time_zone: TimeZoneName,
+    resync: Callable[[Sequence[str]], None],
 ) -> str:
     """The worker's send of a held draft at ``ref``, held with ``key``, as ``by``, on the
     connections ``lease`` gives for the accounts' revision: ``SENT``, or the code it ended with.
-    Once a send of ``key`` holds the draft, that send decides and the draft is not read."""
+    Once a send of ``key`` holds the draft, that send decides and the draft is not read. Once
+    this one is delivered, ``resync`` is given the account's folders it changed
+    (``settled_folders``), for the mail index; it must not raise."""
     earlier = store.send_state_by_key(key)
     if earlier is not None and earlier.state in SEND_HOLDS_THE_DRAFT:
         return SENT if earlier.state == "sent" else "delivery_unknown"
@@ -339,7 +348,7 @@ def send_held(
             limits=accounts.write_limits,
             time_zone=time_zone,
         )
-        return _through_gate(deps, account, core.parse_ref(ref), key, note, by)
+        return _through_gate(deps, account, core.parse_ref(ref), key, note, by, resync)
 
 
 def _through_gate(
@@ -349,6 +358,7 @@ def _through_gate(
     key: str,
     note: Note,
     by: Authoriser,
+    resync: Callable[[Sequence[str]], None],
 ) -> str:
     try:
         ready = gate.prepare_draft(deps.connections, account, ref, deps.limits)
@@ -381,4 +391,9 @@ def _through_gate(
     delivered = deliver_admitted(
         deps, admitted, note, file=lambda sent: gate.file_sent(deps, sent, note), settle=settle
     )
-    return SENT if delivered.state == "sent" else delivered.code
+    if delivered.state != "sent":
+        return delivered.code
+    draft = ready.draft
+    sent_in = _special_path(deps.connections, account.id, "sent")
+    resync(settled_folders(account.id, sent_in, (draft.ref, draft.answers, draft.forwards)))
+    return SENT

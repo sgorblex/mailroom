@@ -817,7 +817,8 @@ keeps it, with `mail`:
   next turn tries again. The sync never changes mail: every read is under EXAMINE. On Gmail only
   All Mail has a row, so only it is synced.
 - The API queues `sync_folder` too, in its own transaction, for a folder one of its writes left
-  unsure ([`mail-client.md`](mail-client.md) — *Index*, the app's own writes).
+  unsure or that a send or a draft wrote to, and the worker for the folders a held send wrote to
+  ([`mail-client.md`](mail-client.md) — *Index*, the app's own writes).
 - Each commit of a job that changed the folder's rows (removed, flags, a batch stored) or its
   state (`syncing`, `ready`, `failed`) calls `pg_notify` on `mailroom_index` in that transaction,
   so the API's live updates hear of it once it commits.

@@ -2044,6 +2044,28 @@ describe('sending', () => {
       expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
     })
 
+    it('sends once after Undo then Send, and leaves no draft behind', async () => {
+      const user = userEvent.setup()
+      const fake = state({ heldPolls: 100 })
+      stubMailApi(fake)
+      renderMailApp('/mail', { user: undoing(3) })
+      await user.click(within(await ready(user)).getByRole('button', { name: 'Send' }))
+      await user.click(await screen.findByRole('button', { name: 'Undo' }, { timeout: 3_000 }))
+      const reopened = await composer('Draft')
+      await waitFor(() => {
+        expect(within(reopened).getByRole('textbox', { name: 'Message' })).toHaveTextContent('Hello')
+      })
+      fake.heldPolls = 0
+
+      await user.click(within(reopened).getByRole('button', { name: 'Send' }))
+
+      await screen.findByText('Sent.', { selector: 'p' }, { timeout: 10_000 })
+      expect(fake.delivered).toHaveLength(1)
+      expect(fake.drafts).toEqual([])
+      expect(fake.scheduled).toEqual({})
+      expect(screen.queryByRole('form')).not.toBeInTheDocument()
+    })
+
     it('hands focus back when Undo goes from under it as the hold runs out', async () => {
       const user = userEvent.setup()
       stubMailApi(state({ heldPolls: 100 }))

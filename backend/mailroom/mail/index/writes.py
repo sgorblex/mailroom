@@ -14,6 +14,10 @@ account (both its destination and the Trash the originals went to). A folder wit
 own on an account whose rows carry Gmail's message ids (``X-GM-MSGID``, read only with
 ``X-GM-EXT-1``) queues the account's labelled folders: All Mail holds those messages.
 
+A write whose answer names only the folders it changed queues their syncs the same way
+(``resync``): a send delivered (Sent, the draft it sent, what it answers or forwards), a draft
+saved, imported or removed, and one an agent's send mode kept in Drafts.
+
 Every folder whose rows changed or whose sync was queued is announced on ``NOTIFY_CHANNEL``
 (``notify``). An index write that fails is logged by its exception's type only and leaves the mail
 call's answer as it was: the next sync puts the rows right.
@@ -130,6 +134,23 @@ def marked_read(
             _Write(db, user_id, set()).marked_read(
                 (account_id, folder), uid_validity, uid_next, done=done
             )
+            db.commit()
+    except Exception as exc:
+        _failed(user_id, exc)
+
+
+def resync(
+    sessions: sessionmaker[Session], user_id: int, account_id: int, paths: Iterable[str]
+) -> None:
+    """Queue the syncs of ``account_id``'s folders ``paths``, which a write changed without its
+    answer saying how, and announce them; a Gmail account's labelled folders for one without a
+    row. Never raises: it runs after the write went through, a send included."""
+    keys = {(account_id, path) for path in paths}
+    if not keys:
+        return
+    try:
+        with sessions() as db:
+            _Write(db, user_id, set(keys)).resynced(keys)
             db.commit()
     except Exception as exc:
         _failed(user_id, exc)
@@ -269,6 +290,10 @@ class _Write:
                 .values(flags=func.array_append(MailIndexMessage.flags, SEEN))
             )
             self.changed.add(row.id)
+        self._settle()
+
+    def resynced(self, keys: set[_Key]) -> None:
+        self._lock(keys)
         self._settle()
 
     def _lock(self, keys: set[_Key]) -> None:
