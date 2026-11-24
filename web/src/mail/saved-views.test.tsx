@@ -71,7 +71,8 @@ describe('the views in the sidebar', () => {
     expect(within(list).getAllByRole('listitem').map((row) => /From (work|home)/.exec(row.textContent)?.[0])).toEqual(['From work', 'From home'])
     expect(within(list).getAllByText('home').length).toBeGreaterThan(0)
     expect(queriesTo(fetchMock, '/api/v1/mail/views/all_inboxes/messages')).toHaveLength(1)
-    expect(within(views()).getByRole('link', { name: 'All inboxes' })).toHaveAttribute('aria-current', 'page')
+    // Named with HOME's unread count too once its rows have its folders read.
+    expect(within(views()).getByRole('link', { name: /^All inboxes/ })).toHaveAttribute('aria-current', 'page')
     const folders = screen.getByRole('tree', { name: 'Folders of work' })
     expect(within(folders).getByRole('treeitem', { name: /Inbox/ })).not.toHaveAttribute('aria-current')
     expect(screen.queryByRole('group', { name: 'Show only' })).not.toBeInTheDocument()

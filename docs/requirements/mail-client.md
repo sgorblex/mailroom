@@ -123,7 +123,15 @@ The screens live under `/mail`: account and folder sidebar with counts, message 
 a divider between the list and the message view sets the list's width (30rem, 480 px, by default,
 from 320 to 960 px and always leaving the message view 480 px): dragged, or focused and moved
 with the arrow keys, and a double-click puts it back; this browser keeps the width. A window too
-narrow for it narrows the list only while it is. The sidebar shows an account's folders as a tree
+narrow for it narrows the list only while it is. On desktop the sidebar folds to a **rail** of
+icons (a button at its top, or `[`): *All inboxes* and the account's role folders (Inbox, Starred,
+Drafts, Sent, Archive, Junk, Trash, those it has), each a link named with its unread count and
+marked with a dot while it has unread mail. This browser keeps the choice
+(`mailroom.ui.mail.folderPane`); until one is made, the sidebar is a rail below `xl` (1280 px) and
+open above, and a choice that ends where that default would at the window's width goes back to
+it. While folded, hovering or focusing the rail shows the whole sidebar over the list, taking no
+room, until the pointer or the focus leaves, Escape, or a folder or view is picked from it.
+The sidebar shows an account's folders as a tree
 (the ARIA tree pattern, from `?all=true`): the folders with a role first, then the others by
 name; each level opens and closes, by mouse or with the arrow keys, and this browser remembers
 which are open per account (at first, those above the role folders; always those above the
@@ -407,6 +415,7 @@ MCP `message_read` still never set `\Seen`.
 | --- | --- |
 | `j` / `k` | Next / previous message, scrolled into view |
 | `x` | Toggle selection of the current message |
+| `[` | Fold the folder pane to its rail, or open it again (desktop) |
 | `Escape` | Close the picker, else clear the selection |
 | `?` | Show the shortcut sheet |
 | Ctrl+K / ⌘+K | Open the command palette |
