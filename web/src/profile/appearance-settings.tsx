@@ -81,10 +81,10 @@ export function AppearanceSettings(): ReactElement {
   }
 
   return (
-    <section aria-labelledby="appearance" className="flex flex-col gap-3">
-      <h2 id="appearance" className="font-medium">
-        {t('appearance.title')}
-      </h2>
+    <section aria-labelledby="appearance-settings" className="flex flex-col gap-3">
+      <h3 id="appearance-settings" className="font-medium">
+        {t('appearance.heading')}
+      </h3>
       <p id="appearance-intro" className="text-sm text-muted-foreground">
         {t('appearance.intro')}
       </p>

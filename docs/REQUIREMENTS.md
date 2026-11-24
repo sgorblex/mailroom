@@ -70,6 +70,10 @@ menu) shows the health check through the Vite proxy. Engineering baseline:
   work from the keyboard (the ARIA menu button pattern). The web app installs on a phone's home
   screen or as a desktop app, with Mailroom's icon (on staging, as *Mailroom staging* with the icon
   banded in amber); it still needs the server, nothing works offline.
+- **Profile.** The *Profile* page groups its settings as Account (password, time zone, linked
+  sign-ins), Appearance, Mail, Sending (Undo send, signatures, vacation reply, limits) and Apps
+  (connected apps), each group only where the instance has its settings, with a nav to them that
+  marks the one in view; a link names a group as `/profile#<group>`.
 - **Home.** The web opens on a summary of the user's mail and filters: unread mail per account
   inbox and in all, what waits on them (starred, To sort, snoozed coming back today, scheduled
   sends), each rule set's recent runs and failures and its week's messages acted on, and a tile

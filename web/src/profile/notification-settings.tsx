@@ -33,9 +33,9 @@ export function NotificationSettings(): ReactElement {
 
   return (
     <section aria-labelledby="desktop-notifications" className="flex flex-col gap-3">
-      <h2 id="desktop-notifications" className="font-medium">
+      <h3 id="desktop-notifications" className="font-medium">
         {t('desktopNotifications.title')}
-      </h2>
+      </h3>
       <p className="text-sm text-muted-foreground">{t('desktopNotifications.intro')}</p>
       {access === 'default' ? (
         <Button type="button" onClick={() => void allow()}>
@@ -102,9 +102,9 @@ function AccountFolders({ account, chosen }: { account: Account; chosen: Account
   const folders = status.data?.folders.filter((folder) => notifying(folder, gmail))
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-2">
-      <h3 id={headingId} className="text-sm font-medium">
+      <h4 id={headingId} className="text-sm font-medium">
         {account.display_name}
-      </h3>
+      </h4>
       {status.isPending && <p className="text-sm text-muted-foreground">{t('desktopNotifications.loading')}</p>}
       {status.isError && (
         <p role="alert" className="text-sm text-destructive">

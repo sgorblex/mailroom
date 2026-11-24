@@ -32,9 +32,9 @@ export function ConversationsForm(): ReactElement {
 
   return (
     <section aria-labelledby="conversations" className="flex flex-col gap-3">
-      <h2 id="conversations" className="font-medium">
+      <h3 id="conversations" className="font-medium">
         {t('conversations.title')}
-      </h2>
+      </h3>
       <form className="flex flex-col gap-3" onSubmit={(event) => void submit(event)}>
         <label className="flex items-start gap-2 text-sm">
           <input

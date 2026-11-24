@@ -50,9 +50,9 @@ export function MarkReadForm(): ReactElement {
 
   return (
     <section aria-labelledby="mark-read" className="flex flex-col gap-3">
-      <h2 id="mark-read" className="font-medium">
+      <h3 id="mark-read" className="font-medium">
         {t('markRead.title')}
-      </h2>
+      </h3>
       <form className="flex flex-col gap-3" onSubmit={(event) => void submit(event)}>
         <fieldset className="flex flex-col gap-2" aria-describedby="mark-read-intro">
           <legend className="sr-only">{t('markRead.title')}</legend>

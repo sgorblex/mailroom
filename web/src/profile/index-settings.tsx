@@ -24,9 +24,9 @@ export function IndexSettings(): ReactElement {
   const accounts = useQuery({ queryKey: ACCOUNTS_KEY, queryFn: ({ signal }) => listAccounts(signal), ...READ_ON_MOUNT })
   return (
     <section aria-labelledby="mail-index" className="flex flex-col gap-3">
-      <h2 id="mail-index" className="font-medium">
+      <h3 id="mail-index" className="font-medium">
         {t('mailIndex.title')}
-      </h2>
+      </h3>
       <p className="text-sm text-muted-foreground">{t('mailIndex.intro')}</p>
       <AgeLimitForm />
       {accounts.isError && (
@@ -175,9 +175,9 @@ function AccountIndex({ account }: { account: Account }): ReactElement {
   const data = status.data
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-2">
-      <h3 id={headingId} className="text-sm font-medium">
+      <h4 id={headingId} className="text-sm font-medium">
         {account.display_name}
-      </h3>
+      </h4>
       {status.isPending && <p className="text-sm text-muted-foreground">{t('mailIndex.loading')}</p>}
       {status.isError && (
         <p role="alert" className="text-sm text-destructive">
