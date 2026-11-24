@@ -322,6 +322,51 @@ describe('live updates', () => {
     })
   })
 
+  it("reads the account's counts again for an All Mail change, which a guess from an earlier request leaves alone", async () => {
+    stubEventSource()
+    const unread = messageItem(WORK, 'INBOX', 200, {
+      subject: 'Message 200',
+      flags: { seen: false, flagged: false, answered: false, forwarded: false, draft: false, to_sort: false },
+    })
+    let release = (): void => undefined
+    const marked = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const fake = state({
+      folders: {
+        [WORK]: [
+          { path: 'INBOX', role: 'inbox', unread: 2, total: 31 },
+          { path: '[Gmail]/All Mail', role: 'all', unread: 2, total: 40 },
+        ],
+        [HOME]: [{ path: 'INBOX', role: 'inbox', unread: 0, total: 0 }],
+      },
+      messages: { '1/INBOX': [unread, ...inbox], '2/INBOX': [] },
+      views: { ...Object.fromEntries(inbox.map((item) => [item.ref, messageView(item)])), [unread.ref]: messageView(unread) },
+      hold: (request) => (request === 'POST /api/v1/mail/messages/flag' ? marked : undefined),
+    })
+    const fetchMock = stubMailApi(fake)
+    renderMailApp(`/mail?message=${unread.ref}`)
+    const source = await opened()
+    const folders = await screen.findByRole('tree', { name: 'Folders of work' })
+    await waitFor(() => {
+      expect(queriesTo(fetchMock, '/api/v1/mail/messages/flag')).toHaveLength(1)
+    })
+
+    const reads = queriesTo(fetchMock, '/api/v1/mail/accounts/1/folders').length
+    fake.folders[WORK] = [
+      { path: 'INBOX', role: 'inbox', unread: 1, total: 31 },
+      { path: '[Gmail]/All Mail', role: 'all', unread: 1, total: 40 },
+    ]
+    send(source, 'folder_changed', { account: WORK, folder: '[Gmail]/All Mail', unread: 1, total: 40 })
+    expect(await within(folders).findByRole('treeitem', { name: 'Inbox, 1 unread' })).toBeInTheDocument()
+    expect(queriesTo(fetchMock, '/api/v1/mail/accounts/1/folders').length).toBeGreaterThan(reads)
+    release()
+    await waitFor(() => {
+      expect(within(screen.getByRole('list', { name: 'Messages' })).queryByRole('link', { name: /Unread:/ })).not.toBeInTheDocument()
+    })
+    expect(within(folders).getByRole('treeitem', { name: 'Inbox, 1 unread' })).toBeInTheDocument()
+  })
+
   it('ignores an event whose data is not what its type says', async () => {
     stubEventSource()
     stubMailApi(state())

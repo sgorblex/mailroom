@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { DEFAULT_APPEARANCE, type UserJson } from '@/api/auth.ts'
+import { FakeEventSource, stubEventSource } from '@/test/fake-event-source.ts'
 import { bodiesTo, type FakeMailState, HOME, messageItem, messageView, refusal, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
 import { scrollListToEnd } from '@/test/fake-virtualizer.ts'
 import { renderMailApp } from '@/test/mail-app.tsx'
@@ -68,6 +69,28 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
     resolve = done
   })
   return { promise, resolve }
+}
+
+/** The live updates stream, opened. */
+async function openStream(): Promise<FakeEventSource> {
+  const source = await waitFor(() => {
+    const current = FakeEventSource.current()
+    if (current === undefined) {
+      throw new Error('no stream open')
+    }
+    return current
+  })
+  act(() => {
+    source.open()
+  })
+  return source
+}
+
+/** A live `folder_changed` event: the folder's counts as the server has them now. */
+function sendCounts(source: FakeEventSource, folder: string, unread: number, total: number): void {
+  act(() => {
+    source.send('folder_changed', { account: WORK, folder, unread, total })
+  })
 }
 const actions = (): Promise<HTMLElement> => screen.findByRole('group', { name: 'Message actions' })
 const selection = (): Promise<HTMLElement> => screen.findByRole('group', { name: 'Selected messages' })
@@ -791,6 +814,94 @@ describe('marking read on open', () => {
     await waitFor(() => {
       expect(within(folders).getByRole('treeitem', { name: 'Inbox, 3 unread' })).toBeInTheDocument()
     })
+  })
+})
+
+describe('live counts over guessed ones', () => {
+  /** The fake's state, the first answer to `request` held back until the returned `release`. */
+  function holding(request: string): { fake: FakeMailState; release: () => void } {
+    const answer = deferred()
+    let held = false
+    const fake = state({
+      hold: (each) => {
+        if (each === request && !held) {
+          held = true
+          return answer.promise
+        }
+        return undefined
+      },
+    })
+    return { fake, release: answer.resolve }
+  }
+
+  it('keeps the live count that arrived before the mark-read answered, instead of taking one off it again', async () => {
+    stubEventSource()
+    const { fake, release } = holding(`POST ${FLAG}`)
+    const fetchMock = stubMailApi(fake)
+    renderMailApp(`/mail?message=${String(unread?.ref)}`)
+    const source = await openStream()
+    const folders = await screen.findByRole('tree', { name: 'Folders of work' })
+    await waitFor(() => {
+      expect(bodiesTo(fetchMock, FLAG)).toHaveLength(1)
+    })
+
+    sendCounts(source, 'INBOX', 2, 5)
+    expect(await within(folders).findByRole('treeitem', { name: 'Inbox, 2 unread' })).toBeInTheDocument()
+    release()
+    const list = await messagesList()
+    await waitFor(() => {
+      expect(within(list).queryByRole('link', { name: /Unread:/ })).not.toBeInTheDocument()
+    })
+    expect(within(folders).getByRole('treeitem', { name: 'Inbox, 2 unread' })).toBeInTheDocument()
+  })
+
+  it('takes the live count that arrives after the answer as it is', async () => {
+    stubEventSource()
+    stubMailApi(state())
+    renderMailApp(`/mail?message=${String(unread?.ref)}`)
+    const source = await openStream()
+    const folders = await screen.findByRole('tree', { name: 'Folders of work' })
+
+    expect(await within(folders).findByRole('treeitem', { name: 'Inbox, 2 unread' })).toBeInTheDocument()
+    sendCounts(source, 'INBOX', 2, 5)
+    expect(within(folders).getByRole('treeitem', { name: 'Inbox, 2 unread' })).toBeInTheDocument()
+  })
+
+  it('still guesses the folders no live count came for since the request started', async () => {
+    stubEventSource()
+    const { fake, release } = holding('POST /api/v1/mail/messages/archive')
+    const fetchMock = stubMailApi(fake)
+    renderMailApp('/mail')
+    const list = await messagesList()
+    const source = await openStream()
+    const folders = await screen.findByRole('tree', { name: 'Folders of work' })
+
+    await userEvent.click(within(list).getByRole('checkbox', { name: 'Select Message 10' }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: 'Archive' }))
+    await waitFor(() => {
+      expect(bodiesTo(fetchMock, '/api/v1/mail/messages/archive')).toHaveLength(1)
+    })
+    sendCounts(source, 'Archive', 1, 3)
+    release()
+
+    await reported('polite', 'Archived 1 message.')
+    // Archive as the server said, not one more; Inbox by the guess, as nothing live came for it.
+    expect(within(folders).getByRole('treeitem', { name: 'Archive, 1 unread' })).toBeInTheDocument()
+    expect(within(folders).getByRole('treeitem', { name: 'Inbox, 2 unread' })).toBeInTheDocument()
+  })
+
+  it('guesses again for a request started after the live count arrived', async () => {
+    stubEventSource()
+    stubMailApi(state())
+    renderMailApp('/mail')
+    const list = await messagesList()
+    const source = await openStream()
+    const folders = await screen.findByRole('tree', { name: 'Folders of work' })
+
+    sendCounts(source, 'INBOX', 4, 6)
+    expect(await within(folders).findByRole('treeitem', { name: 'Inbox, 4 unread' })).toBeInTheDocument()
+    await userEvent.click(within(list).getByRole('link', { name: /Unread:\s*Message 10Preview/ }))
+    expect(await within(folders).findByRole('treeitem', { name: 'Inbox, 3 unread' })).toBeInTheDocument()
   })
 })
 
