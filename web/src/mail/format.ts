@@ -30,7 +30,7 @@ export function formatSize(language: string, bytes: number): string {
 const dayFormats = new Map<string | undefined, Intl.DateTimeFormat>()
 
 /** The calendar day `date` falls on in `timeZone`. */
-function dayIn(date: Date, timeZone: string | undefined): string {
+export function dayIn(date: Date, timeZone: string | undefined): string {
   let format = dayFormats.get(timeZone)
   if (format === undefined) {
     format = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' })
@@ -40,14 +40,14 @@ function dayIn(date: Date, timeZone: string | undefined): string {
 }
 
 /**
- * A list row's date in `timeZone` (the browser's when `undefined`): the time for today there, else
- * the date; text that is no date shows as it is.
+ * A list row's date in `timeZone` (the browser's when `undefined`): the time for `today` (its
+ * `useToday`), else the date; text that is no date shows as it is.
  */
 export function formatListDate(
   language: string,
   iso: string | null,
   timeZone: string | undefined,
-  now: Date = new Date(),
+  today: string,
 ): string {
   if (iso === null) {
     return ''
@@ -56,9 +56,8 @@ export function formatListDate(
   if (Number.isNaN(date.getTime())) {
     return iso
   }
-  const today = dayIn(date, timeZone) === dayIn(now, timeZone)
   return new Intl.DateTimeFormat(
     language,
-    today ? { timeStyle: 'short', timeZone } : { dateStyle: 'medium', timeZone },
+    dayIn(date, timeZone) === today ? { timeStyle: 'short', timeZone } : { dateStyle: 'medium', timeZone },
   ).format(date)
 }

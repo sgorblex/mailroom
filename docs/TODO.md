@@ -312,7 +312,7 @@ Older than milestone E, seen in its browser check; fix before batch 11.
       Drafts, though the message went once.
 - [x] **Wide HTML on phones** — fit a newsletter laid out wider than the screen to its width,
       as phone mail apps do, instead of cutting it at the frame's edge.
-- [ ] **Speed, later** — what the milestone E speed pass left (its measurement found the rest):
+- [x] **Speed, later** — what the milestone E speed pass left (its measurement found the rest):
   - [x] **Mail without waiting on mailbox logins** — `/accounts` logs in to every account's IMAP
         server for its keywords before the mail screen draws anything; answer first and fill the
         keywords in later, and start the list from the remembered account.
@@ -320,7 +320,7 @@ Older than milestone E, seen in its browser check; fix before batch 11.
         with the same UIDVALIDITY, and keep a message's BODYSTRUCTURE for a while (mailroom-core).
   - [x] **Mail code sooner** — load the mail screen's chunk without waiting for `/auth/me`, or
         ship it with the shell.
-  - [ ] **React Compiler** — the general form of the targeted memoising in the speed pass, so
+  - [x] **React Compiler** — the general form of the targeted memoising in the speed pass, so
         rows stop re-rendering when the open message changes.
 
 #### 11. Profile, security and data

@@ -9,7 +9,7 @@ import itCommon from '@/locales/it/common.json'
 import it_ from '@/locales/it/mail.json'
 import { keys } from '@/test/strings.ts'
 
-import { formatListDate, formatSize } from './format.ts'
+import { dayIn, formatListDate, formatSize } from './format.ts'
 import { MAIL_NS } from './i18n.ts'
 import { recipientsLabel, sentMessage } from './messages.ts'
 
@@ -104,18 +104,18 @@ describe('format', () => {
 
   it('shows the time for today and the date otherwise', () => {
     // Local times: "today" is the runner's calendar day, whatever its time zone.
-    const now = new Date(2026, 9, 30, 12, 0)
-    expect(formatListDate('en', new Date(2026, 9, 30, 9, 12).toISOString(), undefined, now)).toMatch(/\d:\d\d/)
-    expect(formatListDate('en', new Date(2026, 0, 2, 9, 12).toISOString(), undefined, now)).toContain('2026')
-    expect(formatListDate('en', null, undefined, now)).toBe('')
-    expect(formatListDate('en', 'not a date', undefined, now)).toBe('not a date')
+    const today = dayIn(new Date(2026, 9, 30, 12, 0), undefined)
+    expect(formatListDate('en', new Date(2026, 9, 30, 9, 12).toISOString(), undefined, today)).toMatch(/\d:\d\d/)
+    expect(formatListDate('en', new Date(2026, 0, 2, 9, 12).toISOString(), undefined, today)).toContain('2026')
+    expect(formatListDate('en', null, undefined, today)).toBe('')
+    expect(formatListDate('en', 'not a date', undefined, today)).toBe('not a date')
   })
 
   it('counts today and writes the time in the given zone', () => {
     const now = new Date('2026-10-31T01:00:00Z')
     const lateYesterday = '2026-10-30T23:30:00Z'
-    expect(formatListDate('en', lateYesterday, 'Asia/Tokyo', now)).toBe('8:30 AM')
-    expect(formatListDate('en', lateYesterday, 'UTC', now)).toBe('Oct 30, 2026')
+    expect(formatListDate('en', lateYesterday, 'Asia/Tokyo', dayIn(now, 'Asia/Tokyo'))).toBe('8:30 AM')
+    expect(formatListDate('en', lateYesterday, 'UTC', dayIn(now, 'UTC'))).toBe('Oct 30, 2026')
   })
 })
 
