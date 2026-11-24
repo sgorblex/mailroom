@@ -397,8 +397,10 @@ function Editor({ session, start }: { session: ComposeSession; start: ComposeSta
         case 'refused':
           refused(end.error)
           return
-        case 'held':
-          holdSent(end.held, start.composeId)
+        case 'held': {
+          const { to, cc, bcc } = model.getView().form
+          holdSent(end.held, start.composeId, [...to, ...cc, ...bcc])
+        }
       }
     },
     [announce, finishSent, holdSent, model, start.composeId, t],

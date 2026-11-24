@@ -1,7 +1,7 @@
 import { createContext, useContext, type Dispatch, type SetStateAction } from 'react'
 
 import type { AccountId, Account } from '@/api/accounts.ts'
-import type { ScheduledSend, SendResult } from '@/api/mail.ts'
+import type { MailAddress, ScheduledSend, SendResult } from '@/api/mail.ts'
 
 import type { ComposeSession, ComposeSource } from './compose-session.ts'
 import type { HeldEnd } from './send-flow.ts'
@@ -21,9 +21,10 @@ export type SendNotice = Pick<SendResult, 'filed' | 'rejected' | 'note_codes'>
 /**
  * A send held for an Undo, once its composer has closed: `undoable` while Undo can still stop it,
  * `undoing` while it tries, `sending` past that, `tooLate` when the worker took it first, `ended`
- * when it went otherwise than sent (that is `notice`).
+ * when it went otherwise than sent (that is `notice`). `to` is whom it goes to, `until` when Undo
+ * stops being offered (by this clock) and `holdMs` how long that was when it was held.
  */
-export type HeldNotice = { send: ScheduledSend; composeId: string } & (
+export type HeldNotice = { send: ScheduledSend; composeId: string; to: MailAddress[]; until: number; holdMs: number } & (
   | { phase: 'undoable' | 'undoing' | 'sending' | 'tooLate' }
   | { phase: 'ended'; end: Exclude<HeldEnd, { kind: 'sent' }> }
 )
@@ -60,8 +61,8 @@ export interface Compose {
   finishSent: (notice: SendNotice) => void
   notice: SendNotice | null
   dismissNotice: () => void
-  /** Closes the composer of a send held for an Undo, and follows it to its end. */
-  holdSent: (send: ScheduledSend, composeId: string) => void
+  /** Closes the composer of a send held for an Undo, to `to`, and follows it to its end. */
+  holdSent: (send: ScheduledSend, composeId: string, to: MailAddress[]) => void
   /** Each send held for an Undo, oldest first, until it was sent or its notice dismissed. */
   held: HeldNotice[]
   /** Cancels the held send and opens its draft again, while Undo can stop it. */

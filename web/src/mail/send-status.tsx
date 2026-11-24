@@ -6,9 +6,9 @@ import { useTimeZone } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { formatDateTime } from '@/lib/format.ts'
 
-import { useCompose, type HeldNotice } from './compose-context.ts'
+import { useCompose } from './compose-context.ts'
 import { MAIL_NS } from './i18n.ts'
-import { composeErrorMessage, heldEndMessage, mailCodeMessage, sentMessage } from './messages.ts'
+import { composeErrorMessage, mailCodeMessage, sentMessage } from './messages.ts'
 
 /** Where the draft's send stands, while the composer is open. */
 export type SendState =
@@ -95,80 +95,6 @@ export function SentNotice(): ReactElement | null {
       <Button type="button" variant="ghost" size="icon-xs" aria-label={t('triage.dismiss')} onClick={dismissNotice}>
         <X aria-hidden="true" />
       </Button>
-    </div>
-  )
-}
-
-/** The sends held for an Undo, once their composers have closed: each one's Undo while it can, else how it ended. */
-export function HeldNotices(): ReactElement | null {
-  const { held } = useCompose()
-  if (held.length === 0) {
-    return null
-  }
-  return (
-    <>
-      {held.map((notice) => (
-        <HeldSend key={notice.send.scheduled_id} notice={notice} />
-      ))}
-    </>
-  )
-}
-
-function HeldSend({ notice }: { notice: HeldNotice }): ReactElement {
-  const { t } = useTranslation(MAIL_NS)
-  const { undoSend, dismissHeld, start } = useCompose()
-  const id = notice.send.scheduled_id
-  if (notice.phase === 'ended') {
-    const { ref } = notice.send
-    return (
-      <div className="flex items-start gap-2 rounded-lg border border-destructive/40 p-2 text-sm">
-        <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
-          <p className="break-words">{heldEndMessage(t, notice.end)}</p>
-          {notice.end.kind !== 'unknown' && (
-            <Button
-              type="button"
-              variant="outline"
-              size="xs"
-              onClick={() => {
-                dismissHeld(id)
-                start({ kind: 'draft', ref })
-              }}
-            >
-              {t('compose.openDraft')}
-            </Button>
-          )}
-        </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          aria-label={t('triage.dismiss')}
-          onClick={() => {
-            dismissHeld(id)
-          }}
-        >
-          <X aria-hidden="true" />
-        </Button>
-      </div>
-    )
-  }
-  const undoable = notice.phase === 'undoable' || notice.phase === 'undoing'
-  return (
-    <div className="flex items-center gap-2 rounded-lg border p-2 text-sm">
-      <p className="min-w-0 flex-1 break-words">{notice.phase === 'tooLate' ? t('compose.tooLateToUndo') : t('compose.heldSending')}</p>
-      {undoable && (
-        <Button
-          type="button"
-          variant="outline"
-          size="xs"
-          aria-disabled={notice.phase === 'undoing'}
-          onClick={() => {
-            undoSend(id)
-          }}
-        >
-          {t('compose.undo')}
-        </Button>
-      )}
     </div>
   )
 }

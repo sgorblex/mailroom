@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -6,6 +6,8 @@ import type { UserJson } from '@/api/auth.ts'
 import type { ScheduledSend, SendResult } from '@/api/mail.ts'
 import { bodiesTo, fakeDraft, type FakeMailState, HOME, messageItem, messageView, plainTextsAsked, queriesTo, refusal, savesOf, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
 import { openMessageMenu, renderMailApp } from '@/test/mail-app.tsx'
+
+import { PINNED_ALERT_ID, PINNED_STATUS_ID } from './toast.tsx'
 
 const inbox = [messageItem(WORK, 'INBOX', 2), messageItem(WORK, 'INBOX', 1)]
 const [first] = inbox
@@ -1995,6 +1997,7 @@ describe('sending', () => {
       expect(screen.queryByRole('form')).not.toBeInTheDocument()
       expect(sendBodies(fetchMock)).toEqual([{ undoable: true }])
       expect(Object.keys(fake.scheduled ?? {})).toHaveLength(1)
+      expect(await screen.findByRole('button', { name: /Scheduled.*1 scheduled/ })).toBeInTheDocument()
 
       await user.click(undo)
 
@@ -2007,6 +2010,11 @@ describe('sending', () => {
       expect(fake.drafts).toHaveLength(1)
       expect(live('polite')).toHaveTextContent('Not sent: the draft is open again.')
       expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
+      // The Scheduled count no longer counts what Undo cancelled.
+      await waitFor(() => {
+        expect(screen.queryByRole('button', { name: /1 scheduled/ })).not.toBeInTheDocument()
+      })
+      expect(screen.getByRole('button', { name: /^Scheduled/ })).toBeInTheDocument()
     })
 
     it('is followed to Sent once the worker sends it', async () => {
@@ -2016,11 +2024,29 @@ describe('sending', () => {
       renderMailApp('/mail', { user: undoing(1) })
       const form = await ready(user)
       await user.click(within(form).getByRole('button', { name: 'Send' }))
-      expect(await screen.findByText('Sending…', { selector: 'p' })).toBeInTheDocument()
+      // Shown once the 1 s hold runs out, which started before this wait: the default 1 s races it.
+      expect(await screen.findByText('Sending to ada@example.org…', { selector: 'p' }, { timeout: 3_000 })).toBeInTheDocument()
 
       await sentNotice()
       expect(fake.delivered).toHaveLength(1)
       expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
+    })
+
+    it('hands focus back when Undo goes from under it as the hold runs out', async () => {
+      const user = userEvent.setup()
+      stubMailApi(state({ heldPolls: 100 }))
+      renderMailApp('/mail', { user: undoing(1) })
+      await user.click(within(await ready(user)).getByRole('button', { name: 'Send' }))
+      const undo = await screen.findByRole('button', { name: 'Undo' }, { timeout: 3_000 })
+      act(() => {
+        undo.focus()
+      })
+      expect(undo).toHaveFocus()
+
+      expect(await screen.findByText('Sending to ada@example.org…', { selector: 'p' }, { timeout: 3_000 })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
+      // Back on what had it before the toast: Compose, where the closed composer left it.
+      expect(screen.getByRole('button', { name: 'Compose' })).toHaveFocus()
     })
 
     it('says when Undo came too late, and still reports the send', async () => {
@@ -2037,8 +2063,49 @@ describe('sending', () => {
       await user.click(undo)
 
       expect(await screen.findByText(/Too late to undo/, { selector: 'p' })).toBeInTheDocument()
-      expect(live('assertive')).toHaveTextContent('Too late to undo')
+      expect(document.getElementById(PINNED_ALERT_ID)).toHaveTextContent('Too late to undo')
+      expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
       expect(screen.queryByRole('form')).not.toBeInTheDocument()
+    })
+
+    it('counts the seconds left in its toast, said once rather than each second', async () => {
+      const user = userEvent.setup()
+      stubMailApi(state({ heldPolls: 100 }))
+      renderMailApp('/mail', { user: undoing(10) })
+      await user.click(within(await ready(user)).getByRole('button', { name: 'Send' }))
+      await screen.findByRole('button', { name: 'Undo' }, { timeout: 3_000 })
+
+      const spoken = 'Sending to ada@example.org. You can undo it for 10 seconds.'
+      expect(document.getElementById(PINNED_STATUS_ID)).toHaveTextContent(spoken)
+      expect(screen.getByRole('button', { name: 'Undo' })).toHaveAccessibleDescription(spoken)
+      expect(screen.getByText(/^Sending to ada@example\.org in (10|9) s$/, { selector: 'p' })).toBeInTheDocument()
+      expect(await screen.findByText('Sending to ada@example.org in 8 s', { selector: 'p' }, { timeout: 3_000 })).toBeInTheDocument()
+      expect(document.getElementById(PINNED_STATUS_ID)).toHaveTextContent(spoken)
+      expect(document.getElementById(PINNED_STATUS_ID)).not.toHaveTextContent(/ in \d+ s/)
+    })
+
+    it('offers the draft again when the held send failed', async () => {
+      const user = userEvent.setup()
+      const fake = state({ heldPolls: 100 })
+      stubMailApi(fake)
+      renderMailApp('/mail', { user: undoing(1) })
+      await user.click(within(await ready(user)).getByRole('button', { name: 'Send' }))
+      await screen.findByRole('button', { name: 'Undo' }, { timeout: 3_000 })
+      for (const held of Object.values(fake.scheduled ?? {})) {
+        held.state = 'failed'
+        held.code = 'unreachable'
+      }
+
+      const open = await screen.findByRole('button', { name: 'Open draft' }, { timeout: 3_000 })
+      expect(document.getElementById(PINNED_ALERT_ID)).toHaveTextContent(/^Not sent\./)
+      expect(fake.delivered).toBeUndefined()
+      await user.click(open)
+
+      const reopened = await composer('Draft')
+      await waitFor(() => {
+        expect(within(reopened).getByRole('textbox', { name: 'Message' })).toHaveTextContent('Hello')
+      })
+      expect(screen.queryByRole('button', { name: 'Open draft' })).not.toBeInTheDocument()
     })
 
     it('keeps an Undo for each send held at once', async () => {

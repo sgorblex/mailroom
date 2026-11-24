@@ -34,6 +34,7 @@ import { BulkHost } from './select-matching.tsx'
 import { NewSenderHost } from './new-sender-dialog.tsx'
 import { ShortcutSheet, ShortcutSheetButton } from './shortcut-sheet.tsx'
 import { ComposeAnnouncer } from './send-status.tsx'
+import { HeldToasts } from './held-toasts.tsx'
 import { useMailShortcuts, usePaletteShortcut } from './shortcuts.ts'
 import { storedSubfolders } from './subfolder-view.ts'
 import { MuteProvider } from './mute-provider.tsx'
@@ -146,6 +147,7 @@ export function MailScreen(): ReactElement {
           >
             <SnoozeProvider>
               <ComposeProvider accounts={accounts.data} accountId={accountId}>
+                <HeldToasts />
                 <MailShortcuts
                   accountId={accountId}
                   onHelp={openSheet}

@@ -2,7 +2,7 @@ import type { TFunction } from 'i18next'
 
 import { MAIL_CODES, accountErrorMessage, mailboxMessage } from '@/accounts/messages.ts'
 import { ApiRequestError } from '@/api/http.ts'
-import type { MailFolder } from '@/api/mail.ts'
+import type { MailAddress, MailFolder } from '@/api/mail.ts'
 
 import type { HeldEnd } from './send-flow.ts'
 
@@ -105,6 +105,16 @@ export function heldEndMessage(t: TFunction, end: Exclude<HeldEnd, { kind: 'sent
     case 'cancelled':
       return t('compose.cancelledElsewhere')
   }
+}
+
+/** Whom a message goes to, in short: the first recipient's name (else address), and how many more. */
+export function recipientsLabel(t: TFunction, addresses: readonly MailAddress[]): string {
+  const [first] = addresses
+  if (first === undefined) {
+    return ''
+  }
+  const name = first.name === '' ? first.address : first.name
+  return addresses.length === 1 ? name : t('compose.andOthers', { name, count: addresses.length - 1 })
 }
 
 /** A folder as the sidebar and the move picker name it: its role's name, else its path. */
