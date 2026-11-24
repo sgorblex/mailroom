@@ -121,6 +121,8 @@
   },
   "apiTokens": {
     "title": "API tokens",
+    "activity": "Activity",
+    "activityNamed": "Activity: {{name}}",
     "intro": "For your own scripts and command-line clients, on the REST API and on /mcp. A token acts as an agent, only as far as you choose here.",
     "loading": "Loading your API tokens…",
     "loadFailed": "Could not load your API tokens.",
@@ -156,6 +158,8 @@
   },
   "connectedApps": {
     "title": "Connected apps",
+    "activity": "Activity",
+    "activityNamed": "Activity: {{name}}",
     "loading": "Loading your connected apps…",
     "none": "None yet: an app you connect to Mailroom (an MCP client such as Claude) shows up here.",
     "external": "Your identity provider manages which apps can reach Mailroom: revoke their access there.",

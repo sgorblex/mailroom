@@ -81,6 +81,58 @@ def test_the_filters_narrow_the_list(
     assert ids(result="invalid_argument", actor="agent") == [refused]
 
 
+def test_one_apps_records_by_client_grant_or_token(
+    user_client: TestClient, db_session: Session, user: User
+) -> None:
+    claude: dict[str, Any] = {"actor": "agent", "client_id": "https://claude.ai/client"}
+    before = add(db_session, user.id, **claude, grant_id="3")
+    now = add(db_session, user.id, **claude, grant_id="30", action="send")
+    issued = add(db_session, user.id, **claude, result="invalid_argument")
+    script = add(db_session, user.id, actor="agent", token_id=3)
+    add(db_session, user.id, actor="filter", rule_set_id=3)
+    other = create_user(db_session, "someone-else", "a long enough password")
+    add(db_session, other.id, **claude, grant_id="31")
+    add(db_session, other.id, actor="agent", token_id=4)
+
+    def ids(**params: Any) -> list[int]:
+        return [r["id"] for r in listed(user_client, **params)["records"]]
+
+    assert ids(client_id="https://claude.ai/client") == [issued, now, before]
+    assert ids(client_id="https://claude.ai/client", result="failed") == [issued]
+    assert ids(grant_id="3") == [before]
+    assert ids(grant_id="30", action="send") == [now]
+    assert ids(token_id=3) == [script]
+    # No such app, another user's, and filters that exclude each other.
+    assert ids(client_id="https://claude.ai/%") == ids(grant_id="31") == ids(token_id=4) == []
+    assert ids(grant_id="3", token_id=3) == ids(token_id=3, actor="user") == []
+
+    [record] = listed(user_client, grant_id="3")["records"]
+    assert (record["client_id"], record["grant_id"]) == ("https://claude.ai/client", "3")
+    first = listed(user_client, client_id="https://claude.ai/client", limit=2)
+    cursor = first["next_cursor"]
+    rest = listed(user_client, client_id="https://claude.ai/client", cursor=cursor)
+    assert [r["id"] for r in rest["records"]] == [before]
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"client_id": ""},
+        {"client_id": "a\x00b"},
+        {"client_id": "x\n"},
+        {"client_id": "x" * 2049},
+        {"grant_id": "\x00"},
+        {"token_id": "0"},
+        {"token_id": "x"},
+        {"token_id": str(2**63)},
+    ],
+)
+def test_an_app_that_could_not_be_one_is_refused(
+    user_client: TestClient, params: dict[str, str]
+) -> None:
+    assert user_client.get(AUDIT, params=params).status_code == 422
+
+
 def test_a_user_sees_only_their_own(
     user_client: TestClient, db_session: Session, user: User
 ) -> None:

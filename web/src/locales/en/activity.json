@@ -13,9 +13,17 @@
     "label": "Filter the activity",
     "account": "Account",
     "who": "Who",
+    "app": "App",
     "action": "Action",
     "result": "Result",
-    "any": "Any"
+    "any": "Any",
+    "chosen": "The one chosen"
+  },
+  "app": {
+    "connected": "{{name}} (connected {{when}})",
+    "token": "{{name}} (API token)",
+    "disconnected": "A disconnected app",
+    "only": "Only {{name}}"
   },
   "who": {
     "user": "You",

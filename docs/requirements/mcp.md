@@ -198,7 +198,7 @@ service sees only what is in it:
 | `mail_send` (stable, on) | `message_send`, `message_reply`, `message_forward`, `draft_send` | destructive, openWorld |
 | `mail_folders` (stable, on) | `folder_create(account_id, parent, name)`, `folder_rename(account_id, folder, parent, name)` | openWorld |
 | | `folder_delete(account_id, folder, messages)` | destructive, openWorld |
-| `audit_read` (stable, on) | `audit_list(cursor?, limit?, account_id?, action?, actor?, result?)`: the user's audit trail, newest first, the addresses and `Message-ID` in the envelope | readOnly, idempotent |
+| `audit_read` (stable, on) | `audit_list(cursor?, limit?, account_id?, action?, actor?, result?, client_id?, grant_id?, token_id?)`: the user's audit trail, newest first, the addresses and `Message-ID` in the envelope | readOnly, idempotent |
 
 A destructive hint makes clients such as claude.ai ask the user before each call. Of the
 organize tools only `messages_trash` has it. `messages_move` can move into Trash too (any folder

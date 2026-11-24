@@ -13,9 +13,17 @@
     "label": "Filtra l'attività",
     "account": "Account",
     "who": "Chi",
+    "app": "App",
     "action": "Azione",
     "result": "Esito",
-    "any": "Qualsiasi"
+    "any": "Qualsiasi",
+    "chosen": "Quello scelto"
+  },
+  "app": {
+    "connected": "{{name}} (collegata {{when}})",
+    "token": "{{name}} (token API)",
+    "disconnected": "Un'app scollegata",
+    "only": "Solo {{name}}"
   },
   "who": {
     "user": "Tu",

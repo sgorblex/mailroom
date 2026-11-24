@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { ApiToken, ApiTokens as Listing, NewApiToken } from '@/api/api-tokens.ts'
 import { expectNoAxeViolations } from '@/test/axe.ts'
+import { renderRouted } from '@/test/routed.tsx'
 import { renderSignedIn } from '@/test/signed-in.tsx'
 
 import { ApiTokens } from './api-tokens.tsx'
@@ -93,12 +94,22 @@ afterEach(() => {
 })
 
 describe('ApiTokens', () => {
+  it('links each token to its own activity, an expired one too', async () => {
+    stubApi([token(1), token(2, { expired: true, expires_at: '2020-01-01T00:00:00Z' })])
+    renderRouted(<ApiTokens />, ALICE, '/profile')
+    const links = await screen.findAllByRole('link', { name: /^Activity: Script/ })
+    expect(links.map((link) => decodeURIComponent(link.getAttribute('href') ?? ''))).toEqual([
+      '/activity?app=token:1',
+      '/activity?app=token:2',
+    ])
+  })
+
   it('lists the tokens with what each may do', async () => {
     stubApi([
       token(1, { account_ids: [2], send_ceiling: 'drafts', groups: ['mail_read', 'mail_send'], last_used_at: '2026-11-21T10:00:00Z', expires_at: '2099-01-01T00:00:00Z' }),
       token(2, { expires_at: '2020-01-01T00:00:00Z', expired: true, account_ids: [], groups: [] }),
     ])
-    renderSignedIn(<ApiTokens />, ALICE)
+    renderRouted(<ApiTokens />, ALICE, '/profile')
     const [one, two] = within(await screen.findByRole('list', { name: 'API tokens' })).getAllByRole('listitem')
     if (one === undefined || two === undefined) {
       throw new Error('two tokens expected')
@@ -114,7 +125,7 @@ describe('ApiTokens', () => {
 
   it('makes one with what is chosen, and nothing chosen beforehand', async () => {
     const fetchMock = stubApi([])
-    renderSignedIn(<ApiTokens />, ALICE)
+    renderRouted(<ApiTokens />, ALICE, '/profile')
     const form = await openForm()
     const create = within(form).getByRole('button', { name: 'Create token' })
     expect(within(form).getByLabelText('Name')).toHaveFocus()
@@ -145,7 +156,7 @@ describe('ApiTokens', () => {
 
   it('expires in 90 days unless told otherwise, and sends no ceiling that limits nothing', async () => {
     const fetchMock = stubApi([])
-    renderSignedIn(<ApiTokens />, ALICE)
+    renderRouted(<ApiTokens />, ALICE, '/profile')
     await makeOne()
     await screen.findByDisplayValue(RAW)
     expect(sent(fetchMock)).toMatchObject({ expires_in_days: 90, send_ceiling: null, account_ids: null })
@@ -153,7 +164,7 @@ describe('ApiTokens', () => {
 
   it('shows the token once, to copy', async () => {
     stubApi([])
-    renderSignedIn(<ApiTokens />, ALICE)
+    renderRouted(<ApiTokens />, ALICE, '/profile')
     await makeOne()
     const field = await screen.findByRole('textbox', { name: 'Your new token, Backup' })
     expect(field).toHaveAttribute('readonly')
@@ -171,7 +182,7 @@ describe('ApiTokens', () => {
 
   it('leaves it selected where nothing can be copied', async () => {
     stubApi([])
-    renderSignedIn(<ApiTokens />, ALICE)
+    renderRouted(<ApiTokens />, ALICE, '/profile')
     await makeOne()
     const field = await screen.findByDisplayValue<HTMLInputElement>(RAW)
     const writeText = (): Promise<void> => Promise.reject(new Error('denied'))
@@ -184,7 +195,7 @@ describe('ApiTokens', () => {
 
   it('says when there are too many, and keeps the form', async () => {
     stubApi([token(1)], { refusal: 'too_many_tokens' })
-    renderSignedIn(<ApiTokens />, ALICE)
+    renderRouted(<ApiTokens />, ALICE, '/profile')
     await makeOne()
     expect(await screen.findByRole('alert')).toHaveTextContent('You have as many tokens as you can')
     expect(screen.getByLabelText('Name')).toHaveValue('Backup')
@@ -192,7 +203,7 @@ describe('ApiTokens', () => {
 
   it('gives focus back when the form is cancelled', async () => {
     stubApi([])
-    renderSignedIn(<ApiTokens />, ALICE)
+    renderRouted(<ApiTokens />, ALICE, '/profile')
     const form = await openForm()
     await userEvent.click(within(form).getByRole('button', { name: 'Cancel' }))
     await vi.waitFor(() => {
@@ -202,7 +213,7 @@ describe('ApiTokens', () => {
 
   it('revokes one after a confirm', async () => {
     const fetchMock = stubApi([token(1), token(2)])
-    renderSignedIn(<ApiTokens />, ALICE)
+    renderRouted(<ApiTokens />, ALICE, '/profile')
     await userEvent.click(await screen.findByRole('button', { name: 'Revoke Script 1' }))
     expect(screen.getByText(/^Revoke Script 1\? It stops working at once/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
@@ -221,7 +232,7 @@ describe('ApiTokens', () => {
 
   it('takes one already gone as revoked', async () => {
     stubApi([token(1)], { revokeStatus: 404 })
-    renderSignedIn(<ApiTokens />, ALICE)
+    renderRouted(<ApiTokens />, ALICE, '/profile')
     await userEvent.click(await screen.findByRole('button', { name: 'Revoke Script 1' }))
     await userEvent.click(screen.getByRole('button', { name: 'Revoke' }))
     await vi.waitFor(() => {
@@ -232,7 +243,7 @@ describe('ApiTokens', () => {
 
   it('says when revoking fails', async () => {
     stubApi([token(1)], { revokeStatus: 500 })
-    renderSignedIn(<ApiTokens />, ALICE)
+    renderRouted(<ApiTokens />, ALICE, '/profile')
     await userEvent.click(await screen.findByRole('button', { name: 'Revoke Script 1' }))
     await userEvent.click(screen.getByRole('button', { name: 'Revoke' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Server error')
@@ -250,14 +261,14 @@ describe('ApiTokens', () => {
 
   it('still lists those left where no new one can be made', async () => {
     stubApi([token(1)], { groups: [] })
-    renderSignedIn(<ApiTokens />, ALICE)
+    renderRouted(<ApiTokens />, ALICE, '/profile')
     expect(await screen.findByRole('button', { name: 'Revoke Script 1' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'New token' })).not.toBeInTheDocument()
   })
 
   it('offers to try again when they do not load', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))))
-    renderSignedIn(<ApiTokens />, ALICE)
+    renderRouted(<ApiTokens />, ALICE, '/profile')
     expect(await screen.findByRole('alert')).toBeInTheDocument()
     stubApi([token(1)])
     await userEvent.click(screen.getByRole('button', { name: 'Retry' }))

@@ -1,6 +1,7 @@
 import { createRootRoute, createRoute, createRouter, lazyRouteComponent } from '@tanstack/react-router'
 
 import { AccountsScreen } from '@/accounts/accounts-screen.tsx'
+import { validateActivitySearch } from '@/activity/activity-search.ts'
 import { featureRoute, WRITES_MAIL } from '@/auth/feature-route.tsx'
 import { RootLayout } from '@/auth/root-layout.tsx'
 import { validateFilterDraftSearch } from '@/filters/draft-search.ts'
@@ -78,10 +79,12 @@ const mailRoute = createRoute({
   component: featureRoute('mail', lazyRouteComponent(() => import('@/mail/mail-screen.tsx'), 'MailScreen')),
 })
 
-// What was done to the user's mail: wherever the instance writes it (mail, MCP or filters).
+// What was done to the user's mail: wherever the instance writes it (mail, MCP or filters). The
+// list's filters live in the query string.
 const activityRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/activity',
+  validateSearch: validateActivitySearch,
   component: featureRoute(
     WRITES_MAIL,
     lazyRouteComponent(() => import('@/activity/activity-screen.tsx'), 'ActivityScreen'),

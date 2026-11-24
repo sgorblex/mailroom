@@ -872,9 +872,15 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   apart (`audit_purge_failed` when it fails). `GET /api/v1/me/audit` (mounted with the mail
   layer or filters; `Cache-Control: private, no-store`) lists the user's own, newest first,
   `limit` (1-100, default 50) at a time with an opaque `cursor` (400 `invalid_cursor` for any
-  other), filtered by `account_id`, `action`, `actor` and `result` (`failed`: every result but
-  `ok`, refusals included); each carries the connected app's or API token's name and the rule set's while they
-  exist; the web's *Activity* page (`/activity`, with mail, MCP or filters) reads it. MCP's
+  other), filtered by `account_id`, `action`, `actor`, `result` (`failed`: every result but
+  `ok`, refusals included) and app, revoked since or not: `grant_id` (one connected app), `client_id`
+  (a client, whichever grants it came through; the only one for an external issuer's) or
+  `token_id` (a personal API token). What an app set off but did not do itself is not under it: a
+  rule set's run it started (the filter's) and a snooze's `wake` (an agent's, with no app named).
+  Each carries the connected app's or API token's name and the rule set's while they
+  exist; the web's *Activity* page (`/activity`, with mail, MCP or filters) reads it, its
+  filters in the query string (`account`, `actor`, `action`, `result`, and `app`: `grant:`, `token:`
+  or `client:` with the id). MCP's
   `audit_list` lists the same ([`mcp.md`](mcp.md)).
 
 ### Mail index sync

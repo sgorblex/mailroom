@@ -26,6 +26,8 @@ PAGE_SIZE: Final = 50
 _CURSOR: Final = re.compile(r"[0-9]{1,18}")
 """A record's id: what ``next_cursor`` holds."""
 MAX_PAGE_SIZE: Final = 100
+CLIENT_PATTERN: Final = r"^[\x20-\x7e]+$"
+"""A client's or a grant's id, as a filter: printable ASCII (RFC 6749, *VSCHAR*)."""
 OTHER_ACCOUNT: Final = ("destination_account", "source_account")
 """The fields of a record's detail that name another account than its own."""
 OTHER_RULE_SETS: Final = frozenset({"rule_sets", "filters", "all_accounts_rule_sets"})
@@ -42,6 +44,8 @@ class ListedRecord(BaseModel):
     """The connected app's name (its client id when it gave none), or the API token's while it
     exists, for an agent's record."""
     client_id: str | None
+    grant_id: str | None
+    """The connected app's grant, for what came through one of Mailroom's own."""
     token_id: int | None
     rule_set: str | None
     """The rule set's name, for a filter's record while the rule set exists."""
@@ -69,11 +73,15 @@ def records(
     action: str | None = None,
     actor: Actor | None = None,
     result: str | None = None,
+    client_id: str | None = None,
+    grant_id: str | None = None,
+    token_id: int | None = None,
 ) -> RecordPage:
     """The user's records within ``reach`` (a move between accounts only when both are; when it
     leaves accounts out, a rule set for all accounts, or moving mail to one beyond, unnamed),
     newest first, matching every filter given; ``cursor`` is a page's ``next_cursor``. ``result``
-    ``failed`` matches every result but ``ok``."""
+    ``failed`` matches every result but ``ok``. ``grant_id`` is one connected app, ``client_id``
+    every approval of a client, and ``token_id`` one API token: those since revoked too."""
     query = (
         select(AuditRecord, OAuthClient.client_name, ApiToken.name, RuleSet.name)
         .outerjoin(OAuthClient, OAuthClient.client_id == AuditRecord.client_id)
@@ -101,6 +109,12 @@ def records(
         query = query.where(AuditRecord.action == action)
     if actor is not None:
         query = query.where(AuditRecord.actor == actor)
+    if client_id is not None:
+        query = query.where(AuditRecord.client_id == client_id)
+    if grant_id is not None:
+        query = query.where(AuditRecord.grant_id == grant_id)
+    if token_id is not None:
+        query = query.where(AuditRecord.token_id == token_id)
     if result == "failed":
         query = query.where(AuditRecord.result != "ok")
     elif result is not None:
@@ -140,6 +154,7 @@ def _listed(
         actor=record.actor,
         app=app or record.client_id,
         client_id=record.client_id,
+        grant_id=record.grant_id,
         token_id=record.token_id,
         rule_set=rule_set,
         rule_set_id=rule_set_id,

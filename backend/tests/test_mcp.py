@@ -558,6 +558,41 @@ def test_the_audit_trail_lists_what_was_done_with_the_mail_in_the_envelope(
     assert mcp.call(token, "audit_list", actor="filter")["records"] == []
 
 
+def test_audit_list_lists_one_apps_records(
+    mcp: Mcp, db_session: Session, user: User, token: str
+) -> None:
+    apps: list[dict[str, Any]] = [
+        {"client_id": "client", "grant_id": "1"},
+        {"client_id": "client", "grant_id": "2"},
+        {"token_id": 1},
+    ]
+    for uid, app in enumerate(apps):
+        db_session.add(
+            AuditRecord(
+                user_id=user.id,
+                actor="agent",
+                action="trash",
+                account_id=1,
+                result="ok",
+                detail={"uid": uid},
+                **app,
+            )
+        )
+    db_session.flush()
+
+    def uids(**arguments: Any) -> list[int]:
+        records = mcp.call(token, "audit_list", **arguments)["records"]
+        return [record["detail"]["uid"] for record in records]
+
+    assert uids(client_id="client") == [1, 0]
+    assert uids(grant_id="1") == [0]
+    assert uids(token_id=1) == [2]
+    assert uids(client_id="client", token_id=1) == []
+    assert mcp.call(token, "audit_list", grant_id="2")["records"][0]["grant_id"] == "2"
+    for wrong in ({"token_id": "1"}, {"token_id": 0}, {"client_id": "a\x00"}, {"grant_id": ""}):
+        assert mcp.error(token, "audit_list", **wrong)
+
+
 def test_users_only_ever_reach_their_own(
     mcp: Mcp, db_session: Session, token: str, account: int, rule_set_id: int
 ) -> None:
