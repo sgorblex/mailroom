@@ -10,6 +10,9 @@ Exploratory, not scoped, not scheduled, no maturity. Promote to [`TODO.md`](TODO
   clients see them.
 - **Read receipts** — asked before sending one, never automatic.
 - **Offline reading** — recent mail cached in the browser, readable without a connection.
+- **Body search on the device** — an optional per-device cache of recent mail with its bodies, and
+  a search over it, perhaps built with *Offline reading*. Decided on 2026-11-24: the server never
+  indexes message bodies.
 - **Filters over several messages at once**, rather than each message alone: duplicates first.
   Within one folder is the easy case (the same `Message-ID`, or the same sender, date and
   body); across folders, and across accounts (the same mail received by several mailboxes), is

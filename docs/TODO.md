@@ -342,7 +342,65 @@ Older than milestone E, seen in its browser check; fix before batch 11.
 - [x] **Activity per app** — the audit trail of one connected app or API token, linked from
       Connected apps and API tokens.
 
+#### Added while building milestone F
+
+- [ ] **External sign-in only** — an admin's instance setting, offered when an OIDC provider is
+      configured: sign-in through the provider alone, passwords refused and hidden, with an
+      environment override in case the provider breaks.
+- [ ] **Handled mark** — *To sort* becomes *Handled* ("dealt with, the filters may sort it"), kept
+      per account as the star, an IMAP keyword or a Gmail label; rule sets marked by Handled or by
+      the star, and no rule set acting on different mail after the migration.
+- [ ] **Row actions chosen** — which actions a row shows on hover, and in the swipe menu on touch,
+      an appearance setting (up to three, star and Handled by default).
+- [ ] **Search scope** — a search stays in the folder or view it was started from (from *All
+      inboxes* it searches the remembered account's folder), shows its scope beside the box, and a
+      *Search all mail* button widens it, with a way back.
+- [ ] **Fresh mail sooner**:
+  - [ ] **The index's turn in one job** — an account's due folders checked together, not one job
+        each, with the syncs asked by IDLE, a viewed folder or new mail, and filter runs, ahead of
+        the routine ones.
+  - [ ] **Index after a filter run** — the folders a run moved or flagged mail in synced right
+        after it, another account's included.
+  - [ ] **Refresh button** — syncs the shown folder or view ahead of the queue.
+  - [ ] **All inboxes with subfolders** — an option, off by default, to take in INBOX's
+        subfolders.
+
 ### Milestone G: Integrations
+
+#### From using the app
+
+To discuss before this milestone starts; none of it is decided.
+
+- [ ] **Unread rows stand out** — read and unread rows are not distinct enough in the message list.
+- [ ] **Preload cold screens** — a screen never opened yet (Filters, say) has its code and data
+      fetched in the background.
+- [ ] **Find a filter** — rule sets searchable, and easier to navigate when there are many.
+- [ ] **Read as text, per sender** (proposal) — switching a message to text offers to remember it
+      for the sender, as *Show remote images* does, instead of remembering it at once.
+- [ ] **Defaults shown in settings** — each setting's default in its help text or as the empty
+      field's placeholder.
+- [ ] **Folder lists folded in settings** — collapsible, so the Profile needs less scrolling.
+- [ ] **Settings by category** — per-account settings apart, after choosing an account, and
+      unified where that makes sense; categories for the rest.
+- [ ] **Settings searchable** — a search box over the settings.
+- [ ] **Header always in view** — the top bar stays visible on long pages such as the Profile.
+- [ ] **More in the command palette** — many more entries, above all actions: most of those in the
+      context menu.
+- [ ] **Appearance from the mail view** — density and the like changed without leaving the mail,
+      from the command palette for example.
+- [ ] **Select mode** (proposal) — row checkboxes only after entering a select mode, taking no
+      space otherwise; today they show on hover, on focus or once selecting.
+- [ ] **Unified role views** — all Sent, Drafts, Archive, Junk and Trash across accounts, by role,
+      so a new account joins them; today only a saved view of hand-picked folders.
+- [ ] **Search help** — a guide to the search syntax beside the box, and completion of its terms.
+- [ ] **NOT and OR in search** — `-from:x` and alternatives; parentheses less likely.
+- [ ] **Several folders and accounts in one search** — a *Search in* picker under *More options*,
+      beyond today's one `in:` and one `account:` (or `*`); and views made from hand-picked folders
+      in the web, as the API's already can be.
+- [ ] **Default filter on lists** (proposal, after *NOT and OR in search* and *Handled mark*) — a
+      filter such as "hide handled" on lists and searches: per folder or view, off by default, a
+      removable chip with the count it hides, kept by a search started there but never by *Search
+      all mail*.
 
 #### 13. Integrations
 
