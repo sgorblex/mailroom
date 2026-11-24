@@ -1009,6 +1009,7 @@ function folderRoutes(state: FakeMailState, url: URL, init?: RequestInit): Respo
 export function indexFolder(path: string, fields: Partial<IndexFolder> = {}): IndexFolder {
   return {
     path,
+    delimiter: '/',
     role: null,
     indexed_as: 'folder',
     enabled: false,
@@ -1052,7 +1053,7 @@ function indexRoutes(state: FakeMailState, url: URL, init?: RequestInit): Respon
   const switched = (each: IndexFolder): IndexFolder =>
     enabled
       ? { ...each, enabled, state: 'pending', indexed: 0, unread: 0 }
-      : indexFolder(each.path, { role: each.role, indexed_as: each.indexed_as, total: each.total })
+      : indexFolder(each.path, { delimiter: each.delimiter, role: each.role, indexed_as: each.indexed_as, total: each.total })
   index.folders = index.folders.map((each) => (each.path === folder ? switched(each) : each))
   return json(200, { account_id: Number(match[1]), folder, enabled })
 }

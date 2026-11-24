@@ -160,6 +160,212 @@ describe('IndexSettings', () => {
     expect(screen.getByText(/On Gmail, All Mail is indexed/)).toBeInTheDocument()
   })
 
+  it('shows the folders as a tree, a parent ticking its subfolders and showing when only some are on', async () => {
+    const fetchMock = stubMailApi(
+      state({
+        index: {
+          [WORK]: {
+            folders: [
+              indexFolder('INBOX', { role: 'inbox', enabled: true, state: 'ready', indexed: 1, unread: 0 }),
+              indexFolder('Projects', { enabled: true, state: 'ready', indexed: 1, unread: 0 }),
+              indexFolder('Projects/Alpha', { enabled: true, state: 'ready', indexed: 1, unread: 0 }),
+              indexFolder('Projects/Beta'),
+              indexFolder('Lists/News'),
+            ],
+          },
+        },
+      }),
+    )
+    renderSignedIn(<IndexSettings />, ALICE)
+    const list = await folderList('work')
+
+    const projects = within(list).getByRole('checkbox', { name: 'Projects' })
+    expect(projects).toBePartiallyChecked()
+    const branch = projects.closest('li')
+    expect(branch).not.toBeNull()
+    expect(within(branch as HTMLElement).getByRole('checkbox', { name: 'Projects/Beta' })).toBeInTheDocument()
+    expect(within(branch as HTMLElement).getByText('Beta')).toBeInTheDocument()
+    // A level the server did not list ticks what is under it.
+    const lists = within(list).getByRole('checkbox', { name: 'Lists' })
+    expect(lists).not.toBeChecked()
+    expect(lists).toBeEnabled()
+
+    await userEvent.click(projects)
+    await vi.waitFor(() => {
+      expect(within(list).getByRole('checkbox', { name: 'Projects' })).toBeChecked()
+    })
+    expect(within(list).getByRole('checkbox', { name: 'Projects/Beta' })).toBeChecked()
+
+    await userEvent.click(within(list).getByRole('checkbox', { name: 'Projects' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Stop indexing' }))
+    await vi.waitFor(() => {
+      expect(within(list).getByRole('checkbox', { name: 'Projects' })).not.toBeChecked()
+    })
+    expect(within(list).getByRole('checkbox', { name: 'INBOX' })).toBeChecked()
+    expect(bodiesTo(fetchMock, FOLDERS_PATH)).toEqual([
+      { folder: 'Projects/Beta', enabled: true },
+      { folder: 'Projects', enabled: false },
+      { folder: 'Projects/Alpha', enabled: false },
+      { folder: 'Projects/Beta', enabled: false },
+    ])
+  })
+
+  it('filters the folders, keeping the folders above a match', async () => {
+    stubMailApi(
+      state({
+        accounts: [WORK],
+        index: {
+          [WORK]: {
+            folders: [
+              indexFolder('INBOX', { role: 'inbox' }),
+              indexFolder('Projects'),
+              indexFolder('Projects/Alpha'),
+              indexFolder('Projects/Beta'),
+            ],
+          },
+        },
+      }),
+    )
+    renderSignedIn(<IndexSettings />, ALICE)
+    const list = await folderList('work')
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Filter folders' }), 'alp')
+
+    expect(within(list).getByRole('checkbox', { name: 'Projects' })).toBeInTheDocument()
+    expect(within(list).getByRole('checkbox', { name: 'Projects/Alpha' })).toBeInTheDocument()
+    expect(within(list).queryByRole('checkbox', { name: 'Projects/Beta' })).not.toBeInTheDocument()
+    expect(within(list).queryByRole('checkbox', { name: 'INBOX' })).not.toBeInTheDocument()
+
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Filter folders' }), 'zzz')
+    expect(screen.queryByRole('list', { name: 'Folders of work' })).not.toBeInTheDocument()
+    expect(screen.getByText('No folder matches the filter.')).toBeInTheDocument()
+  })
+
+  it('switches every folder shown on or off with All and None', async () => {
+    const fetchMock = stubMailApi(
+      state({
+        index: {
+          [WORK]: {
+            folders: [
+              indexFolder('INBOX', { role: 'inbox', enabled: true, state: 'ready', indexed: 1, unread: 0 }),
+              indexFolder('Projects'),
+              indexFolder('Projects/Alpha'),
+              indexFolder('[Gmail]/Spam', { role: 'junk', indexed_as: 'live' }),
+            ],
+          },
+        },
+      }),
+    )
+    renderSignedIn(<IndexSettings />, ALICE)
+    const list = await folderList('work')
+
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Filter folders' }), 'proj')
+    await userEvent.click(screen.getByRole('button', { name: 'Index every folder of work shown' }))
+    await vi.waitFor(() => {
+      expect(within(list).getByRole('checkbox', { name: 'Projects' })).toBeChecked()
+    })
+    expect(bodiesTo(fetchMock, FOLDERS_PATH)).toEqual([
+      { folder: 'Projects', enabled: true },
+      { folder: 'Projects/Alpha', enabled: true },
+    ])
+
+    await userEvent.clear(screen.getByRole('searchbox', { name: 'Filter folders' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Index no folder of work shown' }))
+    expect(screen.getByText('Stop indexing 3 folders of work? Their indexed mail is dropped.')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Stop indexing' }))
+    await vi.waitFor(() => {
+      expect(within(list).getByRole('checkbox', { name: 'INBOX' })).not.toBeChecked()
+    })
+    expect(within(list).getByRole('checkbox', { name: 'Projects/Alpha' })).not.toBeChecked()
+    expect(bodiesTo(fetchMock, FOLDERS_PATH)).toHaveLength(5)
+    expect(screen.getByRole('button', { name: 'Index no folder of work shown' })).toBeDisabled()
+  })
+
+  it('asks before switching more than one folder off, and switches none when cancelled', async () => {
+    const fetchMock = stubMailApi(
+      state({
+        index: {
+          [WORK]: {
+            folders: [
+              indexFolder('INBOX', { role: 'inbox', enabled: true, state: 'ready', indexed: 1, unread: 0 }),
+              indexFolder('Projects', { enabled: true, state: 'ready', indexed: 1, unread: 0 }),
+            ],
+          },
+        },
+      }),
+    )
+    renderSignedIn(<IndexSettings />, ALICE)
+    const list = await folderList('work')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Index no folder of work shown' }))
+    expect(screen.getByText('Stop indexing 2 folders of work? Their indexed mail is dropped.')).toBeInTheDocument()
+    expect(within(list).getByRole('checkbox', { name: 'INBOX' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByText(/Stop indexing 2 folders/)).not.toBeInTheDocument()
+    expect(within(list).getByRole('checkbox', { name: 'INBOX' })).toBeChecked()
+    expect(within(list).getByRole('checkbox', { name: 'INBOX' })).toBeEnabled()
+    expect(bodiesTo(fetchMock, FOLDERS_PATH)).toEqual([])
+  })
+
+  it('stops a batch at the first folder refused, keeping those switched before it', async () => {
+    const fetchMock = stubMailApi(
+      state({
+        index: {
+          [WORK]: {
+            folders: [indexFolder('Projects'), indexFolder('Projects/Alpha'), indexFolder('Projects/Beta')],
+          },
+        },
+      }),
+    )
+    const real = fetchMock.getMockImplementation()
+    if (real === undefined) {
+      throw new Error('stubMailApi gave no implementation')
+    }
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'PUT' && typeof init.body === 'string' && init.body.includes('"Projects/Alpha"')) {
+        const { body } = refusal(404, 'mailbox_missing')
+        return Promise.resolve(new Response(JSON.stringify(body), { status: 404, headers: { 'Content-Type': 'application/json' } }))
+      }
+      return real(input, init) as Promise<Response>
+    })
+    renderSignedIn(<IndexSettings />, ALICE)
+    const list = await folderList('work')
+
+    await userEvent.click(within(list).getByRole('checkbox', { name: 'Projects' }))
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    await vi.waitFor(() => {
+      expect(within(list).getByRole('checkbox', { name: 'Projects' })).toBeEnabled()
+    })
+    expect(bodiesTo(fetchMock, FOLDERS_PATH)).toEqual([
+      { folder: 'Projects', enabled: true },
+      { folder: 'Projects/Alpha', enabled: true },
+    ])
+    expect(within(list).getByRole('checkbox', { name: 'Projects' })).toBePartiallyChecked()
+    expect(within(list).getByRole('checkbox', { name: 'Projects/Alpha' })).not.toBeChecked()
+    expect(within(list).getByRole('checkbox', { name: 'Projects/Beta' })).not.toBeChecked()
+    expect(screen.getByRole('button', { name: 'Index every folder of work shown' })).toBeEnabled()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('keeps a folder the user cannot switch disabled, with switchable folders under it', async () => {
+    stubMailApi(
+      state({
+        index: {
+          [WORK]: {
+            folders: [indexFolder('Junk', { role: 'junk', indexed_as: 'live' }), indexFolder('Junk/Old')],
+          },
+        },
+      }),
+    )
+    renderSignedIn(<IndexSettings />, ALICE)
+    const list = await folderList('work')
+    const junk = within(list).getByRole('checkbox', { name: 'Junk' })
+    expect(junk).toBeDisabled()
+    expect(junk).not.toBeChecked()
+    expect(junk).toHaveAccessibleDescription('Always read from the server')
+    expect(within(list).getByRole('checkbox', { name: 'Junk/Old' })).toBeEnabled()
+  })
+
   it('saves the age limit and shows the one in force under the cap', async () => {
     const fetchMock = stubMailApi(state({ indexMaxAgeCap: 365 }))
     renderSignedIn(<IndexSettings />, ALICE)

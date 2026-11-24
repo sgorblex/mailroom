@@ -50,6 +50,8 @@ type IndexedAs = Literal["folder", "label", "live"]
 
 class IndexFolderStatus(BaseModel):
     path: str
+    delimiter: str | None
+    """The server's hierarchy delimiter for the path, None when it gives none."""
     role: str | None
     indexed_as: IndexedAs
     """``folder``: indexed on its own; ``label``: a Gmail folder read from All Mail's rows by its
@@ -190,7 +192,12 @@ def _status(
 ) -> IndexFolderStatus:
     source = row if kind == "folder" else all_mail if kind == "label" else None
     shown = IndexFolderStatus(
-        path=folder.path, role=folder.role, indexed_as=kind, enabled=False, total=folder.messages
+        path=folder.path,
+        delimiter=folder.delimiter,
+        role=folder.role,
+        indexed_as=kind,
+        enabled=False,
+        total=folder.messages,
     )
     if source is None or not source.enabled:
         return shown

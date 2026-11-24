@@ -270,7 +270,7 @@ First, fixes carried over from 0.14.0 testing:
       side in a grid instead of one narrow column: grouped as Account, Appearance, Mail, Sending
       and Apps, with a nav on the left marking the group in view (`/profile#mail` links one), a
       sideways strip above them on a phone.
-- [ ] **Index folder picker** — the folders the index keeps chosen in a tree, one account at a
+- [x] **Index folder picker** — the folders the index keeps chosen in a tree, one account at a
       time, with a filter box, a parent ticking its subfolders, and all/none, instead of one long
       flat list.
 - [x] **Panes that scroll on their own** — the folder pane and the message list each scroll
