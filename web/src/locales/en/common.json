@@ -335,11 +335,18 @@
   "remoteSenders": {
     "title": "Remote images",
     "intro": "Senders whose remote images you always show. A sender counts only when its message passed DMARC at the account's authentication server.",
-    "none": "No senders yet: choose “Always for this sender” beside a message's remote images.",
-    "loadFailed": "Could not load these senders.",
-    "remembered": "Since {{when}}",
+    "none": "No senders yet: choose “Always for this sender” beside a message's remote images."
+  },
+  "textSenders": {
+    "title": "Read as text",
+    "intro": "Senders whose mail opens as text instead of HTML. Choosing HTML on one of their messages takes them off this list too.",
+    "none": "No senders yet: choose “Text” on a message with HTML to read its sender's mail as text."
+  },
+  "rememberedSenders": {
+    "since": "Since {{when}}",
     "remove": "Remove",
     "removeSender": "Remove {{address}}",
+    "loadFailed": "Could not load these senders.",
     "removeFailed": "Could not remove this sender."
   },
   "mailIndex": {

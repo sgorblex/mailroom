@@ -483,7 +483,10 @@ describe('MailScreen', () => {
   })
 
   it('offers quoted text only when something was left out', async () => {
-    stubMailApi(state())
+    const fake = state()
+    // Its sender is read as text, so the text opens.
+    fake.views[html.ref] = messageView(html, { has_html: true, preferred_view: 'text' })
+    stubMailApi(fake)
     renderMailApp(`/mail?message=${html.ref}`)
 
     expect(await screen.findByText(`Body of ${html.subject}`)).toBeInTheDocument()
@@ -634,13 +637,51 @@ describe('MailScreen', () => {
     })
   })
 
+  it('opens HTML mail as HTML, and remembers a switch for its sender', async () => {
+    const fake = state()
+    const later = inbox[5] ?? messageItem(WORK, 'INBOX', 0)
+    fake.views[html.ref] = messageView(html, { has_html: true })
+    fake.views[later.ref] = messageView(later, { from: html.from, has_html: true })
+    const fetchMock = stubMailApi(fake)
+    renderMailApp(`/mail?message=${html.ref}`)
+
+    expect(await screen.findByTitle(`HTML version of ${html.subject}`)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'HTML' })).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(screen.getByRole('button', { name: 'Text' }))
+    expect(await screen.findByText(`Body of ${html.subject}`)).toBeInTheDocument()
+    await waitFor(() => {
+      expect(bodiesTo(fetchMock, '/api/v1/mail/sender-views')).toEqual([{ ref: html.ref, view: 'text' }])
+    })
+
+    // Another message from the same sender opens as text; HTML there forgets the sender.
+    await userEvent.click(within(await messagesList()).getByRole('link', { name: new RegExp(later.subject) }))
+    expect(await screen.findByText(`Body of ${later.subject}`)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'HTML' }))
+    expect(await screen.findByTitle(`HTML version of ${later.subject}`)).toBeInTheDocument()
+    await waitFor(() => {
+      expect(bodiesTo(fetchMock, '/api/v1/mail/sender-views')).toEqual([
+        { ref: html.ref, view: 'text' },
+        { ref: later.ref, view: 'html' },
+      ])
+    })
+  })
+
+  it('says when a switch could not be remembered, and keeps it for this message', async () => {
+    const fake = state({ refuse: { 'POST /api/v1/mail/sender-views': refusal(502, 'unavailable') } })
+    fake.views[html.ref] = messageView(html, { has_html: true })
+    stubMailApi(fake)
+    renderMailApp(`/mail?message=${html.ref}`)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Text' }))
+    expect(await screen.findByText(`Body of ${html.subject}`)).toBeInTheDocument()
+    const article = screen.getByRole('heading', { name: html.subject }).closest('article')
+    expect(await within(article ?? document.body).findByRole('alert')).toHaveTextContent(/\S/)
+  })
+
   it('shows HTML only in an iframe of the HTML document, sandboxed without scripts or same origin', async () => {
     stubMailApi(state())
     renderMailApp(`/mail?message=${html.ref}`)
 
-    // The text is the default.
-    expect(await screen.findByText(`Body of ${html.subject}`)).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'HTML' }))
     const frame = await screen.findByTitle(`HTML version of ${html.subject}`)
     expect(frame.tagName).toBe('IFRAME')
     expect(frame.getAttribute('sandbox')).toBe('allow-popups allow-popups-to-escape-sandbox')

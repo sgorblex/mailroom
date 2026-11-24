@@ -200,8 +200,11 @@ account and folder (a rename carries it over, a delete forgets it), the URL carr
 each row then names its folder, the folder's unread count becomes that of what the list reads,
 and a search in that folder reads its subfolders too. A folder that no longer has such
 subfolders is listed alone, whatever was chosen.
-The text body is the default; a message whose text body is empty opens on the HTML view. The
-HTML view is an `<iframe src="/api/v1/mail/messages/{ref}/html">` with `sandbox="allow-popups
+A message with HTML opens on the HTML view, unless the user reads its sender as text
+(`preferred_view`; a message whose text body is empty opens on the HTML view all the same). The
+Text/HTML switch stays, and a switch is remembered for the message's From
+([sender views](#sender-views)): Text from then on, or HTML again. The *Profile* page lists the
+senders read as text, each removable. The HTML view is an `<iframe src="/api/v1/mail/messages/{ref}/html">` with `sandbox="allow-popups
 allow-popups-to-escape-sandbox"`, never `allow-scripts` or `allow-same-origin`. Links open
 top-level with `noopener noreferrer`. Security:
 [`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *HTML mail*.
@@ -1751,7 +1754,8 @@ a failure too, with the app's code `password_missing`.
     "dkim_domain": "example.org", "dmarc": "pass", "dmarc_pass": true, "from_domain": "example.org"
   },
   "remote_trusted": false,
-  "one_click_unsubscribe": true
+  "one_click_unsubscribe": true,
+  "preferred_view": "html"
 }
 ```
 
@@ -1814,6 +1818,8 @@ a failure too, with the app's code `password_missing`.
   with `remote=1` at once. The HTML route itself is unchanged: `remote` alone decides.
 - `one_click_unsubscribe` is true when [`POST /messages/{ref}/unsubscribe`](#one-click-unsubscribe)
   would post rather than refuse: the client then offers one click. The route checks again.
+- `preferred_view` is the view the message opens in: `html` when it has HTML, unless the user
+  reads its first From address as text ([sender views](#sender-views)); `text` otherwise.
 - Reading **does not set `\Seen`.** Errors: 400, 404, 409 (stale), 502, 504.
 
 ### `GET /messages/{ref}/html?remote=0`
@@ -1926,6 +1932,24 @@ each; addresses travel in bodies, never in a URL.
 
 Removing the user removes them ([`nonfunctional-requirements.md`](nonfunctional-requirements.md),
 *Mail accounts*).
+
+### Sender views
+
+The senders whose mail the user reads as text rather than HTML, by From address (lowercase), one
+each; addresses travel in bodies, never in a URL. It changes only how a message is shown, so any
+From counts: no sender authentication is asked.
+
+- `GET /sender-views`: `{"senders": [{"address", "created_at"}]}`, by address.
+- `POST /sender-views` `{"ref", "view"}`: the server reads the message's first From; `view`
+  `text` remembers it (one already remembered keeps its `created_at`), `html` forgets it. 200
+  `{"address", "view"}`; 400 `no_sender` for a message without a From. The read's errors as for
+  `GET /messages/{ref}`.
+- `POST /sender-views/remove` `{"address"}` (compared lowercase): 204, or 404 when not
+  remembered.
+
+Logged as `sender_view_text` / `sender_view_html` with `user_id`, never the address. Removing the
+user removes them ([`nonfunctional-requirements.md`](nonfunctional-requirements.md), *Mail
+accounts*).
 
 ### One-click unsubscribe
 

@@ -14,7 +14,7 @@ import { LimitsForm } from '@/profile/limits-form.tsx'
 import { LinkedSignIn } from '@/profile/linked-sign-in.tsx'
 import { MarkReadForm } from '@/profile/mark-read-form.tsx'
 import { NotificationSettings } from '@/profile/notification-settings.tsx'
-import { RemoteSenders } from '@/profile/remote-senders.tsx'
+import { RemoteSenders, TextSenders } from '@/profile/remembered-senders.tsx'
 import { SignatureSettings } from '@/profile/signature-settings.tsx'
 import { TimeZoneForm } from '@/profile/time-zone-form.tsx'
 import { UndoSendForm } from '@/profile/undo-send-form.tsx'
@@ -33,7 +33,7 @@ type Outcome =
 /**
  * The signed-in user's own page: their password, appearance, time zone, what "Mark all as read" does first
  * on a folder with subfolders, conversations, how long Send waits for an Undo, the senders whose
- * remote images they show, the mail index's settings and desktop notifications (with the mail
+ * remote images they show and those whose mail they read as text, the mail index's settings and desktop notifications (with the mail
  * client), linked sign-ins, their identities' signatures, each account's vacation reply (with the
  * mail client) and mail limits where the instance sends (mail or MCP) and, with MCP, connected
  * apps.
@@ -156,6 +156,7 @@ export function ProfileScreen(): ReactElement {
       {mail && <ConversationsForm />}
       {mail && <UndoSendForm />}
       {mail && <RemoteSenders />}
+      {mail && <TextSenders />}
       {mail && <IndexSettings />}
       {mail && <NotificationSettings />}
       <LinkedSignIn />

@@ -20,13 +20,21 @@ MAX_ADDRESS: Final = 998
 """The longest address remembered: a header line's length."""
 
 
+def from_address(view: MessageView) -> str | None:
+    """The message's first From address, lowercase, as a sender is remembered by; None without
+    one or for one longer than ``MAX_ADDRESS``."""
+    if not view.sender:
+        return None
+    address = (view.sender[0].address or "").strip().lower()
+    return address if 0 < len(address) <= MAX_ADDRESS else None
+
+
 def verified_sender(view: MessageView) -> str | None:
     """The message's one From address, lowercase, when DMARC passed for it at the account's
     authentication server (``dmarc_pass``); None otherwise."""
     if not view.authentication.dmarc_pass or len(view.sender) != 1:
         return None
-    address = (view.sender[0].address or "").strip().lower()
-    return address if 0 < len(address) <= MAX_ADDRESS else None
+    return from_address(view)
 
 
 def senders(db: Session, user_id: int) -> list[RemoteContentSender]:

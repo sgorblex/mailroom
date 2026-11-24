@@ -335,11 +335,18 @@
   "remoteSenders": {
     "title": "Immagini remote",
     "intro": "I mittenti di cui mostri sempre le immagini remote. Un mittente conta solo se il suo messaggio ha superato DMARC sul server di autenticazione dell'account.",
-    "none": "Ancora nessun mittente: scegli “Sempre per questo mittente” accanto alle immagini remote di un messaggio.",
-    "loadFailed": "Impossibile caricare questi mittenti.",
-    "remembered": "Dal {{when}}",
+    "none": "Ancora nessun mittente: scegli “Sempre per questo mittente” accanto alle immagini remote di un messaggio."
+  },
+  "textSenders": {
+    "title": "Letti come testo",
+    "intro": "I mittenti la cui posta si apre come testo invece che in HTML. Scegliere HTML su uno dei loro messaggi li toglie anche da questa lista.",
+    "none": "Ancora nessun mittente: scegli “Testo” su un messaggio in HTML per leggere come testo la posta del suo mittente."
+  },
+  "rememberedSenders": {
+    "since": "Dal {{when}}",
     "remove": "Rimuovi",
     "removeSender": "Rimuovi {{address}}",
+    "loadFailed": "Impossibile caricare questi mittenti.",
     "removeFailed": "Impossibile rimuovere questo mittente."
   },
   "mailIndex": {

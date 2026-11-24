@@ -48,6 +48,10 @@ through the Vite proxy. Engineering baseline:
 - **Remote images.** Each user lists on their *Profile* page the senders whose remote images
   they always show, and removes them there; a sender is added only from a message whose DMARC
   passed ([`requirements/mail-client.md`](requirements/mail-client.md) — *Remote content*).
+- **Read as text.** A message with HTML opens in it; choosing Text on one remembers its sender,
+  whose mail then opens as text, and choosing HTML forgets it. Each user lists those senders on
+  their *Profile* page and removes them there
+  ([`requirements/mail-client.md`](requirements/mail-client.md) — *Sender views*).
 - **Appearance.** Each user picks on their *Profile* page the web's theme (light, dark, or as the
   device), its accent colour (teal by default, blue, violet, green, terracotta or rose), its text
   size (small, default, large), the density of the message lists (comfortable, or compact rows
@@ -188,7 +192,7 @@ the index and live updates; tier 3 items arrive one at a time.
 
 | Tier | Scope |
 | --- | --- |
-| **1 — Read** | Accounts and folders with unread counts; message list (threaded or flat) with paging; read a message: headers, text and **sandboxed HTML** body, attachments (download), print (a printable page) and the `.eml` source (download), remote content blocked with a per-message reveal, or shown at once for a sender the user chose whose DMARC passed. Search. |
+| **1 — Read** | Accounts and folders with unread counts; message list (threaded or flat) with paging; read a message: headers, text and **sandboxed HTML** body (HTML first, or the text for a sender the user reads as text), attachments (download), print (a printable page) and the `.eml` source (download), remote content blocked with a per-message reveal, or shown at once for a sender the user chose whose DMARC passed. Search. |
 | **2 — Triage and compose** | *Triage (slice B, in):* flag/unflag (a row's star too), mark To sort or sorted (a row's mark too), read/unread, move (to another of the user's accounts too, its originals to Trash or, on request, deleted for good once copied), archive, trash (never expunge), multi-select, keyboard shortcuts for triage. *Compose (slice C, in):* compose new, reply, reply-all (quoting only the text selected in the message, when there is some), forward in plain text or rich text (HTML with inline images, sanitised on the server; the web composer's TipTap editor writes it by default, with a per-message switch to plain text), with identity (`From`) choice and each identity's signature, recipients suggested from the index as they are typed, attachments and drafts always kept in the server's `\Drafts`; a designed message built elsewhere (an .eml, or HTML and its files) imported as a draft as it was built, sanitised, previewed at a phone's and a desktop's width, light and dark, checked and sent as a test to the user's own address before it is sent. The **send mode** (mailroom-core's send gate) limits what agents may send; the user's own *Send* works unless the mode is `off`; the hourly limit and recipient cap bind both. No automatic retry delivers a send twice (only the user's *Send anyway*, after an unconfirmed delivery, can), and one whose delivery cannot be confirmed says so instead of retrying. |
 | **2+ — Index and live updates** | A **local index** of every account and folder (metadata plus rendered text) for fast cross-account search and lists; kept fresh by the worker over **IMAP IDLE** (and periodic resync), pushed to the browser (SSE or WebSocket). |
 | **3 — Later** | Contacts, calendar invites, offline reading, PGP/S/MIME; unified inbox views and saved searches ([views](requirements/mail-client.md#views)), [send later](requirements/mail-client.md#send-later), [snooze](requirements/mail-client.md#snooze) and the [vacation reply](requirements/mail-client.md#vacation-reply) are in. |
