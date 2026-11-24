@@ -449,8 +449,8 @@ export function readMessage(
 }
 
 /**
- * The standalone, sanitised HTML document of a message, for a sandboxed iframe's `src`; `dark` as
- * a client in dark mode shows it, for the preview of a designed message.
+ * The standalone, sanitised HTML document of a message, for a sandboxed iframe's `src`; `dark`
+ * adapts it to a dark theme (dark colours, or inverted with its images kept).
  */
 export function messageHtmlUrl(ref: string, remote: boolean, dark = false): string {
   const query = [...(remote ? ['remote=1'] : []), ...(dark ? ['dark=1'] : [])].join('&')

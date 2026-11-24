@@ -157,7 +157,9 @@ host is none a browser would visit (a space, a `>`); nh3 keeps only titles that 
 host than its own (neither it nor a parent or child of it, no public-suffix list):
 `safe_html` then puts a marker after the link, and `html_to_text` adds `(⚠ host)` after it, so the
 text body, MCP's included, carries the mark too. A backslash in an `http(s)` URL is read as a
-slash, as a browser does.
+slash, as a browser does. `SafeHtml.sets_colours` says whether what nh3 keeps sets a background
+or text colour (`bgcolor` or `color` attributes, `background-color` or `color` in a `style`, the
+link marker's own aside), for a host's dark mode.
 
 ## Read
 

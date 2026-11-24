@@ -67,11 +67,30 @@ _DOCUMENT: Final = (
     '<html><head><meta charset="utf-8">'
     '<meta name="referrer" content="no-referrer">'
     '<base target="_blank">'
-    "<style>:root{{color-scheme:{scheme}}}"
-    "body{{margin:0;padding:12px;background:{background};color:{color};overflow-wrap:anywhere}}"
+    "<style>{style}"
     "img{{max-width:100%;height:auto}}</style>"
     "</head><body>{body}</body></html>\n"
 )
+_LIGHT: Final = (
+    ":root{color-scheme:light}"
+    "body{margin:0;padding:12px;background:#fff;color:#000;overflow-wrap:anywhere}"
+)
+_DARK: Final = (
+    ":root{color-scheme:dark}"
+    "body{margin:0;padding:12px;background:#121212;color:#e8e8e8;overflow-wrap:anywhere}"
+    "a{color:#8ab4f8}a:visited{color:#c58af9}"
+)
+"""Dark colours for HTML that sets none of its own."""
+_INVERTED: Final = (
+    ":root{color-scheme:light;background:#121212}"
+    "body{margin:0;padding:12px;box-sizing:border-box;min-height:100vh;background:#ededed;"
+    "color:#000;overflow-wrap:anywhere;filter:invert(1) hue-rotate(180deg)}"
+    "img{filter:invert(1) hue-rotate(180deg)}"
+)
+"""HTML that sets its own colours, inverted with its hues kept, and its images inverted back: img
+alone, since safe_html keeps no picture or video and no CSS url(). The body is inverted rather
+than the root, whose filter not every browser applies to the canvas: the root's background is
+what the body's turns into."""
 
 Cursor = Annotated[str | None, Query(max_length=service.MAX_CURSOR)]
 Limit = Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)]
@@ -459,13 +478,18 @@ def html_headers(*, remote: bool) -> dict[str, str]:
     }
 
 
-def html_document(fragment: str, *, dark: bool = False) -> str:
+def html_document(fragment: str, *, dark: bool = False, sets_colours: bool = False) -> str:
     """mailroom-core's sanitised fragment in a minimal document: UTF-8, links in a new
-    top-level context (``safe_html`` also sets ``target`` and ``rel`` on each). ``dark`` is how
-    a client in dark mode shows it, its own colours kept and the page's dark."""
-    if dark:
-        return _DOCUMENT.format(body=fragment, scheme="dark", background="#121212", color="#e8e8e8")
-    return _DOCUMENT.format(body=fragment, scheme="light", background="#fff", color="#000")
+    top-level context (``safe_html`` also sets ``target`` and ``rel`` on each). ``dark`` adapts
+    it to a dark theme with CSS alone: dark colours when the fragment sets none of its own,
+    else (``sets_colours``) the inverted page with its images inverted back."""
+    if not dark:
+        style = _LIGHT
+    elif sets_colours:
+        style = _INVERTED
+    else:
+        style = _DARK
+    return _DOCUMENT.format(style=style, body=fragment)
 
 
 @mail_router.get("/messages/{ref}/html", response_class=Response)
@@ -473,11 +497,11 @@ def message_html(
     ref: Ref, ctx: Context, user: CurrentUser, remote: bool = False, dark: bool = False
 ) -> Response:
     """A standalone document for the client's sandboxed iframe, not JSON. Served as a document
-    (not ``srcdoc``) so that it carries its own CSP rather than the SPA's. ``dark`` is the
-    preview of a designed message in dark mode."""
+    (not ``srcdoc``) so that it carries its own CSP rather than the SPA's. ``dark``: the
+    message adapted to a dark theme (``html_document``)."""
     safe = service.message_html(ctx, user.id, ref, remote=remote)
     return Response(
-        content=html_document(safe.html, dark=dark),
+        content=html_document(safe.html, dark=dark, sets_colours=safe.sets_colours),
         media_type="text/html; charset=utf-8",
         headers=html_headers(remote=remote),
     )

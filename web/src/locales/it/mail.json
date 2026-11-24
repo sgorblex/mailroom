@@ -308,6 +308,7 @@
     "htmlTitle": "Versione HTML di {{subject}}",
     "htmlLoading": "Caricamento della versione HTML…",
     "htmlFailed": "Impossibile caricare la versione HTML.",
+    "originalColours": "Colori originali",
     "print": "Stampa",
     "downloadSource": "Scarica .eml",
     "filterLike": "Filtra i messaggi come questo"

@@ -5,6 +5,8 @@ import { ApiRequestError } from '@/api/http.ts'
 import { addRemoteSender, checkMessageHtml, messageHtmlUrl } from '@/api/mail.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { useLoad } from '@/lib/use-load.ts'
+import { cn } from '@/lib/utils.ts'
+import { useDark } from '@/theme/use-dark.ts'
 
 import { MAIL_NS } from './i18n.ts'
 import { mailErrorMessage } from './messages.ts'
@@ -25,7 +27,9 @@ export type RemoteChoice = 'blocked' | 'message' | 'sender'
  * The API's standalone, sanitised HTML document in a sandboxed iframe, framed once a request for
  * it answered: a refusal is worded here, never shown inside the frame. Remote images stay
  * blocked until the reader asks, for this message or, when `canTrustSender` (DMARC passed for its
- * one From), always for its sender; the server checks that again before it remembers one.
+ * one From), always for its sender; the server checks that again before it remembers one. In a
+ * dark theme the frame shows the server's `dark` document, unless the reader asks for the original
+ * colours, a choice the message view keeps while the message is open.
  */
 export function HtmlBody({
   messageRef,
@@ -35,6 +39,8 @@ export function HtmlBody({
   choice,
   canTrustSender,
   onChoose,
+  original,
+  onToggleOriginal,
 }: {
   messageRef: string
   subject: string
@@ -44,17 +50,22 @@ export function HtmlBody({
   choice: RemoteChoice
   canTrustSender: boolean
   onChoose: (choice: RemoteChoice) => void
+  /** The reader asked for the message's own colours: kept by the message view, as `choice` is. */
+  original: boolean
+  onToggleOriginal: () => void
 }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const remote = choice !== 'blocked'
+  const darkTheme = useDark()
+  const dark = darkTheme && !original
   const [trusting, setTrusting] = useState(false)
   const [trustFailure, setTrustFailure] = useState<string | null>(null)
   const check = useCallback(
     async (signal: AbortSignal) => {
-      await checkMessageHtml(messageRef, remote, signal)
-      return remote
+      await checkMessageHtml(messageRef, remote, signal, dark)
+      return messageHtmlUrl(messageRef, remote, dark)
     },
-    [messageRef, remote],
+    [messageRef, remote, dark],
   )
   const { state, retry } = useLoad(check, (error) => mailErrorMessage(t, error, t('message.htmlFailed')))
 
@@ -120,6 +131,19 @@ export function HtmlBody({
           })}
         </p>
       )}
+      {darkTheme && (
+        <Button
+          variant="outline"
+          size="xs"
+          className="self-start"
+          aria-pressed={original}
+          onClick={() => {
+            onToggleOriginal()
+          }}
+        >
+          {t('message.originalColours')}
+        </Button>
+      )}
       {state.kind === 'loading' && (
         <p role="status" className="text-sm text-muted-foreground">
           {t('message.htmlLoading')}
@@ -138,10 +162,10 @@ export function HtmlBody({
       {state.kind === 'loaded' && (
         <iframe
           title={t('message.htmlTitle', { subject: subject === '' ? t('message.noSubject') : subject })}
-          src={messageHtmlUrl(messageRef, state.value)}
+          src={state.value}
           sandbox={HTML_SANDBOX}
           referrerPolicy="no-referrer"
-          className="min-h-[60vh] w-full flex-1 rounded-md border bg-white"
+          className={cn('min-h-[60vh] w-full flex-1 rounded-md border', dark ? 'bg-[#121212]' : 'bg-white')}
         />
       )}
     </section>
