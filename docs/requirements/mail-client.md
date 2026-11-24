@@ -205,8 +205,11 @@ A message with HTML opens on the HTML view, unless the user reads its sender as 
 Text/HTML switch stays, and a switch is remembered for the message's From
 ([sender views](#sender-views)): Text from then on, or HTML again. The *Profile* page lists the
 senders read as text, each removable. In a dark theme the frame asks for the `dark` document
-(below), following the theme as it changes; *Original colours* above it shows the message's own
-for as long as it is open, never remembered. The HTML view is an
+(below), following the theme as it changes; *Original colours* above it, a toggle shown only
+once that document is framed (never beside an error) and marked with a check when pressed, shows
+the message's own for as long as it is open, never remembered. It switches
+the frame's URL fragment alone (`#mailroom-original`, back to `#mailroom-dark`): the same
+document, with no request and no reload. The HTML view is an
 `<iframe src="/api/v1/mail/messages/{ref}/html">` with `sandbox="allow-popups
 allow-popups-to-escape-sandbox"`, never `allow-scripts` or `allow-same-origin`. Links open
 top-level with `noopener noreferrer`. Security:
@@ -1831,8 +1834,12 @@ A **standalone HTML document**, not JSON: `remote=0|1` (default `0`), and `dark=
 `0`), which adapts it to a dark theme with CSS in the document alone: HTML that sets no
 background or text colour of its own (mailroom-core's `SafeHtml.sets_colours`) gets dark colours
 (`color-scheme: dark`, a dark page, light text and links); HTML that sets some is inverted (`filter:
-invert(1) hue-rotate(180deg)`, which keeps its hues) with its images inverted back. The message
-view and the preview of designed mail both use it. The sanitised HTML body
+invert(1) hue-rotate(180deg)`, which keeps its hues) with its images inverted back. The dark
+document holds the light one's styles too: every dark rule applies only while the URL's fragment
+is not `#mailroom-original`, the id of an empty, `hidden` element at the top of its body (CSS
+`:root:not(:has(#mailroom-original:target))`, no script), and the sanitised HTML keeps no `id` or
+`name`, so no element of the message can take that place. The message view and the preview of
+designed mail both use it. The sanitised HTML body
 (mailroom-core's `safe_html`: allowlisted tags, attributes and CSS properties; no script, forms,
 frames, `base`, event handlers). `cid:` images are inlined as `data:` up to a total budget; past
 it an image loses its `src` and keeps its alt text, with no placeholder. Remote (`http(s)`) image

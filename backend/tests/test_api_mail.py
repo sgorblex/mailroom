@@ -22,7 +22,13 @@ import pytest
 from sqlalchemy import select
 
 from mailroom.accounts.store import load_accounts, user_store
-from mailroom.api.routes.mail.read import PRINT_CSP, download_name, html_document, served_type
+from mailroom.api.routes.mail.read import (
+    ORIGINAL_TARGET,
+    PRINT_CSP,
+    download_name,
+    html_document,
+    served_type,
+)
 from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
 from mailroom.auth.users import create_user
 from mailroom.mail.pool import DeadlineExceeded, MailPool
@@ -79,6 +85,9 @@ NO_REMOTE_CSP = (
     "sandbox allow-popups allow-popups-to-escape-sandbox; default-src 'none'; "
     "style-src 'unsafe-inline'; img-src data:; frame-ancestors 'self'; base-uri 'none'"
 )
+DARK = ":root:not(:has(#mailroom-original:target))"
+"""What every dark rule waits for: the dark document's URL fragment is not ``#mailroom-original``."""
+TARGET = '<span id="mailroom-original" hidden></span>'
 
 pytestmark = pytest.mark.usefixtures("numbered_accounts")
 
@@ -905,8 +914,8 @@ def test_the_html_view_is_a_sanitised_standalone_document(mailbox: Mailbox) -> N
     assert ":root{color-scheme:light}" in page
     dark = mailbox.client.get(f"{MAIL}/messages/{ref}/html", params={"dark": "1"})
     assert dark.headers["content-security-policy"] == NO_REMOTE_CSP
-    assert ":root{color-scheme:dark}" in dark.text
-    assert dark.text.split("<body>", 1)[1] == body
+    assert "{color-scheme:dark}" in dark.text
+    assert dark.text.split("<body>", 1)[1] == TARGET + body
 
 
 def test_dark_html_inverts_a_message_that_sets_its_own_colours(mailbox: Mailbox) -> None:
@@ -919,20 +928,36 @@ def test_dark_html_inverts_a_message_that_sets_its_own_colours(mailbox: Mailbox)
     assert dark.headers["content-security-policy"] == NO_REMOTE_CSP
     assert "filter:invert(1) hue-rotate(180deg)" in dark.text
     assert "filter" not in light
-    assert dark.text.split("<body>", 1)[1] == light.split("<body>", 1)[1]
+    assert dark.text.split("<body>", 1)[1] == TARGET + light.split("<body>", 1)[1]
 
 
 def test_the_dark_document_is_css_alone() -> None:
     plain = html_document("<p>hi</p>", dark=True)
-    assert ":root{color-scheme:dark}" in plain
-    assert "a{color:#8ab4f8}" in plain
+    assert f"{DARK}{{color-scheme:dark}}" in plain
+    assert f"{DARK} a{{color:#8ab4f8}}" in plain
     assert "invert" not in plain
     inverted = html_document("<p>hi</p>", dark=True, sets_colours=True)
-    assert "img{filter:invert(1) hue-rotate(180deg)}" in inverted
+    assert f"{DARK} img{{filter:invert(1) hue-rotate(180deg)}}" in inverted
     assert html_document("<p>hi</p>", sets_colours=True) == html_document("<p>hi</p>")
     for page in (plain, inverted):
         assert "<script" not in page
         assert page.count("<style>") == 1
+
+
+def test_the_dark_document_holds_the_original_colours_behind_a_fragment() -> None:
+    """``#mailroom-original`` shows the light document's own styles: every dark rule waits for
+    the target not to be targeted, and the target shows nothing. The light document has neither."""
+    light = html_document("<p>hi</p>")
+    light_style = light.split("<style>", 1)[1].split("img{", 1)[0]
+    for sets_colours in (False, True):
+        page = html_document("<p>hi</p>", dark=True, sets_colours=sets_colours)
+        style = page.split("<style>", 1)[1].split("</style>", 1)[0]
+        assert style.startswith(light_style)
+        dark_rules = style.removeprefix(light_style).removesuffix("img{max-width:100%;height:auto}")
+        assert dark_rules.startswith(DARK)
+        assert all(rule.startswith(DARK) for rule in dark_rules.split("}")[:-1])
+        assert page.split("<body>", 1)[1] == f"{TARGET}<p>hi</p></body></html>\n"
+    assert ORIGINAL_TARGET not in light
 
 
 def test_a_message_without_html_has_no_html_view(mailbox: Mailbox) -> None:

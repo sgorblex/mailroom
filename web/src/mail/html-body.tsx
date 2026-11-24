@@ -1,5 +1,6 @@
 import { useCallback, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Check } from 'lucide-react'
 
 import { ApiRequestError } from '@/api/http.ts'
 import { addRemoteSender, checkMessageHtml, messageHtmlUrl } from '@/api/mail.ts'
@@ -29,7 +30,10 @@ export type RemoteChoice = 'blocked' | 'message' | 'sender'
  * blocked until the reader asks, for this message or, when `canTrustSender` (DMARC passed for its
  * one From), always for its sender; the server checks that again before it remembers one. In a
  * dark theme the frame shows the server's `dark` document, unless the reader asks for the original
- * colours, a choice the message view keeps while the message is open.
+ * colours, a choice the message view keeps while the message is open: the same document, which
+ * the frame's URL fragment switches without a request or a reload. The toggle shows only beside a
+ * framed dark document, and a check marks it pressed, which a dark theme's secondary alone hardly
+ * tells from outline.
  */
 export function HtmlBody({
   messageRef,
@@ -57,15 +61,14 @@ export function HtmlBody({
   const { t } = useTranslation(MAIL_NS)
   const remote = choice !== 'blocked'
   const darkTheme = useDark()
-  const dark = darkTheme && !original
   const [trusting, setTrusting] = useState(false)
   const [trustFailure, setTrustFailure] = useState<string | null>(null)
   const check = useCallback(
     async (signal: AbortSignal) => {
-      await checkMessageHtml(messageRef, remote, signal, dark)
-      return messageHtmlUrl(messageRef, remote, dark)
+      await checkMessageHtml(messageRef, remote, signal, darkTheme)
+      return { remote, dark: darkTheme }
     },
-    [messageRef, remote, dark],
+    [messageRef, remote, darkTheme],
   )
   const { state, retry } = useLoad(check, (error) => mailErrorMessage(t, error, t('message.htmlFailed')))
 
@@ -131,9 +134,10 @@ export function HtmlBody({
           })}
         </p>
       )}
-      {darkTheme && (
+      {/* Only beside a dark document in the frame: next to an error or a light one it does nothing. */}
+      {state.kind === 'loaded' && state.value.dark && (
         <Button
-          variant="outline"
+          variant={original ? 'secondary' : 'outline'}
           size="xs"
           className="self-start"
           aria-pressed={original}
@@ -141,6 +145,7 @@ export function HtmlBody({
             onToggleOriginal()
           }}
         >
+          {original && <Check aria-hidden="true" />}
           {t('message.originalColours')}
         </Button>
       )}
@@ -162,10 +167,13 @@ export function HtmlBody({
       {state.kind === 'loaded' && (
         <iframe
           title={t('message.htmlTitle', { subject: subject === '' ? t('message.noSubject') : subject })}
-          src={state.value}
+          src={messageHtmlUrl(messageRef, state.value.remote, state.value.dark, original)}
           sandbox={HTML_SANDBOX}
           referrerPolicy="no-referrer"
-          className={cn('min-h-[60vh] w-full flex-1 rounded-md border', dark ? 'bg-[#121212]' : 'bg-white')}
+          className={cn(
+            'min-h-[60vh] w-full flex-1 rounded-md border',
+            state.value.dark && !original ? 'bg-[#121212]' : 'bg-white',
+          )}
         />
       )}
     </section>

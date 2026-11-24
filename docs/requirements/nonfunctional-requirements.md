@@ -41,9 +41,11 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   `data:` (the inlined `cid:` parts), unless the user reveals remote content; no scripts, no
   forms, no frames, `base-uri 'none'`), in addition to server-side sanitisation of the HTML.
 - **Dark mode is CSS in that document.** `?dark=1` changes only the served document's own
-  `<style>` (dark colours, or an inverting `filter` with images inverted back), under the same
+  `<style>` (dark colours, or an inverting `filter` with images inverted back, both off under the
+  `#mailroom-original` fragment, which only the app's own empty element can be), under the same
   CSP (`style-src 'unsafe-inline'`) and sandbox: no script in the frame or the app touches the
-  message, and nothing of it reaches the app shell, which only picks the URL from its theme.
+  message, and nothing of it reaches the app shell, which only picks the URL from its theme and
+  the reader's toggle.
 - The one HTML body shown outside that iframe is the **printable page** (`GET
   /api/v1/mail/messages/{ref}/print`), a tab of its own for the browser's print: the same
   sanitised HTML without remote images, boxed in so it paints nothing outside its own box and
