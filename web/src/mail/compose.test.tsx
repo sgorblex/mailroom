@@ -153,8 +153,12 @@ describe('composing', () => {
     await screen.findByRole('heading', { name: 'Message 2' })
     expect(screen.queryByRole('form')).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Back to draft' }))
-    expect(await body(await composer())).toHaveTextContent('Back soon')
-    expect(await body(await composer())).toHaveFocus()
+    const editor = await body(await composer())
+    expect(editor).toHaveTextContent('Back soon')
+    // The editor takes focus a frame after it is shown.
+    await waitFor(() => {
+      expect(editor).toHaveFocus()
+    })
   })
 
   it('offers no compose action on an account in send mode off, and says why', async () => {
@@ -410,7 +414,11 @@ describe('replying and forwarding', () => {
 
     const form = await composer('Reply')
     expect(field(form, 'Subject')).toHaveValue('Re: Message 2')
-    expect(await body(form)).toHaveFocus()
+    // The editor focuses itself a frame after it is created.
+    const editor = await body(form)
+    await waitFor(() => {
+      expect(editor).toHaveFocus()
+    })
     expect(within(form).getByRole('list', { name: 'To recipients' })).toHaveTextContent('sender2@example.org')
     expect(bodiesTo(fetchMock, '/api/v1/mail/drafts/prefill')).toEqual([{ ref: firstRef, mode: 'reply' }])
 
@@ -2119,7 +2127,8 @@ describe('sending', () => {
       fireEvent.change(within(dialog).getByLabelText('Date'), { target: { value: '2099-01-01' } })
       await user.click(within(dialog).getByRole('button', { name: 'Schedule' }))
       expect(within(dialog).getByRole('alert')).toHaveTextContent('up to a year ahead')
-      await user.click(within(dialog).getByRole('button', { name: /^Monday morning|^Tomorrow morning/ }))
+      // On a Monday both presets show: either will do.
+      await user.click(within(dialog).getAllByRole('button', { name: /^Monday morning|^Tomorrow morning/ })[0] ?? document.body)
       await screen.findByText(/^Scheduled for /, { selector: 'p' })
 
       await user.click(await screen.findByRole('button', { name: /Scheduled.*1 scheduled/ }))
