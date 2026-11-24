@@ -9,6 +9,7 @@ import { type AccountId, listAccounts, type Account } from '@/api/accounts.ts'
 import { ALL_INBOXES, listMessages, searchMessages, viewMessages, type MatchScope, type SearchQuery, type ViewKey } from '@/api/mail.ts'
 import { useConversations } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
+import { readDevicePref, writeDevicePref } from '@/lib/device-prefs.ts'
 import { cn } from '@/lib/utils.ts'
 
 import { CommandPalette } from './command-palette.tsx'
@@ -47,6 +48,9 @@ import { TriageProvider } from './triage-provider.tsx'
 import { viewFolder, viewScopes, viewSource } from './views.ts'
 
 const DEFAULT_FOLDER = 'INBOX'
+/** The account last shown on this device, whose folders `/mail` without one shows. */
+const ACCOUNT_PREF = 'mail.account'
+const isAccountId = (value: unknown): value is AccountId | null => value === null || Number.isInteger(value)
 const LIST_PANE_ID = 'mail-list'
 
 /**
@@ -62,6 +66,17 @@ export function MailScreen(): ReactElement {
   const [palette, setPalette] = useState(false)
   const savedViews = useQuery(viewsQuery()).data
   const grouped = useConversations()
+  // Read once: another tab switching account must not change the one this tab shows.
+  const [remembered] = useState(() => readDevicePref<AccountId | null>(ACCOUNT_PREF, null, isAccountId))
+  const routed = search.account
+  const known = accounts.data?.some((account) => account.id === routed) === true
+  // The account the route shows, kept for the next `/mail` without one. Written when the route
+  // changes only, never in answer to another tab's write, so two tabs on two accounts settle.
+  useEffect(() => {
+    if (known && routed !== undefined) {
+      writeDevicePref(ACCOUNT_PREF, routed)
+    }
+  }, [known, routed])
 
   if (accounts.status === 'pending') {
     return (
@@ -102,7 +117,8 @@ export function MailScreen(): ReactElement {
     )
   }
 
-  const accountId = search.account ?? first.id
+  const accountId =
+    search.account ?? accounts.data.find((account) => account.id === remembered)?.id ?? first.id
   const folder = search.folder ?? DEFAULT_FOLDER
   const requested = search.sub ?? storedSubfolders(accountId, folder)
   const accountIds = accounts.data.map((account) => account.id)

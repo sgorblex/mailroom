@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactElement } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactElement, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Check } from 'lucide-react'
 
@@ -16,6 +16,10 @@ export interface MenuItem {
   checked?: boolean
   /** The key that does the same outside the menu, shown beside it. */
   shortcut?: string
+  /** Shown before the label, for sight only (an account's colour dot). */
+  icon?: ReactNode
+  /** Tells apart items whose labels may be the same (two accounts of one name); else the label does. */
+  id?: string
 }
 
 /** Where a context menu was asked for, in viewport coordinates. */
@@ -164,7 +168,7 @@ export function Menu({
         const disabled = item.disabledReason != null
         return (
           <button
-            key={item.label}
+            key={item.id ?? item.label}
             type="button"
             role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
             tabIndex={-1}
@@ -185,6 +189,7 @@ export function Menu({
             )}
           >
             <span className="flex w-full items-center gap-2">
+              {item.icon}
               {item.label}
               {item.checked === true && <Check aria-hidden="true" className="size-3.5" />}
               {item.shortcut !== undefined && (

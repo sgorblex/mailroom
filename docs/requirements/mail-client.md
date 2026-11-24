@@ -37,7 +37,12 @@ notifications](#desktop-notifications).
   so read, under *Unread*; unstarred under *Starred*) stays in place, live updates reading the
   list again too, until the folder, the search or the filters change; `j` and `k` go on from it.
 - **Scheduled** below the views in the sidebar: the user's [scheduled sends](#send-later).
-- **Views** at the top of the sidebar: *All inboxes* and the user's saved [views](#views), in
+- **Account switcher** at the top of the sidebar: a button with the account shown, its name and
+  colour, opening a menu of the user's accounts (the ARIA menu pattern, the one shown checked).
+  The sidebar's tree lists that account's folders only. Choosing another shows its inbox, or keeps
+  the view open while the tree changes. The account in the URL is the one shown; `/mail` without
+  one shows the account last shown in this browser (`mailroom.ui.mail.account`), else the first.
+- **Views** below the account switcher: *All inboxes* and the user's saved [views](#views), in
   their order, each with the unread count of its folders when every one is listed already (none
   for a search). Opening one (`view` in the URL) lists it as a folder is listed, each row naming
   its account and folder, with selection, the row and toolbar actions and live updates (a change

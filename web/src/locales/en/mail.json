@@ -4,8 +4,13 @@
     "noAccounts": "Add a mail account first.",
     "goToAccounts": "Go to Accounts"
   },
+  "accountSwitcher": {
+    "button": "Account: {{account}}. Switch account",
+    "menu": "Accounts"
+  },
   "folders": {
     "label": "Accounts and folders",
+    "title": "Folders",
     "of": "Folders of {{account}}",
     "loading": "Loading folders…",
     "loadFailed": "Could not list the folders.",

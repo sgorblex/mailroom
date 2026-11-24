@@ -4,8 +4,13 @@
     "noAccounts": "Aggiungi prima un account di posta.",
     "goToAccounts": "Vai ad Account"
   },
+  "accountSwitcher": {
+    "button": "Account: {{account}}. Cambia account",
+    "menu": "Account"
+  },
   "folders": {
     "label": "Account e cartelle",
+    "title": "Cartelle",
     "of": "Cartelle di {{account}}",
     "loading": "Caricamento delle cartelle…",
     "loadFailed": "Impossibile elencare le cartelle.",
