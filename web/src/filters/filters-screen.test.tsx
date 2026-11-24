@@ -2,6 +2,7 @@ import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { expectNoAxeViolations } from '@/test/axe.ts'
 import { type FakeState, HOME, sentBody, stubFiltersApi, WORK } from '@/test/fake-filters-api.ts'
 import { renderFiltersApp } from '@/test/filters-app.tsx'
 
@@ -43,6 +44,13 @@ afterEach(() => {
 })
 
 describe('FiltersScreen', () => {
+  it('passes axe', async () => {
+    stubFiltersApi(state())
+    renderFiltersApp('/filters')
+    await screen.findByRole('list', { name: 'Rule sets of Work mail' })
+    await expectNoAxeViolations()
+  })
+
   it('lists the rule sets of each account and whether Run filters is on', async () => {
     stubFiltersApi(state())
     renderFiltersApp('/filters')

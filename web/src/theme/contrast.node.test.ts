@@ -80,9 +80,27 @@ const PAIRS: [string, string][] = [
   ['destructive', 'background'],
   ['destructive', 'card'],
   ['destructive-foreground', 'destructive'],
+  ['destructive', 'popover'],
+  ['destructive', 'accent'],
+  ['success', 'background'],
   ['success', 'card'],
+  ['warning', 'background'],
   ['warning', 'card'],
+  ['star', 'background'],
   ['star', 'card'],
+]
+
+/** What is not text but must be seen against what is around it, the focus ring above all: 3:1 (WCAG 1.4.11). */
+const NON_TEXT: [string, string][] = [
+  ['ring', 'background'],
+  ['ring', 'card'],
+  ['ring', 'popover'],
+  ['ring', 'sidebar'],
+  ['ring', 'accent'],
+  ['ring', 'muted'],
+  ['primary', 'muted'],
+  // The star mark on a selected row.
+  ['star', 'accent'],
 ]
 
 const ACCENT_TOKENS = ['primary', 'primary-foreground', 'accent', 'accent-soft', 'accent-soft-foreground', 'ring']
@@ -95,6 +113,10 @@ describe('the palette', () => {
         for (const [text, background] of PAIRS) {
           const ratio = contrast(tokens[text] ?? '', tokens[background] ?? '')
           expect(ratio, `${text} on ${background}`).toBeGreaterThanOrEqual(4.5)
+        }
+        for (const [part, background] of NON_TEXT) {
+          const ratio = contrast(tokens[part] ?? '', tokens[background] ?? '')
+          expect(ratio, `${part} on ${background}`).toBeGreaterThanOrEqual(3)
         }
       })
     }

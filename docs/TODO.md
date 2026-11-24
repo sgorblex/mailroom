@@ -289,8 +289,9 @@ First, fixes carried over from 0.14.0 testing:
   - [x] **Phone layout** — a Mail header (☰ folders drawer, search, compose), the list full
         width, a message in full view with its action bar at the foot.
 - [x] **Swipe actions** — on phones, archive and trash by swiping, the actions configurable.
-- [ ] **Accessibility pass** — screen readers, keyboard focus and contrast across the app, with
-      automated checks in CI.
+- [x] **Accessibility pass** — screen readers, keyboard focus and contrast across the app, with
+      automated checks in CI: axe on every main screen in `test-web`, a focus ring on everything
+      the keyboard reaches, contrast checked for text and the ring in every theme and accent.
 
 ### Milestone F: Access, apps and data
 

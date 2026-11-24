@@ -129,7 +129,7 @@ export function Splitter({
         vertical
           ? 'w-px cursor-col-resize before:inset-y-0 before:-right-1.5 before:-left-1.5'
           : 'h-px cursor-row-resize before:inset-x-0 before:-top-1.5 before:-bottom-1.5',
-        'hover:bg-primary/60 focus-visible:bg-primary focus-visible:ring-[3px] focus-visible:ring-ring/50',
+        'hover:bg-primary/60 focus-visible:bg-primary focus-visible:ring-[3px] focus-visible:ring-ring',
         className,
       )}
     />

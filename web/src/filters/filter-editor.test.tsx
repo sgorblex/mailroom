@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { Filter, FilterFields } from '@/api/filters.ts'
 import schema from '@/test/filter-schema.json'
+import { expectNoAxeViolations } from '@/test/axe.ts'
 
 import { FilterEditor } from './filter-editor.tsx'
 import type { FoldersState } from './folders.ts'
@@ -28,6 +29,16 @@ async function saved(save: ReturnType<typeof vi.fn>): Promise<unknown> {
 }
 
 describe('the filter tree editor', () => {
+  it('passes axe on the tree and on JSON', async () => {
+    renderEditor({
+      criterion: { or: [{ type: 'from_contains', args: { addr: 'a@' } }, { not: { type: 'is_read' } }] },
+      action: { type: 'move_to', args: { folder: ['Archive'] } },
+    })
+    await expectNoAxeViolations()
+    await userEvent.click(screen.getByRole('tab', { name: 'JSON' }))
+    await expectNoAxeViolations()
+  })
+
   it('builds nested and/or/not groups, numbering conditions by their place', async () => {
     const save = renderEditor({
       criterion: { or: [{ type: 'from_contains', args: { addr: 'a@' } }, { type: 'is_read' }] },

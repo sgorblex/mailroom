@@ -97,7 +97,7 @@ export function AttachmentTray({
           />
           <label
             htmlFor={id}
-            className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-3 text-sm font-medium hover:bg-accent peer-focus-visible:ring-[3px] peer-focus-visible:ring-ring/50"
+            className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-3 text-sm font-medium hover:bg-accent peer-focus-visible:ring-[3px] peer-focus-visible:ring-ring"
           >
             <Paperclip aria-hidden="true" className="size-4" />
             {t('compose.attach')}

@@ -215,8 +215,26 @@
 @layer base {
   /* `accent-color` per element, so a `[data-accent]` swatch's own controls take its accent too. */
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border outline-ring;
     accent-color: var(--primary);
+  }
+
+  /* A focus ring on whatever the keyboard reaches; an element with its own (`outline-none` and a
+     `focus-visible:ring`) replaces it. The ring token is checked for 3:1 on every background. */
+  :focus-visible {
+    @apply outline-2 outline-offset-2;
+  }
+
+  /* Nothing slides or fades for someone who asked for less motion (the drawer and swipe say so
+     too, with `motion-reduce:`). */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      transition-duration: 0s !important;
+      animation-duration: 0s !important;
+      scroll-behavior: auto !important;
+    }
   }
 
   body {

@@ -285,82 +285,83 @@ function ActionList({
         {actions.map((action, index) => {
           const name = t('filters.tree.action', { n: index + 1 })
           return (
-            <li
-              key={action.key}
-              role="group"
-              aria-label={name}
-              className="flex flex-col gap-3 rounded-md border p-3"
-            >
-              <div className="flex items-center gap-2">
-                <span aria-hidden="true" className="w-5 text-sm text-muted-foreground tabular-nums">
-                  {index + 1}.
-                </span>
-                <select
-                  aria-label={t('filters.tree.typeOf', { name })}
-                  className={`${selectClass} max-w-72`}
-                  value={`leaf:${action.type}`}
-                  onChange={(event) => {
-                    const type = event.target.value.slice('leaf:'.length)
-                    const fresh = freshLeaf(vocabulary.actions, type, action.args, action.type)
-                    const changed = { ...fresh, key: action.key }
-                    onChange(actions.map((item, at) => (at === index ? changed : item)))
+            <li key={action.key}>
+              <div
+                role="group"
+                aria-label={name}
+                className="flex flex-col gap-3 rounded-md border p-3"
+              >
+                <div className="flex items-center gap-2">
+                  <span aria-hidden="true" className="w-5 text-sm text-muted-foreground tabular-nums">
+                    {index + 1}.
+                  </span>
+                  <select
+                    aria-label={t('filters.tree.typeOf', { name })}
+                    className={`${selectClass} max-w-72`}
+                    value={`leaf:${action.type}`}
+                    onChange={(event) => {
+                      const type = event.target.value.slice('leaf:'.length)
+                      const fresh = freshLeaf(vocabulary.actions, type, action.args, action.type)
+                      const changed = { ...fresh, key: action.key }
+                      onChange(actions.map((item, at) => (at === index ? changed : item)))
+                    }}
+                  >
+                    <LeafOptions
+                      defs={vocabulary.actions}
+                      current={action.type}
+                      unavailable={unavailable}
+                    />
+                  </select>
+                  <span className="ml-auto flex gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      disabled={index === 0}
+                      aria-label={t('filters.tree.moveUp', { name })}
+                      onClick={() => {
+                        move(index, index - 1)
+                      }}
+                    >
+                      <ArrowUp aria-hidden="true" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      disabled={index === actions.length - 1}
+                      aria-label={t('filters.tree.moveDown', { name })}
+                      onClick={() => {
+                        move(index, index + 1)
+                      }}
+                    >
+                      <ArrowDown aria-hidden="true" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      disabled={actions.length === 1}
+                      aria-label={t('filters.tree.remove', { name })}
+                      onClick={() => {
+                        onChange(actions.filter((_, at) => at !== index))
+                      }}
+                    >
+                      <X aria-hidden="true" />
+                    </Button>
+                  </span>
+                </div>
+                <LeafFields
+                  idPrefix={`${idPrefix}-${action.key}`}
+                  defs={vocabulary.actions}
+                  type={action.type}
+                  args={action.args}
+                  folders={folders}
+                  onChange={(args) => {
+                    onChange(actions.map((item, at) => (at === index ? { ...action, args } : item)))
                   }}
-                >
-                  <LeafOptions
-                    defs={vocabulary.actions}
-                    current={action.type}
-                    unavailable={unavailable}
-                  />
-                </select>
-                <span className="ml-auto flex gap-1">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    disabled={index === 0}
-                    aria-label={t('filters.tree.moveUp', { name })}
-                    onClick={() => {
-                      move(index, index - 1)
-                    }}
-                  >
-                    <ArrowUp aria-hidden="true" />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    disabled={index === actions.length - 1}
-                    aria-label={t('filters.tree.moveDown', { name })}
-                    onClick={() => {
-                      move(index, index + 1)
-                    }}
-                  >
-                    <ArrowDown aria-hidden="true" />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    disabled={actions.length === 1}
-                    aria-label={t('filters.tree.remove', { name })}
-                    onClick={() => {
-                      onChange(actions.filter((_, at) => at !== index))
-                    }}
-                  >
-                    <X aria-hidden="true" />
-                  </Button>
-                </span>
+                />
               </div>
-              <LeafFields
-                idPrefix={`${idPrefix}-${action.key}`}
-                defs={vocabulary.actions}
-                type={action.type}
-                args={action.args}
-                folders={folders}
-                onChange={(args) => {
-                  onChange(actions.map((item, at) => (at === index ? { ...action, args } : item)))
-                }}
-              />
             </li>
           )
         })}

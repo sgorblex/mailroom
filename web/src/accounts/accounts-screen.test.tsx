@@ -2,6 +2,7 @@ import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { expectNoAxeViolations } from '@/test/axe.ts'
 import { renderSignedIn } from '@/test/signed-in.tsx'
 
 import { AccountsScreen } from './accounts-screen.tsx'
@@ -203,6 +204,18 @@ afterEach(() => {
 })
 
 describe('AccountsScreen', () => {
+  it('passes axe, listing an account and adding one', async () => {
+    stubApi([WORK])
+    renderSignedIn(<AccountsScreen />, ALICE)
+    await screen.findByRole('list', { name: 'Mail accounts' })
+    await expectNoAxeViolations()
+    await userEvent.click(screen.getByRole('button', { name: 'Add an account' }))
+    const form = screen.getByRole('form', { name: 'Add an account' })
+    await userEvent.type(within(form).getByLabelText('Email address'), 'me@home.example')
+    await userEvent.click(within(form).getByRole('button', { name: 'Enter settings manually' }))
+    await expectNoAxeViolations()
+  })
+
   it('says when there are no accounts yet', async () => {
     stubApi([])
     renderSignedIn(<AccountsScreen />, ALICE)

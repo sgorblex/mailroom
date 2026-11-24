@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { LG_QUERY } from '@/lib/media-query.ts'
+import { expectNoAxeViolations } from '@/test/axe.ts'
 import { fakeDraft, type FakeMailState, HOME, messageItem, messageView, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
 import { renderMailApp } from '@/test/mail-app.tsx'
 
@@ -44,6 +45,28 @@ const drawer = (): HTMLElement | null => screen.queryByRole('dialog', { name: 'F
 const header = async (): Promise<HTMLElement> => (await screen.findByRole('button', { name: 'Folders' })).closest('header') ?? document.body
 
 describe('Mail on a phone', () => {
+  it('passes axe on the list, the folders drawer and a message', async () => {
+    stubMailApi(state())
+    renderMailApp('/mail')
+    await header()
+    const list = await screen.findByRole('list', { name: 'Messages' })
+    await expectNoAxeViolations()
+
+    await userEvent.click(foldersButton())
+    const open = drawer()
+    expect(open).not.toBeNull()
+    await within(open ?? document.body).findByRole('treeitem', { name: 'Sent' })
+    await expectNoAxeViolations()
+    fireEvent(open ?? document.body, new Event('cancel', { cancelable: true }))
+    await waitFor(() => {
+      expect(drawer()).toBeNull()
+    })
+
+    await userEvent.click(within(list).getByRole('link', { name: /Message 9/ }))
+    await screen.findByRole('heading', { name: 'Message 9' })
+    await expectNoAxeViolations()
+  })
+
   it('has a header naming the folder, with the folders, search and compose buttons, and no folder pane', async () => {
     stubMailApi(state())
     renderMailApp('/mail')

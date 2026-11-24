@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { bodiesTo, type FakeMailState, HOME, messageItem, messageView, queriesTo, refusal, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
 import { onSessionEnded } from '@/api/http.ts'
+import { expectNoAxeViolations } from '@/test/axe.ts'
 import { scrollListToEnd } from '@/test/fake-virtualizer.ts'
 import { renderMailApp } from '@/test/mail-app.tsx'
 
@@ -79,6 +80,22 @@ afterEach(() => {
 })
 
 describe('MailScreen', () => {
+  it('passes axe on the list, a text message and an HTML one', async () => {
+    stubMailApi(state())
+    renderMailApp('/mail')
+    await screen.findByRole('tree', { name: 'Folders of work' })
+    await messagesList()
+    await expectNoAxeViolations()
+
+    await userEvent.click(within(await messagesList()).getByRole('link', { name: /Message 99/ }))
+    await screen.findByRole('region', { name: 'Message body' })
+    await expectNoAxeViolations()
+
+    await userEvent.click(within(await messagesList()).getByRole('link', { name: /Message 98/ }))
+    await screen.findByRole('heading', { name: html.subject })
+    await expectNoAxeViolations()
+  })
+
   it("opens the first account's inbox, with folder roles and unread counts", async () => {
     stubMailApi(state())
     renderMailApp('/mail')

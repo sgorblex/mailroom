@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { DEFAULT_APPEARANCE, type Appearance, type Feature, type UserJson } from '@/api/auth.ts'
 import type { HomeSummary } from '@/api/home.ts'
+import { expectNoAxeViolations } from '@/test/axe.ts'
 import { renderSignedIn } from '@/test/signed-in.tsx'
 
 import { HomeRoute } from './home-screen.tsx'
@@ -108,6 +109,13 @@ afterEach(() => {
 })
 
 describe('HomeScreen', () => {
+  it('passes axe', async () => {
+    stubApi(SUMMARY)
+    renderHome()
+    await screen.findByRole('region', { name: 'Unread' })
+    await expectNoAxeViolations()
+  })
+
   it('counts unread mail per inbox, linking each and All inboxes', async () => {
     stubApi(SUMMARY)
     renderHome()

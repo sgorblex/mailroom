@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { apiGetJson } from '@/api/http.ts'
 import { createQueryClient } from '@/lib/query-client.ts'
+import { expectNoAxeViolations } from '@/test/axe.ts'
 import { stubEventSource } from '@/test/fake-event-source.ts'
 
 import { AuthProvider } from './auth-provider.tsx'
@@ -23,12 +24,12 @@ function renderApp(path = '/'): void {
     getParentRoute: () => rootRoute,
     path: '/',
     component: () => (
-      <>
+      <main>
         <p>Home page</p>
         <button type="button" onClick={() => void apiGetJson('/api/v1/users').catch(() => null)}>
           Load users
         </button>
-      </>
+      </main>
     ),
   })
   const pages = Object.entries({ '/profile': 'Profile page', '/accounts': 'Accounts page', '/filters/$ruleSetId': 'Rule set page' }).map(
@@ -160,6 +161,30 @@ describe('RootLayout', () => {
     expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Profile', 'API status', 'Sign out'])
     await userEvent.click(within(menu).getByRole('menuitem', { name: 'Sign out' }))
     expect(await screen.findByLabelText('Password')).toBeInTheDocument()
+  })
+
+  it('passes axe signed out and in, the user menu open', async () => {
+    stubApi(false)
+    renderApp()
+    await screen.findByLabelText('Username')
+    await expectNoAxeViolations(document.body, { page: true })
+
+    await userEvent.type(screen.getByLabelText('Username'), 'alice')
+    await userEvent.type(screen.getByLabelText('Password'), 'hunter2hunter2')
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    await screen.findByText('Home page')
+    // jsdom has no stylesheet: hide the nav CSS hides at each width, as `md:hidden` and `hidden md:block` do.
+    for (const shown of ['header', 'tabs'] as const) {
+      const all = navs()
+      const hidden = shown === 'header' ? all.tabs : all.header
+      hidden.style.display = 'none'
+      await expectNoAxeViolations(document.body, { page: true })
+      hidden.style.display = ''
+    }
+    // The menu sits over the page, outside its landmarks.
+    navs().tabs.style.display = 'none'
+    await openUserMenu()
+    await expectNoAxeViolations()
   })
 
   it("opens the user's live updates stream while signed in to the mail client, and closes it on signing out", async () => {

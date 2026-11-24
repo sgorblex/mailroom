@@ -2,6 +2,7 @@ import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { expectNoAxeViolations } from '@/test/axe.ts'
 import { FILTER_EDITED, type FakeState, HOME, sentBody, stubFiltersApi, WORK } from '@/test/fake-filters-api.ts'
 import { formatDay } from '@/lib/format.ts'
 import { renderFiltersApp } from '@/test/filters-app.tsx'
@@ -54,6 +55,16 @@ async function filterList(): Promise<HTMLElement> {
 }
 
 describe('RuleSetScreen', () => {
+  it('passes axe, a filter open in the editor', async () => {
+    stubFiltersApi(state())
+    renderFiltersApp('/filters/1')
+    const list = await filterList()
+    await expectNoAxeViolations()
+    await userEvent.click(within(list).getByRole('button', { name: 'Edit Old mail' }))
+    screen.getByRole('form', { name: 'Edit Old mail' })
+    await expectNoAxeViolations()
+  })
+
   it('shows the rule set and its filters in order, each summed up', async () => {
     stubFiltersApi(state())
     renderFiltersApp('/filters/1')

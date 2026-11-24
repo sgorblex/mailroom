@@ -10,7 +10,7 @@ Engineering baseline for Mailroom. Product scope: [`../REQUIREMENTS.md`](../REQU
 | Worker | procrastinate (psycopg 3) on the app's database, `python -m mailroom.worker`; it also watches folders over IMAP IDLE and syncs the mail index |
 | Web | React 19, Vite, TanStack Router (code-based routes), TanStack Query (in-memory cache of the mail screen's reads), TanStack Virtual (the message list), Tailwind 4 + shadcn (`web/components.json`) with the app's own tokens (`web/src/index.css`), the Figtree font bundled from `@fontsource-variable/figtree`, Downshift (headless combobox: the command palette), TipTap 3 (the composer's rich-text editor, loaded with it), i18next, Zod at the API boundary, ESLint `strictTypeChecked` (no Prettier) |
 | Database | PostgreSQL 18 |
-| Tests | pytest (+ xdist, one database per worker cloned from the migrated `mailroom_test`), Vitest (`node` and `jsdom` projects) |
+| Tests | pytest (+ xdist, one database per worker cloned from the migrated `mailroom_test`), Vitest (`node` and `jsdom` projects) with axe-core for accessibility |
 | Containers | Podman, `mailroom-api` and `mailroom-web` images; Quadlet for deploy |
 | Component family | mailroom-core, the mail layer, as a uv workspace member in `backend/core` (its own tests run from there: `mise run test-core`), which reads hosts with `idna` (UTS #46, as browsers do); the filter engine inside it (`mailroom_core.filters`, imap-thingy until 2026-11-11); mailroom-mcp, retired, never was a dependency ([`../CONTEXT.md`](../CONTEXT.md)) |
 | MCP server | the `mcp` SDK's low-level server, Streamable HTTP session manager and bearer-auth middleware, bounded to one minor because the app uses them directly ([`mcp.md`](mcp.md)) |
@@ -452,7 +452,7 @@ bounded to one minor because the server relies on its handlers.
   `mailroom.ui.<name>` (`web/src/lib/device-prefs.ts`).
   The theme, accent and text size are also copied there (`mailroom.ui.look`, `web/src/theme/look.ts`)
   so a load starts in them before `auth/me` answers; the server's value then replaces the copy.
-  Every accent, light and dark, meets WCAG AA (4.5:1) for its text pairs, which
+  Every accent, light and dark, meets WCAG AA for its text pairs (*Accessibility*), which
   `web/src/theme/contrast.node.test.ts` checks against `index.css`. Native checkboxes, radios and
   ranges take the accent too (`accent-color` from `--primary`).
 - **A session ending under the user:** any 401 from the API but a refused sign-in signs the web
@@ -1032,6 +1032,26 @@ clear (hash them, as mailroom-mcp's audit does).
   `httpx.MockTransport`, so they never reach the network.
 - No end-to-end browser test framework; browser checks by agents use chrome-devtools-mcp
   (`AGENTS.md` — *Manual / browser-based testing*), not CI.
+
+## Accessibility
+
+WCAG 2.2 AA is the aim; what is enforced:
+
+- **Keyboard:** every control is reached and worked by the keyboard, with the patterns ARIA gives
+  its role (menus, tabs, the tree, the splitter); a dialog or the drawer takes focus and gives it
+  back. `eslint-plugin-jsx-a11y` runs in `check-web`.
+- **Focus:** whatever the keyboard focuses shows a ring in the `ring` token (`:focus-visible` in
+  `web/src/index.css`, or the element's own `focus-visible:ring`); nothing hides it without one.
+- **Contrast:** text pairs 4.5:1 and the ring, the star mark and other non-text marks 3:1 against
+  what they sit on, every theme and accent, in `web/src/theme/contrast.node.test.ts`.
+- **axe in `test-web`:** `expectNoAxeViolations` (`web/src/test/axe.ts`, axe-core) runs on the app
+  shell (signed out, signed in, its menu), Mail (the list, a text and an HTML message, the phone
+  layout with its drawer, the composer with its toolbar and an attachment), Home, the Profile,
+  Accounts with the add form, Filters, a rule set, the filter editor, Activity and Users. Any
+  finding fails the test. Contrast is left to the test above, since jsdom
+  loads no stylesheet.
+- **Reduced motion:** with `prefers-reduced-motion`, transitions and animations stop (the drawer
+  and swipe, smooth scrolling on the Profile).
 
 ## Internationalisation
 

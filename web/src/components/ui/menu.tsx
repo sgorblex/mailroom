@@ -183,7 +183,7 @@ export function Menu({
               }
             }}
             className={cn(
-              'flex flex-col items-start rounded-sm px-2 py-1.5 text-left text-sm outline-none focus-visible:bg-accent',
+              'flex flex-col items-start rounded-sm px-2 py-1.5 text-left text-sm outline-none focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
               disabled ? 'cursor-default text-muted-foreground' : 'hover:bg-accent',
               item.destructive === true && !disabled && 'text-destructive',
             )}
