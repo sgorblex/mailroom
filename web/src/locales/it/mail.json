@@ -166,6 +166,13 @@
       "shownSeveral": "Solo i loro messaggi più recenti"
     }
   },
+  "refresh": {
+    "label": "Aggiorna",
+    "busy": "Aggiornamento in corso…",
+    "failed": "Aggiornamento non riuscito.",
+    "limited": "Troppi aggiornamenti in poco tempo: riprova tra un minuto.",
+    "slow": "L'aggiornamento sta richiedendo tempo: la nuova posta comparirà qui appena arriva."
+  },
   "quick": {
     "label": "Mostra solo"
   },
@@ -608,6 +615,8 @@
     "previous": "Messaggio precedente",
     "select": "Seleziona o deseleziona il messaggio aperto",
     "folderPane": "Riduci o apri il riquadro delle cartelle",
+    "refresh": "Aggiorna l'elenco",
+    "refreshKey": "Maiusc+R",
     "escape": "Chiudi la scelta della cartella, altrimenti annulla la selezione, altrimenti torna all'elenco da un messaggio aperto al suo posto",
     "escapeKey": "Esc",
     "sheet": "Mostra queste scorciatoie",

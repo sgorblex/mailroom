@@ -15,6 +15,7 @@ import { useDraftFilter } from './filter-draft.ts'
 import { useMuting } from './mute-context.ts'
 import { useSnoozing } from './snooze-context.ts'
 import { MAIL_NS } from './i18n.ts'
+import { useRefresh } from './refresh-context.ts'
 import { useUGoesBack } from './reading-pane.ts'
 import { folderName } from './messages.ts'
 import { matchItems, storedRecents, storeRecent, type PaletteItem } from './palette.ts'
@@ -222,6 +223,10 @@ function usePaletteItems(accounts: readonly Account[], accountId: AccountId): Pa
       },
     }),
   )
+  const { busy: refreshing, refresh } = useRefresh()
+  const refreshItems: PaletteItem[] = refreshing
+    ? []
+    : [{ id: 'action:refresh', group: 'actions', label: t('refresh.label'), shortcut: t('shortcuts.refreshKey'), run: refresh }]
   const folderItems = accounts.flatMap((account) =>
     (loadedFolders(triage.folders[account.id]) ?? [])
       .filter((folder) => folder.selectable)
@@ -258,5 +263,5 @@ function usePaletteItems(accounts: readonly Account[], accountId: AccountId): Pa
       },
     }),
   )
-  return [...actionItems, ...folderItems, ...accountItems, ...pageItems]
+  return [...actionItems, ...refreshItems, ...folderItems, ...accountItems, ...pageItems]
 }

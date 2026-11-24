@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactElement } from 'react'
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
@@ -51,6 +51,9 @@ import { useMailShortcuts, usePaletteShortcut } from './shortcuts.ts'
 import { storedSubfolders } from './subfolder-view.ts'
 import { MuteProvider } from './mute-provider.tsx'
 import { SnoozeProvider } from './snooze-provider.tsx'
+import { RefreshButton } from './refresh-button.tsx'
+import { useRefresh } from './refresh-context.ts'
+import { RefreshProvider } from './refresh-provider.tsx'
 import { ACCOUNTS_KEY, messagesKey, readListAhead, viewsQuery } from './queries.ts'
 import { ToastHost } from './toast.tsx'
 import { SpamFilterOffer } from './spam-filter-offer.tsx'
@@ -172,39 +175,80 @@ export function MailScreen(): ReactElement {
           >
             <SnoozeProvider>
               <ComposeProvider accounts={accounts.data} accountId={accountId}>
-                <HeldToasts />
-                <MailShortcuts accountId={accountId} onHelp={openSheet} onPalette={togglePalette} />
-                <MailPanes
-                  accounts={accounts.data}
-                  accountId={accountId}
-                  folder={folder}
-                  requested={requested}
-                  onHelp={openSheet}
-                />
-                {sheet && (
-                  <ShortcutSheet
-                    onClose={() => {
-                      setSheet(false)
-                    }}
-                  />
-                )}
-                {search.list === 'snoozed' && <SnoozedList onClose={closeList} />}
-                {search.list === 'scheduled' && <ScheduledList onClose={closeList} />}
-                {palette && (
-                  <CommandPalette
+                <ListRefresh accountId={accountId} folder={folder} requested={requested}>
+                  <HeldToasts />
+                  <MailShortcuts accountId={accountId} onHelp={openSheet} onPalette={togglePalette} />
+                  <MailPanes
                     accounts={accounts.data}
                     accountId={accountId}
-                    onClose={() => {
-                      setPalette(false)
-                    }}
+                    folder={folder}
+                    requested={requested}
+                    onHelp={openSheet}
                   />
-                )}
+                  {sheet && (
+                    <ShortcutSheet
+                      onClose={() => {
+                        setSheet(false)
+                      }}
+                    />
+                  )}
+                  {search.list === 'snoozed' && <SnoozedList onClose={closeList} />}
+                  {search.list === 'scheduled' && <ScheduledList onClose={closeList} />}
+                  {palette && (
+                    <CommandPalette
+                      accounts={accounts.data}
+                      accountId={accountId}
+                      onClose={() => {
+                        setPalette(false)
+                      }}
+                    />
+                  )}
+                </ListRefresh>
               </ComposeProvider>
             </SnoozeProvider>
           </TriageProvider>
         </MuteProvider>
       </ToastHost>
     </AccountsContext>
+  )
+}
+
+/** Refreshes the list the route shows: its folder or search, by conversation as it is read, or its view. */
+function ListRefresh({
+  accountId,
+  folder,
+  requested,
+  children,
+}: {
+  accountId: AccountId
+  folder: string
+  /** As `MailPanes`'s. */
+  requested: boolean
+  children: ReactNode
+}): ReactElement {
+  const { view, q, only } = useSearch({ from: '/mail', select: refreshSearch, structuralSharing: true })
+  const subfolders = useListedSubfolders(accountId, folder, requested)
+  const grouped = useConversations()
+  if (view !== undefined) {
+    return (
+      <RefreshProvider scope={{ view }} source={grouping(viewSource(view), grouped)}>
+        {children}
+      </RefreshProvider>
+    )
+  }
+  const listed = listQuery(accountId, folder, q, only)
+  const scope =
+    listed === undefined
+      ? { account: String(accountId), folder, subfolders }
+      : {
+          account: listed.account,
+          folder: listed.folder,
+          subfolders: searchesSubfolders(accountId, folder, subfolders, listed),
+        }
+  return (
+    <RefreshProvider scope={scope} source={grouping(sourceKey(accountId, folder, subfolders, listed), grouped)}>
+      {children}
+    </RefreshProvider>
   )
 }
 
@@ -437,6 +481,10 @@ function panesSearch({ message, thread, q, only, view }: MailSearch): PanesSearc
 }
 type PanesSearch = Pick<MailSearch, 'message' | 'thread' | 'q' | 'only' | 'view'>
 
+function refreshSearch({ view, q, only }: MailSearch): Pick<MailSearch, 'view' | 'q' | 'only'> {
+  return { view, q, only }
+}
+
 function listingSearch({ q, only }: MailSearch): Pick<MailSearch, 'q' | 'only'> {
   return { q, only }
 }
@@ -450,7 +498,8 @@ function MailShortcuts({
   onHelp: () => void
   onPalette: () => void
 }): null {
-  useMailShortcuts(accountId, onHelp)
+  const { refresh } = useRefresh()
+  useMailShortcuts(accountId, onHelp, refresh)
   usePaletteShortcut(onPalette)
   return null
 }
@@ -621,7 +670,10 @@ const Listing = memo(function Listing({
   })
   return (
     <>
-      <QuickFilters only={only} />
+      <div className="flex items-start gap-2">
+        <QuickFilters only={only} />
+        <RefreshButton />
+      </div>
       <LiveNotice />
       {scope !== null && <IndexingNotice scope={scope} />}
       <MessageList
@@ -671,6 +723,9 @@ const ViewListing = memo(function ViewListing({ accounts, view }: { accounts: Ac
   })
   return (
     <>
+      <div className="flex">
+        <RefreshButton />
+      </div>
       <LiveNotice />
       <NotIndexedNotice source={source} loadPage={loadPage} />
       <MessageList source={source} loadPage={loadPage} searching={false} view />

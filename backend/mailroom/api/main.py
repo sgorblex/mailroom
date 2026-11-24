@@ -52,7 +52,7 @@ from mailroom.mail.connections import mail_ssl_context
 from mailroom.mail.events import EventHub, listen_connection
 from mailroom.mail.pool import MailPool
 from mailroom.mail.sends import SendRunner
-from mailroom.mail.service import HtmlViews, KeywordFailures, Quotas
+from mailroom.mail.service import HtmlViews, KeywordFailures, Quotas, refresh_limit
 from mailroom.mcp.app import METADATA_PATH, McpEndpoint
 from mailroom.mcp.groups import TOOL_GROUPS_ENV, offered_groups
 from mailroom.mcp.settings import mcp_settings_from_env
@@ -319,6 +319,7 @@ def create_application(
     application.add_exception_handler(Refusal, _refusal_answer)
     application.state.login_throttle = LoginThrottle()
     application.state.sso_start_limit = sso_start_limit()
+    application.state.refresh_limit = refresh_limit()
     application.state.autoconfig = Autoconfig()
     application.state.quotas = Quotas()
     application.state.keyword_failures = KeywordFailures()

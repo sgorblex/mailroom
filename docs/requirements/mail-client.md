@@ -508,6 +508,7 @@ MCP `message_read` still never set `\Seen`.
 | `j` / `k` | Next / previous message, scrolled into view |
 | `x` | Toggle selection of the current message |
 | `[` | Fold the folder pane to its rail, or open it again (desktop) |
+| Shift+R | Refresh the list ([*Index*](#index), *Refresh*) |
 | `Escape` | Close the picker, else clear the selection, else go back to the list from a message open in its place (reading pane off, or a phone) |
 | `?` | Show the shortcut sheet |
 | Ctrl+K / ⌘+K | Open the command palette |
@@ -535,8 +536,8 @@ MCP `message_read` still never set `\Seen`.
   a list (the ARIA combobox and listbox pattern: ↑ and ↓ move, wrapping, Page Up and Page Down go
   to the first and the last, Enter or a click chooses, Escape closes). It offers, in groups: the
   registry's actions that can run now on the selection or the open message (as the toolbar lists
-  them, with their keys), every folder that can hold mail of every account (its account beside
-  it), the accounts, and the app's pages as the nav lists them. Each word typed must start a word
+  them, with their keys) and *Refresh*, every folder that can hold mail of every account (its
+  account beside it), the accounts, and the app's pages as the nav lists them. Each word typed must start a word
   of an entry (a folder path's levels are words) or occur in it, or have its letters in order in
   one of its words, case and accents aside; the best matches come first. With nothing typed, the
   last five choices come first (kept in this browser only; none when storage is refused), those
@@ -2111,6 +2112,19 @@ folder off the index is read live, as before the index.
   `new_mail` rule set watches shares that watch. Details:
   [`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *Filters* (the IDLE
   supervisor).
+- **Refresh.** A *Refresh* button above every list (a folder's, a search's, a view's), the palette's
+  entry and Shift+R sync the indexed folders the list reads, ahead of every other job of their
+  mailboxes, then read its first page again. The button turns until that is done, for 45 s at
+  most: past them a toast says so, and new mail still comes as live updates. A folder off the
+  index is only read again, live. Showing another list lets go of it, the sync going on.
+  `POST /api/v1/mail/refresh` takes a list's or a search's scope (`{"account", "folder",
+  "subfolders"}`: an id or `*`, a path or `*`, `INBOX` by default) or a view's (`{"view"}`: an id or
+  `all_inboxes`), never its criteria: 202 `{"refresh_id"}`, null when none of its folders is on the
+  index (on Gmail, a label's folder is All Mail's). `GET /api/v1/mail/refresh/{refresh_id}` gives
+  `{"running"}`, false for one that is done, unknown or another user's. A folder that cannot be
+  synced ends it too: it is `failed` and its list, then read live, says why; one that fails because
+  its account cannot be reached or logged in to leaves the account's other folders untried. More than 12 in a
+  minute are 429 `refresh_limited`, per user. Not open to API tokens.
 - **The app's own writes.** A move, archive, report as spam, trash, flag change, move to another
   account, bulk call or folder marked read, from the web or an agent, updates the index in the
   same request from the server's answer, never from another read: a moved message's row leaves

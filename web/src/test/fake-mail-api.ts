@@ -154,7 +154,11 @@ export interface FakeMailState {
    * (*All inboxes*: every account's INBOX; a search: `searchResult`), nothing left out.
    */
   viewPages?: Record<string, ViewPage>
+  /** How many more times each refresh says it is still running; `null`: what it asks is off the index. */
+  refreshing?: number | null
 }
+
+const REFRESH_ID = '7a0f8f1e-0000-4000-8000-000000000001'
 
 /** The statuses of the mail codes the organize routes answer (`docs/requirements/mail-client.md`). */
 const STATUS: Record<string, number> = {
@@ -1244,6 +1248,14 @@ export function stubMailApi(state: FakeMailState): Mock {
   const respond = (url: URL, init?: RequestInit): Response => {
     const path = url.pathname
     const query = url.searchParams
+    if (path === '/api/v1/mail/refresh' && init?.method === 'POST') {
+      return json(202, { refresh_id: state.refreshing === null ? null : REFRESH_ID })
+    }
+    if (path === `/api/v1/mail/refresh/${REFRESH_ID}`) {
+      const left = state.refreshing ?? 0
+      state.refreshing = Math.max(0, left - 1)
+      return json(200, { running: left > 0 })
+    }
     if (path === '/api/v1/accounts') {
       return json(
         200,

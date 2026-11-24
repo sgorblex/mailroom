@@ -166,6 +166,13 @@
       "shownSeveral": "Only their newest messages"
     }
   },
+  "refresh": {
+    "label": "Refresh",
+    "busy": "Refreshing…",
+    "failed": "Could not refresh.",
+    "limited": "Too many refreshes in a short time: try again in a minute.",
+    "slow": "The refresh is taking a while: new mail shows here as it comes."
+  },
   "quick": {
     "label": "Show only"
   },
@@ -608,6 +615,8 @@
     "previous": "Previous message",
     "select": "Select or deselect the open message",
     "folderPane": "Fold or open the folder pane",
+    "refresh": "Refresh the list",
+    "refreshKey": "Shift+R",
     "escape": "Close the picker, else clear the selection, else go back to the list from a message open in its place",
     "escapeKey": "Esc",
     "sheet": "Show these shortcuts",

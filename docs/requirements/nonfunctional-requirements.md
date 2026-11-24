@@ -922,10 +922,20 @@ keeps it, with `mail`:
   one with more to fetch to a `sync_folder(user_id, account_id, folder_id)` (`queueing_lock`
   `index_folder:<folder id>`) of its own. A folder IDLE, a write of the app, a held send or a
   filter run asks for is a `sync_folder` too, which keeps to the same time.
+- A refresh ([`mail-client.md`](mail-client.md) — *Index*) is one `refresh_folders(user_id,
+  account_id, folder_ids, refreshes)` per account, queued by the API, gone through in shares as a
+  turn is but whenever its folders were last synced, INBOX first. One waits per account at most
+  (`queueing_lock` `index_refresh:<user id>:<account id>`): one asked meanwhile adds its folders to
+  it, ahead of those there, and `refreshes` keeps which folders each refresh still awaits. The id
+  comes from the folders, so asking for the same ones again goes on with the same refresh; it runs
+  while a job awaiting folders for it waits or runs. A folder that fails on its account
+  (`unreachable`, `timeout`, `auth_failed`, or the app's own codes) ends the account's share of it. Its limit, 12 a minute per user, is in memory, per process. Logged as `mail_refresh_asked`
+  (`user_id`, how many accounts and folders).
 - All of these take the mailbox's `lock`, so one folder of an account syncs at a time, between its
   rule set runs. The routine ones (`sync_account`, the turn, a folder's later jobs) are queued at
-  priority -1, every other job at 0: a sync asked for, a filter run and a vacation reply go ahead of
-  them and wait at most for the share under way. A sync asked for while the folder's routine one
+  priority -1, a refresh's first share at 1, every other job at 0 (its later shares too, so that
+  one of many folders holds nothing back): a sync asked for, a filter run and a vacation reply go
+  ahead of the routine ones and wait at most for the share under way. A sync asked for while the folder's routine one
   waits raises that one's priority.
 - A folder's job surveys it under EXAMINE (UIDVALIDITY, UIDNEXT, HIGHESTMODSEQ and the UIDs since
   the age limit's day, SINCE), deletes the rows whose UIDs it no longer lists (expunged, or older

@@ -1,7 +1,7 @@
 """Login throttling: after n consecutive failures, a client waits 2^(n-1) s (capped at 15 min)
 before its next attempt is even checked. In memory, per process; a success resets the client.
 ``RateLimit``: at most so many requests per client in a sliding window, for routes anyone may call
-(the SSO start)."""
+(the SSO start), or per user (a mail refresh)."""
 
 from __future__ import annotations
 
@@ -81,8 +81,8 @@ class LoginThrottle:
 
 
 class RateLimit:
-    """At most ``limit`` requests per client (``client_key``) in any ``window_seconds``. In memory,
-    per process."""
+    """At most ``limit`` requests per client (``client_key``, or a user's id) in any
+    ``window_seconds``. In memory, per process."""
 
     def __init__(
         self, limit: int, window_seconds: float, clock: Callable[[], float] = time.monotonic

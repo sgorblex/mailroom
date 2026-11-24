@@ -173,6 +173,27 @@ def resync_in(db: Session, user_id: int, folders: Iterable[tuple[int, str]]) -> 
         _failed(user_id, exc)
 
 
+def labelled_folders(
+    db: Session, user_id: int, accounts: Iterable[int]
+) -> Sequence[MailIndexFolder]:
+    """Of ``accounts``, the folders on the index whose rows carry Gmail's message ids: All Mail's,
+    which a label's folder, without a row of its own, is read from."""
+    labelled = (
+        select(MailIndexFolder)
+        .where(
+            MailIndexFolder.user_id == user_id,
+            MailIndexFolder.account_id.in_(sorted(accounts)),
+            MailIndexFolder.enabled,
+            exists().where(
+                MailIndexMessage.folder_id == MailIndexFolder.id,
+                MailIndexMessage.gm_msgid.is_not(None),
+            ),
+        )
+        .order_by(MailIndexFolder.id)
+    )
+    return db.scalars(labelled).all()
+
+
 def _failed(user_id: int, exc: Exception) -> None:
     # Its text may quote anything, mail included: the log names its type only.
     logger.warning(
@@ -405,20 +426,8 @@ class _Write:
         }
         rowless = {account for account, path in self.keys if (account, path) not in self.rows}
         if rowless:
-            labelled = (
-                select(MailIndexFolder)
-                .where(
-                    MailIndexFolder.user_id == self.user_id,
-                    MailIndexFolder.account_id.in_(sorted(rowless)),
-                    MailIndexFolder.enabled,
-                    exists().where(
-                        MailIndexMessage.folder_id == MailIndexFolder.id,
-                        MailIndexMessage.gm_msgid.is_not(None),
-                    ),
-                )
-                .order_by(MailIndexFolder.id)
-            )
-            queued.update((row.id, row) for row in self.db.scalars(labelled))
+            labelled = labelled_folders(self.db, self.user_id, rowless)
+            queued.update((row.id, row) for row in labelled)
         for folder_id in folder_syncs_running(self.db, sorted(self.changed - set(queued))):
             queued[folder_id] = rows[folder_id]
         for row in queued.values():

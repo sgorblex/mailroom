@@ -429,6 +429,31 @@ export function viewMessages(view: ViewKey, cursor: string | null, signal?: Abor
   return apiGetJson(path, { init: { signal }, schema: viewPageSchema })
 }
 
+/** What a list shows, to refresh: a folder or a search's scope, or a view. */
+export type RefreshScope = { account?: string; folder?: string; subfolders: boolean } | { view: ViewKey }
+
+const refreshAskedSchema = z.object({ refresh_id: z.string().nullable() })
+const refreshStateSchema = z.object({ running: z.boolean() })
+
+/** Has the server sync the indexed folders `scope` reads ahead of its other work: the refresh's id, `null` when none is. */
+export async function askRefresh(scope: RefreshScope, signal?: AbortSignal): Promise<string | null> {
+  const body =
+    'view' in scope
+      ? scope
+      : matchBody({
+          query: { account: scope.account ?? '*', folder: scope.folder },
+          subfolders: scope.subfolders,
+        })
+  const answer = await apiPostJson(`${base}/refresh`, body, { init: { signal }, schema: refreshAskedSchema })
+  return answer.refresh_id
+}
+
+/** Whether the refresh still has folders to sync. */
+export async function refreshRunning(refreshId: string, signal?: AbortSignal): Promise<boolean> {
+  const path = `${base}/refresh/${encodeURIComponent(refreshId)}`
+  return (await apiGetJson(path, { init: { signal }, schema: refreshStateSchema })).running
+}
+
 /** The conversation of the message `ref` names, newest first, read live: its folder and Sent (on Gmail, its thread). */
 export function readThread(ref: string, signal?: AbortSignal): Promise<MessagePage> {
   return apiGetJson(`${messagePath(ref)}/thread`, { init: { signal }, schema: messagePageSchema })
