@@ -27,6 +27,11 @@
     "collapse": "Riduci il riquadro delle cartelle",
     "expand": "Apri il riquadro delle cartelle"
   },
+  "mobile": {
+    "folders": "Cartelle",
+    "closeFolders": "Chiudi le cartelle",
+    "search": "Cerca nella posta"
+  },
   "folderActions": {
     "menu": "Azioni per {{name}}",
     "more": "Azioni sulla cartella",

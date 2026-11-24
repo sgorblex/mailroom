@@ -6,6 +6,8 @@ import { useAccountName } from '@/accounts/accounts-context.ts'
 import type { AccountId } from '@/api/accounts.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Menu, type MenuItem } from '@/components/ui/menu.tsx'
+import { LG_QUERY, useMediaQuery } from '@/lib/media-query.ts'
+import { cn } from '@/lib/utils.ts'
 
 import { overflowingActions, type BarItem } from './action-overflow.ts'
 import { listedActions, triageShortcut, unavailableReason, type ActionContext, type MailAction } from './action-registry.ts'
@@ -32,9 +34,16 @@ function sameSet(one: ReadonlySet<string>, other: ReadonlySet<string>): boolean 
  * The actions of the bar `row` that go to its More menu for the rest to fit on one row (see
  * `overflowingActions`), measured again as the row changes width and as `listed` (its actions, by
  * id) changes. A hidden button counts at the width it had when last shown. None until laid out.
+ * Docked (at the foot of a narrow screen) or not, its buttons take other widths: on changing, all
+ * show again to be measured anew.
  */
-function useOverflow(row: RefObject<HTMLElement | null>, listed: string): ReadonlySet<string> {
+function useOverflow(row: RefObject<HTMLElement | null>, listed: string, docked: boolean): ReadonlySet<string> {
   const [overflow, setOverflow] = useState<ReadonlySet<string>>(NONE)
+  const [measuredDocked, setMeasuredDocked] = useState(docked)
+  if (measuredDocked !== docked) {
+    setMeasuredDocked(docked)
+    setOverflow(NONE)
+  }
   const widths = useRef(new Map<string, number>())
   useLayoutEffect(() => {
     const element = row.current
@@ -65,7 +74,7 @@ function useOverflow(row: RefObject<HTMLElement | null>, listed: string): Readon
     return () => {
       observer.disconnect()
     }
-  }, [row, listed])
+  }, [row, listed, docked])
   return overflow
 }
 
@@ -73,13 +82,17 @@ function useOverflow(row: RefObject<HTMLElement | null>, listed: string): Readon
  * The open message's action bar, all from the action registry: Reply, Reply all and Forward, which
  * open the composer; its triage actions as icon buttons (on the message, or the conversation it
  * stands for, whatever is selected in the list); the rest (print, download, a filter drafted from
- * it, mute, snooze) in a More menu. All on one row: the buttons that do not fit go to the top of
- * the More menu, in the order `OVERFLOW_ORDER` gives them up. Once muted, says so, and when the
- * account's Run filters is off, that muting has no effect until it is on.
+ * it, mute, snooze) in a More menu. All on one row: the buttons that do not fit go to the top
+ * of the More menu, in the order `OVERFLOW_ORDER` gives them up. Once muted, says
+ * so, and when the account's Run filters is off, that muting has no effect until it is on.
  *
  * With nothing selected the screen's keys act on the open message too, so its pickers are the
  * screen's (`v` opens the move picker here); with a selection those are the list toolbar's, and
  * this bar keeps its own.
+ *
+ * On a narrow screen the bar is fixed at its foot, above the phone's tab bar and the home
+ * indicator, Reply, Reply all and Forward as icons. Its height is then
+ * `--action-bar`, which the toasts and the reading pane leave free.
  */
 export function MessageActions({ account, messageRef }: { account: AccountId; messageRef: string }): ReactElement {
   const { t, i18n } = useTranslation(MAIL_NS)
@@ -91,6 +104,9 @@ export function MessageActions({ account, messageRef }: { account: AccountId; me
   const snoozing = useSnoozing()
   const accountName = useAccountName()
   const hintId = useId()
+  const docked = !useMediaQuery(LG_QUERY, true)
+  const bar = useRef<HTMLDivElement>(null)
+  useDockedHeight(bar, docked)
   // The triage actions wait for the view to have set the open message (its flags, its row).
   const open = triage.open?.ref === messageRef ? triage.open : null
   const actions = useTriageActions(open === null ? [] : [open])
@@ -158,7 +174,11 @@ export function MessageActions({ account, messageRef }: { account: AccountId; me
   const forms = listedActions('message', context)
   const triageListed = listedActions('triage', context)
   // Labels in another language take another width.
-  const overflow = useOverflow(row, [...answers, ...triageListed].map((action) => action.id).join(' ') + ` ${i18n.language}`)
+  const overflow = useOverflow(
+    row,
+    [...answers, ...triageListed].map((action) => action.id).join(' ') + ` ${i18n.language}`,
+    docked,
+  )
   const overflowed = [...answers, ...triageListed].filter((action) => overflow.has(action.id))
   const answerItem = (action: MailAction): MenuItem => ({
     id: action.id,
@@ -199,8 +219,21 @@ export function MessageActions({ account, messageRef }: { account: AccountId; me
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <div ref={row} role="group" aria-label={t('triage.label')} aria-busy={triage.busy} className="flex items-center gap-1">
+    <div
+      ref={bar}
+      className={cn(
+        'flex flex-col gap-2',
+        docked &&
+          'fixed inset-x-0 bottom-(--tab-bar) z-30 max-h-[60dvh] overflow-y-auto border-t bg-background px-3 pt-2 pb-2 md:pb-[calc(0.5rem+env(safe-area-inset-bottom))]',
+      )}
+    >
+      <div
+        ref={row}
+        role="group"
+        aria-label={t('triage.label')}
+        aria-busy={triage.busy}
+        className="flex items-center gap-1"
+      >
         {answers.map((action) => (
           <Button
             key={action.id}
@@ -224,7 +257,7 @@ export function MessageActions({ account, messageRef }: { account: AccountId; me
             }}
           >
             {createElement(action.icon(context), { 'aria-hidden': true })}
-            {t(action.label(context))}
+            <span className={cn(docked && 'sr-only sm:not-sr-only')}>{t(action.label(context))}</span>
           </Button>
         ))}
         <span aria-hidden="true" className="mx-1 h-5 w-px bg-border" />
@@ -302,4 +335,25 @@ export function MessageActions({ account, messageRef }: { account: AccountId; me
       )}
     </div>
   )
+}
+
+/** Sets `--action-bar` to the height of the bar while it is `docked`: what the toasts and the page leave free. */
+function useDockedHeight(bar: RefObject<HTMLDivElement | null>, docked: boolean): void {
+  useLayoutEffect(() => {
+    const element = bar.current
+    if (!docked || element === null) {
+      return
+    }
+    const root = document.documentElement.style
+    const measure = (): void => {
+      root.setProperty('--action-bar', `${String(element.offsetHeight)}px`)
+    }
+    measure()
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    observer?.observe(element)
+    return () => {
+      observer?.disconnect()
+      root.removeProperty('--action-bar')
+    }
+  }, [bar, docked])
 }

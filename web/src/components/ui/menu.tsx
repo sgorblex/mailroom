@@ -203,6 +203,7 @@ export function Menu({
         )
       })}
     </div>,
-    document.body,
+    // Inside a modal dialog it opened from, as the page behind one is out of reach.
+    anchor.closest('dialog') ?? document.body,
   )
 }

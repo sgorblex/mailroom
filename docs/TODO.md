@@ -278,9 +278,11 @@ First, fixes carried over from 0.14.0 testing:
 - [ ] **HTML first** — a message with an HTML version opens in it, not in its text version (with
       *Dark mode for HTML mail*); the Text/HTML switch stays, and a switch away is remembered per
       sender.
-- [ ] **Mobile and installable** — a layout pass for phones, and a web app manifest (with
+- [x] **Mobile and installable** — a layout pass for phones, and a web app manifest (with
       *Theme and design pass*).
   - [x] **Installable** — a web app manifest and icons; no service worker, no offline.
+  - [x] **Phone layout** — a Mail header (☰ folders drawer, search, compose), the list full
+        width, a message in full view with its action bar at the foot.
 - [ ] **Swipe actions** — on phones, archive and trash by swiping, the actions configurable.
 - [ ] **Accessibility pass** — screen readers, keyboard focus and contrast across the app, with
       automated checks in CI.

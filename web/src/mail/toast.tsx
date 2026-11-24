@@ -87,7 +87,7 @@ export function ToastHost({ children }: { children: ReactNode }): ReactElement {
       </div>
       {children}
       {(toast !== null || pinned.length > 0) && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-[calc(var(--tab-bar)+1rem)] z-50 flex flex-col items-center gap-2 px-4">
+        <div className="pointer-events-none fixed inset-x-0 bottom-[calc(var(--tab-bar)+var(--action-bar,0px)+1rem)] z-50 flex flex-col items-center gap-2 px-4">
           {toast !== null && <ToastCard key={toast.id} toast={toast} onClose={close} />}
           {pinned.map((each) => (
             <PinnedCard key={each.key} id={each.key} toast={each.toast} />

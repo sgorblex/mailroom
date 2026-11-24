@@ -27,6 +27,11 @@
     "collapse": "Fold the folder pane",
     "expand": "Open the folder pane"
   },
+  "mobile": {
+    "folders": "Folders",
+    "closeFolders": "Close the folders",
+    "search": "Search mail"
+  },
   "folderActions": {
     "menu": "Actions for {{name}}",
     "more": "Folder actions",

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearch } from '@tanstack/react-router'
@@ -26,6 +26,7 @@ import { indexScope, scopeReads } from './index-progress.ts'
 import { IndexingNotice } from './indexing-notice.tsx'
 import { useLiveEvents, useLiveStatus, useLiveViewing } from './live-context.ts'
 import { ListPane } from './list-pane.tsx'
+import { MailHeader } from './mail-header.tsx'
 import { MessageList } from './message-list.tsx'
 import { MessageView } from './message-view.tsx'
 import { useReadingPane } from './reading-pane.ts'
@@ -190,8 +191,9 @@ export function MailScreen(): ReactElement {
 /**
  * The three panes. The reading pane sits where the user put it, right of the list or below it; or,
  * set off, an open message or the composer takes the list's place with Back (the message with the
- * toolbar acting on the selection), the list scrolled where it was underneath. On a phone an open
- * message or composer takes the screen.
+ * toolbar acting on the selection), the list scrolled where it was underneath. On a narrow screen
+ * (a phone) a header with the folders drawer, search and compose tops the list, which takes the
+ * width, and an open message or composer takes the screen.
  */
 function MailPanes({
   accounts,
@@ -223,20 +225,58 @@ function MailPanes({
   useLiveViewing(showsFolder ? { account: accountId, folder } : null)
   const readingPane = useRef<HTMLElement>(null)
   useFocusClosedRow(overlaid, search.thread ?? open)
+  const searchId = useId()
+  const [searchOpen, setSearchOpen] = useState(false)
+  // On a narrow screen the search form shows on request, and while a search is shown.
+  const searchShown = wide || searchOpen || search.q !== undefined
+  const shownFolder = showsFolder ? folder : null
+  // Opened from the header: typed into once shown.
+  const focusSearch = useRef(false)
+  const focusSearchField = useCallback(() => {
+    document.getElementById(searchId)?.querySelector<HTMLInputElement>('input')?.focus()
+  }, [searchId])
+  useEffect(() => {
+    if (searchShown && focusSearch.current) {
+      focusSearch.current = false
+      focusSearchField()
+    }
+  }, [searchShown, focusSearchField])
   return (
     // On a wide screen it takes the window's height left under the header and no more, each pane
     // scrolling on its own: a flex basis of 0 px, not flex-1's 0 %, which a column only as high as
     // its content (min-h-dvh) reads as the content's height, letting the whole page scroll.
     <main className="flex flex-1 flex-col border-t lg:min-h-0 lg:basis-0 lg:flex-row">
       <h1 className="sr-only">{t('mail.title')}</h1>
-      <FolderPane
-        accounts={accounts}
-        accountId={accountId}
-        folder={showsFolder ? folder : null}
-        view={search.view ?? null}
-        subfolders={subfolders}
-        className={cn(covered && 'hidden lg:flex')}
-      />
+      {wide ? (
+        <FolderPane
+          accounts={accounts}
+          accountId={accountId}
+          folder={shownFolder}
+          view={search.view ?? null}
+          subfolders={subfolders}
+        />
+      ) : (
+        <MailHeader
+          accounts={accounts}
+          accountId={accountId}
+          folder={shownFolder}
+          view={search.view ?? null}
+          subfolders={subfolders}
+          searching={search.q !== undefined}
+          searchId={searchId}
+          searchShown={searchShown}
+          onSearch={() => {
+            // A search shown keeps its form: the button takes the cursor there.
+            if (search.q !== undefined) {
+              focusSearchField()
+              return
+            }
+            focusSearch.current = !searchShown
+            setSearchOpen(!searchShown)
+          }}
+          hidden={covered}
+        />
+      )}
       <div className={cn('relative flex min-w-0 flex-1 flex-col lg:min-h-0', position !== 'below' && 'lg:flex-row')}>
         {/* On a phone the open message hides the list, but not the toolbar acting on the selection. */}
         <ListPane
@@ -255,11 +295,21 @@ function MailPanes({
           <div className={cn('flex gap-3', compact ? 'items-start' : 'flex-col')}>
             <div className={cn('flex items-start gap-2', compact ? 'max-w-sm shrink-0' : 'min-w-0')}>
               <div className="min-w-0 flex-1">
-                <ComposeBar accountId={accountId} />
+                {/* The narrow screen's header has the Compose button; a message taking the screen, none
+                    starts one, but Back to the draft and the sent notices stay above it. */}
+                <ComposeBar accountId={accountId} starts={wide ? 'all' : covered ? 'none' : 'import'} />
               </div>
-              {!compact && <ShortcutSheetButton onClick={onHelp} />}
+              {wide && !compact && <ShortcutSheetButton onClick={onHelp} />}
             </div>
-            <div className={cn('flex flex-col gap-3', compact && 'min-w-0 flex-1', covered && 'hidden lg:flex')}>
+            <div
+              id={searchId}
+              className={cn(
+                'flex flex-col gap-3',
+                compact && 'min-w-0 flex-1',
+                covered && 'hidden lg:flex',
+                !searchShown && 'hidden',
+              )}
+            >
               <SearchForm
                 key={JSON.stringify(search.q ?? null)}
                 accounts={accounts}
@@ -297,6 +347,8 @@ function MailPanes({
           className={cn(
             'min-w-0 flex-1 flex-col p-3 lg:min-h-0 lg:overflow-y-auto',
             covered ? 'flex' : 'hidden',
+            // Room for the message's action bar, fixed at the foot of a narrow screen.
+            !wide && 'pb-[calc(var(--action-bar,0px)+1rem)]',
             position === 'off' ? 'lg:absolute lg:inset-0 lg:bg-background' : 'lg:flex',
             position === 'off' && !covered && 'lg:hidden',
           )}
