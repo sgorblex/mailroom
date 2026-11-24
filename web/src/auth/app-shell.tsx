@@ -51,7 +51,7 @@ export function AppShell({
   }
 
   return (
-    <div className="flex min-h-dvh flex-col pr-[env(safe-area-inset-right)] pb-(--tab-bar) pl-[env(safe-area-inset-left)]">
+    <div className="flex flex-1 flex-col pr-[env(safe-area-inset-right)] pb-(--tab-bar) pl-[env(safe-area-inset-left)]">
       <header className="flex items-center gap-3 border-b bg-card px-3 py-2 md:gap-6 md:px-4">
         <Link to="/" className="flex items-center gap-2 rounded-md font-semibold tracking-tight">
           <span aria-hidden="true" className="grid size-7 place-items-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">

@@ -246,6 +246,8 @@ First, fixes carried over from 0.14.0 testing:
       resizable (widths kept per device), the folder pane collapsible or hidden until hovered, the
       row's icons shown on hover or selection only (or folded into one menu), and a compact mode
       putting sender, subject and date on one line.
+  - [x] **Resizable list** — a divider between the list and the reading pane, by pointer or
+        keyboard, its width kept per device and wider by default.
 - [ ] **Undo where it is seen** — the Undo send toast is easy to miss where it is now: centred at
       the bottom of the window, larger, with the seconds left.
 - [ ] **Profile layout** — the Profile uses the width of a desktop screen, its sections side by
@@ -253,7 +255,7 @@ First, fixes carried over from 0.14.0 testing:
 - [ ] **Index folder picker** — the folders the index keeps chosen in a tree, one account at a
       time, with a filter box, a parent ticking its subfolders, and all/none, instead of one long
       flat list.
-- [ ] **Panes that scroll on their own** — the folder pane and the message list each scroll
+- [x] **Panes that scroll on their own** — the folder pane and the message list each scroll
       independently, as the reading pane does.
 - [ ] **Accounts apart from folders** — an account switcher at the top of the sidebar, the tree
       showing the chosen account's folders only, so changing account never means scrolling past

@@ -22,6 +22,7 @@ import { MAIL_NS } from './i18n.ts'
 import { indexScope, scopeReads } from './index-progress.ts'
 import { IndexingNotice } from './indexing-notice.tsx'
 import { useLiveEvents, useLiveStatus, useLiveViewing } from './live-context.ts'
+import { ListPane } from './list-pane.tsx'
 import { MailSidebar } from './mail-sidebar.tsx'
 import { MessageList } from './message-list.tsx'
 import { MessageView } from './message-view.tsx'
@@ -46,6 +47,7 @@ import { TriageProvider } from './triage-provider.tsx'
 import { viewFolder, viewScopes, viewSource } from './views.ts'
 
 const DEFAULT_FOLDER = 'INBOX'
+const LIST_PANE_ID = 'mail-list'
 
 /**
  * The mail client: accounts and folders, the message list (a folder or a search) and the open
@@ -190,8 +192,12 @@ function MailPanes({
   // A search or a view holds no folder's viewing interest.
   const showsFolder = search.q === undefined && search.view === undefined
   useLiveViewing(showsFolder ? { account: accountId, folder } : null)
+  const readingPane = useRef<HTMLElement>(null)
   return (
-    <main className="flex flex-1 flex-col border-t lg:h-0 lg:min-h-0 lg:flex-row">
+    // On a wide screen it takes the window's height left under the header and no more, each pane
+    // scrolling on its own: a flex basis of 0 px, not flex-1's 0 %, which a column only as high as
+    // its content (min-h-dvh) reads as the content's height, letting the whole page scroll.
+    <main className="flex flex-1 flex-col border-t lg:min-h-0 lg:basis-0 lg:flex-row">
       <h1 className="sr-only">{t('mail.title')}</h1>
       <MailSidebar
         accounts={accounts}
@@ -202,12 +208,11 @@ function MailPanes({
         className={cn(covered && 'hidden lg:flex')}
       />
       {/* On a phone the open message hides the list, but not the toolbar acting on it. */}
-      <section
-        aria-label={t('list.label')}
-        className={cn(
-          'min-w-0 flex-col gap-3 border-t p-3 lg:flex lg:w-96 lg:shrink-0 lg:overflow-y-auto lg:border-t-0 lg:border-r',
-          shown ? 'hidden' : 'flex',
-        )}
+      <ListPane
+        id={LIST_PANE_ID}
+        label={t('list.label')}
+        pane={readingPane}
+        className={cn('min-w-0 flex-col gap-3 border-t p-3 lg:flex lg:overflow-y-auto lg:border-t-0', shown ? 'hidden' : 'flex')}
       >
         <div className="flex items-start gap-2">
           <div className="min-w-0 flex-1">
@@ -236,8 +241,9 @@ function MailPanes({
             <ViewListing key={search.view} accounts={accounts} view={search.view} />
           )}
         </div>
-      </section>
+      </ListPane>
       <section
+        ref={readingPane}
         aria-label={t('message.label')}
         className={cn(
           'min-w-0 flex-1 flex-col p-3 lg:flex lg:overflow-y-auto',

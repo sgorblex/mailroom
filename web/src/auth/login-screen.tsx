@@ -44,7 +44,7 @@ export function LoginScreen(): ReactElement {
   }
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center gap-6 p-6">
+    <main className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-6 p-6">
       <h1 className="text-2xl font-semibold tracking-tight">{t('appName')}</h1>
       {ended && <p role="status">{t('login.sessionEnded')}</p>}
       {ssoError !== null && (

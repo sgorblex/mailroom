@@ -101,6 +101,8 @@
     "flagged": "Starred"
   },
   "list": {
+    "resize": "Resize the message list",
+    "width": "{{px}} px wide",
     "label": "Messages",
     "messages": "Messages",
     "results": "Search results",
