@@ -210,6 +210,8 @@ export type MessageView = z.infer<typeof messageViewSchema>
 
 /** The search fields; an absent one is not a criterion. `account` and `folder` take `*` for all. */
 export interface SearchQuery {
+  /** A saved view of folders searched in place of `account` and `folder`. */
+  view?: number
   account?: string
   folder?: string
   from?: string

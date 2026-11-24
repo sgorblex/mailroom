@@ -421,6 +421,26 @@ def test_a_slow_account_is_a_timeout_failure_of_an_all_accounts_search(
     assert page["failures"] == [{"account_id": 2, "folder": None, "code": "timeout"}]
 
 
+def test_a_search_of_words_in_a_view_is_read_live_from_its_folders(mailbox: Mailbox) -> None:
+    create_archive(mailbox)
+    mailbox.seed(mime("invoice one"))
+    mailbox.seed(mime("invoice two"), folder="Archive")
+    mailbox.seed(mime("invoice three"), folder="Trash")
+    mailbox.seed(mime("other"))
+    sources = [{"account_id": 1, "folder": folder} for folder in ("INBOX", "Archive", "Gone")]
+    view = mailbox.client.post(f"{MAIL}/views", json={"name": "Both", "sources": sources}).json()
+    found: list[str] = []
+    cursor = None
+    for _ in range(4):
+        page = mailbox.search(view=view["id"], text="invoice", limit=1, cursor=cursor)
+        assert [(f["account_id"], f["folder"]) for f in page["failures"]] == [(1, "Gone")]
+        found += [m["subject"] for m in page["messages"]]
+        cursor = page["next_cursor"]
+        if cursor is None:
+            break
+    assert (sorted(found), cursor) == (["invoice one", "invoice two"], None)
+
+
 def test_a_message_says_who_it_was_sent_to_and_what_the_accounts_server_found(
     mailbox: Mailbox,
 ) -> None:
@@ -1696,6 +1716,15 @@ def test_the_pool_forgets_the_gates_of_users_it_drops(monkeypatch: pytest.Monkey
         pool.close()
 
 
+def _finds(connections: Any, folder: str, query: SearchQuery | None = None) -> Any:
+    """A search's folders and criteria per account, of ``folder``."""
+    from mailroom.mail.service import read as service_read
+
+    return lambda account: service_read._sources(  # noqa: SLF001 - as search finds them
+        connections, account, folder, query or SearchQuery(), subfolders=False
+    )
+
+
 class _SearchConnections:
     """Two accounts: ``fast`` answers at once, ``slow`` blocks until it is interrupted."""
 
@@ -1726,7 +1755,7 @@ def test_an_all_accounts_search_cuts_only_the_accounts_still_reading(
     monkeypatch.setattr(service_read, "ACCOUNT_SECONDS", 0.3)
     connections: Any = _SearchConnections()
     page = service_read._search_accounts(  # noqa: SLF001 - the per-account deadline, without IMAP
-        connections, ["fast", "slow"], "INBOX", SearchQuery(), limit=10, cursor=None
+        connections, ["fast", "slow"], _finds(connections, "INBOX"), limit=10, cursor=None
     )
     # "fast" was done long before: another call of the user on it is not cut.
     assert connections.interrupted == ["slow"]
@@ -1789,7 +1818,7 @@ def test_an_all_accounts_search_reports_a_failed_account_on_every_page(
     cursor = None
     for _ in range(5):
         page = service_read._search_accounts(  # noqa: SLF001 - the cursor, without IMAP
-            connections, [1, 2, 3], "*", SearchQuery(), limit=2, cursor=cursor
+            connections, [1, 2, 3], _finds(connections, "*"), limit=2, cursor=cursor
         )
         failed.append([(f.account, f.folder, f.code) for f in page.failures])
         seen += [(m.account, m.uid) for m in page.messages]
@@ -1837,8 +1866,7 @@ def test_an_all_accounts_search_asks_gmail_for_attachments_its_own_way(
     service_read._search_accounts(  # noqa: SLF001 - the criteria per account, without IMAP
         connections,
         ["gmail", "plain"],
-        "INBOX",
-        SearchQuery(subject="invoice", has_attachment=True),
+        _finds(connections, "INBOX", SearchQuery(subject="invoice", has_attachment=True)),
         limit=10,
         cursor=None,
     )
@@ -1856,7 +1884,11 @@ def test_an_all_accounts_search_asks_gmail_for_attachments_its_own_way(
     # A query that needs nothing of Gmail's does not ask.
     connections.asked.clear()
     service_read._search_accounts(  # noqa: SLF001
-        connections, ["gmail", "plain"], "INBOX", SearchQuery(unread=True), limit=10, cursor=None
+        connections,
+        ["gmail", "plain"],
+        _finds(connections, "INBOX", SearchQuery(unread=True)),
+        limit=10,
+        cursor=None,
     )
     assert connections.asked == []
     assert read["criteria"] == {"gmail": ["UNSEEN"], "plain": ["UNSEEN"]}

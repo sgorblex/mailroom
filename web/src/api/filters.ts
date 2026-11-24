@@ -160,9 +160,9 @@ export function draftFromMessage(ref: string, signal?: AbortSignal): Promise<Mes
   })
 }
 
-/** A filter the editor starts from, made from a search; its account and folder are not criteria. */
+/** A filter the editor starts from, made from a search; where it searches is no criterion. */
 export function draftFromSearch(query: SearchQuery, signal?: AbortSignal): Promise<SearchDraft> {
-  return apiPostJson('/api/v1/filters/draft-from-search', matchBody({ query, subfolders: false }), {
+  return apiPostJson('/api/v1/filters/draft-from-search', matchBody({ query: { ...query, view: undefined }, subfolders: false }), {
     init: { signal },
     schema: searchDraftSchema,
   })

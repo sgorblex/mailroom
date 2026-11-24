@@ -7,12 +7,12 @@ from __future__ import annotations
 import math
 import unicodedata
 from datetime import datetime
-from typing import TYPE_CHECKING, Annotated, Final, Literal
+from typing import TYPE_CHECKING, Annotated, Final, Literal, Self
 from urllib.parse import quote
 
 from fastapi import Path, Query
 from fastapi.responses import Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from mailroom.api.deps import AccountId, Context, CurrentUser, DbSession
 from mailroom.api.routes.mail._shared import (
@@ -26,8 +26,9 @@ from mailroom.api.routes.mail._shared import (
 )
 from mailroom.api.token_access import open_to_tokens
 from mailroom.filters.drafts import MessageDraft, message_draft
-from mailroom.mail import remote_senders, sender_views, service, unsubscribe
+from mailroom.mail import remote_senders, saved_views, sender_views, service, unsubscribe
 from mailroom.mail.print_page import printable_page
+from mailroom_core.config import MAX_SAFE_INTEGER
 from mailroom_core.mail import DISPLAYED_IMAGES, FORWARDED, TO_SORT
 
 if TYPE_CHECKING:
@@ -433,14 +434,36 @@ def messages(
 
 
 class SearchRequest(MatchRequest):
+    view: Annotated[int, Field(ge=1, le=MAX_SAFE_INTEGER)] | None = None
+    """A saved view of folders to search in, in place of ``account`` and ``folder``."""
     limit: Annotated[int, Field(ge=1, le=MAX_PAGE_SIZE)] = PAGE_SIZE
     cursor: Annotated[str | None, Field(max_length=service.MAX_CURSOR)] = None
     group: Literal["thread"] | None = None
 
+    @model_validator(mode="after")
+    def _one_scope(self) -> Self:
+        if self.view is not None and self.model_fields_set & {"account", "folder", "subfolders"}:
+            msg = "Give a view, or an account and a folder, not both."
+            raise ValueError(msg)
+        return self
+
 
 @mail_router.post("/search")
 @open_to_tokens("mail_read")
-def search(request: SearchRequest, ctx: Context, user: CurrentUser) -> MessagePage:
+def search(request: SearchRequest, ctx: Context, db: DbSession, user: CurrentUser) -> MessagePage:
+    if request.view is not None:
+        sources = saved_views.searched_folders(ctx, db, user.id, request.view)
+        page = service.search_folders(
+            ctx,
+            user.id,
+            sources,
+            request.query(),
+            limit=request.limit,
+            cursor=request.cursor,
+            group=request.group == "thread",
+            via=ctx.origin.via,
+        )
+        return MessagePage.of(page)
     page = service.search(
         ctx,
         user.id,

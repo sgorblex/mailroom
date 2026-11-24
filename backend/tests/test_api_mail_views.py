@@ -271,6 +271,69 @@ def test_a_saved_view_reads_its_folders_or_its_search(
     assert (missing.status_code, _code(missing)) == (404, "not_found")
 
 
+def _search(client: TestClient, **body: Any) -> Any:
+    return client.post(f"{MAIL}/search", json=body)
+
+
+def test_a_search_in_a_view_reads_its_folders_only(
+    user_client: TestClient, db_session: Session, user: User
+) -> None:
+    work = added(user_client, new_account("work"))
+    home = added(user_client, new_account("home"))
+    inbox = ready(db_session, user, work, "INBOX")
+    archive = ready(db_session, user, home, "Archive")
+    other = ready(db_session, user, home, "INBOX")
+    db_session.add_all(
+        [
+            message(inbox, user.id, 1, received=DAY, subject="read", flags=["\\Seen"]),
+            message(archive, user.id, 2, received=DAY + timedelta(hours=1), subject="kept"),
+            message(inbox, user.id, 3, received=DAY + timedelta(hours=2), subject="new"),
+            message(other, user.id, 4, received=DAY + timedelta(hours=3), subject="elsewhere"),
+        ]
+    )
+    db_session.commit()
+    sources = [{"account_id": work, "folder": "INBOX"}, {"account_id": home, "folder": "Archive"}]
+    _, both = _create(user_client, name="Both", sources=sources)
+
+    first = _search(user_client, view=both["id"], unread=True, limit=1).json()
+    assert (_subjects(first), first["failures"]) == (["new"], [])
+    cursor = first["next_cursor"]
+    second = _search(user_client, view=both["id"], unread=True, limit=1, cursor=cursor).json()
+    assert (_subjects(second), second["next_cursor"]) == (["kept"], None)
+    grouped = _search(user_client, view=both["id"], subject="kept", group="thread").json()
+    assert (_subjects(grouped), len(grouped["conversations"])) == (["kept"], 1)
+
+    # An account removed leaves the view with none of its folders: nothing is found, or refused.
+    _, only = _create(user_client, name="Only", sources=sources[:1])
+    assert user_client.delete(f"/api/v1/accounts/{work}").status_code == 204
+    page = _search(user_client, view=only["id"], unread=True).json()
+    assert (page["messages"], page["next_cursor"], page["failures"]) == ([], None, [])
+    assert _subjects(_search(user_client, view=both["id"], unread=True).json()) == ["kept"]
+
+
+def test_a_search_in_a_view_is_refused_unless_it_is_the_users_view_of_folders(
+    api_client: TestClient, db_session: Session, user: User, admin: User
+) -> None:
+    api_client.cookies.set(SESSION_COOKIE_NAME, create_session(db_session, admin))
+    theirs = added(api_client, new_account("admin"))
+    _, view = _create(api_client, name="Admin", sources=[{"account_id": theirs, "folder": "INBOX"}])
+    api_client.cookies.set(SESSION_COOKIE_NAME, create_session(db_session, user))
+    assert _search(api_client, view=view["id"]).status_code == 404
+    assert _search(api_client, view=0).status_code == 422
+    mine = added(api_client, new_account("work"))
+    _, own = _create(api_client, name="Own", sources=[{"account_id": mine, "folder": "INBOX"}])
+    for scope in ({"account": mine}, {"folder": "INBOX"}, {"subfolders": True}):
+        assert _search(api_client, view=own["id"], **scope).status_code == 422
+    _, query = _create(api_client, name="Unread", query="is:unread")
+    refused = _search(api_client, view=query["id"])
+    assert (refused.status_code, _code(refused)) == (400, "invalid_argument")
+    broken = _search(api_client, view=own["id"], text="a\r\nb")
+    assert (broken.status_code, _code(broken)) == (400, "invalid_argument")
+    # A count or a bulk action acts on a folder or a search's own scope only.
+    counted = api_client.post(f"{MAIL}/messages/count", json={"view": own["id"]})
+    assert counted.status_code == 422
+
+
 def test_a_removed_accounts_folders_leave_the_views(
     user_client: TestClient, db_session: Session, user: User
 ) -> None:

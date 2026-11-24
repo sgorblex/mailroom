@@ -40,6 +40,7 @@ import { MessageList } from './message-list.tsx'
 import { useReadingPane } from './reading-pane.ts'
 import { ReadingView } from './reading-view.tsx'
 import { SearchForm } from './search-form.tsx'
+import { useSearchScope } from './search-scope.ts'
 import { BulkHost } from './select-matching.tsx'
 import { NewSenderHost } from './new-sender-dialog.tsx'
 import { ScheduledList } from './scheduled-sends.tsx'
@@ -59,11 +60,11 @@ import { ToastHost } from './toast.tsx'
 import { SpamFilterOffer } from './spam-filter-offer.tsx'
 import { OutcomeAnnouncer, Toolbar } from './toolbar.tsx'
 import { QuickFilters } from './quick-filters.tsx'
-import { listQuery, type MailSearch } from './route-search.ts'
+import { listQuery, shownView, type MailSearch } from './route-search.ts'
 import { NotIndexedNotice } from './saved-views.tsx'
 import { isSameFolder, loadedFolders, roleFolder, useTriage } from './triage-context.ts'
 import { TriageProvider } from './triage-provider.tsx'
-import { viewFolder, viewScopes, viewSource } from './views.ts'
+import { viewFolder, viewScopes, viewSource, type ShownView } from './views.ts'
 
 const DEFAULT_FOLDER = 'INBOX'
 /** The account last shown on this device, whose folders `/mail` without one shows. */
@@ -154,6 +155,9 @@ export function MailScreen(): ReactElement {
   const folder = search.folder ?? DEFAULT_FOLDER
   const requested = search.sub ?? storedSubfolders(accountId, folder)
   const listed = listQuery(accountId, folder, search.q, search.only)
+  const view = shownView(search)
+  const viewOf = (key: ViewKey): ShownView | undefined =>
+    key === ALL_INBOXES ? ALL_INBOXES : savedViews?.find((each) => each.id === key)
   const closeList = (): void => {
     void navigate({ to: '/mail', search: (previous) => ({ ...previous, list: undefined }), replace: true })
   }
@@ -163,13 +167,15 @@ export function MailScreen(): ReactElement {
         <MuteProvider>
           <TriageProvider
             sourceKey={grouping(
-              search.view === undefined ? sourceKey(accountId, folder, requested, listed) : viewSource(search.view),
+              view === undefined ? sourceKey(accountId, folder, requested, listed) : viewSource(view),
               grouped,
             )}
             sourceFolder={
-              search.view === undefined
-                ? shownFolder(folder, listed)
-                : viewFolder(search.view === ALL_INBOXES ? ALL_INBOXES : savedViews?.find((each) => each.id === search.view))
+              view !== undefined
+                ? viewFolder(viewOf(view))
+                : listed?.view !== undefined
+                  ? viewFolder(viewOf(listed.view))
+                  : shownFolder(folder, listed)
             }
             accounts={accountIds}
           >
@@ -226,9 +232,10 @@ function ListRefresh({
   requested: boolean
   children: ReactNode
 }): ReactElement {
-  const { view, q, only } = useSearch({ from: '/mail', select: refreshSearch, structuralSharing: true })
+  const search = useSearch({ from: '/mail', select: refreshSearch, structuralSharing: true })
   const subfolders = useListedSubfolders(accountId, folder, requested)
   const grouped = useConversations()
+  const view = shownView(search)
   if (view !== undefined) {
     return (
       <RefreshProvider scope={{ view }} source={grouping(viewSource(view), grouped)}>
@@ -236,15 +243,17 @@ function ListRefresh({
       </RefreshProvider>
     )
   }
-  const listed = listQuery(accountId, folder, q, only)
+  const listed = listQuery(accountId, folder, search.q, search.only)
   const scope =
     listed === undefined
       ? { account: String(accountId), folder, subfolders }
-      : {
-          account: listed.account,
-          folder: listed.folder,
-          subfolders: searchesSubfolders(accountId, folder, subfolders, listed),
-        }
+      : listed.view !== undefined
+        ? { view: listed.view }
+        : {
+            account: listed.account,
+            folder: listed.folder,
+            subfolders: searchesSubfolders(accountId, folder, subfolders, listed),
+          }
   return (
     <RefreshProvider scope={scope} source={grouping(sourceKey(accountId, folder, subfolders, listed), grouped)}>
       {children}
@@ -286,6 +295,8 @@ function MailPanes({
   const compact = wide && position === 'below'
   // A search or a view holds no folder's viewing interest.
   const showsFolder = search.q === undefined && search.view === undefined
+  const view = shownView(search)
+  const scope = useSearchScope(accounts, accountId, folder, subfolders, search.view)
   useLiveViewing(showsFolder ? { account: accountId, folder } : null)
   const readingPane = useRef<HTMLElement>(null)
   useFocusClosedRow(overlaid, search.thread ?? open)
@@ -316,7 +327,7 @@ function MailPanes({
           accounts={accounts}
           accountId={accountId}
           folder={shownFolder}
-          view={search.view ?? null}
+          view={view ?? null}
           subfolders={subfolders}
         />
       ) : (
@@ -324,7 +335,7 @@ function MailPanes({
           accounts={accounts}
           accountId={accountId}
           folder={shownFolder}
-          view={search.view ?? null}
+          view={view ?? null}
           subfolders={subfolders}
           searching={search.q !== undefined}
           searchId={searchId}
@@ -375,11 +386,11 @@ function MailPanes({
               )}
             >
               <SearchForm
-                key={JSON.stringify(search.q ?? null)}
+                key={JSON.stringify([search.q ?? null, scope?.line ?? null])}
                 accounts={accounts}
                 accountId={accountId}
                 folder={folder}
-                subfolders={subfolders}
+                scope={scope}
                 query={search.q}
                 only={search.only}
                 compact={compact}
@@ -398,10 +409,10 @@ function MailPanes({
               covered && 'hidden lg:flex',
             )}
           >
-            {search.view === undefined ? (
+            {view === undefined ? (
               <Listing accounts={accounts} accountId={accountId} folder={folder} subfolders={subfolders} />
             ) : (
-              <ViewListing key={search.view} accounts={accounts} view={search.view} />
+              <ViewListing key={view} accounts={accounts} view={view} />
             )}
           </div>
         </ListPane>
@@ -557,8 +568,8 @@ function listAhead(
   remembered: AccountId | null,
   grouped: boolean,
 ): { source: string; read: (signal: AbortSignal) => Promise<unknown> } | null {
-  if (search.view !== undefined) {
-    const view = search.view
+  const view = shownView(search)
+  if (view !== undefined) {
     return { source: grouping(viewSource(view), grouped), read: (signal) => viewMessages(view, null, signal, grouped) }
   }
   const accountId = search.account ?? remembered
@@ -631,8 +642,10 @@ const Listing = memo(function Listing({
   const merged = query === null ? subfolders : searchesSubfolders(accountId, folder, subfolders, query)
   const loadPage = useMemo(() => pageReader(accountId, folder, merged, query, grouped), [accountId, folder, query, merged, grouped])
   // What "select all matching" acts on: the search, or the folder as a search with no criteria.
-  const match = useMemo<MatchScope>(
-    () => ({ query: query ?? { account: String(accountId), folder }, subfolders: merged }),
+  // A search in a view of folders is none: as in the view, only loaded rows are acted on.
+  const searchedView = query?.view
+  const match = useMemo<MatchScope | undefined>(
+    () => (query?.view === undefined ? { query: query ?? { account: String(accountId), folder }, subfolders: merged } : undefined),
     [accountId, folder, query, merged],
   )
   // What the composer does changes these two folders' lists under the user's eyes.
@@ -643,9 +656,17 @@ const Listing = memo(function Listing({
   const delimiter = (shownFolder ?? accountFolders?.[0])?.delimiter ?? null
   const accountIds = useMemo(() => accounts.map((account) => account.id), [accounts])
   const scope = useMemo(
-    () => indexScope(accountIds, accountId, folder, merged, delimiter, query),
+    () => (query?.view === undefined ? indexScope(accountIds, accountId, folder, merged, delimiter, query) : null),
     [accountIds, accountId, folder, merged, delimiter, query],
   )
+  const saved = useQuery(viewsQuery()).data
+  const scopes = useMemo(() => {
+    const inView = searchedView === undefined ? undefined : saved?.find((each) => each.id === searchedView)
+    if (inView === undefined) {
+      return scope === null ? [] : [scope]
+    }
+    return query?.text === undefined && query?.gmail_query === undefined ? viewScopes(inView, accounts) : []
+  }, [scope, searchedView, saved, query, accounts])
   const live = q === undefined && (shownFolder?.role === 'drafts' || shownFolder?.role === 'sent')
   const queryClient = useQueryClient()
   const readRevision = useRef(revision)
@@ -660,11 +681,12 @@ const Listing = memo(function Listing({
   // A change to a folder the list reads reads its first page again; a search the index never
   // answers (a body's text) is not run again by itself.
   useLiveEvents((event) => {
-    if (event.type === 'sync' || scope === null) {
+    if (event.type === 'sync') {
       return
     }
     const allMail = roleFolder(loadedFolders(folders[event.account]), 'all')
-    if (scopeReads(scope, event.account, event.folder, allMail !== undefined && isSameFolder(allMail.path, event.folder))) {
+    const isAllMail = allMail !== undefined && isSameFolder(allMail.path, event.folder)
+    if (scopes.some((each) => scopeReads(each, event.account, event.folder, isAllMail))) {
       void queryClient.invalidateQueries({ queryKey: messagesKey(key, null) })
     }
   })

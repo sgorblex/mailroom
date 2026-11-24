@@ -27,7 +27,8 @@ notifications](#desktop-notifications).
 - **Search** over one account or all, with the search fields of mailroom-mcp's `search`, typed
   in the [search syntax](#search-syntax) or set in the form behind *More options*; a
   search shown offers *Create filter from this search* where the instance runs filters
-  ([`filters.md`](filters.md#filter-drafts)).
+  ([`filters.md`](filters.md#filter-drafts)). A search stays where it was started
+  ([search scope](#search-scope)).
 - **Quick filters** above the list, *Unread*, *Starred* and *With attachments*: toggle buttons
   (`aria-pressed`) that narrow the folder or search shown as `is:unread`, `is:flagged` and
   `has:attachment` would, over any criterion of the search itself (a list of a folder becomes a
@@ -54,10 +55,11 @@ notifications](#desktop-notifications).
   is acted on in the label folder it was listed under and leaves that one only, in a view of
   different folders too; `source_folder` is INBOX for *All inboxes*, a search's folder, or the
   folder a view's folders all share. No quick filters, and selecting every matching
-  message stays a folder's or a search's. The folders it leaves out, off the index, are named
+  message stays a folder's or a search's (not one made in a view of folders). The folders it leaves out, off the index, are named
   above the list. A search shown offers *Save as view* (named in a dialog, then opened), which
   keeps the line as the list shows it, the quick filters on included (`from:ada` with *Unread*
-  on saves `from:ada is:unread`), refused for one with words or Gmail search, which the index cannot answer; each saved view's
+  on saves `from:ada is:unread`), refused for one with words or Gmail search, which the index cannot
+  answer, and for one made in a view of folders, which no line names; each saved view's
   menu (its ⋯ button) renames it, moves it up or down, or deletes it (its mail stays).
 - **Conversations** in the list, when the user groups them (the Profile's *Conversations*, on by
   default; [below](#conversations)): a folder, search or view read from the index shows each
@@ -257,10 +259,28 @@ box, in the user's language, and is not searched. The form behind *More options*
 search and writes each change back into the line: a criterion's first term (or a term at fault
 of its key, such as a bad `after:` date) rewritten in place, its others dropped, and a box
 unticked drops its term (`is:read` is only typed); an account by its name, else login, when
-that names it alone, else its id; the account and folder shown are the line's default, so
-choosing them drops `account:` and `in:`. A quote left open keeps the form from being edited
+that names it alone, else its id; the [scope](#search-scope)'s account and folder are the line's
+default, so choosing them drops `account:` and `in:`. A quote left open keeps the form from being edited
 until it is closed. A search from the URL is shown as a line again, its words first; Gmail's own
 search stays a field of the form.
+
+### Search scope
+
+A line naming no account or folder searches where it was started: the folder open (with its
+subfolders, when they are listed), or the view open, which the URL keeps (`view`, beside `q`) so
+that *Clear search* goes back to it:
+
+- *All inboxes*: INBOX of every account.
+- A saved view of folders: its folders (`view` of [`POST /search`](#post-search); `q.view` in the
+  URL). `account:` or `in:` leaves them: without the other, every account or INBOX.
+- A saved view that is a search: its account and folder. The box starts with its criteria, as terms
+  that can be added to or removed.
+- A view that is gone, or no longer reads: all mail. While the saved views load, nothing is searched.
+
+The scope is said beside the box (*Searching in: Inbox · work*), as the line typed has it. *Search
+all mail*, while something is asked for, searches the line in every account and folder (`in:*
+account:*`: not Junk or Trash); *Back to* and the scope's name, while the line searches elsewhere,
+drops both terms.
 
 ## Slice B: organize
 
@@ -1732,6 +1752,7 @@ same page shape.
 | `has_attachment` | `true` only (approximate: `multipart/mixed`; on Gmail, which ignores that header search, `has:attachment` through X-GM-RAW, over one account or all); `false` is ignored, not a criterion. |
 | `gmail_query` | Gmail search syntax (X-GM-RAW); Gmail accounts only, else `unsupported`. |
 | `subfolders` | `true`: the folder's subfolders too, as for the list (default `false`); with `folder` `*`, 400 `invalid_argument`. |
+| `view` | A saved [view](#views)'s id: its folders are searched, in place of `account`, `folder` and `subfolders` (given with any of them, 422). 404 `not_found` for one that is not the user's, 400 `invalid_argument` for one that is a search. Not taken by the [count and bulk routes](#every-message-a-search-matches). |
 | `limit`, `cursor` | As for the list. |
 | `group` | `"thread"`: [by conversation](#conversations), as for the list; null or absent: not. |
 
@@ -1742,7 +1763,9 @@ everything in the folder matches. A text criterion with a line break or NUL is 4
 instead of a page, as the list does (not with `subfolders`, whose folders fail in `failures`).
 Otherwise a source that cannot be searched is reported in `failures` (`folder` is `null` when the
 account failed before a folder was chosen) and the others still answer. Each account of an all-accounts search has its own deadline, so a slow one is a
-`timeout` failure, not a 504 for the whole page. An account without a password that opens is such
+`timeout` failure, not a 504 for the whole page; a view's folders are read so too, whatever accounts they
+are of, live when any of them is off the [index](#index) (there, a message under two of the view's Gmail
+labels comes once for each). An account without a password that opens is such
 a failure too, with the app's code `password_missing`.
 
 ### `GET /messages/{ref}?offset=0&include_quoted=false`

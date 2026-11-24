@@ -242,6 +242,15 @@ describe('a filter drafted from a search', () => {
     action: NO_OP,
   }
 
+  it('leaves out the view a search was made in', async () => {
+    const fetchMock = stubFiltersApi(state({ searchDraft: { spec, dropped: [] } }))
+    renderFiltersApp(fromSearch({ view: 4, from: 'news', unread: true }))
+
+    await screen.findByRole('heading', { level: 1, name: 'Create a filter from a search' })
+    await editor()
+    expect(sentBody(fetchMock, 'POST', '/api/v1/filters/draft-from-search')).toEqual({ from: 'news', unread: true })
+  })
+
   it('lists the fields left out and sends the search as the search route takes it', async () => {
     const fetchMock = stubFiltersApi(state({ searchDraft: { spec, dropped: ['text', 'since'] } }))
     renderFiltersApp(fromSearch({ account: String(WORK), folder: 'INBOX', from: 'news', text: 'weekly', since: '2026-01-01', unread: true }))

@@ -9,7 +9,8 @@ export type QuickFilter = (typeof QUICK_FILTERS)[number]
  * Where the mail screen is, kept in the URL so a reload or a shared link lands in the same place:
  * the account and folder shown, whether with its subfolders (`sub`; absent, as this browser last
  * listed it), the open message (its ref) and, when it was opened as a conversation's row, that
- * row's ref (`thread`), a search or a view (`view`) in place of the folder, the
+ * row's ref (`thread`), a search or a view (`view`) in place of the folder, or a search over the view it was
+ * started from, the
  * quick filters narrowing a folder or a search (`only`), the Snoozed or Scheduled list open over
  * it (`list`, as Home links to them), and the composer: `compose-session.ts` says what `compose` holds.
  * Kept out of the screen's own chunk: the router validates it before the screen loads.
@@ -65,6 +66,12 @@ export function searchQuery(value: unknown): SearchQuery | undefined {
   if (query.account !== undefined && query.account !== '*' && !/^[1-9][0-9]*$/.test(query.account)) {
     delete query.account
   }
+  const view = positiveId(fields['view'])
+  if (view !== undefined) {
+    query.view = view
+    delete query.account
+    delete query.folder
+  }
   for (const key of SEARCH_FLAG_FIELDS) {
     // `false` only where the syntax can write it: `is:read`.
     const flag = fields[key]
@@ -78,6 +85,11 @@ export function searchQuery(value: unknown): SearchQuery | undefined {
 /** A saved view's id, or `all_inboxes`. */
 export function viewKey(value: unknown): ViewKey | undefined {
   return value === ALL_INBOXES ? ALL_INBOXES : positiveId(value)
+}
+
+/** The view the list shows: the one open, unless a search is shown over it. */
+export function shownView({ view, q }: Pick<MailSearch, 'view' | 'q'>): ViewKey | undefined {
+  return q === undefined ? view : undefined
 }
 
 /** The quick filters named, once each and in their own order; `undefined` for none. */
@@ -134,6 +146,10 @@ export function validateMailSearch(raw: Record<string, unknown>): MailSearch {
     search.thread = thread
   }
   if (q !== undefined) {
+    // Searched in the view it was started from only: without it, by default.
+    if (q.view !== view) {
+      delete q.view
+    }
     search.q = q
   }
   if (view !== undefined) {

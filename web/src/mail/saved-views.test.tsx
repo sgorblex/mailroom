@@ -250,7 +250,7 @@ describe('Save as view', () => {
       expect(within(views()).getByRole('link', { name: 'Ada' })).toHaveAttribute('aria-current', 'page')
     })
     expect(bodiesTo(fetchMock, '/api/v1/mail/views').filter(Boolean)).toEqual([{ name: 'Ada', query: 'from:ada in:INBOX account:1' }])
-    expect(screen.getByRole('searchbox', { name: 'Search terms' })).toHaveValue('')
+    expect(screen.getByRole('searchbox', { name: 'Search terms' })).toHaveValue('from:ada')
   })
 
   it('keeps the quick filters on as terms of the line saved', async () => {

@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils.ts'
 
 import { useFiltersOffered } from './filter-draft.ts'
 import { SaveViewButton } from './saved-views.tsx'
+import { ALL_MAIL, searchedIn, type SearchScope } from './search-scope.ts'
 import { listQuery, type QuickFilter } from './route-search.ts'
 import { MAIL_NS } from './i18n.ts'
 import {
@@ -31,19 +32,24 @@ import {
 } from './search-syntax.ts'
 
 const ALL = '*'
+/** The account select's choice of the open view's folders. */
+const IN_VIEW = 'view'
 const selectClass = 'h-9 w-full rounded-md border bg-transparent px-2 text-sm'
 const TEXT_FIELDS = ['from', 'to', 'subject'] as const
 const DATE_FIELDS = ['since', 'before'] as const
 
 /**
  * The line a search in the URL is written as: its account and folder only when they are not the
- * ones shown, which a line without them searches.
+ * scope's, which a line without them searches.
  */
-function lineOfQuery(query: SearchQuery | undefined, accounts: Account[], accountId: AccountId, folder: string): string {
+function lineOfQuery(query: SearchQuery | undefined, accounts: Account[], scope: SearchScope): string {
   if (query === undefined) {
-    return ''
+    return scope.line
   }
-  const { account, folder: searched, from, to, subject, text, since, before, unread, flagged, to_sort, has_attachment } = query
+  const searched = searchedIn(query)
+  // Beside a view's folders, any account and folder are written.
+  const own = scope.view === null ? scope : null
+  const { from, to, subject, text, since, before, unread, flagged, to_sort, has_attachment } = query
   return lineOf({
     from,
     to,
@@ -55,8 +61,8 @@ function lineOfQuery(query: SearchQuery | undefined, accounts: Account[], accoun
     flagged,
     to_sort,
     has_attachment,
-    account: account === undefined || account === String(accountId) ? undefined : accountTerm(accounts, account),
-    folder: searched === folder ? undefined : searched,
+    account: searched === null || searched.account === own?.account ? undefined : accountTerm(accounts, searched.account),
+    folder: searched === null || searched.folder === own?.folder ? undefined : searched.folder,
   })
 }
 
@@ -64,7 +70,8 @@ function lineOfQuery(query: SearchQuery | undefined, accounts: Account[], accoun
  * A search over one account or all. The box takes the search syntax (`from:ada is:unread
  * invoice`), read as the user types: its terms show as chips, removed by a click, and "More
  * options" holds the same search as a form, every change written back into the line. Gmail's own
- * search sits only in the form. A search shown can become a filter, where the instance runs them.
+ * search sits only in the form. A line naming no account or folder searches where it was started
+ * (`scope`), said beside the box, which widens it to all mail and back. A search shown can become a filter, where the instance runs them.
  * Remounted (by key) when the search in the URL changes, so it always shows the search the list
  * is showing. `compact`, the box and its buttons share one row, what else it shows under them.
  */
@@ -72,7 +79,7 @@ export function SearchForm({
   accounts,
   accountId,
   folder,
-  subfolders,
+  scope: started,
   query,
   only,
   compact = false,
@@ -80,8 +87,8 @@ export function SearchForm({
   accounts: Account[]
   accountId: AccountId
   folder: string
-  /** The folder shown is listed with its subfolders: a search in it reads them too. */
-  subfolders: boolean
+  /** Where a search starts: the folder or the view open; `null` until it is known, when none does. */
+  scope: SearchScope | null
   query: SearchQuery | undefined
   /** The quick filters on: a search kept as a view keeps them as its own terms. */
   only?: readonly QuickFilter[] | undefined
@@ -93,10 +100,11 @@ export function SearchForm({
   const filters = useFiltersOffered()
   const id = useId()
   const box = useRef<HTMLInputElement>(null)
-  const [line, setLine] = useState(() => lineOfQuery(query, accounts, accountId, folder))
+  const scope = started ?? ALL_MAIL
+  const [line, setLine] = useState(() => lineOfQuery(query, accounts, scope))
   const [gmailQuery, setGmailQuery] = useState(query?.gmail_query ?? '')
   const [expanded, setExpanded] = useState(
-    query !== undefined && Object.keys(query).some((key) => key !== 'text' && key !== 'account' && key !== 'folder'),
+    query !== undefined && Object.keys(query).some((key) => key !== 'text' && key !== 'account' && key !== 'folder' && key !== 'view'),
   )
 
   const lexed = terms(line)
@@ -104,9 +112,13 @@ export function SearchForm({
   // A line at fault still fills the form: as far as it can be read.
   const shown = result.ok ? result.parsed : readLeniently(line)
   const choice: AccountChoice =
-    shown.account === undefined ? { ok: true, account: String(accountId) } : namedAccount(accounts, shown.account)
+    shown.account === undefined ? { ok: true, account: scope.account } : namedAccount(accounts, shown.account)
   const searchedAccount = choice.ok ? choice.account : ''
-  const searchedFolder = shown.folder ?? folder
+  const searchedFolder = shown.folder ?? scope.folder
+  // A view's folders, until the line names an account or a folder of its own.
+  const inView = scope.view !== null && shown.account === undefined && shown.folder === undefined
+  const inScope = scope.view === null ? searchedAccount === scope.account && searchedFolder === scope.folder : inView
+  const everywhere = !inView && searchedAccount === ALL && searchedFolder === ALL
   const problem = !result.ok
     ? t(`search.errors.${result.code}`, { key: result.key, options: flagValues(result.key ?? '').join(', ') })
     : choice.ok
@@ -122,12 +134,26 @@ export function SearchForm({
 
   function submit(event: SubmitEvent<HTMLFormElement>): void {
     event.preventDefault()
-    if (!result.ok || !choice.ok) {
+    run(line)
+  }
+
+  /** Searches `asked`; a line at fault, or a scope not known yet, only takes the cursor to the box. */
+  function run(asked: string): void {
+    const read = parseSearch(asked)
+    const account: AccountChoice | null = !read.ok
+      ? null
+      : read.parsed.account === undefined
+        ? { ok: true, account: scope.account }
+        : namedAccount(accounts, read.parsed.account)
+    if (started === null || !read.ok || account?.ok !== true) {
       box.current?.focus()
       return
     }
-    const { parsed } = result
-    const q: SearchQuery = { account: searchedAccount, folder: searchedFolder }
+    const { parsed } = read
+    const q: SearchQuery =
+      scope.view !== null && parsed.account === undefined && parsed.folder === undefined
+        ? { view: scope.view.id }
+        : { account: account.account, folder: parsed.folder ?? scope.folder }
     for (const key of ['text', ...TEXT_FIELDS, ...DATE_FIELDS] as const) {
       const value = parsed[key]?.trim()
       if (value) {
@@ -144,8 +170,48 @@ export function SearchForm({
     }
     void navigate({
       to: '/mail',
-      search: (previous) => ({ account: previous.account, folder: previous.folder, sub: previous.sub, q }),
+      search: (previous) => ({ account: previous.account, folder: previous.folder, sub: previous.sub, view: previous.view, q }),
     })
+  }
+
+  /** Searches the line in another account and folder: the scope's own when not given. */
+  function runIn(account: string | undefined, searched: string | undefined): void {
+    const moved = withField(line, 'account', account)
+    const next = moved === null ? null : withField(moved, 'folder', searched)
+    if (next === null) {
+      box.current?.focus()
+      return
+    }
+    setLine(next)
+    run(next)
+  }
+
+  /** Where an account and a folder search, named. */
+  function placeName(account: string, searched: string): string {
+    if (account === ALL && searched === ALL) {
+      return t('search.allMail')
+    }
+    if (account === ALL && searched.toUpperCase() === 'INBOX') {
+      return t('views.allInboxes')
+    }
+    const name = folderLabel(searched)
+    const place =
+      scope.subfolders && account === scope.account && searched === scope.folder ? t('search.withSubfolders', { folder: name }) : name
+    const of = account === ALL ? t('search.accountAll') : accounts.find((each) => String(each.id) === account)?.display_name
+    return of === undefined || accounts.length < 2 ? place : t('search.place', { folder: place, account: of })
+  }
+
+  function folderLabel(path: string): string {
+    return path === ALL ? t('search.folderAll') : path.toUpperCase() === 'INBOX' ? t('search.folderInbox') : path
+  }
+
+  /** Back to the open view's folders: neither an account nor a folder named. */
+  function chooseView(): void {
+    const next = withField(line, 'account', undefined)
+    const kept = next === null ? null : withField(next, 'folder', undefined)
+    if (kept !== null) {
+      setLine(kept)
+    }
   }
 
   /** What a chip says: the criterion and its value, in the form's words. */
@@ -163,7 +229,7 @@ export function SearchForm({
     }
     let value = term.value
     if (field === 'folder') {
-      value = value === ALL ? t('search.folderAll') : value.toUpperCase() === 'INBOX' ? t('search.folderInbox') : value
+      value = folderLabel(value)
     } else if (field === 'account') {
       const named = namedAccount(accounts, value)
       value = !named.ok
@@ -177,11 +243,11 @@ export function SearchForm({
 
   // The folder shown is offered, next to the inbox and every folder; in the account shown, it
   // takes its subfolders along.
-  const shownLabel = folder.toUpperCase() === 'INBOX' ? t('search.folderInbox') : folder
-  const withSubfolders = subfolders && searchedAccount === String(accountId)
+  const shownLabel = folderLabel(scope.folder)
+  const withSubfolders = scope.subfolders && searchedAccount === scope.account
   const folderOptions = [
-    ...(folder.toUpperCase() === 'INBOX' ? [] : [['INBOX', t('search.folderInbox')]]),
-    ...(folder !== ALL ? [[folder, withSubfolders ? t('search.withSubfolders', { folder: shownLabel }) : shownLabel]] : []),
+    ...(scope.folder.toUpperCase() === 'INBOX' ? [] : [['INBOX', t('search.folderInbox')]]),
+    ...(scope.folder !== ALL ? [[scope.folder, withSubfolders ? t('search.withSubfolders', { folder: shownLabel }) : shownLabel]] : []),
     [ALL, t('search.folderAll')],
   ]
   if (!folderOptions.some(([value]) => value === searchedFolder)) {
@@ -193,9 +259,41 @@ export function SearchForm({
   const chips = lexed.terms.filter((term) => term.key !== null || term.value !== '')
   // A quote left open hides where the line's terms end: the form waits for it to be closed.
   const locked = lexed.unterminated
+  const scopeName = scope.view?.name ?? placeName(scope.account, scope.folder)
+  const searchedName = inView ? scopeName : placeName(searchedAccount, searchedFolder)
+  // Widening what is asked for: nothing is, with the box empty and no search shown.
+  const asks = query !== undefined || line.trim() !== '' || gmailQuery.trim() !== ''
   // Under the box, or beside it when compact.
   const buttons = (
       <div className="flex flex-wrap items-center gap-2">
+        {started !== null && choice.ok && (
+          <p className="min-w-0 text-xs break-words text-muted-foreground">{t('search.scope', { scope: searchedName })}</p>
+        )}
+        {started !== null && asks && !everywhere && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            onClick={() => {
+              runIn(scope.view === null && scope.account === ALL ? undefined : ALL, scope.view === null && scope.folder === ALL ? undefined : ALL)
+            }}
+          >
+            {t('search.searchAllMail')}
+          </Button>
+        )}
+        {started !== null && asks && !inScope && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className="max-w-full"
+            onClick={() => {
+              runIn(undefined, undefined)
+            }}
+          >
+            <span className="min-w-0 truncate">{t('search.backTo', { scope: scopeName })}</span>
+          </Button>
+        )}
         <Button
           type="button"
           variant="ghost"
@@ -224,7 +322,7 @@ export function SearchForm({
             variant="ghost"
             size="xs"
             onClick={() => {
-              void navigate({ to: '/mail', search: (previous) => ({ account: accountId, folder, sub: previous.sub }) })
+              void navigate({ to: '/mail', search: (previous) => ({ account: accountId, folder, sub: previous.sub, view: previous.view }) })
             }}
           >
             {t('search.clear')}
@@ -291,13 +389,18 @@ export function SearchForm({
           <select
             id={`${id}-account`}
             className={selectClass}
-            value={searchedAccount}
+            value={inView ? IN_VIEW : searchedAccount}
             disabled={locked}
             onChange={(event) => {
               const { value } = event.target
-              set('account', value === String(accountId) ? undefined : accountTerm(accounts, value))
+              if (value === IN_VIEW) {
+                chooseView()
+              } else {
+                set('account', scope.view === null && value === scope.account ? undefined : accountTerm(accounts, value))
+              }
             }}
           >
+            {scope.view !== null && <option value={IN_VIEW}>{t('search.viewAccounts', { view: scope.view.name })}</option>}
             {!choice.ok && (
               <option value="" disabled>
                 {shown.account}
@@ -315,13 +418,19 @@ export function SearchForm({
           <select
             id={`${id}-folder`}
             className={selectClass}
-            value={searchedFolder}
+            value={inView ? '' : searchedFolder}
             disabled={locked}
             onChange={(event) => {
               const { value } = event.target
-              set('folder', value === folder ? undefined : value)
+              if (value === '') {
+                chooseView()
+              } else {
+                set('folder', scope.view === null && value === scope.folder ? undefined : value)
+              }
             }}
           >
+            {/* No folder's path is empty. */}
+            {scope.view !== null && <option value="">{t('search.viewFolders', { view: scope.view.name })}</option>}
             {folderOptions.map(([value, label]) => (
               <option key={value} value={value}>
                 {label}

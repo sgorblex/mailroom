@@ -198,8 +198,9 @@ the folder being viewed, its changes pushed as server-sent events
 client's counts, lists, flags and indexing line follow, and desktop notifications of new mail
 in the folders each user chooses (*Desktop notifications* there). A
 [search syntax](requirements/mail-client.md#search-syntax) (`from:ada is:unread`) is taken by MCP's
-`messages_search` and the web client's search box, which shows its terms as chips; quick filters
-(unread, starred, with attachments) narrow the list shown.
+`messages_search` and the web client's search box, which shows its terms as chips and stays
+in the folder or view it was started from ([search scope](requirements/mail-client.md#search-scope));
+quick filters (unread, starred, with attachments) narrow the list shown.
 [Views](requirements/mail-client.md#views) (*All inboxes* and the user's saved views: folders of any
 accounts, or a search) are read from the index and kept in the web sidebar, where a search is saved
 as one. A list, search or view read from the index can come

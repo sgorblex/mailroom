@@ -416,7 +416,8 @@ function DeleteViewDialog({ view, onCancel, onDone }: { view: SavedView; onCance
 
 /**
  * "Save as view" for the search shown: named in a dialog, kept as its line, then opened. A search
- * for words or with Gmail's syntax cannot be one, the index searching neither: the button says so.
+ * for words or with Gmail's syntax cannot be one, the index searching neither, nor can one in a
+ * view of folders, which no line names: the button says so.
  */
 export function SaveViewButton({ query, className }: { query: SearchQuery; className?: string }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
@@ -430,7 +431,7 @@ export function SaveViewButton({ query, className }: { query: SearchQuery; class
         size="xs"
         className={cn('aria-disabled:opacity-50', className)}
         aria-disabled={line === null}
-        title={line === null ? t('views.cannotSave') : undefined}
+        title={line === null ? t(query.view === undefined ? 'views.cannotSave' : 'views.cannotSaveInView') : undefined}
         onClick={() => {
           if (line !== null) {
             setOpen(true)
