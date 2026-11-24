@@ -49,6 +49,31 @@ describe("a view's unread count", () => {
     expect(viewUnread(view({ sources }), [1, 2], (account) => lists[account])).toBe(6)
   })
 
+  it("adds INBOX's subfolders to All inboxes when taken in, none special or under a special one", () => {
+    const special = (path: string, role: MailFolder['role']): MailFolder => ({ ...folder(path, 100), role })
+    const deep: Record<number, MailFolder[]> = {
+      1: [
+        folder('INBOX', 3),
+        folder('INBOX/Lists', 4),
+        folder('INBOX/Lists/Deep', 5),
+        special('INBOX/Trash', 'trash'),
+        folder('INBOX/Trash/Old', 100),
+        special('INBOX/Starred', 'flagged'),
+        folder('Lists', 100),
+      ],
+      2: [folder('INBOX', 2)],
+    }
+    expect(viewUnread('all_inboxes', [1, 2], (account) => deep[account], true)).toBe(14)
+    expect(viewUnread('all_inboxes', [1, 2], (account) => deep[account])).toBe(5)
+    expect(viewScopes('all_inboxes', accounts, (account) => deep[account]).map((scope) => scope.folder)).toEqual([
+      'INBOX',
+      'INBOX/Lists',
+      'INBOX/Lists/Deep',
+      'INBOX',
+    ])
+    expect(viewUnread('all_inboxes', [1, 2, 3], (account) => deep[account], true)).toBeNull()
+  })
+
   it('is not known for a search, or while an account is not listed', () => {
     expect(viewUnread(view({ query: 'is:unread' }), [1, 2], (account) => lists[account])).toBeNull()
     expect(viewUnread('all_inboxes', [1, 2, 3], (account) => lists[account])).toBeNull()
@@ -80,6 +105,7 @@ describe('what a view reads, for live updates', () => {
 describe('the folder a view acts from', () => {
   it('is INBOX for All inboxes, a search\'s folder, or the one its folders share', () => {
     expect(viewFolder('all_inboxes')).toBe('INBOX')
+    expect(viewFolder('all_inboxes', true)).toBeUndefined()
     expect(viewFolder(view({ query: 'is:unread' }))).toBe('INBOX')
     expect(viewFolder(view({ query: 'in:Archive' }))).toBe('Archive')
     expect(viewFolder(view({ query: 'in:*' }))).toBeUndefined()

@@ -32,11 +32,13 @@ class RefreshList(BaseModel):
 
 
 class RefreshView(BaseModel):
-    """A view's messages: a saved view's id, or ``all_inboxes``."""
+    """A view's messages: a saved view's id, or ``all_inboxes`` (with ``subfolders``, INBOX's
+    subfolders too)."""
 
     model_config = ConfigDict(extra="forbid")
 
     view: _Id | Literal["all_inboxes"]
+    subfolders: bool = False
 
 
 class RefreshAsked(BaseModel):
@@ -60,9 +62,8 @@ def refresh(
     limit: RateLimit = request.app.state.refresh_limit
     service.admit_refresh(limit, user.id)
     if isinstance(body, RefreshView):
-        view = None if body.view == saved_views.ALL_INBOXES else body.view
-        owned = None if view is None else saved_views.owned_view(db, user.id, view)
-        sources, _ = saved_views.reading(ctx, user.id, owned)
+        view = saved_views.shown_view(db, user.id, body.view, subfolders=body.subfolders)
+        sources, _ = saved_views.reading(ctx, db, user.id, view, subfolders=body.subfolders)
     else:
         sources = service.listed_sources(
             ctx, user.id, body.account, body.folder, subfolders=body.subfolders

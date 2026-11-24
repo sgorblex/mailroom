@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import json
+import zlib
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import UTC, date, datetime, time, timedelta
@@ -114,6 +115,19 @@ def test_a_cursor_of_the_index_reads_back() -> None:
     assert back.failures({}) == [failure]
     assert failure.message == MESSAGES["timeout"]
 
+    many = [IndexSource(1, f"INBOX/{n}", n, 7, None, None, (f"INBOX/{n}",)) for n in range(150)]
+    packed = IndexCursor.index(many, key, [], {}).encode()
+    assert len(packed) < 2048  # It travels in a list's URL.
+    unpacked = decode_cursor(packed)
+    assert unpacked is not None
+    assert unpacked.sources == tuple(many)
+    for body in (
+        zlib.compress(b"[" + b" " * reads.UNPACKED_MAX + b"]"),
+        zlib.compress(b"[" * reads.UNPACKED_MAX),  # nested too deep to parse
+        b"x\x9cbroken",
+    ):
+        assert decode_cursor(base64.urlsafe_b64encode(body).decode()) is None
+
     tail = IndexCursor.tail_from([(1, "INBOX", date(2026, 10, 21))], None, [], {})
     assert decode_cursor(tail.encode()) == tail
     assert decode_cursor(None) is None
@@ -132,6 +146,21 @@ def test_a_cursor_of_the_index_reads_back() -> None:
     with pytest.raises(MailError) as overflowed:
         decode_cursor(far)
     assert overflowed.value.code == "invalid_argument"
+
+
+def test_a_forged_cursor_repeating_a_source_reads_it_once(db_session: Session, user: User) -> None:
+    inbox, work = (ready(db_session, user, 1, path) for path in ("INBOX", "Work"))
+    key = (DAY, inbox, 1)
+    rows = reads.ready_rows(db_session, user.id, [1])
+    sources = [
+        IndexSource(1, path, row.id, row.uid_validity or 0, None, row.oldest_indexed, (path,))
+        for path, row in (("INBOX", rows[1, "INBOX"]), ("Work", rows[1, "Work"]))
+    ]
+    forged = decode_cursor(IndexCursor.index([*sources * 500], key, [], {}).encode())
+    assert forged is not None
+    assert len(forged.sources) == 1000
+    resumed = reads.resumed_sources(db_session, user.id, forged, [1])
+    assert [source.folder_id for source in resumed] == [inbox, work]
 
 
 def test_gmail_folders_are_read_by_their_labels() -> None:

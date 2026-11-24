@@ -434,15 +434,19 @@ def messages(
 
 
 class SearchRequest(MatchRequest):
-    view: Annotated[int, Field(ge=1, le=MAX_SAFE_INTEGER)] | None = None
-    """A saved view of folders to search in, in place of ``account`` and ``folder``."""
+    view: Annotated[int, Field(ge=1, le=MAX_SAFE_INTEGER)] | Literal["all_inboxes"] | None = None
+    """A saved view of folders to search in, or All inboxes (with ``subfolders``, INBOX's
+    subfolders too), in place of ``account`` and ``folder``."""
     limit: Annotated[int, Field(ge=1, le=MAX_PAGE_SIZE)] = PAGE_SIZE
     cursor: Annotated[str | None, Field(max_length=service.MAX_CURSOR)] = None
     group: Literal["thread"] | None = None
 
     @model_validator(mode="after")
     def _one_scope(self) -> Self:
-        if self.view is not None and self.model_fields_set & {"account", "folder", "subfolders"}:
+        refused = {"account", "folder"}
+        if self.view != saved_views.ALL_INBOXES:
+            refused.add("subfolders")
+        if self.view is not None and self.model_fields_set & refused:
             msg = "Give a view, or an account and a folder, not both."
             raise ValueError(msg)
         return self
@@ -452,7 +456,9 @@ class SearchRequest(MatchRequest):
 @open_to_tokens("mail_read")
 def search(request: SearchRequest, ctx: Context, db: DbSession, user: CurrentUser) -> MessagePage:
     if request.view is not None:
-        sources = saved_views.searched_folders(ctx, db, user.id, request.view)
+        sources = saved_views.searched_folders(
+            ctx, db, user.id, request.view, subfolders=request.subfolders
+        )
         page = service.search_folders(
             ctx,
             user.id,

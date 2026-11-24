@@ -201,7 +201,7 @@ in the folders each user chooses (*Desktop notifications* there). A
 `messages_search` and the web client's search box, which shows its terms as chips and stays
 in the folder or view it was started from ([search scope](requirements/mail-client.md#search-scope));
 quick filters (unread, starred, with attachments) narrow the list shown.
-[Views](requirements/mail-client.md#views) (*All inboxes* and the user's saved views: folders of any
+[Views](requirements/mail-client.md#views) (*All inboxes*, with INBOX's subfolders or without, and the user's saved views: folders of any
 accounts, or a search) are read from the index and kept in the web sidebar, where a search is saved
 as one. A list, search or view read from the index can come
 [grouped by conversation](requirements/mail-client.md#conversations), as the web shows it unless the

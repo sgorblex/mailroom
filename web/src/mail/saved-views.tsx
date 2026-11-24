@@ -20,6 +20,7 @@ import {
   type ViewPage,
 } from '@/api/mail.ts'
 import { useAccountName } from '@/accounts/accounts-context.ts'
+import { useInboxSubfolders } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Dialog } from '@/components/ui/dialog.tsx'
 import { Input } from '@/components/ui/input.tsx'
@@ -77,6 +78,7 @@ export function ViewsSection({
   const views = useQuery(viewsQuery())
   const ids = accounts.map((account) => account.id)
   const listed = useListedFolders(ids)
+  const { included } = useInboxSubfolders()
   const [menu, setMenu] = useState<{ view: SavedView; anchor: HTMLElement } | null>(null)
   const [dialog, setDialog] = useState<ViewDialog | null>(null)
   const [notice, setNotice] = useState<{ text: string; alert: boolean } | null>(null)
@@ -151,7 +153,7 @@ export function ViewsSection({
           name={t('views.allInboxes')}
           accountId={accountId}
           current={current === ALL_INBOXES}
-          unread={viewUnread(ALL_INBOXES, ids, listed)}
+          unread={viewUnread(ALL_INBOXES, ids, listed, included)}
         />
         {saved.map((view) => (
           <ViewRow

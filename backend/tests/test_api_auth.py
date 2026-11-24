@@ -38,6 +38,7 @@ SIGNED_IN = {
         "mark_read_subfolders": True,
         "index_max_age_days": None,
         "conversations": True,
+        "inbox_subfolders": False,
         "undo_send_seconds": 10,
         "appearance": APPEARANCE,
     },
@@ -266,6 +267,25 @@ def test_the_user_picks_whether_lists_are_grouped_by_conversation(
     assert user_client.put(route, json={"conversations": True}).json()["conversations"] is True
     api_client.cookies.clear()
     assert api_client.put(route, json={"conversations": False}).status_code == 401
+
+
+def test_the_user_picks_whether_all_inboxes_takes_in_subfolders(
+    user_client: TestClient, api_client: TestClient, db_session: Session, user: User
+) -> None:
+    route = "/api/v1/auth/me/inbox-subfolders"
+    response = user_client.put(route, json={"inbox_subfolders": True})
+    assert (response.status_code, response.json()["inbox_subfolders"]) == (200, True)
+    db_session.expire_all()
+    stored = db_session.get(User, user.id)
+    assert stored is not None
+    assert stored.inbox_subfolders is True
+    for body in ({"inbox_subfolders": "true"}, {"inbox_subfolders": None}, {}):
+        assert user_client.put(route, json=body).status_code == 422
+    assert (
+        user_client.put(route, json={"inbox_subfolders": False}).json()["inbox_subfolders"] is False
+    )
+    api_client.cookies.clear()
+    assert api_client.put(route, json={"inbox_subfolders": True}).status_code == 401
 
 
 def test_the_user_picks_how_long_send_waits_for_an_undo(

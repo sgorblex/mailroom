@@ -45,6 +45,8 @@ class User(Base):
     index_max_age_days: Mapped[int | None] = mapped_column(Integer)
     # Whether the web's message lists group messages by conversation.
     conversations: Mapped[bool] = mapped_column(Boolean, server_default=true())
+    # Whether the web's *All inboxes* takes in INBOX's subfolders.
+    inbox_subfolders: Mapped[bool] = mapped_column(Boolean, server_default=false())
     # How long the web's Send holds a message for an Undo, in seconds; 0 sends at once.
     undo_send_seconds: Mapped[int] = mapped_column(Integer, server_default=text("10"))
     # How the web looks, on every device: only the choices made (``mailroom.auth.appearance``).

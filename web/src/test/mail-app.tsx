@@ -14,12 +14,12 @@ import {
 import { vi } from 'vitest'
 
 import { userSchema, type Feature, type UserJson } from '@/api/auth.ts'
-import { AuthContext } from '@/auth/auth-context.ts'
 import { validateFilterDraftSearch } from '@/filters/draft-search.ts'
 import { createQueryClient } from '@/lib/query-client.ts'
 import { LiveUpdatesProvider } from '@/mail/live-provider.tsx'
 import { MailScreen } from '@/mail/mail-screen.tsx'
 import { validateMailSearch } from '@/mail/route-search.ts'
+import { SignedIn } from '@/test/signed-in-user.tsx'
 
 /**
  * The mail screen at `path`, in a router of its own, with Accounts and a filter draft as
@@ -59,7 +59,6 @@ export function renderMailApp(
   const router = createRouter({ routeTree: rootRoute.addChildren([accountsRoute, filterDraftRoute, mailRoute]), history })
   // The router restores scroll positions, which jsdom does not implement.
   vi.stubGlobal('scrollTo', vi.fn())
-  const reject = (): Promise<void> => Promise.reject(new Error('not in this test'))
   const app = (
     <QueryClientProvider client={createQueryClient()}>
       <RouterProvider router={router} />
@@ -69,24 +68,9 @@ export function renderMailApp(
     user === undefined ? (
       app
     ) : (
-      <AuthContext
-        value={{
-          status: 'signed-in',
-          user: userSchema.parse(user),
-          features: new Set(features),
-          signIn: reject,
-          signOut: reject,
-          changeTimeZone: reject,
-          changeMarkReadSubfolders: reject,
-          changeIndexMaxAge: reject,
-          changeConversations: reject,
-          changeUndoSend: reject,
-          changeAppearance: reject,
-          recheck: vi.fn(),
-        }}
-      >
+      <SignedIn user={userSchema.parse(user)} features={new Set(features)}>
         {app}
-      </AuthContext>
+      </SignedIn>
     )
   render(ui, { wrapper: strict ? StrictMode : undefined })
   return history

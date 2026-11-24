@@ -118,21 +118,27 @@ def subfolders_of(folders: Iterable[Folder], path: str) -> list[Folder]:
     return [f for f in folders if under(f)]
 
 
+def listed_subfolders(folders: Sequence[Folder], parent: Folder) -> list[Folder]:
+    """The subfolders of `parent` that a read of it with its subfolders takes, however many:
+    selectable, at any depth, leaving out the folders with a role in `_APART_ROLES` (Sent,
+    Drafts, All Mail, Archive, Junk, Trash) and everything under them, unless `parent` has that
+    role itself."""
+    under = subfolders_of(folders, parent.path)
+    left_out: set[str] = set()
+    for folder in under:
+        if folder.role in _APART_ROLES and folder.role != parent.role:
+            left_out |= {folder.path, *(f.path for f in subfolders_of(under, folder.path))}
+    return [f for f in under if f.selectable and f.path not in left_out]
+
+
 def with_subfolders(folders: Sequence[Folder], path: str, account: int) -> list[str]:
     """The paths a read of `path` with its subfolders covers: the folder (INBOX in any case),
-    then its selectable subfolders at any depth, leaving out the folders with a role in
-    `_APART_ROLES` (Sent, Drafts, All Mail, Archive, Junk, Trash) and everything under them,
-    unless `path` has that role itself. `mailbox_missing` when `path` is not a folder of
+    then its `listed_subfolders`. `mailbox_missing` when `path` is not a folder of
     `account`; `invalid_argument` past `MAX_LISTED_FOLDERS`."""
     found = _find(folders, path)
     if found is None:
         raise _missing(path, account)
-    under = subfolders_of(folders, found.path)
-    left_out: set[str] = set()
-    for folder in under:
-        if folder.role in _APART_ROLES and folder.role != found.role:
-            left_out |= {folder.path, *(f.path for f in subfolders_of(under, folder.path))}
-    kept = [f.path for f in under if f.selectable and f.path not in left_out]
+    kept = [f.path for f in listed_subfolders(folders, found)]
     paths = ([found.path] if found.selectable else []) + kept
     if len(paths) > MAX_LISTED_FOLDERS:
         raise MailError(

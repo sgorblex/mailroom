@@ -17,6 +17,7 @@ from sqlalchemy import (
     SmallInteger,
     Text,
     UniqueConstraint,
+    false,
     text,
     true,
 )
@@ -54,6 +55,9 @@ class MailIndexFolder(Base):
     """As the server names it (``INBOX`` in capitals)."""
     enabled: Mapped[bool] = mapped_column(Boolean, server_default=true())
     """The user's switch; a folder off the index is read live."""
+    inbox_subfolder: Mapped[bool] = mapped_column(Boolean, server_default=false())
+    """Whether it is one of INBOX's subfolders that *All inboxes* may take in
+    (``mailroom.mail.index.settings``), as the account's folders were last listed."""
     uid_validity: Mapped[int | None] = mapped_column(BigInteger)
     highest_modseq: Mapped[int | None] = mapped_column(BigInteger)
     """HIGHESTMODSEQ at the last sync; None without CONDSTORE."""

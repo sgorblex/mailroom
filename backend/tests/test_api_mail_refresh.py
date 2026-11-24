@@ -185,6 +185,19 @@ def test_refreshes_waiting_are_one_job_per_mailbox(
         assert user_client.get(f"{REFRESH}/{asked}").json() == {"running": True}
 
 
+def test_all_inboxes_syncs_the_subfolders_it_takes_in(
+    user_client: TestClient, db_session: Session, user: User
+) -> None:
+    work = added(user_client, new_account("work"))
+    lists = ready(db_session, user, work, "INBOX/Lists", inbox_subfolder=True)
+    inbox = ready(db_session, user, work, "INBOX")
+    ready(db_session, user, work, "INBOX/Off", inbox_subfolder=True, enabled=False)
+    ask(user_client, view="all_inboxes", subfolders=True)
+    assert folders_queued(db_session) == {work: [inbox, lists]}
+    view = user_client.post(f"{MAIL}/views", json={"name": "U", "query": "is:unread"}).json()["id"]
+    assert refused(user_client, view=view, subfolders=True) == (400, "invalid_argument")
+
+
 def test_only_the_users_own_accounts_views_and_refreshes(
     user_client: TestClient, db_session: Session, user: User
 ) -> None:

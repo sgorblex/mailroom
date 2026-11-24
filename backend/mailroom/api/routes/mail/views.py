@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal, Self
 
-from fastapi import Path
+from fastapi import Path, Query
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from mailroom.api.deps import Context, CurrentUser, DbSession
@@ -167,10 +167,13 @@ def view_messages(
     limit: Limit = PAGE_SIZE,
     cursor: Cursor = None,
     group: Group = None,
+    subfolders: Annotated[
+        bool, Query(description="All inboxes only: INBOX's subfolders too.")
+    ] = False,
 ) -> ViewPage:
     """The view's messages, newest first, from the mail index only."""
-    view = saved_views.owned_view(db, user.id, view_id) if isinstance(view_id, int) else None
-    sources, query = saved_views.reading(ctx, user.id, view)
+    view = saved_views.shown_view(db, user.id, view_id, subfolders=subfolders)
+    sources, query = saved_views.reading(ctx, db, user.id, view, subfolders=subfolders)
     read = service.view_messages(
         ctx, user.id, sources, query, limit=limit, cursor=cursor, group=group == "thread"
     )

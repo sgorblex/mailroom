@@ -16,8 +16,8 @@ from pydantic import BaseModel
 from sqlalchemy import func, not_, select
 from sqlalchemy.dialects.postgresql import distinct_on
 
-from mailroom.auth.users import time_zone_of
-from mailroom.mail.index.reads import inbox_unread, marked
+from mailroom.auth.users import inbox_subfolders_of, time_zone_of
+from mailroom.mail.index.reads import inbox_subfolders_unread, inbox_unread, marked
 from mailroom.models import (
     Filter,
     FilterMatchDay,
@@ -52,7 +52,8 @@ class MailSummary(BaseModel):
     inboxes: list[Inbox]
     """Each of the user's accounts, in their order."""
     unread: int
-    """All inboxes: the sum of the counts known."""
+    """All inboxes: the sum of the counts known, with those of INBOX's subfolders when the user's
+    takes them in."""
     starred: int
     to_sort: int
     """Messages starred, and marked To sort, in the indexed folders of every account (under an
@@ -111,6 +112,9 @@ def mail_summary(
     accounts = ctx.accounts(user_id).settings.account
     ids = [account.id for account in accounts]
     unread = inbox_unread(db, user_id, ids)
+    total = sum(unread.values())
+    if inbox_subfolders_of(db, user_id):
+        total += inbox_subfolders_unread(db, user_id, ids)
     starred, to_sort = marked(db, user_id, ids)
     tomorrow = _next_midnight(now, zone)
     snoozed, snoozed_today = db.execute(
@@ -136,7 +140,7 @@ def mail_summary(
             )
             for account in accounts
         ],
-        unread=sum(unread.values()),
+        unread=total,
         starred=starred,
         to_sort=to_sort,
         snoozed=snoozed,

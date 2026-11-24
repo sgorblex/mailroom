@@ -66,7 +66,7 @@ export function searchQuery(value: unknown): SearchQuery | undefined {
   if (query.account !== undefined && query.account !== '*' && !/^[1-9][0-9]*$/.test(query.account)) {
     delete query.account
   }
-  const view = positiveId(fields['view'])
+  const view = viewKey(fields['view'])
   if (view !== undefined) {
     query.view = view
     delete query.account

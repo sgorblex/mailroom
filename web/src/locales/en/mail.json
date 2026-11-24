@@ -179,6 +179,9 @@
   "views": {
     "title": "Views",
     "allInboxes": "All inboxes",
+    "allInboxesSubfolders": "All inboxes, with subfolders",
+    "includeSubfolders": "Include subfolders",
+    "subfoldersFailed": "Could not save the choice.",
     "actions": "Actions for {{name}}",
     "more": "View actions",
     "rename": "Rename…",

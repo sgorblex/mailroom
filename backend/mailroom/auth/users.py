@@ -133,6 +133,17 @@ def set_mark_read_subfolders(db: Session, user: User, subfolders: bool) -> None:
     db.commit()
 
 
+def set_inbox_subfolders(db: Session, user: User, included: bool) -> None:
+    """Keep whether ``user``'s *All inboxes* takes in INBOX's subfolders."""
+    user.inbox_subfolders = included
+    db.commit()
+
+
+def inbox_subfolders_of(db: Session, user_id: int) -> bool:
+    """Whether the user's *All inboxes* takes in INBOX's subfolders."""
+    return db.scalar(select(User.inbox_subfolders).where(User.id == user_id)) is True
+
+
 def set_conversations(db: Session, user: User, grouped: bool) -> None:
     """Keep whether ``user``'s message lists are grouped by conversation."""
     user.conversations = grouped
