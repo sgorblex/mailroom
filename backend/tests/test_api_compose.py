@@ -1369,11 +1369,12 @@ def test_a_test_send_goes_to_the_default_identity_and_leaves_the_draft(
 def test_a_test_send_is_refused_for_what_is_no_draft_of_the_user(composer: Composer) -> None:
     smtp = SmtpTestServer.from_env()
     assert smtp is not None
-    before = len(smtp.delivered_to(ME))
-    inbox = composer.seed(mime("Notes", sender="ada@example.org", to=ME, text="Hi"))
+    # Other tests deliver to ME meanwhile: only what carries this test's tag counts.
+    tag = uuid.uuid4().hex
+    inbox = composer.seed(mime(f"Notes {tag}", sender="ada@example.org", to=ME, text="Hi"))
     compose_id = str(uuid.uuid4())
-    first = composer.save(compose_id=compose_id, subject="One", text="Hi")["ref"]
-    composer.save(compose_id=compose_id, ref=first, subject="Two", text="Hi")
+    first = composer.save(compose_id=compose_id, subject=f"One {tag}", text="Hi")["ref"]
+    composer.save(compose_id=compose_id, ref=first, subject=f"Two {tag}", text="Hi")
 
     def test(ref: str) -> tuple[int, str]:
         response = composer.client.post(
@@ -1385,7 +1386,7 @@ def test_a_test_send_is_refused_for_what_is_no_draft_of_the_user(composer: Compo
     assert test(first)[0] == 404
     assert composer.client.post(f"{MAIL}/drafts/{first}/test", json={}).status_code == 422
     composer.settled()
-    assert len(smtp.delivered_to(ME)) == before
+    assert [m for m in smtp.delivered_to(ME) if tag in str(parsed(m.raw)["Subject"])] == []
 
 
 def test_a_forged_designed_marker_does_not_keep_html_unsanitised(composer: Composer) -> None:

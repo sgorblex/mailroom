@@ -2989,6 +2989,13 @@ def test_a_hostile_reply_to_is_what_approval_checks_not_the_sender(
     assert smtp_server.delivered_to(colleague) == []
 
 
+def undated(message: str) -> str:
+    """``message`` without its Date field, which a sent draft gets anew."""
+    head, body = message.split("\r\n\r\n", 1)
+    kept = [line for line in head.split("\r\n") if not line.startswith("Date:")]
+    return "\r\n".join(kept) + "\r\n\r\n" + body
+
+
 @pytest.mark.parametrize("marked", [True, False])
 def test_a_draft_is_sent_byte_for_byte_with_its_html_and_id_without_its_bcc_or_marker(
     mcp: Mcp, token: str, stubbed_writer: tuple[MailAccounts, Any], marked: bool
@@ -3012,7 +3019,11 @@ def test_a_draft_is_sent_byte_for_byte_with_its_html_and_id_without_its_bcc_or_m
         assert f"from {writer.me}, to {dee}; bcc {hidden}" in answer
         # Mailpit writes a Bcc of its own: only the stub shows what left.
         [delivered] = stub.messages
-        assert delivered.strip() == wire.encode().strip()
+        # Byte for byte but for its Date, which is the send's.
+        date, rest = delivered.split(b"\r\n", 1)
+        assert date.startswith(b"Date: ")
+        assert b"\r\nDate:" not in rest.split(b"\r\n\r\n", 1)[0]
+        assert rest.strip() == undated(wire).encode().strip()
         assert f"rcpt to:<{hidden}>" in stub.commands
     assert f"Bcc: {hidden}" in writer.contents("Sent")[0].source.decode()
     assert writer.contents("Drafts") == []

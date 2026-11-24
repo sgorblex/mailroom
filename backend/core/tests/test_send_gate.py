@@ -7,6 +7,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
+from email.utils import parsedate_to_datetime
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
@@ -601,6 +602,20 @@ def test_a_from_line_in_a_stored_draft_s_body_is_not_a_second_from(
     assert composed.wire.endswith(b"\r\n\r\nFrom: boss@x.org\r\n")
 
 
+def test_a_stored_draft_goes_out_dated_when_it_is_sent(monkeypatch: pytest.MonkeyPatch) -> None:
+    source = b"Date: Mon, 2 Jan 2006 15:04:05 +0000\r\nFrom: me@example.test\r\nTo: a@x.org\r\n\r\nhi\r\n"
+    draft = stored_as(monkeypatch, source)
+    connections = cast("MailConnections", StubConnections())
+    before = datetime.now(UTC).replace(microsecond=0)
+
+    composed = prepare_draft(connections, account(), draft.ref, Limits()).prepared.composed
+
+    for raw in (composed.stored, composed.wire):
+        dates = [line for line in raw.split(b"\r\n") if line.startswith(b"Date:")]
+        assert len(dates) == 1
+        assert parsedate_to_datetime(dates[0][5:].decode()) >= before
+
+
 CRLF_HEADERS = (
     b"From: me@example.test\r\nTo: a@x.org\r\nBcc: secret@y.org\r\n"
     b"X-Mailroom-Draft: 1\r\nSubject: s"
@@ -630,7 +645,10 @@ def test_a_stored_draft_s_body_goes_out_with_its_lines_ending_in_crlf(
     with SmtpStub() as stub:
         on(stub, NO_TIMEOUT).send(1, composed.envelope, composed.wire)
 
-    assert stub.messages == [b"From: me@example.test\r\nTo: a@x.org\r\nSubject: s\r\n\r\n" + body]
+    [sent] = stub.messages
+    date, rest = sent.split(b"\r\n", 1)
+    assert date.startswith(b"Date: ")
+    assert rest == b"From: me@example.test\r\nTo: a@x.org\r\nSubject: s\r\n\r\n" + body
     assert b"Bcc: secret@y.org" in composed.stored
     assert b"X-Mailroom-Draft" not in composed.stored
 

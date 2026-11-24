@@ -872,7 +872,8 @@ composer to server.
   `GET /drafts/{ref}` then answers `lossy: true` and the composer warns that saving keeps only the
   plain text and the attachments. Only a save does
   that: a draft that is sent without being edited goes out exactly as stored (an HTML body
-  included, which is also what `draft_send` does), under the key its ref gives when it has no
+  included, which is also what `draft_send` does) but for its Date, which is the time it goes out
+  (an undo's or a send later's too, not the time it was saved), under the key its ref gives when it has no
   `compose_id`.
 - **Designed mail.** A message built elsewhere (an .eml, or an HTML file with its images and
   attachments) is imported as a draft as it was built (`POST /drafts?import=eml|html`, MCP

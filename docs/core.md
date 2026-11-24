@@ -617,7 +617,7 @@ message counted as it is sent); a file the
   or file names, from the message, one line each). A source the `email` package cannot read
   gets only the import's and the size's findings. `draft_findings` checks a stored draft.
 - A draft imported this way sends through `prepare_draft` like any other: as stored, its marker
-  stripped. `send.prepare_test` sends any draft as a test of itself: as stored, From included, to
+  stripped and its Date the send's. `send.prepare_test` sends any draft as a test of itself: as stored, From included, to
   the account's default identity alone, its subject prefixed `TEST_PREFIX` (`[Test] `) and under a
   new Message-ID, so the draft's own send keeps its own (`compose.readdressed` writes those
   fields, cleaned as `compose`'s). It goes through `admit` like any send, under
@@ -629,7 +629,8 @@ message counted as it is sent); a file the
 `send_through_gate` runs three phases a host can also call apart, to answer before the message has
 left: `admit` (`Admitted`, or `Drafted`, or `Earlier` for a retry), `deliver` and `file_sent`. Only
 `admit` makes an `Admitted`, and each is good for one delivery. `prepare_draft` reads a draft for
-sending, and `settle_draft` and `mark_original` do what follows a sent draft or reply.
+sending, dated when it goes out (`compose.dated`), not when it was saved, so a held send scheduled
+for tomorrow is not dated today; and `settle_draft` and `mark_original` do what follows a sent draft or reply.
 
 - **`send_mode` limits agents.** `admit` takes `by`, `user` or `agent`: `off` refuses both, and
   `drafts` and `approval` apply to agents only, so a click in the app sends. The hourly limit and
