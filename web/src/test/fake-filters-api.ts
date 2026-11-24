@@ -96,7 +96,7 @@ export const WORK = 1
 export const HOME = 2
 const ACCOUNT_NAMES: Record<number, string> = { [WORK]: 'work', [HOME]: 'home' }
 
-function account({ id, run_filters: runFilters, name, colour, keywords }: FakeAccount): Body {
+function account({ id, run_filters: runFilters, name, colour }: FakeAccount): Body {
   const endpoint = { host: `imap.${String(id)}.example`, port: 993, tls: 'implicit' }
   return {
     id,
@@ -112,7 +112,6 @@ function account({ id, run_filters: runFilters, name, colour, keywords }: FakeAc
     auto_approve: [],
     has_password: true,
     run_filters: runFilters,
-    keywords: keywords ?? null,
   }
 }
 
@@ -150,6 +149,9 @@ export function stubFiltersApi(state: FakeState): Mock {
 
     if (path === '/api/v1/accounts' && method === 'GET') {
       return Promise.resolve(json(200, state.accounts.map(account)))
+    }
+    if (path === '/api/v1/accounts/keywords' && method === 'GET') {
+      return Promise.resolve(json(200, state.accounts.map(({ id, keywords }) => ({ account_id: id, keywords: keywords ?? null }))))
     }
     if (path === '/api/v1/filters/schema') {
       return Promise.resolve(json(200, filterSchema))

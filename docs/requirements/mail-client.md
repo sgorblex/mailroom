@@ -42,6 +42,9 @@ notifications](#desktop-notifications).
   The sidebar's tree lists that account's folders only. Choosing another shows its inbox, or keeps
   the view open while the tree changes. The account in the URL is the one shown; `/mail` without
   one shows the account last shown in this browser (`mailroom.ui.mail.account`), else the first.
+  While the accounts load, the list that account (or the URL's, or the view) will show is
+  already being read, and is shown as read when the screen comes up; a guess the accounts prove
+  wrong is never shown.
 - **Views** below the account switcher: *All inboxes* and the user's saved [views](#views), in
   their order, each with the unread count of its folders when every one is listed already (none
   for a search). Opening one (`view` in the URL) lists it as a folder is listed, each row naming
@@ -280,7 +283,7 @@ Behaviour is mailroom-core's `mail.organize` (`move_messages`, `archive_messages
 - **Flag:** set or clear `\Seen` (read/unread), `\Flagged` (star/unstar) and the
   [To sort](../GLOSSARY.md) keyword `$MailroomSort`; `seen`, `flagged`, `to_sort`, at least one.
   Only these can be changed. To sort is `unsupported` in a folder whose server keeps no keywords
-  (and on Gmail); the accounts listing's `keywords` says which do. The answer reads them back
+  (and on Gmail); `GET /api/v1/accounts/keywords` says which do. The answer reads them back
   per message.
 
 A **batch** is 1 to 50 refs, from any folders and accounts of the user (not 0, not 51: 422 on the
@@ -466,10 +469,11 @@ MCP `message_read` still never set `\Seen`.
   same way: a toggle named *To sort*, filled when marked (its tooltip says *Mark To sort* or
   *Mark sorted*). A starred or To sort row shows it by small marks next to its date (a star in the
   star colour, a bookmark), named *Starred* and *To sort* for screen readers.
-- Where the account's server keeps no keywords (the accounts listing's `keywords` is `false`),
+- Where the account's server keeps no keywords (`GET /api/v1/accounts/keywords` says `false`),
   the toolbar's To sort action and the row's mark are greyed out, their tooltip saying why, and
   neither they nor `t` send anything; where it is not known, they are offered and the server's
-  `unsupported` is shown as any failure.
+  `unsupported` is shown as any failure. The mail is drawn without waiting for that answer,
+  asked apart from the accounts: until it comes, To sort is not known.
 - Results update the list in place: moved or trashed rows disappear, flags change on the row, and
   failed groups are shown with the mail error wording; a group of a move to another account
   whose copies were made but whose originals stayed says they are in both.

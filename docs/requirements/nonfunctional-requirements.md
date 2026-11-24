@@ -561,11 +561,15 @@ bounded to one minor because the server relies on its handlers.
   `{"ok", "code", "message"}`), `GET /{id}/quota` (the server's quota, kept 10 minutes:
   [`mail-client.md`](mail-client.md) — *Mailbox quota*), `GET /autoconfig?address=` (suggested
   servers, stored nowhere: [`mail-client.md`](mail-client.md) — *Account autoconfiguration*).
-  Responses carry `has_password`, never the password. The listing also carries `keywords`,
-  whether the server keeps keywords (To sort): mailroom-core's cached `keywords`, asked of every
-  account side by side for 5 s at most, null for one that cannot log in or has not answered
-  (and in the answer to a change, which asks nothing). One whose server refused the login or
-  could not be reached is not asked again for 5 minutes, unless the account changes. An account may have a `name` (1 to 64
+  Responses carry `has_password`, never the password. The listing logs in to no server, so
+  nothing waits on a mailbox: its `keywords` is null, as in the answer to a change.
+  `GET /keywords` says whether each account's server keeps keywords (To sort), in the accounts'
+  order (`[{"account_id", "keywords"}]`): mailroom-core's cached `keywords`, asked of every
+  account side by side for 5 s at most, null for one that cannot log in or has not answered (only the
+  connection asking is cut then, never the account's other reads and writes). One
+  whose server refused the login or could not be reached is not asked again for 5 minutes,
+  unless the account changes. MCP's `accounts_list` still carries `keywords`, asked the same
+  way. An account may have a `name` (1 to 64
   characters, not blank) and a `colour` (`slate`, `red`, `orange`, `amber`, `green`, `teal`,
   `sky`, `blue`, `violet` or `pink`), each null when unset and given back as stored, so a
   client tells an unnamed account from one named after its login. Responses also carry a

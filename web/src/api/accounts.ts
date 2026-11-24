@@ -47,8 +47,6 @@ export const accountSchema = z.object({
   attachment_max_mb: z.number().optional(),
   /** The user's limit on To, Cc and Bcc together; absent from an API older than slice C. */
   max_recipients: z.number().optional(),
-  /** Whether the server keeps keywords, so messages can be marked To sort; `null` when it did not say. */
-  keywords: z.boolean().nullable().optional(),
 })
 export type Account = z.infer<typeof accountSchema>
 
@@ -129,6 +127,21 @@ export function testAccount(id: AccountId): Promise<LoginTest> {
 export function findSettings(address: string, signal?: AbortSignal): Promise<AutoconfigAnswer> {
   const query = new URLSearchParams({ address })
   return apiGetJson(`${base}/autoconfig?${query.toString()}`, { init: { signal }, schema: autoconfigAnswerSchema })
+}
+
+const accountKeywordsSchema = z.object({
+  account_id: accountIdSchema,
+  /** Whether the server keeps keywords, so messages can be marked To sort; `null` when it did not say. */
+  keywords: z.boolean().nullable(),
+})
+export type AccountKeywords = z.infer<typeof accountKeywordsSchema>
+
+/**
+ * Whether each account's server keeps keywords, asked of the servers (a few seconds at most): apart
+ * from the listing, which logs in to none of them.
+ */
+export function listAccountKeywords(signal?: AbortSignal): Promise<AccountKeywords[]> {
+  return apiGetJson(`${base}/keywords`, { init: { signal }, schema: z.array(accountKeywordsSchema) })
 }
 
 const usageSchema = z.object({ used: z.number(), limit: z.number() })

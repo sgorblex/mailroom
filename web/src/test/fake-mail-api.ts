@@ -1265,9 +1265,14 @@ export function stubMailApi(state: FakeMailState): Mock {
             run_filters: state.runFilters?.[id] ?? false,
             attachment_max_mb: state.attachmentMaxMb ?? 10,
             max_recipients: state.maxRecipients ?? 10,
-            keywords: state.keywords?.[id] ?? null,
           }
         }),
+      )
+    }
+    if (path === '/api/v1/accounts/keywords') {
+      return json(
+        200,
+        state.accounts.map((id) => ({ account_id: id, keywords: state.keywords?.[id] ?? null })),
       )
     }
     const signed = /^\/api\/v1\/accounts\/(\d+)\/signatures$/.exec(path)

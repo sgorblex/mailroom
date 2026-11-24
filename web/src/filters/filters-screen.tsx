@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from '@tanstack/react-router'
 
 import { AccountName } from '@/accounts/account-name.tsx'
+import { useAccountKeywords } from '@/accounts/accounts-context.ts'
 import { listAccounts, type Account } from '@/api/accounts.ts'
 import {
   ALL_ACCOUNTS,
@@ -110,6 +111,7 @@ function AccountRuleSets({
 }): ReactElement {
   const { t } = useTranslation(FILTERS_NS)
   const headingId = `account-${String(account.id)}-rule-sets`
+  const keywordsOf = useAccountKeywords()
   const addTrigger = useRef<HTMLButtonElement>(null)
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
@@ -130,7 +132,7 @@ function AccountRuleSets({
         owner={account.id}
         listLabel={t('filters.ruleSetsOf', { account: account.display_name })}
         addLabel={t('filters.ruleSet.addTo', { account: account.display_name })}
-        keywords={account.keywords}
+        keywords={keywordsOf(account.id)}
         addTrigger={addTrigger}
       />
       {muted.length > 0 && (

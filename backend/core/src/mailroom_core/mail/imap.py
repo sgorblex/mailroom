@@ -199,6 +199,8 @@ class _Slot:
     generation: int = 0
     busy: bool = False
     last_used: float = 0.0
+    thread: int | None = None
+    """The thread using it, while busy."""
     interrupted: bool = False
     """Set by `interrupt` while busy: the attempt is not retried and the connection is dropped."""
 
@@ -288,22 +290,24 @@ class MailConnections:
         path: str,
         read_only: bool,
         fn: Callable[[MailboxContext], T],
+        *,
+        wait: float | None = None,
     ) -> T:
         """Runs `fn` with `path` selected on a connection of its own.
 
         Read-only opens use EXAMINE, so nothing in the mailbox (not even `\\Seen`) can change.
         Errors come out as MailErrors, `busy` when no connection of the account is free within
-        `Timeouts.lock`. A connection can look usable and be dead, or the folder can have been
-        deleted by another client: see `retriable` for when one more attempt is made, always on
-        a newly opened connection. An attempt cut short by `interrupt` is never retried.
+        `wait` (`Timeouts.lock`). A connection can look usable and be dead, or the folder can
+        have been deleted by another client: see `retriable` for when one more attempt is made,
+        always on a newly opened connection. An attempt cut short by `interrupt` is never retried.
         """
         try:
-            return self._attempt(account_id, path, read_only, fn, fresh=False)
+            return self._attempt(account_id, path, read_only, fn, fresh=False, wait=wait)
         except _AttemptFailedError as failure:
             if not failure.retry:
                 raise failure.error from None
         try:
-            return self._attempt(account_id, path, read_only, fn, fresh=True)
+            return self._attempt(account_id, path, read_only, fn, fresh=True, wait=wait)
         except _AttemptFailedError as failure:
             raise failure.error from None
 
@@ -346,16 +350,18 @@ class MailConnections:
                 state.capabilities = found
         return found
 
-    def keywords(self, account_id: int) -> bool:
+    def keywords(self, account_id: int, *, wait: float | None = None) -> bool:
         """Whether the account's server keeps keywords such as `TO_SORT`, from a read-write
         SELECT of INBOX (`MailboxContext.keywords`: never on Gmail); asked once, then cached
-        until the account's connections are closed."""
+        until the account's connections are closed. `wait` as for `with_mailbox`."""
         state = self._state(account_id)
         known = state.keywords
         if known is not None:
             return known
         generation = state.generation
-        found = self.with_mailbox(account_id, "INBOX", False, lambda context: context.keywords)
+        found = self.with_mailbox(
+            account_id, "INBOX", False, lambda context: context.keywords, wait=wait
+        )
         with state.free:
             if state.generation == generation:
                 state.keywords = found
@@ -467,8 +473,9 @@ class MailConnections:
         every connection."""
         _log_out(self._open_unpooled(account_id, read_timeout=self._timeouts.probe))
 
-    def interrupt(self, account_id: int) -> int:
-        """Cuts the account's connections that are in use, and returns how many.
+    def interrupt(self, account_id: int, *, thread: int | None = None) -> int:
+        """Cuts the account's connections that are in use, or only those the thread `thread`
+        (its `threading.get_ident`) uses, and returns how many.
 
         For a host whose own deadline passed while a call still runs in its worker thread:
         shutting the socket down makes the blocked command fail at once with `unreachable`,
@@ -483,7 +490,7 @@ class MailConnections:
         cut = []
         with state.free:
             for slot in state.slots:
-                if slot.busy:
+                if slot.busy and thread in (None, slot.thread):
                     slot.interrupted = True
                     if slot.client is not None:
                         cut.append(slot.client)
@@ -548,6 +555,7 @@ class MailConnections:
                     # load; for a retry, the other way round.
                     slot = next((s for s in idle if (s.client is None) == fresh), idle[0])
                     slot.busy = True
+                    slot.thread = threading.get_ident()
                     slot.interrupted = False
                     expired = time.monotonic() - slot.last_used > self._timeouts.idle
                     if slot.client is not None and (fresh or expired):
@@ -567,6 +575,7 @@ class MailConnections:
                 if slot.client is not None and (slot.generation != state.generation or cut):
                     stale, slot.client = slot.client, None
                 slot.busy = False
+                slot.thread = None
                 slot.interrupted = False
                 slot.last_used = time.monotonic()
                 state.free.notify()
@@ -660,8 +669,9 @@ class MailConnections:
         fn: Callable[[MailboxContext], T],
         *,
         fresh: bool,
+        wait: float | None,
     ) -> T:
-        with self._slot(account_id, fresh=fresh) as (state, slot):
+        with self._slot(account_id, fresh=fresh, wait=wait) as (state, slot):
             client = self._client(account_id, state, slot)
             try:
                 selected = client.select_folder(path, readonly=read_only)

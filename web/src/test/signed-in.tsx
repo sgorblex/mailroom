@@ -1,5 +1,5 @@
 import { render } from '@testing-library/react'
-import { QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
 import { vi } from 'vitest'
 
@@ -11,12 +11,13 @@ import { createQueryClient } from '@/lib/query-client.ts'
 /**
  * Render `ui` as `user` would see it on an instance with `features`, without the sign-in round trip.
  * A time zone, mark-read default, index age limit, conversations, Undo delay or appearance change goes to the API but leaves `user` as it is. A cache of
- * its own, never retrying.
+ * its own, never retrying, unless given one.
  */
 export function renderSignedIn(
   ui: ReactElement,
   user: UserJson,
   features: Iterable<Feature> = ALL_FEATURES,
+  queryClient: QueryClient = createQueryClient(),
 ): void {
   const reject = (): Promise<void> => Promise.reject(new Error('not in this test'))
   const enabled = new Set(features)
@@ -50,7 +51,7 @@ export function renderSignedIn(
         recheck: vi.fn(),
       }}
     >
-      <QueryClientProvider client={createQueryClient()}>{ui}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
     </AuthContext>,
   )
 }

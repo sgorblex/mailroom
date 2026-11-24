@@ -1,6 +1,6 @@
-"""Each user's mail accounts: list, add, edit, remove, test the login, read the quota, keep each
-identity's signature and the account's vacation reply. Only the signed-in user's own: another
-user's account id is a 404."""
+"""Each user's mail accounts: list, add, edit, remove, test the login, read the quota and the
+servers' keywords, keep each identity's signature and the account's vacation reply. Only the
+signed-in user's own: another user's account id is a 404."""
 
 from __future__ import annotations
 
@@ -65,6 +65,13 @@ class LoginTest(BaseModel):
     ok: bool
     code: str | None = None
     message: str | None = None
+
+
+class AccountKeywords(BaseModel):
+    account_id: int
+    keywords: bool | None
+    """Whether the account's server keeps keywords, so messages can be marked To sort (never on
+    Gmail); null when not known: it cannot log in, failed lately or did not answer in time."""
 
 
 class Usage(BaseModel):
@@ -158,10 +165,17 @@ def _fields(body: AccountFields) -> dict[str, Json]:
 
 @accounts_router.get("")
 def accounts(ctx: Context, db: DbSession, user: CurrentUser) -> list[ListedAccount]:
-    """The user's accounts; whether each keeps keywords is asked of its server (cached while the
-    user's connections last), a few seconds at most."""
-    keywords = mail.account_keywords(ctx, user.id)
-    return service.listed_accounts(ctx, db, user.id, keywords)
+    """The user's accounts, without logging in to any of them: ``keywords`` is null, asked of the
+    servers by ``/accounts/keywords``."""
+    return service.listed_accounts(ctx, db, user.id)
+
+
+@accounts_router.get("/keywords")
+def accounts_keywords(ctx: Context, user: CurrentUser) -> list[AccountKeywords]:
+    """Whether each of the user's accounts keeps keywords, in the accounts' order: asked of its
+    server (kept while the user's connections last), a few seconds at most."""
+    found = mail.account_keywords(ctx, user.id)
+    return [AccountKeywords(account_id=account, keywords=kept) for account, kept in found.items()]
 
 
 @accounts_router.get("/autoconfig")
