@@ -15,6 +15,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StrictBool,
     StrictInt,
     ValidationError,
     field_validator,
@@ -46,6 +47,9 @@ class InstanceSettings(BaseModel):
     """Audit records older than this many days are purged."""
     session_ip: SessionIp
     """What of the client's IP address a session records at sign-in, and at most shows."""
+    external_sign_in_only: StrictBool
+    """Users sign in through the identity provider alone: ``mailroom.auth.password_sign_in``, which
+    says when it holds."""
 
 
 class InstanceSettingsChange(BaseModel):
@@ -55,6 +59,7 @@ class InstanceSettingsChange(BaseModel):
 
     audit_retention_days: RetentionDays | None = None
     session_ip: SessionIp | None = None
+    external_sign_in_only: StrictBool | None = None
 
     @field_validator("*")
     @classmethod
@@ -68,7 +73,11 @@ class InstanceSettingsChange(BaseModel):
 
 def default_settings() -> InstanceSettings:
     """The settings of an instance whose admins changed none."""
-    return InstanceSettings(audit_retention_days=_retention_days_from_env(), session_ip="partial")
+    return InstanceSettings(
+        audit_retention_days=_retention_days_from_env(),
+        session_ip="partial",
+        external_sign_in_only=False,
+    )
 
 
 def _retention_days_from_env() -> int:

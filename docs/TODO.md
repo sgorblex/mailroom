@@ -344,7 +344,7 @@ Older than milestone E, seen in its browser check; fix before batch 11.
 
 #### Added while building milestone F
 
-- [ ] **External sign-in only** — an admin's instance setting, offered when an OIDC provider is
+- [x] **External sign-in only** — an admin's instance setting, offered when an OIDC provider is
       configured: sign-in through the provider alone, passwords refused and hidden, with an
       environment override in case the provider breaks.
 - [ ] **Handled mark** — *To sort* becomes *Handled* ("dealt with, the filters may sort it"), kept

@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next'
 import { ApiRequestError, apiErrorMessage } from '@/api/http.ts'
 import { createUser, listUsers, removeUser, resetPassword, type ListedUser } from '@/api/users.ts'
 import { useAuth } from '@/auth/auth-context.ts'
+import { useSignInWays } from '@/auth/sso.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Input } from '@/components/ui/input.tsx'
 import { InstanceSettingsForm } from '@/users/instance-settings-form.tsx'
@@ -26,7 +27,20 @@ type ListState =
 export function UsersScreen(): ReactElement {
   const { t } = useTranslation()
   const auth = useAuth()
-  const isAdmin = auth.status === 'signed-in' && auth.user.is_admin
+  if (auth.status !== 'signed-in' || !auth.user.is_admin) {
+    return (
+      <main className="mx-auto w-full max-w-2xl flex-1 p-6">
+        <p role="alert">{t('users.adminsOnly')}</p>
+      </main>
+    )
+  }
+  return <UsersAndInstance self={auth.user.username} />
+}
+
+function UsersAndInstance({ self }: { self: string }): ReactElement {
+  const { t } = useTranslation()
+  const [settingsSaves, setSettingsSaves] = useState(0)
+  const { passwords } = useSignInWays(settingsSaves)
   const [list, setList] = useState<ListState>({ kind: 'loading' })
   const [attempt, setAttempt] = useState(0)
   const reload = useCallback(() => {
@@ -34,9 +48,6 @@ export function UsersScreen(): ReactElement {
   }, [])
 
   useEffect(() => {
-    if (!isAdmin) {
-      return
-    }
     const controller = new AbortController()
     listUsers(controller.signal).then(
       (users) => {
@@ -51,16 +62,8 @@ export function UsersScreen(): ReactElement {
     return () => {
       controller.abort()
     }
-  }, [attempt, isAdmin, t])
+  }, [attempt, t])
 
-  if (!isAdmin) {
-    return (
-      <main className="mx-auto w-full max-w-2xl flex-1 p-6">
-        <p role="alert">{t('users.adminsOnly')}</p>
-      </main>
-    )
-  }
-  const self = auth.user.username
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-6">
       <h1 className="text-2xl font-semibold tracking-tight">{t('users.title')}</h1>
@@ -80,12 +83,22 @@ export function UsersScreen(): ReactElement {
       {list.kind === 'loaded' && (
         <ul aria-label={t('users.title')} className="flex flex-col divide-y rounded-lg border">
           {list.users.map((user) => (
-            <UserRow key={user.id} user={user} isSelf={user.username === self} onChange={reload} />
+            <UserRow
+              key={user.id}
+              user={user}
+              isSelf={user.username === self}
+              passwords={passwords === true}
+              onChange={reload}
+            />
           ))}
         </ul>
       )}
-      <AddUserForm onAdded={reload} />
-      <InstanceSettingsForm />
+      <AddUserForm onAdded={reload} passwords={passwords !== false} />
+      <InstanceSettingsForm
+        onSaved={() => {
+          setSettingsSaves((count) => count + 1)
+        }}
+      />
     </main>
   )
 }
@@ -95,10 +108,13 @@ type RowMode = 'idle' | 'resetting' | 'confirming-removal'
 function UserRow({
   user,
   isSelf,
+  passwords,
   onChange,
 }: {
   user: ListedUser
   isSelf: boolean
+  /** Whether passwords work, so that resetting one does something. */
+  passwords: boolean
   onChange: () => void
 }): ReactElement {
   const { t } = useTranslation()
@@ -180,17 +196,19 @@ function UserRow({
         <span className="ml-auto flex gap-2">
           {mode === 'idle' && !isSelf && (
             <>
-              <Button
-                ref={resetTrigger}
-                variant="outline"
-                size="sm"
-                aria-label={t('users.resetPasswordOf', { username: user.username })}
-                onClick={() => {
-                  enter('resetting')
-                }}
-              >
-                {t('users.resetPassword')}
-              </Button>
+              {passwords && (
+                <Button
+                  ref={resetTrigger}
+                  variant="outline"
+                  size="sm"
+                  aria-label={t('users.resetPasswordOf', { username: user.username })}
+                  onClick={() => {
+                    enter('resetting')
+                  }}
+                >
+                  {t('users.resetPassword')}
+                </Button>
+              )}
               <Button
                 ref={removeTrigger}
                 variant="outline"
@@ -291,7 +309,13 @@ function UserRow({
   )
 }
 
-function AddUserForm({ onAdded }: { onAdded: () => void }): ReactElement {
+function AddUserForm({
+  onAdded,
+  passwords,
+}: {
+  onAdded: () => void
+  passwords: boolean
+}): ReactElement {
   const { t } = useTranslation()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -368,6 +392,7 @@ function AddUserForm({ onAdded }: { onAdded: () => void }): ReactElement {
       />
       <p id="add-user-password-hint" className="text-sm text-muted-foreground">
         {t('users.passwordHint', { count: MIN_PASSWORD_LENGTH })}
+        {!passwords && ` ${t('users.passwordsOffHint')}`}
       </p>
       <label className="flex items-center gap-2 text-sm">
         <input

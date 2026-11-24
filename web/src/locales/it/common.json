@@ -72,6 +72,7 @@
     "wrongCredentials": "Nome utente o password errati.",
     "tooManyAttempts": "Troppi tentativi falliti. Attendi un momento, poi riprova.",
     "unknownError": "Accesso non riuscito.",
+    "passwordsOff": "Qui le password sono disattivate: accedi tramite il tuo provider di identità.",
     "sessionEnded": "La sessione è terminata. Accedi di nuovo."
   },
   "sso": {
@@ -87,9 +88,11 @@
     "cancel": "Annulla",
     "subject": "Account {{subject}}",
     "loadFailed": "Impossibile caricare i tuoi accessi collegati.",
+    "onlySignIn": "Qui le password sono disattivate, quindi questo è il tuo unico modo di accedere.",
     "unlinkFailed": "Impossibile scollegarlo. Riprova.",
     "errors": {
       "notLinked": "Questo accesso non è collegato a un utente di Mailroom. Accedi con la password, poi collegalo dal tuo profilo.",
+      "notLinkedNoPassword": "Questo accesso non è collegato a un utente di Mailroom. Rivolgiti al tuo amministratore.",
       "stateInvalid": "L'accesso è scaduto o è stato avviato in un altro browser. Riprova.",
       "denied": "Il provider di identità non ti ha fatto entrare.",
       "unavailable": "Il provider di identità non è raggiungibile. Riprova più tardi.",
@@ -249,6 +252,7 @@
     "addButton": "Aggiungi utente",
     "makeAdmin": "Amministratore: può gestire gli utenti e l'istanza",
     "revokeAccess": "Revoca anche i token API e le app collegate",
+    "passwordsOffHint": "Qui le password sono disattivate: questa vale solo se vengono riattivate, e l'utente accede tramite il provider di identità se questo collega gli utenti in base al nome utente.",
     "passwordHint_one": "Almeno {{count}} carattere.",
     "passwordHint_other": "Almeno {{count}} caratteri."
   },
@@ -265,6 +269,12 @@
     "sessionIpNone": "Non registrato",
     "sessionIpPartial": "Parziale: l'ultima parte nascosta",
     "sessionIpFull": "Completo",
+    "externalOnly": "Solo accesso esterno",
+    "externalOnlyHint": "Gli utenti accedono solo tramite il provider di identità; le password smettono di funzionare e non si possono cambiare. Chi non ha un accesso collegato non può accedere, a meno che il provider non colleghi gli utenti in base al nome utente. Le sessioni aperte restano attive.",
+    "externalNotLinked": "Collega prima il tuo accesso dal tuo profilo, o non potresti più accedere.",
+    "externalNotConfigured": "Nessun provider di identità è configurato, quindi nessuno potrebbe accedere.",
+    "externalNoProvider": "Ora non ha effetto: nessun provider di identità è configurato, quindi le password funzionano.",
+    "externalOverridden": "Ora non ha effetto: l'ambiente del server mantiene attive le password (MAILROOM_PASSWORD_SIGN_IN=on).",
     "save": "Salva impostazioni",
     "saved": "Salvato.",
     "saveFailed": "Impossibile salvare le impostazioni dell'istanza."
@@ -663,6 +673,7 @@
     "cannotResetSelf": "Cambia la tua password dal tuo profilo.",
     "removerGone": "Il tuo utente è stato rimosso.",
     "userAccountsBusy": "I suoi account sono in salvataggio. Riprova.",
+    "passwordsOff": "Qui le password sono disattivate: gli utenti accedono tramite il provider di identità.",
     "wrongPassword": "La password attuale è errata."
   },
   "accountErrors": {

@@ -40,6 +40,7 @@ from mailroom.api.routes.sessions import sessions_router
 from mailroom.api.routes.sso import identities_router, sso_router
 from mailroom.api.routes.users import own_password_router, users_router
 from mailroom.auth.oidc import OidcProvider
+from mailroom.auth.password_sign_in import warn_about_environment
 from mailroom.auth.sso import MCP_START_PATH, Sso, sso_from_env, sso_start_limit
 from mailroom.auth.throttle import LoginThrottle, client_key
 from mailroom.auth.users import user_count
@@ -214,6 +215,7 @@ async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
     # Test login is the base's and the folder picker the filters': the pool is always there.
     application.state.mail_pool = MailPool()
     application.state.send_runner = SendRunner() if features.mail_layer else None
+    warn_about_environment()
     application.state.sso = sso_from_env(application.state.public_url)
     hub = _event_hub(application)
     application.state.mail_events = hub

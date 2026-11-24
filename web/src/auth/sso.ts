@@ -8,9 +8,24 @@ const ERROR_PARAM = 'sso_error'
 
 /** The SSO config, or `null` while it loads or when the API does not answer it (SSO off). */
 export function useSsoConfig(): SsoConfig | null {
+  return useSignInWays().sso
+}
+
+/**
+ * The SSO config as above, and whether passwords work: `null` while that loads, and yes when the
+ * API does not answer it, which refuses them itself. Asked again when `reloadKey` changes.
+ */
+export function useSignInWays(reloadKey?: unknown): { sso: SsoConfig | null; passwords: boolean | null } {
   // A failure only hides the SSO controls: nothing to say about it.
-  const { state } = useLoad(fetchSsoConfig, () => '')
-  return state.kind === 'loaded' ? state.value : null
+  const { state } = useLoad(fetchSsoConfig, () => '', reloadKey)
+  switch (state.kind) {
+    case 'loading':
+      return { sso: null, passwords: null }
+    case 'failed':
+      return { sso: null, passwords: true }
+    case 'loaded':
+      return { sso: state.value, passwords: state.value.password_sign_in }
+  }
 }
 
 /** This page's path and query without `sso_error`: where an SSO flow comes back to. */
@@ -34,11 +49,14 @@ export function useSsoError(): string | null {
   return code
 }
 
-/** Why an SSO flow came back without signing in or linking, in the reader's language. */
-export function ssoErrorMessage(t: TFunction, code: string): string {
+/**
+ * Why an SSO flow came back without signing in or linking, in the reader's language; `passwords`:
+ * whether the reader can sign in with one instead.
+ */
+export function ssoErrorMessage(t: TFunction, code: string, passwords = true): string {
   switch (code) {
     case 'not_linked':
-      return t('sso.errors.notLinked')
+      return t(passwords ? 'sso.errors.notLinked' : 'sso.errors.notLinkedNoPassword')
     case 'state_invalid':
     case 'browser_mismatch':
       return t('sso.errors.stateInvalid')

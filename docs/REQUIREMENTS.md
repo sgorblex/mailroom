@@ -115,7 +115,9 @@ menu) shows the health check through the Vite proxy. Engineering baseline:
 - **Single sign-on** (optional): "Sign in with …" an OpenID Connect provider, for users an admin
   already created; nobody signs up through it. A user links the provider's sign-in on their
   *Profile* page (and unlinks it there), or, when the instance says so, their first SSO sign-in
-  links by username. How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md)
+  links by username. An admin may make it the only way in (*External sign-in only*, an
+  [instance setting](GLOSSARY.md)): passwords are then refused and hidden, with an override in the
+  environment in case the provider breaks. How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md)
   — *Single sign-on*.
 - **Accounts** (IMAP + SMTP, identities, send mode, an optional name, unique among the user's accounts, and colour) come from **mailroom-core**'s model; the app
   keeps them in mailroom-core's own schema (`core`, its `AccountStore`) in the app's database, with secrets sealed as

@@ -5,10 +5,10 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
-from mailroom.api.deps import CurrentUser, DbSession, SessionCookie
+from mailroom.api.deps import CurrentUser, DbSession, SessionCookie, require_password_sign_in
 from mailroom.auth.appearance import Appearance, AppearanceChange, appearance_of
 from mailroom.auth.password import MAX_PASSWORD_LENGTH, password_matches
 from mailroom.auth.sessions import (
@@ -122,7 +122,7 @@ class MeResponse(BaseModel):
     """What the instance runs (``MAILROOM_FEATURES``), signed in or not."""
 
 
-@auth_router.post("/login")
+@auth_router.post("/login", dependencies=[Depends(require_password_sign_in)])
 def login(body: LoginRequest, request: Request, response: Response, db: DbSession) -> UserOut:
     throttle: LoginThrottle = request.app.state.login_throttle
     client = client_key(request)

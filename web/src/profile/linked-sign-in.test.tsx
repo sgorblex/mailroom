@@ -126,4 +126,15 @@ describe('LinkedSignIn', () => {
     })
     expect(screen.queryByRole('heading')).not.toBeInTheDocument()
   })
+
+  it('says why the only sign-in is not unlinked while passwords are off', async () => {
+    const fetchMock = stubApi({ enabled: true, name: 'Authentik' }, [identity(1, 'Authentik')])
+    renderSignedIn(<LinkedSignIn />, ALICE)
+    await userEvent.click(await screen.findByRole('button', { name: 'Unlink Authentik' }))
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(json(409, { detail: { code: 'only_sign_in', message: 'Refused.' } })),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Unlink' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('your only way to sign in')
+  })
 })

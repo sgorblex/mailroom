@@ -8,14 +8,24 @@ import { renderSignedIn } from '@/test/signed-in.tsx'
 import { UsersScreen } from './users-screen.tsx'
 
 const ROOT = { username: 'root', is_admin: true, time_zone: null, mark_read_subfolders: true, index_max_age_days: null, conversations: true, undo_send_seconds: 10 }
+const SETTINGS = {
+  audit_retention_days: 90,
+  session_ip: 'partial',
+  external_sign_in_only: false,
+  external_sign_in: 'available',
+  password_sign_in_forced: false,
+}
 const CREATED = '2026-10-17T10:00:00Z'
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status })
 }
 
-/** A fake API holding root (id 1) and alice (id 2); `refuseRemoval` answers alice's removal. */
-function stubApi(refuseRemoval?: { status: number; code: string }): ReturnType<typeof vi.fn> {
+/** A fake API holding root (id 1) and alice (id 2); `refuseRemoval` answers alice's removal.; `passwords`: whether they work. */
+function stubApi(
+  refuseRemoval?: { status: number; code: string },
+  passwords = true,
+): ReturnType<typeof vi.fn> {
   let users = [
     { id: 2, username: 'alice', is_admin: false, created_at: CREATED },
     { id: 1, username: 'root', is_admin: true, created_at: CREATED },
@@ -23,7 +33,10 @@ function stubApi(refuseRemoval?: { status: number; code: string }): ReturnType<t
   const fetchMock = vi.fn((path: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET'
     if (path === '/api/v1/admin/settings') {
-      return Promise.resolve(json(200, { audit_retention_days: 90, session_ip: 'partial' }))
+      return Promise.resolve(json(200, { ...SETTINGS, external_sign_in_only: !passwords }))
+    }
+    if (path === '/api/v1/auth/oidc/config') {
+      return Promise.resolve(json(200, { enabled: true, name: 'Authentik', password_sign_in: passwords }))
     }
     if (path === '/api/v1/users' && method === 'GET') {
       return Promise.resolve(json(200, users))
@@ -107,7 +120,7 @@ describe('UsersScreen', () => {
       vi.fn((path: string) =>
         Promise.resolve(
           path === '/api/v1/admin/settings'
-            ? json(200, { audit_retention_days: 90, session_ip: 'partial' })
+            ? json(200, SETTINGS)
             : json(503, { detail: 'Database unavailable' }),
         ),
       ),
@@ -188,5 +201,13 @@ describe('UsersScreen', () => {
       await screen.findByText('Their accounts are being saved. Try again.'),
     ).toBeInTheDocument()
     expect(screen.getByText('alice')).toBeInTheDocument()
+  })
+
+  it('offers no password reset while passwords are off, and says what a new one is for', async () => {
+    stubApi(undefined, false)
+    renderSignedIn(<UsersScreen />, ROOT)
+    expect(await screen.findByRole('button', { name: 'Remove alice' })).toBeInTheDocument()
+    expect(await screen.findByText(/this one works only if they come back/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Reset the password/ })).not.toBeInTheDocument()
   })
 })

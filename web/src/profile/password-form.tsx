@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import { changePassword } from '@/api/auth.ts'
 import { ApiRequestError } from '@/api/http.ts'
+import { useSignInWays } from '@/auth/sso.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Input } from '@/components/ui/input.tsx'
 import { userErrorMessage } from '@/users/messages.ts'
@@ -19,11 +20,13 @@ type Outcome =
 /**
  * The Profile's password change: the current password, then the new one twice. `onChanged` hears of
  * one, which signed the user's other sessions out, and whether it revoked their API tokens and apps.
+ * Hidden while passwords are off.
  */
 export function PasswordForm({ onChanged }: {
   onChanged: (revokedAccess: boolean) => void
-}): ReactElement {
+}): ReactElement | null {
   const { t } = useTranslation()
+  const { passwords } = useSignInWays()
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [repeated, setRepeated] = useState('')
@@ -59,6 +62,9 @@ export function PasswordForm({ onChanged }: {
     }
   }
 
+  if (passwords !== true) {
+    return null
+  }
   const failed = outcome.kind === 'failed'
   const invalid = (field: Field): boolean => failed && outcome.field === field
   const described = (field: Field): string | undefined =>

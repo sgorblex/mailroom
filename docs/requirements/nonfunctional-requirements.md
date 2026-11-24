@@ -474,14 +474,39 @@ bounded to one minor because the server relies on its handlers.
   is alone (an external issuer's tokens are not Mailroom's to revoke).
 - **Instance settings** (`GET`/`PUT /api/v1/admin/settings`, admins only, as above;
   `app.instance_setting`, revision `202611241000`): `audit_retention_days` (a JSON integer, 1-3650;
-  until set, `MAILROOM_AUDIT_RETENTION_DAYS`, 90 without it) and `session_ip` (`none`, `partial`,
-  the default, or `full`: what of the client's IP a session records at sign-in, and at most shows). A
-  `PUT` carries only the settings to change, so that a form left open undoes no other admin's change;
+  until set, `MAILROOM_AUDIT_RETENTION_DAYS`, 90 without it), `session_ip` (`none`, `partial`,
+  the default, or `full`: what of the client's IP a session records at sign-in, and at most shows) and
+  `external_sign_in_only` (a JSON boolean, false until set; *External sign-in only* below). A `PUT`
+  carries only the settings to change, so that a form left open undoes no other admin's change;
   anything else (null included) is a 422. Only the settings it changes get a row, with who changed it
   and when (null once that admin is removed), so the others keep following their defaults; a stored
   value that is no longer an option reads as its default. Read through a 5-second cache in each
   process, which a change there drops (`mailroom.config.instance_settings`). The web's form is the
   *Users* page's *Instance* section.
+- **External sign-in only** (`mailroom.auth.password_sign_in`): while `external_sign_in_only` is
+  on, `POST auth/login`, `POST auth/password` and an admin's `POST users/{id}/password` answer 403
+  `password_sign_in_off` (logged as `password_refused`; signing in is refused before the throttle and
+  before the password is looked at, the other two once the session, and admin, is checked), and the
+  web shows only the provider's button on the sign-in screen and hides both password forms. A user
+  without a linked sign-in then cannot sign in, unless `MAILROOM_OIDC_LINK_CLAIM` links them. Sessions
+  stay, and so do API tokens and connected apps; users are still added (the password they get waits),
+  and `mise run create-user` works. Read from the database on each request.
+  - **Turning it on** is a 409 `external_sign_in_not_configured` without an SSO provider, and
+    `external_sign_in_not_linked` for an admin with no sign-in linked from it (logged as
+    `external_sign_in_only_refused`); turning it off never is. A change is logged as
+    `external_sign_in_only_changed` with `outcome` `on` or `off`. The settings' answer adds
+    `external_sign_in` (`available`, `not_configured` or `not_linked`, for the admin who asks) and
+    `password_sign_in_forced`.
+  - **Against lockout:** `MAILROOM_PASSWORD_SIGN_IN=on` overrides the setting (startup warns that it
+    is set, and that any other value is ignored), and without a provider the setting has no effect.
+    While passwords are off, unlinking the last sign-in of the provider is a 409 `only_sign_in`.
+  - **Cutting a user off:** disabling them at the provider only stops new sign-ins through it. Their
+    sessions live to their end (`MAILROOM_SESSION_TTL_DAYS`), their API tokens until they expire (some
+    never do) and their connected apps for as long as they keep refreshing. The user ends theirs on
+    *Profile*; an admin has only the password reset, refused while the setting is on. So: turn the
+    setting off, reset the password with `revoke_access`, and turn it on again (passwords work for
+    everyone in between), or remove the user, with all their data. `MAILROOM_PASSWORD_SIGN_IN=on`
+    and a restart allow the reset too.
 - **Own password** (`POST /api/v1/auth/password`): needs the current one, checked through the
   login throttle (the same per-client counter as sign-in) so a borrowed session cannot guess it;
   keeps this session and ends the others. `revoke_access` as in a reset, unticked in the web.
@@ -629,7 +654,8 @@ Code: `mailroom.auth.api_tokens`, `mailroom.api.deps`, `mailroom.api.token_acces
 - **Failures** come back to `return_to` with `sso_error=<code>` (`not_linked`, `state_invalid`,
   `browser_mismatch`, `denied`, `unavailable`, `failed`, `identity_taken`, `signed_out`,
   `not_configured`, `busy`), which the web app words.
-- **Routes:** `GET /api/v1/auth/oidc/config` (`{enabled, name}`), `/start`, `/callback`;
+- **Routes:** `GET /api/v1/auth/oidc/config` (`{enabled, name, password_sign_in}`, the
+  last whether passwords work: *Sign-in*, *External sign-in only*), `/start`, `/callback`;
   `GET /api/v1/me/identities` and `DELETE /api/v1/me/identities/{id}` behind the session.
 
 ### Mail accounts

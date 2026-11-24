@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { apiErrorMessage } from '@/api/http.ts'
+import { ApiRequestError, apiErrorMessage } from '@/api/http.ts'
 import { listIdentities, ssoStartUrl, unlinkIdentity, type Identity } from '@/api/sso.ts'
 import { currentReturnTo, ssoErrorMessage, useSsoConfig, useSsoError } from '@/auth/sso.ts'
 import { ConfirmRemoval } from '@/components/confirm-removal.tsx'
@@ -37,7 +37,11 @@ export function LinkedSignIn(): ReactElement | null {
       await unlinkIdentity(identity.id)
       setReloadKey((value) => value + 1)
     } catch (error) {
-      setFailure(apiErrorMessage(error, t('sso.unlinkFailed')))
+      setFailure(
+        error instanceof ApiRequestError && error.code === 'only_sign_in'
+          ? t('sso.onlySignIn')
+          : apiErrorMessage(error, t('sso.unlinkFailed')),
+      )
     } finally {
       setPending(null)
       setConfirming(null)
