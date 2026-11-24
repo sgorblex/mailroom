@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useSearch } from '@tanstack/react-router'
+import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
 
 import { AccountsContext } from '@/accounts/accounts-context.ts'
@@ -33,7 +33,9 @@ import { useReadingPane } from './reading-pane.ts'
 import { SearchForm } from './search-form.tsx'
 import { BulkHost } from './select-matching.tsx'
 import { NewSenderHost } from './new-sender-dialog.tsx'
+import { ScheduledList } from './scheduled-sends.tsx'
 import { ShortcutSheet, ShortcutSheetButton } from './shortcut-sheet.tsx'
+import { SnoozedList } from './snoozed-list.tsx'
 import { ComposeAnnouncer } from './send-status.tsx'
 import { HeldToasts } from './held-toasts.tsx'
 import { useMailShortcuts, usePaletteShortcut } from './shortcuts.ts'
@@ -65,6 +67,7 @@ const LIST_PANE_ID = 'mail-list'
 export function MailScreen(): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const search = useSearch({ from: '/mail' })
+  const navigate = useNavigate()
   const accounts = useQuery({ queryKey: ACCOUNTS_KEY, queryFn: ({ signal }) => listAccounts(signal), ...READ_ON_MOUNT })
   const [sheet, setSheet] = useState(false)
   const [palette, setPalette] = useState(false)
@@ -130,6 +133,9 @@ export function MailScreen(): ReactElement {
   const openSheet = (): void => {
     setSheet(true)
   }
+  const closeList = (): void => {
+    void navigate({ to: '/mail', search: (previous) => ({ ...previous, list: undefined }), replace: true })
+  }
   return (
     <AccountsContext value={accounts.data}>
       <ToastHost>
@@ -170,6 +176,8 @@ export function MailScreen(): ReactElement {
                     }}
                   />
                 )}
+                {search.list === 'snoozed' && <SnoozedList onClose={closeList} />}
+                {search.list === 'scheduled' && <ScheduledList onClose={closeList} />}
                 {palette && (
                   <CommandPalette
                     accounts={accounts.data}

@@ -36,6 +36,12 @@ describe('the mail URL', () => {
     expect(validateMailSearch({ only: [] })).toEqual({})
   })
 
+  it('keeps the Snoozed or Scheduled list, and no other', () => {
+    expect(validateMailSearch({ list: 'snoozed' })).toEqual({ list: 'snoozed' })
+    expect(validateMailSearch({ list: 'scheduled' })).toEqual({ list: 'scheduled' })
+    expect(validateMailSearch({ list: 'drafts' })).toEqual({})
+  })
+
   it('keeps the conversation an open message was opened in, with the message only', () => {
     expect(validateMailSearch({ message: 'b', thread: 'a' })).toEqual({ message: 'b', thread: 'a' })
     expect(validateMailSearch({ thread: 'a' })).toEqual({})

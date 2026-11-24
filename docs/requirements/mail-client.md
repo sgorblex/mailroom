@@ -1982,6 +1982,38 @@ but one*). Every attempt, a refused one included, is an audit record `unsubscrib
 message's folder, UID, `Message-ID`, sender and `list_id`, and once posted the URL's host and the
 status; the URL itself, and its query, are kept nowhere.
 
+## Home
+
+The web opens on **Home** (`/`), a summary of the user's own mail and filters, unless their
+appearance's `home` (the Profile's *Open on*) names Mail, Filters, Accounts or Activity: then the
+app opening on `/` (a tab's first page) goes there instead, while the instance offers that page;
+Home in the nav still opens the summary. The API's status, the old landing page, is at `/health`,
+in the user menu. Cards, each left out where the instance does not run its feature:
+
+- **Unread**: All inboxes (the sum) and each account's INBOX, linking to the view and to the
+  folder. A count is the index's: an INBOX's own row, or on Gmail All Mail's unread rows carrying
+  INBOX's label; a dash while the index holds no readable copy (the account is not indexed yet)
+  or holds it only under an age limit, whose rows leave out the older unread mail.
+- **Waiting on you**: Starred and To sort (the marks in the indexed folders of every account,
+  linking to a search of every folder), Snoozed coming back today (before midnight in the user's
+  time zone, overdue ones included; with how many are snoozed in all) and Scheduled (held sends,
+  the next one's time, and those that failed in red). Snoozed and Scheduled open their lists over
+  the mail screen (`/mail?list=snoozed`, `list=scheduled`).
+- **Filters at a glance**: each rule set (never the hidden muting ones), by name, with its recent
+  real runs (those finished in the last 7 days among the runs kept, the newest 100 per account, so
+  a rule set run often shows fewer than the week's) and how many failed (in red), the messages its
+  filters acted on in that week (the 30-day match counts, by UTC day), its last run, and a rule set the app
+  turned off after an error; links to the rule set, Filters and Activity.
+- **Tiles** for Mail, Filters, Accounts, Activity and the Profile, as the instance offers them.
+
+`GET /api/v1/home` answers it from the app's tables only (the index, snoozes, scheduled sends,
+runs and match counts), never a mail server, so it answers at once on any instance: `mail` (null
+without the mail client: `inboxes` `[{account_id, display_name, colour, unread}]`, `unread`,
+`starred`, `to_sort`, `snoozed`, `snoozed_today`, `scheduled`, `next_scheduled_at`,
+`scheduled_failed`) and `filters` (null without filters: `rule_sets` `[{id, name, account_id,
+enabled, disabled_reason, runs, failed_runs, last_run_at, last_run_failed, acted_on}]`). Only the
+signed-in user's own.
+
 ## Index
 
 The mail index keeps each indexed folder's message metadata in the app's database, never a body

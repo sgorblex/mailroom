@@ -1,9 +1,9 @@
-import { Activity, AtSign, House, ListFilter, Mail, UserRound, Users, type LucideIcon } from 'lucide-react'
+import { Activity, AtSign, HeartPulse, House, ListFilter, Mail, UserRound, Users, type LucideIcon } from 'lucide-react'
 
 import type { Feature } from '@/api/auth.ts'
 import { WRITES_MAIL } from '@/auth/feature-route.tsx'
 
-export type NavPath = '/' | '/mail' | '/accounts' | '/filters' | '/activity' | '/users' | '/profile'
+export type NavPath = '/' | '/mail' | '/accounts' | '/filters' | '/activity' | '/users' | '/profile' | '/health'
 
 export interface NavPage {
   to: NavPath
@@ -27,6 +27,7 @@ export function navPages(features: ReadonlySet<Feature>, isAdmin: boolean): NavP
     WRITES_MAIL.some((feature) => features.has(feature)) && { to: '/activity', label: 'nav.activity', icon: Activity, place: 'nav' },
     isAdmin && { to: '/users', label: 'nav.users', icon: Users, place: 'nav' },
     { to: '/profile', label: 'nav.profile', icon: UserRound, place: 'user' },
+    { to: '/health', label: 'health.title', icon: HeartPulse, place: 'user' },
   ]
   return pages.filter((page) => page !== false)
 }

@@ -8,6 +8,54 @@
     "unknownError": "unknown error",
     "retry": "Check again"
   },
+  "home": {
+    "title": "Home",
+    "loading": "Loading your summary…",
+    "loadFailed": "Could not load your summary.",
+    "notIndexed": "Not counted yet: the inbox is not indexed",
+    "pages": "Pages",
+    "unread": {
+      "title": "Unread",
+      "allInboxes": "All inboxes",
+      "noAccounts": "No mail accounts yet.",
+      "addAccount": "Add one"
+    },
+    "waiting": {
+      "title": "Waiting on you",
+      "starred": "Starred",
+      "toSort": "To sort",
+      "snoozedToday": "Snoozed, back today",
+      "snoozedAll_one": "{{count}} snoozed in all",
+      "snoozedAll_other": "{{count}} snoozed in all",
+      "scheduled": "Scheduled",
+      "next": "Next: {{when}}",
+      "scheduledFailed_one": "{{count}} failed",
+      "scheduledFailed_other": "{{count}} failed"
+    },
+    "filters": {
+      "title": "Filters at a glance",
+      "none": "No rule sets yet.",
+      "open": "Open Filters",
+      "activity": "See Activity",
+      "off": "Off",
+      "runs_one": "{{count}} recent run",
+      "runs_other": "{{count}} recent runs",
+      "failed_one": "{{count}} failed",
+      "failed_other": "{{count}} failed",
+      "actedOn_one": "{{count}} message acted on",
+      "actedOn_other": "{{count}} messages acted on",
+      "turnedOff": "Turned off after an error",
+      "last": "Last run {{when}}",
+      "lastFailed": "Last run failed {{when}}"
+    },
+    "tiles": {
+      "mail": "Read and write your mail",
+      "filters": "Rule sets that sort your mail",
+      "accounts": "Your mail accounts",
+      "activity": "What was done to your mail",
+      "profile": "Your settings"
+    }
+  },
   "auth": {
     "checking": "Checking your session…",
     "unreachable": "Mailroom could not reach its API.",
@@ -265,6 +313,14 @@
   "appearance": {
     "title": "Appearance",
     "intro": "How Mailroom looks, the same on every device you sign in on. A choice shows at once.",
+    "home": "Open on",
+    "homes": {
+      "dashboard": "Home (a summary of your mail and filters)",
+      "mail": "Mail",
+      "filters": "Filters",
+      "accounts": "Accounts",
+      "activity": "Activity"
+    },
     "theme": "Theme",
     "themes": {
       "system": "As the device",

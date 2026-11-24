@@ -1,18 +1,19 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { ACCENTS, DENSITIES, READING_PANES, SWIPE_ACTIONS, TEXT_SIZES, THEMES, type Appearance } from '@/api/auth.ts'
+import { ACCENTS, DENSITIES, HOMES, READING_PANES, SWIPE_ACTIONS, TEXT_SIZES, THEMES, type Appearance } from '@/api/auth.ts'
 import { apiErrorMessage } from '@/api/http.ts'
-import { useAppearance } from '@/auth/auth-context.ts'
+import { useAppearance, useAuth } from '@/auth/auth-context.ts'
+import { navPages } from '@/auth/nav-pages.ts'
 import { lookOf, setLook, type Look } from '@/theme/look.ts'
 
 type Outcome = { kind: 'idle' } | { kind: 'saved' } | { kind: 'failed'; message: string }
 
 /**
- * What this section chooses: the look of the whole page, the density of the mail lists, where a
- * message opens and what swiping a row does.
+ * What this section chooses: the page the app opens on, the look of the whole page, the density of
+ * the mail lists, where a message opens and what swiping a row does.
  */
-type Shown = Look & Pick<Appearance, 'density' | 'reading_pane' | 'swipe_left' | 'swipe_right'>
+type Shown = Look & Pick<Appearance, 'home' | 'density' | 'reading_pane' | 'swipe_left' | 'swipe_right'>
 
 const SWIPES = [
   ['swipe_left', 'appearance.swipeLeft'],
@@ -21,6 +22,7 @@ const SWIPES = [
 
 const shownOf = (appearance: Appearance): Shown => ({
   ...lookOf(appearance),
+  home: appearance.home,
   density: appearance.density,
   reading_pane: appearance.reading_pane,
   swipe_left: appearance.swipe_left,
@@ -28,9 +30,10 @@ const shownOf = (appearance: Appearance): Shown => ({
 })
 
 /**
- * The user's theme, accent, text size, density, reading pane and swipe actions, the same on every
- * device. A choice shows at once and is saved; when the save fails the saved look comes back and
- * the section says so.
+ * The user's home page, theme, accent, text size, density, reading pane and swipe actions, the
+ * same on every device. A choice shows at once and is saved; a home page the instance does not
+ * offer is not one of the options (the dashboard opens instead); when the save fails the saved
+ * look comes back and the section says so.
  */
 export function AppearanceSettings(): ReactElement {
   const { t } = useTranslation()
@@ -42,6 +45,8 @@ export function AppearanceSettings(): ReactElement {
   const [pending, setPending] = useState(0)
   const newest = useRef(0)
   const latest = useRef(appearance)
+  const offered = new Set<string>(navPages(useAuth().features, false).map((page) => page.to))
+  const homes = HOMES.filter((home) => home === 'dashboard' || offered.has(`/${home}`) || home === shown.home)
   if (pending === 0 && saved !== appearance) {
     // The saved look changed (a save answered, or the session was read again): show it. Not while a
     // choice is still being saved, which is what the user wants to see meanwhile.
@@ -83,6 +88,26 @@ export function AppearanceSettings(): ReactElement {
       <p id="appearance-intro" className="text-sm text-muted-foreground">
         {t('appearance.intro')}
       </p>
+      <label className="flex flex-col gap-1.5 text-sm">
+        <span className="font-medium">{t('appearance.home')}</span>
+        <select
+          name="appearance-home"
+          className="h-9 min-w-0 rounded-md border bg-background px-2 text-sm text-foreground"
+          value={shown.home}
+          onChange={(event) => {
+            const choice = HOMES.find((home) => home === event.target.value)
+            if (choice !== undefined) {
+              void choose({ home: choice })
+            }
+          }}
+        >
+          {homes.map((home) => (
+            <option key={home} value={home}>
+              {t(`appearance.homes.${home}`)}
+            </option>
+          ))}
+        </select>
+      </label>
       <fieldset className="flex flex-col gap-1.5" aria-describedby="appearance-intro">
         <legend className="mb-1.5 text-sm font-medium">{t('appearance.theme')}</legend>
         {THEMES.map((theme) => (

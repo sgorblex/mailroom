@@ -8,6 +8,54 @@
     "unknownError": "errore sconosciuto",
     "retry": "Controlla di nuovo"
   },
+  "home": {
+    "title": "Home",
+    "loading": "Caricamento del riepilogo…",
+    "loadFailed": "Impossibile caricare il riepilogo.",
+    "notIndexed": "Non ancora contati: la posta in arrivo non è indicizzata",
+    "pages": "Pagine",
+    "unread": {
+      "title": "Da leggere",
+      "allInboxes": "Tutta la posta in arrivo",
+      "noAccounts": "Nessun account di posta.",
+      "addAccount": "Aggiungine uno"
+    },
+    "waiting": {
+      "title": "Ti aspettano",
+      "starred": "Speciali",
+      "toSort": "Da smistare",
+      "snoozedToday": "Posticipati, tornano oggi",
+      "snoozedAll_one": "{{count}} posticipato in tutto",
+      "snoozedAll_other": "{{count}} posticipati in tutto",
+      "scheduled": "Programmati",
+      "next": "Prossimo: {{when}}",
+      "scheduledFailed_one": "{{count}} non riuscito",
+      "scheduledFailed_other": "{{count}} non riusciti"
+    },
+    "filters": {
+      "title": "I filtri in breve",
+      "none": "Ancora nessuna regola.",
+      "open": "Apri Filtri",
+      "activity": "Vedi Attività",
+      "off": "Spento",
+      "runs_one": "{{count}} esecuzione recente",
+      "runs_other": "{{count}} esecuzioni recenti",
+      "failed_one": "{{count}} non riuscita",
+      "failed_other": "{{count}} non riuscite",
+      "actedOn_one": "{{count}} messaggio trattato",
+      "actedOn_other": "{{count}} messaggi trattati",
+      "turnedOff": "Spento dopo un errore",
+      "last": "Ultima esecuzione {{when}}",
+      "lastFailed": "Ultima esecuzione non riuscita {{when}}"
+    },
+    "tiles": {
+      "mail": "Leggi e scrivi la tua posta",
+      "filters": "Regole che smistano la tua posta",
+      "accounts": "I tuoi account di posta",
+      "activity": "Cosa è stato fatto alla tua posta",
+      "profile": "Le tue impostazioni"
+    }
+  },
   "auth": {
     "checking": "Verifica della sessione…",
     "unreachable": "Mailroom non riesce a raggiungere la sua API.",
@@ -265,6 +313,14 @@
   "appearance": {
     "title": "Aspetto",
     "intro": "Come appare Mailroom, uguale su ogni dispositivo da cui accedi. Una scelta si vede subito.",
+    "home": "Apri su",
+    "homes": {
+      "dashboard": "Home (riepilogo di posta e filtri)",
+      "mail": "Posta",
+      "filters": "Filtri",
+      "accounts": "Account",
+      "activity": "Attività"
+    },
     "theme": "Tema",
     "themes": {
       "system": "Come il dispositivo",

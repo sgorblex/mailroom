@@ -5,6 +5,7 @@ import { featureRoute, WRITES_MAIL } from '@/auth/feature-route.tsx'
 import { RootLayout } from '@/auth/root-layout.tsx'
 import { validateFilterDraftSearch } from '@/filters/draft-search.ts'
 import { HealthScreen } from '@/health/health-screen.tsx'
+import { HomeRoute } from '@/home/home-screen.tsx'
 import { validateMailSearch } from '@/mail/route-search.ts'
 import { ConnectRoute } from '@/oauth/connect-screen.tsx'
 import { ProfileScreen } from '@/profile/profile-screen.tsx'
@@ -12,9 +13,17 @@ import { UsersScreen } from '@/users/users-screen.tsx'
 
 const rootRoute = createRootRoute({ component: RootLayout })
 
+// Home: the dashboard, or the page the user chose to open on (their appearance's `home`).
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
+  component: HomeRoute,
+})
+
+// Whether the web reaches the API, linked from the user menu.
+const healthRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/health',
   component: HealthScreen,
 })
 
@@ -96,6 +105,7 @@ const connectRoute = createRoute({
 
 export const routeTree = rootRoute.addChildren([
   indexRoute,
+  healthRoute,
   accountsRoute,
   mailRoute,
   filtersRoute,
