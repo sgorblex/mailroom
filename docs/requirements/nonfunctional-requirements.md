@@ -46,6 +46,13 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   CSP (`style-src 'unsafe-inline'`) and sandbox: no script in the frame or the app touches the
   message, and nothing of it reaches the app shell, which only picks the URL from its theme and
   the reader's toggle.
+- **HTML views kept:** each API process keeps the sanitised HTML views it made (its inlined
+  `cid:` images included) in memory for 60 seconds, 32 MiB in all, the oldest dropped first
+  (`mailroom.mail.service.read.HtmlViews`), so that opening a message reads and sanitises its HTML
+  once: the read's remote check makes the view, and the frame's check and document, light or
+  dark, take it. Keyed by the user and their accounts' revision, the message's account, folder,
+  UIDVALIDITY and UID (whose content never changes) and whether remote images are shown: never
+  answered to another user, nothing written to disk, gone with the process.
 - The one HTML body shown outside that iframe is the **printable page** (`GET
   /api/v1/mail/messages/{ref}/print`), a tab of its own for the browser's print: the same
   sanitised HTML without remote images, boxed in so it paints nothing outside its own box and

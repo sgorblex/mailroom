@@ -737,6 +737,7 @@ def test_html_view_inlines_cid_images_and_holds_remote_ones_back(imap_server, ha
     assert [p.part for p in view.inline_parts] == ["2", "3"]
     checked = read_message(mail, ref, remote_check=True)
     assert (checked.remote_images, checked.loadable_remote_images) == (1, 1)
+    assert checked.html_view is None
     assert read_attachment(mail, ref, "2", max_bytes=1000).data == PNG
 
     blocked = html_view(mail, ref, remote=False, max_inline_bytes=10_000)
@@ -745,6 +746,10 @@ def test_html_view_inlines_cid_images_and_holds_remote_ones_back(imap_server, ha
     assert "script" not in blocked.html
     assert "onclick" not in blocked.html
     assert blocked.remote_images == 1
+    # The remote check with an inline budget keeps the very view html_view makes.
+    kept = read_message(mail, ref, remote_check=True, inline_bytes=10_000)
+    assert kept.html_view == blocked
+    assert (kept.remote_images, kept.loadable_remote_images) == (1, 1)
     shown = html_view(mail, ref, remote=True, max_inline_bytes=0)
     assert "https://t.example/pixel.gif" in shown.html
     assert "data:image" not in shown.html
@@ -755,6 +760,7 @@ def test_html_view_inlines_cid_images_and_holds_remote_ones_back(imap_server, ha
     seed(imap_server, plain, "INBOX", mime("text only", text="hello"))
     other = harness((3, plain))
     plain_ref = list_messages(other, 3).messages[0].ref
+    assert read_message(other, plain_ref, remote_check=True, inline_bytes=100).html_view is None
     with pytest.raises(MailError) as raised:
         html_view(other, plain_ref, remote=False, max_inline_bytes=0)
     assert raised.value.code == "not_found"

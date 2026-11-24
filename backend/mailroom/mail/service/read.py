@@ -824,12 +824,16 @@ def read_message(
     """One message, its text body windowed by the user's ``body_chars`` from ``offset``, checked
     against its account's identities and authentication server; ``raw_headers``,
     ``remote_check`` and ``marker`` (by default none where quotes were left out) as for
-    mailroom-core's ``read_message``."""
+    mailroom-core's ``read_message``. The remote check's pass is ``message_html``'s without
+    ``remote``, kept in ``ctx.html_views`` for the HTML view that follows the read, unless a
+    fresh one is there already."""
     accounts = _accounts(ctx, user_id)
     message = _message_ref(ctx, user_id, accounts, ref)
     body_chars = accounts.limits.body_chars
     account = accounts.config(message.account)
-    return _call(
+    key = HtmlKey.of(user_id, accounts.revision, message, remote=False)
+    keep = remote_check and ctx.html_views.get(key) is None
+    view = _call(
         ctx,
         user_id,
         accounts,
@@ -844,10 +848,14 @@ def read_message(
             body_chars=body_chars,
             raw_headers=raw_headers,
             remote_check=remote_check,
+            inline_bytes=INLINE_IMAGE_BYTES if keep else None,
             marker=marker,
             account=account,
         ),
     )
+    if view.html_view is not None:
+        ctx.html_views.put(key, view.html_view)
+    return view
 
 
 def thread(ctx: AppContext, user_id: int, ref: str, *, limit: int = 30, via: Via = "web") -> Page:
@@ -1138,15 +1146,91 @@ def printable(ctx: AppContext, user_id: int, ref: str, *, via: Via = "web") -> P
     return Printable(view=view, html=html, time_zone=ctx.time_zone(user_id))
 
 
+HTML_VIEW_SECONDS: Final = 60.0
+"""How long a sanitised HTML view is answered from ``HtmlViews``."""
+HTML_VIEW_CHARS: Final = 32 * 1024 * 1024
+"""The sanitised HTML ``HtmlViews`` holds in all, in characters (its inlined images
+included); the oldest views make room for a new one, and a larger one is not kept."""
+
+
+@dataclass(frozen=True, slots=True)
+class HtmlKey:
+    """What a sanitised HTML view depends on: whose it is (the user, and the revision of their
+    accounts, so that a changed account is read afresh), the message exactly (its ref's account,
+    folder, UIDVALIDITY and UID, whose content never changes) and whether remote images are
+    kept."""
+
+    user_id: int
+    revision: int
+    account: int
+    folder: str
+    uid_validity: int
+    uid: int
+    remote: bool
+
+    @classmethod
+    def of(cls, user_id: int, revision: int, message: MessageRef, *, remote: bool) -> HtmlKey:
+        return cls(
+            user_id,
+            revision,
+            message.account,
+            message.folder,
+            message.uid_validity,
+            message.uid,
+            remote,
+        )
+
+
+class HtmlViews:
+    """Messages' sanitised HTML views as last made, each for ``HTML_VIEW_SECONDS`` and
+    ``HTML_VIEW_CHARS`` in all, in this process's memory alone: opening a message reads it, then
+    its frame (and a switch to the dark document) asks for the same view, which is not read and
+    sanitised again. Keyed per user (``HtmlKey``): never answered to another."""
+
+    def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._kept: dict[HtmlKey, tuple[float, SafeHtml]] = {}
+
+    def get(self, key: HtmlKey) -> SafeHtml | None:
+        """The kept view; None when there is none still fresh."""
+        with self._lock:
+            kept = self._kept.get(key)
+            if kept is None or kept[0] <= self._clock():
+                return None
+            return kept[1]
+
+    def put(self, key: HtmlKey, view: SafeHtml) -> None:
+        size = len(view.html)
+        if size > HTML_VIEW_CHARS:
+            return
+        now = self._clock()
+        with self._lock:
+            kept = {k: v for k, v in self._kept.items() if v[0] > now and k != key}
+            # Oldest first: a dict keeps insertion order.
+            total = sum(len(v[1].html) for v in kept.values())
+            for old in list(kept):
+                if total + size <= HTML_VIEW_CHARS:
+                    break
+                total -= len(kept.pop(old)[1].html)
+            kept[key] = (now + HTML_VIEW_SECONDS, view)
+            self._kept = kept
+
+
 def message_html(
     ctx: AppContext, user_id: int, ref: str, *, remote: bool = False, via: Via = "web"
 ) -> SafeHtml:
     """The message's HTML body sanitised (mailroom-core's ``safe_html``), its ``cid:`` images
     inlined up to ``INLINE_IMAGE_BYTES``, remote images kept only with ``remote``;
-    ``not_found`` without an HTML body."""
+    ``not_found`` without an HTML body. From ``ctx.html_views`` while it is fresh there, else
+    read and kept there."""
     accounts = _accounts(ctx, user_id)
     message = _message_ref(ctx, user_id, accounts, ref)
-    return _call(
+    key = HtmlKey.of(user_id, accounts.revision, message, remote=remote)
+    kept = ctx.html_views.get(key)
+    if kept is not None:
+        return kept
+    found = _call(
         ctx,
         user_id,
         accounts,
@@ -1157,3 +1241,5 @@ def message_html(
             connections, message, remote=remote, max_inline_bytes=INLINE_IMAGE_BYTES
         ),
     )
+    ctx.html_views.put(key, found)
+    return found

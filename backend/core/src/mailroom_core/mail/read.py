@@ -116,6 +116,9 @@ class MessageView:
     unless the read asked for `remote_check`."""
     loadable_remote_images: int | None
     """Of those, the ones `html_view(remote=True)` shows (`SafeHtml.loadable_remote_images`)."""
+    html_view: SafeHtml | None
+    """The HTML body as `html_view(remote=False)` makes it, when the read asked for
+    `remote_check` with `inline_bytes`; else None, as without HTML."""
     attachments: tuple[PartInfo, ...]
     """Sizes are decoded sizes, estimated (`MimePart.decoded_size`)."""
     inline_parts: tuple[PartInfo, ...]
@@ -162,6 +165,7 @@ def read_message(
     body_chars: int = 6000,
     raw_headers: bool = False,
     remote_check: bool = False,
+    inline_bytes: int | None = None,
     marker: Marker | None = default_marker,
     account: AccountConfig | None = None,
 ) -> MessageView:
@@ -169,7 +173,10 @@ def read_message(
     its body from `offset`, quoted history and signatures collapsed unless `include_quoted`
     (`marker` as for `render_body`). `remote_check` counts the remote images the HTML asks for,
     which costs a sanitising pass over it and, when the HTML is not the body shown, its
-    download: off by default, as the TypeScript's read does neither. `account`, the message's
+    download: off by default, as the TypeScript's read does neither. With `inline_bytes` too,
+    that pass is `html_view(remote=False, max_inline_bytes=inline_bytes)`'s, its `cid:` images
+    downloaded, and the view keeps it (`MessageView.html_view`), for a host that shows the HTML
+    next without reading it again. `account`, the message's
     account, gives the identity it was sent to and the authentication server whose verdict
     counts; without it, neither. Rendering costs about a second per megabyte of HTML: call it
     from a worker thread, as every call here."""
@@ -205,12 +212,18 @@ def read_message(
             )
         remote_images: int | None = None
         loadable_remote_images: int | None = None
+        shown: SafeHtml | None = None
         if remote_check:
             if html is None:
                 html = _html(client, message.uid, structure)
             remote_images = loadable_remote_images = 0
             if html is not None:
-                checked = safe_html(html, inline_images={}, remote=False, max_inline_bytes=0)
+                if inline_bytes is None:
+                    checked = safe_html(html, inline_images={}, remote=False, max_inline_bytes=0)
+                else:
+                    checked = shown = _safe_view(
+                        client, message.uid, structure, html, remote=False, budget=inline_bytes
+                    )
                 remote_images = checked.remote_images
                 loadable_remote_images = checked.loadable_remote_images
         header = data.get(b"BODY[HEADER]")
@@ -255,6 +268,7 @@ def read_message(
             has_html=structure.html is not None,
             remote_images=remote_images,
             loadable_remote_images=loadable_remote_images,
+            html_view=shown,
             attachments=structure.attachments,
             inline_parts=structure.inline_parts,
             calendar=structure.calendar,
@@ -406,28 +420,36 @@ def html_view(
         html = _html(client, message.uid, structure)
         if html is None:
             raise MailError("not_found", "This message has no HTML body.")
-        wanted = {
-            unquote(match.group(1)).strip().removeprefix("<").removesuffix(">")
-            for match in _CID.finditer(html)
-        }
-        images: dict[str, tuple[str, bytes]] = {}
-        budget = max_inline_bytes
-        for leaf in structure.parts.values():
-            if leaf.content_id is None or leaf.content_id not in wanted:
-                continue
-            if not _maybe_raster(leaf.type) or leaf.content_id in images:
-                continue
-            # Nothing downloaded that the budget cannot hold (the estimate errs at most 1%).
-            if leaf.decoded_size > budget + budget // 50 + 4:
-                continue
-            data = part_content(client, message.uid, leaf, budget + 1)
-            # Typed by its bytes: mailers often declare inline images octet-stream.
-            kind = content_type(data, leaf.type, leaf.name)
-            if len(data) <= budget and kind in RASTER_TYPES:
-                images[leaf.content_id] = (kind, data)
-                budget -= len(data)
-        return safe_html(
-            html, inline_images=images, remote=remote, max_inline_bytes=max_inline_bytes
+        return _safe_view(
+            client, message.uid, structure, html, remote=remote, budget=max_inline_bytes
         )
 
     return connections.with_mailbox(message.account, message.folder, True, run)
+
+
+def _safe_view(
+    client: IMAPClient, uid: int, structure: Structure, html: str, *, remote: bool, budget: int
+) -> SafeHtml:
+    """`html` sanitised with the raster parts it refers to by `cid:` inlined, up to `budget`
+    bytes in total."""
+    wanted = {
+        unquote(match.group(1)).strip().removeprefix("<").removesuffix(">")
+        for match in _CID.finditer(html)
+    }
+    images: dict[str, tuple[str, bytes]] = {}
+    left = budget
+    for leaf in structure.parts.values():
+        if leaf.content_id is None or leaf.content_id not in wanted:
+            continue
+        if not _maybe_raster(leaf.type) or leaf.content_id in images:
+            continue
+        # Nothing downloaded that the budget cannot hold (the estimate errs at most 1%).
+        if leaf.decoded_size > left + left // 50 + 4:
+            continue
+        data = part_content(client, uid, leaf, left + 1)
+        # Typed by its bytes: mailers often declare inline images octet-stream.
+        kind = content_type(data, leaf.type, leaf.name)
+        if len(data) <= left and kind in RASTER_TYPES:
+            images[leaf.content_id] = (kind, data)
+            left -= len(data)
+    return safe_html(html, inline_images=images, remote=remote, max_inline_bytes=budget)

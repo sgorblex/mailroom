@@ -48,7 +48,7 @@ from mailroom.mail.connections import mail_ssl_context
 from mailroom.mail.events import EventHub, listen_connection
 from mailroom.mail.pool import MailPool
 from mailroom.mail.sends import SendRunner
-from mailroom.mail.service import KeywordFailures, Quotas
+from mailroom.mail.service import HtmlViews, KeywordFailures, Quotas
 from mailroom.mcp.app import METADATA_PATH, McpEndpoint
 from mailroom.mcp.settings import mcp_settings_from_env
 from mailroom.mcp.verifier import ExternalJwtVerifier, token_verifier
@@ -306,6 +306,7 @@ def create_application(
     application.state.autoconfig = Autoconfig()
     application.state.quotas = Quotas()
     application.state.keyword_failures = KeywordFailures()
+    application.state.html_views = HtmlViews()
     application.add_middleware(CrossSiteRequestMiddleware)
     if features.mail:
         application.add_middleware(NotStored, prefix=f"/api/v1{mail_router.prefix}/")

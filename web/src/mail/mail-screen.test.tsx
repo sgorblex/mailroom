@@ -620,7 +620,7 @@ describe('MailScreen', () => {
   })
 
   it('words a refused HTML view in place of the frame, never inside it', async () => {
-    stubMailApi(state({ refuse: { [`GET /api/v1/mail/messages/${html.ref}/html`]: refusal(429, 'busy') } }))
+    stubMailApi(state({ refuse: { [`GET /api/v1/mail/messages/${html.ref}/html/check`]: refusal(429, 'busy') } }))
     renderMailApp(`/mail?message=${html.ref}`)
 
     await userEvent.click(await screen.findByRole('button', { name: 'HTML' }))
@@ -632,7 +632,7 @@ describe('MailScreen', () => {
 
   it('words an HTML view refused without a code (a proxy page) in the reader\'s language', async () => {
     stubMailApi(
-      state({ refuse: { [`GET /api/v1/mail/messages/${html.ref}/html`]: { status: 502, body: '<html>Bad gateway</html>' } } }),
+      state({ refuse: { [`GET /api/v1/mail/messages/${html.ref}/html/check`]: { status: 502, body: '<html>Bad gateway</html>' } } }),
     )
     renderMailApp(`/mail?message=${html.ref}`)
 
@@ -645,7 +645,7 @@ describe('MailScreen', () => {
   it('offers the original colours only beside a framed dark document, never beside an HTML error', async () => {
     document.documentElement.classList.add('dark')
     try {
-      const fake = state({ refuse: { [`GET /api/v1/mail/messages/${html.ref}/html`]: refusal(429, 'busy') } })
+      const fake = state({ refuse: { [`GET /api/v1/mail/messages/${html.ref}/html/check`]: refusal(429, 'busy') } })
       fake.views[html.ref] = messageView(html, { has_html: true, preferred_view: 'html' })
       stubMailApi(fake)
       renderMailApp(`/mail?message=${html.ref}`)
@@ -656,7 +656,7 @@ describe('MailScreen', () => {
       expect(screen.queryByRole('button', { name: 'Original colours' })).not.toBeInTheDocument()
 
       // Once the document answers and is framed, the toggle is there.
-      delete fake.refuse?.[`GET /api/v1/mail/messages/${html.ref}/html`]
+      delete fake.refuse?.[`GET /api/v1/mail/messages/${html.ref}/html/check`]
       await userEvent.click(within(body).getByRole('button', { name: 'Try again' }))
       expect(await screen.findByTitle(`HTML version of ${html.subject}`)).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Original colours' })).toHaveAttribute('aria-pressed', 'false')
@@ -668,7 +668,7 @@ describe('MailScreen', () => {
   it('ends the session when the HTML view answers 401', async () => {
     const ended = vi.fn()
     onSessionEnded(ended)
-    stubMailApi(state({ refuse: { [`GET /api/v1/mail/messages/${html.ref}/html`]: { status: 401, body: { detail: 'Not signed in.' } } } }))
+    stubMailApi(state({ refuse: { [`GET /api/v1/mail/messages/${html.ref}/html/check`]: { status: 401, body: { detail: 'Not signed in.' } } } }))
     renderMailApp(`/mail?message=${html.ref}`)
 
     await userEvent.click(await screen.findByRole('button', { name: 'HTML' }))
@@ -779,6 +779,10 @@ describe('MailScreen', () => {
         expect(screen.getByTitle(`HTML version of ${html.subject}`)).toHaveAttribute('src', url)
       })
       expect(screen.queryByRole('button', { name: 'Original colours' })).not.toBeInTheDocument()
+      // A cheap check each time the view opened (twice), none for a theme: the client never
+      // fetches the document itself.
+      expect(queriesTo(fetchMock, `${url}/check`)).toHaveLength(2)
+      expect(queriesTo(fetchMock, url)).toEqual([])
     } finally {
       document.documentElement.classList.remove('dark')
     }
@@ -886,7 +890,7 @@ describe('MailScreen', () => {
       'src',
       `/api/v1/mail/messages/${htmlOnly.ref}/html?remote=1`,
     )
-    expect(queriesTo(fetchMock, `/api/v1/mail/messages/${htmlOnly.ref}/html`).map((query) => query.get('remote'))).toEqual(['1'])
+    expect(queriesTo(fetchMock, `/api/v1/mail/messages/${htmlOnly.ref}/html/check`).map((query) => query.get('remote'))).toEqual(['1'])
     expect(screen.getByText("1 remote image is shown: you always show this sender's.")).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Show remote images' })).not.toBeInTheDocument()
   })
