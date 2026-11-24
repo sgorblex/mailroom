@@ -572,7 +572,9 @@ def moved(refs: Sequence[str], *, error: MailError | None = None) -> OrganizeRes
         count=0 if error else len(uids),
         new_refs=None if error else tuple(f"copy-{uid}" for uid in uids),
         error=error,
+        destination="Lists/Nerds",
         destination_account=2,
+        trash="Trash",
     )
     return OrganizeResult((group,), items)
 
@@ -675,6 +677,61 @@ class TestMoveToAccount:
         ]
         assert transfer["new_refs"] == ["copy-1"]
         assert transfer["error"] == f"too_large: {refusal.message}"
+
+    @pytest.mark.parametrize(
+        ("group", "changed"),
+        [
+            ({}, {(1, "INBOX"), (1, "Trash"), (2, "Lists/Nerds")}),
+            # It may have copied some, or removed some, before it failed.
+            (
+                {"count": 0, "new_refs": None, "error": MailError("server_error")},
+                {(1, "INBOX"), (1, "Trash"), (2, "Lists/Nerds")},
+            ),
+            # Every message refused on its own, or the group before it began.
+            ({"count": 0, "new_refs": None}, set()),
+            (
+                {
+                    "count": 0,
+                    "new_refs": None,
+                    "error": MailError("stale_reference"),
+                    "destination": None,
+                    "destination_account": None,
+                },
+                set(),
+            ),
+        ],
+    )
+    def test_the_folders_it_changed_are_noted_in_both_accounts(
+        self,
+        mine: Account,
+        calls: Calls,
+        group: dict[str, Any],
+        changed: set[tuple[int, str]],
+    ) -> None:
+        calls.searches = [[1]]
+        inbox = mine / "INBOX"
+        noted: set[tuple[int, str]] = set()
+
+        def move(_conns: object, refs: Sequence[str], *_args: object, **_kwargs: object) -> Any:
+            done = moved(refs)
+            return replace(done, groups=(replace(done.groups[0], **group),))
+
+        with patch(TRANSFER, side_effect=move):
+            inbox.run_into(
+                inbox.new_report(dry_run=False),
+                Filter(Anything(), MoveToAccount(2, Path("X"), accounts=Target())),
+                dry_run=False,
+                changed=noted,
+            )
+        assert noted == changed
+
+    def test_a_dry_run_changes_no_folder(self, mine: Account, calls: Calls) -> None:
+        calls.searches = [[1]]
+        inbox = mine / "INBOX"
+        noted: set[tuple[int, str]] = set()
+        star = Filter(Anything(), load_action({"type": "star", "args": {}}))
+        inbox.run_into(inbox.new_report(dry_run=True), star, dry_run=True, changed=noted)
+        assert noted == set()
 
     def test_without_a_resolver_every_message_fails_unsupported(
         self, mine: Account, calls: Calls

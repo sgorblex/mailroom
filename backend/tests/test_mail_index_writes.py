@@ -439,6 +439,37 @@ def test_a_resync_that_fails_is_logged_and_never_raises(
     assert "secret" not in str(record.__dict__)
 
 
+def test_a_resync_in_a_session_queues_both_accounts_folders(
+    user_client: TestClient, db_session: Session, user: User, account: int
+) -> None:
+    home = add_account(user_client, "home")
+    inbox = folder(db_session, user, account, "INBOX")
+    there = folder(db_session, user, home, "INBOX")
+    folder(db_session, user, home, "Shop")
+    writes.resync_in(db_session, user.id, [(account, "INBOX"), (home, "INBOX"), (home, "Gone")])
+    assert queued(db_session) == sorted([inbox, there])
+
+
+def test_a_resync_in_a_session_that_fails_leaves_the_session_usable(
+    db_session: Session,
+    user: User,
+    account: int,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    folder(db_session, user, account, "INBOX")
+
+    def broken(*_args: object) -> None:
+        db_session.execute(text("SELECT secret"))
+
+    monkeypatch.setattr(writes, "notify", broken)
+    writes.resync_in(db_session, user.id, [(account, "INBOX")])
+    [record] = [r for r in caplog.records if r.msg == "mail_index_write_failed"]
+    assert record.__dict__["error"] == "ProgrammingError"
+    assert "secret" not in str(record.__dict__)
+    assert queued(db_session) == []
+
+
 def test_a_change_is_announced_by_ids_once_committed(migrated_engine: Engine) -> None:
     with migrated_engine.connect() as listening:
         listening.execute(text(f"LISTEN {writes.NOTIFY_CHANNEL}"))

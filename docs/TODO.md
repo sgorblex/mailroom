@@ -359,7 +359,7 @@ Older than milestone E, seen in its browser check; fix before batch 11.
   - [x] **The index's turn in one job** — an account's due folders checked together, not one job
         each, with the syncs asked by IDLE, a viewed folder or new mail, and filter runs, ahead of
         the routine ones.
-  - [ ] **Index after a filter run** — the folders a run moved or flagged mail in synced right
+  - [x] **Index after a filter run** — the folders a run moved or flagged mail in synced right
         after it, another account's included.
   - [ ] **Refresh button** — syncs the shown folder or view ahead of the queue.
   - [ ] **All inboxes with subfolders** — an option, off by default, to take in INBOX's

@@ -19,7 +19,7 @@ from mailroom_core.mail import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Iterator, Sequence
 
     from mailroom_core.filters.path import Path
     from mailroom_core.filters.report import TransferredMessage, TransferReport
@@ -95,9 +95,11 @@ class MoveToAccount(Action):
             for uid in uids
         ]
         taken = list(uids)
-        selected.defer(taken, lambda: self._transfer(taken, refs))
+        selected.defer(taken, lambda: self._transfer(taken, refs, selected.changed))
 
-    def _transfer(self, uids: list[int], refs: list[str]) -> TransferReport:
+    def _transfer(
+        self, uids: list[int], refs: list[str], changed: set[tuple[int, str]]
+    ) -> TransferReport:
         report: TransferReport = {
             "account": self._account,
             "folder": list(self._folder.segments),
@@ -127,6 +129,7 @@ class MoveToAccount(Action):
                     copied=hook,
                 )
                 _note(report, result, noted)
+                changed.update(_changed(result))
                 if stopped:
                     raise stopped[0]
         except Exception as exc:
@@ -154,6 +157,21 @@ def _stopping(
             raise
 
     return hear
+
+
+def _changed(result: OrganizeResult) -> Iterator[tuple[int, str]]:
+    """The folders `result` may have changed, each with its account: the copies' folder, and the
+    originals' with the Trash they went to. A group that failed past its checks may have copied
+    or removed some; one whose messages were all refused changed nothing."""
+    for group in result.groups:
+        if group.destination is None or group.destination_account is None:
+            continue
+        if not (group.count or group.new_refs or group.error is not None):
+            continue
+        yield group.destination_account, group.destination
+        yield group.account, group.folder
+        if group.trash is not None:
+            yield group.account, group.trash
 
 
 def _note(report: TransferReport, result: OrganizeResult, noted: set[int]) -> None:

@@ -920,8 +920,8 @@ keeps it, with `mail`:
   queues the rest as the next: past its time a share begins no other folder, and no other batch of
   the folder it is on. It passes over a folder synced, switched off or gone meanwhile, and leaves
   one with more to fetch to a `sync_folder(user_id, account_id, folder_id)` (`queueing_lock`
-  `index_folder:<folder id>`) of its own. A folder IDLE, a write of the app or a held send asks for
-  is a `sync_folder` too, which keeps to the same time.
+  `index_folder:<folder id>`) of its own. A folder IDLE, a write of the app, a held send or a
+  filter run asks for is a `sync_folder` too, which keeps to the same time.
 - All of these take the mailbox's `lock`, so one folder of an account syncs at a time, between its
   rule set runs. The routine ones (`sync_account`, the turn, a folder's later jobs) are queued at
   priority -1, every other job at 0: a sync asked for, a filter run and a vacation reply go ahead of

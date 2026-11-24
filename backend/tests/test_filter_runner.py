@@ -7,11 +7,12 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+import pytest
 from sqlalchemy import select, text
 
 from mailroom.auth.users import set_time_zone
 from mailroom.mail.connections import mail_ssl_context
-from mailroom.models import AuditRecord, FilterRun, RuleSet
+from mailroom.models import AuditRecord, FilterRun, MailIndexFolder, RuleSet
 from mailroom.worker import tasks
 from mailroom.worker.app import PROCRASTINATE_SCHEMA
 from mailroom.worker.context import Mailboxes, WorkerContext
@@ -36,7 +37,8 @@ from tests.test_api_accounts import added, new_account
 from tests.test_api_filters import SHOP_SPEC, add_filter, jobs, rule_set
 
 if TYPE_CHECKING:
-    import pytest
+    from collections.abc import Callable
+
     from sqlalchemy.engine import Engine
     from sqlalchemy.orm import Session, sessionmaker
     from starlette.testclient import TestClient
@@ -69,6 +71,15 @@ def runs(db: Session, rule_set_id: int) -> list[FilterRun]:
             select(FilterRun).where(FilterRun.rule_set_id == rule_set_id).order_by(FilterRun.id)
         )
     )
+
+
+def index_folder(
+    db: Session, user: User, account_id: int, path: str, *, enabled: bool = True
+) -> int:
+    row = MailIndexFolder(user_id=user.id, account_id=account_id, path=path, enabled=enabled)
+    db.add(row)
+    db.commit()
+    return row.id
 
 
 def finish_jobs(db: Session) -> None:
@@ -449,6 +460,137 @@ def test_a_move_that_copied_without_removing_turns_the_rule_set_off(
     assert [(r.getMessage(), r.levelno) for r in turned_off] == [
         ("rule_set_turned_off", logging.WARNING)
     ]
+
+
+def changing(*folders: tuple[int, str], error: Exception | None = None) -> Callable[..., None]:
+    """A ``Folder.run_into`` that changed ``folders``, then raises ``error``."""
+
+    def run_into(
+        _self: object, _report: Any, *_args: object, changed: set[tuple[int, str]], **_kw: object
+    ) -> None:
+        changed.update(folders)
+        if error is not None:
+            raise error
+
+    return run_into
+
+
+def synced_folders(db: Session) -> set[int]:
+    """The index folders with a sync waiting."""
+    query = text(
+        f"SELECT (args->>'folder_id')::bigint FROM {PROCRASTINATE_SCHEMA}.procrastinate_jobs"
+        " WHERE task_name = :name AND status = 'todo'"
+    )
+    return set(db.scalars(query, {"name": tasks.SYNC_FOLDER}))
+
+
+@pytest.mark.parametrize("error", [None, MailError("server_error"), RuntimeError("x")], ids=repr)
+def test_a_run_syncs_the_folders_it_changed_even_one_that_failed(
+    user_client: TestClient,
+    db_session: Session,
+    mailboxes: Mailboxes,
+    user: User,
+    monkeypatch: pytest.MonkeyPatch,
+    error: Exception | None,
+) -> None:
+    monkeypatch.delenv("MAILROOM_FEATURES", raising=False)
+    work = add_account(user_client)
+    home = add_account(user_client, "home")
+    source, archive = (index_folder(db_session, user, work, p) for p in ("INBOX", "Archive"))
+    copies = index_folder(db_session, user, home, "Shop")
+    index_folder(db_session, user, work, "Other")
+    index_folder(db_session, user, home, "Off", enabled=False)
+    rule_set_id = add_rule_set(user_client, work)
+    run_id = queued_run(user_client, rule_set_id)
+    run_into = changing(
+        (work, "inbox"), (work, "Archive"), (home, "Shop"), (home, "Off"), error=error
+    )
+    monkeypatch.setattr(Folder, "run_into", run_into)
+    execute_run(db_session, run_id, mailboxes)
+    assert synced_folders(db_session) == {source, archive, copies}
+    assert (run_out(user_client, rule_set_id, run_id)["error"] is None) == (error is None)
+
+
+def test_a_run_that_changed_nothing_syncs_nothing(
+    user_client: TestClient,
+    db_session: Session,
+    mailboxes: Mailboxes,
+    user: User,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("MAILROOM_FEATURES", raising=False)
+    work = add_account(user_client)
+    index_folder(db_session, user, work, "INBOX")
+    run_id = queued_run(user_client, add_rule_set(user_client, work))
+    monkeypatch.setattr(Folder, "run_into", changing())
+    execute_run(db_session, run_id, mailboxes)
+    assert synced_folders(db_session) == set()
+
+
+def test_a_run_without_the_mail_client_syncs_nothing(
+    user_client: TestClient,
+    db_session: Session,
+    mailboxes: Mailboxes,
+    user: User,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MAILROOM_FEATURES", "filters")
+    work = add_account(user_client)
+    index_folder(db_session, user, work, "INBOX")
+    run_id = queued_run(user_client, add_rule_set(user_client, work))
+    monkeypatch.setattr(Folder, "run_into", changing((work, "INBOX")))
+    execute_run(db_session, run_id, mailboxes)
+    assert synced_folders(db_session) == set()
+
+
+def test_a_run_removed_meanwhile_still_syncs_what_it_changed(
+    user_client: TestClient,
+    db_session: Session,
+    mailboxes: Mailboxes,
+    user: User,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("MAILROOM_FEATURES", raising=False)
+    work = add_account(user_client)
+    inbox = index_folder(db_session, user, work, "INBOX")
+    rule_set_id = add_rule_set(user_client, work)
+    run_id = queued_run(user_client, rule_set_id)
+    note = changing((work, "INBOX"))
+
+    def run_into(*args: Any, **kwargs: Any) -> None:
+        note(*args, **kwargs)
+        user_client.delete(f"/api/v1/rule-sets/{rule_set_id}")
+
+    monkeypatch.setattr(Folder, "run_into", run_into)
+    execute_run(db_session, run_id, mailboxes)
+    assert synced_folders(db_session) == {inbox}
+
+
+def test_an_index_that_cannot_be_written_leaves_the_run_as_it_went(
+    user_client: TestClient,
+    db_session: Session,
+    mailboxes: Mailboxes,
+    user: User,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.delenv("MAILROOM_FEATURES", raising=False)
+    work = add_account(user_client)
+    index_folder(db_session, user, work, "INBOX")
+    rule_set_id = add_rule_set(user_client, work)
+    run_id = queued_run(user_client, rule_set_id)
+    monkeypatch.setattr(Folder, "run_into", changing((work, "INBOX")))
+
+    def broken(*_args: object) -> None:
+        msg = "Subject: a secret"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(tasks, "queue_folder_sync", broken)
+    execute_run(db_session, run_id, mailboxes)
+    run = run_out(user_client, rule_set_id, run_id)
+    assert (run["error"], run["finished_at"] is not None) == (None, True)
+    assert "mail_index_write_failed" in caplog.text
+    assert "a secret" not in caplog.text
 
 
 def set_job_status(db: Session, run_id: int, status: str) -> None:

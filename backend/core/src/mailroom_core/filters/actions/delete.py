@@ -24,6 +24,7 @@ class Delete(Action):
         """Initialize a Delete action."""
 
         def func(selected: Selected, uids: Sequence[int]) -> None:
+            selected.changes()
             delete_uids(selected.context, uids)
 
         super().__init__(func, name="delete")

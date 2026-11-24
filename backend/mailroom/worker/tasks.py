@@ -8,10 +8,10 @@ only with the ``filters`` feature.
 With the ``mail`` feature, the index dispatcher queues ``sync_account`` for every account every 5
 minutes; it brings the account's index folders in step with its listing and queues one
 ``sync_due_folders`` for all those due: the turn, gone through in shares of a few seconds, each
-queueing the next. ``sync_folder`` syncs one folder: one that IDLE, a write of the app or a held
-send asks for, or one a job left with more to fetch. The index's routine work (the turn, and what a
-job left) is queued at ``ROUTINE_PRIORITY``, so a sync asked for and a filter run wait at most for
-the share under way, however long the turn.
+queueing the next. ``sync_folder`` syncs one folder: one that IDLE, a write of the app, a held
+send or a filter run asks for, or one a job left with more to fetch. The index's routine work (the
+turn, and what a job left) is queued at ``ROUTINE_PRIORITY``, so a sync asked for and a filter run
+wait at most for the share under way, however long the turn.
 
 A held send's ``send_draft`` is queued by the mail service (``defer_scheduled_send``) in the
 transaction writing its ``app.scheduled_send`` row, to run at its time (``mailroom.worker.sends``);
