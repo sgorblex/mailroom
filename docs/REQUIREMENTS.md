@@ -48,6 +48,11 @@ through the Vite proxy. Engineering baseline:
 - **Remote images.** Each user lists on their *Profile* page the senders whose remote images
   they always show, and removes them there; a sender is added only from a message whose DMARC
   passed ([`requirements/mail-client.md`](requirements/mail-client.md) — *Remote content*).
+- **Appearance.** Each user picks on their *Profile* page the web's theme (light, dark, or as the
+  device), its accent colour (teal by default, blue, violet, green, terracotta or rose) and its text
+  size (small, default, large); a choice shows at once and is the same on every device they sign in
+  on. How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md)
+  — *Own appearance*.
 - **Undo send.** Each user picks on their *Profile* page how long the web's Send holds a
   message for an Undo, 0 (off) to 30 seconds, 10 by default
   ([`requirements/mail-client.md`](requirements/mail-client.md#undo-send)).

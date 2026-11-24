@@ -8,7 +8,7 @@ Engineering baseline for Mailroom. Product scope: [`../REQUIREMENTS.md`](../REQU
 | --- | --- |
 | Backend | Python 3.14+ (dev pin 3.15 via mise), FastAPI, SQLAlchemy 2 (sync) + psycopg 3, Alembic, uv; PyJWT and httpx for OIDC; dnspython and lxml for account autoconfiguration |
 | Worker | procrastinate (psycopg 3) on the app's database, `python -m mailroom.worker`; it also watches folders over IMAP IDLE and syncs the mail index |
-| Web | React 19, Vite, TanStack Router (code-based routes), TanStack Query (in-memory cache of the mail screen's reads), TanStack Virtual (the message list), Tailwind 4 + shadcn (`web/components.json`), Downshift (headless combobox: the command palette), TipTap 3 (the composer's rich-text editor, loaded with it), i18next, Zod at the API boundary, ESLint `strictTypeChecked` (no Prettier) |
+| Web | React 19, Vite, TanStack Router (code-based routes), TanStack Query (in-memory cache of the mail screen's reads), TanStack Virtual (the message list), Tailwind 4 + shadcn (`web/components.json`) with the app's own tokens (`web/src/index.css`), the Figtree font bundled from `@fontsource-variable/figtree`, Downshift (headless combobox: the command palette), TipTap 3 (the composer's rich-text editor, loaded with it), i18next, Zod at the API boundary, ESLint `strictTypeChecked` (no Prettier) |
 | Database | PostgreSQL 18 |
 | Tests | pytest (+ xdist, one database per worker cloned from the migrated `mailroom_test`), Vitest (`node` and `jsdom` projects) |
 | Containers | Podman, `mailroom-api` and `mailroom-web` images; Quadlet for deploy |
@@ -111,7 +111,9 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   code (`mail_status`: 502 by default), `unavailable` 503, `timeout` 504, `failed` 500), so every
   front end keeps the same rules.
 - **Strict CSP on the app** (`web/nginx-default.conf`): `script-src 'self'` with no inline script
-  (the dark theme follows `prefers-color-scheme` in CSS for that reason), `frame-ancestors 'none'`,
+  (so the user's theme is set on `<html>` by the bundle itself, before its first render, from a
+  copy kept in the browser), fonts only from the app's own origin (bundled, under `default-src
+  'self'`), `frame-ancestors 'none'`,
   `frame-src 'self'` (the HTML mail view), `object-src 'none'`, `base-uri 'none'`, plus `nosniff`
   and `Referrer-Policy: no-referrer`. The `/api/` location gets the last two but not the SPA's CSP:
   the API's HTML mail document sets its own. nginx hides the API's own copies of those two, so
@@ -415,6 +417,11 @@ bounded to one minor because the server relies on its handlers.
   web reads an option it does not know as its default too (`web/src/api/auth.ts`), so neither an
   older nor a newer API breaks sign-in. What suits one device only (a pane's width, a collapsed
   folder pane) stays in that browser, under `mailroom.ui.<name>` (`web/src/lib/device-prefs.ts`).
+  The theme, accent and text size are also copied there (`mailroom.ui.look`, `web/src/theme/look.ts`)
+  so a load starts in them before `auth/me` answers; the server's value then replaces the copy.
+  Every accent, light and dark, meets WCAG AA (4.5:1) for its text pairs, which
+  `web/src/theme/contrast.node.test.ts` checks against `index.css`. Native checkboxes, radios and
+  ranges take the accent too (`accent-color` from `--primary`).
 - **A session ending under the user:** any 401 from the API but a refused sign-in signs the web
   app out (`onSessionEnded` in `web/src/api/http.ts`), and the sign-in screen says the session
   has ended.

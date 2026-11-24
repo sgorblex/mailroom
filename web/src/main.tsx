@@ -9,12 +9,18 @@ import { ClearOnSignOut } from '@/auth/clear-on-sign-out.ts'
 import i18n, { i18nReady } from '@/i18n/i18n.ts'
 import { createQueryClient } from '@/lib/query-client.ts'
 import { router } from '@/router.tsx'
+import { LookSync } from '@/theme/look-sync.tsx'
+import { startLook } from '@/theme/look.ts'
+import '@fontsource-variable/figtree'
 import './index.css'
 
 const rootElement = document.getElementById('root')
 if (!rootElement) {
   throw new Error('Missing root element with id "root".')
 }
+
+// This browser's copy of the user's look, before anything renders: no flash of the wrong theme.
+startLook()
 
 const queryClient = createQueryClient()
 
@@ -25,6 +31,7 @@ void i18nReady.then(() => {
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
             <ClearOnSignOut />
+            <LookSync />
             <RouterProvider router={router} />
           </AuthProvider>
         </QueryClientProvider>

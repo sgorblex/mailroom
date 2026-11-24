@@ -6,6 +6,7 @@ import { ApiRequestError } from '@/api/http.ts'
 import { useFeature, useMailLayer } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Input } from '@/components/ui/input.tsx'
+import { AppearanceSettings } from '@/profile/appearance-settings.tsx'
 import { ConnectedApps } from '@/profile/connected-apps.tsx'
 import { ConversationsForm } from '@/profile/conversations-form.tsx'
 import { IndexSettings } from '@/profile/index-settings.tsx'
@@ -30,7 +31,7 @@ type Outcome =
   | { kind: 'failed'; message: string; field: Field }
 
 /**
- * The signed-in user's own page: their password, time zone, what "Mark all as read" does first
+ * The signed-in user's own page: their password, appearance, time zone, what "Mark all as read" does first
  * on a folder with subfolders, conversations, how long Send waits for an Undo, the senders whose
  * remote images they show, the mail index's settings and desktop notifications (with the mail
  * client), linked sign-ins, their identities' signatures, each account's vacation reply (with the
@@ -149,6 +150,7 @@ export function ProfileScreen(): ReactElement {
           {t('profile.save')}
         </Button>
       </form>
+      <AppearanceSettings />
       <TimeZoneForm />
       {mail && <MarkReadForm />}
       {mail && <ConversationsForm />}
