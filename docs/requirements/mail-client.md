@@ -1403,7 +1403,7 @@ CSRF check apply. Bodies are JSON except `POST /drafts`. Unknown fields are 422.
 | `POST /drafts?convert=text` | multipart: `html` alone | 200 `{text}`: the text part `html` would be sent with; writes nothing |
 | `POST /drafts?import=eml` | multipart: `draft` (JSON, below) and `eml` (the file) | 201 a save's answer and `findings` ([designed mail](#drafts)) |
 | `POST /drafts?import=html` | multipart: `draft` (JSON, with `content_ids`), `html` (raw) and `files[]` | 201 the same |
-| `POST /drafts?import=kept` | multipart: `draft` (JSON, with `ref`) alone | 201 the same: the imported draft `ref` saved again as built under the part's fields; 400 `invalid_argument` for another draft, or one whose HTML is not as an import leaves it |
+| `POST /drafts?import=kept` | multipart: `draft` (JSON, with `ref`) alone | 201 the same: the imported draft `ref` saved again as built under the part's fields; 409 `not_as_built` for another draft, or one whose HTML is not as an import leaves it |
 | `POST /drafts/{ref}/test` | `{"test_id"}`, the click's (`compose_id`'s form) | 202 `{send_id, to}`: the draft as a test to `to`, the account's default identity ([designed mail](#drafts)); the same `test_id` again answers that send, nothing sent twice |
 | `GET /drafts/{ref}/findings` | | 200 `{findings}`: the checks of the draft as stored |
 | `GET /drafts/{ref}` | | 200 the draft's fields, `lossy`, `parts`, `inline`, `send`, `scheduled` |
@@ -1421,7 +1421,7 @@ The static route `GET /drafts/find` is matched before `GET /drafts/{ref}`.
 
 An import's `draft` part is `{account, compose_id, ref?, from?, to?, cc?, bcc?, subject?,
 content_ids?}`: `ref` an earlier version to replace (required by `kept`, which takes only a
-draft imported as built, else 400 `invalid_argument`), the address fields and `subject` left out
+draft imported as built, else 409 `not_as_built`), the address fields and `subject` left out
 (or null) to take the .eml's (none, for `kept`), `from` null for the default identity (never the file's), and
 `content_ids` as a save's, for `html` only (an `eml` import with any is 400 `invalid_argument`, as
 are one without its file part and a Content-ID a save would leave out as unfit for a header). A finding is `{code, text, count, items}`: `code` one of
@@ -1497,7 +1497,7 @@ English sentence; `items` the Content-IDs or file names involved, at most 20.
   threading headers of the version it replaces.
 - Errors: 400 `invalid_argument`; 404 `not_found` (account, ref, draft, send); 409
   `stale_reference`, `send_disabled`, `delivery_unknown`, `draft_not_editable`,
-  `password_missing`; 413 `too_large`;
+  `not_as_built`, `password_missing`; 413 `too_large`;
   422 `recipient_refused`; 429 `busy`, `rate_limited`; 502, 504.
 
 ### MCP
@@ -1550,7 +1550,8 @@ malformed request (bad query value, wrong type) is FastAPI's 422 with its `detai
 elsewhere.
 
 Mailbox failures carry the 14 codes of mailroom-mcp, plus `delivery_unknown` (`src/imap/errors.ts`),
-and mailroom-core's `folder_exists`, `folder_changed`, `count_changed` and `too_many`:
+and mailroom-core's `folder_exists`, `folder_changed`, `count_changed`, `too_many` and
+`not_as_built`:
 
 | Code | Status | Message |
 | --- | --- | --- |
@@ -1572,6 +1573,7 @@ and mailroom-core's `folder_exists`, `folder_changed`, `count_changed` and `too_
 | `folder_changed` | 409 | The folder changed since it was read. It holds *N* messages now; nothing was deleted. (`detail.messages`: *N*.) |
 | `count_changed` | 409 | The messages matching changed since they were counted. *N* match now; nothing was changed. (`detail.matching`: *N*.) |
 | `too_many` | 409 | Too many messages match to act on them all. *N* match; at most 5000 are acted on together. Narrow the search. (`detail.matching`: *N*.) |
+| `not_as_built` | 409 | That draft is not as it was imported, so it cannot be kept as built. (`POST /drafts?import=kept`.) |
 | `server_error` | 502 | The mail server reported an error. |
 
 The send group (`send_disabled`, `rate_limited`, `recipient_refused`, `delivery_unknown`) belongs

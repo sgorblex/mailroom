@@ -369,3 +369,23 @@ def test_an_attached_message_counts_against_the_cap() -> None:
     with pytest.raises(MailError) as over:
         import_eml(outer.as_bytes(), 3000)
     assert over.value.code == "too_large"
+
+
+def test_a_draft_is_as_imported_with_the_empty_styles_an_earlier_import_left() -> None:
+    from mailroom_core.mail.designed import _DOCUMENT, _as_imported, _sanitised
+
+    built = _DOCUMENT.format(
+        _sanitised('<p style="mso-hide:all">a</p><a href="https://x.org/">b</a>')[0]
+    )
+    assert built == _DOCUMENT.format('<p>a</p><a href="https://x.org/">b</a>')
+    assert _as_imported(built)
+    assert _as_imported(built.replace("\n", "\r\n"))
+    # The sanitiser of 0.16 left `style=""` where it removed every declaration.
+    assert _as_imported(built.replace("<p>", '<p style="">'))
+    assert _as_imported(built.replace("<a ", '<a style="" '))
+    assert _as_imported(built.replace('">b', '" style="">b'))
+    # Anywhere else, or with anything in it, it is a change.
+    assert not _as_imported(built.replace("<p>", '<p style="position:fixed">'))
+    assert not _as_imported(built.replace("<p>", '<p style="" style="">'))
+    assert not _as_imported(built.replace("x.org/", 'x.org/ style=""'))
+    assert not _as_imported(built.replace("<p>", '<p onclick="x()">'))

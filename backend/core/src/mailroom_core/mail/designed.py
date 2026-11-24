@@ -11,6 +11,7 @@ identity, the Message-ID is new and the draft marker (`DRAFT_HEADER`'s `designed
 import changed. The draft is then sent as it is stored, like any other (`send.prepare_draft`).
 """
 
+import re
 import uuid
 from contextlib import suppress
 from dataclasses import dataclass, replace
@@ -91,7 +92,9 @@ _UNREADABLE: Final = "That is not a message Mailroom can import."
 _BAD_CONTENT_ID: Final = (
     "A content ID is 1 to 250 letters, digits and the characters !#$&'*+./=@^`{|}~_- only."
 )
-_NOT_DESIGNED: Final = "That draft was not imported as built."
+_EMPTY_STYLE: Final = re.compile(r'(<[a-z][a-z0-9]*(?: [^\s"\'<>/=]+="[^"]*")*) style=""(?= |>)')
+"""An empty `style` attribute in a start tag as the sanitiser writes one out: the sanitiser of
+0.16 and before left one where it removed every declaration, and the next clean drops it."""
 _IMPORT_ERRORS: Final = (
     AttributeError,
     LookupError,
@@ -650,27 +653,30 @@ def import_draft(
 
 
 def _as_imported(html: str) -> bool:
-    """`html` is as an import leaves it: sanitising it again changes nothing."""
-    again = _DOCUMENT.format(_sanitised(html)[0])
-    return again.replace("\r\n", "\n") == html.replace("\r\n", "\n")
+    """`html` is as an import leaves it: sanitising it again changes nothing but the empty
+    `style` attributes an earlier sanitiser left (`_EMPTY_STYLE`), which change nothing shown and
+    let nothing through."""
+    again = _DOCUMENT.format(_sanitised(html)[0]).replace("\r\n", "\n")
+    stored = html.replace("\r\n", "\n")
+    return again in {stored, _EMPTY_STYLE.sub(r"\1", stored)}
 
 
 def stored_design(connections: MailConnections, ref: MessageRef, limits: Limits) -> Built:
     """The draft at `ref`, imported as built, as `import_draft` takes it to save it again under
     other headers: its body byte for byte, with what its import changed. The marker is a header
-    any message can carry, so its HTML must be as an import leaves it: `invalid_argument` for a
+    any message can carry, so its HTML must be as an import leaves it: `not_as_built` for a
     draft not imported as built, or whose HTML sanitising would still change."""
     source = crlf_lines(draft_source(connections, ref, draft_source_cap(limits)))
     header_end = source.find(b"\r\n\r\n")
     changes = draft_designed(source if header_end < 0 else source[: header_end + 2])
     if changes is None:
-        raise MailError("invalid_argument", _NOT_DESIGNED)
+        raise MailError("not_as_built")
     body = without_headers(source, header_names(source) - _KEPT_ROOT_HEADERS - {"mime-version"})
     files = 0
     try:
         for leaf, role in _roles(list(_leaves(_parsed(body), bounded=True))):
             if role == "html" and not _as_imported(_text_of(leaf.part)):
-                raise MailError("invalid_argument", _NOT_DESIGNED)
+                raise MailError("not_as_built")
             files += role == "file"
     except _IMPORT_ERRORS:
         raise MailError("invalid_argument", _UNREADABLE) from None

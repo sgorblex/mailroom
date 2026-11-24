@@ -122,7 +122,7 @@ def test_passes_mail_errors_through(caplog: pytest.LogCaptureFixture) -> None:
 
 
 def test_messages_are_fixed_with_an_optional_detail() -> None:
-    assert len(MAIL_ERROR_CODES) == 19
+    assert len(MAIL_ERROR_CODES) == 20
     assert set(MESSAGES) == set(MAIL_ERROR_CODES)
     assert MailError("not_found").message == "No such message or part."
     error = MailError("invalid_argument", 'Unknown account "x".')

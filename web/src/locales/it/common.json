@@ -589,7 +589,8 @@
     "draftNotEditable": "Questa bozza potrebbe essere già stata inviata, quindi non si può modificare.",
     "folderExists": "Esiste già una cartella con quel nome in quella posizione.",
     "folderChanged": "La cartella è cambiata da quando sono stati contati i messaggi. Non è stato eliminato nulla.",
-    "folderInUse": "Alcune regole usano questa cartella. Non è stato eliminato nulla."
+    "folderInUse": "Alcune regole usano questa cartella. Non è stato eliminato nulla.",
+    "notAsBuilt": "Questa bozza non è più com'era stata importata, quindi non si può salvare così com'è. Sostituisci ne importa di nuovo il messaggio."
   },
   "toolGroups": {
     "legend": "Strumenti che potrà usare",

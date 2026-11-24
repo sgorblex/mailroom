@@ -589,7 +589,8 @@
     "draftNotEditable": "This draft was sent, or may have been, so it can't be changed.",
     "folderExists": "A folder with that name already exists there.",
     "folderChanged": "The folder changed since its messages were counted. Nothing was deleted.",
-    "folderInUse": "Rule sets use this folder. Nothing was deleted."
+    "folderInUse": "Rule sets use this folder. Nothing was deleted.",
+    "notAsBuilt": "This draft is not as it was imported, so it can't be saved as built. Replace imports its message again."
   },
   "toolGroups": {
     "legend": "Tools it may use",

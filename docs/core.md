@@ -161,6 +161,12 @@ slash, as a browser does. `SafeHtml.sets_colours` says whether what nh3 keeps se
 or text colour (`bgcolor` or `color` attributes, `background-color` or `color` in a `style`, the
 link marker's own aside), for a host's dark mode.
 
+Both sanitisers keep a `style` attribute's declarations themselves (`style_declarations`), rather
+than leave nh3 to drop the rest: an allowed property, in any case, whose value has nothing
+`UNSAFE_CSS` matches and is one nh3 writes out as it reads it (strings closed on their line,
+parentheses only a function's, not nested, no other block). A style with none left goes whole, so
+cleaning twice gives what cleaning once did, which a [designed](#designed-mail) draft relies on.
+
 ## Read
 
 `mailroom_core.mail` holds what the read tools do, minus the tool plumbing: `list_messages`,
@@ -602,8 +608,9 @@ Deliberate choices:
 - **Addressed again as built.** `stored_design` reads an imported draft back for `import_draft`
   to save under new headers (From, recipients, subject): its body byte for byte with its MIME
   headers, and the changes from its marker, nothing parsed into it. The marker is a header any
-  message can carry, so its HTML must be as an import leaves it (sanitised again, unchanged);
-  `invalid_argument` for any other draft. This is how the web composer saves one.
+  message can carry, so its HTML must be as an import leaves it (sanitised again, unchanged,
+  but for the empty `style=""` attributes the sanitiser of 0.16 and before left in start tags);
+  `not_as_built` for any other draft. This is how the web composer saves one.
 - **Mailroom's own headers.** Above the body go only `compose`'s headers (`compose(body=...)`):
   From an identity, the recipients and subject the host chose (the file's To, Cc, Bcc and
   Subject by default, cleaned as any), a new Message-ID on the `compose_id`, and the marker. The

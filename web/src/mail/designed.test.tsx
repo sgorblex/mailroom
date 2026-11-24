@@ -161,6 +161,19 @@ describe('designed mail', () => {
     )
   })
 
+  it('says why a draft that is no longer as built is not saved', async () => {
+    const user = userEvent.setup()
+    const fake = state({ importRefusal: 'not_as_built' })
+    stubMailApi(fake)
+    renderMailApp(`/mail?folder=Drafts&compose=${encodeURIComponent(designed.ref)}`)
+    const form = await composer()
+    await user.type(field(form, 'To'), 'ada@example.org{Enter}')
+    expect(
+      await within(form).findByText(/^Not saved\. This draft is not as it was imported, so it can't be saved as built\. Replace imports its message again\.$/, {}, { timeout: 5_000 }),
+    ).toBeInTheDocument()
+    expect(fake.drafts).toEqual([designed])
+  })
+
   it('replaces the message under the composer\'s fields, and says why an import was refused', async () => {
     const user = userEvent.setup()
     const fake = state()
