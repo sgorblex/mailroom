@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.17.0](https://github.com/sgorblex/mailroom/compare/v0.16.0...v0.17.0) (2026-11-25)
+
+
+### Features
+
+* **admin:** instance settings on the Users page, with the audit retention ([#214](https://github.com/sgorblex/mailroom/issues/214)) ([7b0478d](https://github.com/sgorblex/mailroom/commit/7b0478dd8fe9707278b8a8582ac4d445ca276ced))
+* **auth:** an admin signs a user out everywhere, revoking their access too ([#234](https://github.com/sgorblex/mailroom/issues/234)) ([edc0fa5](https://github.com/sgorblex/mailroom/commit/edc0fa5efb5a3cb76519384cf42be2e5d2682483))
+* **auth:** external sign-in only, an admin's setting that turns passwords off ([#227](https://github.com/sgorblex/mailroom/issues/227)) ([e19f8fa](https://github.com/sgorblex/mailroom/commit/e19f8fa2169ea3533f96d77831dd1e857befd6f8))
+* **auth:** list the signed-in sessions on the profile, and sign out of them ([#215](https://github.com/sgorblex/mailroom/issues/215)) ([44d9acf](https://github.com/sgorblex/mailroom/commit/44d9acf774e7d1f02da5e6d24818a96435d6d2c5))
+* **auth:** personal API tokens for the REST API and /mcp ([#217](https://github.com/sgorblex/mailroom/issues/217)) ([bdae831](https://github.com/sgorblex/mailroom/commit/bdae83115b15be814cf9adb73c8060dc1c36e24f))
+* **mail:** a refresh button that syncs the list shown ahead of the queue ([#224](https://github.com/sgorblex/mailroom/issues/224)) ([af4653e](https://github.com/sgorblex/mailroom/commit/af4653e2e9b979bb178216b6c934fe2d57fa7dad))
+* **mail:** All inboxes can take in INBOX's subfolders ([#226](https://github.com/sgorblex/mailroom/issues/226)) ([a018c78](https://github.com/sgorblex/mailroom/commit/a018c7862e3978eb48fe28da73617802121a54e0))
+* **mail:** choose which actions a message row shows ([#229](https://github.com/sgorblex/mailroom/issues/229)) ([182bad4](https://github.com/sgorblex/mailroom/commit/182bad40e6098b2142a793ef8b753d9d74e83ce5))
+* **mail:** fit a newsletter laid out wider than the screen to a phone's frame ([#209](https://github.com/sgorblex/mailroom/issues/209)) ([c7f3814](https://github.com/sgorblex/mailroom/commit/c7f3814d617fe58e63dafece8dbe78b4981ab02a))
+* **mail:** Handled replaces To sort, kept as each account chooses ([#228](https://github.com/sgorblex/mailroom/issues/228)) ([cf3355f](https://github.com/sgorblex/mailroom/commit/cf3355f9b42a827648be7103a2a407ad7051cc47))
+* **mcp:** agents attach new files and rename the parts they keep ([#220](https://github.com/sgorblex/mailroom/issues/220)) ([0cd183d](https://github.com/sgorblex/mailroom/commit/0cd183d9531be90a32dfda4b8266efb51cb4b252))
+* **mcp:** limit a connected app to some accounts and to a send ceiling ([#216](https://github.com/sgorblex/mailroom/issues/216)) ([d9b3124](https://github.com/sgorblex/mailroom/commit/d9b3124021e67ef310fe31143fb36fda43a78b38))
+* **web:** export rule sets as JSON and the audit trail as CSV ([#219](https://github.com/sgorblex/mailroom/issues/219)) ([dca6751](https://github.com/sgorblex/mailroom/commit/dca6751b5c666e7ea0939207d187123b3042312e))
+* **web:** the activity of one connected app or API token ([#218](https://github.com/sgorblex/mailroom/issues/218)) ([ac85831](https://github.com/sgorblex/mailroom/commit/ac8583127eaacf9a30b786e9f9aadc96f27acded))
+
+
+### Bug Fixes
+
+* **filters:** sync the folders a run changed right after it ([#223](https://github.com/sgorblex/mailroom/issues/223)) ([fb36af1](https://github.com/sgorblex/mailroom/commit/fb36af1d2d28a092ba9b0c39f53797d92a409500))
+* **mail:** a search stays in the folder or view it was started from ([#225](https://github.com/sgorblex/mailroom/issues/225)) ([376f929](https://github.com/sgorblex/mailroom/commit/376f929be9a4e00598a7b8eb72f1b4f527a60dfa))
+* **mail:** let a live folder count stand over the count guessed from an action ([#206](https://github.com/sgorblex/mailroom/issues/206)) ([e709eed](https://github.com/sgorblex/mailroom/commit/e709eedadf4ed6bd9b8af93fb68eca863c5cc90c))
+* **mail:** send an imported draft whose styles the cleaner emptied ([#207](https://github.com/sgorblex/mailroom/issues/207)) ([d29c689](https://github.com/sgorblex/mailroom/commit/d29c6890771cdb6ec8c97684afa0f09368919789))
+* **mail:** sync Sent and Drafts into the index after a send or a draft save ([#208](https://github.com/sgorblex/mailroom/issues/208)) ([22354d3](https://github.com/sgorblex/mailroom/commit/22354d3558aedda600a5949a3bcf28171200b0b4))
+* **web:** draw button icons at 16px, as the button styles ask ([#233](https://github.com/sgorblex/mailroom/issues/233)) ([fc1044f](https://github.com/sgorblex/mailroom/commit/fc1044fd2dce4ddd65c41ed89397338f9ff1162d))
+
+
+### Performance Improvements
+
+* **mail:** check an account's due folders in one turn, behind the syncs asked for ([#222](https://github.com/sgorblex/mailroom/issues/222)) ([5e6961c](https://github.com/sgorblex/mailroom/commit/5e6961c381af9432705f373567d37543839d0043))
+* **mail:** draw the mail without waiting on mailbox logins ([#210](https://github.com/sgorblex/mailroom/issues/210)) ([f5e3ea2](https://github.com/sgorblex/mailroom/commit/f5e3ea21ffbfe3cf27b1cac07f56c2449173e175))
+* **mail:** read a message without selecting its folder again or refetching its structure ([#211](https://github.com/sgorblex/mailroom/issues/211)) ([f4256f8](https://github.com/sgorblex/mailroom/commit/f4256f8eb5036f5d34f9d3d38ffab4626d5c2933))
+* **web:** build the web app with React Compiler ([#213](https://github.com/sgorblex/mailroom/issues/213)) ([087e47d](https://github.com/sgorblex/mailroom/commit/087e47d90784a2aaf283ae2f3935d8bdb19e4a7d))
+* **web:** fetch the mail screen's code alongside /me when the app opens on it ([#212](https://github.com/sgorblex/mailroom/issues/212)) ([076a555](https://github.com/sgorblex/mailroom/commit/076a555bec5b95728be1029269a20dd38d53f76a))
+
 ## [0.16.0](https://github.com/sgorblex/mailroom/compare/v0.15.0...v0.16.0) (2026-11-24)
 
 
