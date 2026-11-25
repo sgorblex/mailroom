@@ -283,7 +283,10 @@ What they are: [`../REQUIREMENTS.md`](../REQUIREMENTS.md) — *Editions*. Code:
   does not name them) and keeps them across sign-in and sign-out. The nav, Profile's connected
   apps, an account's *Run filters* switch and its send mode (shown with `mail` or `mcp`) follow
   them. A screen whose feature is off stays a route and says it is not available, without
-  loading its chunk or calling its API.
+  loading its chunk or calling its API. The one exception is the mail screen's chunk on a load
+  that opens on it (`/mail`, or `/` for a user whose home is mail): it is fetched alongside
+  `/me`, from what this browser kept of the last one (`mailroom.ui.opening`: the home and whether
+  mail ran), and not where that said mail was off; `/me` still decides what is shown.
 - **Account and user removal** still delete the filter rows of what they remove whatever the
   features: cleaning up is the base's job.
 - **`/api/v1/auth/me` names the features to anyone,** signed in or not, so the web app knows them
@@ -472,6 +475,8 @@ bounded to one minor because the server relies on its handlers.
   `mailroom.ui.<name>` (`web/src/lib/device-prefs.ts`).
   The theme, accent and text size are also copied there (`mailroom.ui.look`, `web/src/theme/look.ts`)
   so a load starts in them before `auth/me` answers; the server's value then replaces the copy.
+  The home is copied the same way, with whether mail ran (`mailroom.ui.opening`,
+  `web/src/auth/opening.ts`), only to fetch the mail screen's code early (*Editions*).
   Every accent, light and dark, meets WCAG AA for its text pairs (*Accessibility*), which
   `web/src/theme/contrast.node.test.ts` checks against `index.css`. Native checkboxes, radios and
   ranges take the accent too (`accent-color` from `--primary`).

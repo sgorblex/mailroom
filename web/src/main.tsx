@@ -6,6 +6,8 @@ import { RouterProvider } from '@tanstack/react-router'
 
 import { AuthProvider } from '@/auth/auth-provider.tsx'
 import { ClearOnSignOut } from '@/auth/clear-on-sign-out.ts'
+import { preloadMailOpening } from '@/auth/opening.ts'
+import { OpeningSync } from '@/auth/opening-sync.tsx'
 import i18n, { i18nReady } from '@/i18n/i18n.ts'
 import { createQueryClient } from '@/lib/query-client.ts'
 import { router } from '@/router.tsx'
@@ -22,6 +24,9 @@ if (!rootElement) {
 // This browser's copy of the user's look, before anything renders: no flash of the wrong theme.
 startLook()
 
+// The mail screen's code, fetched alongside /me when this load opens on it rather than after.
+preloadMailOpening(window.location.pathname, !router.history.canGoBack())
+
 const queryClient = createQueryClient()
 
 void i18nReady.then(() => {
@@ -32,6 +37,7 @@ void i18nReady.then(() => {
           <AuthProvider>
             <ClearOnSignOut />
             <LookSync />
+            <OpeningSync />
             <RouterProvider router={router} />
           </AuthProvider>
         </QueryClientProvider>

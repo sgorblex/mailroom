@@ -318,7 +318,7 @@ Older than milestone E, seen in its browser check; fix before batch 11.
         keywords in later, and start the list from the remembered account.
   - [x] **Fewer IMAP round trips per read** — skip selecting a folder that is already selected
         with the same UIDVALIDITY, and keep a message's BODYSTRUCTURE for a while (mailroom-core).
-  - [ ] **Mail code sooner** — load the mail screen's chunk without waiting for `/auth/me`, or
+  - [x] **Mail code sooner** — load the mail screen's chunk without waiting for `/auth/me`, or
         ship it with the shell.
   - [ ] **React Compiler** — the general form of the targeted memoising in the speed pass, so
         rows stop re-rendering when the open message changes.

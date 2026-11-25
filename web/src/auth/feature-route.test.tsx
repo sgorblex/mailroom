@@ -3,7 +3,9 @@ import { createMemoryHistory, createRouter, RouterProvider } from '@tanstack/rea
 import type { ReactElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { Feature } from '@/api/auth.ts'
+import { DEFAULT_APPEARANCE, type Feature } from '@/api/auth.ts'
+import { mailOpening, OPENING_PREF, type Opening } from '@/auth/opening.ts'
+import { OpeningSync } from '@/auth/opening-sync.tsx'
 import { routeTree } from '@/router.tsx'
 import { renderSignedIn } from '@/test/signed-in.tsx'
 
@@ -178,5 +180,75 @@ describe('featureRoute on a cold load', () => {
       await screen.findByRole('heading', { name: 'Not available on this instance' }),
     ).toBeInTheDocument()
     expect(loaded.mail).not.toHaveBeenCalled()
+  })
+})
+
+describe('the mail screen on opening', () => {
+  const remember = (opening: Opening): void => {
+    window.localStorage.setItem(`mailroom.ui.${OPENING_PREF}`, JSON.stringify(opening))
+  }
+
+  it.each([
+    { path: '/mail', firstPage: true, remembered: null, opens: true },
+    { path: '/mail', firstPage: false, remembered: { home: 'dashboard', mail: true }, opens: true },
+    { path: '/mail', firstPage: true, remembered: { home: 'mail', mail: false }, opens: false },
+    { path: '/', firstPage: true, remembered: { home: 'mail', mail: true }, opens: true },
+    { path: '/', firstPage: false, remembered: { home: 'mail', mail: true }, opens: false },
+    { path: '/', firstPage: true, remembered: { home: 'mail', mail: false }, opens: false },
+    { path: '/', firstPage: true, remembered: { home: 'filters', mail: true }, opens: false },
+    { path: '/', firstPage: true, remembered: null, opens: false },
+    { path: '/filters', firstPage: true, remembered: { home: 'mail', mail: true }, opens: false },
+    { path: '/mail/x', firstPage: true, remembered: null, opens: false },
+  ] satisfies { path: string; firstPage: boolean; remembered: Opening | null; opens: boolean }[])(
+    '$path (first page $firstPage, remembered $remembered) opens on mail: $opens',
+    ({ path, firstPage, remembered, opens }) => {
+      expect(mailOpening(path, firstPage, remembered)).toBe(opens)
+    },
+  )
+
+  // A fresh module each time: an import already done would not run the mock's factory again.
+  async function preload(path: string, firstPage: boolean): Promise<void> {
+    vi.resetModules()
+    vi.doMock('@/mail/mail-screen.tsx', () => mailScreenModule())
+    const { preloadMailOpening } = await import('@/auth/opening.ts')
+    preloadMailOpening(path, firstPage)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  }
+
+  it('fetches the mail screen before /me when the load opens on it', async () => {
+    remember({ home: 'mail', mail: true })
+    await preload('/', true)
+    expect(loaded.mail).toHaveBeenCalled()
+  })
+
+  it('fetches it at /mail before anything is remembered', async () => {
+    await preload('/mail', true)
+    expect(loaded.mail).toHaveBeenCalled()
+  })
+
+  it('never fetches it where the instance last ran no mail', async () => {
+    remember({ home: 'mail', mail: false })
+    await preload('/mail', true)
+    expect(loaded.mail).not.toHaveBeenCalled()
+  })
+
+  it.each(['/filters', '/activity', '/profile', '/'])('never fetches it at %s', async (path) => {
+    remember({ home: 'dashboard', mail: true })
+    await preload(path, true)
+    expect(loaded.mail).not.toHaveBeenCalled()
+  })
+
+  it('reads a remembered value it does not know as nothing remembered', async () => {
+    window.localStorage.setItem(`mailroom.ui.${OPENING_PREF}`, JSON.stringify({ home: 'elsewhere', mail: true }))
+    await preload('/', true)
+    expect(loaded.mail).not.toHaveBeenCalled()
+  })
+
+  it('remembers the signed-in user’s home and whether the instance runs mail', () => {
+    renderSignedIn(<OpeningSync />, { ...ALICE, appearance: { ...DEFAULT_APPEARANCE, home: 'mail' } }, ['filters'])
+    expect(JSON.parse(window.localStorage.getItem(`mailroom.ui.${OPENING_PREF}`) ?? 'null')).toEqual({
+      home: 'mail',
+      mail: false,
+    })
   })
 })
