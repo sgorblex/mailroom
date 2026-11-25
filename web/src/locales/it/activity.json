@@ -80,6 +80,7 @@
     "uid": "UID",
     "subject_sha256": "Oggetto (hash)",
     "attachments": "Allegati",
+    "files": "File forniti dall'agente",
     "delivery": "Consegna",
     "filed": "Copia in Inviata",
     "rejected": "Destinatari rifiutati",

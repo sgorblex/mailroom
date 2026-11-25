@@ -45,6 +45,7 @@ from mailroom.mail.service._shared import (
 from mailroom.mail.service.compose import (
     _TYPE_HERE,
     DRAFT_GONE,
+    KeptPart,
     SendView,
     _as_refusals,
     _attachment_sources,
@@ -69,6 +70,7 @@ if TYPE_CHECKING:
     from mailroom_core.config import AccountConfig
     from mailroom_core.crypto import SecretsSubkey
     from mailroom_core.mail import (
+        AttachmentSource,
         Authoriser,
         Draft,
         Mailbox,
@@ -76,6 +78,7 @@ if TYPE_CHECKING:
         MessageInput,
         MessageRef,
         Note,
+        OutgoingAttachment,
     )
     from mailroom_core.send import Transfer
     from mailroom_core.store import AccountStore, Json, SendState
@@ -602,6 +605,20 @@ def _above(html: str | None, original: str | None) -> str | None:
     return joined
 
 
+def _files(
+    connections: MailConnections,
+    sources: Sequence[AttachmentSource],
+    uploads: Sequence[OutgoingAttachment],
+    cap: int,
+) -> tuple[OutgoingAttachment, ...]:
+    """What a message attaches: the parts ``sources`` name, then the ``uploads``, together within
+    ``cap`` bytes, and with uploads within the number of files a message may have too."""
+    sizes = [len(upload.content) for upload in uploads]
+    if uploads:
+        core.check_uploads([*sizes, *(0 for source in sources if not source.inline)], cap)
+    return (*core.attachments_from(connections, sources, cap, used=sum(sizes)), *uploads)
+
+
 def send_message(
     ctx: AppContext,
     user_id: int,
@@ -614,15 +631,16 @@ def send_message(
     subject: str,
     text: str,
     html: str | None = None,
-    attachments: Sequence[tuple[str, str]] = (),
+    attachments: Sequence[KeptPart] = (),
+    uploads: Sequence[OutgoingAttachment] = (),
     signature: bool = True,
     origin: Origin,
 ) -> Dispatched:
     """A new message from an agent, as far as the account's send mode lets it. ``attachments``
-    are ``(ref, part)`` of existing messages; with ``html``, ``text`` is derived from it. The
-    identity's signature goes below the text unless ``signature`` is false."""
+    are parts of existing messages, ``uploads`` new files; with ``html``, ``text`` is derived from
+    it. The identity's signature goes below the text unless ``signature`` is false."""
     accounts = _accounts(ctx, user_id)
-    account, used = _written(ctx, user_id, accounts, account_id, [r for r, _ in attachments])
+    account, used = _written(ctx, user_id, accounts, account_id, [kept.ref for kept in attachments])
     with _as_refusals():
         core.check_fields(to=to, cc=cc, bcc=bcc, subject=subject, text=text, html=html or "")
     recipients = _deliverable(to), _deliverable(cc), _deliverable(bcc)
@@ -633,7 +651,7 @@ def send_message(
     signed = _signatures(ctx, user_id, account.id, signature=signature).get(from_.address.lower())
 
     def message(connections: MailConnections) -> MessageInput:
-        files = core.attachments_from(connections, sources, core.attachment_cap(limits))
+        files = _files(connections, sources, uploads, core.attachment_cap(limits))
         return core.MessageInput(
             sender=from_,
             to=recipients[0],
@@ -659,7 +677,8 @@ def send_reply(
     sender: str | None = None,
     cc: Sequence[Mailbox] = (),
     bcc: Sequence[Mailbox] = (),
-    attachments: Sequence[tuple[str, str]] = (),
+    attachments: Sequence[KeptPart] = (),
+    uploads: Sequence[OutgoingAttachment] = (),
     quote: bool = True,
     signature: bool = True,
     origin: Origin,
@@ -671,7 +690,7 @@ def send_reply(
     accounts = _accounts(ctx, user_id)
     original_ref = _message_ref(ctx, user_id, accounts, ref)
     account, used = _written(
-        ctx, user_id, accounts, original_ref.account, [ref, *(r for r, _ in attachments)]
+        ctx, user_id, accounts, original_ref.account, [ref, *(kept.ref for kept in attachments)]
     )
     with _as_refusals():
         core.check_fields(cc=cc, bcc=bcc, text=text, html=html or "")
@@ -687,7 +706,7 @@ def send_reply(
         )
         answered = core.reply_recipients(original, account, reply_all=reply_all)
         thread = core.threading(original)
-        files = core.attachments_from(connections, sources, core.attachment_cap(limits))
+        files = _files(connections, sources, uploads, core.attachment_cap(limits))
         from_ = core.from_identity(account, sender, original.addressed)
         signed = by_address.get(from_.address.lower())
         body = signatures.signed_text(text, signed)
@@ -731,16 +750,21 @@ def send_forward(
     html: str | None = None,
     sender: str | None = None,
     include_attachments: bool = True,
+    attachments: Sequence[KeptPart] = (),
+    uploads: Sequence[OutgoingAttachment] = (),
     signature: bool = True,
     origin: Origin,
 ) -> Dispatched:
-    """A forward from an agent: the original inline, its attachments too by default, an optional
-    note above it, and the identity's signature above it unless ``signature`` is false. With
-    ``html`` the note is HTML and so is the original, its inline images carried. It marks the
-    original ``$Forwarded`` once delivered, where keywords are kept."""
+    """A forward from an agent: the original inline, its attachments too by default, then
+    ``attachments`` and ``uploads`` as ``send_message`` takes them, an optional note above it, and
+    the identity's signature above it unless ``signature`` is false. With ``html`` the note is
+    HTML and so is the original, its inline images carried. It marks the original ``$Forwarded``
+    once delivered, where keywords are kept."""
     accounts = _accounts(ctx, user_id)
     original_ref = _message_ref(ctx, user_id, accounts, ref)
-    account, used = _written(ctx, user_id, accounts, original_ref.account, [ref])
+    account, used = _written(
+        ctx, user_id, accounts, original_ref.account, [ref, *(kept.ref for kept in attachments)]
+    )
     with _as_refusals():
         core.check_fields(to=to, cc=cc, bcc=bcc, text=text or "", html=html or "")
     recipients = _deliverable(to), _deliverable(cc), _deliverable(bcc)
@@ -759,6 +783,7 @@ def send_forward(
             if include_attachments
             else []
         )
+        sources += _attachment_sources(attachments)
         if html is not None:
             sources += [
                 core.AttachmentSource(original_ref, part.info.part, inline=True)
@@ -775,7 +800,7 @@ def send_forward(
                 signatures.signed_html(html, signed), core.forwarded_original_html(original, zone)
             ),
             forwards=ref,
-            attachments=core.attachments_from(connections, sources, core.attachment_cap(limits)),
+            attachments=_files(connections, sources, uploads, core.attachment_cap(limits)),
         )
 
         def mark(settling: MailConnections, _filed: bool) -> tuple[gate.SendNote, ...]:

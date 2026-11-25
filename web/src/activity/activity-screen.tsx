@@ -7,13 +7,14 @@ import { ChevronRight } from 'lucide-react'
 import { AccountName } from '@/accounts/account-name.tsx'
 import { AccountsContext, useAccountLabel } from '@/accounts/accounts-context.ts'
 import { listAccounts } from '@/api/accounts.ts'
-import { ACTORS, MAIL_ACTIONS, listAudit, type AuditFilters, type AuditPage, type AuditRecord } from '@/api/audit.ts'
+import { ACTORS, auditFilesSchema, MAIL_ACTIONS, listAudit, type AuditFilters, type AuditPage, type AuditRecord } from '@/api/audit.ts'
 import { apiErrorMessage } from '@/api/http.ts'
 import { useTimeZone } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { formatDateTime } from '@/lib/format.ts'
 import { useLoad } from '@/lib/use-load.ts'
 import { useUnmountSignal } from '@/lib/use-unmount-signal.ts'
+import { formatSize } from '@/mail/format.ts'
 
 import { auditFilters, recordApp, RESULTS, validateActivitySearch, type ActivitySearch } from './activity-search.ts'
 import { useAppChoices } from './app-names.ts'
@@ -49,6 +50,12 @@ function text(t: TFunction, name: string, value: unknown): string {
     return t(`values.${name}.${value}`, { defaultValue: value })
   }
   return typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value)
+}
+
+/** The files an agent gave, by name and size. */
+function filesText(language: string, value: unknown): string | null {
+  const files = auditFilesSchema.safeParse(value)
+  return files.success ? files.data.map(({ name, size }) => `${name} (${formatSize(language, size)})`).join(', ') : null
 }
 
 /** The line under the summary: who wrote it to whom, or where it went. */
@@ -315,7 +322,7 @@ function Row({ record }: { record: AuditRecord }): ReactElement {
             <dd className="break-all">
               {(name === 'destination_account' || name === 'source_account') && typeof value === 'number'
                 ? accountLabel(value).display_name
-                : text(t, name, value)}
+                : (name === 'files' ? filesText(i18n.language, value) : null) ?? text(t, name, value)}
             </dd>
           </div>
         ))}

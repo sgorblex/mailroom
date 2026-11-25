@@ -20,8 +20,9 @@ from pydantic import Field, StrictBool
 
 from mailroom.errors import Refusal
 from mailroom.mail import service, signatures
-from mailroom.mail.service import DraftFields, ImportFields
+from mailroom.mail.service import DraftFields, ImportFields, KeptPart
 from mailroom.mcp.tool import Arguments, Hints, Tool, text_result
+from mailroom.mcp.tools.files import Files, check_count, uploads_of
 from mailroom.mcp.tools.mail_read import RefText, named_account
 from mailroom.mcp.tools.outgoing import (
     INCLUDE_SIGNATURE,
@@ -69,6 +70,7 @@ class DraftCreateArguments(Arguments):
     text: Text | None = None
     html: Html | None = None
     attachments: Attachments | None = None
+    files: Files | None = None
     reply_to: RefText | None = Field(
         default=None, description="Ref of the message this draft answers."
     )
@@ -91,6 +93,7 @@ class DraftUpdateArguments(Arguments):
     text: Text | None = None
     html: Html | None = None
     attachments: Attachments | None = None
+    files: Files | None = None
 
 
 class ImportedPart(AttachmentRef):
@@ -185,6 +188,8 @@ async def _draft_create(args: DraftCreateArguments, call: ToolCall) -> types.Cal
     text = args.text or ""
     to, cc, bcc = recipients(args.to), recipients(args.cc), recipients(args.bcc)
     keep = keep_of(args.attachments)
+    uploads = await uploads_of(call, args.files)
+    check_count(uploads, len(keep))
     if args.reply_to is None:
         account = await named_account(args.account_id, call)
         signed = await _signature(call, args, account, args.sender)
@@ -232,7 +237,7 @@ async def _draft_create(args: DraftCreateArguments, call: ToolCall) -> types.Cal
             keep=keep,
         )
     saved = await call.thread(
-        lambda: service.save_draft(call.ctx, call.user_id, fields, origin=call.origin)
+        lambda: service.save_draft(call.ctx, call.user_id, fields, uploads, origin=call.origin)
     )
     return text_result(await _saved(call, saved))
 
@@ -240,6 +245,7 @@ async def _draft_create(args: DraftCreateArguments, call: ToolCall) -> types.Cal
 async def _draft_update(args: DraftUpdateArguments, call: ToolCall) -> types.CallToolResult:
     check_body(args.text, args.html, required=False)
     to, cc, bcc = recipients(args.to), recipients(args.cc), recipients(args.bcc)
+    uploads = await uploads_of(call, args.files)
     try:
         current = await call.thread(
             lambda: service.read_draft(call.ctx, call.user_id, args.ref, via="mcp")
@@ -256,12 +262,14 @@ async def _draft_update(args: DraftUpdateArguments, call: ToolCall) -> types.Cal
     draft = current.draft
     if args.attachments is None:
         ref = format_ref(draft.ref)
-        keep = [(ref, part.part) for part in draft.attachments]
+        keep = [KeptPart(ref, part.part) for part in draft.attachments]
     else:
         keep = keep_of(args.attachments)
+    check_count(uploads, len(keep))
     # New text replaces the HTML; else the HTML stays, or is replaced, with the draft's images.
     html = draft.html if args.html is None and args.text is None else args.html
-    keep_inline = [(format_ref(draft.ref), part.info.part) for part in draft.inline] if html else []
+    shown = draft.inline if html else ()
+    keep_inline = [KeptPart(format_ref(draft.ref), part.info.part) for part in shown]
     fields = DraftFields(
         account=draft.ref.account,
         compose_id=draft.compose_id or _compose_id(),
@@ -279,7 +287,7 @@ async def _draft_update(args: DraftUpdateArguments, call: ToolCall) -> types.Cal
         keep_inline=keep_inline,
     )
     saved = await call.thread(
-        lambda: service.save_draft(call.ctx, call.user_id, fields, origin=call.origin)
+        lambda: service.save_draft(call.ctx, call.user_id, fields, uploads, origin=call.origin)
     )
     gone = {"expunged": "removed", "trashed": "moved to Trash"}.get(saved.replaced or "")
     if saved.ref is None:
@@ -329,7 +337,10 @@ async def _draft_import(args: DraftImportArguments, call: ToolCall) -> types.Cal
         subject=args.subject,
         eml=None if args.eml is None else args.eml.encode("utf-8", "replace"),
         html=args.html,
-        keep=[(part.ref, part.part, part.content_id) for part in args.attachments or ()],
+        keep=[
+            KeptPart(part.ref, part.part, part.name, part.content_id)
+            for part in args.attachments or ()
+        ],
     )
     imported = await call.thread(
         lambda: service.import_draft(call.ctx, call.user_id, fields, origin=call.origin)
@@ -352,7 +363,8 @@ MAIL_DRAFT_TOOLS: Final[tuple[Tool[Any], ...]] = (
         description=(
             "Save a new message in Drafts without sending it. With `reply_to`, it answers that "
             "message: threaded, addressed to its sender (all its recipients with reply_all), "
-            "from the identity it was sent to, and quoting it. The result gives the draft's ref."
+            "from the identity it was sent to, and quoting it. `files` attaches new files, "
+            "`attachments` those of existing messages. The result gives the draft's ref."
         ),
         group="mail_draft",
         arguments=DraftCreateArguments,
@@ -364,10 +376,10 @@ MAIL_DRAFT_TOOLS: Final[tuple[Tool[Any], ...]] = (
         title="Change a draft",
         description=(
             "Change a draft in Drafts: any field given replaces the old one, the rest is kept "
-            "(attachments too, unless `attachments` is given). The draft gets a new ref; the old "
-            "one stops working. New `text` replaces an HTML body; `html` replaces either. A draft "
-            "written elsewhere keeps only its plain text. Refused once the draft was sent or may "
-            "have been."
+            "(attachments too, unless `attachments` is given; `files` adds new ones to them). "
+            "The draft gets a new ref; the old one stops working. New `text` replaces an HTML "
+            "body; `html` replaces either. A draft written elsewhere keeps only its plain text. "
+            "Refused once the draft was sent or may have been."
         ),
         group="mail_draft",
         arguments=DraftUpdateArguments,

@@ -51,7 +51,7 @@ MESSAGES: Final[Mapping[MailErrorCode, str]] = {
     ),
     "not_found": "No such message or part.",
     "invalid_argument": "Invalid argument.",
-    "too_large": "Too large to return.",
+    "too_large": "Too large.",
     "send_disabled": "Sending is disabled for this account (send_mode off): no drafts or sends.",
     "rate_limited": "The hourly send limit is reached; nothing was sent.",
     "recipient_refused": "The mail server refused the message; nothing was sent.",

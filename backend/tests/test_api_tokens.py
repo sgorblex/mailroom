@@ -34,7 +34,7 @@ from mailroom_core.mail import MessageRef, format_ref
 from mailroom_core.testing import SmtpTestServer, create_folders, mime
 from tests.conftest import PASSWORD
 from tests.test_api_accounts import MAILBOX_PASSWORD, new_account
-from tests.test_api_compose import MAIL, Composer, detail
+from tests.test_api_compose import MAIL, PDF, PNG, Composer, detail, post_import
 from tests.test_api_filters import SHOP_SPEC
 from tests.test_mcp import _mcp_application, ctx, mcp  # noqa: F401
 from tests.test_scheduled_sends import composer, draft_to, stranger  # noqa: F401
@@ -834,6 +834,32 @@ def test_the_gate_takes_an_agents_context_as_an_agents_whatever_it_is_told(
     with pytest.raises(Exception, match="send mode is drafts"):
         mail_service.send_draft(agent, user.id, ref, by="user")
     assert smtp_server.delivered_to(to) == []
+
+
+def test_an_import_by_a_token_records_the_files_it_gave(
+    composer: Composer,  # noqa: F811
+    audited: Callable[[int], list[AuditRecord]],
+    db_session: Session,
+    user: User,
+    application: FastAPI,
+) -> None:
+    _, raw = made(db_session, user, ["mail_draft"])
+    agent = Composer(script(application, raw), composer.server, composer.login, application)
+    response = post_import(
+        agent,
+        "html",
+        {"content_ids": ["logo"]},
+        ("html", (None, b'<p>Hi <img src="cid:logo" alt="Logo"></p>')),
+        ("files[]", ("logo.png", PNG, "image/png")),
+        ("files[]", ("terms.pdf", PDF, "application/pdf")),
+    )
+    assert response.status_code == 201, response.text
+    [record] = [r for r in audited(user.id) if r.action == "draft_save"]
+    assert record.detail["attachments"] == 1
+    assert record.detail["files"] == [
+        {"name": "logo.png", "size": len(PNG)},
+        {"name": "terms.pdf", "size": len(PDF)},
+    ]
 
 
 def test_a_held_send_goes_only_while_its_token_still_allows_it(

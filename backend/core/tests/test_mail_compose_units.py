@@ -863,6 +863,20 @@ class TestAudit:
         assert "Line one" not in dumped
         assert len(str(record["subject_sha256"])) == 64
 
+    def test_names_only_the_files_an_agent_gave(self) -> None:
+        message = replace(
+            BASE,
+            attachments=(
+                OutgoingAttachment("from-mail.pdf", "application/pdf", b"secret"),
+                OutgoingAttachment("a\u202efdp.exe", "text/plain", b"secret", given=True),
+            ),
+        )
+        record = outgoing_item(1, message, "ok").record
+        assert record["attachments"] == 2
+        assert record["files"] == ({"name": "afdp.exe", "size": 6},)
+        assert "secret" not in json.dumps(record)
+        assert "files" not in outgoing_item(1, BASE, "ok").record
+
     def test_hashes_a_subject_with_lone_surrogates(self) -> None:
         assert outgoing_item(1, replace(BASE, subject="a\ud800"), "ok").subject_sha256
 

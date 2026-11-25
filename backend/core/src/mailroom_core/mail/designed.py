@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Final, Literal, cast
 from urllib.parse import unquote, urlsplit
 
 from mailroom_core.mail._mime import decode_bytes, well_formed
+from mailroom_core.mail.audit import given_files
 from mailroom_core.mail.compose import (
     _CONTENT_ID,
     _POLICY,
@@ -67,7 +68,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Mapping, Sequence
 
     from mailroom_core.config import AccountConfig, Limits
-    from mailroom_core.mail.audit import Note
+    from mailroom_core.mail.audit import AuditFile, Note
     from mailroom_core.mail.compose import MessageInput, OutgoingAttachment
     from mailroom_core.mail.imap import MailConnections
     from mailroom_core.mail.ref import MessageRef
@@ -152,6 +153,9 @@ class Built:
     """What the import changed, by kind (`render.unsafe_parts`' kinds, and `text`), with counts."""
     attachments: int = 0
     """Its files, the parts its HTML shows in place left out."""
+    files: tuple[AuditFile, ...] = ()
+    """The files of an HTML import an agent gave or renamed, inline ones included; an .eml's own
+    parts are not named."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -499,9 +503,10 @@ def import_html(html: str, files: Sequence[OutgoingAttachment], cap: int) -> Bui
                 raise MailError("invalid_argument", _BAD_CONTENT_ID)
             inline[cid] = file
     try:
-        return _built(_assembled(html, sources, inline, files), cap)
+        built = _built(_assembled(html, sources, inline, files), cap)
     except _IMPORT_ERRORS:
         raise MailError("invalid_argument", _UNREADABLE) from None
+    return replace(built, files=given_files(files))
 
 
 def _assembled(
@@ -648,6 +653,7 @@ def import_draft(
         note=note,
         replaces=replaces,
         attachments=built.attachments,
+        files=built.files,
     )
     return ImportedDraft(saved, check_message(composed.stored, cap, dict(built.changes)))
 

@@ -269,7 +269,9 @@ authorization server with its `/connect` consent screen, connected apps on the p
   group by group ([`requirements/mcp.md`](requirements/mcp.md)), `mail_read` with the first
   slice of the [mail client](requirements/mail-client.md), `mail_organize` with the second,
   `mail_draft` and `mail_send` with the third, and `mail_folders` with folder management. An
-  agent sends only as far as the account's [send mode](GLOSSARY.md) and its send ceiling allow, and a send that is not confirmed is never repeated.
+  agent sends only as far as the account's [send mode](GLOSSARY.md) and its send ceiling allow, and a send that is not confirmed is never repeated. It
+  attaches parts of existing messages or new files, within the user's limit
+  ([*Files from agents*](requirements/mcp.md#files-from-agents)).
 - **Nothing turns on without the user's say:** a rule set created over MCP starts disabled, an
   enabled one cannot be edited (but for a folder rename pointing it at the folder's new path:
   [`requirements/mcp.md`](requirements/mcp.md)), and enabling, *Run now* and the *Run filters* switch are separate

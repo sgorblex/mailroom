@@ -1017,6 +1017,19 @@ def test_caps_are_refused_by_code(composer: Composer) -> None:
     )
 
 
+def test_uploads_go_under_the_type_their_bytes_show(composer: Composer) -> None:
+    composer.save(
+        files=(
+            ("a.txt", PDF, "text/plain"),
+            ("fake.png", b"no image", "image/png"),
+            ("b.csv", b"a,b", "text/csv; charset=utf-8"),
+        )
+    )
+    parts = parsed(composer.contents("Drafts")[0].source).walk()
+    attached = [p.get_content_type() for p in parts if p.get_content_disposition() == "attachment"]
+    assert attached == ["application/pdf", "application/octet-stream", "text/csv"]
+
+
 def test_malformed_saves_are_refused(composer: Composer) -> None:
     unknown = composer.post_draft(extra=1)
     assert unknown.status_code == 422

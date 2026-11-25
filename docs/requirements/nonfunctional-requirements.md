@@ -322,6 +322,14 @@ Specification: [`mcp.md`](mcp.md). Code: `mailroom.mcp`.
   to 45 s waiting for the delivery (a send not over by then is "not confirmed, do not resend")
   (the mail pool's: the account's connections in use are cut, a `timeout` refusal; *Mail
   client* below).
+- **Request size:** bounded after the bearer check and before any of the body is read
+  (`RequestLimit` in `mailroom.mcp.app`): 40 MiB for a caller approved for `mail_draft` or
+  `mail_send` who declares the length, at most 2 such requests per user in an API process (429
+  beyond); 1 MiB for everything else (413). The web image's nginx allows `client_max_body_size 40m`
+  on the exact location `/mcp`, with a 130 s read timeout, since a send is followed for up to 105 s.
+- **Files from agents** ([`mcp.md`](mcp.md#files-from-agents)): decoded strictly, their type checked
+  against their bytes, capped with the parts kept, and only as far as the send mode lets any
+  message go.
 - **Logs:** one `mcp_tool_called` per call, with `tool`, `user_id`, `client_id`, `grant_id`,
   `token_id`, `outcome` (`ok`, `refused`, `invalid_arguments`, `unknown_tool`, `failed`), `code`,
   `duration_ms` and `argument_keys`: the arguments' names, never their values. Changes log as from
@@ -838,7 +846,8 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
 - **Audit trail** (`app.audit_record`, `mailroom.audit`): one record per message a write acted
   on or tried to, and per folder created, renamed, deleted or marked read, refused attempts
   included: the item's fields (account, folder, UID, `Message-ID`, sender and recipients in
-  clear, the subject's SHA-256, destination, flags, junk, removal, send mode and delivery stage,
+  clear, the subject's SHA-256, destination, flags, junk, removal, send mode and delivery stage, the
+  name and size of each file an agent gave or renamed,
   a deleted folder's confirmed message count, the count a folder's mark read marked, an
   account's match count on a refused bulk call, the rule sets and filters a rename changed) with
   who acted (`user` on the web, `agent` with the MCP `client_id` and `grant_id` or the personal API token's `token_id`, or `filter`, a

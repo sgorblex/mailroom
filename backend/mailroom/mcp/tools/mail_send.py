@@ -30,6 +30,7 @@ from pydantic import AwareDatetime, Field, StrictBool
 from mailroom.errors import Refusal, mail_refusal
 from mailroom.mail import service
 from mailroom.mcp.tool import Arguments, Hints, Tool, text_result
+from mailroom.mcp.tools.files import Files, uploads_of
 from mailroom.mcp.tools.mail_read import (
     RefText,
     named_account,
@@ -90,6 +91,7 @@ class MessageSendArguments(Arguments):
     text: Text | None = None
     html: Html | None = None
     attachments: Attachments | None = None
+    files: Files | None = None
     include_signature: StrictBool = INCLUDE_SIGNATURE
 
 
@@ -104,6 +106,7 @@ class MessageReplyArguments(Arguments):
     )
     bcc: Addresses | None = None
     attachments: Attachments | None = None
+    files: Files | None = None
     quote: StrictBool = Field(default=True, description="Quote the original under the text.")
     include_signature: StrictBool = INCLUDE_SIGNATURE
 
@@ -122,7 +125,11 @@ class MessageForwardArguments(Arguments):
         ),
     )
     sender: Sender | None = SENDER
-    include_attachments: StrictBool = True
+    include_attachments: StrictBool = Field(
+        default=True, description="Carry the original's attachments, under their own names."
+    )
+    attachments: Attachments | None = None
+    files: Files | None = None
     include_signature: StrictBool = INCLUDE_SIGNATURE
 
 
@@ -219,6 +226,7 @@ async def _message_send(args: MessageSendArguments, call: ToolCall) -> types.Cal
     account = await named_account(args.account_id, call)
     to, cc, bcc = recipients(args.to), recipients(args.cc), recipients(args.bcc)
     keep = keep_of(args.attachments)
+    uploads = await uploads_of(call, args.files)
     return await _send(
         call,
         lambda: service.send_message(
@@ -233,6 +241,7 @@ async def _message_send(args: MessageSendArguments, call: ToolCall) -> types.Cal
             text=args.text or "",
             html=args.html,
             attachments=keep,
+            uploads=uploads,
             signature=args.include_signature,
             origin=call.origin,
         ),
@@ -243,6 +252,7 @@ async def _message_reply(args: MessageReplyArguments, call: ToolCall) -> types.C
     check_body(args.text, args.html)
     cc, bcc = recipients(args.cc), recipients(args.bcc)
     keep = keep_of(args.attachments)
+    uploads = await uploads_of(call, args.files)
     return await _send(
         call,
         lambda: service.send_reply(
@@ -256,6 +266,7 @@ async def _message_reply(args: MessageReplyArguments, call: ToolCall) -> types.C
             cc=cc or (),
             bcc=bcc or (),
             attachments=keep,
+            uploads=uploads,
             quote=args.quote,
             signature=args.include_signature,
             origin=call.origin,
@@ -266,6 +277,8 @@ async def _message_reply(args: MessageReplyArguments, call: ToolCall) -> types.C
 async def _message_forward(args: MessageForwardArguments, call: ToolCall) -> types.CallToolResult:
     check_body(args.text, args.html, required=False)
     to, cc, bcc = recipients(args.to), recipients(args.cc), recipients(args.bcc)
+    keep = keep_of(args.attachments)
+    uploads = await uploads_of(call, args.files)
     return await _send(
         call,
         lambda: service.send_forward(
@@ -279,6 +292,8 @@ async def _message_forward(args: MessageForwardArguments, call: ToolCall) -> typ
             html=args.html,
             sender=args.sender,
             include_attachments=args.include_attachments,
+            attachments=keep,
+            uploads=uploads,
             signature=args.include_signature,
             origin=call.origin,
         ),

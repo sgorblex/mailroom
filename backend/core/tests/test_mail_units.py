@@ -29,12 +29,14 @@ from mailroom_core.mail import (
     encode_cursor,
     failed_accounts,
     format_ref,
+    given_type,
     list_messages,
     parse_ref,
     preview_of,
     read_page,
     search_messages,
     thread_key,
+    upload_type,
 )
 from mailroom_core.mail._mime import TransferDecoder, decode_words, parameters, unflow
 from mailroom_core.mail.imap import folders_from
@@ -415,6 +417,44 @@ CONTENT_TYPES = [
 @pytest.mark.parametrize(("declared", "name", "expected", "data"), CONTENT_TYPES)
 def test_content_type(declared: str, name: str | None, expected: str, data: bytes) -> None:
     assert content_type(data, declared, name) == expected
+
+
+UTF16 = "caf\u00e9".encode("utf-16")
+GIVEN_TYPES: list[tuple[str | None, str, str | None, bytes]] = [
+    (None, "a.bin", "application/pdf", PDF),
+    (None, "notes.txt", "text/plain", TEXT),
+    (None, "notes", "application/octet-stream", TEXT),
+    ("application/octet-stream", "a.bin", "image/png", PNG),
+    ("application/octet-stream", "a.bin", "application/octet-stream", TEXT),
+    ("Application/PDF", "a.pdf", "application/pdf", PDF),
+    ("image/jpg", "a.jpg", "image/jpeg", b"\xff\xd8\xff\xe0"),
+    ("text/csv; charset=utf-8", "a.csv", "text/csv", TEXT),
+    ("text/plain", "a.txt", "text/plain", UTF16),
+    ("application/vnd.ms-excel", "a.xls", "application/vnd.ms-excel", TEXT),
+    # Contradicted: another type's bytes, not the type's bytes, binary called text, no type.
+    ("image/png", "a.png", None, PDF),
+    ("text/plain", "a.txt", None, PDF),
+    ("application/pdf", "a.pdf", None, TEXT),
+    ("image/png", "a.png", None, TEXT),
+    ("text/csv", "a.csv", None, b"MZ\x90\x00\x03"),
+    ("nonsense", "a", None, TEXT),
+    # A name makes no text of a binary file.
+    (None, "a.txt", "application/octet-stream", b"MZ\x90\x00\x03"),
+    ("application/octet-stream", "a.json", "application/octet-stream", b"MZ\x90\x00\x03"),
+    (None, "a.txt", "text/plain", UTF16),
+    ("text/plain\r\nX-Evil: 1", "a", None, TEXT),
+]
+
+
+@pytest.mark.parametrize(("declared", "name", "expected", "data"), GIVEN_TYPES)
+def test_given_type(declared: str | None, name: str, expected: str | None, data: bytes) -> None:
+    assert given_type(data, declared, name) == expected
+
+
+def test_upload_type_is_content_type_without_parameters() -> None:
+    assert upload_type(TEXT, "text/plain; charset=utf-8", "a.txt") == "text/plain"
+    assert upload_type(PDF, "text/plain", "a.txt") == "application/pdf"
+    assert upload_type(TEXT, "image/png", "a.png") == "application/octet-stream"
 
 
 def test_search_criteria() -> None:

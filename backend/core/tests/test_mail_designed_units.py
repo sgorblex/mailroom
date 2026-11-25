@@ -13,6 +13,7 @@ from mailroom_core.mail import (
     GMAIL_CLIP_BYTES,
     MAX_HTML_BYTES,
     MAX_IMPORT_PARTS,
+    AuditFile,
     Mailbox,
     MailError,
     MessageInput,
@@ -257,6 +258,18 @@ def test_an_html_file_takes_its_images_by_relative_path_or_cid_and_attaches_the_
     assert built.attachments == 1
     assert (built.to, built.subject) == ((), "")
     assert codes(built.body, dict(built.changes)) == ["text_derived"]
+
+
+def test_an_html_import_names_the_files_an_agent_gave_inline_ones_included() -> None:
+    files = [
+        OutgoingAttachment("logo.png", "image/png", PNG, "logo", given=True),
+        OutgoingAttachment("terms.pdf", "application/pdf", b"%PDF", given=True),
+        OutgoingAttachment("kept.pdf", "application/pdf", b"%PDF"),
+    ]
+    built = import_html('<img src="cid:logo" alt="Logo">', files, CAP)
+    assert built.files == (AuditFile("logo.png", len(PNG)), AuditFile("terms.pdf", 4))
+    assert built.attachments == 2
+    assert import_html("<p>Hi</p>", files[2:], CAP).files == ()
 
 
 def test_an_image_without_alt_is_found() -> None:

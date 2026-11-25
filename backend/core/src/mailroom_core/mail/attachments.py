@@ -1,11 +1,11 @@
-"""Attaching what is already in a mailbox (`src/mail/attachments.ts`), so no file ever round-trips
-through a model."""
+"""Attaching what is already in a mailbox (`src/mail/attachments.ts`), so that no such file
+round-trips through a model."""
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from mailroom_core.mail.compose import OutgoingAttachment
-from mailroom_core.mail.content_type import content_type
+from mailroom_core.mail.content_type import content_type, named_type
 from mailroom_core.mail.download import part_content
 from mailroom_core.mail.errors import MailError
 from mailroom_core.mail.outgoing import attachments_too_large
@@ -29,6 +29,8 @@ class AttachmentSource:
     inline: bool = False
     """The part is one the message's HTML shows in place (`Structure.inline`), carried as such
     with its Content-ID: for a forward or a draft's next version that keeps that HTML."""
+    name: str | None = None
+    """The name to attach it under, an agent's, instead of the part's own."""
 
 
 def attachments_from(
@@ -78,6 +80,13 @@ def _read(
                 content_type=content_type(content, info.type, info.name),
                 content=content,
                 content_id=leaf.content_id,
+            )
+        if source.name is not None:
+            return OutgoingAttachment(
+                filename=source.name,
+                content_type=named_type(content, info.type, source.name),
+                content=content,
+                given=True,
             )
         return OutgoingAttachment(
             filename=info.name or f"part-{part}",
