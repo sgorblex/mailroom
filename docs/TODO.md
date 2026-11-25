@@ -352,7 +352,7 @@ Older than milestone E, seen in its browser check; fix before batch 11.
       the star, and no rule set acting on different mail after the migration.
 - [ ] **Row actions chosen** — which actions a row shows on hover, and in the swipe menu on touch,
       an appearance setting (up to three, star and Handled by default).
-- [ ] **Search scope** — a search stays in the folder or view it was started from (from *All
+- [x] **Search scope** — a search stays in the folder or view it was started from (from *All
       inboxes* it searches the remembered account's folder), shows its scope beside the box, and a
       *Search all mail* button widens it, with a way back.
 - [ ] **Fresh mail sooner**:

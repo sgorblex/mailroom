@@ -15,11 +15,11 @@ export function viewSource(view: ViewKey): string {
 
 /**
  * `query` as a line a view can keep; `null` when it cannot be one: words to search or Gmail's own
- * syntax (the index searches neither), or a double quote the syntax cannot write.
+ * syntax (the index searches neither), a view it is searched in, or a double quote the syntax cannot write.
  */
 export function savableLine(query: SearchQuery): string | null {
-  const { gmail_query: gmailQuery, ...parsed } = query
-  if (parsed.text !== undefined || gmailQuery !== undefined) {
+  const { gmail_query: gmailQuery, view, ...parsed } = query
+  if (view !== undefined || parsed.text !== undefined || gmailQuery !== undefined) {
     return null
   }
   if (Object.values(parsed).some((value) => typeof value === 'string' && value.includes('"'))) {

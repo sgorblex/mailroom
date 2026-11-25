@@ -99,6 +99,7 @@ from mailroom.mail.service.read import (
     read_headers,
     read_message,
     search,
+    search_folders,
     thread,
     thread_key,
 )
@@ -225,6 +226,7 @@ __all__ = [
     "schedule_send",
     "scheduled_for",
     "search",
+    "search_folders",
     "send_draft",
     "send_forward",
     "send_holds",

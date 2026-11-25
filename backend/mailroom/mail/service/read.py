@@ -40,6 +40,7 @@ if TYPE_CHECKING:
 
     from mailroom.accounts.service import Via
     from mailroom.context import AppContext
+    from mailroom.mail.service._shared import _Accounts
     from mailroom_core.config import AccountConfig, TimeZoneName
     from mailroom_core.mail import (
         Attachment,
@@ -246,62 +247,20 @@ def search(
     (``_from_index``), else live; ``group`` as for a list."""
     check_search(folder, query, subfolders=subfolders)
     accounts = _accounts(ctx, user_id)
-    skipped: list[PageFailure] = []
     if account == ALL_ACCOUNTS:
-        try:
-            resumed = index_reads.decode_cursor(cursor)
-            if resumed is not None:
-                carried = resumed.failures(HOST_CODES)
-            else:
-                carried = [] if cursor is None else core.cursor_failures(cursor, HOST_CODES)
-        except MailError as error:
-            raise mail_refusal(error.code, error.message) from None
-        failed_before = {f.account for f in carried if f.folder is None}
-        wanted = accounts.ids()
-        if wanted:
-            require_subkey(ctx.subkey)
-        usable = []
-        for account_id in wanted:
-            if account_id in failed_before:
-                continue
-            if _missing_password(ctx, user_id, account_id):
-                skipped.append(_password_missing_failure(account_id, None))
-            else:
-                usable.append(account_id)
-        if not usable:
-            before = [f for f in carried if f.folder is None]
-            return index_reads.page_of((), [] if group else None, None, [*before, *skipped])
-        page = _call(
+        return _search_several(
             ctx,
             user_id,
             accounts,
-            "mail_searched",
-            via,
-            account,
-            lambda connections: _search_accounts(
-                connections,
-                usable,
-                folder,
-                query,
-                limit=limit,
-                cursor=cursor,
-                subfolders=subfolders,
-                skipped=skipped,
-                index=partial(
-                    _from_index,
-                    ctx,
-                    connections,
-                    user_id,
-                    usable,
-                    query=query,
-                    limit=limit,
-                    every_folder=folder == ALL_FOLDERS,
-                    group=group,
-                ),
-            ),
-            on=usable,
+            accounts.ids(),
+            lambda connections, each: _sources(connections, each, folder, query, subfolders),
+            query,
+            limit=limit,
+            cursor=cursor,
+            every_folder=folder == ALL_FOLDERS,
+            group=group,
+            via=via,
         )
-        return _with_password_failures(ctx, user_id, page)
     _usable(ctx, user_id, accounts, account)
     one = account
 
@@ -333,6 +292,120 @@ def search(
     if folder != ALL_FOLDERS and not subfolders:
         _first_failure(page)
     return page
+
+
+def search_folders(
+    ctx: AppContext,
+    user_id: int,
+    sources: Sequence[Source],
+    query: SearchQuery,
+    *,
+    limit: int = 25,
+    cursor: str | None = None,
+    group: bool = False,
+    via: Via = "web",
+) -> Page:
+    """``query`` over ``sources``, some folders of any of the user's accounts (a folder
+    ``ALL_FOLDERS``: every folder of its account), as ``search`` reads several accounts. Sources
+    of an account that is not the user's are left out; a folder that cannot be read is a failure
+    of the page."""
+    check_search("INBOX", query, subfolders=False)
+    accounts = _accounts(ctx, user_id)
+    folders: dict[int, list[str]] = {}
+    for source in dict.fromkeys(sources):
+        if accounts.has(source.account):
+            folders.setdefault(source.account, []).append(source.folder)
+
+    def find(connections: MailConnections, account: int) -> tuple[list[Source], Criteria]:
+        found: list[Source] = []
+        criteria: Criteria = []
+        for folder in folders[account]:
+            read, criteria = _sources(connections, account, folder, query, subfolders=False)
+            found.extend(read)
+        return list(dict.fromkeys(found)), criteria
+
+    return _search_several(
+        ctx,
+        user_id,
+        accounts,
+        list(folders),
+        find,
+        query,
+        limit=limit,
+        cursor=cursor,
+        group=group,
+        via=via,
+    )
+
+
+def _search_several(
+    ctx: AppContext,
+    user_id: int,
+    accounts: _Accounts,
+    wanted: Sequence[int],
+    find: _Find,
+    query: SearchQuery,
+    *,
+    limit: int,
+    cursor: str | None,
+    every_folder: bool = False,
+    group: bool,
+    via: Via,
+) -> Page:
+    """``query`` over the folders ``find`` gives for each ``wanted`` account, whose failures are
+    the page's (``search``)."""
+    try:
+        resumed = index_reads.decode_cursor(cursor)
+        if resumed is not None:
+            carried = resumed.failures(HOST_CODES)
+        else:
+            carried = [] if cursor is None else core.cursor_failures(cursor, HOST_CODES)
+    except MailError as error:
+        raise mail_refusal(error.code, error.message) from None
+    failed_before = {f.account for f in carried if f.folder is None}
+    if wanted:
+        require_subkey(ctx.subkey)
+    skipped: list[PageFailure] = []
+    usable = []
+    for account_id in wanted:
+        if account_id in failed_before:
+            continue
+        if _missing_password(ctx, user_id, account_id):
+            skipped.append(_password_missing_failure(account_id, None))
+        else:
+            usable.append(account_id)
+    if not usable:
+        before = [f for f in carried if f.folder is None]
+        return index_reads.page_of((), [] if group else None, None, [*before, *skipped])
+    page = _call(
+        ctx,
+        user_id,
+        accounts,
+        "mail_searched",
+        via,
+        ALL_ACCOUNTS,
+        lambda connections: _search_accounts(
+            connections,
+            usable,
+            partial(find, connections),
+            limit=limit,
+            cursor=cursor,
+            skipped=skipped,
+            index=partial(
+                _from_index,
+                ctx,
+                connections,
+                user_id,
+                usable,
+                query=query,
+                limit=limit,
+                every_folder=every_folder,
+                group=group,
+            ),
+        ),
+        on=usable,
+    )
+    return _with_password_failures(ctx, user_id, page)
 
 
 def check_search(folder: str, query: SearchQuery, *, subfolders: bool) -> None:
@@ -396,6 +469,10 @@ def _sources(
     return [Source(account, path) for path in paths], criteria
 
 
+type _Find = Callable[[MailConnections, int], tuple[list[Source], Criteria]]
+"""The folders a search reads in an account, and with which criteria."""
+
+
 class _Reading:
     """``connections`` for ``read_page``, counting the mailboxes each account has open for it:
     the accounts that still read when the search's time is up, and only those, are cut, and
@@ -447,19 +524,18 @@ class _Reading:
 def _search_accounts(
     connections: MailConnections,
     accounts: Sequence[int],
-    folder: str,
-    query: SearchQuery,
+    find: Callable[[int], tuple[list[Source], Criteria]],
     *,
     limit: int,
     cursor: str | None,
-    subfolders: bool = False,
     skipped: Sequence[PageFailure] = (),
     index: Callable[..., Page | None] | None = None,
 ) -> Page:
     """mailroom-core's ``search_messages`` over several accounts, with a deadline per account:
-    their folders are found side by side, ``SOURCES_SECONDS`` at most, and the accounts still
-    reading a mailbox at ``ACCOUNT_SECONDS`` are cut (one already done is left alone, so another
-    call on it goes on). Each such account is a ``timeout`` failure; an account that fails is a
+    their folders are found (``find``, with the criteria) side by side, ``SOURCES_SECONDS`` at
+    most, and the accounts still reading a mailbox at ``ACCOUNT_SECONDS`` are cut (one already
+    done is left alone, so another call on it goes on). Each such
+    account is a ``timeout`` failure; an account that fails is a
     failure too, whatever the number of accounts. An account that failed before its folders were
     found, on an earlier page, is not asked again: the cursor carries it, and each page reports
     it. ``skipped`` are the accounts the caller did not pass, failed with the app's own codes
@@ -499,10 +575,7 @@ def _search_accounts(
     finder = ThreadPoolExecutor(
         max_workers=max(1, min(len(asked), 8)), thread_name_prefix="mail-src"
     )
-    found = {
-        account: finder.submit(_sources, connections, account, folder, query, subfolders)
-        for account in asked
-    }
+    found = {account: finder.submit(find, account) for account in asked}
     wait(found.values(), timeout=SOURCES_SECONDS)
     finder.shutdown(wait=False, cancel_futures=True)
     for account, future in found.items():

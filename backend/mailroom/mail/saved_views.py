@@ -204,6 +204,17 @@ def _search_query(parsed: ParsedSearch) -> SearchQuery:
     )
 
 
+def searched_folders(ctx: AppContext, db: Session, user_id: int, view_id: int) -> list[Source]:
+    """The folders of the user's view, which a search in it reads; ``invalid_argument`` for a
+    view that is a search itself: its criteria are the caller's to ask for."""
+    view = owned_view(db, user_id, view_id)
+    if view.sources is None:
+        msg = "That view is a search: search with its terms instead."
+        raise Refusal("invalid", "invalid_argument", msg)
+    sources, _ = reading(ctx, user_id, view)
+    return sources
+
+
 def reading(
     ctx: AppContext, user_id: int, view: SavedView | None
 ) -> tuple[list[Source], SearchQuery | None]:

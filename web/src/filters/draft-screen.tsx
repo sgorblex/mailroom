@@ -107,7 +107,7 @@ export function FilterDraftRoute(): ReactElement {
 
 /** The mail screen where the draft came from, to go back to. */
 function mailSearch(source: Source): MailSearch {
-  return source.kind === 'message' ? { account: source.account, message: source.ref } : { q: source.query }
+  return source.kind === 'message' ? { account: source.account, message: source.ref } : { view: source.query.view, q: source.query }
 }
 
 export function FilterDraftScreen({ source }: { source: Source | null }): ReactElement {
