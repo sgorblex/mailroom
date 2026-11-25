@@ -1309,7 +1309,7 @@ def test_only_an_imported_draft_is_kept_as_built(composer: Composer) -> None:
     compose_id = str(uuid.uuid4())
     plain = composer.save(compose_id=compose_id, subject="Plain", text="Hi")
     refused = post_import(composer, "kept", {"compose_id": compose_id, "ref": plain["ref"]})
-    assert detail(refused) == (400, "invalid_argument")
+    assert detail(refused) == (409, "not_as_built")
     assert detail(post_import(composer, "kept", {})) == (400, "invalid_argument")
     html = ("html", (None, b"<p>x</p>"))
     with_html = post_import(composer, "kept", {"compose_id": compose_id, "ref": plain["ref"]}, html)
@@ -1399,9 +1399,55 @@ def test_a_forged_designed_marker_does_not_keep_html_unsanitised(composer: Compo
         ("\\Draft",),
     )
     refused = post_import(composer, "kept", {"ref": forged, "to": [address(stranger())]})
-    assert detail(refused) == (400, "invalid_argument")
+    assert detail(refused) == (409, "not_as_built")
     [stored] = composer.contents("Drafts")
     assert b"ada@example.org" in stored.source
+
+
+def test_an_import_whose_styles_all_go_is_kept_and_sent(composer: Composer) -> None:
+    # A style with nothing the sanitiser keeps used to stay as `style=""`, which the check of a
+    # kept draft cleaned away, so the draft could be neither addressed again nor sent.
+    to = stranger()
+    html = b'<p style="mso-line-height-rule:exactly">Spring</p><p style=";">news</p>'
+    compose_id = str(uuid.uuid4())
+    imported = post_import(composer, "html", {"compose_id": compose_id}, ("html", (None, html)))
+    [stored] = composer.contents("Drafts")
+    assert b"style=" not in stored.source
+    response = post_import(
+        composer,
+        "kept",
+        {
+            "compose_id": compose_id,
+            "ref": imported.json()["ref"],
+            "to": [address(to)],
+            "subject": "Spring",
+        },
+    )
+    assert response.status_code == 201, response.text
+    assert composer.sent(response.json()["ref"])["state"] == "sent"
+
+
+def test_a_draft_an_earlier_import_left_an_empty_style_in_is_still_kept(
+    composer: Composer,
+) -> None:
+    compose_id = str(uuid.uuid4())
+    imported = post_import(
+        composer,
+        "html",
+        {"compose_id": compose_id},
+        ("html", (None, b'<p style="color:red">Spring</p>')),
+    ).json()
+    [stored] = composer.contents("Drafts")
+    # As the sanitiser of 0.16 stored such a style: emptied, not removed.
+    source = stored.source.replace(b'style=3D"color:red"', b'style=3D""')
+    source = source.replace(b'style="color:red"', b'style=""')
+    assert source != stored.source
+    earlier = composer.seed(source.decode(), "Drafts", ("\\Draft",))
+    response = post_import(
+        composer, "kept", {"compose_id": compose_id, "ref": earlier, "to": [address(stranger())]}
+    )
+    assert response.status_code == 201, response.text
+    assert imported["ref"] != response.json()["ref"]
 
 
 def test_malformed_imports_are_refused(composer: Composer) -> None:

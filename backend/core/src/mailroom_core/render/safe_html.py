@@ -39,9 +39,9 @@ from mailroom_core.render._html_policy import (
     LINK,
     RASTER_TYPES,
     TAGS,
-    UNSAFE_CSS,
     content_id,
     parsed_body,
+    style_declarations,
 )
 from mailroom_core.render.hosts import (
     browser_url,
@@ -126,7 +126,7 @@ class _Filter:
             self.sets_colours = self.sets_colours or _sets_colour(value)
             return value
         if attribute == "style":
-            kept = [decl for decl in value.split(";") if not UNSAFE_CSS.search(decl)]
+            kept = style_declarations(value)
             # The link marker is Mailroom's own, not the sender's colours.
             if value != _MARK_STYLE and _style_sets_colour(kept):
                 self.sets_colours = True

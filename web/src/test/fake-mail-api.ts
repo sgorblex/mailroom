@@ -587,7 +587,8 @@ function importAnswer(state: FakeMailState, mode: string, form: FormData): Respo
     bcc: Draft['bcc'] | null
   }
   if (state.importRefusal !== undefined) {
-    return refuse(state.importRefusal === 'too_large' ? 413 : 400, state.importRefusal)
+    const status = { too_large: 413, not_as_built: 409 }[state.importRefusal] ?? 400
+    return refuse(status, state.importRefusal)
   }
   const drafts = state.drafts ?? []
   const old = fields.ref === null ? undefined : drafts.find((each) => each.ref === fields.ref)

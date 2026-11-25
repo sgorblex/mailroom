@@ -27,10 +27,10 @@ from mailroom_core.render._html_policy import (
     LINK,
     RASTER_TYPES,
     TAGS,
-    UNSAFE_CSS,
     content_id,
     parsed_body,
     parser,
+    style_declarations,
 )
 from mailroom_core.render.hosts import browser_url, web_url
 
@@ -76,8 +76,7 @@ class _Filter:
         if attribute == SIGNATURE_MARK:
             return ""
         if attribute == "style":
-            kept = [decl for decl in value.split(";") if not UNSAFE_CSS.search(decl)]
-            return ";".join(kept) or None
+            return ";".join(style_declarations(value)) or None
         if tag == "img" and attribute == "src":
             return self._image(browser_url(value))
         if attribute == "href":

@@ -34,6 +34,7 @@ type MailErrorCode = Literal[
     "folder_changed",
     "count_changed",
     "too_many",
+    "not_as_built",
     "server_error",
 ]
 MAIL_ERROR_CODES: Final[tuple[MailErrorCode, ...]] = get_args(MailErrorCode.__value__)
@@ -62,6 +63,7 @@ MESSAGES: Final[Mapping[MailErrorCode, str]] = {
     "folder_changed": "The folder changed since it was read.",
     "count_changed": "The messages matching changed since they were counted.",
     "too_many": "Too many messages match to act on them all.",
+    "not_as_built": "That draft is not as it was imported, so it cannot be kept as built.",
     "server_error": "The mail server reported an error.",
 }
 

@@ -48,6 +48,7 @@ REFUSALS: Final[frozenset[AuditResult]] = frozenset(
         "folder_changed",
         "count_changed",
         "too_many",
+        "not_as_built",
         # The mailbox lock was never acquired, so nothing was written.
         "busy",
     }

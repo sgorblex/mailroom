@@ -401,6 +401,17 @@ def test_reads_only_the_start_of_a_link_s_text():
     assert "⚠" not in out
 
 
+def test_a_style_with_nothing_kept_goes_whole_and_a_second_clean_changes_nothing():
+    for html, expected in (
+        ('<p style="mso-hide:all">a</p>', "<p>a</p>"),
+        ('<p style="position:fixed;;">a</p>', "<p>a</p>"),
+        ('<p style="COLOR:#333;width:calc(1px + (2px))">a</p>', '<p style="color:#333">a</p>'),
+    ):
+        out = clean(html).html
+        assert out == expected, html
+        assert clean(out).html == out, html
+
+
 def test_reports_whether_the_kept_html_sets_its_own_colours():
     assert not clean(
         "<p>plain <b>text</b> <a href='https://example.org/'>link</a></p>"

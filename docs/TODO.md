@@ -302,7 +302,7 @@ Older than milestone E, seen in its browser check; fix before batch 11.
 - [x] **Unread count drops by two** — opening an unread message lowers the folder's count twice:
       once by the client's guess when the mark-read answers, once by the live count the server
       sent for the same change. The guess should yield to a newer live count.
-- [ ] **Import, then Send refused** — an imported HTML draft whose `style` attribute is left
+- [x] **Import, then Send refused** — an imported HTML draft whose `style` attribute is left
       empty by the cleaner is refused on Send ("That draft was not imported as built."): a second
       clean drops the empty attribute, so the two no longer match. The composer says only *Not
       saved*.

@@ -2,6 +2,9 @@
 into parts."""
 
 import base64
+from html import escape
+
+import pytest
 
 from mailroom_core.render import outgoing_html
 
@@ -49,6 +52,36 @@ def test_keeps_only_safe_inline_styles() -> None:
         'width:expression(x);position:fixed;font-weight:bold">s</span>'
     ).html
     assert out == '<span style="color:red;font-weight:bold">s</span>'
+
+
+@pytest.mark.parametrize(
+    ("style", "kept"),
+    [
+        ("mso-line-height-rule:exactly", None),
+        (";", None),
+        ("  ", None),
+        ("color", None),
+        ("color:", None),
+        ("color:/* nothing */", None),
+        ("co/**/lor:red", None),
+        ("COLOR: Red ;  Margin : 0", "color:Red;margin:0"),
+        ('font-family:"a;b", serif', "font-family:&quot;a;b&quot; , serif"),
+        ("margin:0 /* top */ 1px", "margin:0 1px"),
+        ("color:rgb(1,2,3);width:calc(100% - 2px)", "color:rgb(1, 2, 3);width:calc(100% - 2px)"),
+        # What nh3 would mangle, differently each time: bare and nested blocks, broken strings.
+        ("margin:(1px) 2px;color:red", "color:red"),
+        ("width:calc(1px + (2px));width:max(1px, min(2px, 3px))", None),
+        ("color:#fff(red)", None),
+        ("margin:[1px];color:{red}", None),
+        ('font-family:"a\nb"', None),
+        ("font-family:'open", None),
+    ],
+)
+def test_a_style_keeps_valid_allowed_declarations_or_goes(style: str, kept: str | None) -> None:
+    out = outgoing_html(f'<p style="{escape(style)}">s</p>').html
+    assert out == ("<p>s</p>" if kept is None else f'<p style="{kept}">s</p>')
+    # Cleaning twice gives what cleaning once did: a designed draft is checked that way.
+    assert outgoing_html(out).html == out
 
 
 def test_keeps_cid_images_it_knows_and_drops_every_other_source() -> None:
