@@ -9,7 +9,8 @@ draft at the row's ref, which must still be the version scheduled (the same send
 it through ``admit`` with that key, ``deliver``, ``file_sent`` and ``settle_draft``, as the
 scheduler's ``by``, audited as its connected app. An agent's held send first needs its grant:
 revoked, or no longer approving ``mail_send``, it fails (``grant_revoked``, ``not_approved``)
-before the draft is read. The key is claimed before SMTP, so the job run again after a worker
+before the draft is read. A delivered send has the folders it changed synced again into the mail
+index (``index_writes.resync``). The key is claimed before SMTP, so the job run again after a worker
 stopped between the claim and the delivery finds that send and delivers nothing. Once the gate
 has delivered the key, or had delivered it before, the row goes: the send's own row says the rest.
 Anything else, an unexpected error too (``internal``), leaves it ``failed`` with its code, the
@@ -32,6 +33,7 @@ from mailroom.accounts.store import AccountNotFound, user_store
 from mailroom.audit import AuditTrail, Origin
 from mailroom.auth.users import time_zone_of
 from mailroom.mail.connections import PASSWORD_MISSING, PasswordMissing, unusable
+from mailroom.mail.index import writes as index_writes
 from mailroom.mail.service.scheduled import SENT, send_held
 from mailroom.mail.service.send import smtp_sender
 from mailroom.models import ScheduledSend
@@ -78,7 +80,9 @@ def send_scheduled(sessions: sessionmaker[Session], mailboxes: Mailboxes, schedu
         held, zone = taken
         audit = _Audit(sessions, held)
         try:
-            outcome = _ungranted(sessions, held) or _send(mailboxes, held, zone, audit.note)
+            outcome = _ungranted(sessions, held) or _send(
+                sessions, mailboxes, held, zone, audit.note
+            )
         except Exception as error:
             # Its key keeps the draft from going out twice if the user schedules it again.
             logger.warning(
@@ -184,7 +188,13 @@ def _ungranted(sessions: sessionmaker[Session], held: _Held) -> str | None:
         return grant_refusal(db, held.user_id, held.grant_id, MAIL_SEND_GROUP)
 
 
-def _send(mailboxes: Mailboxes, held: _Held, zone: TimeZoneName, note: Note) -> str:
+def _send(
+    sessions: sessionmaker[Session],
+    mailboxes: Mailboxes,
+    held: _Held,
+    zone: TimeZoneName,
+    note: Note,
+) -> str:
     store = user_store(mailboxes.engine, held.user_id)
     try:
         refused = unusable(store, mailboxes.subkey, held.account_id)
@@ -203,6 +213,7 @@ def _send(mailboxes: Mailboxes, held: _Held, zone: TimeZoneName, note: Note) -> 
             key=held.send_key,
             by=held.by,
             time_zone=zone,
+            resync=partial(index_writes.resync, sessions, held.user_id, held.account_id),
         )
     except MailError as error:
         return error.code

@@ -2,8 +2,10 @@
 it takes (``MAX_FOLDER``, ``MAX_CURSOR``, ``MAX_TERM``, ``MAX_REF_LENGTH``); the user's accounts as
 one call finds them (``_accounts``) and the checks on them (``unknown_account``, ``_usable``); the
 checks on the refs that name them (``_message_ref``, ``_ref_accounts``, ``unknown_message``); the
-runners of a call on their connections (``_run``, ``_call``, logged); and ``_Stoppable``, the
-connections of a writing call that refuse every step once its deadline has passed."""
+runners of a call on their connections (``_run``, ``_call``, logged); ``_Stoppable``, the
+connections of a writing call that refuse every step once its deadline has passed; and
+``_special_path`` and ``_find_special_path``, where a write left what its answer does not name,
+for the mail index."""
 
 from __future__ import annotations
 
@@ -37,6 +39,7 @@ if TYPE_CHECKING:
     from mailroom_core.config import AccountConfig, Limits
     from mailroom_core.mail import (
         Folder,
+        FolderRole,
         MailboxContext,
         MailConnections,
         MessageRef,
@@ -52,6 +55,8 @@ MAX_TERM: Final = 500
 """The bounds every front end puts on what it takes (a folder path, a cursor, a search term)."""
 MAX_REF_LENGTH: Final = 4096
 """The longest ref a front end takes (a ref holds its folder's path)."""
+_LOOKUP_SECONDS: Final = 5.0
+"""How long a write that went through waits for the folder only the mail index needs."""
 _FAILED_TEXT: Final = "Reading the mail failed unexpectedly."
 
 
@@ -276,6 +281,35 @@ class _Stoppable:
 
     def __getattr__(self, name: str) -> object:
         return getattr(self._connections, name)
+
+
+def _special_path(connections: MailConnections, account_id: int, role: FolderRole) -> str | None:
+    """The path of the account's folder with ``role``, for the mail index to sync again; None
+    when it has none or the folder list failed: the write it follows has gone through all the
+    same, and the next sweep finds what it left."""
+    try:
+        return connections.special_folder(account_id, role).path
+    except Exception:
+        return None
+
+
+def _find_special_path(
+    ctx: AppContext, user_id: int, accounts: _Accounts, account_id: int, role: FolderRole
+) -> str | None:
+    """``_special_path`` as a call of its own, None on its short deadline too: a slow folder list
+    must not cost the write it follows its outcome."""
+    try:
+        return _run(
+            ctx,
+            user_id,
+            accounts,
+            "mail_index_folder_not_found",
+            [account_id],
+            lambda connections: _special_path(connections, account_id, role),
+            deadline=_LOOKUP_SECONDS,
+        )
+    except Refusal:
+        return None
 
 
 def _index_read_failed(user_id: int, exc: Exception) -> None:

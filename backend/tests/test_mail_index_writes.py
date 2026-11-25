@@ -1,11 +1,14 @@
 """The mail index kept in step with the app's own writes (``mailroom.mail.index.writes``): rows
-moved, copied and flagged from a write's answer, the folders left unsure queued for a sync, and,
-against the test Dovecot (``IMAP_TEST_HOST``; skipped without it), a move, a flag change and a
-folder marked read through the API."""
+moved, copied and flagged from a write's answer, the folders left unsure queued for a sync, the
+folders a send or a draft changed synced again (``resync``), and, against the test Dovecot
+(``IMAP_TEST_HOST``; skipped without it) and Mailpit, a move, a flag change, a folder marked read,
+drafts and sends through the app."""
 
 from __future__ import annotations
 
 import json
+import time
+import uuid
 from datetime import date
 from typing import TYPE_CHECKING, Any, cast
 
@@ -18,7 +21,8 @@ from mailroom.models import MailIndexFolder
 from mailroom.worker import tasks
 from mailroom.worker.app import PROCRASTINATE_SCHEMA
 from mailroom_core.mail import AuditItem, GroupResult, MailError, MessageRef, format_ref
-from mailroom_core.testing import mime, raw_client, seed
+from mailroom_core.testing import create_folders, mime, raw_client, seed
+from tests.test_api_compose import MAIL, Composer, address
 from tests.test_filter_runner import add_account
 from tests.test_mail_index_rows import message
 from tests.test_mail_index_sync import folder_row, jobs, stored, synced
@@ -32,7 +36,7 @@ if TYPE_CHECKING:
 
     from mailroom.models import User
     from mailroom.worker.context import Mailboxes
-    from mailroom_core.testing import ImapTestServer
+    from mailroom_core.testing import ImapTestServer, SmtpTestServer
 
 VALIDITY = 7
 
@@ -353,6 +357,69 @@ def test_an_index_write_that_fails_leaves_the_call_alone(
     assert "secret" not in str(record.__dict__)
 
 
+def test_a_resync_queues_the_folders_named_and_announces_them(
+    db_session: Session,
+    sessions: sessionmaker[Session],
+    user: User,
+    account: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Rows are left to the sync; a folder off the index, another account's or one not named is
+    left alone."""
+    sent = folder(db_session, user, account, "Sent", (1,))
+    drafts = folder(db_session, user, account, "Drafts", (4,))
+    folder(db_session, user, account, "Junk", enabled=False)
+    inbox = folder(db_session, user, account, "INBOX")
+    announced: list[tuple[int, int, int]] = []
+    monkeypatch.setattr(writes, "notify", lambda _db, *ids: announced.append(ids))
+
+    writes.resync(sessions, user.id, account, ["Sent", "Drafts", "Junk", "Sent"])
+
+    assert queued(db_session) == sorted([sent, drafts])
+    assert sorted(announced) == sorted([(user.id, account, sent), (user.id, account, drafts)])
+    assert subjects(db_session, drafts) == {4: "s4"}
+    assert inbox not in queued(db_session)
+
+
+def test_a_resync_of_nothing_writes_nothing(user: User, monkeypatch: pytest.MonkeyPatch) -> None:
+    def unused() -> Any:
+        raise AssertionError
+
+    monkeypatch.setattr(writes, "notify", lambda *_: pytest.fail("announced"))
+    writes.resync(unused, user.id, 1, [])  # type: ignore[arg-type]
+
+
+def test_a_resync_on_gmail_syncs_all_mail_for_sent_and_drafts(
+    user_client: TestClient,
+    db_session: Session,
+    sessions: sessionmaker[Session],
+    user: User,
+    account: int,
+) -> None:
+    """Only All Mail is indexed on Gmail: the copy filed in Sent and the draft removed are its."""
+    all_mail = folder(db_session, user, account, "[Gmail]/All Mail")
+    db_session.add(message(all_mail, user.id, 1, gm_msgid=42))
+    other = add_account(user_client, "home")
+    db_session.commit()
+    writes.resync(sessions, user.id, other, ["Sent"])
+    assert queued(db_session) == []
+    writes.resync(sessions, user.id, account, ["[Gmail]/Sent Mail", "[Gmail]/Drafts"])
+    assert queued(db_session) == [all_mail]
+
+
+def test_a_resync_that_fails_is_logged_and_never_raises(
+    user: User, caplog: pytest.LogCaptureFixture
+) -> None:
+    def broken() -> Any:
+        message = "the subject: secret"
+        raise RuntimeError(message)
+
+    writes.resync(broken, user.id, 1, ["Sent"])  # type: ignore[arg-type]
+    [record] = [r for r in caplog.records if r.msg == "mail_index_write_failed"]
+    assert record.__dict__["error"] == "RuntimeError"
+    assert "secret" not in str(record.__dict__)
+
+
 def test_a_change_is_announced_by_ids_once_committed(migrated_engine: Engine) -> None:
     with migrated_engine.connect() as listening:
         listening.execute(text(f"LISTEN {writes.NOTIFY_CHANNEL}"))
@@ -531,3 +598,225 @@ def test_a_bulk_move_reaches_the_index(
     assert stored(db_session, inbox.id) == {}
     assert sorted(subject for subject, _, _ in stored(db_session, done.id).values()) == ["a", "b"]
     assert set(queued(db_session)) >= {inbox.id, done.id}
+
+
+# Drafts and sends, against the test Dovecot and Mailpit.
+
+
+@pytest.fixture
+def composer(
+    user_client: TestClient,
+    imap_server: ImapTestServer,
+    smtp_server: SmtpTestServer,
+    application: FastAPI,
+    sessions: sessionmaker[Session],
+    numbered_accounts: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Composer:
+    """The user's account 1, sending directly, on a fresh Dovecot user with Drafts, Sent and
+    Trash; the app's index writes in the test's transaction."""
+    from tests.support.mail import mail_servers_ssl_context
+    from tests.test_api_compose import add_account as add_mail_account
+    from tests.test_api_compose import smtp_endpoint
+
+    _ = numbered_accounts
+    monkeypatch.setattr(application.state, "mail_ssl_context", mail_servers_ssl_context())
+    monkeypatch.setattr(application.state, "session_maker", sessions)
+    login = imap_server.unique_user("resync")
+    create_folders(imap_server, login, "Drafts", "Sent", "Trash")
+    mine = Composer(user_client, imap_server, login, application)
+    add_mail_account(mine, smtp=smtp_endpoint(smtp_server))
+    return mine
+
+
+def indexed(db: Session, user: User, *paths: str) -> dict[str, int]:
+    """Rows for account 1's ``paths``, by path."""
+    return {path: folder(db, user, 1, path) for path in paths}
+
+
+def announcing(monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    """The folder ids announced from here on, in order."""
+    announced: list[int] = []
+    monkeypatch.setattr(
+        writes, "notify", lambda _db, _user, _account, folder_id: announced.append(folder_id)
+    )
+    return announced
+
+
+def test_a_draft_saved_or_deleted_syncs_drafts_again(
+    composer: Composer, db_session: Session, user: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rows = indexed(db_session, user, "Drafts", "Trash", "INBOX")
+    announced = announcing(monkeypatch)
+
+    compose_id = str(uuid.uuid4())
+    first = composer.save(compose_id=compose_id, subject="One", text="Hi")
+    assert announced == [rows["Drafts"]]
+    second = composer.save(compose_id=compose_id, ref=first["ref"], subject="One", text="Again")
+    assert second["replaced"] is True
+    assert announced == [rows["Drafts"]] * 2
+    deleted = composer.client.delete(f"{MAIL}/drafts/{second['ref']}")
+    assert deleted.status_code == 200, deleted.text
+    assert announced == [rows["Drafts"]] * 3
+    assert queued(db_session) == [rows["Drafts"]]
+
+
+def test_a_draft_written_elsewhere_deleted_syncs_the_trash_it_went_to(
+    composer: Composer, db_session: Session, user: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.test_api_compose import foreign_draft
+
+    rows = indexed(db_session, user, "Drafts", "Trash")
+    ref_ = foreign_draft(composer, "a@example.org")
+    announced = announcing(monkeypatch)
+    deleted = composer.client.delete(f"{MAIL}/drafts/{ref_}")
+    assert deleted.status_code == 200, deleted.text
+    assert sorted(announced) == sorted(rows.values())
+
+
+def test_a_draft_sent_syncs_sent_and_drafts_again(
+    composer: Composer, db_session: Session, user: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The fix for the Sent list missing a send, and for a sent draft left in the Drafts list."""
+    rows = indexed(db_session, user, "Drafts", "Sent", "INBOX")
+    saved = composer.save(to=[address("b@example.org")], subject="Out", text="Hi")
+    announced = announcing(monkeypatch)
+
+    assert composer.sent(saved["ref"])["state"] == "sent"
+
+    assert sorted(announced) == sorted([rows["Drafts"], rows["Sent"]])
+    assert queued(db_session) == sorted([rows["Drafts"], rows["Sent"]])
+    assert len(composer.contents("Sent")) == 1
+    assert composer.contents("Drafts") == []
+
+
+def slow_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The index's folder lookups outlast their deadline."""
+    from mailroom.mail.service import _shared
+
+    real = _shared._special_path  # noqa: SLF001
+
+    def slow(*args: Any) -> str | None:
+        time.sleep(0.5)
+        return real(*args)
+
+    monkeypatch.setattr(_shared, "_special_path", slow)
+    monkeypatch.setattr(_shared, "_LOOKUP_SECONDS", 0.05)
+
+
+def test_a_slow_lookup_of_sent_leaves_a_filed_send_filed(
+    composer: Composer, db_session: Session, user: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """It comes after the send's result: the draft goes, and its folder is synced all the same."""
+    rows = indexed(db_session, user, "Drafts", "Sent")
+    saved = composer.save(to=[address("b@example.org")], subject="Out", text="Hi")
+    announced = announcing(monkeypatch)
+    slow_lookup(monkeypatch)
+
+    sent = composer.sent(saved["ref"])
+
+    assert (sent["state"], sent["filed"], sent["notes"]) == ("sent", True, [])
+    assert composer.contents("Drafts") == []
+    assert announced == [rows["Drafts"]]
+
+
+def test_a_slow_lookup_of_trash_leaves_a_draft_deleted(
+    composer: Composer, db_session: Session, user: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.test_api_compose import foreign_draft
+
+    rows = indexed(db_session, user, "Drafts", "Trash")
+    ref_ = foreign_draft(composer, "a@example.org")
+    announced = announcing(monkeypatch)
+    slow_lookup(monkeypatch)
+    deleted = composer.client.delete(f"{MAIL}/drafts/{ref_}")
+    assert deleted.status_code == 200, deleted.text
+    assert len(composer.contents("Trash")) == 1
+    assert announced == [rows["Drafts"]]
+
+
+def test_an_agents_reply_syncs_sent_and_its_original_again(
+    composer: Composer, db_session: Session, user: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mailroom.audit import MCP
+    from mailroom.context import app_context
+    from mailroom.mail import service
+    from tests.support.mail import settle_sends
+
+    rows = indexed(db_session, user, "Drafts", "Sent", "INBOX")
+    original = composer.seed(mime("Question", sender="Ann <ann@example.org>"))
+    ctx = app_context(composer.application.state)
+    assert ctx is not None
+    announced = announcing(monkeypatch)
+
+    replied = service.send_reply(ctx, user.id, original, text="Answer", origin=MCP)
+    assert replied.send is not None
+    settle_sends(composer.application.state.send_runner)
+
+    assert sorted(announced) == sorted([rows["Sent"], rows["INBOX"]])
+
+
+def test_a_send_the_send_mode_drafts_syncs_drafts_again(
+    composer: Composer,
+    db_session: Session,
+    user: User,
+    smtp_server: SmtpTestServer,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mailroom.audit import MCP
+    from mailroom.context import app_context
+    from mailroom.mail import service
+    from mailroom_core.mail import Mailbox
+    from tests.test_api_compose import account_fields, smtp_endpoint
+
+    fields = account_fields(composer)
+    fields.pop("password")
+    changed = composer.client.put(
+        "/api/v1/accounts/1",
+        json=fields | {"send_mode": "drafts", "smtp": smtp_endpoint(smtp_server)},
+    )
+    assert changed.status_code == 200, changed.text
+    rows = indexed(db_session, user, "Drafts", "Sent")
+    ctx = app_context(composer.application.state)
+    assert ctx is not None
+    announced = announcing(monkeypatch)
+
+    dispatched = service.send_message(
+        ctx,
+        user.id,
+        1,
+        to=[Mailbox("c@example.org")],
+        subject="Kept",
+        text="Hi",
+        origin=MCP,
+    )
+
+    assert dispatched.send is None
+    assert dispatched.draft is not None
+    assert announced == [rows["Drafts"]]
+
+
+def test_a_send_that_fails_leaves_the_index_alone(
+    composer: Composer,
+    db_session: Session,
+    user: User,
+    smtp_server: SmtpTestServer,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Nothing was filed and the draft stays: there is nothing to sync."""
+    from tests.test_api_compose import account_fields
+
+    rows = indexed(db_session, user, "Drafts", "Sent")
+    saved = composer.save(to=[address("d@example.org")], subject="Stays", text="Hi")
+    fields = account_fields(composer)
+    fields.pop("password")
+    closed = {"host": "127.0.0.1", "port": 1, "tls": "implicit"}
+    changed = composer.client.put("/api/v1/accounts/1", json=fields | {"smtp": closed})
+    assert changed.status_code == 200, changed.text
+    announced = announcing(monkeypatch)
+
+    assert composer.sent(saved["ref"])["state"] == "failed"
+
+    assert announced == []
+    assert len(composer.contents("Drafts")) == 1
+    assert queued(db_session) == [rows["Drafts"]]

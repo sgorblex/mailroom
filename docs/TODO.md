@@ -306,9 +306,9 @@ Older than milestone E, seen in its browser check; fix before batch 11.
       empty by the cleaner is refused on Send ("That draft was not imported as built."): a second
       clean drops the empty attribute, so the two no longer match. The composer says only *Not
       saved*.
-- [ ] **Sent list after a send** — the copy is filed in Sent, but nothing syncs the index's Sent
+- [x] **Sent list after a send** — the copy is filed in Sent, but nothing syncs the index's Sent
       folder afterwards, so the app's Sent list misses it until the next sweep.
-- [ ] **Draft left after Undo, then Send** — after an Undo and a second Send the draft can stay in
+- [x] **Draft left after Undo, then Send** — after an Undo and a second Send the draft can stay in
       Drafts, though the message went once.
 - [ ] **Wide HTML on phones** — fit a newsletter laid out wider than the screen to its width,
       as phone mail apps do, instead of cutting it at the frame's edge.
