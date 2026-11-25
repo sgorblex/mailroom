@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any, Final
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 
-from mailroom.accounts.store import AccountNotFound, load_accounts
+from mailroom.accounts.store import AccountNotFound
 from mailroom.audit import Entry
 from mailroom.errors import Refusal
 from mailroom.mail.connections import unusable
@@ -30,6 +30,8 @@ if TYPE_CHECKING:
 
     from sqlalchemy.orm import Session
 
+    from mailroom.accounts.store import UserAccounts
+    from mailroom.reach import Reach
     from mailroom_core.crypto import SecretsSubkey
     from mailroom_core.mail import MailConnections
     from mailroom_core.store import AccountStore
@@ -72,8 +74,23 @@ def targets(node: object) -> set[int]:
     return found
 
 
-def check_targets(store: AccountStore, spec: Mapping[str, Any], account_id: int | None) -> None:
-    """Refuse a filter spec that moves to an account that is not the user's
+def moving_beyond(db: Session, reach: Reach, rule_set_ids: Sequence[int]) -> set[int]:
+    """Those of the rule sets with a filter, enabled or not, moving mail to an account beyond
+    ``reach``: the caller is not told of them."""
+    if not reach.narrowed:
+        return set()
+    rows = db.execute(
+        select(Filter.rule_set_id, Filter.spec).where(Filter.rule_set_id.in_(rule_set_ids))
+    )
+    return {
+        rule_set_id
+        for rule_set_id, spec in rows
+        if not all(map(reach.includes, targets(spec.get("action"))))
+    }
+
+
+def check_targets(accounts: UserAccounts, spec: Mapping[str, Any], account_id: int | None) -> None:
+    """Refuse a filter spec that moves to an account that is none of ``accounts``
     (``move_target_not_found``), or to its rule set's own, which a rule set for all accounts
     (``account_id`` None) runs on whatever the target (``move_target_same_account``)."""
     named = targets(spec.get("action"))
@@ -88,20 +105,20 @@ def check_targets(store: AccountStore, spec: Mapping[str, Any], account_id: int 
     if account_id in named:
         msg = "A filter cannot move mail to the account its rule set runs on: use move_to."
         raise Refusal("invalid", SAME_ACCOUNT, msg)
-    owned = {account.id for account in load_accounts(store).settings.account}
+    owned = {account.id for account in accounts.settings.account}
     if not named <= owned:
         msg = "A filter can move mail only to another of your accounts."
         raise Refusal("invalid", TARGET_NOT_FOUND, msg)
 
 
 def check_rule_set_targets(
-    store: AccountStore, rule_set: RuleSet, filters: Sequence[Filter]
+    accounts: UserAccounts, rule_set: RuleSet, filters: Sequence[Filter]
 ) -> None:
     """``check_targets`` for each of ``filters``, the enabled ones of the rule set being turned
     on: a target removed since one was saved."""
     for row in filters:
         if row.enabled:
-            check_targets(store, row.spec, rule_set.account_id)
+            check_targets(accounts, row.spec, rule_set.account_id)
 
 
 class RunTargets:

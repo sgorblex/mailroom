@@ -20,7 +20,7 @@ from mailroom.accounts.service import (
     move_cap,
     require_subkey,
 )
-from mailroom.accounts.store import account_password, load_accounts
+from mailroom.accounts.store import account_password
 from mailroom.errors import Refusal, mail_refusal
 from mailroom.mail.connections import PASSWORD_MISSING, PASSWORD_MISSING_TEXT, PasswordMissing
 from mailroom.mail.pool import DeadlineExceeded
@@ -73,7 +73,7 @@ def unknown_message() -> Refusal:
 
 @dataclass(frozen=True, slots=True)
 class _Accounts:
-    """The user's accounts as one call found them."""
+    """The user's accounts as one call found them, within the caller's reach."""
 
     loaded: UserAccounts
 
@@ -107,7 +107,7 @@ class _Accounts:
 
 
 def _accounts(ctx: AppContext, user_id: int) -> _Accounts:
-    return _Accounts(load_accounts(ctx.store(user_id)))
+    return _Accounts(ctx.accounts(user_id))
 
 
 def _missing_password(ctx: AppContext, user_id: int, account_id: int) -> bool:

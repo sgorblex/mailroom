@@ -50,7 +50,9 @@ async def _thread_mute(args: ThreadMuteArguments, call: ToolCall) -> JsonObject:
 
 
 async def _muted_threads_list(args: MutedThreadsListArguments, call: ToolCall) -> JsonObject:
-    listed = await call.db(lambda db: mute.muted_threads(db, call.user_id, args.account_id))
+    listed = await call.db(
+        lambda db: mute.muted_threads(call.ctx, db, call.user_id, args.account_id)
+    )
     return {"threads": [thread.model_dump(mode="json") for thread in listed]}
 
 

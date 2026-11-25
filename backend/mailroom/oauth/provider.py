@@ -23,7 +23,12 @@ from pydantic import AnyUrl
 
 from mailroom.net.safe_fetch import resolve
 from mailroom.oauth import clients, consent, tokens
-from mailroom.oauth.config import SCOPE, TOOL_GROUPS_CLAIM
+from mailroom.oauth.config import (
+    ACCOUNT_IDS_CLAIM,
+    SCOPE,
+    SEND_CEILING_CLAIM,
+    TOOL_GROUPS_CLAIM,
+)
 from mailroom.oauth.throttle import Throttles
 
 if TYPE_CHECKING:
@@ -268,7 +273,12 @@ class Provider:
             expires_at=found.expires_at,
             resource=found.resource,
             subject=str(found.user_id),
-            claims={"grant_id": str(found.grant_id), TOOL_GROUPS_CLAIM: found.tool_groups},
+            claims={
+                "grant_id": str(found.grant_id),
+                TOOL_GROUPS_CLAIM: found.tool_groups,
+                ACCOUNT_IDS_CLAIM: found.account_ids,
+                SEND_CEILING_CLAIM: found.send_ceiling,
+            },
             grant_id=found.grant_id,
         )
 

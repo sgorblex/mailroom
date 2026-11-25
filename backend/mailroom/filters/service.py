@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Annotated, Any, Final, Literal
 
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from mailroom.accounts import app_data
 from mailroom.accounts.service import Via, require_account
@@ -31,7 +31,7 @@ from mailroom.filters.runs import (
     runs_of,
 )
 from mailroom.filters.spec import InvalidSpecError, hidden_criterion, normalized_spec
-from mailroom.filters.transfers import check_rule_set_targets, check_targets
+from mailroom.filters.transfers import check_rule_set_targets, check_targets, moving_beyond
 from mailroom.mail import service as mail_service
 from mailroom.models import Filter, FilterRun, RuleSet
 from mailroom.worker.tasks import queue_run
@@ -196,21 +196,30 @@ def _log(event: str, user_id: int, via: Via, **extra: object) -> None:
     logger.info(event, extra={"event": event, "user_id": user_id, "via": via, **extra})
 
 
-def owned_rule_set(db: Session, user_id: int, rule_set_id: int, *, lock: bool = False) -> RuleSet:
+def owned_rule_set(
+    ctx: AppContext, db: Session, user_id: int, rule_set_id: int, *, lock: bool = False
+) -> RuleSet:
     """The user's rule set, or ``not_found``; their hidden ones (``mailroom.filters.mute``) are
-    not found either. ``lock``: hold its row until commit (any change to it or its filters)."""
+    not found either, nor those beyond the caller's reach (one for all accounts, when it leaves
+    accounts out, or one moving mail to an account it leaves out). ``lock``: hold its row until
+    commit (any change to it or its filters)."""
     statement = select(RuleSet).where(
-        RuleSet.id == rule_set_id, RuleSet.user_id == user_id, RuleSet.kind == "user"
+        RuleSet.id == rule_set_id,
+        RuleSet.user_id == user_id,
+        RuleSet.kind == "user",
+        ctx.reach.covers(RuleSet.account_id),
     )
     if lock:
         statement = statement.with_for_update()
     rule_set = db.scalar(statement)
-    if rule_set is None:
+    if rule_set is None or moving_beyond(db, ctx.reach, [rule_set.id]):
         raise Refusal("not_found", "rule_set_not_found", "No such rule set")
     return rule_set
 
 
-def owned_filter(db: Session, user_id: int, filter_id: int) -> tuple[Filter, RuleSet]:
+def owned_filter(
+    ctx: AppContext, db: Session, user_id: int, filter_id: int
+) -> tuple[Filter, RuleSet]:
     """The user's filter and its rule set, the latter locked; or ``not_found``."""
     rule_set_id = db.scalar(
         select(Filter.rule_set_id)
@@ -219,7 +228,7 @@ def owned_filter(db: Session, user_id: int, filter_id: int) -> tuple[Filter, Rul
     )
     if rule_set_id is None:
         raise _filter_not_found()
-    rule_set = owned_rule_set(db, user_id, rule_set_id, lock=True)
+    rule_set = owned_rule_set(ctx, db, user_id, rule_set_id, lock=True)
     row = db.get(Filter, filter_id)
     if row is None:  # removed meanwhile
         raise _filter_not_found()
@@ -238,9 +247,9 @@ def refuse_enabled(rule_set: RuleSet) -> None:
 
 
 def _owned_for_change(
-    db: Session, user_id: int, rule_set_id: int, *, disabled_only: bool
+    ctx: AppContext, db: Session, user_id: int, rule_set_id: int, *, disabled_only: bool
 ) -> RuleSet:
-    rule_set = owned_rule_set(db, user_id, rule_set_id, lock=True)
+    rule_set = owned_rule_set(ctx, db, user_id, rule_set_id, lock=True)
     if disabled_only:
         refuse_enabled(rule_set)
     return rule_set
@@ -373,14 +382,14 @@ def account_folders(ctx: AppContext, user_id: int, account_id: int) -> list[list
     """The account's selectable folders, each as its path segments split on the server's
     delimiter (``["Archive", "2026"]``), in mailroom-core's order: ``mailroom.mail.service``'s
     listing, under the mail pool's gates and deadline, as MCP's ``folders_list`` gives them."""
-    require_account(ctx.store(user_id), account_id)  # a plain 404, as the filters' other routes
+    require_account(ctx, user_id, account_id)  # a plain 404, as the filters' other routes
     listed = mail_service.folders(ctx, user_id, account_id, counts=False)
     return [mail_service.folder_segments(folder) for folder in listed]
 
 
 def run_filters(ctx: AppContext, db: Session, user_id: int, account_id: int) -> bool:
     """The account's Run filters switch (off until turned on)."""
-    require_account(ctx.store(user_id), account_id)
+    require_account(ctx, user_id, account_id)
     return app_data.run_filters_by_account(db, user_id).get(account_id, False)
 
 
@@ -393,11 +402,41 @@ def set_run_filters(
     on: bool,
     via: Via = "web",
 ) -> bool:
-    """Turn the account's Run filters switch ``on`` or off; the new state."""
-    require_account(ctx.store(user_id), account_id)
+    """Turn the account's Run filters switch ``on`` or off; the new state. Turning it on is refused
+    to a caller beyond whose reach it would move mail (``run_filters_out_of_reach``)."""
+    require_account(ctx, user_id, account_id)
+    if on:
+        _refuse_runs_beyond(ctx, db, user_id, account_id)
     app_data.set_run_filters(db, user_id, account_id, run_filters=on)
     _log("run_filters_changed", user_id, via, account_id=account_id, run_filters=on)
     return on
+
+
+def _refuse_runs_beyond(ctx: AppContext, db: Session, user_id: int, account_id: int) -> None:
+    """Refuse to start the enabled rule sets that run on the account, those for all accounts too,
+    while one moves mail to an account beyond the caller's reach."""
+    if not ctx.reach.narrowed:
+        return
+    running = db.scalars(
+        select(RuleSet.id).where(
+            RuleSet.user_id == user_id,
+            RuleSet.enabled,
+            or_(RuleSet.account_id == account_id, RuleSet.account_id.is_(None)),
+        )
+    )
+    if moving_beyond(db, ctx.reach, list(running)):
+        msg = (
+            "Rule sets running on this account move mail to an account beyond this app: only "
+            "the user can turn Run filters on."
+        )
+        raise Refusal("invalid", "run_filters_out_of_reach", msg)
+
+
+def _require_every_account(ctx: AppContext) -> None:
+    """Refuse the rule sets for all accounts to a caller that reaches only some of them."""
+    if ctx.reach.narrowed:
+        msg = "Rule sets for all accounts are beyond this app: it has only some of the accounts."
+        raise Refusal("invalid", "all_accounts_out_of_reach", msg)
 
 
 def running_accounts(db: Session, user_id: int) -> list[int]:
@@ -411,16 +450,19 @@ def rule_sets(ctx: AppContext, db: Session, user_id: int, account: Accounts) -> 
     """The account's rule sets, or the all-accounts ones (``ALL_ACCOUNTS``), oldest first, without
     their filters; never the hidden ones."""
     if isinstance(account, int):
-        require_account(ctx.store(user_id), account)
+        require_account(ctx, user_id, account)
         of_account = RuleSet.account_id == account
     else:
+        _require_every_account(ctx)
         of_account = RuleSet.account_id.is_(None)
     rows = db.scalars(
         select(RuleSet)
         .where(RuleSet.user_id == user_id, of_account, RuleSet.kind == "user")
         .order_by(RuleSet.id)
     )
-    return [_rule_set_out(row) for row in rows]
+    listed = list(rows)
+    beyond = moving_beyond(db, ctx.reach, [row.id for row in listed])
+    return [_rule_set_out(row) for row in listed if row.id not in beyond]
 
 
 def add_rule_set(
@@ -437,7 +479,9 @@ def add_rule_set(
     marker)."""
     account_id = account if isinstance(account, int) else None
     if account_id is not None:
-        require_account(ctx.store(user_id), account_id)
+        require_account(ctx, user_id, account_id)
+    else:
+        _require_every_account(ctx)
     check_schedule(fields.trigger, fields.interval_minutes)
     values = fields.model_dump()
     if account_id is None:
@@ -454,9 +498,9 @@ def add_rule_set(
     return RuleSetDetail(**_rule_set_out(rule_set).model_dump(), filters=[])
 
 
-def rule_set_detail(db: Session, user_id: int, rule_set_id: int) -> RuleSetDetail:
+def rule_set_detail(ctx: AppContext, db: Session, user_id: int, rule_set_id: int) -> RuleSetDetail:
     """The rule set with its filters, in order."""
-    return _detail(db, owned_rule_set(db, user_id, rule_set_id))
+    return _detail(db, owned_rule_set(ctx, db, user_id, rule_set_id))
 
 
 def change_rule_set(
@@ -475,7 +519,7 @@ def change_rule_set(
     turning it on checks its filters' moves to another account again (``check_targets``) and
     clears its ``disabled_reason``."""
     if patch.marker == "to_sort":
-        current = _owned_for_change(db, user_id, rule_set_id, disabled_only=disabled_only)
+        current = _owned_for_change(ctx, db, user_id, rule_set_id, disabled_only=disabled_only)
         account_id, marker = current.account_id, current.marker
         # Not idle in a transaction, the row locked, while the mailbox answers.
         db.commit()
@@ -483,7 +527,7 @@ def change_rule_set(
             if account_id is None:
                 raise _to_sort_all_accounts()
             check_marker(ctx, user_id, account_id, via)
-    rule_set = _owned_for_change(db, user_id, rule_set_id, disabled_only=disabled_only)
+    rule_set = _owned_for_change(ctx, db, user_id, rule_set_id, disabled_only=disabled_only)
     changes = patch.model_dump(exclude_unset=True)
     for field in ("name", "folder", "trigger", "marker", "enabled"):
         if changes.get(field, None) is None:
@@ -491,7 +535,7 @@ def change_rule_set(
     if rule_set.account_id is None and "folder" in changes:
         changes["folder"] = _inbox_only(changes["folder"])
     if changes.get("enabled") and not rule_set.enabled:
-        check_rule_set_targets(ctx.store(user_id), rule_set, enabled_filters(db, rule_set.id))
+        check_rule_set_targets(ctx.accounts(user_id), rule_set, enabled_filters(db, rule_set.id))
         changes["disabled_reason"] = None
     trigger = changes.get("trigger", rule_set.trigger)
     if trigger != "scheduled" and "interval_minutes" not in changes:
@@ -512,6 +556,7 @@ def change_rule_set(
 
 
 def remove_rule_set(
+    ctx: AppContext,
     db: Session,
     user_id: int,
     rule_set_id: int,
@@ -520,7 +565,7 @@ def remove_rule_set(
     via: Via = "web",
 ) -> None:
     """Remove the rule set with its filters and runs."""
-    rule_set = _owned_for_change(db, user_id, rule_set_id, disabled_only=disabled_only)
+    rule_set = _owned_for_change(ctx, db, user_id, rule_set_id, disabled_only=disabled_only)
     db.delete(rule_set)
     db.commit()
     _log("rule_set_removed", user_id, via, account_id=rule_set.account_id, rule_set_id=rule_set_id)
@@ -539,12 +584,12 @@ def add_filter(
     """Add a filter after the rule set's last one. One that marks or unmarks To sort is checked
     as a To sort marker is (``check_marker``); one that moves to another account, its target
     (``check_targets``)."""
-    rule_set = _owned_for_change(db, user_id, rule_set_id, disabled_only=disabled_only)
+    rule_set = _owned_for_change(ctx, db, user_id, rule_set_id, disabled_only=disabled_only)
     spec = checked_spec(fields.spec)
-    check_targets(ctx.store(user_id), spec, rule_set.account_id)
+    check_targets(ctx.accounts(user_id), spec, rule_set.account_id)
     if marks_to_sort(spec):
         _check_to_sort_actions(ctx, db, user_id, rule_set.account_id, via)
-        rule_set = _owned_for_change(db, user_id, rule_set_id, disabled_only=disabled_only)
+        rule_set = _owned_for_change(ctx, db, user_id, rule_set_id, disabled_only=disabled_only)
     count, last = db.execute(
         select(func.count(), func.max(Filter.position)).where(Filter.rule_set_id == rule_set.id)
     ).one()
@@ -578,15 +623,15 @@ def change_filter(
     """Change the fields ``patch`` sets (a None one stays). A spec changed to mark or unmark To
     sort, or to move to another account, is checked as a new filter's is; so is the spec of a
     filter turned on, whose target may have gone while it was off."""
-    row, rule_set = owned_filter(db, user_id, filter_id)
+    row, rule_set = owned_filter(ctx, db, user_id, filter_id)
     if disabled_only:
         refuse_enabled(rule_set)
     spec = None if patch.spec is None else checked_spec(patch.spec, stored=row.spec)
     if spec is not None or (patch.enabled and not row.enabled):
-        check_targets(ctx.store(user_id), spec or row.spec, rule_set.account_id)
+        check_targets(ctx.accounts(user_id), spec or row.spec, rule_set.account_id)
     if spec is not None and marks_to_sort(spec) and not marks_to_sort(row.spec):
         _check_to_sort_actions(ctx, db, user_id, rule_set.account_id, via)
-        row, rule_set = owned_filter(db, user_id, filter_id)
+        row, rule_set = owned_filter(ctx, db, user_id, filter_id)
         if disabled_only:
             refuse_enabled(rule_set)
     if patch.name is not None:
@@ -604,6 +649,7 @@ def change_filter(
 
 
 def remove_filter(
+    ctx: AppContext,
     db: Session,
     user_id: int,
     filter_id: int,
@@ -612,7 +658,7 @@ def remove_filter(
     via: Via = "web",
 ) -> None:
     """Remove the filter; the rest close up."""
-    row, rule_set = owned_filter(db, user_id, filter_id)
+    row, rule_set = owned_filter(ctx, db, user_id, filter_id)
     if disabled_only:
         refuse_enabled(rule_set)
     db.delete(row)
@@ -624,6 +670,7 @@ def remove_filter(
 
 
 def reorder_filters(
+    ctx: AppContext,
     db: Session,
     user_id: int,
     rule_set_id: int,
@@ -633,7 +680,7 @@ def reorder_filters(
     via: Via = "web",
 ) -> list[FilterOut]:
     """Put the rule set's filters in the order of ``filter_ids``: every one of them, each once."""
-    rule_set = _owned_for_change(db, user_id, rule_set_id, disabled_only=disabled_only)
+    rule_set = _owned_for_change(ctx, db, user_id, rule_set_id, disabled_only=disabled_only)
     rows = {row.id: row for row in _filters_of(db, rule_set.id)}
     if len(filter_ids) != len(rows) or set(filter_ids) != rows.keys():
         msg = "List every filter of the rule set, each once."
@@ -677,7 +724,7 @@ def _account_of_run(
     if account_id is None:
         msg = "Name the account to run this rule set for all accounts on."
         raise Refusal("invalid", "account_required", msg)
-    require_account(ctx.store(user_id), account_id)
+    require_account(ctx, user_id, account_id)
     return account_id
 
 
@@ -694,7 +741,7 @@ def dry_run(
     (``mailroom.filters.runs.dry_run_result``); the run joins the history, refused or not. An
     all-accounts rule set's on ``account_id`` (``_account_of_run``). One dry run per user at a
     time: ``busy`` (``dry_run_busy``, not recorded) while another holds the slot."""
-    rule_set = owned_rule_set(db, user_id, rule_set_id)
+    rule_set = owned_rule_set(ctx, db, user_id, rule_set_id)
     target = _account_of_run(ctx, user_id, rule_set, account_id)
     filters = enabled_filters(db, rule_set.id)
     # Not idle in a transaction while the mailbox answers.
@@ -761,7 +808,7 @@ def run_now(
     account named). Refused while that Run filters is off (every one, for all accounts), for a
     disabled rule set, and while a run of it is already waiting on each account. The run
     queued; for an all-accounts rule set, the list of the runs queued."""
-    rule_set = owned_rule_set(db, user_id, rule_set_id, lock=True)
+    rule_set = owned_rule_set(ctx, db, user_id, rule_set_id, lock=True)
     if rule_set.account_id is None and account_id is None:
         accounts = running_accounts(db, user_id)
         if not accounts:
@@ -794,7 +841,7 @@ def run_now(
     return out if rule_set.account_id is None else out[0]
 
 
-def runs(db: Session, user_id: int, rule_set_id: int, limit: int) -> list[RunOut]:
+def runs(ctx: AppContext, db: Session, user_id: int, rule_set_id: int, limit: int) -> list[RunOut]:
     """The rule set's newest ``limit`` runs, newest first."""
-    rule_set = owned_rule_set(db, user_id, rule_set_id)
+    rule_set = owned_rule_set(ctx, db, user_id, rule_set_id)
     return [_run_out(run) for run in runs_of(db, rule_set.id, limit)]

@@ -13,7 +13,6 @@ from urllib.parse import urlsplit
 
 from starlette.concurrency import run_in_threadpool
 
-from mailroom.accounts.store import load_accounts
 from mailroom.audit import Entry, write_records
 from mailroom.errors import Refusal
 from mailroom.mail import service
@@ -93,7 +92,7 @@ def _log(user_id: int, account_id: int, outcome: str) -> None:
 
 
 def _one_click(ctx: AppContext, user_id: int, view: MessageView) -> core.OneClick:
-    authserv_id = load_accounts(ctx.store(user_id)).account(view.account).authserv_id
+    authserv_id = ctx.accounts(user_id).account(view.account).authserv_id
     return core.one_click_unsubscribe(view.headers, authserv_id)
 
 

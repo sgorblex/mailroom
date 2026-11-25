@@ -23,6 +23,11 @@ TOOL_GROUPS_CLAIM = "tool_groups"
 """The access-token claim carrying the MCP tool groups the grant approves; the MCP server reads
 it under the same name (``mailroom.mcp.verifier``)."""
 
+ACCOUNT_IDS_CLAIM = "account_ids"
+SEND_CEILING_CLAIM = "send_ceiling"
+"""The claims carrying the grant's limits (``mailroom.oauth.models.OAuthGrant``), null for none;
+read under the same names (``mailroom.mcp.verifier``)."""
+
 #: Where claude.ai and claude.com send the user back after sign-in. Loopback is allowed on top of
 #: these, on any port and path (RFC 8252): Claude Code and the MCP Inspector listen there.
 BUILTIN_REDIRECT_URIS = (

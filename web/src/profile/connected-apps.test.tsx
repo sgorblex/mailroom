@@ -2,7 +2,7 @@ import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { ConnectedApp, ConnectedApps as Listing } from '@/api/oauth.ts'
+import type { AppLimits, ConnectedApp, ConnectedApps as Listing } from '@/api/oauth.ts'
 import { renderSignedIn } from '@/test/signed-in.tsx'
 
 import { ConnectedApps } from './connected-apps.tsx'
@@ -25,6 +25,16 @@ const SERVED: Listing['groups'] = [
   },
 ]
 
+const DRAFTING: Listing['groups'] = [
+  ...SERVED,
+  { name: 'mail_draft', description: 'write drafts', requires: ['mail_read'], default: true },
+]
+
+const ACCOUNTS: Listing['accounts'] = [
+  { id: 1, name: 'Work' },
+  { id: 2, name: 'Home' },
+]
+
 function app(
   id: number,
   name: string | null,
@@ -38,6 +48,8 @@ function app(
     created_at: '2026-10-25T12:00:00Z',
     last_used_at: lastUsed,
     groups,
+    account_ids: null,
+    send_ceiling: null,
   }
 }
 
@@ -46,17 +58,26 @@ function json(status: number, body: unknown): Response {
 }
 
 /** A fake API holding `grants`; DELETE removes one, or fails to reach the API when `failRevoke`. */
-function stubApi(auth: Listing['auth'], grants: ConnectedApp[], { failRevoke = false } = {}) {
+function stubApi(auth: Listing['auth'], grants: ConnectedApp[], { failRevoke = false, failLimits = false, served = SERVED } = {}) {
   let held = [...grants]
   const fetchMock = vi.fn((path: string, init?: RequestInit) => {
     if (path === '/api/v1/oauth/grants') {
-      const groups = auth === 'builtin' || auth === 'oidc' ? SERVED : []
-      return Promise.resolve(json(200, { auth, grants: held, groups }))
+      const groups = auth === 'builtin' || auth === 'oidc' ? served : []
+      return Promise.resolve(json(200, { auth, grants: held, groups, accounts: ACCOUNTS }))
     }
     const changed = /^\/api\/v1\/oauth\/grants\/(\d+)\/groups$/.exec(path)
     if (changed !== null && init?.method === 'PUT') {
       const { groups } = JSON.parse(init.body as string) as { groups: string[] }
       held = held.map((item) => (String(item.id) === changed[1] ? { ...item, groups } : item))
+      return Promise.resolve(new Response(null, { status: 204 }))
+    }
+    const limited = /^\/api\/v1\/oauth\/grants\/(\d+)\/limits$/.exec(path)
+    if (limited !== null && init?.method === 'PUT') {
+      if (failLimits) {
+        return Promise.reject(new TypeError('Failed to fetch'))
+      }
+      const limits = JSON.parse(init.body as string) as AppLimits
+      held = held.map((item) => (String(item.id) === limited[1] ? { ...item, ...limits } : item))
       return Promise.resolve(new Response(null, { status: 204 }))
     }
     const revoked = /^\/api\/v1\/oauth\/grants\/(\d+)$/.exec(path)
@@ -225,5 +246,68 @@ describe('ConnectedApps', () => {
     expect(await screen.findByText('Claude')).toBeInTheDocument()
     expect(screen.queryByText(/Tools:/)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Change tools' })).not.toBeInTheDocument()
+  })
+
+  it('limits an app to some accounts and to a send ceiling', async () => {
+    const fetchMock = stubApi('builtin', [app(1, 'Claude', null, ['mail_read'])])
+    renderSignedIn(<ConnectedApps />, ALICE)
+    expect(await screen.findByText('Accounts: all of them')).toBeInTheDocument()
+    expect(screen.queryByText(/Sending, at most/)).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Change limits' }))
+    const save = screen.getByRole('button', { name: 'Save limits' })
+    await userEvent.click(screen.getByRole('radio', { name: 'Only these' }))
+    expect(save).toBeDisabled()
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Home' }))
+    await userEvent.click(save)
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/oauth/grants/1/limits',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({ account_ids: [2], send_ceiling: null }),
+      }),
+    )
+    expect(await screen.findByText('Accounts: Home')).toBeInTheDocument()
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument()
+  })
+
+  it('shows the limits an app has, and lifts them', async () => {
+    const fetchMock = stubApi(
+      'builtin',
+      [
+        { ...app(1, 'Claude'), account_ids: [1], send_ceiling: 'drafts' },
+        { ...app(2, 'Other'), account_ids: [], send_ceiling: 'direct' },
+      ],
+      { served: DRAFTING },
+    )
+    renderSignedIn(<ConnectedApps />, ALICE)
+    expect(await screen.findByText('Accounts: Work')).toBeInTheDocument()
+    expect(screen.getByText('Sending, at most: Drafts only')).toBeInTheDocument()
+    expect(screen.getByText('No accounts: those it had were removed.')).toBeInTheDocument()
+    const [change] = screen.getAllByRole('button', { name: 'Change limits' })
+    if (change === undefined) {
+      throw new Error('a button expected')
+    }
+    await userEvent.click(change)
+    const ceiling = screen.getByRole('combobox', { name: 'Sending, at most' })
+    expect(ceiling).toHaveValue('drafts')
+    expect(screen.getByRole('checkbox', { name: 'Work' })).toBeChecked()
+    await userEvent.selectOptions(ceiling, 'As each account allows')
+    await userEvent.click(screen.getByRole('radio', { name: /All of them/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save limits' }))
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/oauth/grants/1/limits',
+      expect.objectContaining({ body: JSON.stringify({ account_ids: null, send_ceiling: null }) }),
+    )
+  })
+
+  it('says when limits could not be changed, keeping the choice', async () => {
+    stubApi('builtin', [app(1, 'Claude')], { failLimits: true })
+    renderSignedIn(<ConnectedApps />, ALICE)
+    await userEvent.click(await screen.findByRole('button', { name: 'Change limits' }))
+    await userEvent.click(screen.getByRole('radio', { name: 'Only these' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Work' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save limits' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not change its limits.')
+    expect(screen.getByRole('checkbox', { name: 'Work' })).toBeChecked()
   })
 })

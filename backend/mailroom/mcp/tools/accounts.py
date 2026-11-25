@@ -99,15 +99,14 @@ ACCOUNT_TOOLS: Final[tuple[Tool[Any], ...]] = (
         name="accounts_list",
         title="List accounts",
         description=(
-            "The user's mail accounts: id (what the other tools take), name (what the user "
-            "named the account, null when unnamed), display_name (what to call it: its name, "
-            "else its login), login, whether a password is stored, the send mode "
-            "(what an agent may send: off, drafts, approval or direct) and the identities it "
+            "The user's mail accounts, those this app may use: id (what the other tools take), "
+            "name (what the user named the account, null when unnamed), display_name (what to "
+            "call it: its name, else its login), login, whether a password is stored, the send "
+            "mode (what this app may send: off, drafts, approval or direct) and the identities it "
             "can send as (`address`, `name`, and which is the `default`), and whether its server "
-            "keeps keywords (`keywords`: only then can messages be marked To sort; null when "
-            "the server did not answer); where the instance runs filters, also whether Run "
-            "filters is on (`run_filters`: rule sets run only on an account where it is). Call "
-            "this first."
+            "keeps keywords (`keywords`: only then can messages be marked To sort; null when the "
+            "server did not answer); where the instance runs filters, also whether Run filters is "
+            "on (`run_filters`: rule sets run only on an account where it is). Call this first."
         ),
         group="filters_read",
         also_in=(

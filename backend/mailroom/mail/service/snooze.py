@@ -209,12 +209,16 @@ def _undo_hold(ctx: AppContext, snooze_id: int, code: str) -> None:
         db.commit()
 
 
-def _own(db: Session, user_id: int, snooze_id: str) -> Snooze:
+def _own(ctx: AppContext, db: Session, user_id: int, snooze_id: str) -> Snooze:
     row = None
     if _ID.fullmatch(snooze_id):
         row = db.scalar(
             select(Snooze)
-            .where(Snooze.id == int(snooze_id), Snooze.user_id == user_id)
+            .where(
+                Snooze.id == int(snooze_id),
+                Snooze.user_id == user_id,
+                ctx.reach.covers(Snooze.account_id),
+            )
             .with_for_update()
         )
     if row is None:
@@ -228,7 +232,7 @@ def wake_now(ctx: AppContext, user_id: int, snooze_id: str, *, origin: Origin = 
     from mailroom.worker.tasks import cancel_job, defer_snooze_wake
 
     with ctx.session_maker() as db:
-        row = _own(db, user_id, snooze_id)
+        row = _own(ctx, db, user_id, snooze_id)
         if row.job_id is not None:
             cancel_job(db, row.job_id)
         row.until = datetime.now(UTC)
@@ -243,7 +247,9 @@ def list_snoozes(ctx: AppContext, user_id: int) -> list[SnoozeView]:
     """The user's snoozed messages, soonest back first."""
     with ctx.session_maker() as db:
         rows = db.scalars(
-            select(Snooze).where(Snooze.user_id == user_id).order_by(Snooze.until, Snooze.id)
+            select(Snooze)
+            .where(Snooze.user_id == user_id, ctx.reach.covers(Snooze.account_id))
+            .order_by(Snooze.until, Snooze.id)
         )
         return [_view(row) for row in rows]
 

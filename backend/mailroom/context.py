@@ -10,13 +10,14 @@ instance's features.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
-from mailroom.accounts.store import user_store
+from mailroom.accounts.store import load_accounts, user_store
 from mailroom.auth.users import time_zone_of
 from mailroom.config.features import ALL_FEATURES
 from mailroom.mail.service.read import HtmlViews, KeywordFailures
+from mailroom.reach import WHOLE, Reach
 
 if TYPE_CHECKING:
     import ssl
@@ -25,6 +26,7 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session, sessionmaker
     from starlette.datastructures import State
 
+    from mailroom.accounts.store import UserAccounts
     from mailroom.config.features import Features
     from mailroom.mail.pool import MailPool
     from mailroom.mail.sends import SendRunner
@@ -52,10 +54,21 @@ class AppContext:
     """The accounts whose keywords listings leave alone for a while (``account_keywords``)."""
     html_views: HtmlViews = field(default_factory=HtmlViews)
     """Messages' sanitised HTML views, kept a minute (``message_html``)."""
+    reach: Reach = WHOLE
+    """How far the caller reaches: less than the whole for a connected app with limits."""
+
+    def within(self, reach: Reach) -> AppContext:
+        """This context for a caller that reaches only so far."""
+        return replace(self, reach=reach)
 
     def store(self, user_id: int) -> AccountStore:
-        """The user's accounts, as mailroom-core keeps them."""
+        """The user's accounts, as mailroom-core keeps them, whatever the ``reach``: to write
+        them, or for what an account already checked needs (its password, its sends)."""
         return user_store(self.engine, user_id)
+
+    def accounts(self, user_id: int) -> UserAccounts:
+        """The user's accounts within the caller's ``reach``."""
+        return self.reach.within(load_accounts(self.store(user_id)))
 
     def time_zone(self, user_id: int) -> TimeZoneName:
         """The zone the user's dates are written in (``mailroom.auth.users.time_zone_of``)."""

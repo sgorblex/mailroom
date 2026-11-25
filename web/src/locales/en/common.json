@@ -142,7 +142,23 @@
     "approveAll": "Approve them",
     "changeGroups": "Change tools",
     "saveGroups": "Save",
-    "groupsFailed": "Could not change its tools. Try again."
+    "groupsFailed": "Could not change its tools. Try again.",
+    "everyAccount": "Accounts: all of them",
+    "accounts": "Accounts: {{accounts}}",
+    "noAccounts": "No accounts: those it had were removed.",
+    "ceiling": "Sending, at most: {{mode}}",
+    "changeLimits": "Change limits",
+    "saveLimits": "Save limits",
+    "limitsFailed": "Could not change its limits. Try again."
+  },
+  "appLimits": {
+    "accounts": "Accounts it sees",
+    "everyAccount": "All of them, those you add later too",
+    "someAccounts": "Only these",
+    "someAccountsHint": "It cannot use the rule sets for all accounts, nor those moving mail to an account it does not see.",
+    "ceiling": "Sending, at most",
+    "noCeiling": "As each account allows",
+    "ceilingHint": "It sends as far as both this and the account allow. Off leaves it without drafts too."
   },
   "notAvailable": {
     "title": "Not available on this instance",

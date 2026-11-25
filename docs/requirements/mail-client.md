@@ -1070,6 +1070,9 @@ clicking *Send* in the web client **overrides it, except for `off`**.
 | `approval` | Sent only if every recipient matches the account's `auto_approve` rules, else the whole message is saved as a draft (nobody gets it); `draft_send` is refused, `invalid_argument`, instead | Sent |
 | `direct` | Sent | Sent |
 
+A [connected app](../GLOSSARY.md) with a send ceiling gets the stricter of it and the account's mode
+([`mcp.md`](mcp.md)).
+
 There is no outbox for `approval`: whatever is not auto-approved is drafted. The hourly send limit
 and the recipient cap bind both. In the web client, an account in `off` has its compose actions
 disabled, with a hint saying why; and its settings hint says what each mode lets **agents** do
@@ -1215,7 +1218,7 @@ user next sends, so a direct send's `GET /sends/{id}` is `not_found` after a day
   `send_at` ([`mcp.md`](mcp.md)), sent then as the agent, so the send mode applies to it as to
   `draft_send`, at scheduling and when it goes. Its held send keeps the connected app and grant
   that scheduled it (`client_id`, `grant_id`): the list shows *Scheduled by* the app, the send is
-  audited as the app, and once the grant is revoked or no longer approves `mail_send` the held
+  audited as the app, and once the grant is revoked or no longer approves `mail_send` or the account the held
   send fails (`grant_revoked`, `not_approved`; refused and audited, the draft kept).
 - **The result** (`GET /sends/{id}`): `state`; `code` (the refusal's code for `failed`, else
   `null`); `filed` (the Sent copy was stored; `null` until known, and known only after `sent`, together with

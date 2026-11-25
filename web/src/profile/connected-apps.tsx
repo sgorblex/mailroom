@@ -6,6 +6,9 @@ import {
   listConnectedApps,
   revokeConnectedApp,
   setConnectedAppGroups,
+  setConnectedAppLimits,
+  type AccountChoice,
+  type AppLimits,
   type ConnectedApp,
   type ToolGroup,
 } from '@/api/oauth.ts'
@@ -16,10 +19,12 @@ import { formatDateTime } from '@/lib/format.ts'
 import { useLoad } from '@/lib/use-load.ts'
 import { everyApprovable, groupLabel } from '@/oauth/group-choice.ts'
 import { GroupChoices } from '@/oauth/group-choices.tsx'
+import { anySends, ceilingShown, limitsApprovable } from '@/oauth/limit-choice.ts'
+import { LimitChoices } from '@/oauth/limit-choices.tsx'
 
 /**
- * The apps (MCP clients) the user approved, with the tool groups each may use, which the user
- * changes here, and each revocable after a confirm. With an external issuer the identity provider
+ * The apps (MCP clients) the user approved, with the tool groups each may use and its limits, which
+ * the user changes here, and each revocable after a confirm. With an external issuer the identity provider
  * manages access instead; with the MCP server off the section shows only leftovers, and nothing
  * once it knows there are none.
  */
@@ -32,6 +37,8 @@ export function ConnectedApps(): ReactElement | null {
   const [confirming, setConfirming] = useState<number | null>(null)
   // The app whose tool groups are being changed, and the choice so far.
   const [editing, setEditing] = useState<{ id: number; chosen: string[] } | null>(null)
+  // The app whose limits are being changed, and the choice so far.
+  const [limiting, setLimiting] = useState<{ id: number; limits: AppLimits } | null>(null)
   // Each row's Disconnect button, to give focus back to when its confirm is cancelled.
   const revokeTriggers = useRef(new Map<number, HTMLButtonElement>())
   const load = useCallback((signal: AbortSignal) => listConnectedApps(signal), [])
@@ -70,6 +77,20 @@ export function ConnectedApps(): ReactElement | null {
     }
   }
 
+  async function saveLimits(app: ConnectedApp, limits: AppLimits): Promise<void> {
+    setPending(app.id)
+    setFailure(null)
+    try {
+      await setConnectedAppLimits(app.id, limits)
+      setLimiting(null)
+    } catch (error) {
+      setFailure(apiErrorMessage(error, t('connectedApps.limitsFailed')))
+    } finally {
+      setPending(null)
+      setReloadKey((value) => value + 1)
+    }
+  }
+
   if (state.kind === 'loading') {
     // A line while it asks, so the card (and its group) is not taken for one with nothing in it.
     return (
@@ -84,6 +105,7 @@ export function ConnectedApps(): ReactElement | null {
   const auth = state.kind === 'loaded' ? state.value.auth : null
   const grants = state.kind === 'loaded' ? state.value.grants : []
   const served = state.kind === 'loaded' ? state.value.groups : []
+  const accounts = state.kind === 'loaded' ? state.value.accounts : []
   if (auth === 'off' && grants.length === 0) {
     return null
   }
@@ -191,6 +213,50 @@ export function ConnectedApps(): ReactElement | null {
                     </div>
                   </div>
                 )}
+                {served.length > 0 && limiting?.id !== app.id && (
+                  <AppLimitsSummary
+                    app={app}
+                    accounts={accounts}
+                    pending={pending !== null}
+                    onChange={() => {
+                      const { account_ids, send_ceiling } = app
+                      setLimiting({ id: app.id, limits: { account_ids, send_ceiling } })
+                      setFailure(null)
+                    }}
+                  />
+                )}
+                {limiting?.id === app.id && (
+                  <div className="flex flex-col gap-3 rounded-md border p-3">
+                    <LimitChoices
+                      accounts={accounts}
+                      limits={limiting.limits}
+                      onChange={(limits) => {
+                        setLimiting({ id: app.id, limits })
+                      }}
+                      sends={anySends(served.map((group) => group.name))}
+                      disabled={pending !== null}
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        disabled={pending !== null || !limitsApprovable(limiting.limits)}
+                        onClick={() => void saveLimits(app, limiting.limits)}
+                      >
+                        {t('connectedApps.saveLimits')}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={pending !== null}
+                        onClick={() => {
+                          setLimiting(null)
+                        }}
+                      >
+                        {t('connectedApps.cancel')}
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 {confirming === app.id && (
                   <ConfirmRemoval
                     question={t('connectedApps.confirmRevoke', { name })}
@@ -266,6 +332,47 @@ function AppGroups({
           {t('connectedApps.changeGroups')}
         </Button>
       </div>
+    </div>
+  )
+}
+
+/** An app's limits in words, and the button to change them. */
+function AppLimitsSummary({
+  app,
+  accounts,
+  pending,
+  onChange,
+}: {
+  app: ConnectedApp
+  accounts: readonly AccountChoice[]
+  pending: boolean
+  onChange: () => void
+}): ReactElement {
+  const { t } = useTranslation()
+  const ids = app.account_ids
+  const names = accounts.filter((account) => ids?.includes(account.id)).map(({ name }) => name)
+  const ceiling = ceilingShown(app.send_ceiling)
+  return (
+    <div className="flex flex-col gap-2 text-xs">
+      <p className="break-words">
+        {ids === null
+          ? t('connectedApps.everyAccount')
+          : names.length === 0
+            ? t('connectedApps.noAccounts')
+            : t('connectedApps.accounts', { accounts: names.join(', ') })}
+      </p>
+      {ceiling !== null && (
+        <p>{t('connectedApps.ceiling', { mode: t(`accounts.sendModes.${ceiling}`) })}</p>
+      )}
+      <Button
+        className="self-start"
+        size="sm"
+        variant="outline"
+        disabled={pending}
+        onClick={onChange}
+      >
+        {t('connectedApps.changeLimits')}
+      </Button>
     </div>
   )
 }

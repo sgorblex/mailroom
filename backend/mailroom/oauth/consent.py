@@ -26,11 +26,13 @@ from sqlalchemy import delete, select
 from mailroom.oauth.config import REQUEST_TTL
 from mailroom.oauth.models import OAuthAuthorizationRequest, OAuthClient
 from mailroom.oauth.tokens import create_grant_with_code, new_secret, secret_hash
+from mailroom.reach import WHOLE
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
     from mailroom.oauth.config import OAuthSettings
+    from mailroom.reach import Reach
 
 logger = logging.getLogger(__name__)
 
@@ -191,10 +193,11 @@ def approve(
     user_id: int,
     *,
     tool_groups: list[str],
+    reach: Reach = WHOLE,
     session: str | None = None,
 ) -> str | None:
-    """Approve the request for ``user_id``: a new grant (a connected app) for ``tool_groups``,
-    which the caller has checked, and its code. Returns
+    """Approve the request for ``user_id``: a new grant (a connected app) for ``tool_groups``
+    within ``reach``, which the caller has checked, and its code. Returns
     the client's redirect URL carrying the code, or ``None`` when the request is unknown, expired
     or another user's. Raises ``SsoRequiredError`` when the settings sign users in through SSO and
     the request was not claimed that way for ``session``, the caller's raw session token."""
@@ -212,6 +215,7 @@ def approve(
         resource=params.resource or settings.resource,
         scopes=list(params.scopes or ()),
         tool_groups=tool_groups,
+        reach=reach,
     )
     db.commit()
     logger.info(
@@ -221,6 +225,8 @@ def approve(
             "user_id": user_id,
             "client_id": client_id,
             "tool_groups": tool_groups,
+            "account_ids": None if reach.accounts is None else sorted(reach.accounts),
+            "send_ceiling": reach.ceiling,
         },
     )
     return construct_redirect_uri(

@@ -29,7 +29,7 @@ from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, ValidationEr
 from mailroom.audit import MCP, Origin
 from mailroom.errors import Refusal
 from mailroom.mcp import audit
-from mailroom.mcp.verifier import approved_groups_of, grant_id_of, user_id_of
+from mailroom.mcp.verifier import approved_groups_of, grant_id_of, reach_of_token, user_id_of
 from mailroom_core.config import MAX_SAFE_INTEGER
 
 if TYPE_CHECKING:
@@ -97,8 +97,9 @@ MAILBOX_READ: Final = Hints(read_only=True, idempotent=True, open_world=True)
 
 @dataclass(frozen=True, slots=True)
 class ToolCall:
-    """What a running tool gets: the app's context, the user the token speaks for, and where the
-    call comes from (the connected app and its grant), for the audit trail of its writes."""
+    """What a running tool gets: the app's context, within what the caller reaches, the user the
+    token speaks for, and where the call comes from (the connected app and its grant), for the
+    audit trail of its writes."""
 
     ctx: AppContext
     user_id: int
@@ -268,7 +269,7 @@ async def call_tool(
             outcome, code = "refused", "database_unavailable"
             return _error("The database is unavailable: try again later.")
         origin = MCP if token is None else Origin("mcp", token.client_id, grant_id_of(token))
-        call = ToolCall(ctx, user_id, limiter, origin)
+        call = ToolCall(ctx.within(reach_of_token(token)), user_id, limiter, origin)
         if slots is None:
             result = await tool.run(parsed, call)
         else:

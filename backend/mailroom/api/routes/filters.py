@@ -106,8 +106,10 @@ def add_rule_set(
 
 
 @filters_router.get("/rule-sets/{rule_set_id}")
-def rule_set_detail(rule_set_id: RowId, db: DbSession, user: CurrentUser) -> RuleSetDetail:
-    return service.rule_set_detail(db, user.id, rule_set_id)
+def rule_set_detail(
+    rule_set_id: RowId, ctx: Context, db: DbSession, user: CurrentUser
+) -> RuleSetDetail:
+    return service.rule_set_detail(ctx, db, user.id, rule_set_id)
 
 
 @filters_router.patch("/rule-sets/{rule_set_id}")
@@ -118,8 +120,8 @@ def change_rule_set(
 
 
 @filters_router.delete("/rule-sets/{rule_set_id}", status_code=204)
-def delete_rule_set(rule_set_id: RowId, db: DbSession, user: CurrentUser) -> None:
-    service.remove_rule_set(db, user.id, rule_set_id)
+def delete_rule_set(rule_set_id: RowId, ctx: Context, db: DbSession, user: CurrentUser) -> None:
+    service.remove_rule_set(ctx, db, user.id, rule_set_id)
 
 
 @filters_router.post("/rule-sets/{rule_set_id}/filters", status_code=201)
@@ -137,15 +139,15 @@ def change_filter(
 
 
 @filters_router.delete("/filters/{filter_id}", status_code=204)
-def delete_filter(filter_id: RowId, db: DbSession, user: CurrentUser) -> None:
-    service.remove_filter(db, user.id, filter_id)
+def delete_filter(filter_id: RowId, ctx: Context, db: DbSession, user: CurrentUser) -> None:
+    service.remove_filter(ctx, db, user.id, filter_id)
 
 
 @filters_router.put("/rule-sets/{rule_set_id}/order")
 def reorder_filters(
-    rule_set_id: RowId, body: FilterOrder, db: DbSession, user: CurrentUser
+    rule_set_id: RowId, body: FilterOrder, ctx: Context, db: DbSession, user: CurrentUser
 ) -> list[FilterOut]:
-    return service.reorder_filters(db, user.id, rule_set_id, body.filter_ids)
+    return service.reorder_filters(ctx, db, user.id, rule_set_id, body.filter_ids)
 
 
 @filters_router.post("/rule-sets/{rule_set_id}/dry-run")
@@ -180,9 +182,10 @@ def run_rule_set_now(
 @filters_router.get("/rule-sets/{rule_set_id}/runs")
 def rule_set_runs(
     rule_set_id: RowId,
+    ctx: Context,
     db: DbSession,
     user: CurrentUser,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> list[RunOut]:
     """Newest first."""
-    return service.runs(db, user.id, rule_set_id, limit)
+    return service.runs(ctx, db, user.id, rule_set_id, limit)

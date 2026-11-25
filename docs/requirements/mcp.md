@@ -133,7 +133,8 @@ send then as the agent, refused as `draft_send` is when the send mode would only
 (checked again when it goes), and `already_scheduled` while one is held; the answer says it is
 scheduled, not sent, to whom and when in the user's time zone, and that the user can cancel it.
 It goes as the app that scheduled it, and only while the user's grant to that app still approves
-`mail_send`: revoked or narrowed, the held send fails (`grant_revoked`, `not_approved`).
+`mail_send` and the account: revoked or narrowed, the held send fails (`grant_revoked`,
+`not_approved`), and the grant's send ceiling is the one it has then.
 `draft_send` of a draft already sent says so and sends nothing, and of one whose delivery is unknown
 is refused as `delivery_unknown`: only the user can confirm a resend. A draft written elsewhere is
 keyed by its ref, so both tools answer this way once it is gone too, which is how a delivered one
@@ -150,6 +151,29 @@ take. The `filters_*` groups need `filters` in
 left out, with a warning when named. Which tools a client gets is the instance's config and, with
 the built-in authorization server, the groups its grant approves ([Consent](#built-in-authorization-server)),
 not OAuth scope.
+
+**Limits.** A grant may also be limited to some of the user's accounts and to a [send
+ceiling](../GLOSSARY.md) ([Consent](#built-in-authorization-server)); without limits it reaches every
+account, as far as each one's send mode allows. The app's calls run within its reach, so that each
+service sees only what is in it:
+
+- **Accounts:** `accounts_list` and a search over all accounts give only its accounts; an account
+  id or a ref beyond them is refused as one that is not the user's (a cursor reads nothing beyond
+  them either), and mail is never moved to one beyond.
+- **Filters:** the rule sets for all accounts are refused (`all_accounts_out_of_reach`, or
+  `rule_set_not_found` by id), even to an app given every account there is, since one added later
+  would not be its own; so are the rule sets with a filter moving mail to an account beyond, and a
+  filter cannot be made to (`move_target_not_found`). Turning Run filters on is refused
+  (`run_filters_out_of_reach`) while an enabled rule set that would run on the account, one for
+  all accounts too, moves mail to an account beyond; otherwise the switch starts the rule sets
+  for all accounts on the app's account, as it does for the user.
+- **The rest:** muted threads, held sends and the audit trail of accounts beyond are not there; a
+  move between accounts is in `audit_list` only when both are within; a folder's rename or
+  delete tells only of the rule sets the app can read, and `audit_list` names no other.
+- **Sending:** the stricter of the account's send mode and the ceiling is the send mode the app
+  gets, in `accounts_list`, at the gate and for the draft tools (`off`). Under `approval` the
+  account's own auto-approved recipients are the ones sent to. A held send is checked against the
+  grant's limits again when it goes.
 
 | Group (status, default) | Tool | Annotations |
 | --- | --- | --- |
@@ -299,6 +323,10 @@ interface, not on the app's routes), so it can move to a shared package later.
   The screen names the client as it calls itself (and, for a metadata document, the host serving
   it) and the host the browser goes back to. The first user to open a request claims it; nobody
   else can see or decide it.
+  On the same screen the user may limit the app to some of their accounts (at least one) and to a
+  send ceiling ([limits](#tools)); left alone, neither is limited. A grant's accounts are the user's
+  own when chosen; one removed leaves the grant, and a grant left without any reaches none. With an
+  external issuer there are no grants, so no limits.
 - **Lifetimes:** an authorization code is single use and lasts 10 minutes; an access token 1 hour;
   a refresh token 30 days, rotated on every use. Presenting a used code again, or a spent refresh
   token, revokes the whole grant and its tokens, and so does revoking either token.
@@ -308,7 +336,7 @@ interface, not on the app's routes), so it can move to a shared package later.
   *Profile* page (name, when connected, when last used: a token exchange or a call on `/mcp`,
   recorded at most once a minute, and the tool groups it is approved for); revoking ends the
   grant's tokens at once, so the app's next call is a 401. There the user also approves the
-  served groups it is not approved for, or changes its groups: the app's next call sees the
+  served groups it is not approved for, or changes its groups or its limits: the app's next call sees the
   change, though a client may keep the tool list it fetched until it reconnects or starts a new
   conversation. Approved groups the instance stops serving stay recorded, for when it serves
   them again. Removing a user removes their grants.
@@ -400,8 +428,8 @@ for users an admin has already created. **Nobody signs up through SSO.**
 | `/.well-known/oauth-authorization-server/oauth` | Built-in AS metadata (RFC 8414); issuer `{MAILROOM_PUBLIC_URL}/oauth`. |
 | `/oauth/authorize`, `/oauth/token`, `/oauth/register`, `/oauth/revoke` | Built-in AS. |
 | `/connect?request=<id>` | Consent screen (web app). |
-| `/api/v1/oauth/requests/{id}` | `GET` the pending request, with the served tool groups (`name`, `description`, `requires`, `default`); `POST {"decision": "approve" \| "deny", "groups"}` answers `{"redirect_to"}`, the client's redirect URL (session, same origin; 404 for an unknown, expired or another user's request; 400 `groups_not_approvable` for an empty choice, a group not served, or one without a group it requires). |
-| `/api/v1/oauth/grants` | `GET` `{"auth", "grants", "groups"}`: the MCP auth mode, the user's connected apps (client name, created, last used, the served `groups` it is approved for) and, with the built-in server, the served tool groups; `PUT /{id}/groups {"groups"}` makes those the served groups approved (400 as for a decision); `DELETE /{id}` revokes one, its tokens with it (404 for another user's, for both). |
+| `/api/v1/oauth/requests/{id}` | `GET` the pending request, with the served tool groups (`name`, `description`, `requires`, `default`) and the user's `accounts` (`id`, `name`); `POST {"decision": "approve" \| "deny", "groups", "account_ids", "send_ceiling"}` (both limits null by default: none) answers `{"redirect_to"}`, the client's redirect URL (session, same origin; 404 for an unknown, expired or another user's request; 400 `groups_not_approvable` for an empty choice, a group not served, or one without a group it requires; 400 `accounts_not_approvable` for accounts that are not all the user's, or none). |
+| `/api/v1/oauth/grants` | `GET` `{"auth", "grants", "groups", "accounts"}`: the MCP auth mode, the user's connected apps (client name, created, last used, the served `groups` it is approved for, `account_ids` and `send_ceiling`, null without), the user's accounts and, with the built-in server, the served tool groups; `PUT /{id}/groups {"groups"}` makes those the served groups approved (400 as for a decision); `PUT /{id}/limits {"account_ids", "send_ceiling"}` sets both limits (400 as for a decision); `DELETE /{id}` revokes one, its tokens with it (404 for another user's, for each). |
 | `/api/v1/auth/oidc/config`, `/start`, `/callback` | Web SSO: whether it is on and its label, start (`intent` `login`, `link`, or `mcp` with `request`), callback. |
 | `/api/v1/me/identities` | `GET` the user's linked sign-ins; `DELETE /{id}` unlinks one. |
 
@@ -422,7 +450,7 @@ workers; expired rows are swept on writes.
 | `oauth_client` | `client_id`, `kind` (`dcr` \| `cimd`), `client_name`, `redirect_uris`, `metadata`, `fetched_at`, `created_at`, `last_used_at` |
 | `oauth_authorization_request` | `id_hash`, `client_id`, `params`, `expires_at` |
 | `oauth_authorization_code` | `code_hash`, `client_id`, `user_id`, `grant_id`, `redirect_uri`, `redirect_uri_explicit`, `code_challenge`, `resource`, `scopes`, `expires_at`, `used_at` |
-| `oauth_grant` | `id`, `user_id` (cascade), `client_id` (cascade), `resource`, `scopes`, `tool_groups`, `created_at`, `last_used_at` |
+| `oauth_grant` | `id`, `user_id` (cascade), `client_id` (cascade), `resource`, `scopes`, `tool_groups`, `account_ids` (null: every account), `send_ceiling` (`off` \| `drafts` \| `approval` \| `direct`, null: none), `created_at`, `last_used_at` |
 | `oauth_token` | `token_hash`, `grant_id` (cascade), `kind` (`access` \| `refresh`), `expires_at`, `used_at`, `created_at` |
 
 ## Configuration

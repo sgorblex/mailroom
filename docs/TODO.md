@@ -337,7 +337,7 @@ Older than milestone E, seen in its browser check; fix before batch 11.
       (size-capped, type checked against the content) and rename attachments kept from
       messages. Lifts the rule that attachments are named by `ref` and `part` only, so its
       reasons are weighed first: what an agent may attach unasked, and tool calls that size.
-- [ ] **Per-app limits** (maybe) — a connected app sees only the accounts the user chooses,
+- [x] **Per-app limits** — a connected app sees only the accounts the user chooses,
       and may send less than the account allows (drafts only, say).
 - [ ] **Activity per app** (maybe) — the audit trail of one connected app, linked from Connected
       apps.

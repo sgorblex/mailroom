@@ -142,7 +142,23 @@
     "approveAll": "Approvali",
     "changeGroups": "Cambia strumenti",
     "saveGroups": "Salva",
-    "groupsFailed": "Impossibile cambiare i suoi strumenti. Riprova."
+    "groupsFailed": "Impossibile cambiare i suoi strumenti. Riprova.",
+    "everyAccount": "Account: tutti",
+    "accounts": "Account: {{accounts}}",
+    "noAccounts": "Nessun account: quelli che aveva sono stati rimossi.",
+    "ceiling": "Invio, al massimo: {{mode}}",
+    "changeLimits": "Cambia limiti",
+    "saveLimits": "Salva limiti",
+    "limitsFailed": "Impossibile cambiare i suoi limiti. Riprova."
+  },
+  "appLimits": {
+    "accounts": "Account che vede",
+    "everyAccount": "Tutti, anche quelli che aggiungerai",
+    "someAccounts": "Solo questi",
+    "someAccountsHint": "Non può usare le regole per tutti gli account, né quelle che spostano posta in un account che non vede.",
+    "ceiling": "Invio, al massimo",
+    "noCeiling": "Come permette ciascun account",
+    "ceilingHint": "Invia fin dove lo permettono sia questo limite sia l'account. Disattivato lo lascia anche senza bozze."
   },
   "notAvailable": {
     "title": "Non disponibile su questa istanza",

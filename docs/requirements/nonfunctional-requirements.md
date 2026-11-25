@@ -373,13 +373,21 @@ bounded to one minor because the server relies on its handlers.
   screen's API (`/api/v1/oauth/requests/{id}`) needs the session cookie, its `POST` is refused
   cross-site like any other, and an unknown, expired or another user's request is a 404; the SPA,
   not the API, navigates to the returned redirect URL.
-- **Connected apps** (`/api/v1/oauth/grants`): a user lists, changes the tool groups of and
+- **Connected apps** (`/api/v1/oauth/grants`): a user lists, changes the tool groups and the limits of, and
   revokes only their own grants; revoking deletes the grant and its tokens, and grants left from
   an earlier mode stay revocable.
 - **Tool groups per grant:** a grant records the groups its user approved, and its access token
   carries them, so `/mcp` lists and runs only those tools: a call to another served tool is
   refused (`not_approved`) and logged like any refusal. A token from an external issuer names
   no groups and gets every served one.
+- **Limits per grant:** `account_ids` and `send_ceiling` (null: none) come with the access token
+  and make the call's reach (`mailroom.reach`), carried on its `AppContext`: the services read the
+  accounts through `AppContext.accounts`, cut to it with each send mode capped, and rows that name
+  an account are cut by `Reach.covers`, so an account beyond is answered as one that is not the
+  user's. Limits that cannot be read reach nothing and send nothing. The gate stays the one place
+  sends are decided: it is given the capped account. The worker reads the grant again for a held
+  send. Only the user's own accounts can be chosen (400 `accounts_not_approvable`, the request
+  left open); one removed is taken out of the grants, never leaving one unlimited.
 - **Opaque secrets, hashed:** request ids, codes and tokens are 256-bit random strings and only
   their SHA-256 is stored. A code is single use and marked used as it is read, so a failed PKCE
   check burns it; 10 minutes. A used code stays until it expires, and presented again it ends its
@@ -393,11 +401,12 @@ bounded to one minor because the server relies on its handlers.
   `oauth_token_issued` (`trigger`: `authorization_code` or `refresh_token`),
   `oauth_authorization_code_reused`, `oauth_refresh_token_reused`, `oauth_grant_revoked`,
   `oauth_grant_groups_changed` (with the groups `added` and `removed`),
+  `oauth_grant_limits_changed` (with `account_ids` and `send_ceiling`),
   `oauth_sso_signed_in` (`oidc` mode: the SSO callback claimed a request), with
   `user_id`, `client_id` and `grant_id` where known; never a token.
 - **`/mcp`'s verifier** in builtin mode: an access token is looked up by its hash, so a revoked or
   expired one stops working at once; the `AccessToken` names the user and carries `grant_id` and
-  the grant's `tool_groups`.
+  the grant's `tool_groups`, `account_ids` and `send_ceiling`.
 
 ### Sign-in
 

@@ -252,7 +252,7 @@ def account_signatures(
     account_id: AccountId, ctx: Context, db: DbSession, user: CurrentUser
 ) -> list[IdentitySignature]:
     """Each of the account's identities, in its order, with its signature."""
-    account = service.require_account(ctx.store(user.id), account_id)
+    account = service.require_account(ctx, user.id, account_id)
     kept = signatures.account_signatures(db, user.id, account_id)
     listed = []
     for identity in account.identities:
@@ -272,7 +272,7 @@ def change_signature(
 ) -> IdentitySignature:
     """The identity's signature, sanitised; one without text removes it. ``identity_not_found``
     (404) for an address that is none of the account's identities."""
-    account = service.require_account(ctx.store(user.id), account_id)
+    account = service.require_account(ctx, user.id, account_id)
     identity = next(
         (i for i in account.identities if i.address.lower() == body.address.lower()), None
     )
@@ -299,7 +299,7 @@ def account_vacation(
     account_id: AccountId, ctx: Context, db: DbSession, user: CurrentUser
 ) -> VacationReply:
     """The account's vacation reply."""
-    service.require_account(ctx.store(user.id), account_id)
+    service.require_account(ctx, user.id, account_id)
     settings = vacation.vacation_of(db, user.id, account_id)
     return _vacation_reply(
         settings,
@@ -319,7 +319,7 @@ def change_vacation(
     """Keep the account's vacation reply, its HTML sanitised. ``invalid_vacation`` (400) for an
     identity that is none of the account's, a last day before the first, or one switched on
     without a subject or a text."""
-    account = service.require_account(ctx.store(user.id), account_id)
+    account = service.require_account(ctx, user.id, account_id)
     settings = vacation.set_vacation(
         db,
         user.id,

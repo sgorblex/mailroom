@@ -175,12 +175,16 @@ async def _rule_sets_list(args: RuleSetsListArguments, call: ToolCall) -> JsonOb
 
 
 async def _rule_set_get(args: RuleSetArguments, call: ToolCall) -> JsonObject:
-    detail = await call.db(lambda db: service.rule_set_detail(db, call.user_id, args.rule_set_id))
+    detail = await call.db(
+        lambda db: service.rule_set_detail(call.ctx, db, call.user_id, args.rule_set_id)
+    )
     return detail.model_dump(mode="json")
 
 
 async def _runs_list(args: RunsListArguments, call: ToolCall) -> JsonObject:
-    listed = await call.db(lambda db: service.runs(db, call.user_id, args.rule_set_id, args.limit))
+    listed = await call.db(
+        lambda db: service.runs(call.ctx, db, call.user_id, args.rule_set_id, args.limit)
+    )
     return {"runs": [_run(run) for run in listed]}
 
 
@@ -221,7 +225,7 @@ async def _rule_set_disable(args: RuleSetArguments, call: ToolCall) -> JsonObjec
 async def _rule_set_delete(args: RuleSetArguments, call: ToolCall) -> JsonObject:
     await call.db(
         lambda db: service.remove_rule_set(
-            db, call.user_id, args.rule_set_id, disabled_only=True, via="mcp"
+            call.ctx, db, call.user_id, args.rule_set_id, disabled_only=True, via="mcp"
         )
     )
     return {"deleted": True, "rule_set_id": args.rule_set_id}
@@ -250,7 +254,7 @@ async def _filter_update(args: FilterUpdateArguments, call: ToolCall) -> JsonObj
 async def _filter_delete(args: FilterArguments, call: ToolCall) -> JsonObject:
     await call.db(
         lambda db: service.remove_filter(
-            db, call.user_id, args.filter_id, disabled_only=True, via="mcp"
+            call.ctx, db, call.user_id, args.filter_id, disabled_only=True, via="mcp"
         )
     )
     return {"deleted": True, "filter_id": args.filter_id}
@@ -259,7 +263,13 @@ async def _filter_delete(args: FilterArguments, call: ToolCall) -> JsonObject:
 async def _filters_reorder(args: FiltersReorderArguments, call: ToolCall) -> JsonObject:
     ordered = await call.db(
         lambda db: service.reorder_filters(
-            db, call.user_id, args.rule_set_id, args.filter_ids, disabled_only=True, via="mcp"
+            call.ctx,
+            db,
+            call.user_id,
+            args.rule_set_id,
+            args.filter_ids,
+            disabled_only=True,
+            via="mcp",
         )
     )
     return {"filters": [row.model_dump(mode="json") for row in ordered]}
