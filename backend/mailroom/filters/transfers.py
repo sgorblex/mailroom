@@ -158,7 +158,7 @@ _INBOX: Final = re.compile(r"^inbox(?=$|[/.])", re.IGNORECASE)
 """A leading INBOX segment, in any case, before the usual delimiters."""
 
 
-def _ledger_folder(path: str) -> str:
+def inbox_folded(path: str) -> str:
     """``path`` with a leading INBOX segment in capitals, as the folder's every name is one."""
     return _INBOX.sub("INBOX", path, count=1)
 
@@ -175,7 +175,7 @@ def ledger_copies(db: Session, user_id: int, refs: Sequence[str]) -> None:
             {
                 "user_id": user_id,
                 "account_id": ref.account,
-                "folder": _ledger_folder(ref.folder),
+                "folder": inbox_folded(ref.folder),
                 "uid_validity": ref.uid_validity,
                 "uid": ref.uid,
             }
@@ -232,7 +232,7 @@ def _of_ledger_folder(user_id: int, account_id: int, path: str) -> tuple[Any, ..
     return (
         TransferLedger.user_id == user_id,
         TransferLedger.account_id == account_id,
-        TransferLedger.folder == _ledger_folder(path),
+        TransferLedger.folder == inbox_folded(path),
     )
 
 
@@ -241,17 +241,17 @@ def rename_in_ledger(
 ) -> None:
     """Point the account's ledger entries of the folder ``old``, and of every folder under it, at
     ``new``, renamed. The caller commits."""
-    if _ledger_folder(old) == _ledger_folder(new):
+    if inbox_folded(old) == inbox_folded(new):
         return
     of_account = (TransferLedger.user_id == user_id, TransferLedger.account_id == account_id)
     db.execute(
         update(TransferLedger)
-        .where(*of_account, TransferLedger.folder == _ledger_folder(old))
-        .values(folder=_ledger_folder(new))
+        .where(*of_account, TransferLedger.folder == inbox_folded(old))
+        .values(folder=inbox_folded(new))
     )
     if delimiter:
-        prefix = _ledger_folder(old) + delimiter
-        renamed = _ledger_folder(new) + delimiter
+        prefix = inbox_folded(old) + delimiter
+        renamed = inbox_folded(new) + delimiter
         db.execute(
             update(TransferLedger)
             .where(*of_account, func.starts_with(TransferLedger.folder, prefix))

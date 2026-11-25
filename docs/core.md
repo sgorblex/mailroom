@@ -804,7 +804,10 @@ or loaded from their data form. Its tests are in `tests/filters`.
   `limited_to_newest`. `skip` (`SkipUids`), given the folder's server name and UIDVALIDITY, asked once
   selected and again before each filter, returns UIDs no filter of the run matches (the app's
   copies from another account). Its `FolderReport` gives per filter what it matched (from one `ENVELOPE`
-  fetch) and did; `run_into` fills it as filters finish, so a failure keeps what was done. Mail
+  fetch) and did; `run_into` fills it as filters finish, so a failure keeps what was done, and adds to
+  the host's `changed` set the folders (account, server path) whose mail the built-in actions changed
+  or may have: the folder run on, a move's destination, and for a move to another account the folder
+  there and the Trash here. Mail
   failures are `MailError`s; anything else (a pattern's `MatchTimeoutError`, a bug) leaves the
   session as itself, never as a `server_error`.
 - **Searches**: `IMAPQuery.criteria()` writes a query as core's criteria, an AND flat, an AND

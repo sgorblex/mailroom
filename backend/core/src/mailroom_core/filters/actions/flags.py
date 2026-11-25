@@ -22,6 +22,7 @@ class AddFlag(Action):
         flagname = flag.value.flagname.decode()
 
         def func(selected: Selected, uids: Sequence[int]) -> None:
+            selected.changes()
             store_flags(selected.context, uids, add=[flagname])
 
         super().__init__(func, name=name if name is not None else f"add {flag.name}")
@@ -35,6 +36,7 @@ class RemoveFlag(Action):
         flagname = flag.value.flagname.decode()
 
         def func(selected: Selected, uids: Sequence[int]) -> None:
+            selected.changes()
             store_flags(selected.context, uids, remove=[flagname])
 
         super().__init__(func, name=name if name is not None else f"remove {flag.name}")

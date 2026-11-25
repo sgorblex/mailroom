@@ -248,6 +248,44 @@ class TestActionExecution:
             Junk().execute(on, [1, 2])
         move.assert_called_once_with(on.context, [1, 2], "Spam")
 
+    @pytest.mark.parametrize(
+        ("action", "changed"),
+        [
+            (MoveTo(Path("Lists") / "Nerds"), {"INBOX", "Lists.Nerds"}),
+            (Trash(), {"INBOX", "Trash"}),
+            (Star(), {"INBOX"}),
+            (MarkAsUnread(), {"INBOX"}),
+            (Delete(), {"INBOX"}),
+            (Star() + Trash(), {"INBOX", "Trash"}),
+            (MoveTo(Path("INBOX")), set()),
+            (NoOp(), set()),
+        ],
+        ids=repr,
+    )
+    def test_the_folders_an_action_changes_are_noted(
+        self, action: Action, changed: set[str]
+    ) -> None:
+        on = selected("INBOX", ".", *FOLDERS)
+        action.execute(on, [1])
+        assert on.changed == {(1, path) for path in changed}
+
+    def test_a_move_that_fails_may_have_changed_both_folders_and_a_refused_one_neither(
+        self,
+    ) -> None:
+        on = selected("INBOX", ".", *FOLDERS)
+        with pytest.raises(MailError):
+            MoveTo(Path("Nowhere")).execute(on, [1])
+        assert on.changed == set()
+        with (
+            patch(
+                "mailroom_core.filters.actions.move.move_uids",
+                side_effect=MailError("server_error"),
+            ),
+            pytest.raises(MailError),
+        ):
+            MoveTo(Path("Lists")).execute(on, [1])
+        assert on.changed == {(1, "INBOX"), (1, "Lists")}
+
     def test_junk_without_a_junk_folder_is_unsupported(self) -> None:
         on = selected("INBOX", ".", *FOLDERS)
         with (

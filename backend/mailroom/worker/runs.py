@@ -8,7 +8,8 @@ failing on its own (a move to a folder that account lacks fails ``mailbox_missin
 created). A run whose job is gone (a worker stopped during it) is closed as ``interrupted`` when
 the next worker starts (``close_interrupted_runs``). A run whose move copied messages it then
 could not remove turns its rule set off (``COPIED_NOT_REMOVED``), so no trigger copies them again,
-as does one whose moves to another account left messages in both (``IN_BOTH``).
+as does one whose moves to another account left messages in both (``IN_BOTH``). With the mail
+client, the index folders whose mail a run changed are then synced, whatever became of the run.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from mailroom.accounts.service import move_cap
 from mailroom.accounts.store import AccountNotFound, load_accounts, user_store
 from mailroom.audit import Entry, write_records_in
 from mailroom.auth.users import time_zone_of
+from mailroom.config.features import features_from_env
 from mailroom.filters.mute import NEWEST as MUTE_NEWEST
 from mailroom.filters.mute import ThreadJoins
 from mailroom.filters.runs import (
@@ -43,6 +45,7 @@ from mailroom.filters.transfers import (
     IN_BOTH,
     IN_BOTH_TEXT,
     RunTargets,
+    inbox_folded,
     ledger_copies,
     ledger_skip,
     left_in_both,
@@ -55,6 +58,7 @@ from mailroom.mail.connections import (
     PasswordMissing,
     unusable,
 )
+from mailroom.mail.index import writes as index_writes
 from mailroom.models import FilterRun, RuleSet
 from mailroom.worker.app import PROCRASTINATE_SCHEMA
 from mailroom_core.filters import MatchTimeoutError
@@ -103,6 +107,7 @@ def execute_run(db: Session, run_id: int, mailboxes: Mailboxes) -> None:
     result: dict[str, Any] | None = None
     names: dict[int, str] = {}
     joins: ThreadJoins | None = None
+    changed: set[tuple[int, str]] = set()
     try:
         if not run_filters_on(db, user_id, account_id):
             msg = "Run filters is off for this account."
@@ -117,7 +122,7 @@ def execute_run(db: Session, run_id: int, mailboxes: Mailboxes) -> None:
         db.execute(update(FilterRun).where(FilterRun.id == run_id).values(started_at=started_at))
         # Not idle in a transaction while the mailbox works.
         db.commit()
-        result, error = _run(db, rule_set, account_id, filters, mailboxes, zone, joins)
+        result, error = _run(db, rule_set, account_id, filters, mailboxes, zone, changed, joins)
     except RunRefused as refused:
         error = refused.error
     except Exception as exc:
@@ -135,6 +140,9 @@ def execute_run(db: Session, run_id: int, mailboxes: Mailboxes) -> None:
     if recorded and result is not None:
         _count_matches(db, user_id, result)
         _record_run(db, user_id, result, names, account_id, rule_set_id, run_id, error)
+    if features_from_env().mail:
+        folders = {(account, inbox_folded(path)) for account, path in changed}
+        index_writes.resync_in(db, user_id, folders)
     outcome = "ok" if error is None else error.split(":", 1)[0]
     logger.info(
         "rule_set_run",
@@ -365,14 +373,16 @@ def _run(
     filters: Sequence[Filter],
     mailboxes: Mailboxes,
     time_zone: TimeZoneName,
+    changed: set[tuple[int, str]],
     joins: ThreadJoins | None = None,
 ) -> tuple[dict[str, Any] | None, str | None]:
     """The run's ``result`` (``_bounded``) and ``error``: the rule set's filters on its
     folder of ``account_id``, on the user's connections from the worker's pool, today being
-    ``time_zone``'s; a mute rule set's with its ``joins``. The copies a move to another account
-    left in the ledger are not matched, and the ones its moves make join it, both on ``db``,
-    which holds no work in between. Raises ``RunRefused`` when it cannot start:
-    ``account_not_found`` for an account that is not the user's."""
+    ``time_zone``'s, the folders whose mail it changed (or may have) added to ``changed``; a mute
+    rule set's with its ``joins``. The copies a move to another account left in the ledger are not
+    matched, and the ones its moves make join it, both on ``db``, which holds no work in between.
+    Raises ``RunRefused`` when it cannot start: ``account_not_found`` for an account
+    that is not the user's."""
     user_id = rule_set.user_id
     store = user_store(mailboxes.engine, user_id)
     try:
@@ -409,6 +419,7 @@ def _run(
                 newest=None if joins is None else MUTE_NEWEST,
                 time_zone=time_zone,
                 skip=partial(ledger_skip, db, user_id, account_id),
+                changed=changed,
             )
         except MatchTimeoutError as exc:
             # Its text quotes the user's pattern: the log names the kind only.

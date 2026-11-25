@@ -23,12 +23,19 @@ class Selected:
     other sessions to run after it (`defer`).
     """
 
-    def __init__(self, context: MailboxContext, delimiter: str | None) -> None:
-        """The run's session on the folder, and the delimiter its paths are joined with (None
-        when the server has no hierarchy)."""
+    def __init__(
+        self,
+        context: MailboxContext,
+        delimiter: str | None,
+        changed: set[tuple[int, str]] | None = None,
+    ) -> None:
+        """The run's session on the folder, the delimiter its paths are joined with (None when
+        the server has no hierarchy), and the host's set of the folders the run changed
+        (`Folder.run_into`'s ``changed``), which actions add to."""
         self.context = context
         self.delimiter = delimiter
         self._folders: list[Folder] | None = None
+        self.changed: set[tuple[int, str]] = set() if changed is None else changed
         self.deferred: list[Callable[[], TransferReport]] = []
         """What actions left to run once the session has closed, in order."""
         self.left: set[int] = set()
@@ -43,6 +50,13 @@ class Selected:
         if self._folders is None:
             self._folders = listed_folders(self.context)
         return self._folders
+
+    def changes(self, path: str | None = None) -> None:
+        """Note that an action is about to change mail in the selected folder, and in the
+        account's folder `path`. Noted first: an action that fails may have acted on some."""
+        self.changed.add((self.context.account, self.context.path))
+        if path is not None:
+            self.changed.add((self.context.account, path))
 
     def defer(self, uids: Sequence[int], finish: Callable[[], TransferReport]) -> None:
         """`finish` runs once the run's session has closed, for `uids`, which later filters of

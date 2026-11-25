@@ -26,9 +26,11 @@ from tests.test_api_accounts import added, new_account
 from tests.test_api_filters import SHOP_SPEC, add_filter
 from tests.test_filter_runner import (
     add_rule_set,
+    index_folder,
     queued_run,
     run_out,
     set_run_filters,
+    synced_folders,
 )
 from tests.test_filters_dry_run import BANK, SHOP, Mailbox, message
 from tests.test_idle_supervisor import Heard
@@ -118,6 +120,7 @@ def test_a_filter_moves_to_another_account_and_the_copy_is_not_moved_back(
     mailboxes: Mailboxes,
     audited: Callable[[int], list[AuditRecord]],
     user: User,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The copy lands in the ledger, so the target's own rule set moving the same mail back
     leaves it where it arrived: no loop."""
@@ -162,8 +165,16 @@ def test_a_filter_moves_to_another_account_and_the_copy_is_not_moved_back(
         enabled = user_client.patch(f"/api/v1/rule-sets/{rule_set_id}", json={"enabled": True})
         assert enabled.status_code == 200, enabled.json()
 
+    monkeypatch.delenv("MAILROOM_FEATURES", raising=False)
+    changed = {
+        index_folder(db_session, user, account, "INBOX"),
+        index_folder(db_session, user, account, "Trash"),
+        index_folder(db_session, user, home, "INBOX"),
+    }
+    index_folder(db_session, user, home, "Trash")
     run_id = queued_run(user_client, out)
     execute_run(db_session, run_id, mailboxes)
+    assert synced_folders(db_session) == changed
     assert sorted(mailbox.subjects("INBOX")) == ["No id", "Statement"]
     assert mailbox.subjects("Trash") == ["Autumn sale"]
     assert sorted(home_box.subjects("INBOX")) == ["Already home", "Autumn sale"]

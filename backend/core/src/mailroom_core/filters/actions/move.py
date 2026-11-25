@@ -27,6 +27,7 @@ def _move(selected: Selected, uids: Sequence[int], target: str) -> None:
         log.info("skipped a move of %s message(s) to the folder they are in", len(uids))
         return
     found = move_target(context.path, target, selected.folders(), account=context.account)
+    selected.changes(found.path)
     move_uids(context, uids, found.path)
 
 

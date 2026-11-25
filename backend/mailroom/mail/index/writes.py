@@ -16,7 +16,8 @@ own on an account whose rows carry Gmail's message ids (``X-GM-MSGID``, read onl
 
 A write whose answer names only the folders it changed queues their syncs the same way
 (``resync``): a send delivered (Sent, the draft it sent, what it answers or forwards), a draft
-saved, imported or removed, and one an agent's send mode kept in Drafts.
+saved, imported or removed, and one an agent's send mode kept in Drafts; and a filter run
+(``resync_in``: the folders its actions changed, another account's included).
 
 Every folder whose rows changed or whose sync was queued is announced on ``NOTIFY_CHANNEL``
 (``notify``). An index write that fails is logged by its exception's type only and leaves the mail
@@ -28,6 +29,7 @@ from __future__ import annotations
 import json
 import logging
 from collections import defaultdict
+from contextlib import suppress
 from typing import TYPE_CHECKING, Any, Final
 
 from sqlalchemy import (
@@ -145,14 +147,29 @@ def resync(
     """Queue the syncs of ``account_id``'s folders ``paths``, which a write changed without its
     answer saying how, and announce them; a Gmail account's labelled folders for one without a
     row. Never raises: it runs after the write went through, a send included."""
-    keys = {(account_id, path) for path in paths}
-    if not keys:
+    folders = {(account_id, path) for path in paths}
+    if not folders:
         return
     try:
         with sessions() as db:
-            _Write(db, user_id, set(keys)).resynced(keys)
-            db.commit()
+            resync_in(db, user_id, folders)
     except Exception as exc:
+        _failed(user_id, exc)
+
+
+def resync_in(db: Session, user_id: int, folders: Iterable[tuple[int, str]]) -> None:
+    """``resync`` of ``folders``, each an account's id and a path, in ``db``, which must hold no
+    open work: committed, or rolled back on a failure. Never raises either."""
+    keys = set(folders)
+    if not keys:
+        return
+    try:
+        _Write(db, user_id, set(keys)).resynced(keys)
+        db.commit()
+    except Exception as exc:
+        # A rollback that fails too leaves nothing to undo.
+        with suppress(Exception):
+            db.rollback()
         _failed(user_id, exc)
 
 

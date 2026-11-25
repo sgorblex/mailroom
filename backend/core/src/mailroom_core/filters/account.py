@@ -171,10 +171,13 @@ class Folder:
         newest: int | None = None,
         time_zone: TimeZoneName | None = None,
         skip: SkipUids | None = None,
+        changed: set[tuple[int, str]] | None = None,
     ) -> None:
         """Like run(), appending each filter's report to report as soon as it finishes.
 
-        For callers that need the partial report when the run raises.
+        For callers that need the partial report when the run raises. ``changed`` takes, as the
+        run goes, the folders whose mail the built-in actions changed or may have (a failed one
+        included), each as its account and its path on the server.
         """
         if newest is not None and newest < 1:
             msg = f"newest must be at least 1, not {newest}"
@@ -200,7 +203,7 @@ class Folder:
             report.pop("limited_to_newest", None)
             deferred.clear()
             try:
-                selected = Selected(context, delimiter)
+                selected = Selected(context, delimiter, changed)
 
                 def skipped() -> None:
                     if skip is not None:

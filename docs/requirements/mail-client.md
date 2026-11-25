@@ -2129,7 +2129,10 @@ folder off the index is read live, as before the index.
   server filed it in itself, the draft it sent and what it answers or forwards; by the send's own
   thread, the worker's for a held send), a draft saved or imported (Drafts) or deleted (Drafts,
   and Trash for one written elsewhere), and one an agent's send mode kept in Drafts; a send that
-  failed changed nothing and queues none. Each folder whose rows changed or whose sync was queued
+  failed changed nothing and queues none. A filter run queues, when it ends, the syncs of the
+  folders its actions changed or may have (the folder it ran on, where it moved mail, another
+  account's folder and the Trash here included), even one that failed partway, and is never failed
+  by it. Each folder whose rows changed or whose sync was queued
   is announced on Postgres's `mailroom_index` channel (`pg_notify`,
   `{"user_id", "account_id", "folder_id"}`), for live updates. An index write that fails leaves the mail call's answer as it was (logged as
   `mail_index_write_failed`, with its exception's type only); the next sync puts the rows right.
