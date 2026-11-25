@@ -18,7 +18,7 @@ in the browser, tried with a dry run, and run by the worker. Product scope:
   with its **marker**, which it clears once handled (the filter engine's `marked_only`): the star
   (`\Flagged`) or [**To sort**](../GLOSSARY.md) (the keyword `$MailroomSort`); `none`, the
   default, is every message. To sort is taken only on an account whose server keeps keywords
-  (the accounts listing's `keywords`): elsewhere the web greys it out with the reason, and the API
+  (`GET /api/v1/accounts/keywords`): elsewhere the web greys it out with the reason, and the API
   and MCP refuse it (`to_sort_unsupported`), checked when a rule set is created with it or changed
   to it. The same holds for a filter's `mark_to_sort` and `unmark_to_sort` actions, checked when a
   filter is added with one or its spec changed to one; the To sort criteria are always taken

@@ -1021,8 +1021,8 @@ class KeywordFailures:
 def account_keywords(ctx: AppContext, user_id: int) -> dict[int, bool | None]:
     """``keywords`` for each of the user's accounts, asked side by side, ``KEYWORDS_SECONDS`` at
     most: None for one that cannot log in (no secrets key, no password that opens), that failed
-    (lately: ``ctx.keyword_failures``) or that has not answered by then, whose connection is cut.
-    Never refuses."""
+    (lately: ``ctx.keyword_failures``) or that has not answered by then. Only the connection asking
+    is cut then: the account's other reads and writes go on. Never refuses."""
     found: dict[int, bool | None] = dict.fromkeys(account_ids(ctx, user_id))
     if ctx.subkey is None:
         return found
@@ -1039,13 +1039,22 @@ def account_keywords(ctx: AppContext, user_id: int) -> dict[int, bool | None]:
 
     def ask(connections: MailConnections) -> dict[int, bool]:
         finder = ThreadPoolExecutor(max_workers=min(len(asked), 8), thread_name_prefix="mail-kw")
-        answers = {account: finder.submit(connections.keywords, account) for account in asked}
+        deadline = time.monotonic() + KEYWORDS_SECONDS
+        threads: dict[int, int] = {}
+
+        def ask_one(account: int) -> bool:
+            threads[account] = threading.get_ident()
+            # Never queued past the deadline: the connection freed then is another call's.
+            return connections.keywords(account, wait=max(0.0, deadline - time.monotonic()))
+
+        answers = {account: finder.submit(ask_one, account) for account in asked}
         wait(answers.values(), timeout=KEYWORDS_SECONDS)
         finder.shutdown(wait=False, cancel_futures=True)
         known: dict[int, bool] = {}
         for account, answer in answers.items():
             if not answer.done():
-                connections.interrupt(account)
+                if account in threads:
+                    connections.interrupt(account, thread=threads[account])
                 continue
             if answer.cancelled():
                 continue

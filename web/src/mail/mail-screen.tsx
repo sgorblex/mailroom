@@ -5,9 +5,19 @@ import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
 
 import { AccountsContext } from '@/accounts/accounts-context.ts'
+import { keywordsQuery } from '@/accounts/keywords.ts'
 import { accountErrorMessage } from '@/accounts/messages.ts'
 import { type AccountId, listAccounts, type Account } from '@/api/accounts.ts'
-import { ALL_INBOXES, listMessages, searchMessages, viewMessages, type MatchScope, type SearchQuery, type ViewKey } from '@/api/mail.ts'
+import {
+  ALL_INBOXES,
+  listMessages,
+  searchMessages,
+  viewMessages,
+  type MatchScope,
+  type MessagePage,
+  type SearchQuery,
+  type ViewKey,
+} from '@/api/mail.ts'
 import { useConversations } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { readDevicePref, writeDevicePref } from '@/lib/device-prefs.ts'
@@ -41,7 +51,7 @@ import { useMailShortcuts, usePaletteShortcut } from './shortcuts.ts'
 import { storedSubfolders } from './subfolder-view.ts'
 import { MuteProvider } from './mute-provider.tsx'
 import { SnoozeProvider } from './snooze-provider.tsx'
-import { ACCOUNTS_KEY, messagesKey, viewsQuery } from './queries.ts'
+import { ACCOUNTS_KEY, messagesKey, readListAhead, viewsQuery } from './queries.ts'
 import { ToastHost } from './toast.tsx'
 import { SpamFilterOffer } from './spam-filter-offer.tsx'
 import { OutcomeAnnouncer, Toolbar } from './toolbar.tsx'
@@ -70,12 +80,16 @@ export function MailScreen(): ReactElement {
   // Kept between visits, so coming back shows the screen at once; read again behind it, as the
   // Accounts page changes them without this cache.
   const accounts = useQuery({ queryKey: ACCOUNTS_KEY, queryFn: ({ signal }) => listAccounts(signal), refetchOnMount: 'always' })
+  // Asked of the servers apart from the accounts, which never wait on a mailbox login: To sort is
+  // offered as not known until the answer comes.
+  useQuery({ ...keywordsQuery(), refetchOnMount: 'always' })
   const [sheet, setSheet] = useState(false)
   const [palette, setPalette] = useState(false)
   const savedViews = useQuery(viewsQuery()).data
   const grouped = useConversations()
   // Read once: another tab switching account must not change the one this tab shows.
   const [remembered] = useState(() => readDevicePref<AccountId | null>(ACCOUNT_PREF, null, isAccountId))
+  useListAhead(accounts.status === 'pending', search, remembered, grouped)
   const routed = search.account
   const known = accounts.data?.some((account) => account.id === routed) === true
   // The account the route shows, kept for the next `/mail` without one. Written when the route
@@ -471,6 +485,66 @@ function shownFolder(folder: string, q: SearchQuery | undefined): string | undef
   return shown === '*' ? undefined : shown
 }
 
+/** Reads a page of the folder's messages, or the search's when there is one (`merged`: with the subfolders). */
+function pageReader(
+  accountId: AccountId,
+  folder: string,
+  merged: boolean,
+  query: SearchQuery | null,
+  grouped: boolean,
+): (cursor: string | null, signal: AbortSignal) => Promise<MessagePage> {
+  return (cursor, signal) =>
+    query === null
+      ? listMessages(accountId, { folder, subfolders: merged, cursor, grouped }, signal)
+      : searchMessages(query, { subfolders: merged, cursor, grouped }, signal)
+}
+
+/**
+ * The list the screen will most likely show once the accounts are in: the view, or the routed
+ * account's list, else the one last shown on this device; `null` when no account is known.
+ */
+function listAhead(
+  search: ScreenSearch,
+  remembered: AccountId | null,
+  grouped: boolean,
+): { source: string; read: (signal: AbortSignal) => Promise<unknown> } | null {
+  if (search.view !== undefined) {
+    const view = search.view
+    return { source: grouping(viewSource(view), grouped), read: (signal) => viewMessages(view, null, signal, grouped) }
+  }
+  const accountId = search.account ?? remembered
+  if (accountId === null) {
+    return null
+  }
+  const folder = search.folder ?? DEFAULT_FOLDER
+  // The folder's subfolders as asked: the list reads them so until the folders are in.
+  const requested = search.sub ?? storedSubfolders(accountId, folder)
+  const listed = listQuery(accountId, folder, search.q, search.only)
+  const merged = listed === undefined ? requested : searchesSubfolders(accountId, folder, requested, listed)
+  const read = pageReader(accountId, folder, merged, listed ?? null, grouped)
+  return { source: grouping(sourceKey(accountId, folder, requested, listed), grouped), read: (signal) => read(null, signal) }
+}
+
+/**
+ * While the accounts load, starts reading the first page of the list most likely shown
+ * (`listAhead`), so the list does not wait for the accounts to ask for it. A guess the accounts
+ * prove wrong (an account removed) is never shown.
+ */
+function useListAhead(pending: boolean, search: ScreenSearch, remembered: AccountId | null, grouped: boolean): void {
+  const queryClient = useQueryClient()
+  const started = useRef(false)
+  useEffect(() => {
+    if (!pending || started.current) {
+      return
+    }
+    started.current = true
+    const ahead = listAhead(search, remembered, grouped)
+    if (ahead !== null) {
+      void readListAhead(queryClient, ahead.source, ahead.read)
+    }
+  }, [pending, search, remembered, grouped, queryClient])
+}
+
 /** Names the list shown: a folder, or a search (`q` is a new object on every navigation). */
 function sourceKey(accountId: AccountId, folder: string, subfolders: boolean, q: SearchQuery | undefined): string {
   if (q === undefined) {
@@ -506,13 +580,7 @@ const Listing = memo(function Listing({
   const searchKey = listed === undefined ? null : JSON.stringify(listed)
   const query = useMemo(() => (searchKey === null ? null : (JSON.parse(searchKey) as SearchQuery)), [searchKey])
   const merged = query === null ? subfolders : searchesSubfolders(accountId, folder, subfolders, query)
-  const loadPage = useCallback(
-    (cursor: string | null, signal: AbortSignal) =>
-      query === null
-        ? listMessages(accountId, { folder, subfolders: merged, cursor, grouped }, signal)
-        : searchMessages(query, { subfolders: merged, cursor, grouped }, signal),
-    [accountId, folder, query, merged, grouped],
-  )
+  const loadPage = useMemo(() => pageReader(accountId, folder, merged, query, grouped), [accountId, folder, query, merged, grouped])
   // What "select all matching" acts on: the search, or the folder as a search with no criteria.
   const match = useMemo<MatchScope>(
     () => ({ query: query ?? { account: String(accountId), folder }, subfolders: merged }),

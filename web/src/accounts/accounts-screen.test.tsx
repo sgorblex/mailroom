@@ -1,7 +1,10 @@
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { ALL_FEATURES } from '@/api/auth.ts'
+import { KEYWORDS_KEY } from '@/accounts/keywords.ts'
+import { createQueryClient } from '@/lib/query-client.ts'
 import { expectNoAxeViolations } from '@/test/axe.ts'
 import { renderSignedIn } from '@/test/signed-in.tsx'
 
@@ -726,6 +729,36 @@ describe('AccountsScreen', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Remove work' }))
     await userEvent.click(screen.getByRole('button', { name: 'Remove for good' }))
     expect(await screen.findByText('No accounts yet.')).toBeInTheDocument()
+  })
+
+  it.each(['added', 'changed', 'removed'])('forgets which servers keep keywords once an account is %s', async (change) => {
+    stubApi()
+    const cache = createQueryClient()
+    cache.setQueryData(KEYWORDS_KEY, [{ account_id: 1, keywords: false }])
+    renderSignedIn(<AccountsScreen />, ALICE, ALL_FEATURES, cache)
+
+    const edit = await screen.findByRole('button', { name: 'Edit work' })
+    if (change === 'added') {
+      await userEvent.click(screen.getByRole('button', { name: 'Add an account' }))
+      const form = screen.getByRole('form', { name: 'Add an account' })
+      await userEvent.type(within(form).getByLabelText('Email address'), 'me@home.example')
+      await userEvent.click(within(form).getByRole('button', { name: 'Enter settings manually' }))
+      await userEvent.type(within(form).getByLabelText('Login'), 'me@home.example')
+      await userEvent.type(within(form).getByLabelText('Password'), 'mailbox secret')
+      await userEvent.type(within(form).getByLabelText('IMAP server'), 'imap.home.example')
+      await userEvent.type(within(form).getByLabelText('SMTP server'), 'smtp.home.example')
+      await userEvent.click(within(form).getByRole('button', { name: 'Add account' }))
+    } else if (change === 'changed') {
+      await userEvent.click(edit)
+      await userEvent.click(within(screen.getByRole('form')).getByRole('button', { name: 'Save' }))
+    } else {
+      await userEvent.click(screen.getByRole('button', { name: 'Remove work' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Remove for good' }))
+    }
+
+    await waitFor(() => {
+      expect(cache.getQueryData(KEYWORDS_KEY)).toBeUndefined()
+    })
   })
 
   it('turns Run filters on and off', async () => {

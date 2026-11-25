@@ -5,6 +5,7 @@ import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
 
 import { AccountName } from '@/accounts/account-name.tsx'
+import { useAccountKeywords } from '@/accounts/accounts-context.ts'
 import { listAccounts, type Account, type AccountId } from '@/api/accounts.ts'
 import {
   addFilter,
@@ -281,6 +282,7 @@ function DraftTarget({
   const { t } = useTranslation(FILTERS_NS)
   const navigate = useNavigate()
   const folders = useFolders(account.id)
+  const keywordsOf = useAccountKeywords()
   const load = useCallback(
     async (signal: AbortSignal) => ({ account: account.id, ruleSets: await listRuleSets(account.id, signal) }),
     [account.id],
@@ -335,7 +337,7 @@ function DraftTarget({
       criterion={criterion}
       vocabulary={vocabulary}
       folders={folders}
-      keywords={account.keywords}
+      keywords={keywordsOf(account.id)}
       targets={targets}
       save={save}
       onCancel={() => {

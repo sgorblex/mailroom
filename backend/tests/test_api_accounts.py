@@ -74,6 +74,7 @@ def added(client: TestClient, account: dict[str, Any] | None = None) -> int:
 
 def test_signed_out_browsers_are_refused(api_client: TestClient) -> None:
     assert api_client.get("/api/v1/accounts").status_code == 401
+    assert api_client.get("/api/v1/accounts/keywords").status_code == 401
     assert api_client.post("/api/v1/accounts", json=new_account()).status_code == 401
     assert api_client.post("/api/v1/accounts/1/test").status_code == 401
 
@@ -113,7 +114,7 @@ def test_a_user_adds_edits_and_removes_an_account(
         "run_filters": False,
         "attachment_max_mb": 10.0,
         "max_recipients": 10,
-        # Not asked by a change; the listing asks, and an unreachable server does not say.
+        # Not asked by a change nor by the listing: /accounts/keywords asks.
         "keywords": None,
     }
     assert user_client.get("/api/v1/accounts").json() == [account]
@@ -636,7 +637,31 @@ def test_the_dev_mailbox_logs_in(
     }
 
 
-def test_the_listing_says_which_servers_keep_keywords(
+def keywords_of(client: TestClient) -> dict[int, bool | None]:
+    found = client.get("/api/v1/accounts/keywords")
+    assert found.status_code == 200
+    return {each["account_id"]: each["keywords"] for each in found.json()}
+
+
+def test_the_listing_never_logs_in(
+    user_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    work = added(user_client)
+    asked: list[int] = []
+
+    def spied(_connections: MailConnections, account_id: int, **_: object) -> bool:
+        asked.append(account_id)
+        return True
+
+    monkeypatch.setattr(MailConnections, "keywords", spied)
+    [listed] = user_client.get("/api/v1/accounts").json()
+    assert (listed["id"], listed["keywords"]) == (work, None)
+    assert asked == []
+    assert keywords_of(user_client) == {work: True}
+    assert asked == [work]
+
+
+def test_the_keywords_say_which_servers_keep_them(
     user_client: TestClient,
     imap_server: ImapTestServer,
     application: FastAPI,
@@ -645,11 +670,34 @@ def test_the_listing_says_which_servers_keep_keywords(
     """The test Dovecot keeps keywords; an unreachable server is not known."""
     dovecot = dev_mailbox_account(user_client, imap_server, application, monkeypatch, "keywords")
     unreachable = added(user_client, new_account("home"))
-    listed = {a["id"]: a["keywords"] for a in user_client.get("/api/v1/accounts").json()}
-    assert listed == {dovecot["id"]: True, unreachable: None}
+    # In the accounts' order.
+    assert list(keywords_of(user_client).items()) == [(dovecot["id"], True), (unreachable, None)]
 
 
-def test_a_listing_never_waits_on_a_silent_server(
+def test_the_keywords_are_of_the_user_s_own_accounts(
+    user_client: TestClient, db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(MailConnections, "keywords", lambda _connections, _account, **_: True)
+    added(user_client)
+    bob = create_user(db_session, "bob", PASSWORD)
+    user_client.cookies.set(SESSION_COOKIE_NAME, create_session(db_session, bob))
+    assert keywords_of(user_client) == {}
+    bobs = added(user_client, new_account("bob"))
+    assert keywords_of(user_client) == {bobs: True}
+
+
+def test_without_a_secrets_key_no_keywords_are_known(
+    user_client: TestClient, application: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    work = added(user_client)
+    asked: list[int] = []
+    monkeypatch.setattr(MailConnections, "keywords", lambda _c, account, **_: asked.append(account))
+    monkeypatch.setattr(application.state, "secrets_subkey", None)
+    assert keywords_of(user_client) == {work: None}
+    assert asked == []
+
+
+def test_the_keywords_never_wait_on_a_silent_server(
     user_client: TestClient, silent_server: int, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(read_service, "KEYWORDS_SECONDS", 0.2)
@@ -658,17 +706,62 @@ def test_a_listing_never_waits_on_a_silent_server(
     cut: list[int] = []
     interrupt = MailConnections.interrupt
 
-    def spied(connections: MailConnections, account_id: int) -> bool:
+    def spied(connections: MailConnections, account_id: int, *, thread: int | None = None) -> int:
+        assert thread is not None
         cut.append(account_id)
-        return interrupt(connections, account_id)
+        return interrupt(connections, account_id, thread=thread)
 
     monkeypatch.setattr(MailConnections, "interrupt", spied)
-    [listed] = user_client.get("/api/v1/accounts").json()
-    assert (listed["id"], listed["keywords"]) == (work, None)
+    assert keywords_of(user_client) == {work: None}
     assert cut == [work]  # its stray login is cut, not left on the pool's connections
 
 
-def test_a_listing_leaves_a_failed_login_alone_for_five_minutes(
+@pytest.mark.parametrize("pool_size", [1, 2])
+def test_a_read_in_progress_survives_the_keywords_deadline(
+    pool_size: int,
+    user_client: TestClient,
+    silent_server: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Whether the keywords are asked on the account's other connection or still queued."""
+    monkeypatch.setattr(read_service, "KEYWORDS_SECONDS", 0.3)
+    endpoint = {"host": "127.0.0.1", "port": silent_server, "tls": "implicit"}
+    work = added(user_client, new_account(imap=endpoint))
+    keywords = MailConnections.keywords
+    started, done = threading.Event(), threading.Event()
+    cut: list[bool] = []
+    asked: list[float | None] = []
+
+    def reading(connections: MailConnections) -> None:
+        with connections._slot(work) as (_, slot):  # noqa: SLF001
+            started.set()
+            done.wait(10)
+            cut.append(slot.interrupted)
+
+    readers: list[threading.Thread] = []
+
+    def beside_a_read(
+        connections: MailConnections, account_id: int, *, wait: float | None = None
+    ) -> bool:
+        connections._pool_size = pool_size  # noqa: SLF001
+        readers.append(threading.Thread(target=reading, args=(connections,)))
+        readers[-1].start()
+        assert started.wait(5)
+        asked.append(wait)
+        return keywords(connections, account_id, wait=wait)
+
+    monkeypatch.setattr(MailConnections, "keywords", beside_a_read)
+    assert keywords_of(user_client) == {work: None}
+    done.set()
+    [reader] = readers
+    reader.join(5)
+    assert cut == [False]
+    [wait] = asked
+    assert wait is not None
+    assert wait <= 0.3  # never queued past the deadline
+
+
+def test_the_keywords_leave_a_failed_login_alone_for_five_minutes(
     user_client: TestClient, application: FastAPI, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     work = added(user_client)
@@ -676,22 +769,21 @@ def test_a_listing_leaves_a_failed_login_alone_for_five_minutes(
     monkeypatch.setattr(application.state, "keyword_failures", KeywordFailures(clock))
     asked: list[int] = []
 
-    def refused(_connections: MailConnections, account_id: int) -> bool:
+    def refused(_connections: MailConnections, account_id: int, **_: object) -> bool:
         asked.append(account_id)
         raise MailError("auth_failed")
 
     monkeypatch.setattr(MailConnections, "keywords", refused)
     for _ in range(2):
-        [listed] = user_client.get("/api/v1/accounts").json()
-        assert listed["keywords"] is None
+        assert keywords_of(user_client) == {work: None}
     assert asked == [work]
     clock.now += 301
-    user_client.get("/api/v1/accounts")
+    keywords_of(user_client)
     assert asked == [work, work]
     # A changed account is asked afresh.
     change = edited(new_account()) | {"name": "Work"}
     assert user_client.put(f"/api/v1/accounts/{work}", json=change).status_code == 200
-    user_client.get("/api/v1/accounts")
+    keywords_of(user_client)
     assert asked == [work, work, work]
 
 

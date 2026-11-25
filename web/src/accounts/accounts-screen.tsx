@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useQueryClient } from '@tanstack/react-query'
 
 import { addAccount, changeAccount, listAccounts, removeAccount, testAccount, type Account } from '@/api/accounts.ts'
 import { setRunFilters } from '@/api/filters.ts'
@@ -7,6 +8,7 @@ import { apiErrorMessage } from '@/api/http.ts'
 import { AccountForm } from '@/accounts/account-form.tsx'
 import { AccountName } from '@/accounts/account-name.tsx'
 import { AccountQuotaBars } from '@/accounts/account-quota.tsx'
+import { KEYWORDS_KEY } from '@/accounts/keywords.ts'
 import { accountErrorMessage, loginTestMessage } from '@/accounts/messages.ts'
 import { useFeature } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
@@ -24,9 +26,15 @@ export function AccountsScreen(): ReactElement {
   const [attempt, setAttempt] = useState(0)
   const [adding, setAdding] = useState(false)
   const addTrigger = useRef<HTMLButtonElement>(null)
+  const queryClient = useQueryClient()
   const reload = useCallback(() => {
     setAttempt((value) => value + 1)
   }, [])
+  const changed = useCallback(() => {
+    // An answer of the server an account had before: not known again, rather than shown meanwhile.
+    void queryClient.resetQueries({ queryKey: KEYWORDS_KEY })
+    reload()
+  }, [queryClient, reload])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -73,7 +81,7 @@ export function AccountsScreen(): ReactElement {
       {list.kind === 'loaded' && list.accounts.length > 0 && (
         <ul aria-label={t('accounts.title')} className="flex flex-col divide-y rounded-lg border">
           {list.accounts.map((account) => (
-            <AccountRow key={account.id} account={account} onChange={reload} />
+            <AccountRow key={account.id} account={account} onChange={changed} />
           ))}
         </ul>
       )}
@@ -82,7 +90,7 @@ export function AccountsScreen(): ReactElement {
           save={async (fields) => {
             await addAccount({ ...fields, password: fields.password ?? '' })
             setAdding(false)
-            reload()
+            changed()
           }}
           onCancel={closeAdding}
         />

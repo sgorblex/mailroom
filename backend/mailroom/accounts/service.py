@@ -98,8 +98,8 @@ class ListedAccount(StoredAccount):
     """The user's limit on To, Cc and Bcc together."""
     keywords: bool | None = None
     """Whether the account's server keeps keywords, so messages can be marked To sort (never on
-    Gmail); None when not known: not asked (an answer to a change), or the server did not
-    answer the listing."""
+    Gmail); None when not known: not asked (the REST listing and an answer to a change, which
+    leave it to ``/accounts/keywords``), or the server did not answer the MCP listing."""
 
 
 def attachment_limit_mb(limits: Limits) -> float:

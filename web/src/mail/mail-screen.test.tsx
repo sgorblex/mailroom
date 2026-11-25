@@ -269,6 +269,68 @@ describe('MailScreen', () => {
     expect(await screen.findByRole('link', { name: new RegExp(plain.subject) })).toBeInTheDocument()
   })
 
+  it("starts reading the remembered account's list while the accounts load", async () => {
+    window.localStorage.setItem('mailroom.ui.mail.account', '2')
+    let accountsIn = (): void => undefined
+    const accountsHeld = new Promise<void>((resolve) => {
+      accountsIn = resolve
+    })
+    const fetchMock = stubMailApi(state({ hold: (request) => (request === 'GET /api/v1/accounts' ? accountsHeld : undefined) }))
+    renderMailApp('/mail')
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/accounts/i)
+    await waitFor(() => {
+      expect(queriesTo(fetchMock, '/api/v1/mail/accounts/2/messages')).toHaveLength(1)
+    })
+    accountsIn()
+    expect(await screen.findByRole('link', { name: /From home/ })).toBeInTheDocument()
+    // The list shows the page read ahead, without reading it again.
+    expect(queriesTo(fetchMock, '/api/v1/mail/accounts/2/messages')).toHaveLength(1)
+    expect(queriesTo(fetchMock, '/api/v1/mail/accounts/1/messages')).toHaveLength(0)
+  })
+
+  it('reads a list ahead only when an account is known, and never shows a wrong guess', async () => {
+    window.localStorage.setItem('mailroom.ui.mail.account', '99')
+    const fetchMock = stubMailApi(state())
+    renderMailApp('/mail')
+
+    expect(await screen.findByRole('link', { name: new RegExp(plain.subject) })).toBeInTheDocument()
+    // The account remembered is gone: its guess was read, and the first account's list is shown.
+    expect(queriesTo(fetchMock, '/api/v1/mail/accounts/99/messages')).toHaveLength(1)
+    expect(screen.getByRole('tree', { name: 'Folders of work' })).toBeInTheDocument()
+    cleanup()
+
+    window.localStorage.removeItem('mailroom.ui.mail.account')
+    const none = stubMailApi(state())
+    renderMailApp('/mail')
+    expect(await screen.findByRole('link', { name: new RegExp(plain.subject) })).toBeInTheDocument()
+    expect(queriesTo(none, '/api/v1/mail/accounts/1/messages')).toHaveLength(1)
+  })
+
+  it('draws the mail before the servers say whether they keep keywords', async () => {
+    let keywordsIn = (): void => undefined
+    const keywordsHeld = new Promise<void>((resolve) => {
+      keywordsIn = resolve
+    })
+    const fetchMock = stubMailApi(
+      state({ keywords: { [WORK]: false }, hold: (request) => (request === 'GET /api/v1/accounts/keywords' ? keywordsHeld : undefined) }),
+    )
+    renderMailApp('/mail')
+
+    const list = await screen.findByRole('list', { name: 'Messages' })
+    const row = within(list).getByRole('link', { name: new RegExp(plain.subject) }).parentElement
+    if (row === null) {
+      throw new Error('no row')
+    }
+    // Not known yet: To sort is offered.
+    expect(within(row).getByRole('button', { name: 'To sort' })).toHaveAttribute('aria-disabled', 'false')
+    expect(queriesTo(fetchMock, '/api/v1/accounts/keywords')).toHaveLength(1)
+    keywordsIn()
+    await waitFor(() => {
+      expect(within(row).getByRole('button', { name: 'To sort' })).toHaveAttribute('aria-disabled', 'true')
+    })
+  })
+
   it('neither answers nor follows another tab switching account', async () => {
     const anotherTab = (): void => {
       window.localStorage.setItem('mailroom.ui.mail.account', '2')

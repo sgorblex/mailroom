@@ -217,6 +217,8 @@ describe('swiping a row', () => {
     const fetchMock = stubMailApi(inTrash)
     renderMailApp('/mail?account=1&folder=Trash', { user: alice() })
     const row = await surface('Message 20')
+    // The list may come before the folders that say this one is Trash.
+    await screen.findByRole('treeitem', { name: /^Trash/ })
 
     swipe(row, [-20, -80, -300])
     expect(row.style.transform).toBe('')

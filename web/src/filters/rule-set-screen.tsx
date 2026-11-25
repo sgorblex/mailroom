@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
 
 import { AccountDot } from '@/accounts/account-name.tsx'
-import { AccountsContext } from '@/accounts/accounts-context.ts'
+import { AccountsContext, useAccountKeywords } from '@/accounts/accounts-context.ts'
 import { listAccounts, type Account } from '@/api/accounts.ts'
 import {
   ALL_ACCOUNTS,
@@ -115,6 +115,7 @@ function RuleSetEditor({ ruleSet: initial, account, accounts, vocabulary }: Load
   const [filters, setFilters] = useState<Filter[]>(initialFilters)
   const [historyVersion, setHistoryVersion] = useState(0)
   const folders = useFolders(ruleSet.account_id)
+  const keywordsOf = useAccountKeywords()
   const refreshHistory = useCallback(() => {
     setHistoryVersion((value) => value + 1)
   }, [])
@@ -127,7 +128,7 @@ function RuleSetEditor({ ruleSet: initial, account, accounts, vocabulary }: Load
         filters={filters}
         vocabulary={vocabulary}
         folders={folders}
-        keywords={account?.keywords}
+        keywords={account === undefined ? undefined : keywordsOf(account.id)}
         setFilters={setFilters}
       />
       <RunPanel
@@ -169,6 +170,7 @@ function RuleSetHeader({
   const [error, setError] = useState<string | null>(null)
   const editTrigger = useRef<HTMLButtonElement>(null)
   const allAccounts = ruleSet.account_id === ALL_ACCOUNTS
+  const keywordsOf = useAccountKeywords()
 
   function backToIdle(): void {
     setMode('idle')
@@ -191,7 +193,7 @@ function RuleSetHeader({
     return (
       <RuleSetForm
         folders={folders}
-        keywords={account?.keywords}
+        keywords={account === undefined ? undefined : keywordsOf(account.id)}
         ruleSet={ruleSet}
         save={async (fields) => {
           onChanged(await changeRuleSet(ruleSet.id, fields))

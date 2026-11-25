@@ -313,7 +313,7 @@ Older than milestone E, seen in its browser check; fix before batch 11.
 - [x] **Wide HTML on phones** — fit a newsletter laid out wider than the screen to its width,
       as phone mail apps do, instead of cutting it at the frame's edge.
 - [ ] **Speed, later** — what the milestone E speed pass left (its measurement found the rest):
-  - [ ] **Mail without waiting on mailbox logins** — `/accounts` logs in to every account's IMAP
+  - [x] **Mail without waiting on mailbox logins** — `/accounts` logs in to every account's IMAP
         server for its keywords before the mail screen draws anything; answer first and fill the
         keywords in later, and start the list from the remembered account.
   - [ ] **Fewer IMAP round trips per read** — skip selecting a folder that is already selected

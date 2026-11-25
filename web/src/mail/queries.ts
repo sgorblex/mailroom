@@ -117,7 +117,46 @@ const TRUST_READ_MS = 5_000
  * it is shown. Triage and live events invalidate it as before; a kept page is never taken for the
  * server's word on flags (`MessageList`'s `refreshed`).
  */
-export const LIST_KEPT = { gcTime: READ_GC_MS, refetchOnMount: 'always' } as const
+export const LIST_KEPT = {
+  gcTime: READ_GC_MS,
+  refetchOnMount: (query: ListQuery) => (justReadAhead(query) ? false : 'always'),
+} as const
+
+/** How long a first page read ahead (`readListAhead`) is shown as it is when its list comes up. */
+const AHEAD_MS = 10_000
+
+/** Each first page read ahead, with when that read landed. */
+const readAhead = new WeakMap<object, number>()
+
+/** What `LIST_KEPT` reads of a list's cached first page. */
+interface ListQuery {
+  state: { dataUpdatedAt: number; isInvalidated: boolean }
+}
+
+/** Read ahead lately, and neither read again, written nor invalidated since. */
+function justReadAhead(query: ListQuery): boolean {
+  const { dataUpdatedAt, isInvalidated } = query.state
+  return readAhead.get(query) === dataUpdatedAt && !isInvalidated && Date.now() - dataUpdatedAt < AHEAD_MS
+}
+
+/**
+ * Reads the first page of the list `source` names ahead of the list showing it, as the mail
+ * screen does while its accounts load: the list, coming up just after, shows it without reading
+ * it again.
+ */
+export async function readListAhead(
+  queryClient: QueryClient,
+  source: string,
+  read: (signal: AbortSignal) => Promise<unknown>,
+): Promise<void> {
+  const queryKey = messagesKey(source, null)
+  // A failure is the list's to show, once it reads the page itself.
+  await queryClient.query({ queryKey, queryFn: ({ signal }) => read(signal), gcTime: READ_GC_MS }).catch(() => undefined)
+  const query = queryClient.getQueryCache().find({ queryKey, exact: true })
+  if (query?.state.status === 'success') {
+    readAhead.set(query, query.state.dataUpdatedAt)
+  }
+}
 
 /**
  * The message `ref` from its start, as the message view opens it and a prefetch reads it ahead.
