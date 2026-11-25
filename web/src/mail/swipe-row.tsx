@@ -1,14 +1,20 @@
-import { useRef, useState, type PointerEvent, type ReactElement, type ReactNode } from 'react'
+import { use, useRef, useState, type PointerEvent, type ReactElement, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { LucideIcon } from 'lucide-react'
+import { Ellipsis, type LucideIcon } from 'lucide-react'
 
 import type { Appearance } from '@/api/auth.ts'
 import type { MessageItem } from '@/api/mail.ts'
+import { useAccountHandled } from '@/accounts/accounts-context.ts'
 import { useAppearance } from '@/auth/auth-context.ts'
 import { cn } from '@/lib/utils.ts'
 
 import { MAIL_ACTIONS, unavailableReason, type ActionContext } from './action-registry.ts'
+import { ComposeContext } from './compose-context.ts'
 import { MAIL_NS } from './i18n.ts'
+import { useMuting } from './mute-context.ts'
+import { rowActions } from './row-action-items.ts'
+import { RowActions } from './row-actions.tsx'
+import { useSnoozing } from './snooze-context.ts'
 import { useTriageActions, type TriageActions } from './triage-actions.ts'
 import { useTriage, type Action } from './triage-context.ts'
 
@@ -26,7 +32,7 @@ const SWIPE_CLICK_MS = 500
 
 type SwipeKind = Appearance['swipe_left']
 
-/** The swipe's actions never compose: a stub spares each row the composer's re-renders. */
+/** Unless a row action composes: a stub spares each row the composer's re-renders. */
 const NO_COMPOSE: ActionContext['compose'] = { start: () => undefined, canCompose: () => false }
 
 /** What a swipe to one side does to the row: the registry's action, and what it runs. */
@@ -34,7 +40,8 @@ interface Swipe {
   label: string
   icon: LucideIcon
   destructive: boolean
-  action: Action
+  /** The triage action it runs, or `menu`: it shows the row's actions. */
+  action: Action | 'menu'
   /** The row leaves the list (a move): it stays swiped away until the action ends. */
   leaves: boolean
 }
@@ -54,7 +61,7 @@ interface Gesture {
 }
 
 /** The registry's action a swipe of `kind` runs on the row, and the triage action that is; `null` when it cannot be run on it. */
-function swipeOf(kind: SwipeKind, actions: TriageActions): { id: string; action: Action } | null {
+function swipeOf(kind: Exclude<SwipeKind, 'menu'>, actions: TriageActions): { id: string; action: Action } | null {
   switch (kind) {
     case 'none':
       return null
@@ -81,14 +88,51 @@ function swipeOf(kind: SwipeKind, actions: TriageActions): { id: string; action:
  * finger has gone further sideways than up or down. While it moves, the action shows behind the
  * row, in its colour once letting go would run it: past `SWIPE_SHARE` of the width, or flung.
  * Short of that the row goes back. A side whose action is none, or unavailable here, does not move.
+ * Over the row's end come its `RowActions`, on hover or focus, and where a side's action is `menu`,
+ * once swiped to it.
  */
-export function SwipeRow({ message, children }: { message: MessageItem; children: ReactNode }): ReactElement {
+export function SwipeRow({
+  message,
+  compact,
+  children,
+}: {
+  message: MessageItem
+  compact: boolean
+  children: ReactNode
+}): ReactElement {
   const { t } = useTranslation(MAIL_NS)
-  const { swipe_left, swipe_right } = useAppearance().appearance
+  const { swipe_left, swipe_right, row_actions } = useAppearance().appearance
   const triage = useTriage()
   const actions = useTriageActions([message])
-  const context: ActionContext = { actions, message, account: null, compose: NO_COMPOSE, openPicker: () => undefined }
+  const composes = row_actions.some((kind) => kind === 'reply' || kind === 'forward')
+  const compose = composes ? use(ComposeContext) : null
+  const muting = useMuting()
+  const snoozing = useSnoozing()
+  const context: ActionContext = {
+    actions,
+    message,
+    account: null,
+    compose: compose ?? NO_COMPOSE,
+    // A picker acts on the selection, so the row becomes it.
+    openPicker: () => {
+      triage.clearSelection()
+      triage.select([message], true)
+      triage.setPicker(true)
+    },
+    muting,
+    snoozing,
+  }
+  const items = rowActions(row_actions, context, useAccountHandled()(message.account_id).kind === 'star')
+  const [revealed, setRevealed] = useState(false)
+  const closeActions = (): void => {
+    setRevealed(false)
+  }
   const sideOf = (kind: SwipeKind): Swipe | null => {
+    if (kind === 'menu') {
+      return items.length === 0
+        ? null
+        : { label: t('list.rowActions'), icon: Ellipsis, destructive: false, action: 'menu', leaves: false }
+    }
     const swipe = swipeOf(kind, actions)
     const entry = swipe === null ? undefined : MAIL_ACTIONS.find((each) => each.id === swipe.id)
     if (swipe === null || entry === undefined || !entry.available(context) || unavailableReason(entry, context) !== null) {
@@ -185,6 +229,12 @@ export function SwipeRow({ message, children }: { message: MessageItem; children
       setOffset(0)
       return
     }
+    if (swipe.action === 'menu') {
+      setArmed(false)
+      setOffset(0)
+      setRevealed(true)
+      return
+    }
     if (!swipe.leaves) {
       setArmed(false)
       setOffset(0)
@@ -249,6 +299,7 @@ export function SwipeRow({ message, children }: { message: MessageItem; children
         }}
       >
         {children}
+        <RowActions message={message} items={items} context={context} compact={compact} revealed={revealed} onClose={closeActions} />
       </div>
     </div>
   )

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { ACCENTS, DENSITIES, HOMES, READING_PANES, SWIPE_ACTIONS, TEXT_SIZES, THEMES, type Appearance } from '@/api/auth.ts'
+import { ACCENTS, DENSITIES, HOMES, MAX_ROW_ACTIONS, READING_PANES, ROW_ACTIONS, SWIPE_ACTIONS, TEXT_SIZES, THEMES, withRowAction, type Appearance } from '@/api/auth.ts'
 import { apiErrorMessage } from '@/api/http.ts'
 import { useAppearance, useAuth } from '@/auth/auth-context.ts'
 import { navPages } from '@/auth/nav-pages.ts'
@@ -11,9 +11,10 @@ type Outcome = { kind: 'idle' } | { kind: 'saved' } | { kind: 'failed'; message:
 
 /**
  * What this section chooses: the page the app opens on, the look of the whole page, the density of
- * the mail lists, where a message opens and what swiping a row does.
+ * the mail lists, where a message opens, what swiping a row does and the actions a
+ * row shows.
  */
-type Shown = Look & Pick<Appearance, 'home' | 'density' | 'reading_pane' | 'swipe_left' | 'swipe_right'>
+type Shown = Look & Pick<Appearance, 'home' | 'density' | 'reading_pane' | 'swipe_left' | 'swipe_right' | 'row_actions'>
 
 const SWIPES = [
   ['swipe_left', 'appearance.swipeLeft'],
@@ -27,10 +28,11 @@ const shownOf = (appearance: Appearance): Shown => ({
   reading_pane: appearance.reading_pane,
   swipe_left: appearance.swipe_left,
   swipe_right: appearance.swipe_right,
+  row_actions: appearance.row_actions,
 })
 
 /**
- * The user's home page, theme, accent, text size, density, reading pane and swipe actions, the
+ * The user's home page, theme, accent, text size, density, reading pane, swipe and row actions, the
  * same on every device. A choice shows at once and is saved; a home page the instance does not
  * offer is not one of the options (the dashboard opens instead); when the save fails the saved
  * look comes back and the section says so.
@@ -222,6 +224,28 @@ export function AppearanceSettings(): ReactElement {
         <p id="appearance-swipe-touch" className="text-xs text-muted-foreground">
           {t('appearance.swipeTouch')}
         </p>
+      </fieldset>
+      <fieldset className="flex flex-col gap-1.5" aria-describedby="appearance-row-actions-intro">
+        <legend className="mb-1.5 text-sm font-medium">{t('appearance.rowActions')}</legend>
+        <p id="appearance-row-actions-intro" className="text-xs text-muted-foreground">
+          {t('appearance.rowActionsIntro', { max: MAX_ROW_ACTIONS })}
+        </p>
+        {ROW_ACTIONS.map((action) => {
+          const chosen = shown.row_actions.includes(action)
+          return (
+            <label key={action} className="flex items-center gap-2 text-sm has-disabled:text-muted-foreground">
+              <input
+                type="checkbox"
+                name="appearance-row-actions"
+                value={action}
+                checked={chosen}
+                disabled={!chosen && shown.row_actions.length >= MAX_ROW_ACTIONS}
+                onChange={() => void choose({ row_actions: withRowAction(shown.row_actions, action, !chosen) })}
+              />
+              {t(`appearance.rowActionNames.${action}`)}
+            </label>
+          )
+        })}
       </fieldset>
       {outcome.kind === 'failed' && (
         <p role="alert" className="text-sm text-destructive">

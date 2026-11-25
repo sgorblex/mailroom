@@ -63,8 +63,9 @@ menu) shows the health check through the Vite proxy. Engineering baseline:
   Activity), the density of the message lists (comfortable, or compact rows
   without each message's opening) and where an open message shows on a wide screen (right of the
   list, below it, or off: in the list's place), and what swiping a message row left or right does on
-  a touch screen (trash and archive by default; mark read, star, Handled or nothing —
-  [`requirements/mail-client.md`](requirements/mail-client.md)); a choice shows at once and is the same on every device they sign in
+  a touch screen (trash and archive by default; mark read, star, Handled, the row's actions or nothing) and which
+  actions, up to three, a row shows on hover (star and Handled by default) —
+  [`requirements/mail-client.md`](requirements/mail-client.md); a choice shows at once and is the same on every device they sign in
   on. How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md)
   — *Own appearance*.
 - **Accessibility.** The web is used by keyboard alone, shows where focus is, keeps AA contrast in

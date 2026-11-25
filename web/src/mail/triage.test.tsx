@@ -718,7 +718,11 @@ describe('rows', () => {
     expect(toggles).not.toHaveClass('pointer-coarse:opacity-100')
     // The date under them shows none of itself past their edge, but only where they show.
     const date = within(marked).getByRole('img', { name: 'Starred' }).nextElementSibling
-    expect(date).toHaveClass('group-hover/row:text-transparent', 'group-focus-within/row:text-transparent', 'pointer-coarse:text-muted-foreground')
+    expect(date).toHaveClass(
+      'group-has-data-row-actions/row:group-hover/row:text-transparent',
+      'group-has-data-row-actions/row:group-focus-within/row:text-transparent',
+      'pointer-coarse:text-muted-foreground!',
+    )
     expect(within(row(list, 'Message 9')).queryByRole('img', { name: 'Starred' })).not.toBeInTheDocument()
   })
 

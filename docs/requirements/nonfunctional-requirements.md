@@ -536,10 +536,10 @@ bounded to one minor because the server relies on its handlers.
   ([`mail-client.md`](mail-client.md#conversations)). `auth/me`'s `user` carries it; logged as
   `conversations_changed`.
 - **Own appearance** (`PUT /api/v1/auth/me/appearance`, some of `{"theme", "accent",
-  "density", "text_size", "reading_pane", "home", "swipe_left", "swipe_right"}`, at least one;
+  "density", "text_size", "reading_pane", "home", "swipe_left", "swipe_right", "row_actions"}`, at least one;
   null leaves one as it is): how the web looks, the same on every device
   (`mailroom.auth.appearance`); `home` is the page the app opening on `/` shows (`dashboard`, or `mail`, `filters`,
-  `accounts`, `activity`: the dashboard where the instance does not offer it). `app.user.appearance` (JSONB) keeps only the choices the user
+  `accounts`, `activity`: the dashboard where the instance does not offer it); `row_actions` is a list of at most three distinct actions, empty for none. `app.user.appearance` (JSONB) keeps only the choices the user
   made, merged over the earlier ones, so a later change of a default reaches whoever never chose;
   `auth/me`'s `user` carries every choice, a default where none was made or where a stored one is
   no longer an option. An unknown choice or option is a 422; logged as `appearance_changed`. The

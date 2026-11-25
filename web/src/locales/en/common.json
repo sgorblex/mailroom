@@ -518,9 +518,25 @@
       "trash": "Move to Trash",
       "read": "Mark as read or unread",
       "star": "Star or unstar",
-      "handled": "Mark Handled or clear the mark"
+      "handled": "Mark Handled or clear the mark",
+      "menu": "Show the row actions"
     },
     "swipeTouch": "What swiping a message row sideways does, on a touch screen. A mouse drags the row to a folder instead.",
+    "rowActions": "Row actions",
+    "rowActionsIntro": "The actions a message row shows over its end when you hover or focus it, up to {{max}}. On a touch screen they show where a swipe is set to “Show the row actions”. The row’s context menu always has every action.",
+    "rowActionNames": {
+      "star": "Star",
+      "handled": "Handled",
+      "read": "Mark as read or unread",
+      "reply": "Reply",
+      "forward": "Forward",
+      "archive": "Archive",
+      "report_spam": "Report spam",
+      "trash": "Move to Trash",
+      "move": "Move to…",
+      "snooze": "Snooze",
+      "mute": "Mute conversation"
+    },
     "saved": "Saved.",
     "saveFailed": "Could not save this choice."
   },

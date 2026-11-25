@@ -40,6 +40,81 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+describe('the row actions in the command palette', () => {
+  const alice = {
+    username: 'alice',
+    is_admin: false,
+    time_zone: null,
+    mark_read_subfolders: true,
+    index_max_age_days: null,
+    conversations: true,
+    undo_send_seconds: 10,
+  }
+  const APPEARANCE = '/api/v1/auth/me/appearance'
+
+  /** The mail API, with the appearance saved as `answer` says. */
+  function stub(answer: (change: object) => Response): ReturnType<typeof vi.fn> {
+    const mail = stubMailApi(state())
+    const saves = vi.fn()
+    vi.stubGlobal('fetch', (path: string, init?: RequestInit) => {
+      if (path !== APPEARANCE) {
+        return mail(path, init) as Promise<Response>
+      }
+      const change = JSON.parse(init?.body as string) as object
+      saves(change)
+      return Promise.resolve(answer(change))
+    })
+    return saves
+  }
+
+  async function search(query: string): Promise<ReturnType<typeof userEvent.setup>> {
+    const user = userEvent.setup()
+    await screen.findByRole('list', { name: 'Messages' })
+    await user.keyboard('{Control>}k{/Control}')
+    await user.type(within(palette()).getByRole('combobox'), query)
+    return user
+  }
+
+  it('shows and hides one, saying so, with nothing more to show once there are three', async () => {
+    const saves = stub((change) => new Response(JSON.stringify({ ...alice, appearance: change }), { status: 200 }))
+    renderMailApp('/mail', { user: alice })
+    let user = await search('message rows trash')
+    expect(options()).toEqual(['Show on message rows: Move to Trash'])
+    await user.keyboard('{Enter}')
+    expect(saves).toHaveBeenLastCalledWith({ row_actions: ['star', 'handled', 'trash'] })
+    await waitFor(() => {
+      expect(document.getElementById('toast-status')).toHaveTextContent('Message rows now show: Move to Trash.')
+    })
+
+    user = await search('message rows')
+    expect(options().filter((name) => name.startsWith('Show on'))).toEqual([])
+    await user.clear(within(palette()).getByRole('combobox'))
+    await user.type(within(palette()).getByRole('combobox'), 'hide message rows star')
+    await user.keyboard('{Enter}')
+    expect(saves).toHaveBeenLastCalledWith({ row_actions: ['handled', 'trash'] })
+    await waitFor(() => {
+      expect(document.getElementById('toast-status')).toHaveTextContent('Message rows no longer show: Star.')
+    })
+  })
+
+  it('says when it could not be saved', async () => {
+    stub(() => new Response('{"detail":"Server error"}', { status: 500 }))
+    renderMailApp('/mail', { user: alice })
+    const user = await search('message rows trash')
+    await user.keyboard('{Enter}')
+    await waitFor(() => {
+      expect(screen.getAllByRole('alert').map((alert) => alert.textContent)).toContain('Server error')
+    })
+  })
+
+  it('are not offered signed out', async () => {
+    stubMailApi(state())
+    renderMailApp('/mail')
+    await search('message rows')
+    expect(options()).toEqual([])
+  })
+})
+
 describe('the command palette', () => {
   it('opens on Ctrl+K and goes to a folder of any account, by the keyboard', async () => {
     const user = userEvent.setup()

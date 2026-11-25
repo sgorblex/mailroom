@@ -8,9 +8,9 @@ removed) reads as that choice's default rather than failing.
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 Theme = Literal["system", "light", "dark"]
 Accent = Literal["default", "blue", "violet", "green", "terracotta", "rose"]
@@ -18,7 +18,31 @@ Density = Literal["comfortable", "compact"]
 TextSize = Literal["small", "default", "large"]
 ReadingPane = Literal["right", "below", "off"]
 Home = Literal["dashboard", "mail", "filters", "accounts", "activity"]
-SwipeAction = Literal["none", "archive", "trash", "read", "star", "handled"]
+SwipeAction = Literal["none", "archive", "trash", "read", "star", "handled", "menu"]
+"""``menu``: shows the row's actions (``RowActions``)."""
+RowAction = Literal[
+    "star",
+    "handled",
+    "read",
+    "reply",
+    "forward",
+    "archive",
+    "report_spam",
+    "trash",
+    "move",
+    "snooze",
+    "mute",
+]
+
+
+def _each_once(actions: list[RowAction]) -> list[RowAction]:
+    if len(set(actions)) != len(actions):
+        msg = "Choose each action once."
+        raise ValueError(msg)
+    return actions
+
+
+RowActions = Annotated[list[RowAction], Field(max_length=3), AfterValidator(_each_once)]
 
 
 class Appearance(BaseModel):
@@ -36,6 +60,8 @@ class Appearance(BaseModel):
     swipe_left: SwipeAction = "trash"
     """What a message list row does when swiped left on a touch screen."""
     swipe_right: SwipeAction = "archive"
+    row_actions: RowActions = ["star", "handled"]
+    """The actions a message list row shows; none when empty."""
 
 
 class AppearanceChange(BaseModel):
@@ -51,6 +77,7 @@ class AppearanceChange(BaseModel):
     home: Home | None = None
     swipe_left: SwipeAction | None = None
     swipe_right: SwipeAction | None = None
+    row_actions: RowActions | None = None
 
     @model_validator(mode="after")
     def _some_choice(self) -> AppearanceChange:
@@ -59,7 +86,7 @@ class AppearanceChange(BaseModel):
             raise ValueError(msg)
         return self
 
-    def chosen(self) -> dict[str, str]:
+    def chosen(self) -> dict[str, Any]:
         """The choices this change makes."""
         return self.model_dump(exclude_none=True)
 

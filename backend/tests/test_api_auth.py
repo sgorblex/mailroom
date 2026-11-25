@@ -29,6 +29,7 @@ APPEARANCE = {
     "home": "dashboard",
     "swipe_left": "trash",
     "swipe_right": "archive",
+    "row_actions": ["star", "handled"],
 }
 SIGNED_IN = {
     "user": {
@@ -339,10 +340,38 @@ def test_the_user_picks_how_the_web_looks(
         {"font": "serif"},
         {"swipe_left": "delete"},
         {"text_size": 2},
+        {"row_actions": "star"},
+        {"row_actions": ["delete"]},
+        {"row_actions": ["star", "star"]},
+        {"row_actions": ["star", "handled", "read", "trash"]},
     ):
         assert user_client.put(route, json=body).status_code == 422, body
     api_client.cookies.clear()
     assert api_client.put(route, json={"theme": "light"}).status_code == 401
+
+
+def test_the_user_picks_the_actions_a_row_shows(
+    user_client: TestClient, db_session: Session, user: User
+) -> None:
+    route = "/api/v1/auth/me/appearance"
+    for chosen in (["trash", "read", "snooze"], []):
+        response = user_client.put(route, json={"row_actions": chosen, "swipe_left": "menu"})
+        assert response.json()["appearance"] == {
+            **APPEARANCE,
+            "row_actions": chosen,
+            "swipe_left": "menu",
+        }
+        user_client.put(route, json={"row_actions": None, "density": "compact"})
+        user_client.put(route, json={"density": "comfortable"})
+        db_session.expire_all()
+        stored = db_session.get(User, user.id)
+        assert stored is not None
+        assert stored.appearance["row_actions"] == chosen
+    db_session.execute(
+        update(User).where(User.id == user.id).values(appearance={"row_actions": ["star", "gone"]})
+    )
+    db_session.commit()
+    assert user_client.get("/api/v1/auth/me").json()["user"]["appearance"] == APPEARANCE
 
 
 def test_a_choice_no_longer_offered_reads_as_its_default(

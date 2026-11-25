@@ -169,7 +169,7 @@ rail and no shortcut button; the desktop layout is unchanged.
 On a touch screen (whatever its width) a **swipe** of a message row runs the action the user chose
 for that side on the *Profile* (the same on every device): left moves to Trash and right archives
 unless changed; each side may instead mark read or unread, star or unstar, mark Handled or clear it,
-or do nothing. It acts on that row alone, whatever is selected, through the same path as the
+show the row's actions (below), or do nothing. It acts on that row alone, whatever is selected, through the same path as the
 toolbar, with its toast and Undo. While the finger moves, the action's icon and name show behind
 the row, in its colour once letting go would run it: past 35% of the row's width, or a quick
 flick of at least 40 px; short of that the row goes back. A swipe, acting or not, never opens
@@ -177,6 +177,9 @@ the message; a keyboard or screen reader activation of the row right after one s
 a sideways move swipes: a move first more up or down than sideways is the list's scroll, which
 the browser keeps (`touch-action: pan-y`). A mouse never swipes (it drags the row to a folder),
 and a side whose action is *Nothing*, or not available there (no Archive folder), does not move.
+A side set to show the **row's actions** runs nothing itself: it leaves the row's buttons ([row
+actions](#web-client)) on the row, in a finger's size, until one is chosen, a tap elsewhere or
+Escape; with none available on the row, that side does not move.
 A long press to select, the selection toolbar and the open message's action bar stay the way to
 act without a swipe (WCAG 2.5.1, pointer gestures), and the row moves without its glide under
 *reduce motion*.
@@ -480,17 +483,23 @@ MCP `message_read` still never set `\Seen`.
   moves until the user picks; a drop never deletes for good. A selection spanning several
   accounts (from a search) takes no drop, as Move to… is not offered for it either. From the
   keyboard, `v` is the way.
-- **A star on each row** stars or unstars that one message, whatever is selected or open, without
-  opening it: shown over the row's end (taking no width, the date under it showing none of
-  itself) while the row is hovered or holds the focus, never on a touch screen (where the
-  message's actions star it), and always there for screen readers, a toggle button named *Star*
-  whose pressed
+- **Row actions:** each row shows up to three buttons, as the user chose on the *Profile* or in the
+  command palette (`row_actions`, the same on every device), in this order: Star, Handled, Mark read
+  or unread, Reply, Forward, Archive, Report spam, Trash, Move to…, Snooze, Mute; Star and Handled
+  unless changed, none when all are unticked. They come from the one list of actions (the
+  context menu always has them all) and act on that one message, or a conversation's row,
+  whatever is selected or open, without opening it; Move to… makes the row the selection, for its
+  picker. One not available on the row (Archive without an archive folder) is left out; one that
+  cannot run is greyed out, its tooltip saying why. They show over the row's end (taking no width,
+  the date under them showing none of itself) while the row is hovered or holds the focus; on a
+  touch screen only once a swipe set to show them does. They are always there for screen readers.
+- **The star** among them is a toggle button named *Star* whose pressed
   state says whether the message is starred (its tooltip says *Star* or *Unstar*). While another
   action runs it is disabled and looks it, and a click sends nothing. Its result shows as any
   action's (below).
-- **A Handled mark on each row**, next to the star, marks that one message Handled or clears the
+- **Handled** among them marks that one message Handled or clears the
   mark the same way: a toggle named *Handled*, filled when marked (its tooltip says *Mark Handled*
-  or *Clear Handled*). Where the account keeps Handled as the star, the star is the one toggle and
+  or *Clear Handled*). Where the account keeps Handled as the star, the star is the one toggle (for either choice) and
   the one mark, its tooltip saying so, and `s` and `t` do the same. A starred or Handled row
   shows it by small marks next to its date (a star in the star colour, a bookmark), named *Starred* and *Handled* for screen readers.
 - Where the account keeps Handled as a keyword its server cannot keep (`GET /api/v1/accounts/keywords`
@@ -561,7 +570,8 @@ MCP `message_read` still never set `\Seen`.
   to the first and the last, Enter or a click chooses, Escape closes). It offers, in groups: the
   registry's actions that can run now on the selection or the open message (as the toolbar lists
   them, with their keys) and *Refresh*, every folder that can hold mail of every account (its
-  account beside it), the accounts, and the app's pages as the nav lists them. Each word typed must start a word
+  account beside it), the accounts, the app's pages as the nav lists them, and settings: each row action to show on or hide
+  from message rows (none to show once there are three), a toast saying how it went. Each word typed must start a word
   of an entry (a folder path's levels are words) or occur in it, or have its letters in order in
   one of its words, case and accents aside; the best matches come first. With nothing typed, the
   last five choices come first (kept in this browser only; none when storage is refused), those

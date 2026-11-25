@@ -518,9 +518,25 @@
       "trash": "Sposta nel Cestino",
       "read": "Segna come letto o non letto",
       "star": "Aggiungi a Speciali o rimuovi",
-      "handled": "Segna come gestito o togli il segno"
+      "handled": "Segna come gestito o togli il segno",
+      "menu": "Mostra le azioni della riga"
     },
     "swipeTouch": "Cosa fa scorrere di lato la riga di un messaggio, su uno schermo touch. Con il mouse la riga si trascina invece su una cartella.",
+    "rowActions": "Azioni della riga",
+    "rowActionsIntro": "Le azioni che la riga di un messaggio mostra alla sua estremità quando ci passi sopra o la raggiungi da tastiera, al massimo {{max}}. Su uno schermo touch compaiono dove uno scorrimento è impostato su “Mostra le azioni della riga”. Il menu contestuale della riga le ha sempre tutte.",
+    "rowActionNames": {
+      "star": "Speciali",
+      "handled": "Gestito",
+      "read": "Segna come letto o non letto",
+      "reply": "Rispondi",
+      "forward": "Inoltra",
+      "archive": "Archivia",
+      "report_spam": "Segnala come spam",
+      "trash": "Sposta nel Cestino",
+      "move": "Sposta in…",
+      "snooze": "Posticipa",
+      "mute": "Silenzia conversazione"
+    },
     "saved": "Salvato.",
     "saveFailed": "Impossibile salvare questa scelta."
   },
