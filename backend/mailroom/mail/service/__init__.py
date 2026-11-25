@@ -21,7 +21,8 @@ The package is split by concern: ``read``, ``organize``, ``bulk`` (every message
 matches), ``folder_writes`` (creating, renaming and deleting folders, marking one read;
 ``folders`` is the listing, re-exported here), ``compose`` (drafts with it), ``send``,
 ``scheduled`` (held sends, which the worker sends), ``snooze`` (snoozed messages, which the
-worker brings back), ``views`` (a view's messages, from the index only) and ``addresses`` (a
+worker brings back), ``views`` (a view's messages, from the index only), ``refresh`` (the
+syncs of what a list reads, which the worker runs) and ``addresses`` (a
 recipient field's suggestions, from the index too), with what more than one of them uses in
 ``_shared``. This facade re-exports what the front ends call, so they
 keep calling ``service.X``.
@@ -101,6 +102,14 @@ from mailroom.mail.service.read import (
     thread,
     thread_key,
 )
+from mailroom.mail.service.refresh import (
+    REFRESHES_PER_MINUTE,
+    admit_refresh,
+    listed_sources,
+    refresh,
+    refresh_limit,
+    refresh_running,
+)
 from mailroom.mail.service.scheduled import (
     ScheduledView,
     cancel_scheduled,
@@ -142,6 +151,7 @@ __all__ = [
     "MAX_REFS",
     "MAX_REF_LENGTH",
     "MAX_TERM",
+    "REFRESHES_PER_MINUTE",
     "SEND_HOLDS_THE_DRAFT",
     "TEXT_REFUSED",
     "AllAccounts",
@@ -167,6 +177,7 @@ __all__ = [
     "account_ids",
     "account_keywords",
     "act_on_matching",
+    "admit_refresh",
     "archive",
     "attachment",
     "cancel_scheduled",
@@ -189,6 +200,7 @@ __all__ = [
     "list_messages",
     "list_scheduled",
     "list_snoozes",
+    "listed_sources",
     "mark_folder_read",
     "message_html",
     "message_source",
@@ -204,6 +216,9 @@ __all__ = [
     "read_message",
     "read_scheduled",
     "read_send",
+    "refresh",
+    "refresh_limit",
+    "refresh_running",
     "rename_folder",
     "save_draft",
     "schedule_later",

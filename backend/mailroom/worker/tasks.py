@@ -11,7 +11,8 @@ minutes; it brings the account's index folders in step with its listing and queu
 queueing the next. ``sync_folder`` syncs one folder: one that IDLE, a write of the app, a held
 send or a filter run asks for, or one a job left with more to fetch. The index's routine work (the
 turn, and what a job left) is queued at ``ROUTINE_PRIORITY``, so a sync asked for and a filter run
-wait at most for the share under way, however long the turn.
+wait at most for the share under way, however long the turn. ``refresh_folders`` syncs an account's
+folders a user refreshed, in shares likewise, its first ahead of every other job.
 
 A held send's ``send_draft`` is queued by the mail service (``defer_scheduled_send``) in the
 transaction writing its ``app.scheduled_send`` row, to run at its time (``mailroom.worker.sends``);
@@ -31,7 +32,8 @@ from procrastinate import SyncPsycopgConnector
 from procrastinate.exceptions import AlreadyEnqueued
 from procrastinate.manager import JobManager
 from procrastinate.tasks import configure_task
-from sqlalchemy import and_, func, or_, select, text
+from sqlalchemy import and_, bindparam, func, or_, select, text
+from sqlalchemy.dialects.postgresql import JSONB
 
 from mailroom.config.features import features_from_env
 from mailroom.filters.runs import prune_runs
@@ -71,12 +73,18 @@ SYNC_DUE_FOLDERS: Final = "sync_due_folders"
 """The job running one share of the turn over an account's due folders (its ``folder_ids``)."""
 SYNC_FOLDER: Final = "sync_folder"
 """The job running one share of an indexed folder's sync."""
+REFRESH_FOLDERS: Final = "refresh_folders"
+"""The job running one share of the refreshes the user asked of an account's folders (its
+``folder_ids``; ``refreshes``: those each refresh still awaits, by its id)."""
 SEND_DRAFT: Final = "send_draft"
 """The job sending one scheduled draft (its ``app.scheduled_send`` row) through the send gate."""
 WAKE_SNOOZE: Final = "wake_snooze"
 """The job bringing one snoozed message (its ``app.snooze`` row) back to its folder."""
 VACATION_REPLY: Final = "vacation_reply"
 """The job answering one new message (its ref) with its account's vacation reply."""
+REFRESH_PRIORITY: Final = 1
+"""The priority of a refresh's first share, which the user waits for on the screen; its later ones
+take their turn at ``ASKED_PRIORITY``."""
 ASKED_PRIORITY: Final = 0
 """procrastinate's default priority: what someone waits for (a filter run, a sync of a folder that
 changed)."""
@@ -158,6 +166,30 @@ def sync_due_folders(user_id: int, account_id: int, folder_ids: list[int]) -> No
     with context.sessions() as db:
         left = run_turn_share(db, context.mailboxes, user_id, account_id, folder_ids)
         queue_turn(db, user_id, account_id, left.rest)
+        for folder_id in left.unfinished:
+            queue_folder_sync(db, user_id, account_id, folder_id, priority=ROUTINE_PRIORITY)
+        db.commit()
+
+
+@app.task(name=REFRESH_FOLDERS)
+def refresh_folders(
+    user_id: int, account_id: int, folder_ids: list[int], refreshes: dict[str, list[int]]
+) -> None:
+    """One share of the refreshes of the account's folders, however lately they were synced; the
+    rest queued as the next one, so that the refreshes awaiting it run on (``refresh_running``),
+    and each folder with more to fetch as a ``sync_folder`` of its own."""
+    if not features_from_env().mail:
+        return
+    context = worker_context()
+    with context.sessions() as db:
+        left = run_turn_share(
+            db, context.mailboxes, user_id, account_id, folder_ids, refreshing=True
+        )
+        if left.rest:
+            rest = set(left.rest)
+            awaited = {key: [i for i in ids if i in rest] for key, ids in refreshes.items()}
+            waiting = {key: ids for key, ids in awaited.items() if ids}
+            _queue_refreshes(db, user_id, account_id, left.rest, waiting, ASKED_PRIORITY)
         for folder_id in left.unfinished:
             queue_folder_sync(db, user_id, account_id, folder_id, priority=ROUTINE_PRIORITY)
         db.commit()
@@ -468,10 +500,88 @@ def queue_folder_sync(
     )
 
 
+def queue_refresh(
+    db: Session, user_id: int, account_id: int, folder_ids: Sequence[int], *, refresh_id: str
+) -> None:
+    """Queue ``refresh_folders`` for the account's folders ``folder_ids``, if any, ahead of those
+    of one already waiting, which then syncs both (the caller commits)."""
+    if folder_ids:
+        refreshes = {refresh_id: list(folder_ids)}
+        _queue_refreshes(db, user_id, account_id, folder_ids, refreshes, REFRESH_PRIORITY)
+
+
+def _queue_refreshes(
+    db: Session,
+    user_id: int,
+    account_id: int,
+    folder_ids: Sequence[int],
+    refreshes: Mapping[str, list[int]],
+    priority: int,
+) -> None:
+    """Queue a ``refresh_folders`` inside ``db``'s transaction, one waiting per account at most:
+    one that waits takes these on, at the higher of the two priorities."""
+    queueing_lock = f"index_refresh:{user_id}:{account_id}"
+    waiting = text(
+        f"SELECT id, args FROM {PROCRASTINATE_SCHEMA}.procrastinate_jobs"
+        " WHERE queueing_lock = :queueing_lock AND status = 'todo' FOR UPDATE"
+    )
+    while True:
+        job = db.execute(waiting, {"queueing_lock": queueing_lock}).one_or_none()
+        if job is not None:
+            break
+        arguments: dict[str, JSONValue] = {
+            "user_id": user_id,
+            "account_id": account_id,
+            "folder_ids": list(folder_ids),
+            "refreshes": {key: list(ids) for key, ids in refreshes.items()},
+        }
+        try:
+            with db.begin_nested():
+                _defer(
+                    db,
+                    REFRESH_FOLDERS,
+                    lock=mailbox_lock(user_id, account_id),
+                    queueing_lock=queueing_lock,
+                    priority=priority,
+                    arguments=arguments,
+                )
+        except AlreadyEnqueued:
+            continue  # Queued meanwhile: it waits, or has started and left the way free.
+        return
+    # What was asked just now goes first, what a share left goes last.
+    asked, queued = list(folder_ids), job.args["folder_ids"]
+    first, then = (asked, queued) if priority == REFRESH_PRIORITY else (queued, asked)
+    merged: dict[str, list[int]] = dict(job.args["refreshes"])
+    for key, ids in refreshes.items():
+        merged[key] = list(dict.fromkeys([*merged.get(key, ()), *ids]))
+    update = text(
+        f"UPDATE {PROCRASTINATE_SCHEMA}.procrastinate_jobs"
+        " SET args = :args, priority = GREATEST(priority, :priority) WHERE id = :id"
+    ).bindparams(bindparam("args", type_=JSONB))
+    args = {
+        **job.args,
+        "folder_ids": list(dict.fromkeys([*first, *then])),
+        "refreshes": merged,
+    }
+    db.execute(update, {"args": args, "priority": priority, "id": job.id})
+
+
+def refresh_running(db: Session, user_id: int, refresh_id: str) -> bool:
+    """Whether a share of the user's refresh ``refresh_id`` still waits or runs."""
+    query = text(
+        f"SELECT EXISTS (SELECT FROM {PROCRASTINATE_SCHEMA}.procrastinate_jobs"
+        " WHERE status IN ('todo', 'doing') AND task_name = :name"
+        " AND args @> jsonb_build_object('user_id', CAST(:user_id AS bigint))"
+        " AND jsonb_exists(args->'refreshes', :refresh_id))"
+    )
+    asked = {"name": REFRESH_FOLDERS, "user_id": user_id, "refresh_id": refresh_id}
+    return bool(db.scalar(query, asked))
+
+
 def folder_syncs_running(db: Session, folder_ids: Sequence[int]) -> set[int]:
     """Which of the indexed folders ``folder_ids`` may be syncing now: those of a ``sync_folder``
-    running, and every one of a turn's share running. A sync that surveyed its folder before a
-    write may store the flags it read over that write's."""
+    running, and every one of a turn's or a refresh's share running. A sync that
+    surveyed its folder before a write may store the flags it read over that write's."""
     if not folder_ids:
         return set()
     query = text(
@@ -479,11 +589,11 @@ def folder_syncs_running(db: Session, folder_ids: Sequence[int]) -> set[int]:
         f" FROM {PROCRASTINATE_SCHEMA}.procrastinate_jobs AS job,"
         " jsonb_array_elements_text(CASE job.task_name"
         " WHEN :folder THEN jsonb_build_array(job.args->'folder_id')"
-        " WHEN :turn THEN job.args->'folder_ids' END) AS folder(id)"
-        " WHERE job.task_name IN (:folder, :turn) AND job.status = 'doing'"
+        " ELSE job.args->'folder_ids' END) AS folder(id)"
+        " WHERE job.task_name IN (:folder, :turn, :refresh) AND job.status = 'doing'"
         " AND folder.id::bigint = ANY(:ids)"
     )
-    names = {"folder": SYNC_FOLDER, "turn": SYNC_DUE_FOLDERS}
+    names = {"folder": SYNC_FOLDER, "turn": SYNC_DUE_FOLDERS, "refresh": REFRESH_FOLDERS}
     return set(db.scalars(query, {**names, "ids": list(folder_ids)}))
 
 

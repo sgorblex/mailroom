@@ -38,6 +38,9 @@ const LETTER = /^[a-z]$/i
 /** Held down, only these repeat: the others would toggle or send again and again. */
 const REPEATING = new Set(['j', 'k'])
 
+/** Shift+R: Ctrl+R, ⌘+R and plain `r` are taken. */
+const REFRESH_KEY = 'R'
+
 interface SheetEntry {
   key: string
   label: string
@@ -51,6 +54,7 @@ const NAVIGATION_KEYS: readonly SheetEntry[] = [
   { key: 'k', label: 'shortcuts.previous' },
   { key: 'x', label: 'shortcuts.select' },
   { key: '[', label: 'shortcuts.folderPane' },
+  { key: REFRESH_KEY, label: 'shortcuts.refresh', keyName: 'shortcuts.refreshKey' },
   { key: 'Escape', label: 'shortcuts.escape', keyName: 'shortcuts.escapeKey' },
   { key: '?', label: 'shortcuts.sheet' },
   { key: 'Control+K', label: 'shortcuts.palette', keyName: 'shortcuts.paletteKey' },
@@ -142,13 +146,13 @@ export function usePaletteShortcut(onToggle: () => void): void {
 
 /**
  * The mail screen's keyboard shortcuts (`docs/requirements/mail-client.md`): j/k move through
- * the list, x selects, `[` folds or opens the folder pane, Escape closes a picker, clears the
+ * the list, x selects, `[` folds or opens the folder pane, Shift+R calls `onRefresh`, Escape closes a picker, clears the
  * selection or, in full view, goes back to the list (as `u` does there), `?` calls `onHelp` (the
  * shortcut sheet); the other keys are the action registry's, on the selection or the open message
  * (a reply on the open one, a new message on `accountId`). None while typing, none with Ctrl or
  * Meta (but for AltGr, which types characters), and no letter with Alt.
  */
-export function useMailShortcuts(accountId: AccountId, onHelp: () => void): void {
+export function useMailShortcuts(accountId: AccountId, onHelp: () => void, onRefresh: () => void): void {
   const triage = useTriage()
   const actions = useTriageActions()
   const compose = useCompose()
@@ -159,9 +163,9 @@ export function useMailShortcuts(accountId: AccountId, onHelp: () => void): void
   const { message: shownMessage, thread } = useSearch({ from: '/mail' })
   const message = thread ?? shownMessage
   const { fullView } = useReadingPane()
-  const latest = useRef({ triage, actions, navigate, message, compose, accountId, onHelp, fullView })
+  const latest = useRef({ triage, actions, navigate, message, compose, accountId, onHelp, onRefresh, fullView })
   useEffect(() => {
-    latest.current = { triage, actions, navigate, message, compose, accountId, onHelp, fullView }
+    latest.current = { triage, actions, navigate, message, compose, accountId, onHelp, onRefresh, fullView }
   })
 
   useEffect(() => {
@@ -213,6 +217,9 @@ export function useMailShortcuts(accountId: AccountId, onHelp: () => void): void
         }
         case '?':
           current.onHelp()
+          return true
+        case REFRESH_KEY:
+          current.onRefresh()
           return true
         case '[':
           return toggleFolderPane()

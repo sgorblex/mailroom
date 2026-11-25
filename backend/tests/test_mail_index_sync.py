@@ -368,6 +368,135 @@ def test_a_sync_asked_for_takes_its_folders_routine_job_ahead(
     assert [None if job is None else job[1]["folder_id"] for job in taken] == [inbox, other, None]
 
 
+def test_a_refresh_goes_ahead_of_every_job_with_its_first_share_only(
+    user_client: TestClient,
+    db_session: Session,
+    user: User,
+    syncs: list[int],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """It syncs folders synced a moment ago too, and runs until its last share has."""
+    monkeypatch.setattr(worker_index, "SHARE_SECONDS", 0)
+    work = add_account(user_client)
+    first, second, other = pending(db_session, user, work, "A", "B", "C")
+    for folder_id in (first, second):
+        row = db_session.get(MailIndexFolder, folder_id)
+        assert row is not None
+        row.state, row.last_synced_at = "ready", datetime.now(UTC)
+    tasks.queue_folder_sync(db_session, user.id, work, other)
+    tasks.defer_rule_set_run(db_session, run_id=1, rule_set_id=1, user_id=user.id, account_id=work)
+    tasks.queue_refresh(db_session, user.id, work, [], refresh_id="r")
+    assert jobs(db_session, tasks.REFRESH_FOLDERS) == []
+    tasks.queue_refresh(db_session, user.id, work, [first, second], refresh_id="r")
+    db_session.commit()
+    assert tasks.refresh_running(db_session, user.id, "r")
+    assert not tasks.refresh_running(db_session, user.id + 1, "r")
+    assert not tasks.refresh_running(db_session, user.id, "s")
+
+    taken = next_job(db_session)
+    assert taken is not None
+    assert taken[0] == tasks.REFRESH_FOLDERS
+    tasks.refresh_folders(**taken[1])
+    assert syncs == [first]
+    assert tasks.refresh_running(db_session, user.id, "r")
+    # The rest takes its turn behind what was asked before it.
+    order = [next_job(db_session) for _ in range(3)]
+    rest = {
+        "user_id": user.id,
+        "account_id": work,
+        "folder_ids": [second],
+        "refreshes": {"r": [second]},
+    }
+    assert [job and job[0] for job in order] == [
+        tasks.SYNC_FOLDER,
+        tasks.RUN_RULE_SET,
+        tasks.REFRESH_FOLDERS,
+    ]
+    assert order[2] == (tasks.REFRESH_FOLDERS, rest)
+    tasks.refresh_folders(**rest)
+    assert syncs == [first, second]
+    assert not tasks.refresh_running(db_session, user.id, "r")
+
+
+def test_a_refresh_asked_while_one_goes_on_goes_first_and_ends_first(
+    user_client: TestClient,
+    db_session: Session,
+    user: User,
+    syncs: list[int],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(worker_index, "SHARE_SECONDS", 0)
+    work = add_account(user_client)
+    a, b, c = pending(db_session, user, work, "A", "B", "C")
+    # Asked while the first share of another runs.
+    tasks.queue_refresh(db_session, user.id, work, [c], refresh_id="other")
+    tasks.refresh_folders(user.id, work, [a, b, c], {"all": [a, b, c], "a": [a]})
+    [job] = jobs(db_session, tasks.REFRESH_FOLDERS)
+    assert job["folder_ids"] == [c, b]
+    assert job["refreshes"] == {"other": [c], "all": [b, c]}
+    assert not tasks.refresh_running(db_session, user.id, "a")
+
+    taken = next_job(db_session)
+    assert taken is not None
+    tasks.refresh_folders(**taken[1])
+    assert syncs == [a, c]
+    assert not tasks.refresh_running(db_session, user.id, "other")
+    assert tasks.refresh_running(db_session, user.id, "all")
+
+
+def test_a_refresh_ends_for_an_account_that_cannot_be_reached(
+    user_client: TestClient, db_session: Session, user: User, worker: None
+) -> None:
+    """The account's IMAP port 9 on loopback is closed."""
+    work = add_account(user_client)
+    first, second = pending(db_session, user, work, "A", "B")
+    tasks.refresh_folders(user.id, work, [first, second], {"r": [first, second]})
+    row = folder_row(db_session, user, "A")
+    assert (row.state, row.error) == ("failed", "unreachable")
+    assert folder_row(db_session, user, "B").state == "pending"
+    assert not tasks.refresh_running(db_session, user.id, "r")
+
+
+def test_a_refresh_goes_on_past_a_folder_that_fails_alone(
+    user_client: TestClient,
+    db_session: Session,
+    user: User,
+    worker: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    work = add_account(user_client)
+    ids = pending(db_session, user, work, "A", "B")
+    ran: list[int] = []
+
+    def run_folder_sync(
+        db: Session, _mailboxes: Mailboxes, user_id: int, account: int, folder_id: int, **_: Any
+    ) -> bool:
+        ran.append(folder_id)
+        index_sync.fail_folder(db, user_id, account, folder_id, "mailbox_missing")
+        return False
+
+    monkeypatch.setattr(worker_index, "run_folder_sync", run_folder_sync)
+    tasks.refresh_folders(user.id, work, ids, {"r": ids})
+    assert ran == ids
+
+
+def test_a_refresh_leaves_a_folder_with_more_to_fetch_as_routine_work(
+    user_client: TestClient,
+    db_session: Session,
+    user: User,
+    worker: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    work = add_account(user_client)
+    large, other = pending(db_session, user, work, "A", "B")
+    monkeypatch.setattr(worker_index, "run_folder_sync", lambda *_, **__: True)
+    tasks.refresh_folders(user.id, work, [large], {"r": [large]})
+    assert not tasks.refresh_running(db_session, user.id, "r")
+    assert tasks.queue_folder_sync(db_session, user.id, work, other)
+    taken = [next_job(db_session), next_job(db_session)]
+    assert [job and job[1]["folder_id"] for job in taken] == [other, large]
+
+
 # Against the test Dovecot.
 
 
@@ -945,6 +1074,7 @@ def test_without_the_mail_client_no_index_job_runs(
     tasks.sync_folder(user.id, work, folder_id)
     tasks.sync_due_folders(user.id, work, [folder_id])
     assert jobs(db_session, tasks.SYNC_FOLDER) == []
+    tasks.refresh_folders(user.id, work, [folder_id], {"r": [folder_id]})
     assert jobs(db_session, tasks.SYNC_DUE_FOLDERS) == []
     assert folder_row(db_session, user, "INBOX").state == "pending"
 
