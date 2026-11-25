@@ -37,6 +37,8 @@ steps:
       POSTGRES_USER: mailroom
       POSTGRES_PASSWORD: mailroom
       POSTGRES_DB: mailroom_test
+    # The whole suite on 16 pytest workers comes close to the default of 100.
+    entrypoint: ['docker-entrypoint.sh', 'postgres', '-c', 'max_connections=200']
 
   # The mail test servers, for the app's tests and mailroom-core's; keep the pins equal to
   # scripts/images.sh. Detached, so they come before the steps that use them.
