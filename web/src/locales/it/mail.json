@@ -179,6 +179,9 @@
   "views": {
     "title": "Viste",
     "allInboxes": "Tutta la posta in arrivo",
+    "allInboxesSubfolders": "Tutta la posta in arrivo, con le sottocartelle",
+    "includeSubfolders": "Includi le sottocartelle",
+    "subfoldersFailed": "Impossibile salvare la scelta.",
     "actions": "Azioni per {{name}}",
     "more": "Azioni della vista",
     "rename": "Rinomina…",

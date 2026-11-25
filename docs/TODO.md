@@ -355,14 +355,14 @@ Older than milestone E, seen in its browser check; fix before batch 11.
 - [x] **Search scope** — a search stays in the folder or view it was started from (from *All
       inboxes* it searches the remembered account's folder), shows its scope beside the box, and a
       *Search all mail* button widens it, with a way back.
-- [ ] **Fresh mail sooner**:
+- [x] **Fresh mail sooner**:
   - [x] **The index's turn in one job** — an account's due folders checked together, not one job
         each, with the syncs asked by IDLE, a viewed folder or new mail, and filter runs, ahead of
         the routine ones.
   - [x] **Index after a filter run** — the folders a run moved or flagged mail in synced right
         after it, another account's included.
   - [x] **Refresh button** — syncs the shown folder or view ahead of the queue.
-  - [ ] **All inboxes with subfolders** — an option, off by default, to take in INBOX's
+  - [x] **All inboxes with subfolders** — an option, off by default, to take in INBOX's
         subfolders.
 
 ### Milestone G: Integrations

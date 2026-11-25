@@ -34,6 +34,7 @@ function renderSignedOut(): void {
         changeMarkReadSubfolders: reject,
         changeIndexMaxAge: reject,
         changeConversations: reject,
+        changeInboxSubfolders: reject,
         changeUndoSend: reject,
         changeAppearance: reject,
         recheck: vi.fn(),

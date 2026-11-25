@@ -24,6 +24,7 @@ from mailroom_core.mail import (
     check_folder_name,
     create_folder,
     delete_folder,
+    listed_subfolders,
     mail_error,
     rename_folder,
     subfolders_of,
@@ -143,6 +144,9 @@ def test_with_subfolders_refuses_more_than_the_cap() -> None:
     listing.append(((), b"/", "Big/one more"))
     error = refused(lambda: with_subfolders(folders_from(listing), "Big", 1))
     assert f"at most {MAX_LISTED_FOLDERS}" in error.message
+    big = folders_from(listing)
+    parent = next(f for f in big if f.path == "Big")
+    assert len(listed_subfolders(big, parent)) == MAX_LISTED_FOLDERS
 
 
 def test_subfolders_of_inbox_in_any_case() -> None:

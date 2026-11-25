@@ -19,13 +19,14 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, Final, Literal, cast
 
 from pydantic import BaseModel
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from mailroom.auth.users import INDEX_MAX_AGE_DAYS
 from mailroom.errors import Refusal, mail_refusal
 from mailroom.mail import service
 from mailroom.models import MailIndexFolder, MailIndexMessage
+from mailroom_core import mail as core
 from mailroom_core.mail import MESSAGES
 
 if TYPE_CHECKING:
@@ -157,15 +158,24 @@ def _first_sight(
     db.commit()
 
 
+def _inbox_subfolders(folders: Sequence[Folder]) -> list[str]:
+    """The paths of INBOX's subfolders at any depth, as a list of INBOX with its subfolders reads
+    them, but for the virtual ones, which repeat mail kept elsewhere."""
+    inbox = next((folder for folder in folders if folder.path.upper() == "INBOX"), None)
+    under = [] if inbox is None else core.listed_subfolders(folders, inbox)
+    return [folder.path for folder in under if not virtual(folder)]
+
+
 def discover_folders(
     db: Session, connections: MailConnections, user_id: int, account_id: int
 ) -> int:
     """Bring the account's rows in step with its folder listing (without STATUS): a row for each
     indexable folder first seen, as ``index_status`` gives it, and none for a folder no longer
     listed (deleted, or renamed: its new name is a folder first seen), its messages' rows going
-    with it. Commits; returns how many rows went."""
+    with it; and which of them are INBOX's subfolders. Commits; returns how many rows went."""
     gmail = connections.capabilities(account_id).gmail
-    listed = [folder for folder in connections.folders(account_id) if folder.selectable]
+    folders = connections.folders(account_id)
+    listed = [folder for folder in folders if folder.selectable]
     kinds = _kinds(gmail, listed)
     _first_sight(db, user_id, account_id, gmail, kinds)
     indexable = [folder.path for folder, kind in kinds if kind == "folder"]
@@ -175,6 +185,16 @@ def discover_folders(
             MailIndexFolder.account_id == account_id,
             MailIndexFolder.path.not_in(indexable),
         )
+    )
+    inside = MailIndexFolder.path.in_([] if gmail else _inbox_subfolders(folders))
+    db.execute(
+        update(MailIndexFolder)
+        .where(
+            MailIndexFolder.user_id == user_id,
+            MailIndexFolder.account_id == account_id,
+            MailIndexFolder.inbox_subfolder.is_distinct_from(inside),
+        )
+        .values(inbox_subfolder=inside)
     )
     db.commit()
     return cast("CursorResult[Any]", gone).rowcount

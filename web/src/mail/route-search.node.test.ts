@@ -28,7 +28,8 @@ describe('the mail URL', () => {
     })
     expect(validateMailSearch({ view: 5, q: { view: 4, from: 'ana' } })).toEqual({ view: 5, q: { from: 'ana' } })
     expect(validateMailSearch({ q: { view: 4, from: 'ana' } })).toEqual({ q: { from: 'ana' } })
-    expect(validateMailSearch({ view: 'all_inboxes', q: { view: 'all_inboxes' } })).toEqual({ view: 'all_inboxes', q: {} })
+    expect(validateMailSearch({ view: 'all_inboxes', q: { view: 'all_inboxes' } })).toEqual({ view: 'all_inboxes', q: { view: 'all_inboxes' } })
+    expect(validateMailSearch({ view: 4, q: { view: 'all_inboxes' } })).toEqual({ view: 4, q: {} })
   })
 
   it('keeps a flag set false only for unread, which the syntax writes as is:read', () => {

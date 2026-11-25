@@ -259,7 +259,9 @@ export function SearchForm({
   const chips = lexed.terms.filter((term) => term.key !== null || term.value !== '')
   // A quote left open hides where the line's terms end: the form waits for it to be closed.
   const locked = lexed.unterminated
-  const scopeName = scope.view?.name ?? placeName(scope.account, scope.folder)
+  const viewName = scope.view?.name ?? t('views.allInboxes')
+  const scopeName =
+    scope.view !== null ? (scope.view.name ?? t('views.allInboxesSubfolders')) : placeName(scope.account, scope.folder)
   const searchedName = inView ? scopeName : placeName(searchedAccount, searchedFolder)
   // Widening what is asked for: nothing is, with the box empty and no search shown.
   const asks = query !== undefined || line.trim() !== '' || gmailQuery.trim() !== ''
@@ -400,7 +402,7 @@ export function SearchForm({
               }
             }}
           >
-            {scope.view !== null && <option value={IN_VIEW}>{t('search.viewAccounts', { view: scope.view.name })}</option>}
+            {scope.view !== null && <option value={IN_VIEW}>{t('search.viewAccounts', { view: viewName })}</option>}
             {!choice.ok && (
               <option value="" disabled>
                 {shown.account}
@@ -430,7 +432,7 @@ export function SearchForm({
             }}
           >
             {/* No folder's path is empty. */}
-            {scope.view !== null && <option value="">{t('search.viewFolders', { view: scope.view.name })}</option>}
+            {scope.view !== null && <option value="">{t('search.viewFolders', { view: viewName })}</option>}
             {folderOptions.map(([value, label]) => (
               <option key={value} value={value}>
                 {label}

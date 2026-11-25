@@ -28,6 +28,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import zlib
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, time, timedelta, timezone
 from typing import TYPE_CHECKING, Final
@@ -73,6 +74,11 @@ if TYPE_CHECKING:
 
 CURSOR_VERSION: Final = 3
 """The index's cursors; mailroom-core's live ones are version 2."""
+_PACK_FROM: Final = 2048
+"""The bytes of JSON above which a cursor is packed: a list of many folders' stays short enough
+for a request's URL."""
+UNPACKED_MAX: Final = 256 * 1024
+"""The bytes a packed cursor may unpack to: over a thousand folders'."""
 INDEX: Final = "index"
 TAIL: Final = "tail"
 _EPOCH: Final = datetime(1970, 1, 1, tzinfo=UTC)
@@ -171,6 +177,24 @@ def ready_rows(
         *_ready(user_id), MailIndexFolder.account_id.in_(sorted(set(accounts)))
     )
     return {(row.account_id, row.path): row for row in db.scalars(query)}
+
+
+def inbox_subfolders(db: Session, user_id: int, accounts: Sequence[int]) -> dict[int, list[str]]:
+    """INBOX's subfolders in each of ``accounts``, as their index turns last saw them listed
+    (``MailIndexFolder.inbox_subfolder``), on the index or off it, by path."""
+    query = (
+        select(MailIndexFolder.account_id, MailIndexFolder.path)
+        .where(
+            MailIndexFolder.user_id == user_id,
+            MailIndexFolder.account_id.in_(sorted(set(accounts))),
+            MailIndexFolder.inbox_subfolder.is_(True),
+        )
+        .order_by(MailIndexFolder.path)
+    )
+    found: dict[int, list[str]] = {}
+    for account, path in db.execute(query):
+        found.setdefault(account, []).append(path)
+    return found
 
 
 def index_sources(
@@ -276,19 +300,20 @@ def resumed_sources(
 ) -> list[IndexSource]:
     """The cursor's sources of ``accounts`` as the index holds them now: ``stale_reference``
     when one is no longer readable, or its folder changed, or none of them is of ``accounts``
-    (another account's cursor)."""
+    (another account's cursor). Each folder row once, as a cursor the index gave names it: a
+    forged one repeating a source costs no more."""
     rows = ready_rows(db, user_id, accounts)
-    out: list[IndexSource] = []
+    out: dict[int, IndexSource] = {}
     for source in cursor.sources:
         if source.account not in accounts:
             continue
         row = rows.get((source.account, source.folder))
         if row is None or row.id != source.folder_id or row.uid_validity != source.uid_validity:
             raise MailError("stale_reference", _STALE)
-        out.append(replace(source, oldest=row.oldest_indexed))
+        out.setdefault(row.id, replace(source, oldest=row.oldest_indexed))
     if cursor.sources and not out:
         raise MailError("stale_reference", _STALE)
-    return out
+    return list(out.values())
 
 
 def _midnight(day: date, zone: TimeZoneName) -> datetime:
@@ -826,12 +851,25 @@ class IndexCursor:
         else:
             tail = [[account, path, day.isoformat()] for account, path, day in self.tail]
             body = [tail, self.live, self.carried]
-        text = json.dumps([CURSOR_VERSION, self.mode, *body], separators=(",", ":"))
-        return base64.urlsafe_b64encode(text.encode()).rstrip(b"=").decode("ascii")
+        text = json.dumps([CURSOR_VERSION, self.mode, *body], separators=(",", ":")).encode()
+        if len(text) > _PACK_FROM:
+            text = zlib.compress(text)
+        return base64.urlsafe_b64encode(text).rstrip(b"=").decode("ascii")
 
 
 def _carried(failures: Sequence[PageFailure], host_codes: Mapping[str, str]) -> str | None:
     return core.encode_cursor([], failures, host_codes) if failures else None
+
+
+def _unpacked(raw: bytes) -> bytes:
+    """A cursor's JSON, unpacked when it was packed; ``ValueError`` past ``UNPACKED_MAX``."""
+    if raw.startswith(b"["):
+        return raw
+    unpacker = zlib.decompressobj()
+    out = unpacker.decompress(raw, UNPACKED_MAX)
+    if not unpacker.eof:
+        raise ValueError
+    return out
 
 
 def decode_cursor(text: str | None) -> IndexCursor | None:
@@ -842,8 +880,8 @@ def decode_cursor(text: str | None) -> IndexCursor | None:
     cleaned = text.strip().rstrip("=")
     try:
         raw = base64.urlsafe_b64decode(cleaned + "=" * (-len(cleaned) % 4))
-        value = json.loads(raw.decode("utf-8"))
-    except binascii.Error, ValueError:
+        value = json.loads(_unpacked(raw).decode("utf-8"))
+    except binascii.Error, zlib.error, ValueError, RecursionError:
         return None
     if not (isinstance(value, list) and value and value[0] == CURSOR_VERSION):
         return None
@@ -1064,6 +1102,15 @@ def inbox_unread(db: Session, user_id: int, accounts: Sequence[int]) -> dict[int
         )
         counts.update(db.execute(gmail).all())
     return counts
+
+
+def inbox_subfolders_unread(db: Session, user_id: int, accounts: Sequence[int]) -> int:
+    """The unread messages in INBOX's subfolders of ``accounts`` that the index holds whole, as
+    ``inbox_unread`` counts the inboxes."""
+    query = select(func.coalesce(func.sum(MailIndexFolder.unread_count), 0)).where(
+        *_whole(user_id, accounts), MailIndexFolder.inbox_subfolder.is_(True)
+    )
+    return int(db.scalar(query) or 0)
 
 
 def marked(db: Session, user_id: int, accounts: Sequence[int]) -> tuple[int, int]:

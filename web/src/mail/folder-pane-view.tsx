@@ -5,6 +5,7 @@ import { PanelLeftClose, PanelLeftOpen, type LucideIcon } from 'lucide-react'
 
 import type { Account, AccountId } from '@/api/accounts.ts'
 import { ALL_INBOXES, type FolderRole, type ViewKey } from '@/api/mail.ts'
+import { useInboxSubfolders } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { cn } from '@/lib/utils.ts'
 
@@ -256,6 +257,7 @@ function FolderRail({
   const { t } = useTranslation(MAIL_NS)
   const ids = accounts.map((account) => account.id)
   const listed = useListedFolders(ids)
+  const { included } = useInboxSubfolders()
   const folders = loadedFolders(useTriage().folders[accountId])
   const roles = RAIL_ROLES.flatMap((role) => {
     const found = roleFolder(folders, role)
@@ -267,7 +269,7 @@ function FolderRail({
       <RailLink
         icon={ALL_INBOXES_ICON}
         name={t('views.allInboxes')}
-        unread={viewUnread(ALL_INBOXES, ids, listed) ?? 0}
+        unread={viewUnread(ALL_INBOXES, ids, listed, included) ?? 0}
         current={view === ALL_INBOXES}
         search={{ account: accountId, view: ALL_INBOXES }}
       />

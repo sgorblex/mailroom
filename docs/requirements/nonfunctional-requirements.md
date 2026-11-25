@@ -426,7 +426,8 @@ bounded to one minor because the server relies on its handlers.
   revision `202611191200`), and how far back the mail index keeps their mail
   (`index_max_age_days`, null for no limit of their own; revision `202611201300`), and whether
   the web groups their lists by conversation (`conversations`, true by default; revision
-  `202611211400`), and how the web looks (`appearance`, below; revision `202611222000`).
+  `202611211400`), whether *All inboxes* takes in INBOX's subfolders (`inbox_subfolders`, false by
+  default; revision `202611241400`), and how the web looks (`appearance`, below; revision `202611222000`).
   `mise run create-user`
   makes one; startup warns while there are none. An unknown username still checks a dummy hash, and
   both failures answer the same 401, so neither timing nor wording tells whether a user exists.
@@ -501,6 +502,10 @@ bounded to one minor because the server relies on its handlers.
   live; `MAILROOM_INDEX_MAX_AGE_DAYS` caps it for everyone
   ([`mail-client.md`](mail-client.md) — *Index*). `auth/me`'s `user` carries it; logged as
   `index_max_age_changed`.
+- **Own All inboxes choice** (`PUT /api/v1/auth/me/inbox-subfolders`, `{"inbox_subfolders":
+  true}`, a JSON boolean): whether *All inboxes* takes in INBOX's subfolders
+  ([`mail-client.md`](mail-client.md) — *Views*). `auth/me`'s `user` carries it; logged as
+  `inbox_subfolders_changed`. The web sets it above the *All inboxes* list.
 - **Own conversations default** (`PUT /api/v1/auth/me/conversations`, `{"conversations":
   false}`, a JSON boolean): whether the web's lists are grouped by conversation
   ([`mail-client.md`](mail-client.md#conversations)). `auth/me`'s `user` carries it; logged as
@@ -535,7 +540,7 @@ bounded to one minor because the server relies on its handlers.
   `user_removed`, `password_reset` (with `user_id`, the admin, and `target_user_id`),
   `instance_settings_changed` (with `user_id`, the admin, and the `settings`' names),
   `password_changed`, `mark_read_subfolders_changed`, `index_max_age_changed`,
-  `conversations_changed`, `appearance_changed`,
+  `conversations_changed`, `inbox_subfolders_changed`, `appearance_changed`,
   `password_change_failed`, `sso_refused` and `sso_failed` (with the
   `outcome`), `sso_not_linked`, `sso_identity_linked` (with `user_id` and `via`: `profile` or the
   link claim), `sso_identity_unlinked`; never a password, a token, or a username.

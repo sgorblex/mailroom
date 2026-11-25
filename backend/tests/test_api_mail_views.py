@@ -231,6 +231,58 @@ def test_all_inboxes_merge_the_indexed_inboxes_newest_first(
     assert _code(user_client.get(url, params={"cursor": "not a cursor"})) == "invalid_argument"
 
 
+def test_all_inboxes_take_in_subfolders_when_asked(
+    user_client: TestClient, db_session: Session, user: User, admin: User
+) -> None:
+    work = added(user_client, new_account("work"))
+    home = added(user_client, new_account("home"))
+    folders = {
+        (work, "INBOX"): ready(db_session, user, work, "INBOX"),
+        (work, "INBOX/Lists"): ready(db_session, user, work, "INBOX/Lists", inbox_subfolder=True),
+        (work, "INBOX/Trash"): ready(db_session, user, work, "INBOX/Trash"),
+        (home, "INBOX"): ready(db_session, user, home, "INBOX"),
+        (home, "INBOX.A.B"): ready(db_session, user, home, "INBOX.A.B", inbox_subfolder=True),
+    }
+    theirs = ready(db_session, admin, work, "INBOX/Theirs", inbox_subfolder=True)
+    for n, ((_, path), folder_id) in enumerate(folders.items()):
+        received = DAY + timedelta(hours=n)
+        db_session.add(message(folder_id, user.id, 1, received=received, subject=path))
+    db_session.add(message(theirs, admin.id, 1, received=DAY, subject="theirs"))
+    db_session.commit()
+
+    url = f"{VIEWS}/all_inboxes/messages"
+    assert _subjects(user_client.get(url).json()) == ["INBOX", "INBOX"]
+    first = user_client.get(url, params={"subfolders": True, "limit": 3}).json()
+    assert _subjects(first) == ["INBOX.A.B", "INBOX", "INBOX/Lists"]
+    assert (first["not_indexed"], first["failures"]) == ([], [])
+    params = {"subfolders": True, "limit": 3, "cursor": first["next_cursor"]}
+    assert _subjects(user_client.get(url, params=params).json()) == ["INBOX"]
+
+    # A search in All inboxes reads what its list reads.
+    everything = _search(user_client, view="all_inboxes", subfolders=True, unread=True).json()
+    assert (len(_subjects(everything)), everything["failures"]) == (4, [])
+    lists = _search(user_client, view="all_inboxes", subfolders=True, subject="Lists").json()
+    assert _subjects(lists) == ["INBOX/Lists"]
+    assert _subjects(_search(user_client, view="all_inboxes", subject="Lists").json()) == []
+
+    # An account removed takes its subfolders along.
+    assert user_client.delete(f"/api/v1/accounts/{work}").status_code == 204
+    left = user_client.get(url, params={"subfolders": True}).json()
+    assert _subjects(left) == ["INBOX.A.B", "INBOX"]
+
+
+def test_subfolders_are_all_inboxes_only(user_client: TestClient) -> None:
+    work = added(user_client, new_account("work"))
+    _, own = _create(user_client, name="Own", sources=[{"account_id": work, "folder": "INBOX"}])
+    page = user_client.get(f"{VIEWS}/{own['id']}/messages", params={"subfolders": True})
+    assert (page.status_code, _code(page)) == (400, "invalid_argument")
+    assert user_client.get(f"{VIEWS}/{own['id'] + 1}/messages?subfolders=1").status_code == 404
+    assert _search(user_client, view=own["id"], subfolders=True).status_code == 422
+    for scope in ({"account": "*"}, {"folder": "INBOX"}):
+        assert _search(user_client, view="all_inboxes", **scope).status_code == 422
+    assert _search(user_client, view="inboxes").status_code == 422
+
+
 def test_a_saved_view_reads_its_folders_or_its_search(
     user_client: TestClient, db_session: Session, user: User
 ) -> None:

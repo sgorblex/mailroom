@@ -24,7 +24,7 @@ describe('fetchSession', () => {
   it('keeps the features it knows and drops the others', async () => {
     stubMe({ user: { username: 'alice', is_admin: false, time_zone: 'Europe/Rome', mark_read_subfolders: true, index_max_age_days: null, conversations: true, undo_send_seconds: 10 }, features: ['mcp', 'calendar'] })
     const session = await fetchSession()
-    expect(session.user).toEqual({ username: 'alice', is_admin: false, time_zone: 'Europe/Rome', mark_read_subfolders: true, index_max_age_days: null, conversations: true, undo_send_seconds: 10, appearance: DEFAULT_APPEARANCE })
+    expect(session.user).toEqual({ username: 'alice', is_admin: false, time_zone: 'Europe/Rome', mark_read_subfolders: true, index_max_age_days: null, conversations: true, inbox_subfolders: false, undo_send_seconds: 10, appearance: DEFAULT_APPEARANCE })
     expect([...session.features]).toEqual(['mcp'])
   })
 

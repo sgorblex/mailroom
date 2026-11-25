@@ -2,10 +2,12 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import type { Account, AccountId } from '@/api/accounts.ts'
-import { ALL_INBOXES, type SavedView, type SearchQuery, type ViewKey } from '@/api/mail.ts'
+import { ALL_INBOXES, type SearchQuery, type ViewKey } from '@/api/mail.ts'
+import { useInboxSubfolders } from '@/auth/auth-context.ts'
 
 import { viewsQuery } from './queries.ts'
 import { lineOf, namedAccount, parseSearch } from './search-syntax.ts'
+import type { ShownView } from './views.ts'
 
 /** Where a line that names no account and no folder searches: the folder or the view open. */
 export interface SearchScope {
@@ -14,8 +16,8 @@ export interface SearchScope {
   folder: string
   /** The folder is listed, so searched, with its subfolders. */
   subfolders: boolean
-  /** A view of several folders, which are then searched in place of `account` and `folder`. */
-  view: Pick<SavedView, 'id' | 'name'> | null
+  /** A view of several folders, which are then searched in place of `account` and `folder`; *All inboxes* with subfolders has no name of its own. */
+  view: { id: ViewKey; name: string | null } | null
   /** The terms the box starts with: the criteria of a view that is a search. */
   line: string
 }
@@ -23,10 +25,10 @@ export interface SearchScope {
 const EVERY_INBOX: SearchScope = { account: '*', folder: 'INBOX', subfolders: false, view: null, line: '' }
 export const ALL_MAIL: SearchScope = { ...EVERY_INBOX, folder: '*' }
 
-/** The scope of `view`, opened over the accounts; all mail for one that is gone or no longer reads. */
-export function viewScope(view: typeof ALL_INBOXES | SavedView | undefined, accounts: Account[]): SearchScope {
+/** The scope of `view`, opened over the accounts (`inboxSubfolders`: *All inboxes* with INBOX's subfolders); all mail for one that is gone or no longer reads. */
+export function viewScope(view: ShownView | undefined, accounts: Account[], inboxSubfolders = false): SearchScope {
   if (view === ALL_INBOXES) {
-    return EVERY_INBOX
+    return inboxSubfolders ? { ...EVERY_INBOX, subfolders: true, view: { id: ALL_INBOXES, name: null } } : EVERY_INBOX
   }
   if (view === undefined) {
     return ALL_MAIL
@@ -52,6 +54,7 @@ export function useSearchScope(
   view: ViewKey | undefined,
 ): SearchScope | null {
   const { data, isPending } = useQuery(viewsQuery())
+  const { included } = useInboxSubfolders()
   return useMemo(() => {
     if (view === undefined) {
       return { account: String(accountId), folder, subfolders, view: null, line: '' }
@@ -59,8 +62,8 @@ export function useSearchScope(
     if (view !== ALL_INBOXES && isPending) {
       return null
     }
-    return viewScope(view === ALL_INBOXES ? view : data?.find((each) => each.id === view), accounts)
-  }, [accounts, accountId, folder, subfolders, view, data, isPending])
+    return viewScope(view === ALL_INBOXES ? view : data?.find((each) => each.id === view), accounts, included)
+  }, [accounts, accountId, folder, subfolders, view, data, isPending, included])
 }
 
 /** What `query` searches as the line's `account:` and `in:`, the default account and folder included; none for a view's folders. */

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement, t
 import {
   changeAppearance as saveAppearance,
   changeConversations as saveConversations,
+  changeInboxSubfolders as saveInboxSubfolders,
   changeIndexMaxAge as saveIndexMaxAge,
   changeMarkReadSubfolders as saveMarkReadSubfolders,
   changeTimeZone as saveTimeZone,
@@ -114,6 +115,13 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
     [updateUser],
   )
 
+  const changeInboxSubfolders = useCallback(
+    async (included: boolean) => {
+      updateUser(await saveInboxSubfolders(included))
+    },
+    [updateUser],
+  )
+
   const changeUndoSend = useCallback(
     async (seconds: number) => {
       updateUser(await saveUndoSend(seconds))
@@ -144,8 +152,8 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
   }, [])
 
   const value = useMemo<AuthContextValue>(
-    () => ({ ...state, features, signIn, signOut, changeTimeZone, changeMarkReadSubfolders, changeIndexMaxAge, changeConversations, changeUndoSend, changeAppearance, recheck }),
-    [state, features, signIn, signOut, changeTimeZone, changeMarkReadSubfolders, changeIndexMaxAge, changeConversations, changeUndoSend, changeAppearance, recheck],
+    () => ({ ...state, features, signIn, signOut, changeTimeZone, changeMarkReadSubfolders, changeIndexMaxAge, changeConversations, changeInboxSubfolders, changeUndoSend, changeAppearance, recheck }),
+    [state, features, signIn, signOut, changeTimeZone, changeMarkReadSubfolders, changeIndexMaxAge, changeConversations, changeInboxSubfolders, changeUndoSend, changeAppearance, recheck],
   )
   return <AuthContext value={value}>{children}</AuthContext>
 }

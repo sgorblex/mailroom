@@ -141,6 +141,8 @@ export interface FakeMailState {
   threads?: Record<string, string>
   /** The conversations (by their latest ref) whose latest sender is new to them (`latest_from_new_sender`); none unless it says otherwise. */
   newSenders?: string[]
+  /** Refuses the choice of All inboxes with subfolders. */
+  failSave?: boolean
   /** The user's own age limit of the index, which `PUT /auth/me/index-max-age` sets; none unless it says otherwise. */
   indexMaxAgeDays?: number | null
   /** The instance's cap on it; none unless it says otherwise. */
@@ -1216,7 +1218,14 @@ function viewRoutes(state: FakeMailState, url: URL, init?: RequestInit): Respons
       const result = state.searchResult ?? { messages: [], next_cursor: null, failures: [] }
       return json(200, { ...result, ...(grouped ? byConversation(state, result.messages) : {}), not_indexed: [] })
     }
-    const sources = view?.sources ?? state.accounts.map((account) => ({ account_id: account, folder: 'INBOX' }))
+    const deep = url.searchParams.get('subfolders') === 'true'
+    const sources =
+      view?.sources ??
+      state.accounts.flatMap((account) =>
+        ['INBOX', ...(deep ? (state.folders[account] ?? []).filter(({ path }) => path.startsWith('INBOX/')).map(({ path }) => path) : [])].map(
+          (folder) => ({ account_id: account, folder }),
+        ),
+      )
     const rows = sources
       .flatMap((source) => state.messages[`${String(source.account_id)}/${source.folder}`] ?? [])
       .sort((a, b) => uidOf(b) - uidOf(a))
@@ -1248,6 +1257,13 @@ export function stubMailApi(state: FakeMailState): Mock {
   const respond = (url: URL, init?: RequestInit): Response => {
     const path = url.pathname
     const query = url.searchParams
+    if (path === '/api/v1/auth/me/inbox-subfolders') {
+      if (state.failSave === true) {
+        return json(500, { detail: 'Server error' })
+      }
+      const { inbox_subfolders } = JSON.parse(init?.body as string) as { inbox_subfolders: boolean }
+      return json(200, { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null, conversations: false, inbox_subfolders, undo_send_seconds: 10 })
+    }
     if (path === '/api/v1/mail/refresh' && init?.method === 'POST') {
       return json(202, { refresh_id: state.refreshing === null ? null : REFRESH_ID })
     }

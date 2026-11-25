@@ -26,6 +26,7 @@ from mailroom.auth.users import (
     UNDO_SEND_SECONDS,
     set_appearance,
     set_conversations,
+    set_inbox_subfolders,
     set_index_max_age,
     set_mark_read_subfolders,
     set_time_zone,
@@ -59,6 +60,8 @@ class UserOut(BaseModel):
     still applies)."""
     conversations: bool
     """Whether the web's message lists are grouped by conversation."""
+    inbox_subfolders: bool
+    """Whether the web's *All inboxes* takes in INBOX's subfolders."""
     undo_send_seconds: int
     """How long the web's Send holds a message for an Undo; 0 sends at once."""
     appearance: Appearance
@@ -73,6 +76,7 @@ class UserOut(BaseModel):
             mark_read_subfolders=user.mark_read_subfolders,
             index_max_age_days=user.index_max_age_days,
             conversations=user.conversations,
+            inbox_subfolders=user.inbox_subfolders,
             undo_send_seconds=user.undo_send_seconds,
             appearance=appearance_of(user.appearance),
         )
@@ -92,6 +96,12 @@ class ConversationsChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     conversations: StrictBool
+
+
+class InboxSubfoldersChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    inbox_subfolders: StrictBool
 
 
 class IndexMaxAgeChange(BaseModel):
@@ -177,6 +187,18 @@ def change_conversations(body: ConversationsChange, db: DbSession, user: Current
     set_conversations(db, user, body.conversations)
     logger.info(
         "conversations_changed", extra={"event": "conversations_changed", "user_id": user.id}
+    )
+    return UserOut.of(user)
+
+
+@auth_router.put("/me/inbox-subfolders")
+def change_inbox_subfolders(
+    body: InboxSubfoldersChange, db: DbSession, user: CurrentUser
+) -> UserOut:
+    """Whether the web's *All inboxes* takes in INBOX's subfolders. The answer is the user."""
+    set_inbox_subfolders(db, user, body.inbox_subfolders)
+    logger.info(
+        "inbox_subfolders_changed", extra={"event": "inbox_subfolders_changed", "user_id": user.id}
     )
     return UserOut.of(user)
 

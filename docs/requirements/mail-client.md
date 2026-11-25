@@ -54,7 +54,7 @@ notifications](#desktop-notifications).
   `listed_folder` as its own source folder (`source_folders`), so a Gmail row (an All Mail ref)
   is acted on in the label folder it was listed under and leaves that one only, in a view of
   different folders too; `source_folder` is INBOX for *All inboxes*, a search's folder, or the
-  folder a view's folders all share. No quick filters, and selecting every matching
+  folder a view's folders all share (none for *All inboxes* with subfolders). No quick filters, and selecting every matching
   message stays a folder's or a search's (not one made in a view of folders). The folders it leaves out, off the index, are named
   above the list. A search shown offers *Save as view* (named in a dialog, then opened), which
   keeps the line as the list shows it, the quick filters on included (`from:ada` with *Unread*
@@ -270,7 +270,9 @@ A line naming no account or folder searches where it was started: the folder ope
 subfolders, when they are listed), or the view open, which the URL keeps (`view`, beside `q`) so
 that *Clear search* goes back to it:
 
-- *All inboxes*: INBOX of every account.
+- *All inboxes*: INBOX of every account; with its subfolders, while it takes them in (`view`
+  `all_inboxes` with `subfolders`, as a view of folders; `q.view` in the URL, which the user's
+  choice then widens or not).
 - A saved view of folders: its folders (`view` of [`POST /search`](#post-search); `q.view` in the
   URL). `account:` or `in:` leaves them: without the other, every account or INBOX.
 - A saved view that is a search: its account and folder. The box starts with its criteria, as terms
@@ -1752,7 +1754,7 @@ same page shape.
 | `has_attachment` | `true` only (approximate: `multipart/mixed`; on Gmail, which ignores that header search, `has:attachment` through X-GM-RAW, over one account or all); `false` is ignored, not a criterion. |
 | `gmail_query` | Gmail search syntax (X-GM-RAW); Gmail accounts only, else `unsupported`. |
 | `subfolders` | `true`: the folder's subfolders too, as for the list (default `false`); with `folder` `*`, 400 `invalid_argument`. |
-| `view` | A saved [view](#views)'s id: its folders are searched, in place of `account`, `folder` and `subfolders` (given with any of them, 422). 404 `not_found` for one that is not the user's, 400 `invalid_argument` for one that is a search. Not taken by the [count and bulk routes](#every-message-a-search-matches). |
+| `view` | A saved [view](#views)'s id: its folders are searched, in place of `account`, `folder` and `subfolders` (given with any of them, 422); or `all_inboxes`: INBOX of every account, which `subfolders` `true` takes in with its subfolders. 404 `not_found` for one that is not the user's, 400 `invalid_argument` for one that is a search. Not taken by the [count and bulk routes](#every-message-a-search-matches). |
 | `limit`, `cursor` | As for the list. |
 | `group` | `"thread"`: [by conversation](#conversations), as for the list; null or absent: not. |
 
@@ -2068,7 +2070,8 @@ app opening on `/` (a tab's first page) goes there instead, while the instance o
 Home in the nav still opens the summary. The API's status, the old landing page, is at `/health`,
 in the user menu. Cards, each left out where the instance does not run its feature:
 
-- **Unread**: All inboxes (the sum) and each account's INBOX, linking to the view and to the
+- **Unread**: All inboxes (the sum, with INBOX's subfolders while [it takes them in](#views)) and
+  each account's INBOX, linking to the view and to the
   folder. A count is the index's: an INBOX's own row, or on Gmail All Mail's unread rows carrying
   INBOX's label; a dash while the index holds no readable copy (the account is not indexed yet)
   or holds it only under an age limit, whose rows leave out the older unread mail.
@@ -2142,7 +2145,7 @@ folder off the index is read live, as before the index.
   index is only read again, live. Showing another list lets go of it, the sync going on.
   `POST /api/v1/mail/refresh` takes a list's or a search's scope (`{"account", "folder",
   "subfolders"}`: an id or `*`, a path or `*`, `INBOX` by default) or a view's (`{"view"}`: an id or
-  `all_inboxes`), never its criteria: 202 `{"refresh_id"}`, null when none of its folders is on the
+  `all_inboxes`, which `"subfolders": true` goes with), never its criteria: 202 `{"refresh_id"}`, null when none of its folders is on the
   index (on Gmail, a label's folder is All Mail's). `GET /api/v1/mail/refresh/{refresh_id}` gives
   `{"running"}`, false for one that is done, unknown or another user's. A folder that cannot be
   synced ends it too: it is `failed` and its list, then read live, says why; one that fails because
@@ -2364,6 +2367,16 @@ others are the user's saved views (`app.saved_view`: name, folders or search, po
 alone and gone with them; removing an account takes its folders out of every view (one left
 with none lists nothing).
 
+*Include subfolders*, a button above *All inboxes*' list, off until chosen and kept per user
+(`inbox_subfolders`, [`nonfunctional-requirements.md`](nonfunctional-requirements.md) —
+*Sign-in*), takes in INBOX's subfolders: at any depth, but for those with a role of their own and
+what is under them (as a list [with subfolders](#get-accountsaccount_idmessagesfolderinboxlimit25cursorsubfoldersfalse)
+leaves them out) and the virtual ones, however many. Its list, unread counts (Home's too), refresh,
+live updates and [search scope](#search-scope) follow. Each index turn marks them from the
+account's folder listing (`mail_index_folder.inbox_subfolder`), so reading them asks no server and
+a new subfolder joins at the next turn; one off the index is named as left out. Gmail has none: its
+labels are All Mail's.
+
 - `GET /api/v1/mail/views` gives `{"views": [{"id", "name", "sources", "query", "position"}]}`
   in the user's order, *All inboxes* not among them; `sources` is `[{"account_id", "folder"}]`
   (`INBOX` in capitals) or null for a search, `query` the search's line or null.
@@ -2375,7 +2388,8 @@ with none lists nothing).
   `view_name_taken`); 1-100 folders, of the user's own accounts (else 404 `not_found`); at most
   100 views (else 400 `too_many_views`). A search must parse and must not search the text (bare
   words), which the index cannot answer (400 `invalid_argument`). Another user's view is 404.
-- `GET /api/v1/mail/views/{id}/messages?limit=25&cursor=` (`id` `all_inboxes` for the built-in)
+- `GET /api/v1/mail/views/{id}/messages?limit=25&cursor=` (`id` `all_inboxes` for the built-in,
+  with INBOX's subfolders by `subfolders=true`, 400 `invalid_argument` on a saved view)
   answers as [a list](#get-accountsaccount_idmessagesfolderinboxlimit25cursorsubfoldersfalse),
   plus `not_indexed`: the view's folders off the index or not ready, left out, on the first page
   (`folder` `*`: an account's every folder). Its folders' rows are merged newest first on the

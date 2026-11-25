@@ -22,6 +22,7 @@ function signedAs(state: AuthState): AuthContextValue {
     changeMarkReadSubfolders: reject,
     changeIndexMaxAge: reject,
     changeConversations: reject,
+    changeInboxSubfolders: reject,
     changeUndoSend: reject,
     changeAppearance: reject,
     recheck: vi.fn(),

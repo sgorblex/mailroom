@@ -24,6 +24,8 @@ export type AuthContextValue = AuthState & {
   changeIndexMaxAge: (days: number | null) => Promise<void>
   /** Saves whether the message lists are grouped by conversation; rejects with the API error. */
   changeConversations: (conversations: boolean) => Promise<void>
+  /** Saves whether *All inboxes* takes in INBOX's subfolders; rejects with the API error. */
+  changeInboxSubfolders: (included: boolean) => Promise<void>
   /** Saves how long Send holds a message for an Undo (0: none); rejects with the API error. */
   changeUndoSend: (seconds: number) => Promise<void>
   /** Saves some of the appearance choices, kept over the others; rejects with the API error. */
@@ -71,6 +73,19 @@ export function useConversations(): boolean {
   return auth?.status === 'signed-in' ? auth.user.conversations : false
 }
 
+const notSignedIn = (): Promise<void> => Promise.reject(new Error('Not signed in'))
+
+/**
+ * Whether *All inboxes* takes in INBOX's subfolders: the signed-in user's choice, else (outside an
+ * `AuthProvider`) `false`. `change` saves it and rejects with the API error, or when nobody is
+ * signed in.
+ */
+export function useInboxSubfolders(): { included: boolean; change: (included: boolean) => Promise<void> } {
+  const auth = useContext(AuthContext)
+  const signedIn = auth?.status === 'signed-in' ? auth : null
+  return { included: signedIn?.user.inbox_subfolders ?? false, change: signedIn?.changeInboxSubfolders ?? notSignedIn }
+}
+
 /**
  * How long Send holds a message for an Undo, in seconds: the signed-in user's choice, else
  * (outside an `AuthProvider`) 0, which sends at once.
@@ -80,7 +95,6 @@ export function useUndoSendSeconds(): number {
   return auth?.status === 'signed-in' ? auth.user.undo_send_seconds : 0
 }
 
-const notSignedIn = (): Promise<void> => Promise.reject(new Error('Not signed in'))
 
 /**
  * How the app looks: the signed-in user's choices, the same on every device, else (signed out, or

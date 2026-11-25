@@ -132,6 +132,36 @@ def test_unread_per_inbox_and_the_marks_of_the_users_own_mail(
     assert answer.json()["mail"]["unread"] == 4
 
 
+def test_all_inboxes_counts_the_subfolders_of_a_user_who_takes_them_in(
+    user_client: TestClient, db_session: Session, user: User, migrated_engine: Engine
+) -> None:
+    work = added(user_client)
+    folder(db_session, user, work, "INBOX", unread_count=3)
+    folder(db_session, user, work, "INBOX/Lists", unread_count=5, inbox_subfolder=True)
+    folder(db_session, user, work, "Archive", unread_count=9)
+    limited = date(2026, 10, 1)
+    folder(
+        db_session,
+        user,
+        work,
+        "INBOX/Old",
+        unread_count=20,
+        inbox_subfolder=True,
+        oldest_indexed=limited,
+    )
+    db_session.commit()
+
+    def counted() -> tuple[int, int | None]:
+        mail = home_summary(context(migrated_engine), db_session, user.id, NOW).mail
+        assert mail is not None
+        return mail.unread, mail.inboxes[0].unread
+
+    assert counted() == (3, 3)
+    user.inbox_subfolders = True
+    db_session.commit()
+    assert counted() == (8, 3)
+
+
 def test_an_inbox_indexed_under_an_age_limit_is_not_counted(
     user_client: TestClient, db_session: Session, user: User, migrated_engine: Engine
 ) -> None:

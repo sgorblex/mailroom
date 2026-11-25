@@ -3,7 +3,7 @@ import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
 import { vi } from 'vitest'
 
-import { ALL_FEATURES, changeAppearance, changeConversations, changeUndoSend, changeIndexMaxAge, changeMarkReadSubfolders, changeTimeZone, userSchema, type Feature, type UserJson } from '@/api/auth.ts'
+import { ALL_FEATURES, changeAppearance, changeConversations, changeInboxSubfolders, changeUndoSend, changeIndexMaxAge, changeMarkReadSubfolders, changeTimeZone, userSchema, type Feature, type UserJson } from '@/api/auth.ts'
 import { AuthContext } from '@/auth/auth-context.ts'
 import { setRouteFeatures } from '@/auth/feature-route.tsx'
 import { createQueryClient } from '@/lib/query-client.ts'
@@ -41,6 +41,9 @@ export function renderSignedIn(
         },
         changeConversations: async (conversations) => {
           await changeConversations(conversations)
+        },
+        changeInboxSubfolders: async (included) => {
+          await changeInboxSubfolders(included)
         },
         changeUndoSend: async (seconds) => {
           await changeUndoSend(seconds)

@@ -34,6 +34,7 @@ export const DEFAULT_APPEARANCE: Readonly<Appearance> = Object.freeze(appearance
  * `mark_read_subfolders`: what "Mark all as read" on a folder with subfolders does first: `true`, them too.
  * `index_max_age_days`: the user's own age limit of the mail index, in days; `null` for none (the instance's cap still holds).
  * `conversations`: whether the message lists are grouped by conversation.
+ * `inbox_subfolders`: whether *All inboxes* takes in INBOX's subfolders; absent from an older API, which does not.
  * `undo_send_seconds`: how long Send holds a message for an Undo; 0 sends at once.
  * `appearance`: how the app looks, the same on every device; absent from an older API, so its defaults.
  */
@@ -44,11 +45,12 @@ export const userSchema = z.object({
   mark_read_subfolders: z.boolean(),
   index_max_age_days: z.number().nullable(),
   conversations: z.boolean(),
+  inbox_subfolders: z.boolean().default(false),
   undo_send_seconds: z.number(),
   appearance: appearanceSchema.catch(() => ({ ...DEFAULT_APPEARANCE })).default(() => ({ ...DEFAULT_APPEARANCE })),
 })
 export type User = z.infer<typeof userSchema>
-/** A user as the API may send one: `appearance` may be missing or partly unknown. */
+/** A user as the API may send one: `appearance` and `inbox_subfolders` may be missing, the former or partly unknown. */
 export type UserJson = z.input<typeof userSchema>
 
 /** The optional parts of an instance, on top of the base that is always there. */
@@ -118,6 +120,11 @@ export function changeIndexMaxAge(days: number | null): Promise<User> {
 /** Whether the message lists are grouped by conversation. */
 export function changeConversations(conversations: boolean): Promise<User> {
   return apiPutJson('/api/v1/auth/me/conversations', { conversations }, { schema: userSchema })
+}
+
+/** Whether *All inboxes* takes in INBOX's subfolders. */
+export function changeInboxSubfolders(included: boolean): Promise<User> {
+  return apiPutJson('/api/v1/auth/me/inbox-subfolders', { inbox_subfolders: included }, { schema: userSchema })
 }
 
 /** The longest Send can wait for an Undo, in seconds (the server's limit too). */

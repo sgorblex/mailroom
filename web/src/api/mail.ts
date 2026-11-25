@@ -211,7 +211,7 @@ export type MessageView = z.infer<typeof messageViewSchema>
 /** The search fields; an absent one is not a criterion. `account` and `folder` take `*` for all. */
 export interface SearchQuery {
   /** A saved view of folders searched in place of `account` and `folder`. */
-  view?: number
+  view?: ViewKey
   account?: string
   folder?: string
   from?: string
@@ -422,9 +422,15 @@ export async function reorderViews(ids: number[]): Promise<SavedView[]> {
   return answer.views
 }
 
-/** A page of the view's messages, newest first, read from the index only; `grouped`, by conversation. */
-export function viewMessages(view: ViewKey, cursor: string | null, signal?: AbortSignal, grouped = false): Promise<ViewPage> {
+/** A page of the view's messages, newest first, read from the index only; `grouped`, by conversation; `subfolders`, *All inboxes* with INBOX's subfolders. */
+export function viewMessages(
+  view: ViewKey,
+  cursor: string | null,
+  signal?: AbortSignal,
+  { grouped = false, subfolders = false }: { grouped?: boolean; subfolders?: boolean } = {},
+): Promise<ViewPage> {
   const path = withQuery(`${viewsPath}/${String(view)}/messages`, {
+    subfolders: subfolders ? true : undefined,
     cursor: cursor ?? undefined,
     group: grouped ? 'thread' : undefined,
   })
@@ -432,7 +438,7 @@ export function viewMessages(view: ViewKey, cursor: string | null, signal?: Abor
 }
 
 /** What a list shows, to refresh: a folder or a search's scope, or a view. */
-export type RefreshScope = { account?: string; folder?: string; subfolders: boolean } | { view: ViewKey }
+export type RefreshScope = { account?: string; folder?: string; subfolders: boolean } | { view: ViewKey; subfolders?: true | undefined }
 
 const refreshAskedSchema = z.object({ refresh_id: z.string().nullable() })
 const refreshStateSchema = z.object({ running: z.boolean() })

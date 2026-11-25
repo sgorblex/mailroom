@@ -188,6 +188,42 @@ def test_on_gmail_only_all_mail_gets_a_row(
     assert list(db_session.scalars(select(MailIndexMessage.uid))) == []
 
 
+def test_the_listing_says_which_folders_are_inboxs_subfolders(
+    user_client: TestClient, db_session: Session, user: User
+) -> None:
+    work = add_account(user_client)
+    other = indexed(db_session, user.id, work, "Other/Moved", uids=())
+    listed = [
+        Folder("INBOX", "/", "inbox", ()),
+        Folder("INBOX/Lists", "/", None, ()),
+        Folder("INBOX/Lists/Deep", "/", None, ()),
+        Folder("INBOX/Old", "/", "archive", ("\\Archive", "\\Noselect")),
+        Folder("INBOX/Old/2024", "/", None, ()),
+        Folder("INBOX/Sent", "/", "sent", ("\\Sent",)),
+        Folder("INBOX/Starred", "/", "flagged", ("\\Flagged",)),
+        Folder("INBOXES", "/", None, ()),
+        Folder("Other/Moved", "/", None, ()),
+    ]
+    row = db_session.get(MailIndexFolder, other)
+    assert row is not None
+    row.inbox_subfolder = True
+    db_session.commit()
+    server = SimpleNamespace(
+        capabilities=lambda _account: SimpleNamespace(gmail=False),
+        folders=lambda _account: listed,
+    )
+
+    def inside() -> list[str]:
+        discover_folders(db_session, cast("MailConnections", server), user.id, work)
+        query = select(MailIndexFolder.path).where(MailIndexFolder.inbox_subfolder.is_(True))
+        return list(db_session.scalars(query.order_by(MailIndexFolder.path)))
+
+    assert inside() == ["INBOX/Lists", "INBOX/Lists/Deep"]
+    # A folder that takes a role leaves them.
+    listed[1] = Folder("INBOX/Lists", "/", "junk", ("\\Junk",))
+    assert inside() == []
+
+
 # The turn over an account's due folders, each folder's sync a stub.
 
 

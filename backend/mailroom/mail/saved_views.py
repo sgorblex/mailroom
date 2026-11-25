@@ -1,13 +1,14 @@
 """The user's saved views (``app.saved_view``; ``docs/requirements/mail-client.md``, *Views*):
 some folders of any of their accounts, or a search in the search syntax, named and ordered in the
-sidebar, and the built-in *All inboxes* (INBOX of every account), which is no row. Each is read
-from the mail index only (``service.view_messages``). Removing an account drops its folders from
-every view (``mailroom.accounts.app_data``); the views go with their user."""
+sidebar, and the built-in *All inboxes* (INBOX of every account, with its subfolders or
+without), which is no row. Each is read from the mail index only (``service.view_messages``).
+Removing an account drops its folders from every view (``mailroom.accounts.app_data``); the views
+go with their user."""
 
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, Literal
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -15,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from mailroom.accounts.service import account_not_found
 from mailroom.errors import Refusal
 from mailroom.mail import service
+from mailroom.mail.index.reads import inbox_subfolders
 from mailroom.mail.search_syntax import SearchSyntaxError, parse_search
 from mailroom.models import SavedView
 from mailroom_core.mail import SearchQuery, Source
@@ -29,7 +31,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-ALL_INBOXES: Final = "all_inboxes"
+type AllInboxes = Literal["all_inboxes"]
+ALL_INBOXES: Final[AllInboxes] = "all_inboxes"
+type ViewKey = int | AllInboxes
+"""A saved view's id, or the built-in *All inboxes*."""
 MAX_VIEWS: Final = 100
 """Of one user."""
 MAX_SOURCES: Final = 100
@@ -204,25 +209,51 @@ def _search_query(parsed: ParsedSearch) -> SearchQuery:
     )
 
 
-def searched_folders(ctx: AppContext, db: Session, user_id: int, view_id: int) -> list[Source]:
-    """The folders of the user's view, which a search in it reads; ``invalid_argument`` for a
-    view that is a search itself: its criteria are the caller's to ask for."""
-    view = owned_view(db, user_id, view_id)
-    if view.sources is None:
+def shown_view(db: Session, user_id: int, key: ViewKey, *, subfolders: bool) -> SavedView | None:
+    """The view ``key`` names (None: *All inboxes*); ``not_found`` for one that is not the
+    user's, ``invalid_argument`` for a saved one with ``subfolders``: its folders are its own."""
+    if key == ALL_INBOXES:
+        return None
+    view = owned_view(db, user_id, key)
+    if subfolders:
+        raise Refusal("invalid", "invalid_argument", "Only All inboxes takes in subfolders.")
+    return view
+
+
+def searched_folders(
+    ctx: AppContext, db: Session, user_id: int, key: ViewKey, *, subfolders: bool = False
+) -> list[Source]:
+    """The folders of the view, which a search in it reads; ``invalid_argument`` for a view that
+    is a search itself: its criteria are the caller's to ask for."""
+    view = shown_view(db, user_id, key, subfolders=subfolders)
+    if view is not None and view.sources is None:
         msg = "That view is a search: search with its terms instead."
         raise Refusal("invalid", "invalid_argument", msg)
-    sources, _ = reading(ctx, user_id, view)
+    sources, _ = reading(ctx, db, user_id, view, subfolders=subfolders)
     return sources
 
 
+def _inboxes(ctx: AppContext, db: Session, user_id: int, *, subfolders: bool) -> list[Source]:
+    """*All inboxes*' folders: INBOX of every account, with ``subfolders`` each one's subfolders
+    the index knows of. No server is asked."""
+    accounts = service.account_ids(ctx, user_id)
+    under = inbox_subfolders(db, user_id, accounts) if subfolders else {}
+    return [
+        Source(account, folder)
+        for account in accounts
+        for folder in ("INBOX", *under.get(account, ()))
+    ]
+
+
 def reading(
-    ctx: AppContext, user_id: int, view: SavedView | None
+    ctx: AppContext, db: Session, user_id: int, view: SavedView | None, *, subfolders: bool = False
 ) -> tuple[list[Source], SearchQuery | None]:
-    """What ``service.view_messages`` reads for ``view`` (None: *All inboxes*). A search reads
+    """What ``service.view_messages`` reads for ``view`` (None: *All inboxes*, with
+    ``subfolders`` INBOX's subfolders too). A search reads
     ``in:``'s folder (``*``: every folder), else INBOX, of ``account:``'s account, else of
     every account, as ``POST /search`` does."""
     if view is None:
-        return [Source(account, "INBOX") for account in service.account_ids(ctx, user_id)], None
+        return _inboxes(ctx, db, user_id, subfolders=subfolders), None
     if view.sources is not None:
         return [Source(int(account), str(path)) for account, path in view.sources], None
     # Checked when saved; refused, not a failure, should the syntax have changed since.

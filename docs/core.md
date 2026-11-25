@@ -204,7 +204,7 @@ fetches the rows it shows, and those only, whole; a source that fails at that se
 failure of the page like any other. `list_messages` and `search_messages` take `subfolders`: the
 folder and its selectable subfolders at any depth (`with_subfolders`; INBOX in any case), without
 the Sent, Drafts, All Mail, Archive, Junk and Trash folders or anything under them, unless the
-folder has that role itself; past `MAX_LISTED_FOLDERS` (50) folders it is `invalid_argument`, as
+folder has that role itself (`listed_subfolders`, which has no limit); past `MAX_LISTED_FOLDERS` (50) folders it is `invalid_argument`, as
 is `subfolders` with `ALL_FOLDERS`. A list line can name the message's folder after the ref. Outside
 Gmail, `thread_page` finds a conversation's candidates by a search on Message-ID, References and
 In-Reply-To and one on the subject without its `Re:`/`Fwd:` prefixes, then reads their headers:
