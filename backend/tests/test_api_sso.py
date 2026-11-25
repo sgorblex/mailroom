@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, parse_qsl, urlsplit
 import httpx
 import pytest
 from sqlalchemy import func, select, update
+from starlette.testclient import TestClient
 
 from mailroom.auth.oidc import OidcProvider
 from mailroom.auth.sessions import SESSION_COOKIE_NAME
@@ -32,7 +33,6 @@ from tests.conftest import PASSWORD, USERNAME
 if TYPE_CHECKING:
     from fastapi import FastAPI
     from sqlalchemy.orm import Session
-    from starlette.testclient import TestClient
 
     from mailroom.auth.sso import LinkClaim
 
@@ -319,6 +319,18 @@ def test_a_link_claim_never_moves_an_existing_link(
     assert signed_in_as(api_client) == admin.username
     assert db_session.scalars(select(ExternalIdentity.user_id)).all() == [admin.id]
     _ = user
+
+
+@pytest.mark.usefixtures("api_client")
+def test_a_sign_in_records_the_browser(
+    application: FastAPI, sso: FakeIdp, db_session: Session, user: User
+) -> None:
+    link(db_session, user)
+    browser = TestClient(application, base_url="https://testserver", client=("203.0.113.7", 50000))
+    browser.headers["User-Agent"] = "Mozilla/5.0 (X11; Linux x86_64) Gecko/20100101 Firefox/140.0"
+    assert sso_error(sign_in(browser, sso)) is None
+    [session] = browser.get("/api/v1/auth/sessions").json()
+    assert (session["device"], session["ip"]) == ("Firefox · Linux", "203.0.113.x")
 
 
 @pytest.mark.usefixtures("user")

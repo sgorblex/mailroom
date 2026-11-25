@@ -1,4 +1,4 @@
-import type { ReactElement, ReactNode } from 'react'
+import { useState, type ReactElement, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useFeature, useMailLayer } from '@/auth/auth-context.ts'
@@ -14,6 +14,7 @@ import { MarkReadForm } from '@/profile/mark-read-form.tsx'
 import { NotificationSettings } from '@/profile/notification-settings.tsx'
 import { PasswordForm } from '@/profile/password-form.tsx'
 import { RemoteSenders, TextSenders } from '@/profile/remembered-senders.tsx'
+import { Sessions } from '@/profile/sessions.tsx'
 import { SignatureSettings } from '@/profile/signature-settings.tsx'
 import { TimeZoneForm } from '@/profile/time-zone-form.tsx'
 import { UndoSendForm } from '@/profile/undo-send-form.tsx'
@@ -30,7 +31,7 @@ interface Group {
 
 /**
  * The signed-in user's own page, its sections in groups with a nav to them: Account (password,
- * time zone, linked sign-ins), Appearance, Mail with the mail client (what "Mark all as read"
+ * time zone, linked sign-ins, signed-in sessions), Appearance, Mail with the mail client (what "Mark all as read"
  * does first on a folder with subfolders, conversations, the senders whose remote images they show
  * and those whose mail they read as text, the mail index and desktop notifications), Sending (how
  * long Send waits for an Undo and each account's vacation reply with the mail client, the
@@ -43,14 +44,25 @@ export function ProfileScreen(): ReactElement {
   const mcp = useFeature('mcp')
   const mail = useFeature('mail')
   const sends = useMailLayer()
+  const [passwordChanges, setPasswordChanges] = useState(0)
 
   const groups: Group[] = [
     {
       id: 'account',
       sections: [
-        { key: 'password', node: <PasswordForm /> },
+        {
+          key: 'password',
+          node: (
+            <PasswordForm
+              onChanged={() => {
+                setPasswordChanges((count) => count + 1)
+              }}
+            />
+          ),
+        },
         { key: 'time-zone', node: <TimeZoneForm /> },
         { key: 'linked-sign-in', node: <LinkedSignIn /> },
+        { key: 'sessions', node: <Sessions reloadKey={passwordChanges} /> },
       ],
     },
     { id: 'appearance', sections: [{ key: 'appearance', node: <AppearanceSettings /> }] },

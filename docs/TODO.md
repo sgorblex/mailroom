@@ -325,7 +325,7 @@ Older than milestone E, seen in its browser check; fix before batch 11.
 
 #### 11. Profile, security and data
 
-- [ ] **Sessions** — the user's signed-in sessions on the profile, each one endable.
+- [x] **Sessions** — the user's signed-in sessions on the profile, each one endable.
 - [ ] **Personal API tokens** — made and revoked on the profile, for scripts and the command-line
       client (*Command-line tools*), scoped with the same settings as a connected app's grant.
 - [ ] **Export** — the user's rule sets as JSON and their audit trail as CSV.

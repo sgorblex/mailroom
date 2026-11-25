@@ -16,8 +16,11 @@ type Outcome =
   | { kind: 'changed' }
   | { kind: 'failed'; message: string; field: Field }
 
-/** The Profile's password change: the current password, then the new one twice. */
-export function PasswordForm(): ReactElement {
+/**
+ * The Profile's password change: the current password, then the new one twice. `onChanged` hears of
+ * one, which signed the user's other sessions out.
+ */
+export function PasswordForm({ onChanged }: { onChanged: () => void }): ReactElement {
   const { t } = useTranslation()
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
@@ -39,6 +42,7 @@ export function PasswordForm(): ReactElement {
       setNext('')
       setRepeated('')
       setOutcome({ kind: 'changed' })
+      onChanged()
     } catch (failure) {
       const code = failure instanceof ApiRequestError ? failure.code : undefined
       setOutcome({

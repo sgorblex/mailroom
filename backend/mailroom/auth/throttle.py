@@ -26,14 +26,20 @@ _SWEEP_EVERY_SECONDS = 60 * 60
 def client_key(request: Request) -> str:
     """The client an attempt counts against: an IPv4 address or an IPv6 /56. Behind the web
     container's nginx, uvicorn has already taken the address from its ``X-Forwarded-For``."""
-    address = request.client.host if request.client else ""
-    try:
-        parsed = ipaddress.ip_address(address)
-    except ValueError:
-        return address
+    parsed = client_address(request)
+    if parsed is None:
+        return request.client.host if request.client else ""
     if parsed.version == 6:
         return str(ipaddress.ip_network(f"{parsed}/56", strict=False))
     return str(parsed)
+
+
+def client_address(request: Request) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    """The client's IP address, or ``None`` when it has none that reads as one."""
+    try:
+        return ipaddress.ip_address(request.client.host if request.client else "")
+    except ValueError:
+        return None
 
 
 class LoginThrottle:

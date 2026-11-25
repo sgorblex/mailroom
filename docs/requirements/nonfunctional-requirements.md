@@ -419,6 +419,18 @@ bounded to one minor because the server relies on its handlers.
   (idempotent, so an expired tab can still sign out), `auth/me` (which answers `{"user": …, "features": […]}`) and
   SSO's `auth/oidc/*` depends on `require_user` (`backend/mailroom/api/deps.py`) and answers 401 without a valid
   session.
+- **Sessions list** (`GET /api/v1/auth/sessions`, `DELETE …/{id}`, `POST …/end-others`; the cookie
+  only, the user's own only; revision `202611241100`): each live session's `device`, `ip`,
+  `created_at`, `last_seen_at`, `expires_at` and whether it is `current`, that one first. `device`
+  names the browser and the system (`Firefox · Linux`) from fixed tables
+  (`mailroom.auth.sign_in_client`), null when neither is recognised; the User-Agent itself is never
+  kept. `ip` is recorded at sign-in as far as `session_ip` goes (*Instance settings*): nothing, an
+  IPv4 /24 or IPv6 /48 (`203.0.113.x`, `2001:db8:1:x`), or all of it. The list shows no more than the
+  setting allows now, but what an earlier setting recorded stays stored until its session ends.
+  `last_seen_at` is written at most every 5 minutes, by any request the session
+  signs in and by its open live updates. Ending one is a 404 for an id that is not the user's, and
+  a 409 `current_session` for this one, which ends by signing out. An ended session's next request
+  is a 401, and its live updates end at their next heartbeat. The web lists them on *Profile*.
 - **Cookie:** `HttpOnly`, `SameSite=Strict`, `Path=/`, and `Secure` except with
   `MAILROOM_ENV=development` (the dev server is plain HTTP).
 - **CSRF:** no token. Same origin plus `SameSite=Strict`, and `CrossSiteRequestMiddleware` refuses
@@ -440,9 +452,10 @@ bounded to one minor because the server relies on its handlers.
 - **Instance settings** (`GET`/`PUT /api/v1/admin/settings`, admins only, as above;
   `app.instance_setting`, revision `202611241000`): `audit_retention_days` (a JSON integer, 1-3650;
   until set, `MAILROOM_AUDIT_RETENTION_DAYS`, 90 without it) and `session_ip` (`none`, `partial`,
-  the default, or `full`: what of the client's IP a session records at sign-in). A `PUT` carries
-  only the settings to change, so that a form left open undoes no other admin's change; anything else
-  (null included) is a 422. Only the settings it changes get a row, with who changed it and when (null once that admin is removed), so the others keep following their defaults; a stored
+  the default, or `full`: what of the client's IP a session records at sign-in, and at most shows). A
+  `PUT` carries only the settings to change, so that a form left open undoes no other admin's change;
+  anything else (null included) is a 422. Only the settings it changes get a row, with who changed it
+  and when (null once that admin is removed), so the others keep following their defaults; a stored
   value that is no longer an option reads as its default. Read through a 5-second cache in each
   process, which a change there drops (`mailroom.config.instance_settings`). The web's form is the
   *Users* page's *Instance* section.
@@ -495,7 +508,8 @@ bounded to one minor because the server relies on its handlers.
 - **Refusals** about users answer 400 with `{"detail": {"code", "message"}}`; the web app words
   each `code` itself, in the reader's language.
 - **Logs:** `login_succeeded` (with `user_id`; `via="sso"` through SSO), `login_failed`,
-  `logout`, `user_created`,
+  `logout`, `session_ended` and `other_sessions_ended` (with `user_id`, the latter with the
+  `count`), `user_created`,
   `user_removed`, `password_reset` (with `user_id`, the admin, and `target_user_id`),
   `instance_settings_changed` (with `user_id`, the admin, and the `settings`' names),
   `password_changed`, `mark_read_subfolders_changed`, `index_max_age_changed`,

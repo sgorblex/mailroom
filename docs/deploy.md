@@ -31,7 +31,7 @@ images have built, the moving tags last.
 
 Quadlet sketch: [`../deploy/quadlet/README.md`](../deploy/quadlet/README.md) — one pod (api, web,
 worker), Postgres outside it, TLS on the host's reverse proxy, which must append the client to
-`X-Forwarded-For` (login throttling keys on it). The web container's nginx logs paths without
+`X-Forwarded-For` (login throttling keys on it, and sessions record it). The web container's nginx logs paths without
 their query string, which can hold mail data (a folder name, a search the SPA keeps in its URL);
 the host's proxy must log the same way, or not at all. The web container's own nginx (in the
 image) allows a body of 30 MiB (`client_max_body_size 30m`) on `/api/v1/mail/drafts` alone, for a
