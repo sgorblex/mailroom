@@ -49,10 +49,11 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY
 
+from mailroom.accounts.handled import handled_mark
 from mailroom.mail.index.rows import SEEN, apply_flags, count_rows, upsert_rows
 from mailroom.models import MailIndexFolder, MailIndexMessage
 from mailroom_core import mail as core
-from mailroom_core.mail import TO_SORT, MailError
+from mailroom_core.mail import MailError
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
@@ -387,25 +388,39 @@ class _Write:
         self.changed.add(row.id)
 
     def _flag(self, row: MailIndexFolder, noted: Sequence[AuditItem]) -> None:
-        """The flags each item asked for (``seen``, ``flagged``, ``to_sort``) on its row."""
+        """The flags each item asked for (``seen``, ``flagged``, ``handled`` as the
+        account keeps it) on its row."""
         asked = {item.uid: item for item in noted if item.uid is not None}
         held = self.db.execute(
-            select(MailIndexMessage.uid, MailIndexMessage.flags, MailIndexMessage.keywords).where(
-                *self._messages(row, asked)
-            )
+            select(
+                MailIndexMessage.uid,
+                MailIndexMessage.flags,
+                MailIndexMessage.keywords,
+                MailIndexMessage.labels,
+            ).where(*self._messages(row, asked))
         )
+        mark = handled_mark(self.db, self.user_id, row.account_id)
+        stored = _FLAGGED if mark.kind == "star" else mark.name
         flags: dict[int, frozenset[str]] = {}
-        for uid, system, keywords in held:
+        labels: dict[int, tuple[str, ...]] = {}
+        for uid, system, keywords, carried in held:
             item = asked[uid]
             now = {*system, *keywords}
-            asks = ((SEEN, item.seen), (_FLAGGED, item.flagged), (TO_SORT, item.to_sort))
+            labels[uid] = tuple(carried)
+            asks = [(SEEN, item.seen), (_FLAGGED, item.flagged)]
+            if mark.kind != "label":
+                asks.append((stored, item.handled))
+            elif item.handled is not None:
+                kept = tuple(label for label in carried if label != stored)
+                labels[uid] = (*kept, stored) if item.handled else kept
             for flag, wanted in asks:
-                if wanted is True:
+                if wanted is None:
+                    continue
+                now = {each for each in now if each.lower() != flag.lower()}
+                if wanted:
                     now.add(flag)
-                elif wanted is False:
-                    now.discard(flag)
             flags[uid] = frozenset(now)
-        if apply_flags(self.db, self.user_id, row.id, flags):
+        if apply_flags(self.db, self.user_id, row.id, flags, labels):
             self.changed.add(row.id)
 
     def _settle(self) -> None:

@@ -72,9 +72,9 @@ FilterSpec = Annotated[
 _INTERVAL = "Minutes between runs: for trigger scheduled only, and required there."
 _MARKER = (
     "Limit the rule set to marked messages, whose mark the run clears once its filters have "
-    "acted: none (every message), star, or to_sort (the To sort mark, only where accounts_list "
-    "gives the account keywords true). For 'only marked' pick to_sort where the account has "
-    "keywords, else star."
+    "acted: none (every message), handled (the Handled mark, as each account keeps it: "
+    "accounts_list's handled) or starred (the star, whatever Handled is kept as). For 'only "
+    "marked' pick handled."
 )
 _TRIGGER = (
     "new_mail: on each new message in the folder; scheduled: every interval_minutes; "
@@ -380,7 +380,7 @@ FILTER_TOOLS: Final[tuple[Tool[Any], ...]] = (
             "dry_run it, then rule_set_enable it. With account_id all it runs on INBOX of every "
             "account whose Run filters is on, each on its own: a move to a named folder fails "
             "on an account without that folder (no folder is created); trash and junk without "
-            "a folder go to each account's own. It takes no to_sort marker."
+            "a folder go to each account's own."
         ),
         group="filters_write",
         arguments=RuleSetCreateArguments,

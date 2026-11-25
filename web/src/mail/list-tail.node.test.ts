@@ -11,7 +11,7 @@ const row = (uid: number): MessageItem => ({
   date: null,
   from: { name: '', address: '' },
   subject: '',
-  flags: { seen: true, flagged: false, answered: false, forwarded: false, draft: false, to_sort: false },
+  flags: { seen: true, flagged: false, answered: false, forwarded: false, draft: false, handled: false },
   has_attachments: false,
   preview: '',
   size: 0,

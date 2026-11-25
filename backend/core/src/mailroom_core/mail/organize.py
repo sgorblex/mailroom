@@ -21,14 +21,16 @@ from mailroom_core.mail.audit import (
     message_item,
 )
 from mailroom_core.mail.errors import MailError, mail_error
+from mailroom_core.mail.handled import check_handled, store_handled
 from mailroom_core.mail.ref import MessageRef, check_fresh, format_ref, parse_ref
 from mailroom_core.mail.selected import (
-    TO_SORT,
     CopiedNotRemovedError,
     abandon_read_back,
     check_movable,
     copy_uids,
     fetch_envelopes,
+    fetched_handled,
+    label_items,
     move_target,
     move_uids,
     search_uids,
@@ -58,7 +60,7 @@ class FlagState:
     ref: str
     seen: bool | None
     flagged: bool | None
-    to_sort: bool | None
+    handled: bool | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,17 +223,18 @@ def set_flags(
     *,
     seen: bool | None = None,
     flagged: bool | None = None,
-    to_sort: bool | None = None,
+    handled: bool | None = None,
 ) -> OrganizeResult:
-    """Sets (True) or clears (False) \\Seen, \\Flagged and the `TO_SORT` keyword; None leaves
-    that flag as it is. To sort is `unsupported` in a folder that keeps no keywords. Refs stay
-    valid."""
-    if seen is None and flagged is None and to_sort is None:
-        raise MailError("invalid_argument", "Give `seen`, `flagged`, `to_sort` or several.")
+    """Sets (True) or clears (False) \\Seen, \\Flagged and the Handled mark, as each
+    account keeps it; None leaves that one as it is. Handled is `unsupported` where the server
+    cannot keep it (`check_handled`), and where it is the star it cannot be set while `flagged` is
+    cleared, or the reverse (`invalid_argument`). Refs stay valid."""
+    if seen is None and flagged is None and handled is None:
+        raise MailError("invalid_argument", "Give `seen`, `flagged`, `handled` or several.")
     groups = _groups(connections, refs)
 
     def act(group: _Group, note: Note) -> GroupResult:
-        return _flag_group(connections, group, note, seen=seen, flagged=flagged, to_sort=to_sort)
+        return _flag_group(connections, group, note, seen=seen, flagged=flagged, handled=handled)
 
     return _each_group(groups, act)
 
@@ -243,11 +246,11 @@ def _flag_group(
     *,
     seen: bool | None,
     flagged: bool | None,
-    to_sort: bool | None,
+    handled: bool | None,
 ) -> GroupResult:
     """Sets and clears the flags asked for on the group's messages in one session, notes each
     one, and reads their flags back."""
-    wanted = ((_SEEN, seen), (_FLAGGED, flagged), (TO_SORT, to_sort))
+    wanted = ((_SEEN, seen), (_FLAGGED, flagged))
     add = [flag for flag, change in wanted if change is True]
     remove = [flag for flag, change in wanted if change is False]
 
@@ -269,12 +272,21 @@ def _flag_group(
                         result,
                         seen=seen,
                         flagged=flagged,
-                        to_sort=to_sort,
+                        handled=handled,
                     )
                 )
 
         try:
+            if handled is not None:
+                check_handled(context)
+                if context.handled.kind == "star" and flagged not in (None, handled):
+                    raise MailError(
+                        "invalid_argument",
+                        "This account keeps Handled as the star: both must be set or cleared.",
+                    )
             store_flags(context, uids, add=add, remove=remove)
+            if handled is not None:
+                store_handled(context, uids, marked=handled)
         except Exception as error:
             mapped = mail_error(error, group.account)
             note_all(mapped.code)
@@ -285,7 +297,7 @@ def _flag_group(
             return format_ref(MessageRef(group.account, group.folder, context.uid_validity, uid))
 
         try:
-            after = client.fetch(uids, ["FLAGS"])
+            after = client.fetch(uids, ["FLAGS", *label_items(context)])
             read_back = {
                 uid: {bytes(flag).lower() for flag in after[uid].get(b"FLAGS", ())}
                 for uid in uids
@@ -296,7 +308,7 @@ def _flag_group(
                     ref_of(uid),
                     _SEEN.lower().encode() in flags,
                     _FLAGGED.lower().encode() in flags,
-                    TO_SORT.lower().encode() in flags,
+                    fetched_handled(context, after[uid]),
                 )
                 for uid, flags in read_back.items()
             )

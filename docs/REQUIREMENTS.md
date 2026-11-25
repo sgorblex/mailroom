@@ -63,7 +63,7 @@ menu) shows the health check through the Vite proxy. Engineering baseline:
   Activity), the density of the message lists (comfortable, or compact rows
   without each message's opening) and where an open message shows on a wide screen (right of the
   list, below it, or off: in the list's place), and what swiping a message row left or right does on
-  a touch screen (trash and archive by default; mark read, star, To sort or nothing —
+  a touch screen (trash and archive by default; mark read, star, Handled or nothing —
   [`requirements/mail-client.md`](requirements/mail-client.md)); a choice shows at once and is the same on every device they sign in
   on. How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md)
   — *Own appearance*.
@@ -85,7 +85,7 @@ menu) shows the health check through the Vite proxy. Engineering baseline:
   (connected apps, API tokens), each group only where the instance has its settings, with a nav to them that
   marks the one in view; a link names a group as `/profile#<group>`.
 - **Home.** The web opens on a summary of the user's mail and filters: unread mail per account
-  inbox and in all, what waits on them (starred, To sort, snoozed coming back today, scheduled
+  inbox and in all, what waits on them (starred, Handled, snoozed coming back today, scheduled
   sends), each rule set's recent runs and failures and its week's messages acted on, and a tile
   per page, each part only where the instance runs its feature. The Profile's *Open on* makes the
   app open on Mail, Filters, Accounts or Activity instead, Home in the nav still showing the
@@ -218,7 +218,7 @@ the index and live updates; tier 3 items arrive one at a time.
 | Tier | Scope |
 | --- | --- |
 | **1 — Read** | Accounts and folders with unread counts; message list (threaded or flat) with paging; read a message: headers, text and **sandboxed HTML** body (HTML first, or the text for a sender the user reads as text; in a dark theme adapted to it, its original colours one click away), attachments (download), print (a printable page) and the `.eml` source (download), remote content blocked with a per-message reveal, or shown at once for a sender the user chose whose DMARC passed. Search. |
-| **2 — Triage and compose** | *Triage (slice B, in):* flag/unflag (a row's star too), mark To sort or sorted (a row's mark too), read/unread, move (to another of the user's accounts too, its originals to Trash or, on request, deleted for good once copied), archive, trash (never expunge), multi-select, keyboard shortcuts for triage. *Compose (slice C, in):* compose new, reply, reply-all (quoting only the text selected in the message, when there is some), forward in plain text or rich text (HTML with inline images, sanitised on the server; the web composer's TipTap editor writes it by default, with a per-message switch to plain text), with identity (`From`) choice and each identity's signature, recipients suggested from the index as they are typed, attachments and drafts always kept in the server's `\Drafts`; a designed message built elsewhere (an .eml, or HTML and its files) imported as a draft as it was built, sanitised, previewed at a phone's and a desktop's width, light and dark, checked and sent as a test to the user's own address before it is sent. The **send mode** (mailroom-core's send gate) limits what agents may send; the user's own *Send* works unless the mode is `off`; the hourly limit and recipient cap bind both. No automatic retry delivers a send twice (only the user's *Send anyway*, after an unconfirmed delivery, can), and one whose delivery cannot be confirmed says so instead of retrying. |
+| **2 — Triage and compose** | *Triage (slice B, in):* flag/unflag (a row's star too), mark Handled or clear the mark (a row's mark too; each account keeps it as the star, a keyword or a Gmail label), read/unread, move (to another of the user's accounts too, its originals to Trash or, on request, deleted for good once copied), archive, trash (never expunge), multi-select, keyboard shortcuts for triage. *Compose (slice C, in):* compose new, reply, reply-all (quoting only the text selected in the message, when there is some), forward in plain text or rich text (HTML with inline images, sanitised on the server; the web composer's TipTap editor writes it by default, with a per-message switch to plain text), with identity (`From`) choice and each identity's signature, recipients suggested from the index as they are typed, attachments and drafts always kept in the server's `\Drafts`; a designed message built elsewhere (an .eml, or HTML and its files) imported as a draft as it was built, sanitised, previewed at a phone's and a desktop's width, light and dark, checked and sent as a test to the user's own address before it is sent. The **send mode** (mailroom-core's send gate) limits what agents may send; the user's own *Send* works unless the mode is `off`; the hourly limit and recipient cap bind both. No automatic retry delivers a send twice (only the user's *Send anyway*, after an unconfirmed delivery, can), and one whose delivery cannot be confirmed says so instead of retrying. |
 | **2+ — Index and live updates** | A **local index** of every account and folder (metadata plus rendered text) for fast cross-account search and lists; kept fresh by the worker over **IMAP IDLE** (and periodic resync), pushed to the browser (SSE or WebSocket). |
 | **3 — Later** | Contacts, calendar invites, offline reading, PGP/S/MIME; unified inbox views and saved searches ([views](requirements/mail-client.md#views)), [send later](requirements/mail-client.md#send-later), [snooze](requirements/mail-client.md#snooze) and the [vacation reply](requirements/mail-client.md#vacation-reply) are in. |
 
@@ -228,7 +228,7 @@ the index and live updates; tier 3 items arrive one at a time.
 
 - Per account, **rule sets** of filters, one folder each, stored through the filter engine's own
   rule serialisation, triggered on new mail, on a schedule or by hand, optionally
-  for marked mail only (the star or To sort).
+  for marked mail only (Handled or the star).
 - **Rule sets for all accounts**, on INBOX of each account whose Run filters is on; a move to a
   folder an account lacks fails there and is reported in its run.
 - A filter can **move mail to a folder of another of the user's accounts**, picked in the editor;

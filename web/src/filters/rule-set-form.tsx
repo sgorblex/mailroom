@@ -17,29 +17,29 @@ const MAX_INTERVAL_MINUTES = 7 * 24 * 60
 const DEFAULT_INTERVAL_MINUTES = 60
 
 type Mark = Exclude<Marker, 'none'>
-const MARKS: readonly Mark[] = ['star', 'to_sort']
+const MARKS: readonly Mark[] = ['handled', 'starred']
 
 /** The one folder a rule set for all accounts sorts. */
 const INBOX: readonly string[] = ['INBOX']
 
 /**
  * Makes a rule set (no `ruleSet`) or edits one: its name, folder, trigger, the mark it is limited
- * to and enabled, the folder picked from the account's. "Only marked" picks To sort where the
- * account's server keeps keywords, else the star; where it keeps none, To sort is greyed out unless
- * the rule set already has it. A rule set for all accounts sorts INBOX, and takes the star only.
+ * to and enabled, the folder picked from the account's. "Only marked" picks Handled, unless the
+ * account's server cannot keep it: it is then greyed out, unless the rule set already has it. A
+ * rule set for all accounts sorts INBOX.
  * `save` sends it; a refusal shows above the buttons.
  */
 export function RuleSetForm({
   folders,
-  keywords,
+  handledUnsupported = false,
   ruleSet,
   save,
   onCancel,
 }: {
   /** The account's folders, to pick the rule set's from. */
   folders: FoldersState
-  /** Whether the account's server keeps keywords (`Account.keywords`); `null` or absent when not known. */
-  keywords?: boolean | null
+  /** The account's server cannot keep its Handled mark (`cannotKeepHandled`). */
+  handledUnsupported?: boolean
   ruleSet?: RuleSet
   save: (fields: RuleSetFields) => Promise<unknown>
   onCancel: () => void
@@ -53,14 +53,11 @@ export function RuleSetForm({
   const [trigger, setTrigger] = useState<Trigger>(ruleSet?.trigger ?? 'new_mail')
   const [interval, setIntervalMinutes] = useState(String(ruleSet?.interval_minutes ?? DEFAULT_INTERVAL_MINUTES))
   const [markedOnly, setMarkedOnly] = useState(ruleSet !== undefined && ruleSet.marker !== 'none')
-  const [mark, setMark] = useState<Mark>(
-    ruleSet !== undefined && ruleSet.marker !== 'none'
-      ? ruleSet.marker
-      : keywords === true && !allAccounts
-        ? 'to_sort'
-        : 'star',
+  const [chosen, setMark] = useState<Mark | null>(
+    ruleSet !== undefined && ruleSet.marker !== 'none' ? ruleSet.marker : null,
   )
-  const toSortUnsupported = (allAccounts || keywords === false) && ruleSet?.marker !== 'to_sort'
+  const mark = chosen ?? (handledUnsupported ? 'starred' : 'handled')
+  const handledGreyed = handledUnsupported && ruleSet?.marker !== 'handled'
   const [enabled, setEnabled] = useState(ruleSet?.enabled ?? false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -215,7 +212,7 @@ export function RuleSetForm({
           <fieldset className="ml-6 flex flex-col gap-2">
             <legend className="mb-1 font-medium">{t('filters.ruleSet.marker')}</legend>
             {MARKS.map((option) => {
-              const unavailable = option === 'to_sort' && toSortUnsupported
+              const unavailable = option === 'handled' && handledGreyed
               return (
                 <div key={option} className="flex items-start gap-2">
                   <input
@@ -235,7 +232,7 @@ export function RuleSetForm({
                     <label htmlFor={id(`marker-${option}`)}>{t(`filters.ruleSet.markers.${option}`)}</label>
                     <span id={id(`marker-${option}-hint`)} className="text-muted-foreground">
                       {unavailable
-                        ? t(allAccounts ? 'filters.allAccounts.toSortUnsupported' : 'filters.ruleSet.toSortUnsupported')
+                        ? t('filters.ruleSet.handledUnsupported')
                         : t(`filters.ruleSet.markerHints.${option}`)}
                     </span>
                   </div>

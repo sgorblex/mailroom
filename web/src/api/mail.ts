@@ -28,8 +28,8 @@ const flagsSchema = z.object({
   /** `$Forwarded`, set when a forward of the message is sent. */
   forwarded: z.boolean(),
   draft: z.boolean(),
-  /** The To sort mark (`$MailroomSort`). */
-  to_sort: z.boolean(),
+  /** The Handled mark, as the account keeps it. */
+  handled: z.boolean(),
 })
 
 const mailFolderSchema = z.object({
@@ -223,7 +223,7 @@ export interface SearchQuery {
   unread?: boolean
   flagged?: boolean
   has_attachment?: boolean
-  to_sort?: boolean
+  handled?: boolean
   gmail_query?: string
 }
 
@@ -238,7 +238,7 @@ export const SEARCH_TEXT_FIELDS = [
   'before',
   'gmail_query',
 ] as const
-export const SEARCH_FLAG_FIELDS = ['unread', 'flagged', 'to_sort', 'has_attachment'] as const
+export const SEARCH_FLAG_FIELDS = ['unread', 'flagged', 'handled', 'has_attachment'] as const
 
 const base = '/api/v1/mail'
 const accountPath = (id: AccountId): string => `${base}/accounts/${String(id)}`
@@ -788,7 +788,7 @@ const organizeGroupSchema = z.object({
       ref: z.string(),
       seen: z.boolean().nullable(),
       flagged: z.boolean().nullable(),
-      to_sort: z.boolean().nullable(),
+      handled: z.boolean().nullable(),
     }),
   ),
   error: z.object({ code: z.string(), message: z.string() }).nullable(),
@@ -802,8 +802,8 @@ const organizeAnswerSchema = z.object({ results: z.array(organizeGroupSchema) })
 export interface FlagChange {
   seen?: boolean
   flagged?: boolean
-  /** Refused as `unsupported` where the account's server keeps no keywords. */
-  to_sort?: boolean
+  /** Refused as `unsupported` where the account's server cannot keep the mark. */
+  handled?: boolean
 }
 
 async function organize(route: string, body: object, signal?: AbortSignal): Promise<OrganizeGroup[]> {

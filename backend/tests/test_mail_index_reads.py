@@ -33,6 +33,7 @@ from mailroom_core.mail import (
     MESSAGES,
     TO_SORT,
     Folder,
+    HandledMark,
     MailError,
     MessageRef,
     PageFailure,
@@ -226,7 +227,17 @@ def test_a_search_finds_the_users_own_rows(db_session: Session, user: User) -> N
     assert uids(SearchQuery(to="carol")) == [3]
     assert uids(SearchQuery(unread=True)) == [3, 1]
     assert uids(SearchQuery(unread=False, flagged=True, has_attachment=True)) == [2]
-    assert uids(SearchQuery(to_sort=True)) == [3]
+    assert uids(SearchQuery(handled=True)) == [2]
+    assert uids(SearchQuery(handled=False)) == [3, 1]
+    sources = [replace(s, handled=HandledMark("keyword", TO_SORT.upper())) for s in sources]
+    assert uids(SearchQuery(handled=True)) == [3]
+    assert uids(SearchQuery(handled=False)) == [2, 1]
+    assert [
+        s.handled
+        for s, _ in reads.read_rows(db_session, user.id, sources, None, zone=UTC_ZONE, limit=1)
+    ] == [True]
+    sources = [replace(s, handled=HandledMark("label", "Handled")) for s in sources]
+    assert uids(SearchQuery(handled=True)) == []
     assert uids(SearchQuery(since=DAY.date(), before=DAY.date() + timedelta(days=1))) == [3, 2, 1]
     assert uids(SearchQuery(before=DAY.date())) == []
 

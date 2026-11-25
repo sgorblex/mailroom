@@ -19,7 +19,7 @@ export interface ParsedSearch {
   unread?: boolean
   flagged?: boolean
   has_attachment?: boolean
-  to_sort?: boolean
+  handled?: boolean
   folder?: string
   account?: string
 }
@@ -46,10 +46,13 @@ const FLAGS = {
     unread: ['unread', true],
     read: ['unread', false],
     flagged: ['flagged', true],
-    to_sort: ['to_sort', true],
+    handled: ['handled', true],
+    to_sort: ['handled', true],
   },
   has: { attachment: ['has_attachment', true] },
 } as const satisfies Record<string, Record<string, readonly [SearchField, boolean]>>
+/** Values still read under their former name, which nothing offers. */
+const FORMER: ReadonlySet<string> = new Set(['to_sort'])
 
 type FieldKey = keyof typeof FIELD
 type DateKey = keyof typeof DATES
@@ -61,7 +64,7 @@ const isFlag = (key: string): key is FlagKey => Object.hasOwn(FLAGS, key)
 
 /** The keys of `is:` and `has:` a value names, in the order the syntax lists them. */
 export function flagValues(key: string): string[] {
-  return isFlag(key) ? Object.keys(FLAGS[key]) : []
+  return isFlag(key) ? Object.keys(FLAGS[key]).filter((name) => !FORMER.has(name)) : []
 }
 
 /** The value from `start` up to the next space outside quotes, its quotes dropped, and where it ends; `null` when a quote is not closed. */
@@ -248,7 +251,7 @@ export function termFor(field: SearchField, value: string | boolean | undefined)
 
 /** A line that asks for `parsed`: its words first, then its terms. */
 export function lineOf(parsed: ParsedSearch): string {
-  const order: SearchField[] = ['text', 'from', 'to', 'subject', 'unread', 'flagged', 'to_sort', 'has_attachment', 'since', 'before', 'folder', 'account']
+  const order: SearchField[] = ['text', 'from', 'to', 'subject', 'unread', 'flagged', 'handled', 'has_attachment', 'since', 'before', 'folder', 'account']
   return order
     .map((field) => termFor(field, parsed[field]))
     .filter((term) => term !== null)

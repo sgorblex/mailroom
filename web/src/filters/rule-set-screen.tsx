@@ -5,6 +5,7 @@ import { ArrowLeft } from 'lucide-react'
 
 import { AccountDot } from '@/accounts/account-name.tsx'
 import { AccountsContext, useAccountKeywords } from '@/accounts/accounts-context.ts'
+import { cannotKeepHandled } from '@/accounts/handled.ts'
 import { listAccounts, type Account } from '@/api/accounts.ts'
 import {
   ALL_ACCOUNTS,
@@ -128,7 +129,7 @@ function RuleSetEditor({ ruleSet: initial, account, accounts, vocabulary }: Load
         filters={filters}
         vocabulary={vocabulary}
         folders={folders}
-        keywords={account === undefined ? undefined : keywordsOf(account.id)}
+        handledUnsupported={account !== undefined && cannotKeepHandled(account, keywordsOf(account.id))}
         setFilters={setFilters}
       />
       <RunPanel
@@ -193,7 +194,7 @@ function RuleSetHeader({
     return (
       <RuleSetForm
         folders={folders}
-        keywords={account === undefined ? undefined : keywordsOf(account.id)}
+        handledUnsupported={account !== undefined && cannotKeepHandled(account, keywordsOf(account.id))}
         ruleSet={ruleSet}
         save={async (fields) => {
           onChanged(await changeRuleSet(ruleSet.id, fields))

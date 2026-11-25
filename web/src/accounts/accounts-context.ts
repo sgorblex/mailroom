@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import type { Account, AccountId } from '@/api/accounts.ts'
 
+import { cannotKeepHandled, readHandled, type HandledMark } from './handled.ts'
 import { accountKeywords, keywordsQuery } from './keywords.ts'
 
 /** The user's accounts as the screen loaded them, to name an account by its id; `null` until they are. */
@@ -38,9 +39,25 @@ export function useAccountName(): (id: AccountId) => string {
   return useCallback((id: AccountId) => label(id).display_name, [label])
 }
 
+/** What an account keeps the Handled mark as, by its id; the star for one not loaded. */
+export function useAccountHandled(): (id: AccountId) => HandledMark {
+  const accounts = useContext(AccountsContext)
+  return useCallback((id: AccountId) => readHandled(accounts?.find((each) => each.id === id)?.handled), [accounts])
+}
+
+/** Whether an account's server is known not to keep its Handled mark (`cannotKeepHandled`). */
+export function useCannotKeepHandled(): (id: AccountId) => boolean {
+  const accounts = useContext(AccountsContext)
+  const keywordsOf = useAccountKeywords()
+  return useCallback(
+    (id: AccountId) => cannotKeepHandled(accounts?.find((each) => each.id === id), keywordsOf(id)),
+    [accounts, keywordsOf],
+  )
+}
+
 /**
- * Whether an account's server keeps keywords, so its mail can be marked To sort; `null` when not
- * known, as until the servers have answered: asked apart from the accounts, which never wait on it.
+ * Whether an account's server keeps keywords; `null` when not known, as until the servers have
+ * answered: asked apart from the accounts, which never wait on it.
  */
 export function useAccountKeywords(): (id: AccountId) => boolean | null {
   const known = useQuery(keywordsQuery()).data

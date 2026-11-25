@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { bodiesTo, type FakeMailState, HOME, messageItem, stubMailApi, WORK } from '@/test/fake-mail-api.ts'
 import { renderMailApp } from '@/test/mail-app.tsx'
 
-const UNREAD = { seen: false, flagged: false, answered: false, forwarded: false, draft: false, to_sort: false }
+const UNREAD = { seen: false, flagged: false, answered: false, forwarded: false, draft: false, handled: false }
 const inbox = Array.from({ length: 3 }, (_, index) => messageItem(WORK, 'INBOX', 10 - index, { flags: UNREAD }))
 const [, , third] = inbox
 const MOVE_TO_ACCOUNT = '/api/v1/mail/messages/move-to-account'

@@ -51,17 +51,17 @@ describe('the search box', () => {
     await userEvent.click(screen.getByRole('checkbox', { name: 'Unread' }))
     expect(box()).toHaveValue('from:ada "Q1 report"')
     await userEvent.type(screen.getByLabelText('Subject'), 'board meeting')
-    await userEvent.click(screen.getByRole('checkbox', { name: 'To sort' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Handled' }))
     await userEvent.selectOptions(screen.getByLabelText('Account'), 'home')
-    expect(box()).toHaveValue('from:ada "Q1 report" subject:"board meeting" is:to_sort account:home')
-    expect(chips()).toEqual(['From: ada', 'Q1 report', 'Subject: board meeting', 'To sort', 'Account: home'])
+    expect(box()).toHaveValue('from:ada "Q1 report" subject:"board meeting" is:handled account:home')
+    expect(chips()).toEqual(['From: ada', 'Q1 report', 'Subject: board meeting', 'Handled', 'Account: home'])
 
     await userEvent.clear(screen.getByLabelText('From'))
-    expect(box()).toHaveValue('"Q1 report" subject:"board meeting" is:to_sort account:home')
+    expect(box()).toHaveValue('"Q1 report" subject:"board meeting" is:handled account:home')
     await userEvent.click(screen.getByRole('button', { name: 'Search' }))
     await waitFor(() => {
       expect(bodiesTo(fetchMock, '/api/v1/mail/search')).toEqual([
-        { account: HOME, folder: 'INBOX', text: 'Q1 report', subject: 'board meeting', to_sort: true },
+        { account: HOME, folder: 'INBOX', text: 'Q1 report', subject: 'board meeting', handled: true },
       ])
     })
   })
@@ -81,7 +81,7 @@ describe('the search box', () => {
     await screen.findByText('From work')
 
     await userEvent.type(box(), 'is:starred')
-    expect(screen.getByText('is: takes unread, read, flagged, to_sort.')).toBeInTheDocument()
+    expect(screen.getByText('is: takes unread, read, flagged, handled.')).toBeInTheDocument()
     expect(box()).toHaveAttribute('aria-invalid', 'true')
     await userEvent.click(screen.getByRole('button', { name: 'Search' }))
     await userEvent.clear(box())

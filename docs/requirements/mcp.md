@@ -72,7 +72,8 @@ for all accounts naming it are left as they are and listed in `all_accounts_rule
 `folder_delete` deletes the folder's mail **for good**: its `messages` is the `total` from
 `folders_list(counts=true)` the user confirmed, and a changed count is refused, deleting nothing,
 with the new count and the instruction to confirm it with the user before calling again. A
-`folder_in_use` refusal names the rule sets and gives their ids. `mail_organize` keeps its promise
+`folder_in_use` refusal names the rule sets and gives their ids; the label an account keeps Handled
+as is not deleted (`folder_is_handled`). `mail_organize` keeps its promise
 of never deleting permanently: deleting a folder is never a step of organizing.
 
 The `mail_transfer` tools (a `preview` group, served only when named) move messages to a folder
@@ -217,16 +218,16 @@ service sees only what is in it:
 
 | Group (status, default) | Tool | Annotations |
 | --- | --- | --- |
-| `filters_read` or any `mail_*` group (whichever is on) | `accounts_list` (`id`, a number, `name` (the account's own, null when unnamed), `display_name` (its name, else its login), login, `has_password`, `run_filters` where the instance runs filters, `send_mode`, `identities`, `keywords`: whether the server keeps keywords, so To sort can be used, null when it did not answer within 5 s) | readOnly, idempotent, openWorld |
+| `filters_read` or any `mail_*` group (whichever is on) | `accounts_list` (`id`, a number, `name` (the account's own, null when unnamed), `display_name` (its name, else its login), login, `has_password`, `run_filters` where the instance runs filters, `send_mode`, `identities`, `handled`: what it keeps [Handled](filters.md#handled) as, `keywords`: whether the server keeps keywords, so a Handled keyword can be used, null when it did not answer within 5 s) | readOnly, idempotent, openWorld |
 | | `folders_list` (`path` as the mail tools take it, `delimiter`, `segments`, `role`; `counts=true` adds unread and total) | readOnly, idempotent, openWorld |
 | `filters_read` (stable, on) | `filter_schema`, `rule_sets_list` (`account_id` an id or `all`, the rule sets for all accounts), `rule_set_get` (with its `disabled_reason` and its filters, each with `matches_30d` and `updated_at`, [`filters.md`](filters.md)), `runs_list` (each run with the `account_id` it ran on) | readOnly, idempotent |
-| `filters_write` (stable, on) | `rule_set_create` (`account_id` `all`: a [rule set for all accounts](filters.md), on INBOX only), `rule_set_update` (both take `marker`: `none`, `star` or `to_sort`, the last refused as `to_sort_unsupported` where the account keeps no keywords; their descriptions tell the agent to pick To sort for "only marked" where it does, else the star), `filter_add`, `filter_update` (each refusing the To sort actions the same way, a sender criterion on a public mail provider's whole domain as `public_provider_domain`, and `in_thread` as `hidden_criterion`, [`filters.md`](filters.md#filter-drafts)), `filters_reorder` | none |
+| `filters_write` (stable, on) | `rule_set_create` (`account_id` `all`: a [rule set for all accounts](filters.md), on INBOX only), `rule_set_update` (both take `marker`: `none`, `handled` or `starred`, Handled refused as `handled_unsupported` where the account's server cannot keep it; their descriptions tell the agent to pick Handled for "only marked"), `filter_add`, `filter_update` (each refusing the actions on Handled, or the former To sort keyword, the same way, a sender criterion on a public mail provider's whole domain as `public_provider_domain`, and `in_thread` as `hidden_criterion`, [`filters.md`](filters.md#filter-drafts)), `filters_reorder` | none |
 | | `rule_set_disable` | idempotent |
 | | `rule_set_delete`, `filter_delete` | destructive |
 | `filters_run` (stable, on) | `dry_run` (`account_id` for a rule set for all accounts) | readOnly, openWorld |
 | | `rule_set_enable`, `run_now` (answers the queued run; for a rule set for all accounts, an optional `account_id`, and `{"runs": [...]}`, a run per account without one), `account_run_filters(account_id, on)` | destructive |
 | `mail_read` (stable, on) | `messages_list`, `messages_search`, `message_read`, `thread_read`, `attachment_read` | readOnly, idempotent, openWorld |
-| `mail_organize` (stable, on) | `messages_move(refs, folder, source_folder?)`, `messages_flag(refs, seen?, flagged?, to_sort?)` | openWorld (flag also idempotent) |
+| `mail_organize` (stable, on) | `messages_move(refs, folder, source_folder?)`, `messages_flag(refs, seen?, flagged?, handled?)` | openWorld (flag also idempotent) |
 | | `messages_trash(refs, source_folder?)` | destructive, openWorld |
 | | `thread_mute(ref)`, muting the message's conversation ([`filters.md`](filters.md#muted-threads)); the answer is the muted thread, with `run_filters` | idempotent, openWorld |
 | | `muted_threads_list(account_id?)` | readOnly, idempotent |

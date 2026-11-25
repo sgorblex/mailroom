@@ -55,9 +55,9 @@ class MailSummary(BaseModel):
     """All inboxes: the sum of the counts known, with those of INBOX's subfolders when the user's
     takes them in."""
     starred: int
-    to_sort: int
-    """Messages starred, and marked To sort, in the indexed folders of every account (under an
-    age limit, those since its day)."""
+    handled: int
+    """Messages starred, and marked Handled as each account keeps it, in the indexed folders of
+    every account (under an age limit, those since its day)."""
     snoozed: int
     snoozed_today: int
     """Snoozed messages, and those of them coming back before the user's midnight."""
@@ -115,7 +115,7 @@ def mail_summary(
     total = sum(unread.values())
     if inbox_subfolders_of(db, user_id):
         total += inbox_subfolders_unread(db, user_id, ids)
-    starred, to_sort = marked(db, user_id, ids)
+    starred, handled = marked(db, user_id, ids)
     tomorrow = _next_midnight(now, zone)
     snoozed, snoozed_today = db.execute(
         select(func.count(), func.count().filter(Snooze.until < tomorrow)).where(
@@ -142,7 +142,7 @@ def mail_summary(
         ],
         unread=total,
         starred=starred,
-        to_sort=to_sort,
+        handled=handled,
         snoozed=snoozed,
         snoozed_today=snoozed_today,
         scheduled=scheduled,

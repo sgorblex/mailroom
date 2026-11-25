@@ -16,6 +16,7 @@ from mailroom.filters.transfers import forget_target
 from mailroom.mail.vacation import forget_vacation
 from mailroom.models import (
     AccountFilterSettings,
+    AccountHandled,
     ApiToken,
     FilterRun,
     IdentitySignature,
@@ -71,6 +72,11 @@ def forget_account(store: AccountStore, db: Session, user_id: int, account_id: i
         delete(AccountFilterSettings).where(
             AccountFilterSettings.user_id == user_id,
             AccountFilterSettings.account_id == account_id,
+        )
+    )
+    db.execute(
+        delete(AccountHandled).where(
+            AccountHandled.user_id == user_id, AccountHandled.account_id == account_id
         )
     )
     forget_target(db, user_id, account_id)
@@ -163,6 +169,7 @@ def forget_user_accounts(db: Session, user_id: int) -> None:
     mailroom-core's (settings with their history, sealed passwords, send log). Raises
     ``SettingsBusy`` while a save of their accounts holds them."""
     db.execute(delete(AccountFilterSettings).where(AccountFilterSettings.user_id == user_id))
+    db.execute(delete(AccountHandled).where(AccountHandled.user_id == user_id))
     db.execute(delete(RuleSet).where(RuleSet.user_id == user_id))
     db.execute(delete(MutedThread).where(MutedThread.user_id == user_id))
     db.execute(delete(TransferLedger).where(TransferLedger.user_id == user_id))

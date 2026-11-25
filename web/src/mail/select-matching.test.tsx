@@ -87,7 +87,7 @@ describe('select all matching', () => {
     expect(archive).toHaveAttribute('aria-disabled', 'true')
     expect(archive).toHaveAttribute(
       'title',
-      'Archive (e): only Move, Trash, star, To sort and read marks act on every matching message',
+      'Archive (e): only Move, Trash, star, Handled and read marks act on every matching message',
     )
     await userEvent.keyboard('e')
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
@@ -115,7 +115,7 @@ describe('select all matching', () => {
 
     await selectMatching()
     const toolbar = await selection()
-    for (const name of ['Star', 'Unstar', 'Mark To sort', 'Mark sorted', 'Mark as read', 'Mark as unread']) {
+    for (const name of ['Star', 'Unstar', 'Mark Handled', 'Clear Handled', 'Mark as read', 'Mark as unread']) {
       expect(within(toolbar).getByRole('button', { name: new RegExp(`^${name}`) })).not.toHaveAttribute('aria-disabled', 'true')
     }
     await userEvent.click(within(toolbar).getByRole('button', { name: /^Unstar/ }))
@@ -131,20 +131,20 @@ describe('select all matching', () => {
     expect(bodiesTo(fetchMock, BULK)).toEqual([{ ...scope, action: unstar, expected: 30 }])
   })
 
-  it('marks them sorted, with the To sort mark cleared as the action', async () => {
+  it('clears Handled on them as the action', async () => {
     const fetchMock = stubMailApi(state({ matching: { total: 1200, changing: 4 } }))
     renderMailApp('/mail')
 
     await selectMatching()
-    await userEvent.click(within(await selection()).getByRole('button', { name: /^Mark sorted/ }))
+    await userEvent.click(within(await selection()).getByRole('button', { name: /^Clear Handled/ }))
     const dialog = await screen.findByRole('dialog', { name: 'Act on every matching message' })
-    expect(await within(dialog).findByText(/^Mark sorted: 4 matching messages/)).toBeInTheDocument()
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Mark sorted' }))
+    expect(await within(dialog).findByText(/^Clear Handled: 4 matching messages/)).toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Clear Handled' }))
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     })
     expect(bodiesTo(fetchMock, BULK)).toEqual([
-      { account: WORK, folder: 'INBOX', action: { kind: 'flag', to_sort: false }, expected: 4 },
+      { account: WORK, folder: 'INBOX', action: { kind: 'flag', handled: false }, expected: 4 },
     ])
   })
 

@@ -14,7 +14,7 @@ const BAR: BarItem[] = [
   { id: 'move', width: 32 },
   { id: 'moveToAccount', width: 32 },
   { id: 'star', width: 32 },
-  { id: 'toSort', width: 32 },
+  { id: 'handled', width: 32 },
   { id: 'markUnread', width: 32 },
   { id: 'fixed 12', width: 32 },
 ]
@@ -26,15 +26,15 @@ describe('the action bar overflow', () => {
     expect(overflowingActions(BAR, FULL, 4)).toEqual(new Set())
   })
 
-  it('gives up To sort first, then spam, the moves, Reply all and Forward', () => {
-    expect(overflowingActions(BAR, FULL - 1, 4)).toEqual(new Set(['toSort']))
-    expect(overflowingActions(BAR, FULL - 36 - 1, 4)).toEqual(new Set(['toSort', 'reportSpam']))
-    expect(overflowingActions(BAR, FULL - 3 * 36 - 1, 4)).toEqual(new Set(['toSort', 'reportSpam', 'move', 'moveToAccount']))
+  it('gives up Handled first, then spam, the moves, Reply all and Forward', () => {
+    expect(overflowingActions(BAR, FULL - 1, 4)).toEqual(new Set(['handled']))
+    expect(overflowingActions(BAR, FULL - 36 - 1, 4)).toEqual(new Set(['handled', 'reportSpam']))
+    expect(overflowingActions(BAR, FULL - 3 * 36 - 1, 4)).toEqual(new Set(['handled', 'reportSpam', 'move', 'moveToAccount']))
     expect(overflowingActions(BAR, FULL - 4 * 36 - 1, 4)).toEqual(
-      new Set(['toSort', 'reportSpam', 'move', 'moveToAccount', 'replyAll']),
+      new Set(['handled', 'reportSpam', 'move', 'moveToAccount', 'replyAll']),
     )
     expect(overflowingActions(BAR, FULL - 4 * 36 - 104 - 1, 4)).toEqual(
-      new Set(['toSort', 'reportSpam', 'move', 'moveToAccount', 'replyAll', 'forward']),
+      new Set(['handled', 'reportSpam', 'move', 'moveToAccount', 'replyAll', 'forward']),
     )
   })
 
@@ -42,19 +42,19 @@ describe('the action bar overflow', () => {
     // Reply, the separator, Archive, Trash, Star, Mark unread and More, with their gaps.
     const kept = 80 + 9 + 5 * 32 + 6 * 4
     const out = overflowingActions(BAR, kept, 4)
-    expect(out).toEqual(new Set(['toSort', 'reportSpam', 'move', 'moveToAccount', 'replyAll', 'forward']))
+    expect(out).toEqual(new Set(['handled', 'reportSpam', 'move', 'moveToAccount', 'replyAll', 'forward']))
   })
 
   it('gives those up too on a bar too narrow even for them, but never Reply or More', () => {
     const out = overflowingActions(BAR, 100, 4)
     expect(out).toEqual(
-      new Set(['toSort', 'reportSpam', 'move', 'moveToAccount', 'replyAll', 'forward', 'markUnread', 'star', 'trash', 'archive']),
+      new Set(['handled', 'reportSpam', 'move', 'moveToAccount', 'replyAll', 'forward', 'markUnread', 'star', 'trash', 'archive']),
     )
     expect(out.has('reply')).toBe(false)
   })
 
   it('skips the actions the bar does not list', () => {
-    const bar = BAR.filter((item) => item.id !== 'toSort' && item.id !== 'reportSpam')
+    const bar = BAR.filter((item) => item.id !== 'handled' && item.id !== 'reportSpam')
     expect(overflowingActions(bar, FULL - 2 * 36 - 1, 4)).toEqual(new Set(['move']))
   })
 })

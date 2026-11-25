@@ -100,8 +100,8 @@ def _to_fixed_1(value: float) -> str:
     return str(Decimal(value).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
 
 
-def _format_flags(flags: AbstractSet[str] | None, has_attachments: bool) -> str:
-    """Unread, flagged, to sort, answered, forwarded, draft, has attachments: the flags worth a
+def _format_flags(flags: AbstractSet[str] | None, has_attachments: bool, handled: bool) -> str:
+    """Unread, flagged, handled, answered, forwarded, draft, has attachments: the flags worth a
     glance in a list. Flags are compared ignoring case, as IMAP does."""
     lowered = {flag.lower() for flag in flags or ()}
 
@@ -111,10 +111,9 @@ def _format_flags(flags: AbstractSet[str] | None, has_attachments: bool) -> str:
     shown = [
         "unread" if not has("\\Seen") else "",
         "flagged" if has("\\Flagged") else "",
-        # mailroom_core.mail.TO_SORT: render sits below mail.
-        "to sort" if has("$MailroomSort") else "",
+        "handled" if handled else "",
         "answered" if has("\\Answered") else "",
-        # mailroom_core.mail.FORWARDED, likewise.
+        # mailroom_core.mail.FORWARDED: render sits below mail.
         "forwarded" if has("$Forwarded") else "",
         "draft" if has("\\Draft") else "",
         "attachments" if has_attachments else "",
@@ -136,6 +135,7 @@ class ListItem:
     preview: str | None = None
     folder: str | None = None
     """Shown after the ref when set: a page over a folder and its subfolders names each one's."""
+    handled: bool = False
 
 
 def list_line(item: ListItem, time_zone: str) -> str:
@@ -149,7 +149,7 @@ def list_line(item: ListItem, time_zone: str) -> str:
         format_date(item.date, time_zone),
         format_addresses(item.sender) or "(unknown sender)",
         subject,
-        _format_flags(item.flags, item.has_attachments),
+        _format_flags(item.flags, item.has_attachments, item.handled),
         preview,
     ]
     return " · ".join(value for value in fields if value)

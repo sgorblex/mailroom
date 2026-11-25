@@ -1,4 +1,5 @@
-"""Actions that set or clear IMAP flags (read, starred, answered) and the To sort keyword."""
+"""Actions that set or clear IMAP flags (read, starred, answered) and the Handled mark and the
+To sort keyword it replaced."""
 
 from __future__ import annotations
 
@@ -6,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from mailroom_core.filters.actions.action import Action
 from mailroom_core.filters.flags import Flag
-from mailroom_core.mail import store_flags
+from mailroom_core.mail import MailError, store_flags, store_handled
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -102,8 +103,47 @@ class MarkAsUnanswered(RemoveFlag):
         super().__init__(Flag.ANSWERED, "mark as unanswered")
 
 
+class MarkHandled(Action):
+    """Mark messages Handled, as the account keeps it; `unsupported` where it cannot."""
+
+    spec_type = "mark_handled"
+
+    def __init__(self) -> None:
+        """Set the account's Handled mark."""
+
+        def func(selected: Selected, uids: Sequence[int]) -> None:
+            selected.changes()
+            store_handled(selected.context, uids, marked=True)
+
+        super().__init__(func, name="mark handled")
+
+
+class UnmarkHandled(Action):
+    """Clear the Handled mark, as the account keeps it; `unsupported` where it cannot. Refused
+    in the folder of the label it is kept as, which clearing it would take the messages out of,
+    before the actions that follow."""
+
+    spec_type = "unmark_handled"
+
+    def __init__(self) -> None:
+        """Clear the account's Handled mark."""
+
+        def func(selected: Selected, uids: Sequence[int]) -> None:
+            context = selected.context
+            mark = context.handled
+            if mark.kind == "label" and mark.name == context.path:
+                raise MailError(
+                    "invalid_argument", "A filter cannot clear Handled in its own label's folder."
+                )
+            selected.changes()
+            store_handled(context, uids, marked=False)
+
+        super().__init__(func, name="unmark handled")
+
+
 class MarkToSort(AddFlag):
-    """Mark messages To sort; `unsupported` in a folder that keeps no keywords."""
+    """Set the To sort keyword, whatever the account keeps Handled as; `unsupported` in a folder
+    that keeps no keywords."""
 
     spec_type = "mark_to_sort"
 
@@ -113,7 +153,7 @@ class MarkToSort(AddFlag):
 
 
 class UnmarkToSort(RemoveFlag):
-    """Clear the To sort mark; `unsupported` in a folder that keeps no keywords."""
+    """Clear the To sort keyword; `unsupported` in a folder that keeps no keywords."""
 
     spec_type = "unmark_to_sort"
 

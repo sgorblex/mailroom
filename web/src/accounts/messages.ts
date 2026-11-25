@@ -14,6 +14,10 @@ export function accountErrorMessage(t: TFunction, failure: unknown, fallback: st
         return t('accountErrors.accountsChanged')
       case 'accounts_busy':
         return t('accountErrors.accountsBusy')
+      case 'handled_unsupported':
+        return t('accountErrors.handledUnsupported')
+      case 'handled_rule_sets':
+        return t('accountErrors.handledRuleSets')
       case 'secrets_key_missing':
         return t('accountErrors.secretsKeyMissing')
     }
@@ -57,6 +61,7 @@ export const MAIL_CODES: Record<string, string> = {
   folder_exists: 'mailErrors.folderExists',
   folder_changed: 'mailErrors.folderChanged',
   folder_in_use: 'mailErrors.folderInUse',
+  folder_is_handled: 'mailErrors.folderIsHandled',
   not_as_built: 'mailErrors.notAsBuilt',
 }
 

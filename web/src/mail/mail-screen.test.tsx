@@ -11,7 +11,7 @@ import { renderMailApp } from '@/test/mail-app.tsx'
 import { HTML_SANDBOX } from './html-body.tsx'
 
 const inbox = Array.from({ length: 30 }, (_, index) =>
-  messageItem(WORK, 'INBOX', 100 - index, index === 0 ? { flags: { seen: false, flagged: true, answered: false, forwarded: false, draft: false, to_sort: false } } : {}),
+  messageItem(WORK, 'INBOX', 100 - index, index === 0 ? { flags: { seen: false, flagged: true, answered: false, forwarded: false, draft: false, handled: false } } : {}),
 )
 const plain = inbox[1] ?? messageItem(WORK, 'INBOX', 0)
 const html = inbox[2] ?? messageItem(WORK, 'INBOX', 0)
@@ -119,7 +119,7 @@ describe('MailScreen', () => {
   })
 
   it('marks the rows of messages answered or forwarded', async () => {
-    const flags = { seen: true, flagged: false, draft: false, to_sort: false }
+    const flags = { seen: true, flagged: false, draft: false, handled: false }
     const messages = {
       '1/INBOX': [
         messageItem(WORK, 'INBOX', 3, { subject: 'Replied', flags: { ...flags, answered: true, forwarded: false } }),
@@ -322,12 +322,12 @@ describe('MailScreen', () => {
     if (row === null) {
       throw new Error('no row')
     }
-    // Not known yet: To sort is offered.
-    expect(within(row).getByRole('button', { name: 'To sort' })).toHaveAttribute('aria-disabled', 'false')
+    // Not known yet: Handled is offered.
+    expect(within(row).getByRole('button', { name: 'Handled' })).toHaveAttribute('aria-disabled', 'false')
     expect(queriesTo(fetchMock, '/api/v1/accounts/keywords')).toHaveLength(1)
     keywordsIn()
     await waitFor(() => {
-      expect(within(row).getByRole('button', { name: 'To sort' })).toHaveAttribute('aria-disabled', 'true')
+      expect(within(row).getByRole('button', { name: 'Handled' })).toHaveAttribute('aria-disabled', 'true')
     })
   })
 

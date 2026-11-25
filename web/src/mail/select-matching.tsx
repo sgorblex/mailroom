@@ -102,12 +102,12 @@ function actionName(t: TFunction, action: MatchingAction): string {
     case 'move':
       return t('matching.moveTo', { folder: folderName(t, action.folder) })
     case 'flag': {
-      const { flagged, to_sort: toSort, seen } = action.change
+      const { flagged, handled: handled, seen } = action.change
       if (flagged !== undefined) {
         return t(flagged ? 'triage.star' : 'triage.unstar')
       }
-      if (toSort !== undefined) {
-        return t(toSort ? 'triage.toSort' : 'triage.sorted')
+      if (handled !== undefined) {
+        return t(handled ? 'triage.markHandled' : 'triage.unmarkHandled')
       }
       return t(seen === true ? 'triage.markRead' : 'triage.markUnread')
     }

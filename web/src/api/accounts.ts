@@ -41,6 +41,8 @@ export const accountSchema = z.object({
   identities: z.array(identitySchema),
   auto_approve: z.array(z.string()),
   has_password: z.boolean(),
+  /** What the Handled mark is kept as (`readHandled`); absent is the star. */
+  handled: z.string().optional(),
   /** Absent where the instance does not run filters. */
   run_filters: z.boolean().optional(),
   /** The user's limit on a draft's attachments, at most 25; absent from an API older than slice C. */
@@ -131,7 +133,7 @@ export function findSettings(address: string, signal?: AbortSignal): Promise<Aut
 
 const accountKeywordsSchema = z.object({
   account_id: accountIdSchema,
-  /** Whether the server keeps keywords, so messages can be marked To sort; `null` when it did not say. */
+  /** Whether the server keeps keywords, so Handled can be kept as one; `null` when it did not say. */
   keywords: z.boolean().nullable(),
 })
 export type AccountKeywords = z.infer<typeof accountKeywordsSchema>
@@ -142,6 +144,23 @@ export type AccountKeywords = z.infer<typeof accountKeywordsSchema>
  */
 export function listAccountKeywords(signal?: AbortSignal): Promise<AccountKeywords[]> {
   return apiGetJson(`${base}/keywords`, { init: { signal }, schema: z.array(accountKeywordsSchema) })
+}
+
+const handledSettingSchema = z.object({
+  mark: z.string(),
+  /** The rule sets whose meaning follows it: the account's, and those for all accounts. */
+  rule_sets: z.array(z.object({ id: z.number(), account_id: z.union([accountIdSchema, z.literal('all')]), name: z.string(), enabled: z.boolean() })),
+})
+export type HandledSetting = z.infer<typeof handledSettingSchema>
+
+/** What the account keeps the Handled mark as (`docs/requirements/filters.md`, *Handled*). */
+export function accountHandled(id: AccountId, signal?: AbortSignal): Promise<HandledSetting> {
+  return apiGetJson(`${one(id)}/handled`, { init: { signal }, schema: handledSettingSchema })
+}
+
+/** Keeps the mark; `ruleSets`: those whose meaning changes, as the user was shown them. */
+export function saveHandled(id: AccountId, mark: string, ruleSets: number[]): Promise<HandledSetting> {
+  return apiPutJson(`${one(id)}/handled`, { mark, rule_sets: ruleSets }, { schema: handledSettingSchema })
 }
 
 const usageSchema = z.object({ used: z.number(), limit: z.number() })

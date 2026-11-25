@@ -347,7 +347,7 @@ Older than milestone E, seen in its browser check; fix before batch 11.
 - [x] **External sign-in only** — an admin's instance setting, offered when an OIDC provider is
       configured: sign-in through the provider alone, passwords refused and hidden, with an
       environment override in case the provider breaks.
-- [ ] **Handled mark** — *To sort* becomes *Handled* ("dealt with, the filters may sort it"), kept
+- [x] **Handled mark** — *To sort* becomes *Handled* ("dealt with, the filters may sort it"), kept
       per account as the star, an IMAP keyword or a Gmail label; rule sets marked by Handled or by
       the star, and no rule set acting on different mail after the migration.
 - [ ] **Row actions chosen** — which actions a row shows on hover, and in the swipe menu on touch,

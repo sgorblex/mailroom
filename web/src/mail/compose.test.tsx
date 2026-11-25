@@ -713,7 +713,7 @@ describe('drafts', () => {
     subject: 'Half written',
     text: 'So far',
   })
-  const item = messageItem(WORK, 'Drafts', 40, { ref: draft.ref, subject: draft.subject, flags: { seen: false, flagged: false, answered: false, forwarded: false, draft: true, to_sort: false } })
+  const item = messageItem(WORK, 'Drafts', 40, { ref: draft.ref, subject: draft.subject, flags: { seen: false, flagged: false, answered: false, forwarded: false, draft: true, handled: false } })
   const withDraft = (fields: Partial<typeof draft> = {}): FakeMailState =>
     state({
       messages: { '1/INBOX': inbox, '1/Sent': [], '1/Drafts': [item], '2/INBOX': [] },

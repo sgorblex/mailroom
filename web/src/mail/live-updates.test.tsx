@@ -326,7 +326,7 @@ describe('live updates', () => {
     stubEventSource()
     const unread = messageItem(WORK, 'INBOX', 200, {
       subject: 'Message 200',
-      flags: { seen: false, flagged: false, answered: false, forwarded: false, draft: false, to_sort: false },
+      flags: { seen: false, flagged: false, answered: false, forwarded: false, draft: false, handled: false },
     })
     let release = (): void => undefined
     const marked = new Promise<void>((resolve) => {

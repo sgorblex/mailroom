@@ -86,7 +86,9 @@
                 "is_unstarred",
                 "is_answered",
                 "is_unanswered",
+                "is_handled",
                 "is_to_sort",
+                "is_not_handled",
                 "is_not_to_sort"
               ]
             },
@@ -469,9 +471,11 @@
                 "mark_as_read",
                 "mark_as_unanswered",
                 "mark_as_unread",
+                "mark_handled",
                 "mark_to_sort",
                 "no_op",
                 "star",
+                "unmark_handled",
                 "unmark_to_sort",
                 "unstar"
               ]

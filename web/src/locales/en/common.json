@@ -23,7 +23,7 @@
     "waiting": {
       "title": "Waiting on you",
       "starred": "Starred",
-      "toSort": "To sort",
+      "handled": "Handled",
       "snoozedToday": "Snoozed, back today",
       "snoozedAll_one": "{{count}} snoozed in all",
       "snoozedAll_other": "{{count}} snoozed in all",
@@ -384,6 +384,36 @@
     "runFiltersOn": "Run filters on {{account}}",
     "runFiltersOnHint": "The worker runs this account's filters.",
     "runFiltersOffHint": "Off: nothing runs on this account until you turn it on.",
+    "handled": {
+      "title": "Handled mark",
+      "summary": {
+        "star": "Handled is the star.",
+        "keyword": "Handled is the keyword {{name}}.",
+        "label": "Handled is the Gmail label {{name}}."
+      },
+      "change": "Change",
+      "changeFor": "Change what {{account}} keeps Handled as",
+      "formTitle": "What {{account}} keeps Handled as",
+      "intro": "Handled says you have dealt with a message, and the filters may sort it. Marks already made stay as they are.",
+      "kinds": {
+        "star": "Star",
+        "keyword": "Keyword",
+        "label": "Gmail label"
+      },
+      "hints": {
+        "star": "The star you also use to pick out messages.",
+        "keyword": "A mark of its own, on servers that keep keywords.",
+        "label": "A label of its own, on Gmail: created when first used, and left out of folder pickers."
+      },
+      "keywordName": "Keyword",
+      "labelName": "Label",
+      "ruleSets": "Saving changes what these rule sets act on:",
+      "ruleSetsAll": "{{name}} (all accounts)",
+      "noRuleSets": "No rule set uses Handled on this account.",
+      "loadFailed": "The Handled mark could not be loaded.",
+      "saveFailed": "The Handled mark was not saved.",
+      "save": "Save"
+    },
     "quota": {
       "storage": "Storage",
       "messages": "Messages",
@@ -488,7 +518,7 @@
       "trash": "Move to Trash",
       "read": "Mark as read or unread",
       "star": "Star or unstar",
-      "to_sort": "Mark To sort or sorted"
+      "handled": "Mark Handled or clear the mark"
     },
     "swipeTouch": "What swiping a message row sideways does, on a touch screen. A mouse drags the row to a folder instead.",
     "saved": "Saved.",
@@ -680,6 +710,9 @@
     "invalidAccount": "Check the highlighted fields.",
     "accountNameTaken": "Another of your accounts already has this name.",
     "accountsChanged": "Your accounts changed meanwhile. Reload the page and try again.",
+    "handledUnsupported": "This account's mail server cannot keep Handled that way.",
+    "handledInvalid": "That name cannot be used: a keyword has no spaces, quotes or parentheses, and neither it nor a label may be one the mail server already uses.",
+    "handledRuleSets": "The rule sets changed meanwhile: check them again, then save.",
     "accountsBusy": "Your accounts are being saved elsewhere. Try again.",
     "secretsKeyMissing": "The server has no secrets key (MAILROOM_SECRETS_KEY), so accounts cannot be saved or used.",
     "passwordMissing": "No stored password works for this account: edit it and enter the password again."
@@ -707,6 +740,7 @@
     "folderExists": "A folder with that name already exists there.",
     "folderChanged": "The folder changed since its messages were counted. Nothing was deleted.",
     "folderInUse": "Rule sets use this folder. Nothing was deleted.",
+    "folderIsHandled": "This account keeps Handled as this label, or one under it, and no longer could. Nothing was changed: first choose on the Accounts page what it keeps Handled as.",
     "notAsBuilt": "This draft is not as it was imported, so it can't be saved as built. Replace imports its message again."
   },
   "toolGroups": {

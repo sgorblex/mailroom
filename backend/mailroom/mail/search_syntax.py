@@ -28,10 +28,13 @@ _IS: Final = {
     "unread": ("unread", True),
     "read": ("unread", False),
     "flagged": ("flagged", True),
-    "to_sort": ("to_sort", True),
+    "handled": ("handled", True),
+    "to_sort": ("handled", True),
 }
 _HAS: Final = {"attachment": ("has_attachment", True)}
 _FLAGS: Final = {"is": _IS, "has": _HAS}
+_FORMER: Final = frozenset({"to_sort"})
+"""Values still read under their former name, which nothing offers."""
 _TWICE: Final = "Two terms ask for different values of the same criterion."
 
 
@@ -57,7 +60,7 @@ class ParsedSearch:
     unread: bool | None = None
     flagged: bool | None = None
     has_attachment: bool | None = None
-    to_sort: bool | None = None
+    handled: bool | None = None
     folder: str | None = None
     account: str | None = None
 
@@ -144,7 +147,7 @@ def parse_search(query: str) -> ParsedSearch:
         else:
             flag = _FLAGS[key].get(value.lower())
             if flag is None:
-                options = ", ".join(_FLAGS[key])
+                options = ", ".join(name for name in _FLAGS[key] if name not in _FORMER)
                 message = f"{key}: takes {options}."
                 raise SearchSyntaxError("bad_value", message)
             parsed = _set(parsed, *flag)

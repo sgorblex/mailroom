@@ -32,6 +32,13 @@ describe('the mail URL', () => {
     expect(validateMailSearch({ view: 4, q: { view: 'all_inboxes' } })).toEqual({ view: 4, q: {} })
   })
 
+  it('reads a search kept from when Handled was To sort', () => {
+    expect(validateMailSearch({ q: { account: '*', folder: '*', to_sort: true } })).toEqual({
+      q: { account: '*', folder: '*', handled: true },
+    })
+    expect(validateMailSearch({ q: { from: 'ana', to_sort: false } })).toEqual({ q: { from: 'ana' } })
+  })
+
   it('keeps a flag set false only for unread, which the syntax writes as is:read', () => {
     expect(validateMailSearch({ q: { unread: false, flagged: false, has_attachment: true } })).toEqual({
       q: { unread: false, has_attachment: true },

@@ -10,8 +10,10 @@ import pytest
 from imapclient.response_types import Address, Envelope
 
 from mailroom_core.mail import (
+    STAR,
     Folder,
     GroupResult,
+    HandledMark,
     MailboxContext,
     MailConnections,
     MailError,
@@ -99,6 +101,7 @@ class StubConnections:
         self._folders = folders
         self.selected: list[tuple[str, bool]] = []
         self.keywords = True
+        self.handled = STAR
 
     def serves(self, account_id: str) -> bool:
         return account_id == 1
@@ -120,6 +123,7 @@ class StubConnections:
                 uid_next=None,
                 account=account_id,
                 keywords=self.keywords,
+                handled_lookup=lambda: self.handled,
             )
         )
 
@@ -310,7 +314,7 @@ class TestWholeCallRefusals:
 
     def test_flags_need_a_change(self) -> None:
         connections, _client = stubbed({"MOVE"})
-        with pytest.raises(MailError, match=r"Give `seen`, `flagged`, `to_sort` or several\."):
+        with pytest.raises(MailError, match=r"Give `seen`, `flagged`, `handled` or several\."):
             set_flags(connections, [ref()])
 
 
@@ -365,7 +369,7 @@ def test_set_flags_stores_and_reads_back() -> None:
         ("remove_flags", [5], [b"\\Flagged"]),
     ]
     [group] = result.groups
-    assert group.flags == (FlagState(ref(), seen=True, flagged=False, to_sort=False),)
+    assert group.flags == (FlagState(ref(), seen=True, flagged=False, handled=False),)
     assert (group.count, group.new_refs, group.destination) == (1, (), None)
     assert [(i.seen, i.flagged, i.result) for i in result.items] == [(True, False, "ok")]
 
@@ -390,23 +394,53 @@ def test_set_flags_stores_and_reads_back() -> None:
     assert still_ok.ok  # a failing shutdown does not undo the change
 
 
-def test_set_flags_marks_to_sort_where_the_folder_keeps_keywords() -> None:
+def test_set_flags_marks_handled_where_the_folder_keeps_keywords() -> None:
     connections, client = stubbed(set())
+    stub = cast("StubConnections", connections)
+    stub.handled = HandledMark("keyword", "$MailroomSort")
     client.flags = (b"\\Seen", b"$mailroomsort")
-    result = set_flags(connections, [ref()], to_sort=True)
+    result = set_flags(connections, [ref()], handled=True)
     assert client.calls == [("add_flags", [5], [b"$MailroomSort"])]
     [group] = result.groups
-    assert group.flags == (FlagState(ref(), seen=True, flagged=False, to_sort=True),)
-    assert [(i.to_sort, i.result) for i in result.items] == [(True, "ok")]
+    assert group.flags == (FlagState(ref(), seen=True, flagged=False, handled=True),)
+    assert [(i.handled, i.result) for i in result.items] == [(True, "ok")]
 
     client.calls.clear()
-    cast("StubConnections", connections).keywords = False
-    refused = set_flags(connections, [ref()], seen=False, to_sort=False)
+    stub.keywords = False
+    refused = set_flags(connections, [ref()], seen=False, handled=False)
     [group] = refused.groups
     assert group.error is not None
     assert group.error.code == "unsupported"
     assert client.calls == []
-    assert [(i.to_sort, i.result) for i in refused.items] == [(False, "unsupported")]
+    assert [(i.handled, i.result) for i in refused.items] == [(False, "unsupported")]
+
+
+def test_set_flags_marks_handled_by_the_star() -> None:
+    connections, client = stubbed(set())
+    client.flags = (b"\\Flagged",)
+    cast("StubConnections", connections).keywords = False
+    result = set_flags(connections, [ref()], handled=True)
+    assert client.calls == [("add_flags", [5], [b"\\Flagged"])]
+    [group] = result.groups
+    assert group.flags == (FlagState(ref(), seen=False, flagged=True, handled=True),)
+
+    client.calls.clear()
+    [both] = set_flags(connections, [ref()], flagged=False, handled=False).groups
+    assert both.ok
+    client.calls.clear()
+    [apart] = set_flags(connections, [ref()], seen=True, flagged=True, handled=False).groups
+    assert apart.error is not None
+    assert apart.error.code == "invalid_argument"
+    assert client.calls == []
+
+
+def test_set_flags_refuses_a_label_off_gmail() -> None:
+    connections, client = stubbed(set())
+    cast("StubConnections", connections).handled = HandledMark("label", "Handled")
+    [group] = set_flags(connections, [ref()], seen=True, handled=True).groups
+    assert group.error is not None
+    assert group.error.code == "unsupported"
+    assert client.calls == []
 
 
 def test_audit_outcome() -> None:
@@ -444,7 +478,7 @@ def test_organize_text() -> None:
             "The spam filter learns them as not spam."
         ),
         "1/Projects: No such message or part. 1 of these …",
-        "1/Sent: updated 2: r1 read, flagged, to sort; r2 (flags not read back)",
+        "1/Sent: updated 2: r1 read, flagged, handled; r2 (flags not read back)",
         "1/Lists: updated 1: r3 unread",
     ]
 

@@ -15,16 +15,15 @@ in the browser, tried with a dry run, and run by the worker. Product scope:
   - `manual` — runs only on *Run now*.
 
   Any enabled rule set can also be run now. **Only marked** restricts a rule set to the messages
-  with its **marker**, which it clears once handled (the filter engine's `marked_only`): the star
-  (`\Flagged`) or [**To sort**](../GLOSSARY.md) (the keyword `$MailroomSort`); `none`, the
-  default, is every message. To sort is taken only on an account whose server keeps keywords
-  (`GET /api/v1/accounts/keywords`): elsewhere the web greys it out with the reason, and the API
-  and MCP refuse it (`to_sort_unsupported`), checked when a rule set is created with it or changed
-  to it. The same holds for a filter's `mark_to_sort` and `unmark_to_sort` actions, checked when a
-  filter is added with one or its spec changed to one; the To sort criteria are always taken
-  (there they match nothing). Ticking *Only marked* in the web picks To sort where the account keeps keywords, else
-  the star; the API and MCP always take the marker as given. Rule sets from before markers keep
-  the star.
+  with its **marker**, which it clears once its filters acted (the filter engine's
+  `marked_only`): `handled`, [**Handled**](#handled) as the account keeps it when the rule set
+  runs, or `starred`, the star (`\Flagged`) whatever that is; `none`, the default, is every
+  message. Handled is taken only where the account's server can keep its mark: elsewhere the web
+  greys it out with the reason, and the API and MCP refuse it (`handled_unsupported`), checked
+  when a rule set is created with it or changed to it, and so are a filter's `mark_handled` and
+  `unmark_handled` actions, when a filter is added with one or its spec changed to one; the
+  Handled criteria are always taken (there they match nothing). Ticking *Only marked* in the web
+  picks Handled; the API and MCP take the marker as given (`star`, its former name, as `starred`).
 - A **rule set for all accounts** (`account_id` `all`) belongs to no one account: it runs on
   **INBOX only** (another folder is refused, `all_accounts_inbox_only`) of **each account whose
   *Run filters* is on**, as that account's own rule sets do, with no exemption: a run per account,
@@ -34,15 +33,15 @@ in the browser, tried with a dry run, and run by the worker. Product scope:
   fails leaves the others to run. Actions by **role** work on every account (`trash` without a
   folder, `junk`); a `move_to` or `trash` naming a folder fails `mailbox_missing` on an account
   without that folder, recorded in that account's run and its audit trail, and no folder is ever
-  created. To sort, being per account, is refused for it as marker and as action
-  (`to_sort_unsupported`; the star works everywhere). Listed apart from every account's own
+  created. Handled is each account's own: where a server cannot keep its mark, the marker
+  matches nothing there. To sort actions are refused for it (`to_sort_unsupported`). Listed apart from every account's own
   (`GET /accounts/all/rule-sets`). A dry run and *Run now* take an account (`account_id`): a dry
   run of one needs it (`account_required`); *Run now* without it queues a run on each account
   whose *Run filters* is on, and is refused when none is; it answers the list of runs it
   queued, where a rule set of one account's *Run now* answers its one run. Naming another
   account than a rule set's own is refused (`wrong_account`). The web's Filters page lists them in
   an *All accounts* section after the accounts'; their editor keeps the folder at INBOX, greys out
-  To sort and *Move to another account*, and takes a `move_to` folder as a typed path, and a
+  *Move to another account*, and takes a `move_to` folder as a typed path, and a
   `trash` folder either by role (each account's own) or as a typed path, a path saying that an
   account without it fails the move and that no folder is created. Its dry run asks which account to try on; *Run now* runs on each
   account whose *Run filters* is on; the run history names each run's account.
@@ -129,6 +128,46 @@ in the browser, tried with a dry run, and run by the worker. Product scope:
   start. A failed run keeps the report of the filters that finished. A run's report keeps the
   first 200 matches per filter, with the total. A run cut short by the worker stopping is closed
   as `interrupted` when the worker starts again.
+
+### Handled
+
+**Handled** marks a message as dealt with: the filters may sort it. Each account keeps it as
+
+- `star`, the star (`\Flagged`), the default, for a new account too: with *Run filters* on, a
+  rule set for all accounts that uses Handled then reaches its starred mail, whatever the user's
+  other accounts keep Handled as, and nothing warns of it;
+- `keyword:<name>`, an IMAP keyword, `$MailroomHandled` unless another is named: an atom of 64
+  characters at most that does not mean something else (`$Forwarded`, `$Junk`…), on a server that
+  keeps keywords (never Gmail);
+- `label:<name>`, a Gmail label, `Handled` unless another is named: created when first used, left
+  out of the folder pickers, and none of Gmail's own (`INBOX`, `[Gmail]/…`). One there already in
+  another case is taken as it is spelt. It [follows a rename](#folders-renamed-or-deleted) of its
+  folder.
+
+It is chosen on the account's row of the Accounts page, or with `PUT /accounts/{id}/handled`:
+`invalid_argument` for a mark that is none of these, `handled_unsupported` where the server cannot
+keep it (it is asked), the mailbox failures when it cannot be asked. A change **leaves the marks
+already made as they are**, and changes what some rule sets mean: the account's, and those for all
+accounts, limited to Handled or with a filter that matches or sets it. The form lists them before
+it is saved, and the save names them (`rule_sets`): `409` `handled_rule_sets` when one is missing,
+and the form shows them anew. Agents cannot change it.
+
+A rule set's `handled` marker, the criteria `is_handled` / `is_not_handled` and the actions
+`mark_handled` / `unmark_handled` are the account's mark when the rule set runs; `starred`,
+`is_starred`, `star`… stay the star. A run cannot clear Handled in the folder of the label it is
+kept as (it fails `invalid_argument` before acting).
+
+**Handled replaced To sort** (the keyword `$MailroomSort`), and no rule set acts on different mail
+for it. An account whose rule sets (its own or, whichever *Run filters* says, those for all
+accounts) used the `to_sort` marker or had a filter with one of the To sort criteria or actions
+below, or whose index held a message with the keyword started as
+`keyword:$MailroomSort`, on a server without keywords too, where Handled goes on matching nothing
+until it is changed; every other account started as the star. `to_sort` markers became `handled`;
+`star` markers `handled` where every account they can run on started as the star, else `starred`.
+A filter's `is_to_sort`, `is_not_to_sort`, `has_flag` with `TO_SORT`, `mark_to_sort` and
+`unmark_to_sort` still mean that keyword whatever the account keeps; the web shows them in a filter
+that has them and offers them in no other, and the actions are refused (`to_sort_unsupported`)
+where no keywords are kept and in a rule set for all accounts.
 
 ### Muted threads
 
@@ -239,6 +278,10 @@ any of the user's accounts. Segments compare exactly, but for a leading `INBOX`,
 - **A rule set for all accounts** is not rewritten by a rename on one account, whose others may
   keep the old path: the answer lists those naming it (`all_accounts_rule_sets`, also in the audit
   record), and their moves there fail on that account until the user changes them.
+- **The label an account keeps [Handled](#handled) as** follows the rename of its folder, or of
+  one holding it, in the same transaction, so rule sets keep their meaning; a rename to a path
+  that label cannot have, and a delete of either folder, are refused first (`folder_is_handled`).
+  A rename made in another mail client is not followed.
 - **A delete** is refused while any rule set or filter action of the account, or of a rule set
   for all accounts, or a `move_to_account` to it, names the folder or one under it (`folder_in_use`, naming them), so that no rule set is left on a folder that
   is gone. A rule set created between that check and the delete, or a folder deleted by another
@@ -315,13 +358,14 @@ Schema `app`; every row belongs to the user who owns the account.
 
 | Table | Columns |
 | --- | --- |
-| `rule_set` | `id`, `user_id`, `account_id` (null: all accounts, a `user` rule set only), `folder` (`text[]`, path segments), `name`, `trigger` (`new_mail` \| `scheduled` \| `manual`), `interval_minutes` (`scheduled` only), `marker` (`none` \| `star` \| `to_sort`), `enabled`, `disabled_reason` (why the app turned it off, or null), `kind` (`user` \| `mute`, one `mute` per account at most), timestamps |
+| `rule_set` | `id`, `user_id`, `account_id` (null: all accounts, a `user` rule set only), `folder` (`text[]`, path segments), `name`, `trigger` (`new_mail` \| `scheduled` \| `manual`), `interval_minutes` (`scheduled` only), `mark` (its marker: `none` \| `starred` \| `handled`), `enabled`, `disabled_reason` (why the app turned it off, or null), `kind` (`user` \| `mute`, one `mute` per account at most), timestamps |
 | `filter` | `id`, `rule_set_id`, `position`, `name`, `enabled`, `spec` (`jsonb`, a filter spec), timestamps |
 | `transfer_ledger` | `user_id`, `account_id`, `folder` (as the server names it), `uid_validity`, `uid` (the key), `created_at`: a copy a `move_to_account` made |
 | `muted_thread` | `id`, `user_id`, `account_id`, `message_ids` (`jsonb`, at most 200), `gm_thrid` (Gmail's thread id, or null), `created_at` |
 | `filter_run` | `id`, `rule_set_id`, `account_id` (the account it ran on), `trigger`, `created_at`, `started_at` (null while queued), `finished_at`, `dry_run`, `result` (`jsonb`, the filter engine's run report), `error` |
 
-The per-account toggle is `account_filter_settings(user_id, account_id, run_filters bool default
+What an account keeps [Handled](#handled) as is `account_handled(user_id, account_id, mark)`, no row
+for the star; it goes with the account or the user. The per-account toggle is `account_filter_settings(user_id, account_id, run_filters bool default
 false)`.
 
 ## API
@@ -330,6 +374,8 @@ Under `/api/v1`, signed-in user's own data only (another user's id is a 404).
 
 | Route | Does |
 | --- | --- |
+| `GET /accounts/{id}/handled` | What the account keeps [Handled](#handled) as, and the rule sets whose meaning follows it: `{"mark", "rule_sets": [{"id", "account_id", "name", "enabled"}]}` |
+| `PUT /accounts/{id}/handled` | `{"mark", "rule_sets": [ids]}`: the mark, and the rule sets the user was shown; not for tokens |
 | `GET /accounts/{id}/folders` | An account's folders, for the folder picker (`[{"path": [segments]}]`) |
 | `GET`, `PUT /accounts/{id}/filter-settings` | Read, set *Run filters* (`{"run_filters": bool}`) |
 | `GET /filters/schema` | The filter spec's JSON Schema (`json_schema()`), without `in_thread` |
@@ -351,9 +397,10 @@ An unknown or foreign id is a `404` with a plain `detail` (`"No such rule set"`)
   expression's complaint; `400` `hidden_criterion` for a spec naming `in_thread`;
 - `400` `invalid_rule_set` (an `interval_minutes` exactly when `scheduled`), `invalid_order`;
 - a rule set for all accounts on another folder than INBOX: `400` `all_accounts_inbox_only`;
-  with To sort, as marker or action: `400` `to_sort_unsupported`;
-- creating a rule set with the `to_sort` marker, or changing one to it: `400`
-  `to_sort_unsupported` where the account's server keeps no keywords, and the mailbox failures
+  with a To sort action: `400` `to_sort_unsupported`;
+- creating a rule set with the `handled` marker, or changing one to it, and adding a filter that
+  marks or clears Handled, or changing one to: `400` `handled_unsupported` where the account's
+  server cannot keep its mark (`to_sort_unsupported` for a To sort action), and the mailbox failures
   of the account's folder listing when it cannot be asked;
 - adding a filter or changing its spec: `400` `public_provider_domain` for a `from_domain` on a
   [public mail provider](#filter-drafts);

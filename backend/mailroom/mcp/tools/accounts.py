@@ -90,10 +90,11 @@ ACCOUNT_TOOLS: Final[tuple[Tool[Any], ...]] = (
             "name (what the user named the account, null when unnamed), display_name (what to "
             "call it: its name, else its login), login, whether a password is stored, the send "
             "mode (what this app may send: off, drafts, approval or direct) and the identities it "
-            "can send as (`address`, `name`, and which is the `default`), and whether its server "
-            "keeps keywords (`keywords`: only then can messages be marked To sort; null when the "
-            "server did not answer); where the instance runs filters, also whether Run filters is "
-            "on (`run_filters`: rule sets run only on an account where it is). Call this first."
+            "can send as (`address`, `name`, and which is the `default`), what it keeps the "
+            "Handled mark as (`handled`: star, keyword:<name> or label:<name>) and whether its "
+            "server keeps keywords (`keywords`: a Handled keyword is kept only then; null when "
+            "the server did not answer); where the instance runs filters, also whether Run filters "
+            "is on (`run_filters`: rule sets run only on an account where it is). Call this first."
         ),
         group="filters_read",
         also_in=(

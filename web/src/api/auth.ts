@@ -7,7 +7,7 @@ export const DENSITIES = ['comfortable', 'compact'] as const
 export const TEXT_SIZES = ['small', 'default', 'large'] as const
 export const READING_PANES = ['right', 'below', 'off'] as const
 export const HOMES = ['dashboard', 'mail', 'filters', 'accounts', 'activity'] as const
-export const SWIPE_ACTIONS = ['none', 'archive', 'trash', 'read', 'star', 'to_sort'] as const
+export const SWIPE_ACTIONS = ['none', 'archive', 'trash', 'read', 'star', 'handled'] as const
 
 /**
  * How the app looks to the user, kept on the server so every device shows the same; choices of one

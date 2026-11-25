@@ -23,7 +23,7 @@
     "waiting": {
       "title": "Ti aspettano",
       "starred": "Speciali",
-      "toSort": "Da smistare",
+      "handled": "Gestito",
       "snoozedToday": "Posticipati, tornano oggi",
       "snoozedAll_one": "{{count}} posticipato in tutto",
       "snoozedAll_other": "{{count}} posticipati in tutto",
@@ -384,6 +384,36 @@
     "runFiltersOn": "Esegui i filtri su {{account}}",
     "runFiltersOnHint": "Il worker esegue i filtri di questo account.",
     "runFiltersOffHint": "Disattivato: su questo account non viene eseguito nulla finché non lo attivi.",
+    "handled": {
+      "title": "Segno Gestito",
+      "summary": {
+        "star": "Gestito è la stella.",
+        "keyword": "Gestito è la keyword {{name}}.",
+        "label": "Gestito è l'etichetta Gmail {{name}}."
+      },
+      "change": "Cambia",
+      "changeFor": "Cambia come {{account}} conserva Gestito",
+      "formTitle": "Come {{account}} conserva Gestito",
+      "intro": "Gestito dice che di un messaggio ti sei già occupato, e che i filtri possono smistarlo. I segni già messi restano come sono.",
+      "kinds": {
+        "star": "Stella",
+        "keyword": "Keyword",
+        "label": "Etichetta Gmail"
+      },
+      "hints": {
+        "star": "La stella con cui metti anche in evidenza i messaggi.",
+        "keyword": "Un segno a parte, sui server che conservano le keyword.",
+        "label": "Un'etichetta a parte, su Gmail: creata al primo uso e lasciata fuori dalla scelta delle cartelle."
+      },
+      "keywordName": "Keyword",
+      "labelName": "Etichetta",
+      "ruleSets": "Salvando cambia su cosa agiscono queste regole:",
+      "ruleSetsAll": "{{name}} (tutti gli account)",
+      "noRuleSets": "Nessuna regola usa Gestito su questo account.",
+      "loadFailed": "Non è stato possibile caricare il segno Gestito.",
+      "saveFailed": "Il segno Gestito non è stato salvato.",
+      "save": "Salva"
+    },
     "quota": {
       "storage": "Spazio",
       "messages": "Messaggi",
@@ -488,7 +518,7 @@
       "trash": "Sposta nel Cestino",
       "read": "Segna come letto o non letto",
       "star": "Aggiungi a Speciali o rimuovi",
-      "to_sort": "Segna da smistare o smistato"
+      "handled": "Segna come gestito o togli il segno"
     },
     "swipeTouch": "Cosa fa scorrere di lato la riga di un messaggio, su uno schermo touch. Con il mouse la riga si trascina invece su una cartella.",
     "saved": "Salvato.",
@@ -680,6 +710,9 @@
     "invalidAccount": "Controlla i campi evidenziati.",
     "accountNameTaken": "Un altro dei tuoi account ha già questo nome.",
     "accountsChanged": "I tuoi account sono cambiati nel frattempo. Ricarica la pagina e riprova.",
+    "handledUnsupported": "Il server di posta di questo account non può conservare Gestito così.",
+    "handledInvalid": "Quel nome non si può usare: una keyword non ha spazi, virgolette o parentesi, e né lei né un'etichetta possono essere una che il server usa già.",
+    "handledRuleSets": "Le regole sono cambiate nel frattempo: ricontrollale, poi salva.",
     "accountsBusy": "I tuoi account sono in salvataggio altrove. Riprova.",
     "secretsKeyMissing": "Il server non ha una chiave dei segreti (MAILROOM_SECRETS_KEY), quindi gli account non si possono salvare né usare.",
     "passwordMissing": "Nessuna password salvata funziona per questo account: modificalo e reinserisci la password."
@@ -707,6 +740,7 @@
     "folderExists": "Esiste già una cartella con quel nome in quella posizione.",
     "folderChanged": "La cartella è cambiata da quando sono stati contati i messaggi. Non è stato eliminato nulla.",
     "folderInUse": "Alcune regole usano questa cartella. Non è stato eliminato nulla.",
+    "folderIsHandled": "Questo account conserva Gestito come questa etichetta, o una al suo interno, e non potrebbe più farlo. Non è stato cambiato nulla: scegli prima, nella pagina Account, come conservarlo.",
     "notAsBuilt": "Questa bozza non è più com'era stata importata, quindi non si può salvare così com'è. Sostituisci ne importa di nuovo il messaggio."
   },
   "toolGroups": {

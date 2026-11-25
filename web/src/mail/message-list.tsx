@@ -6,7 +6,7 @@ import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual'
 import { Bookmark, Forward, Paperclip, Reply, Star } from 'lucide-react'
 
 import { AccountName } from '@/accounts/account-name.tsx'
-import { useAccountKeywords, useAccountLabel, useAccountName } from '@/accounts/accounts-context.ts'
+import { useAccountHandled, useAccountLabel, useAccountName, useCannotKeepHandled } from '@/accounts/accounts-context.ts'
 import type { MatchScope, MessageItem, MessagePage, SourceFailure } from '@/api/mail.ts'
 import { useAppearance, useTimeZone } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
@@ -415,7 +415,7 @@ export const MessageList = memo(function MessageList({
                         )}
                       >
                         <StarToggle message={message} />
-                        <ToSortToggle message={message} />
+                        <HandledToggle message={message} />
                       </span>
                     </SwipeRow>
                   </li>
@@ -540,7 +540,7 @@ function MessageMenu({
 
 /** This screen changed a flag of `message` since it was read. */
 function changedHere(message: MessageItem, flags: Flags): boolean {
-  return flags.seen !== message.flags.seen || flags.flagged !== message.flags.flagged || flags.to_sort !== message.flags.to_sort
+  return flags.seen !== message.flags.seen || flags.flagged !== message.flags.flagged || flags.handled !== message.flags.handled
 }
 
 /** Each source once: a later page reports the same failing source again. */
@@ -618,13 +618,15 @@ function StarToggle({ message }: { message: MessageItem }): ReactElement {
   const { t } = useTranslation(MAIL_NS)
   const { flagsOf, run, busy } = useTriage()
   const { flagged } = flagsOf(message)
+  const handled = useAccountHandled()(message.account_id).kind === 'star'
+  const action = flagged ? t('triage.unstar') : t('triage.star')
   return (
     <Button
       variant="ghost"
       size="icon-xs"
       // A toggle keeps one name; its state is aria-pressed. The tooltip says what a click does.
       aria-label={t('triage.star')}
-      title={flagged ? t('triage.unstar') : t('triage.star')}
+      title={handled ? t('triage.starIsHandled', { action }) : action}
       aria-pressed={flagged}
       aria-disabled={busy}
       className={cn(
@@ -643,21 +645,25 @@ function StarToggle({ message }: { message: MessageItem }): ReactElement {
 }
 
 /**
- * Marks this one message To sort, or sorted, as `StarToggle` stars it. Greyed out, saying why, where
- * the account's server keeps no keywords.
+ * Marks this one message Handled, or clears the mark, as `StarToggle` stars it. Greyed out, saying
+ * why, where the account's server cannot keep it; not there where Handled is the star.
  */
-function ToSortToggle({ message }: { message: MessageItem }): ReactElement {
+function HandledToggle({ message }: { message: MessageItem }): ReactElement | null {
   const { t } = useTranslation(MAIL_NS)
   const { flagsOf, run, busy } = useTriage()
-  const unsupported = useAccountKeywords()(message.account_id) === false
-  const marked = flagsOf(message).to_sort
-  const action = marked ? t('triage.sorted') : t('triage.toSort')
+  const unsupported = useCannotKeepHandled()(message.account_id)
+  const star = useAccountHandled()(message.account_id).kind === 'star'
+  if (star) {
+    return null
+  }
+  const marked = flagsOf(message).handled
+  const action = marked ? t('triage.unmarkHandled') : t('triage.markHandled')
   return (
     <Button
       variant="ghost"
       size="icon-xs"
-      aria-label={t('list.toSort')}
-      title={unsupported ? `${action}: ${t('triage.toSortUnsupported')}` : action}
+      aria-label={t('list.handled')}
+      title={unsupported ? `${action}: ${t('triage.handledUnsupported')}` : action}
       aria-pressed={marked}
       aria-disabled={busy || unsupported}
       className={cn(
@@ -666,7 +672,7 @@ function ToSortToggle({ message }: { message: MessageItem }): ReactElement {
       )}
       onClick={() => {
         if (!busy && !unsupported) {
-          void run({ kind: 'flag', change: { to_sort: !marked } }, [message])
+          void run({ kind: 'flag', change: { handled: !marked } }, [message])
         }
       }}
     >
@@ -677,7 +683,7 @@ function ToSortToggle({ message }: { message: MessageItem }): ReactElement {
 
 /**
  * A message's row, or a conversation's: its first writers, how many messages it has, and its
- * latest message's subject, date and opening (not in a compact row). A star and a To sort mark
+ * latest message's subject, date and opening (not in a compact row). A star and a Handled mark
  * by the date say the row's flags, which its toggles change.
  */
 function MessageRow({
@@ -690,6 +696,7 @@ function MessageRow({
   compact: boolean
 }): ReactElement {
   const { t, i18n } = useTranslation(MAIL_NS)
+  const handledMark = useAccountHandled()(message.account_id)
   const timeZone = useTimeZone()
   const today = useToday(timeZone)
   const accountLabel = useAccountLabel()
@@ -735,8 +742,8 @@ function MessageRow({
         {(conversation?.has_attachments ?? message.has_attachments) && (
           <Paperclip role="img" aria-label={t('list.hasAttachments')} className="size-3.5 shrink-0 self-center" />
         )}
-        {flags.to_sort && (
-          <Bookmark role="img" aria-label={t('list.toSort')} className="size-3 shrink-0 self-center fill-current text-primary" />
+        {flags.handled && handledMark.kind !== 'star' && (
+          <Bookmark role="img" aria-label={t('list.handled')} className="size-3 shrink-0 self-center fill-current text-primary" />
         )}
         {flags.flagged && (
           <Star role="img" aria-label={t('list.flagged')} className="size-3 shrink-0 self-center fill-current text-star" />

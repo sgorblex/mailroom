@@ -19,14 +19,14 @@ export function listedFolderOf(target: Target, ref: string): string | null | und
 
 /**
  * The flags the row does not say for every message of its conversation: read when some are
- * unread and some not; starred and To sort unless it is the one message (starred: unless none is).
+ * unread and some not; starred and Handled unless it is the one message (starred: unless none is).
  */
 export function mixedFlags(target: Target): (keyof Flags)[] {
   const conversation = target.conversation
   if (conversation === undefined || conversation.count <= 1) {
     return []
   }
-  const mixed: (keyof Flags)[] = ['to_sort']
+  const mixed: (keyof Flags)[] = ['handled']
   if (conversation.unread > 0 && conversation.unread < conversation.count) {
     mixed.push('seen')
   }

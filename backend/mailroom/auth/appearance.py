@@ -18,7 +18,7 @@ Density = Literal["comfortable", "compact"]
 TextSize = Literal["small", "default", "large"]
 ReadingPane = Literal["right", "below", "off"]
 Home = Literal["dashboard", "mail", "filters", "accounts", "activity"]
-SwipeAction = Literal["none", "archive", "trash", "read", "star", "to_sort"]
+SwipeAction = Literal["none", "archive", "trash", "read", "star", "handled"]
 
 
 class Appearance(BaseModel):

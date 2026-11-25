@@ -667,6 +667,9 @@ Code: `mailroom.auth.api_tokens`, `mailroom.api.deps`, `mailroom.api.token_acces
   startup warns, the accounts stay listed, and adding, a new password, a test or a folder listing
   answers 503 `secrets_key_missing`. The app's own `app.account_filter_settings(user_id,
   account_id, run_filters)` holds the Run filters switch; no row is off.
+  `app.account_handled(user_id, account_id, mark)` holds what it keeps
+  [Handled](filters.md#handled) as; no row is the star. A change is logged as
+  `account_handled_changed`, with the mark's kind only.
 - **Ids:** an account's id is a positive integer from mailroom-core's `account_ids` sequence,
   given when the account is added, unique across the instance and never reused; the web never
   shows it. Accounts added before were numbered by `core_0004` and the app's `202611171200`,
@@ -685,7 +688,7 @@ Code: `mailroom.auth.api_tokens`, `mailroom.api.deps`, `mailroom.api.token_acces
   servers, stored nowhere: [`mail-client.md`](mail-client.md) — *Account autoconfiguration*).
   Responses carry `has_password`, never the password. The listing logs in to no server, so
   nothing waits on a mailbox: its `keywords` is null, as in the answer to a change.
-  `GET /keywords` says whether each account's server keeps keywords (To sort), in the accounts'
+  `GET /keywords` says whether each account's server keeps keywords (a Handled keyword), in the accounts'
   order (`[{"account_id", "keywords"}]`): mailroom-core's cached `keywords`, asked of every
   account side by side for 5 s at most, null for one that cannot log in or has not answered (only the
   connection asking is cut then, never the account's other reads and writes). One

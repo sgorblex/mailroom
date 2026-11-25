@@ -7,7 +7,7 @@ import { bodiesTo, type FakeMailState, messageItem, messageView, queriesTo, stub
 import { renderMailApp } from '@/test/mail-app.tsx'
 
 const ALICE: UserJson = { username: 'alice', is_admin: false, time_zone: null, mark_read_subfolders: true, index_max_age_days: null, conversations: true, undo_send_seconds: 10 }
-const UNREAD = { seen: false, flagged: false, answered: false, forwarded: false, draft: false, to_sort: false }
+const UNREAD = { seen: false, flagged: false, answered: false, forwarded: false, draft: false, handled: false }
 
 // "plan" is three messages, the latest unread; "lunch" is one.
 const latest = messageItem(WORK, 'INBOX', 4, { subject: 'Re: plan', from: { name: 'Bob', address: 'bob@example.org' }, flags: UNREAD })

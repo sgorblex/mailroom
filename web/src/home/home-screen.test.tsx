@@ -25,7 +25,7 @@ const SUMMARY: HomeSummary = {
     ],
     unread: 3,
     starred: 5,
-    to_sort: 2,
+    handled: 2,
     snoozed: 4,
     snoozed_today: 1,
     scheduled: 2,
@@ -133,7 +133,7 @@ describe('HomeScreen', () => {
     const waiting = await screen.findByRole('region', { name: 'Waiting on you' })
     expect(within(waiting).getByRole('link', { name: /Starred/ })).toHaveTextContent('5')
     expect(href(waiting, /Starred/)).toContain('"flagged":true')
-    expect(href(waiting, /To sort/)).toContain('"to_sort":true')
+    expect(href(waiting, /Handled/)).toContain('"handled":true')
     const snoozed = within(waiting).getByRole('link', { name: /Snoozed/ })
     expect(snoozed).toHaveTextContent('Snoozed, back today4 snoozed in all1')
     expect(href(waiting, /Snoozed/)).toBe('/mail?list=snoozed')

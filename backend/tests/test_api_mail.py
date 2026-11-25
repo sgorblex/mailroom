@@ -22,6 +22,7 @@ import httpx
 import pytest
 from sqlalchemy import select
 
+from mailroom.accounts.handled import handled_mark, store_handled_mark
 from mailroom.accounts.store import load_accounts, user_store
 from mailroom.api.routes.mail.read import (
     ORIGINAL_TARGET,
@@ -47,7 +48,6 @@ from mailroom_core import mail as mail_core
 from mailroom_core.crypto import secrets_subkey
 from mailroom_core.mail import (
     MESSAGES,
-    TO_SORT,
     Capabilities,
     MailboxContext,
     MailConnections,
@@ -57,6 +57,7 @@ from mailroom_core.mail import (
     SearchQuery,
     ThreadKey,
     format_ref,
+    parse_handled,
     parse_ref,
 )
 from mailroom_core.render import SafeHtml
@@ -234,7 +235,7 @@ def test_a_folder_pages_newest_first(mailbox: Mailbox) -> None:
         "answered": False,
         "forwarded": False,
         "draft": False,
-        "to_sort": False,
+        "handled": False,
     }
     assert item["preview"] == "Body number 2."
     assert (item["account_id"], item["folder"], item["has_attachments"]) == (
@@ -295,7 +296,9 @@ def test_a_folder_lists_and_searches_with_its_subfolders(mailbox: Mailbox) -> No
 def test_search_reads_the_fields_and_leaves_junk_out(mailbox: Mailbox) -> None:
     mailbox.seed(mime("Invoice March", sender="Shop <shop@example.org>"))
     mailbox.seed(mime("Invoice April", sender="Shop <shop@example.org>"), folder="Junk")
-    mailbox.seed(mime("Holiday plans", sender="Ada <ada@example.org>"), flags=("\\Seen", TO_SORT))
+    mailbox.seed(
+        mime("Holiday plans", sender="Ada <ada@example.org>"), flags=("\\Seen", "\\Flagged")
+    )
 
     inbox = mailbox.search(account=1, subject="invoice")
     assert [m["subject"] for m in inbox["messages"]] == ["Invoice March"]
@@ -305,8 +308,8 @@ def test_search_reads_the_fields_and_leaves_junk_out(mailbox: Mailbox) -> None:
     assert [m["subject"] for m in junk["messages"]] == ["Invoice April"]
     unread = mailbox.search(unread=True)
     assert [m["subject"] for m in unread["messages"]] == ["Invoice March"]
-    to_sort = mailbox.search(to_sort=True)
-    assert [m["subject"] for m in to_sort["messages"]] == ["Holiday plans"]
+    handled = mailbox.search(handled=True)
+    assert [m["subject"] for m in handled["messages"]] == ["Holiday plans"]
     # An empty field is no criterion, nor is null.
     assert len(mailbox.search(text="", subject=None)["messages"]) == 2
 
@@ -2372,28 +2375,28 @@ def test_flags_change_read_back_and_repeat(mailbox: Mailbox) -> None:
             "new_refs": [],
             "destination_account": None,
             "junk": None,
-            "flags": [{"ref": ref, "seen": True, "flagged": False, "to_sort": False}],
+            "flags": [{"ref": ref, "seen": True, "flagged": False, "handled": False}],
             "error": None,
         }
         assert flags() == {"\\Seen"}
     [starred] = mailbox.organize("flag", refs=[ref], seen=False, flagged=True)
-    assert starred["flags"] == [{"ref": ref, "seen": False, "flagged": True, "to_sort": False}]
+    assert starred["flags"] == [{"ref": ref, "seen": False, "flagged": True, "handled": True}]
     assert flags() == {"\\Flagged"}
     [unstarred] = mailbox.organize("flag", refs=[ref], flagged=False, seen=None)
-    assert unstarred["flags"] == [{"ref": ref, "seen": False, "flagged": False, "to_sort": False}]
+    assert unstarred["flags"] == [{"ref": ref, "seen": False, "flagged": False, "handled": False}]
     assert mailbox.get(f"/messages/{ref}")["flags"]["flagged"] is False
-    [marked] = mailbox.organize("flag", refs=[ref], to_sort=True)
-    assert marked["flags"] == [{"ref": ref, "seen": False, "flagged": False, "to_sort": True}]
-    assert flags() == {TO_SORT}
-    assert mailbox.get(f"/messages/{ref}")["flags"]["to_sort"] is True
-    [cleared] = mailbox.organize("flag", refs=[ref], to_sort=False)
-    assert cleared["flags"][0]["to_sort"] is False
+    [marked] = mailbox.organize("flag", refs=[ref], handled=True)
+    assert marked["flags"] == [{"ref": ref, "seen": False, "flagged": True, "handled": True}]
+    assert flags() == {"\\Flagged"}
+    assert mailbox.get(f"/messages/{ref}")["flags"]["handled"] is True
+    [cleared] = mailbox.organize("flag", refs=[ref], handled=False)
+    assert cleared["flags"][0]["handled"] is False
     assert flags() == set()
 
     neither = mailbox.client.post(f"{MAIL}/messages/flag", json={"refs": [ref]})
     assert detail(neither) == (400, "invalid_argument")
     assert neither.json()["detail"]["message"].endswith(
-        "Give `seen`, `flagged`, `to_sort` or several."
+        "Give `seen`, `flagged`, `handled` or several."
     )
 
 
@@ -2920,6 +2923,66 @@ def test_a_folder_a_rule_set_names_is_not_deleted(
     assert [r["id"] for r in many.json()["detail"]["rule_sets"]] == [r.id for r in named[:10]]
     assert '"r9" and 1 more.' in many.json()["detail"]["message"]
     assert "Other" in server_folders(mailbox)
+
+
+def kept_handled(db_session: Session, user_id: int) -> str:
+    db_session.expire_all()
+    return str(handled_mark(db_session, user_id, 1))
+
+
+def test_the_handled_label_follows_a_rename_of_its_folder_or_its_parent(
+    mailbox: Mailbox,
+    db_session: Session,
+    user: User,
+    audited: Callable[[int], list[AuditRecord]],
+) -> None:
+    create_folders(mailbox.server, mailbox.login, "Marks", "Marks/Handled", "Mark")
+    store_handled_mark(db_session, user.id, 1, parse_handled("label:Marks/Handled"))
+    store_handled_mark(db_session, user.id, 2, parse_handled("label:Marks/Handled"))
+    db_session.commit()
+    for folder, parent, name, kept in (
+        ("Mark", None, "Other", "label:Marks/Handled"),
+        ("Marks/Handled", "Marks", "Done", "label:Marks/Done"),
+        ("Marks", None, "Triage", "label:Triage/Done"),
+        ("Triage/Done", None, "Done", "label:Done"),
+    ):
+        renamed = folder_call(mailbox, "rename", folder=folder, parent=parent, name=name)
+        assert renamed.status_code == 200, renamed.text
+        assert kept_handled(db_session, user.id) == kept
+    assert str(handled_mark(db_session, user.id, 2)) == "label:Marks/Handled"
+
+
+def test_the_handled_label_is_not_renamed_to_what_it_cannot_be_nor_deleted(
+    mailbox: Mailbox,
+    db_session: Session,
+    user: User,
+    audited: Callable[[int], list[AuditRecord]],
+) -> None:
+    create_folders(mailbox.server, mailbox.login, "Marks", "Marks/Handled", "Marks2")
+    store_handled_mark(db_session, user.id, 1, parse_handled("label:Marks/Handled"))
+    db_session.commit()
+    before = server_folders(mailbox)
+    for action, body in (
+        ("rename", {"folder": "Marks/Handled", "parent": None, "name": "x" * 65}),
+        ("rename", {"folder": "Marks", "parent": None, "name": "x" * 57}),
+        ("rename", {"folder": "Marks/Handled", "parent": None, "name": 'a "b"'}),
+        ("delete", {"folder": "Marks/Handled", "messages": 0}),
+        ("delete", {"folder": "Marks", "messages": 0}),
+    ):
+        refused = folder_call(mailbox, action, **body)
+        assert detail(refused) == (409, "folder_is_handled"), (action, body)
+    assert server_folders(mailbox) == before
+    assert kept_handled(db_session, user.id) == "label:Marks/Handled"
+    records = audited(user.id)
+    assert [(r.action, r.result) for r in records] == [
+        *[("folder_rename", "folder_is_handled")] * 3,
+        *[("folder_delete", "folder_is_handled")] * 2,
+    ]
+    assert records[0].detail == {"folder": "Marks/Handled", "destination": "x" * 65}
+
+    invalid = folder_call(mailbox, "rename", folder="Marks", parent=None, name="a/b")
+    assert detail(invalid) == (400, "invalid_argument")
+    assert folder_call(mailbox, "delete", folder="Marks2", messages=0).status_code == 200
 
 
 def test_folder_logs_carry_counts_never_names(

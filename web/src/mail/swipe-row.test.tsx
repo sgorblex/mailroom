@@ -196,13 +196,13 @@ describe('swiping a row', () => {
     const noArchive = state()
     noArchive.folders[WORK] = noArchive.folders[WORK]?.filter((folder) => folder.role !== 'archive') ?? []
     const fetchMock = stubMailApi({ ...noArchive, keywords: { [WORK]: false } })
-    renderMailApp('/mail', { user: alice({ swipe_left: 'to_sort' }) })
+    renderMailApp('/mail', { user: alice({ swipe_left: 'handled' }) })
     const row = await surface('Message 9')
 
     // No Archive folder.
     swipe(row, [20, 80, 300])
     expect(row.style.transform).toBe('')
-    // To sort on a server without keywords.
+    // Handled on a server without keywords.
     swipe(row, [-20, -80, -300])
     expect(row.style.transform).toBe('')
     await new Promise((resolve) => setTimeout(resolve, 20))

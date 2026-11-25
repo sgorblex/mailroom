@@ -86,7 +86,7 @@ export function MailScreen(): ReactElement {
   // Kept between visits, so coming back shows the screen at once; read again behind it, as the
   // Accounts page changes them without this cache.
   const accounts = useQuery({ queryKey: ACCOUNTS_KEY, queryFn: ({ signal }) => listAccounts(signal), refetchOnMount: 'always' })
-  // Asked of the servers apart from the accounts, which never wait on a mailbox login: To sort is
+  // Asked of the servers apart from the accounts, which never wait on a mailbox login: Handled is
   // offered as not known until the answer comes.
   useQuery({ ...keywordsQuery(), refetchOnMount: 'always' })
   const [sheet, setSheet] = useState(false)

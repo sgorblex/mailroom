@@ -242,7 +242,7 @@ def test_one_search_field_is_the_criterion_itself() -> None:
     draft = search_draft(SearchQuery(subject="Invoice", has_attachment=False))
     assert draft.spec["criterion"]["type"] == "subject_contains"
     assert draft.dropped == []
-    assert search_draft(SearchQuery(to_sort=True)).spec["criterion"]["type"] == "is_to_sort"
+    assert search_draft(SearchQuery(handled=True)).spec["criterion"]["type"] == "is_handled"
 
 
 def test_a_search_with_nothing_a_filter_matches_has_no_draft() -> None:

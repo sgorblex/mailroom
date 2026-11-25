@@ -105,7 +105,7 @@ class AuditItem:
     seen: bool | None = None
     """The flag change asked for, on a flag write."""
     flagged: bool | None = None
-    to_sort: bool | None = None
+    handled: bool | None = None
     flag: str | None = None
     """A flag set on its own, as `\\Answered` after a reply."""
     removed: Removal | None = None
@@ -159,7 +159,7 @@ def message_item(
     junk: Junk | None = None,
     seen: bool | None = None,
     flagged: bool | None = None,
-    to_sort: bool | None = None,
+    handled: bool | None = None,
     removed: Removal | None = None,
 ) -> AuditItem:
     """The record of one message whose ENVELOPE (imapclient's) was fetched: enough to find it
@@ -186,7 +186,7 @@ def message_item(
         junk=junk,
         seen=seen,
         flagged=flagged,
-        to_sort=to_sort,
+        handled=handled,
         removed=removed,
         result=result,
     )

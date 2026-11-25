@@ -177,7 +177,7 @@ def test_a_star_marker_looks_at_starred_mail(
     user_client: TestClient, mailbox: Mailbox, account: int
 ) -> None:
     mailbox.append("INBOX", (SHOP, "Autumn sale", False), (SHOP, "Picks", True))
-    body = rule_set(marker="star")
+    body = rule_set(marker="starred")
     rule_set_id = user_client.post(f"/api/v1/accounts/{account}/rule-sets", json=body).json()["id"]
     add_filter(user_client, rule_set_id, "Shop", SHOP_SPEC)
 

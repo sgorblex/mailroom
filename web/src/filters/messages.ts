@@ -13,6 +13,8 @@ function codedMessage(t: TFunction, code: string | undefined, message: string): 
       return t('filterErrors.invalidSpec', { message })
     case 'invalid_rule_set':
       return t('filterErrors.invalidRuleSet')
+    case 'handled_unsupported':
+      return t('filterErrors.handledUnsupported')
     case 'to_sort_unsupported':
       return t('filterErrors.toSortUnsupported')
     case 'all_accounts_inbox_only':

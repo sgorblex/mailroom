@@ -17,7 +17,7 @@ const mailSummarySchema = z.object({
   /** All inboxes: the sum of the counts known. */
   unread: z.number(),
   starred: z.number(),
-  to_sort: z.number(),
+  handled: z.number(),
   snoozed: z.number(),
   /** Snoozed messages coming back before the user's midnight. */
   snoozed_today: z.number(),

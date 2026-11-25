@@ -143,7 +143,7 @@ class MessagesSearchArguments(Arguments):
         default=None,
         description=(
             "Mailroom's search syntax, all terms ANDed with the other arguments: from: to: "
-            "subject: is:unread is:read is:flagged is:to_sort has:attachment after:YYYY-MM-DD "
+            "subject: is:unread is:read is:flagged is:handled has:attachment after:YYYY-MM-DD "
             "(on or after) before:YYYY-MM-DD in:<folder path> account:<id or name>, double "
             'quotes around a value with spaces (from:"Ada Lovelace"); other words search the '
             "headers and body. A criterion given both here and as an argument must agree."
@@ -287,7 +287,7 @@ async def _messages_search(args: MessagesSearchArguments, call: ToolCall) -> typ
         before=searched.before,
         unread=searched.unread,
         flagged=searched.flagged,
-        to_sort=searched.to_sort,
+        handled=searched.handled,
         has_attachment=searched.has_attachment,
         gmail_query=args.gmail_query,
     )

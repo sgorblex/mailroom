@@ -327,7 +327,7 @@ describe('Mail on a phone', () => {
       await userEvent.click(within(bar).getByRole('button', { name: 'More actions' }))
       const menu = screen.getByRole('menu', { name: 'More actions' })
       expect(within(menu).getByRole('menuitem', { name: /Reply all/ })).toBeInTheDocument()
-      expect(within(menu).getByRole('menuitem', { name: /Mark To sort/ })).toBeInTheDocument()
+      expect(within(menu).getByRole('menuitem', { name: /Mark Handled/ })).toBeInTheDocument()
     } finally {
       offsetWidth.mockRestore()
       clientWidth.mockRestore()

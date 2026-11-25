@@ -650,13 +650,13 @@ def test_messages_search_takes_a_query_with_its_other_arguments(
 ) -> None:
     asked = _search_with_query(
         monkeypatch,
-        query='from:ada is:to_sort in:Archive account:work after:2026-03-01 "Q1 report"',
+        query='from:ada is:handled in:Archive account:work after:2026-03-01 "Q1 report"',
         unread=True,
         account_id=7,
     )
     assert (asked["account"], asked["folder"]) == (7, "Archive")
     query = asked["query"]
-    assert (query.sender, query.text, query.unread, query.to_sort) == (
+    assert (query.sender, query.text, query.unread, query.handled) == (
         "ada",
         "Q1 report",
         True,

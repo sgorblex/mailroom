@@ -343,9 +343,19 @@ Out of Gmail's All Mail (`\All` on an `X-GM-EXT-1` server), which keeps every me
 kept; items `copied`), but into Trash or Spam, and `archive_messages` is `invalid_argument`,
 nothing done; trash and junk move as anywhere.
 
-`set_flags` takes `seen`, `flagged` and `to_sort`, and reads each message's flags back
-(`FlagState`), comparing them ignoring case as IMAP does; `SearchQuery.to_sort` searches `KEYWORD`
-or `UNKEYWORD $MailroomSort`, and a list line shows `to sort`.
+`set_flags` takes `seen`, `flagged` and `handled`, and reads each message's flags back
+(`FlagState`), comparing them ignoring case as IMAP does; `SearchQuery.handled` searches
+the Handled mark, and a list line shows `handled`.
+
+**Handled** is kept as the host says for each account (`MailConnections(handled=…)`, the star
+without it): the star, a keyword or a Gmail label (`HandledMark`, read by `parse_handled`, which
+refuses a keyword that is no atom or means something else and a label that is one of Gmail's own
+folders). A session asks once (`MailboxContext.handled`). Criteria hold it as a `HandledKey`,
+which `search_uids` writes when sent (`FLAGGED`, `KEYWORD`, `X-GM-LABELS`, or the negation; a
+label off Gmail matches nothing), so one query serves accounts that differ. `store_handled` sets
+and clears it, creating a label not there yet; `unsupported`, before anything is stored, for a
+keyword in a folder that keeps none or a label off Gmail. Where it is the star, `set_flags`
+refuses (`invalid_argument`) to set one and clear the other.
 
 `mark_folder_read` takes a folder with the UIDVALIDITY and UIDNEXT its listing gave (`Folder`),
 and in one read-write session refuses with `stale_reference` when the UIDVALIDITY changed, then
@@ -420,7 +430,7 @@ operations by UID on the folder a `with_mailbox` session holds (`search_uids` an
 `store_forwarded`, `delete_uids`, `listed_folders`), with the refusals of a move (`move_target`) and
 `abandon_read_back` for a read-back failing after a write. Whatever acts inside a session of its own
 uses them, folders included, since a second connection of the account would wait for the one it
-holds. `store_flags` sets only `\Seen`, `\Flagged`, `\Answered` and the To sort keyword `TO_SORT`
+holds. `store_flags` sets only `\Seen`, `\Flagged`, `\Answered` and the keyword `TO_SORT`
 (`$MailroomSort`), which is `unsupported` in a folder that keeps no keywords. The forward keyword
 `FORWARDED` (`$Forwarded`, RFC 5788) is not among them: only `store_forwarded` sets it, for
 `mark_forwarded` after a forward was sent, and only where the folder keeps keywords, so no agent
@@ -754,7 +764,10 @@ or loaded from their data form. Its tests are in `tests/filters`.
   there is `mailbox_missing` and Drafts or Sent are refused, while a move into the folder being
   filtered (Trash from Trash too) is skipped; `trash` without a folder takes the special-use
   Trash (`unsupported` without one), and `junk` the folder with the Junk role (likewise). Flag actions are `store_flags`: `star`, `mark_as_read` and
-  the like, and `mark_to_sort` / `unmark_to_sort` for the To sort keyword, `unsupported` where the
+  the like, and `mark_handled` / `unmark_handled` for the Handled mark as the account keeps it when the filter
+  runs (criteria `is_handled` / `is_not_handled`; clearing it is refused in its own label's
+  folder, which the messages would leave before the next action). What Handled replaced keeps its
+  meaning: `mark_to_sort` / `unmark_to_sort` for the To sort keyword, `unsupported` where the
   folder keeps no keywords; the criteria `is_to_sort` / `is_not_to_sort` (and `has_flag` with
   `TO_SORT`) search `KEYWORD` / `UNKEYWORD $MailroomSort`, and every flag predicate ignores case.
   `delete` removes for good (`delete_uids`, UIDPLUS only), which a filter may do because the user
@@ -815,7 +828,7 @@ or loaded from their data form. Its tests are in `tests/filters`.
   text; a line break in a value is `invalid_argument`).
 - **The runner**: `Rules` pairs folders with their filters; `run_rules` runs them in turn, or one
   thread per folder with every failure raised together (`RunRulesError`); `marked_only` limits
-  rules to messages with a marker, the star (`Flag.FLAGGED`) or To sort (`Flag.TO_SORT`), clearing
+  rules to messages with a marker, the star (`starred`) or Handled (`handled`), clearing
   it first; `monitor` keeps an `IdleWatch` per folder
   until stopped and runs the folder's filters when it connects and on new mail, on a pooled
   connection, never on the watch's own; a folder whose name cannot be looked up is logged by

@@ -79,6 +79,10 @@ export function searchQuery(value: unknown): SearchQuery | undefined {
       query[key] = flag
     }
   }
+  // Handled under its former name, in a URL kept from then.
+  if (fields['to_sort'] === true) {
+    query.handled = true
+  }
   return query
 }
 

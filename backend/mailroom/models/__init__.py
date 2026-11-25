@@ -3,7 +3,7 @@
 # The authorization server keeps its models in its own package. A plain import: its module may be
 # the one importing this package, still half-initialised.
 import mailroom.oauth.models  # noqa: F401
-from mailroom.models.account import AccountFilterSettings
+from mailroom.models.account import AccountFilterSettings, AccountHandled
 from mailroom.models.api_token import ApiToken
 from mailroom.models.audit import AuditRecord
 from mailroom.models.base import Base
@@ -30,6 +30,7 @@ from mailroom.models.views import SavedView
 
 __all__ = [
     "AccountFilterSettings",
+    "AccountHandled",
     "ApiToken",
     "AuditRecord",
     "Base",

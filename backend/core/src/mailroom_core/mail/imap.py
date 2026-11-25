@@ -25,7 +25,8 @@ import threading
 import time
 import unicodedata
 from contextlib import contextmanager, suppress
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from functools import lru_cache, partial
 from typing import TYPE_CHECKING, Final, Literal, get_args
 
 from imapclient import IMAPClient, SocketTimeout
@@ -47,12 +48,14 @@ from mailroom_core.mail.errors import (
     is_temporary,
     mail_error,
 )
+from mailroom_core.mail.handled import STAR
 from mailroom_core.mail.structure_cache import StructureCache
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator, Mapping
 
     from mailroom_core.config import AccountConfig
+    from mailroom_core.mail.handled import HandledMark
 
 _log = logging.getLogger("mailroom_core.mail")
 
@@ -125,6 +128,10 @@ class Quota:
     messages: QuotaUsage | None
 
 
+def _star() -> HandledMark:
+    return STAR
+
+
 @dataclass(frozen=True, slots=True)
 class MailboxContext:
     """What `with_mailbox` hands its function: the connection, with `path` selected."""
@@ -148,11 +155,18 @@ class MailboxContext:
     for a caller that asks changes since it."""
     structures: StructureCache | None = None
     """The connections' kept message structures (`read.fetch_structure`); None outside them."""
+    handled_lookup: Callable[[], HandledMark] = field(default=_star, repr=False, compare=False)
+    """Gives `handled`; each session of the connections asks its host once, when first used."""
 
     @property
     def gmail(self) -> bool:
         """Whether the server is Gmail (`GMAIL`)."""
         return bool(self.client.has_capability(GMAIL))
+
+    @property
+    def handled(self) -> HandledMark:
+        """What the account keeps the Handled mark as, the same throughout a session."""
+        return self.handled_lookup()
 
 
 @dataclass(frozen=True, slots=True)
@@ -279,14 +293,17 @@ class MailConnections:
         pool_size: int = 1,
         timeouts: Timeouts = Timeouts(),  # noqa: B008  (frozen)
         health_cache: float = 60.0,
+        handled: Callable[[int], HandledMark] | None = None,
     ) -> None:
         """`ssl_context` defaults to `ssl.create_default_context()`, which verifies the server's
         certificate and name; only tests pass one that does not. `health_cache` is how many
-        seconds `reachability` keeps an answer."""
+        seconds `reachability` keeps an answer. `handled` looks up what an account keeps the
+        Handled mark as (None: the star, for every account)."""
         if pool_size < 1:
             raise ValueError("pool_size must be at least 1")
         self._lookup_account = account
         self._lookup_password = password
+        self._lookup_handled = handled
         self._ssl_context = ssl_context if ssl_context is not None else ssl.create_default_context()
         self._pool_size = pool_size
         self._timeouts = timeouts
@@ -390,6 +407,10 @@ class MailConnections:
         """Whether `account_id` is one of these connections' accounts; opens nothing."""
         return self._lookup_account(account_id) is not None
 
+    def handled(self, account_id: int) -> HandledMark:
+        """What the account keeps the Handled mark as, asked of the host now."""
+        return STAR if self._lookup_handled is None else self._lookup_handled(account_id)
+
     def capabilities(self, account_id: int) -> Capabilities:
         """What the account's server supports, as it announced after the login."""
         state = self._state(account_id)
@@ -404,7 +425,7 @@ class MailConnections:
         return found
 
     def keywords(self, account_id: int, *, wait: float | None = None) -> bool:
-        """Whether the account's server keeps keywords such as `TO_SORT`, from a read-write
+        """Whether the account's server keeps keywords, from a read-write
         SELECT of INBOX (`MailboxContext.keywords`: never on Gmail); asked once, then cached
         until the account's connections are closed. `wait` as for `with_mailbox`."""
         state = self._state(account_id)
@@ -757,6 +778,9 @@ class MailConnections:
                     and _still_examined(kept, client, path)
                     else self._select(account_id, client, path, read_only)
                 )
+                # A kept selection asks again: the host may have changed it since.
+                lookup = lru_cache(maxsize=1)(partial(self.handled, account_id))
+                context = replace(context, handled_lookup=lookup)
             except Exception as error:
                 raise self._failure(account_id, state, slot, error, "lock", read_only) from None
             except BaseException:

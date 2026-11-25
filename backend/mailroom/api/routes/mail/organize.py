@@ -61,19 +61,19 @@ class MoveToAccountRequest(RefsRequest):
 class FlagRequest(RefsRequest):
     seen: bool | None = None
     flagged: bool | None = None
-    to_sort: bool | None = None
-    """The To sort mark: ``unsupported`` where the server keeps no keywords."""
+    handled: bool | None = None
+    """The Handled mark, as each account keeps it: ``unsupported`` where its server cannot."""
 
 
 class MessageFlags(BaseModel):
     ref: str
     seen: bool | None
     flagged: bool | None
-    to_sort: bool | None
+    handled: bool | None
 
     @classmethod
     def of(cls, state: FlagState) -> MessageFlags:
-        return cls(ref=state.ref, seen=state.seen, flagged=state.flagged, to_sort=state.to_sort)
+        return cls(ref=state.ref, seen=state.seen, flagged=state.flagged, handled=state.handled)
 
 
 class GroupError(BaseModel):
@@ -214,7 +214,7 @@ def flag(request: FlagRequest, ctx: Context, user: CurrentUser) -> OrganizeAnswe
             request.refs,
             seen=request.seen,
             flagged=request.flagged,
-            to_sort=request.to_sort,
+            handled=request.handled,
             origin=ctx.origin,
         )
     )

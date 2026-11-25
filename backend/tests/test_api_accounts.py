@@ -115,6 +115,7 @@ def test_a_user_adds_edits_and_removes_an_account(
         "attachment_max_mb": 10.0,
         "max_recipients": 10,
         # Not asked by a change nor by the listing: /accounts/keywords asks.
+        "handled": "star",
         "keywords": None,
     }
     assert user_client.get("/api/v1/accounts").json() == [account]

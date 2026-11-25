@@ -3,6 +3,7 @@ import { useQueries, useQueryClient, type QueryObserverResult } from '@tanstack/
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
+import { useAccountHandled } from '@/accounts/accounts-context.ts'
 import type { AccountId } from '@/api/accounts.ts'
 import {
   archiveMessages,
@@ -39,6 +40,7 @@ import {
   isSameFolder,
   roleFolder,
   OpenMessageContext,
+  linkedChange,
   TriageContext,
   type Action,
   type Destination,
@@ -167,7 +169,7 @@ function batches<T>(items: T[]): T[][] {
 /** The flags `change` set that `before` did not have, as they were: what sets them back. */
 function restoring(change: FlagChange, before: Flags): FlagChange {
   const back: FlagChange = {}
-  for (const flag of ['seen', 'flagged', 'to_sort'] as const) {
+  for (const flag of ['seen', 'flagged', 'handled'] as const) {
     const value = change[flag]
     if (value !== undefined && before[flag] !== value) {
       back[flag] = before[flag]
@@ -356,6 +358,7 @@ export function TriageProvider({
   )
 
   const overrides = scope.overrides
+  const handledOf = useAccountHandled()
   const flagsOf = useCallback((target: Target): Flags => overrides.get(target.ref) ?? target.flags, [overrides])
   /** The flags changed in `key`'s scope, as the async code reads them after an await. */
   const overridesOf = useCallback(
@@ -400,7 +403,7 @@ export function TriageProvider({
                 failed = true
               } else {
                 for (const state of group.flags) {
-                  restored.set(state.ref, change)
+                  restored.set(state.ref, linkedChange(change, handledOf(group.account)))
                 }
               }
             }
@@ -436,7 +439,7 @@ export function TriageProvider({
       }
       toast.show(failed ? { message: t('undo.failed'), tone: 'error' } : { message: t('undo.done') })
     },
-    [setBusyState, unmountSignal, loadFolders, reloadLists, updateScope, toast, t, queryClient],
+    [setBusyState, unmountSignal, loadFolders, reloadLists, updateScope, handledOf, toast, t, queryClient],
   )
 
   const folderMarkedRead = useCallback(
@@ -464,7 +467,7 @@ export function TriageProvider({
       const read = new Map(rows.filter((row) => !isConversation(row)).map((row) => [row.ref, row.flags]))
       setCachedReadFlags(queryClient, (view) => {
         const flags = read.get(view.ref)
-        return flags === undefined ? undefined : { seen: flags.seen, flagged: flags.flagged, to_sort: flags.to_sort }
+        return flags === undefined ? undefined : { seen: flags.seen, flagged: flags.flagged, handled: flags.handled }
       })
       const current = scopedRef.current
       const shown = openRef.current?.ref
@@ -475,7 +478,7 @@ export function TriageProvider({
       updateScope(key, (scope) => {
         const overrides = new Map(scope.overrides)
         for (const { ref, flags } of fresh) {
-          overrides.set(ref, { seen: flags.seen, flagged: flags.flagged, to_sort: flags.to_sort })
+          overrides.set(ref, { seen: flags.seen, flagged: flags.flagged, handled: flags.handled })
         }
         return { overrides }
       })
@@ -682,7 +685,8 @@ export function TriageProvider({
         return plan
       }
 
-      function applyFlags(group: OrganizeGroup, members: Target[], change: FlagChange, asked: number): void {
+      function applyFlags(group: OrganizeGroup, members: Target[], asking: FlagChange, asked: number): void {
+        const change = linkedChange(asking, handledOf(group.account))
         let unread = 0
         const changed = overridesOf(key)
         const next = new Map(changed)
@@ -693,14 +697,14 @@ export function TriageProvider({
           const after = {
             seen: read?.seen ?? change.seen ?? before.seen,
             flagged: read?.flagged ?? change.flagged ?? before.flagged,
-            to_sort: read?.to_sort ?? change.to_sort ?? before.to_sort,
+            handled: read?.handled ?? change.handled ?? before.handled,
           }
           next.set(target.ref, after)
           setCachedReadFlags(queryClient, (view) => (view.ref === target.ref ? after : undefined))
           unread += Number(!after.seen) - Number(!before.seen)
           if (undo?.kind === 'flag') {
             undo.before.push([target.ref, before])
-            const back = restoring(change, before)
+            const back = restoring(asking, before)
             if (Object.keys(back).length > 0) {
               const restore = undo.restores.find((each) => JSON.stringify(each.change) === JSON.stringify(back))
               if (restore === undefined) {
@@ -776,24 +780,30 @@ export function TriageProvider({
           closeOpen(refs)
           return
         }
-        const { change } = done
-        const members = new Set(rows.flatMap((row) => [row.ref, ...refsOf(row)]))
-        setCachedReadFlags(queryClient, (view) => (members.has(view.ref) ? change : undefined))
+        const { change: asking } = done
+        const changes = new Map(
+          rows.flatMap((row) => {
+            const change = linkedChange(asking, handledOf(row.account_id))
+            return [row.ref, ...refsOf(row)].map((ref) => [ref, change] as const)
+          }),
+        )
+        setCachedReadFlags(queryClient, (view) => changes.get(view.ref))
         const changed = overridesOf(key)
         const next = new Map(changed)
         for (const row of rows) {
           const before = changed.get(row.ref) ?? row.flags
+          const change = linkedChange(asking, handledOf(row.account_id))
           next.set(row.ref, {
             seen: change.seen ?? before.seen,
             flagged: change.flagged ?? before.flagged,
-            to_sort: change.to_sort ?? before.to_sort,
+            handled: change.handled ?? before.handled,
           })
           const mixed = mixedFlags(row)
-          if (mixed.some((flag) => change[flag] !== undefined)) {
+          if (mixed.some((flag) => asking[flag] !== undefined)) {
             undo = null
           } else if (undo?.kind === 'flag') {
             undo.before.push([row.ref, before])
-            const back = restoring(change, before)
+            const back = restoring(asking, before)
             if (Object.keys(back).length > 0) {
               undo.restores.push({ change: back, refs: [...refsOf(row)] })
             }
@@ -807,6 +817,7 @@ export function TriageProvider({
     },
     [
       sourceKey,
+      handledOf,
       sourceFolder,
       setBusyState,
       undoAction,
