@@ -190,6 +190,20 @@ def reset_password(
     set_password(db, user, password, revoke_access=revoke_access)
 
 
+def sign_out_user(db: Session, user: User, *, by: User, revoke_access: bool = False) -> None:
+    """An admin ends every session of ``user``, whatever way they sign in, and with
+    ``revoke_access`` their API tokens and connected apps. Not their own, which they end on their
+    profile."""
+    if user.id == by.id:
+        msg = "End your own sessions on your profile."
+        raise UserError(msg, "cannot_sign_out_self")
+    end_user_sessions(db, user)
+    log_revoked = revoke_app_access(db, user.id) if revoke_access else None
+    db.commit()
+    if log_revoked is not None:
+        log_revoked()
+
+
 def remove_user(
     db: Session,
     user: User,

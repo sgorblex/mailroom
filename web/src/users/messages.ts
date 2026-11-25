@@ -20,6 +20,8 @@ export function userErrorMessage(t: TFunction, failure: unknown, fallback: strin
         return t('errors.cannotRemoveSelf')
       case 'cannot_reset_self':
         return t('errors.cannotResetSelf')
+      case 'cannot_sign_out_self':
+        return t('errors.cannotSignOutSelf')
       case 'remover_gone':
         return t('errors.removerGone')
       case 'user_accounts_busy':

@@ -9,7 +9,14 @@ import {
 import { useTranslation } from 'react-i18next'
 
 import { ApiRequestError, apiErrorMessage } from '@/api/http.ts'
-import { createUser, listUsers, removeUser, resetPassword, type ListedUser } from '@/api/users.ts'
+import {
+  createUser,
+  listUsers,
+  removeUser,
+  resetPassword,
+  signOutUser,
+  type ListedUser,
+} from '@/api/users.ts'
 import { useAuth } from '@/auth/auth-context.ts'
 import { useSignInWays } from '@/auth/sso.ts'
 import { Button } from '@/components/ui/button.tsx'
@@ -103,7 +110,7 @@ function UsersAndInstance({ self }: { self: string }): ReactElement {
   )
 }
 
-type RowMode = 'idle' | 'resetting' | 'confirming-removal'
+type RowMode = 'idle' | 'resetting' | 'signing-out' | 'confirming-removal'
 
 function UserRow({
   user,
@@ -125,22 +132,31 @@ function UserRow({
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const resetTrigger = useRef<HTMLButtonElement>(null)
+  const signOutTrigger = useRef<HTMLButtonElement>(null)
   const removeTrigger = useRef<HTMLButtonElement>(null)
   /** The mode being left, so focus goes back to the button that opened it. */
   const returnFocus = useRef<RowMode | null>(null)
   const passwordInput = useRef<HTMLInputElement>(null)
+  const confirmSignOut = useRef<HTMLButtonElement>(null)
   const confirmRemoval = useRef<HTMLButtonElement>(null)
 
   // The button that was clicked is gone once the mode changes, so focus moves on by hand.
   useEffect(() => {
     if (mode === 'resetting') {
       passwordInput.current?.focus()
+    } else if (mode === 'signing-out') {
+      confirmSignOut.current?.focus()
     } else if (mode === 'confirming-removal') {
       confirmRemoval.current?.focus()
     } else if (returnFocus.current !== null) {
-      const trigger = returnFocus.current === 'resetting' ? resetTrigger : removeTrigger
+      const trigger = {
+        idle: null,
+        resetting: resetTrigger,
+        'signing-out': signOutTrigger,
+        'confirming-removal': removeTrigger,
+      }[returnFocus.current]
       returnFocus.current = null
-      trigger.current?.focus()
+      trigger?.current?.focus()
     }
   }, [mode])
 
@@ -210,6 +226,17 @@ function UserRow({
                 </Button>
               )}
               <Button
+                ref={signOutTrigger}
+                variant="outline"
+                size="sm"
+                aria-label={t('users.signOutUser', { username: user.username })}
+                onClick={() => {
+                  enter('signing-out')
+                }}
+              >
+                {t('users.signOut')}
+              </Button>
+              <Button
                 ref={removeTrigger}
                 variant="outline"
                 size="sm"
@@ -269,6 +296,47 @@ function UserRow({
             {t('users.cancel')}
           </Button>
         </form>
+      )}
+      {mode === 'signing-out' && (
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-sm">{t('users.confirmSignOut', { username: user.username })}</p>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={revokeAccess}
+              onChange={(event) => {
+                setRevokeAccess(event.target.checked)
+              }}
+            />
+            {t('users.revokeAccess')}
+          </label>
+          <Button
+            ref={confirmSignOut}
+            variant="destructive"
+            size="sm"
+            disabled={pending}
+            onClick={() => {
+              void run(
+                () => signOutUser(user.id, revokeAccess),
+                () => {
+                  enter('idle')
+                  setNotice(t('users.signedOut'))
+                },
+              )
+            }}
+          >
+            {t('users.confirmSignOutButton')}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              enter('idle')
+            }}
+          >
+            {t('users.cancel')}
+          </Button>
+        </div>
       )}
       {mode === 'confirming-removal' && (
         <div className="flex flex-wrap items-center gap-2">

@@ -29,6 +29,7 @@ from mailroom.auth.users import (
     remove_user,
     reset_password,
     set_password,
+    sign_out_user,
     user_by_id,
 )
 from mailroom.models import User
@@ -63,6 +64,10 @@ class NewPassword(BaseModel):
     password: str = Field(max_length=MAX_PASSWORD_LENGTH)
     revoke_access: bool = False
     """Whether their API tokens and connected apps are revoked too."""
+
+
+class SignOut(BaseModel):
+    revoke_access: bool = False
 
 
 class PasswordChange(BaseModel):
@@ -138,6 +143,22 @@ def reset_user_password(
     logger.info(
         "password_reset",
         extra={"event": "password_reset", "user_id": admin.id, "target_user_id": user_id},
+    )
+
+
+@users_router.post("/{user_id}/sign-out", status_code=204)
+def end_sessions_of_user(
+    user_id: UserId, body: SignOut, db: DbSession, admin: CurrentAdmin
+) -> None:
+    """Unlike a password reset, works while passwords are off."""
+    user = _target(db, user_id)
+    try:
+        sign_out_user(db, user, by=admin, revoke_access=body.revoke_access)
+    except UserError as exc:
+        raise _refused(exc) from None
+    logger.info(
+        "user_signed_out",
+        extra={"event": "user_signed_out", "user_id": admin.id, "target_user_id": user_id},
     )
 
 

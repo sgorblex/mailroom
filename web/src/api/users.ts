@@ -30,6 +30,11 @@ export function removeUser(id: number): Promise<null> {
   return apiDelete(`/api/v1/users/${String(id)}`)
 }
 
+/** Ends all their sessions, their API tokens and connected apps too if `revokeAccess`. */
+export function signOutUser(id: number, revokeAccess: boolean): Promise<null> {
+  return apiPostJson(`/api/v1/users/${String(id)}/sign-out`, { revoke_access: revokeAccess })
+}
+
 /** Signs them out everywhere, their API tokens and connected apps too if `revokeAccess`. */
 export function resetPassword(
   id: number,
