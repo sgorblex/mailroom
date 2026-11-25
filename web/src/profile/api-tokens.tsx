@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState, type ReactElement, type SubmitEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Link } from '@tanstack/react-router'
 
 import {
   createApiToken,
@@ -152,6 +153,14 @@ export function ApiTokens(): ReactElement | null {
                 )}
               </div>
               <TokenScope token={token} accounts={listing?.accounts ?? []} />
+              <Link
+                to="/activity"
+                search={{ app: `token:${String(token.id)}` }}
+                aria-label={t('apiTokens.activityNamed', { name: token.name })}
+                className="self-start text-xs underline underline-offset-4"
+              >
+                {t('apiTokens.activity')}
+              </Link>
               {confirming === token.id && (
                 <ConfirmRemoval
                   question={t('apiTokens.confirmRevoke', { name: token.name })}

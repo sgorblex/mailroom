@@ -416,7 +416,9 @@ def test_the_audit_trail_leaves_out_what_is_beyond(
         db_session.add(
             AuditRecord(
                 user_id=user.id,
-                actor="user" if rules is None else "filter",
+                actor="agent" if rules is None else "filter",
+                client_id="other" if rules is None else None,
+                grant_id="9" if rules is None else None,
                 rule_set_id=rules,
                 run_id=None if rules is None else 5,
                 action="move",
@@ -450,6 +452,9 @@ def test_the_audit_trail_leaves_out_what_is_beyond(
     assert moved["detail"]["uid"] == 5
     assert renamed["detail"] == {"uid": 1}
     assert listed(work_only, account_id=2) == []
+    # Nor does asking for one app widen it: the records above are another app's.
+    assert [r["detail"]["uid"] for r in listed(work_only, client_id="other")] == [5, 1]
+    assert [r["detail"]["uid"] for r in listed(work_only, grant_id="9")] == [5, 1]
     assert listed(limited(mcp, user, [])) == []
 
 

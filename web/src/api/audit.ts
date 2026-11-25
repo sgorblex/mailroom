@@ -39,6 +39,8 @@ export const auditRecordSchema = z.object({
   /** The connected app's name (or id), or the API token's while it exists, for an agent's record. */
   app: z.string().nullable(),
   client_id: z.string().nullable(),
+  /** The connected app's grant, for what came through one of Mailroom's own. */
+  grant_id: z.string().nullable().default(null),
   /** The personal API token's id, for what came through one. */
   token_id: z.number().nullable().default(null),
   /** The rule set's name while it exists, for a filter's record. */
@@ -61,6 +63,12 @@ export interface AuditFilters {
   actor?: Actor
   /** `ok`, `failed` (anything but ok) or an error code. */
   result?: string
+  /** A client, whichever grants it came through. */
+  client_id?: string
+  /** A connected app: one grant. */
+  grant_id?: string
+  /** A personal API token. */
+  token_id?: number
 }
 
 export function listAudit(filters: AuditFilters, cursor: string | null, signal?: AbortSignal): Promise<AuditPage> {

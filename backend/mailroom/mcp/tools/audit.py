@@ -9,6 +9,7 @@ from pydantic import Field
 from mailroom.audit import listing
 from mailroom.mcp.envelope import untrusted
 from mailroom.mcp.tool import READ, AccountId, Arguments, JsonObject, Tool
+from mailroom_core.config import MAX_SAFE_INTEGER
 
 if TYPE_CHECKING:
     from mailroom.audit.listing import ListedRecord
@@ -46,6 +47,26 @@ class AuditListArguments(Arguments):
         max_length=64,
         description='"ok", an error code, or "failed" for every result but ok, refusals included.',
     )
+    client_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=2048,
+        pattern=listing.CLIENT_PATTERN,
+        description="One app, by a record's client_id, every time the user connected it.",
+    )
+    grant_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=2048,
+        pattern=listing.CLIENT_PATTERN,
+        description="One connection of an app, by a record's grant_id.",
+    )
+    token_id: int | None = Field(
+        default=None,
+        ge=1,
+        le=MAX_SAFE_INTEGER,
+        description="One personal API token, by a record's token_id.",
+    )
 
 
 def _record(record: ListedRecord) -> JsonObject:
@@ -72,6 +93,9 @@ async def _audit_list(args: AuditListArguments, call: ToolCall) -> JsonObject:
             action=args.action,
             actor=args.actor,
             result=args.result,
+            client_id=args.client_id,
+            grant_id=args.grant_id,
+            token_id=args.token_id,
         )
     )
     listed = [_record(record) for record in page.records]

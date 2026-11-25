@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Link } from '@tanstack/react-router'
 
 import { apiErrorMessage } from '@/api/http.ts'
 import {
@@ -257,6 +258,14 @@ export function ConnectedApps(): ReactElement | null {
                     </div>
                   </div>
                 )}
+                <Link
+                  to="/activity"
+                  search={{ app: `grant:${String(app.id)}` }}
+                  aria-label={t('connectedApps.activityNamed', { name })}
+                  className="self-start text-xs underline underline-offset-4"
+                >
+                  {t('connectedApps.activity')}
+                </Link>
                 {confirming === app.id && (
                   <ConfirmRemoval
                     question={t('connectedApps.confirmRevoke', { name })}

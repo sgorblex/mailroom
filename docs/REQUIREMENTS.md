@@ -297,7 +297,9 @@ authorization server with its `/connect` consent screen, connected apps on the p
   out, being the user typing.
 - Records outlive a removed account, go with their user, and are kept 90 days unless the instance says otherwise.
 - The user reviews their own trail on the *Activity* page, newest first, filtered by account, who
-  acted, action and result; an agent can list it through MCP.
+  acted, the app (a connected app or API token), action and result, each kept in the URL; every
+  connected app and API token on the profile links to its own, as does a record to its app's. An
+  agent can list it through MCP.
   How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md)
   — *Audit trail*.
 

@@ -2,8 +2,10 @@ import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import type { ApiToken } from '@/api/api-tokens.ts'
+import type { ConnectedApp } from '@/api/oauth.ts'
 import { expectNoAxeViolations } from '@/test/axe.ts'
-import { renderSignedIn } from '@/test/signed-in.tsx'
+import { renderRouted } from '@/test/routed.tsx'
 
 import { ActivityScreen } from './activity-screen.tsx'
 
@@ -35,8 +37,14 @@ function json(body: unknown, status = 200): Promise<Response> {
 function stubApi(
   audit: (query: URLSearchParams) => Promise<Response>,
   accounts: { id: number; name: string | null; colour: string | null }[] = [],
+  apps: { grants?: ConnectedApp[]; tokens?: ApiToken[]; fail?: boolean } = {},
 ): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn((path: string) => {
+    if (path === '/api/v1/oauth/grants' || path === '/api/v1/me/api-tokens') {
+      const { grants = [], tokens = [], fail = false } = apps
+      const body = path.endsWith('grants') ? { auth: 'builtin', grants, groups: [] } : { tokens, groups: [], accounts: [] }
+      return fail ? json({ detail: 'Server error' }, 500) : json(body)
+    }
     if (path === '/api/v1/accounts') {
       return json(
         accounts.map((account) => ({
@@ -61,6 +69,32 @@ function stubApi(
   return fetchMock
 }
 
+const LIMITS = { groups: [], account_ids: null, send_ceiling: null }
+
+function grant(id: number, name: string | null, created_at = '2026-10-25T12:00:00Z'): ConnectedApp {
+  return { ...LIMITS, id, client_name: name, client_host: null, created_at, last_used_at: null }
+}
+
+function token(id: number, name: string): ApiToken {
+  return { ...LIMITS, id, name, prefix: 'mrt_0a1b2c3d', created_at: '2026-10-25T12:00:00Z', last_used_at: null, expires_at: null, expired: false }
+}
+
+function auditQueries(fetchMock: ReturnType<typeof vi.fn>): string[] {
+  return fetchMock.mock.calls
+    .map(([path]) => String(path))
+    .filter((path) => path.startsWith('/api/v1/me/audit'))
+    .map((path) => decodeURIComponent(path.slice('/api/v1/me/audit'.length)))
+}
+
+/** What the App filter offers, and shows now. */
+function appFilter(): { offered: (string | null)[]; shown: string | undefined } {
+  const select = screen.getByRole<HTMLSelectElement>('combobox', { name: 'App' })
+  return {
+    offered: within(select).getAllByRole('option').map((option) => option.textContent),
+    shown: select.selectedOptions[0]?.textContent ?? undefined,
+  }
+}
+
 afterEach(() => {
   vi.unstubAllGlobals()
 })
@@ -69,7 +103,7 @@ describe('ActivityScreen', () => {
   it('names an API token, and says when it was revoked since', async () => {
     const agent = { actor: 'agent', token_id: 4 }
     stubApi(() => json({ records: [record(2, { ...agent, app: 'Backup script' }), record(1, agent)], next_cursor: null }))
-    renderSignedIn(<ActivityScreen />, ALICE)
+    renderRouted(<ActivityScreen />, ALICE, '/activity')
     const list = await screen.findByRole('list', { name: 'Recorded activity' })
     const [named, revoked] = within(list).getAllByRole('listitem')
     expect(named).toHaveTextContent('Backup script')
@@ -87,7 +121,7 @@ describe('ActivityScreen', () => {
         next_cursor: null,
       }),
     )
-    renderSignedIn(<ActivityScreen />, ALICE)
+    renderRouted(<ActivityScreen />, ALICE, '/activity')
 
     const list = await screen.findByRole('list', { name: 'Recorded activity' })
     const items = within(list).getAllByRole('listitem')
@@ -131,7 +165,7 @@ describe('ActivityScreen', () => {
         { id: 2, name: 'Home', colour: null },
       ],
     )
-    renderSignedIn(<ActivityScreen />, ALICE)
+    renderRouted(<ActivityScreen />, ALICE, '/activity')
 
     const list = await screen.findByRole('list', { name: 'Recorded activity' })
     const [moved, copy] = within(list).getAllByRole('listitem') as [HTMLElement, HTMLElement]
@@ -163,7 +197,7 @@ describe('ActivityScreen', () => {
         }),
       [{ id: 1, name: 'work', colour: null }],
     )
-    renderSignedIn(<ActivityScreen />, ALICE)
+    renderRouted(<ActivityScreen />, ALICE, '/activity')
 
     const list = await screen.findByRole('list', { name: 'Recorded activity' })
     const [moved] = within(list).getAllByRole('listitem') as [HTMLElement]
@@ -186,7 +220,7 @@ describe('ActivityScreen', () => {
         ? json({ records: [record(9, { actor: 'filter', rule_set: 'Shops' })], next_cursor: null })
         : json({ records: [record(3), record(2)], next_cursor: '2' })
     })
-    renderSignedIn(<ActivityScreen />, ALICE)
+    renderRouted(<ActivityScreen />, ALICE, '/activity')
 
     await userEvent.click(await screen.findByRole('button', { name: 'Load more' }))
     await userEvent.selectOptions(screen.getByLabelText('Who'), 'Filters')
@@ -204,7 +238,7 @@ describe('ActivityScreen', () => {
         next_cursor: null,
       }),
     )
-    renderSignedIn(<ActivityScreen />, ALICE)
+    renderRouted(<ActivityScreen />, ALICE, '/activity')
     const row = await screen.findByRole('listitem')
     await userEvent.click(within(row).getByText('Sent'))
     expect(within(row).getByText('Yes')).toBeVisible()
@@ -222,7 +256,7 @@ describe('ActivityScreen', () => {
         next_cursor: null,
       }),
     )
-    renderSignedIn(<ActivityScreen />, ALICE)
+    renderRouted(<ActivityScreen />, ALICE, '/activity')
     const [renamed, deleted] = (await screen.findAllByRole('listitem')) as [HTMLElement, HTMLElement]
     expect(renamed).toHaveTextContent('Folder renamed')
     expect(renamed).toHaveTextContent('Old → Lists/New')
@@ -244,7 +278,7 @@ describe('ActivityScreen', () => {
         ? json({ records: [record(1)], next_cursor: null })
         : json({ records: [record(3), record(2)], next_cursor: '2' })
     })
-    renderSignedIn(<ActivityScreen />, ALICE)
+    renderRouted(<ActivityScreen />, ALICE, '/activity')
 
     await userEvent.click(await screen.findByRole('button', { name: 'Load more' }))
     const list = screen.getByRole('list', { name: 'Recorded activity' })
@@ -253,17 +287,120 @@ describe('ActivityScreen', () => {
 
     await userEvent.selectOptions(screen.getByLabelText('Who'), 'Connected apps')
     expect(await screen.findByText('Nothing matches these filters.')).toBeInTheDocument()
-    expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/me/audit?actor=agent', expect.anything())
+    expect(auditQueries(fetchMock).at(-1)).toBe('?actor=agent')
   })
 
   it('says when nothing is recorded, and when the list cannot load', async () => {
     stubApi(() => json({ records: [], next_cursor: null }))
-    renderSignedIn(<ActivityScreen />, ALICE)
+    renderRouted(<ActivityScreen />, ALICE, '/activity')
     expect(await screen.findByText('Nothing recorded yet.')).toBeInTheDocument()
 
     vi.unstubAllGlobals()
     stubApi(() => json({ detail: { code: 'failed', message: 'Something broke.' } }, 500))
-    renderSignedIn(<ActivityScreen />, ALICE)
+    renderRouted(<ActivityScreen />, ALICE, '/activity')
     expect(await screen.findByRole('alert')).toHaveTextContent('Something broke.')
+  })
+
+  it('filters as the URL says, and keeps there what is chosen', async () => {
+    const fetchMock = stubApi(() => json({ records: [record(1)], next_cursor: null }), [{ id: 2, name: 'Home', colour: null }])
+    const history = renderRouted(<ActivityScreen />, ALICE, '/activity?account=2&actor=agent&action=send&result=failed')
+    await screen.findByRole('list', { name: 'Recorded activity' })
+    expect(auditQueries(fetchMock)).toEqual(['?actor=agent&action=send&result=failed&account_id=2'])
+    expect(await screen.findByRole('option', { name: 'Home', selected: true })).toBeInTheDocument()
+    expect(screen.getByLabelText('Who')).toHaveValue('agent')
+    expect(screen.getByLabelText('Action')).toHaveValue('send')
+    expect(screen.getByLabelText('Result')).toHaveValue('failed')
+
+    await userEvent.selectOptions(screen.getByLabelText('Action'), 'Any')
+    await vi.waitFor(() => {
+      expect(auditQueries(fetchMock).at(-1)).toBe('?actor=agent&result=failed&account_id=2')
+    })
+    expect(history.location.search).toBe('?account=2&actor=agent&result=failed')
+    expect(history.length).toBe(1)
+  })
+
+  it('leaves out of the URL what is no filter', async () => {
+    const fetchMock = stubApi(() => json({ records: [record(1)], next_cursor: null }))
+    renderRouted(<ActivityScreen />, ALICE, '/activity?account=x&actor=nobody&action=7&result=maybe&app=grant:0')
+    await screen.findByRole('list', { name: 'Recorded activity' })
+    expect(auditQueries(fetchMock)).toEqual([''])
+  })
+
+  it('says an account the URL names is gone, rather than any', async () => {
+    stubApi(() => json({ records: [], next_cursor: null }), [{ id: 1, name: 'Work', colour: null }])
+    renderRouted(<ActivityScreen />, ALICE, '/activity?account=9')
+    expect(await screen.findByRole('option', { name: 'Removed account', selected: true })).toBeInTheDocument()
+  })
+
+  it('offers each connected app and token, telling apps of one name apart', async () => {
+    const fetchMock = stubApi(() => json({ records: [record(1)], next_cursor: null }), [], {
+      grants: [grant(1, 'Claude'), grant(2, 'Claude', '2026-11-02T12:00:00Z'), grant(3, null)],
+      tokens: [token(4, 'Backup')],
+    })
+    const history = renderRouted(<ActivityScreen />, ALICE, '/activity')
+    await userEvent.selectOptions(await screen.findByLabelText('App'), await screen.findByRole('option', { name: 'Backup (API token)' }))
+    await vi.waitFor(() => {
+      expect(auditQueries(fetchMock).at(-1)).toBe('?token_id=4')
+    })
+    expect(decodeURIComponent(history.location.search)).toBe('?app=token:4')
+    const { offered, shown } = appFilter()
+    expect(shown).toBe('Backup (API token)')
+    expect(offered).toEqual(['Any', expect.stringMatching(/^Claude \(connected .*25.*\)$/), expect.stringMatching(/^Claude \(connected .*2.*\)$/), 'An app with no name', 'Backup (API token)'])
+    expect(offered[1]).not.toBe(offered[2])
+    await expectNoAxeViolations()
+  })
+
+  it.each([
+    ['grant:1', '?grant_id=1', 'Claude'],
+    ['grant:8', '?grant_id=8', 'A disconnected app'],
+    ['token:8', '?token_id=8', 'A revoked API token'],
+    ['client:https://app.example/c', '?client_id=https://app.example/c', 'https://app.example/c'],
+  ])('lists one app, %s, gone or not', async (app, query, name) => {
+    const fetchMock = stubApi(() => json({ records: [], next_cursor: null }), [], { grants: [grant(1, 'Claude')] })
+    renderRouted(<ActivityScreen />, ALICE, `/activity?app=${encodeURIComponent(app)}`)
+    expect(await screen.findByText('Nothing matches these filters.')).toBeInTheDocument()
+    expect(auditQueries(fetchMock)).toEqual([query])
+    await vi.waitFor(() => {
+      expect(appFilter().shown).toBe(name)
+    })
+  })
+
+  it('does not call an app gone when the apps could not be loaded', async () => {
+    const fetchMock = stubApi(() => json({ records: [record(1)], next_cursor: null }), [], { fail: true })
+    renderRouted(<ActivityScreen />, ALICE, '/activity?app=token:4')
+    await screen.findByRole('list', { name: 'Recorded activity' })
+    expect(appFilter().shown).toBe('The one chosen')
+    expect(auditQueries(fetchMock)).toEqual(['?token_id=4'])
+  })
+
+  it('does not ask for connected apps with MCP off', async () => {
+    const fetchMock = stubApi(() => json({ records: [record(1)], next_cursor: null }), [], { tokens: [token(4, 'Backup')] })
+    renderRouted(<ActivityScreen />, ALICE, '/activity', ['mail'])
+    expect(await screen.findByRole('option', { name: 'Backup (API token)' })).toBeInTheDocument()
+    expect(fetchMock.mock.calls.map(([path]) => String(path))).not.toContain('/api/v1/oauth/grants')
+  })
+
+  it('narrows the list to the app a record came through', async () => {
+    const claude = { actor: 'agent', app: 'Claude', client_id: 'c1' }
+    stubApi(() =>
+      json({
+        records: [
+          record(4, { ...claude, grant_id: '7' }),
+          record(3, { ...claude, grant_id: null }),
+          record(2, { actor: 'agent', app: 'Backup', token_id: 4 }),
+          record(1),
+        ],
+        next_cursor: null,
+      }),
+    )
+    const history = renderRouted(<ActivityScreen />, ALICE, '/activity?actor=agent')
+    const rows = await screen.findAllByRole('listitem')
+    for (const row of rows) {
+      await userEvent.click(within(row).getByText('Moved to Trash'))
+    }
+    const links = screen.getAllByRole('link').map((link) => decodeURIComponent(link.getAttribute('href') ?? ''))
+    expect(links).toEqual(['/activity?app=grant:7', '/activity?app=client:c1', '/activity?app=token:4'])
+    await userEvent.click(screen.getByRole('link', { name: 'Only Backup' }))
+    expect(decodeURIComponent(history.location.search)).toBe('?app=token:4')
   })
 })

@@ -1,12 +1,13 @@
 import type { TFunction } from 'i18next'
-import { useCallback, useState, type ReactElement } from 'react'
+import { useCallback, useMemo, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { ChevronRight } from 'lucide-react'
 
 import { AccountName } from '@/accounts/account-name.tsx'
 import { AccountsContext, useAccountLabel } from '@/accounts/accounts-context.ts'
 import { listAccounts } from '@/api/accounts.ts'
-import { ACTORS, MAIL_ACTIONS, listAudit, type Actor, type AuditFilters, type AuditPage, type AuditRecord } from '@/api/audit.ts'
+import { ACTORS, MAIL_ACTIONS, listAudit, type AuditFilters, type AuditPage, type AuditRecord } from '@/api/audit.ts'
 import { apiErrorMessage } from '@/api/http.ts'
 import { useTimeZone } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
@@ -14,6 +15,8 @@ import { formatDateTime } from '@/lib/format.ts'
 import { useLoad } from '@/lib/use-load.ts'
 import { useUnmountSignal } from '@/lib/use-unmount-signal.ts'
 
+import { auditFilters, recordApp, RESULTS, validateActivitySearch, type ActivitySearch } from './activity-search.ts'
+import { useAppChoices } from './app-names.ts'
 import { ACTIVITY_NS } from './i18n.ts'
 
 const selectClass = 'h-9 w-full rounded-md border bg-transparent px-2 text-sm'
@@ -69,12 +72,20 @@ function gist(detail: AuditRecord['detail']): string {
 }
 
 /**
- * The user's audit trail, newest first, a page at a time, filtered by account, who acted, action
- * and result. Each row opens to every field kept: never a subject or a body.
+ * The user's audit trail, newest first, a page at a time, filtered by account, who acted, app,
+ * action and result, as the URL says. Each row opens to every field kept: never a subject or a body.
  */
 export function ActivityScreen(): ReactElement {
-  const { t } = useTranslation(ACTIVITY_NS)
-  const [filters, setFilters] = useState<AuditFilters>({})
+  const { t } = useTranslation([ACTIVITY_NS, 'common'])
+  // Validated again: the router leaves in what its validation left out.
+  const search = useSearch({
+    from: '/activity',
+    select: (raw) => validateActivitySearch({ ...raw }),
+    structuralSharing: true,
+  })
+  const navigate = useNavigate()
+  const filters = useMemo(() => auditFilters(search), [search])
+  const apps = useAppChoices(search.app)
   const accounts = useLoad(
     useCallback((signal: AbortSignal) => listAccounts(signal), []),
     () => '',
@@ -82,44 +93,56 @@ export function ActivityScreen(): ReactElement {
   // Until the accounts are loaded, a record's account has no name yet, rather than a removed one.
   const loaded = accounts.state.kind === 'loaded' ? accounts.state.value : null
 
-  function choose(key: Exclude<keyof AuditFilters, 'account_id'>, value: string): void {
-    setFilters((current) => ({ ...current, [key]: value === '' ? undefined : value }))
+  const accountChoices = (loaded ?? []).map(({ id, display_name }) => ({ id, name: display_name }))
+  if (search.account !== undefined && !accountChoices.some(({ id }) => id === search.account)) {
+    accountChoices.push({ id: search.account, name: loaded === null ? t('filters.chosen') : t('common:accounts.unknown') })
   }
 
-  function chooseAccount(value: string): void {
-    setFilters((current) => ({ ...current, account_id: value === '' ? undefined : Number(value) }))
+  function choose(key: keyof ActivitySearch, value: string): void {
+    // In place: Back leaves the page rather than undoing each choice.
+    void navigate({ to: '/activity', search: validateActivitySearch({ ...search, [key]: value }), replace: true })
   }
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 p-6">
       <h1 className="text-2xl font-semibold tracking-tight">{t('title')}</h1>
       <p className="text-sm text-muted-foreground">{t('intro')}</p>
-      <fieldset className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <fieldset className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
         <legend className="sr-only">{t('filters.label')}</legend>
-        <Choice label={t('filters.account')} value={filters.account_id === undefined ? undefined : String(filters.account_id)} onChange={(v) => { chooseAccount(v) }}>
-          {(loaded ?? []).map((account) => (
-            <option key={account.id} value={account.id}>
-              {account.display_name}
+        <Choice label={t('filters.account')} value={search.account === undefined ? undefined : String(search.account)} onChange={(v) => { choose('account', v) }}>
+          {accountChoices.map(({ id, name }) => (
+            <option key={id} value={id}>
+              {name}
             </option>
           ))}
         </Choice>
-        <Choice label={t('filters.who')} value={filters.actor} onChange={(v) => { choose('actor', v) }}>
-          {ACTORS.map((actor: Actor) => (
+        <Choice label={t('filters.who')} value={search.actor} onChange={(v) => { choose('actor', v) }}>
+          {ACTORS.map((actor) => (
             <option key={actor} value={actor}>
               {t(`who.${actor}`)}
             </option>
           ))}
         </Choice>
-        <Choice label={t('filters.action')} value={filters.action} onChange={(v) => { choose('action', v) }}>
+        <Choice label={t('filters.app')} value={search.app} onChange={(v) => { choose('app', v) }}>
+          {apps.map(({ key, name }) => (
+            <option key={key} value={key}>
+              {name}
+            </option>
+          ))}
+        </Choice>
+        <Choice label={t('filters.action')} value={search.action} onChange={(v) => { choose('action', v) }}>
           {MAIL_ACTIONS.map((action) => (
             <option key={action} value={action}>
               {t(`actions.${action}`)}
             </option>
           ))}
         </Choice>
-        <Choice label={t('filters.result')} value={filters.result} onChange={(v) => { choose('result', v) }}>
-          <option value="ok">{t('results.ok')}</option>
-          <option value="failed">{t('results.failed')}</option>
+        <Choice label={t('filters.result')} value={search.result} onChange={(v) => { choose('result', v) }}>
+          {RESULTS.map((result) => (
+            <option key={result} value={result}>
+              {t(`results.${result}`)}
+            </option>
+          ))}
         </Choice>
       </fieldset>
       {/* A new list for new filters: nothing of the old one (a page, a Load more on its way) is kept. */}
@@ -143,7 +166,7 @@ function Choice({
 }): ReactElement {
   const { t } = useTranslation(ACTIVITY_NS)
   return (
-    <label className="flex flex-col gap-1 text-sm font-medium">
+    <label className="flex min-w-0 flex-col gap-1 text-sm font-medium">
       {label}
       <select
         className={selectClass}
@@ -246,6 +269,7 @@ function Row({ record }: { record: AuditRecord }): ReactElement {
   const timeZone = useTimeZone()
   const accountLabel = useAccountLabel()
   const ok = record.result === 'ok'
+  const app = record.actor === 'agent' ? recordApp(record) : undefined
   const unlisted = record.detail['not_listed']
   const fields = Object.entries(record.detail).filter(
     ([name, value]) => name !== 'not_listed' && name !== 'filter_id' && value !== null && value !== undefined,
@@ -273,6 +297,16 @@ function Row({ record }: { record: AuditRecord }): ReactElement {
           <>
             <dt className="text-muted-foreground">{t('fields.run')}</dt>
             <dd>{record.run_id}</dd>
+          </>
+        )}
+        {app !== undefined && (
+          <>
+            <dt className="text-muted-foreground">{t('filters.app')}</dt>
+            <dd className="break-words">
+              <Link to="/activity" search={{ app }} className="underline underline-offset-4">
+                {t('app.only', { name: who(t, record) })}
+              </Link>
+            </dd>
           </>
         )}
         {fields.map(([name, value]) => (

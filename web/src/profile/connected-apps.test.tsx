@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { AppLimits, ConnectedApp, ConnectedApps as Listing } from '@/api/oauth.ts'
-import { renderSignedIn } from '@/test/signed-in.tsx'
+import { renderRouted } from '@/test/routed.tsx'
 
 import { ConnectedApps } from './connected-apps.tsx'
 
@@ -107,12 +107,25 @@ afterEach(() => {
 })
 
 describe('ConnectedApps', () => {
+  it('links each app to its own activity', async () => {
+    stubApi('builtin', [app(1, 'Claude'), app(2, 'Claude')])
+    const history = renderRouted(<ConnectedApps />, ALICE, '/profile')
+    const [first, second] = await screen.findAllByRole('link', { name: 'Activity: Claude' })
+    expect(decodeURIComponent(first?.getAttribute('href') ?? '')).toBe('/activity?app=grant:1')
+    if (second === undefined) {
+      throw new Error('two links expected')
+    }
+    await userEvent.click(second)
+    expect(await screen.findByText('Page /activity')).toBeInTheDocument()
+    expect(decodeURIComponent(history.location.search)).toBe('?app=grant:2')
+  })
+
   it('lists the apps and disconnects one', async () => {
     const fetchMock = stubApi('builtin', [
       app(1, 'Claude', '2026-10-25T13:00:00Z'),
       app(2, null),
     ])
-    renderSignedIn(<ConnectedApps />, ALICE)
+    renderRouted(<ConnectedApps />, ALICE, '/profile')
     const list = await screen.findByRole('list', { name: 'Connected apps' })
     const [claude, unnamed, ...rest] = within(list).getAllByRole('listitem')
     expect(rest).toHaveLength(0)
@@ -142,7 +155,7 @@ describe('ConnectedApps', () => {
 
   it('keeps the app when the confirm is cancelled', async () => {
     const fetchMock = stubApi('builtin', [app(1, 'Claude')])
-    renderSignedIn(<ConnectedApps />, ALICE)
+    renderRouted(<ConnectedApps />, ALICE, '/profile')
     await userEvent.click(await screen.findByRole('button', { name: 'Disconnect Claude' }))
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
 
@@ -157,7 +170,7 @@ describe('ConnectedApps', () => {
 
   it('says when a disconnect fails and shows what is left', async () => {
     const fetchMock = stubApi('builtin', [app(1, 'Claude')], { failRevoke: true })
-    renderSignedIn(<ConnectedApps />, ALICE)
+    renderRouted(<ConnectedApps />, ALICE, '/profile')
     await userEvent.click(await screen.findByRole('button', { name: 'Disconnect Claude' }))
     await userEvent.click(screen.getByRole('button', { name: 'Disconnect' }))
 
@@ -171,14 +184,14 @@ describe('ConnectedApps', () => {
 
   it('says so while nothing is connected', async () => {
     stubApi('builtin', [])
-    renderSignedIn(<ConnectedApps />, ALICE)
+    renderRouted(<ConnectedApps />, ALICE, '/profile')
     expect(await screen.findByText(/None yet/)).toBeInTheDocument()
     expect(screen.queryByRole('list')).not.toBeInTheDocument()
   })
 
   it('points to the identity provider with an external issuer', async () => {
     stubApi('external', [app(3, 'Claude')])
-    renderSignedIn(<ConnectedApps />, ALICE)
+    renderRouted(<ConnectedApps />, ALICE, '/profile')
     expect(await screen.findByText(/Your identity provider manages/)).toHaveTextContent(
       'Apps listed here were connected before.',
     )
@@ -188,7 +201,7 @@ describe('ConnectedApps', () => {
 
   it('mentions no listed apps with an external issuer when there are none', async () => {
     stubApi('external', [])
-    renderSignedIn(<ConnectedApps />, ALICE)
+    renderRouted(<ConnectedApps />, ALICE, '/profile')
     expect(await screen.findByText(/Your identity provider manages/)).not.toHaveTextContent(
       'Apps listed here',
     )
@@ -197,7 +210,7 @@ describe('ConnectedApps', () => {
 
   it('stays out of the way while the MCP server is off and nothing is connected', async () => {
     const fetchMock = stubApi('off', [])
-    renderSignedIn(<ConnectedApps />, ALICE)
+    renderRouted(<ConnectedApps />, ALICE, '/profile')
     await vi.waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1)
     })
@@ -206,7 +219,7 @@ describe('ConnectedApps', () => {
   })
   it('shows the tools an app may use and approves those it was not approved for', async () => {
     const fetchMock = stubApi('builtin', [app(1, 'Claude', null, ['mail_read'])])
-    renderSignedIn(<ConnectedApps />, ALICE)
+    renderRouted(<ConnectedApps />, ALICE, '/profile')
     expect(await screen.findByText('Tools: Read mail')).toBeInTheDocument()
     expect(
       screen.getByText('Not approved: Organize mail, Move mail between accounts'),
@@ -228,7 +241,7 @@ describe('ConnectedApps', () => {
 
   it('changes the tools an app may use', async () => {
     const fetchMock = stubApi('builtin', [app(1, 'Claude')])
-    renderSignedIn(<ConnectedApps />, ALICE)
+    renderRouted(<ConnectedApps />, ALICE, '/profile')
     await userEvent.click(await screen.findByRole('button', { name: 'Change tools' }))
     await userEvent.click(screen.getByRole('checkbox', { name: 'Move mail between accounts' }))
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
@@ -242,7 +255,7 @@ describe('ConnectedApps', () => {
 
   it('offers no tool choice with an external issuer', async () => {
     stubApi('external', [app(3, 'Claude')])
-    renderSignedIn(<ConnectedApps />, ALICE)
+    renderRouted(<ConnectedApps />, ALICE, '/profile')
     expect(await screen.findByText('Claude')).toBeInTheDocument()
     expect(screen.queryByText(/Tools:/)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Change tools' })).not.toBeInTheDocument()
@@ -250,7 +263,7 @@ describe('ConnectedApps', () => {
 
   it('limits an app to some accounts and to a send ceiling', async () => {
     const fetchMock = stubApi('builtin', [app(1, 'Claude', null, ['mail_read'])])
-    renderSignedIn(<ConnectedApps />, ALICE)
+    renderRouted(<ConnectedApps />, ALICE, '/profile')
     expect(await screen.findByText('Accounts: all of them')).toBeInTheDocument()
     expect(screen.queryByText(/Sending, at most/)).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Change limits' }))
@@ -279,7 +292,7 @@ describe('ConnectedApps', () => {
       ],
       { served: DRAFTING },
     )
-    renderSignedIn(<ConnectedApps />, ALICE)
+    renderRouted(<ConnectedApps />, ALICE, '/profile')
     expect(await screen.findByText('Accounts: Work')).toBeInTheDocument()
     expect(screen.getByText('Sending, at most: Drafts only')).toBeInTheDocument()
     expect(screen.getByText('No accounts: those it had were removed.')).toBeInTheDocument()
@@ -302,7 +315,7 @@ describe('ConnectedApps', () => {
 
   it('says when limits could not be changed, keeping the choice', async () => {
     stubApi('builtin', [app(1, 'Claude')], { failLimits: true })
-    renderSignedIn(<ConnectedApps />, ALICE)
+    renderRouted(<ConnectedApps />, ALICE, '/profile')
     await userEvent.click(await screen.findByRole('button', { name: 'Change limits' }))
     await userEvent.click(screen.getByRole('radio', { name: 'Only these' }))
     await userEvent.click(screen.getByRole('checkbox', { name: 'Work' }))

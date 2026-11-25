@@ -339,8 +339,8 @@ Older than milestone E, seen in its browser check; fix before batch 11.
       reasons are weighed first: what an agent may attach unasked, and tool calls that size.
 - [x] **Per-app limits** — a connected app sees only the accounts the user chooses,
       and may send less than the account allows (drafts only, say).
-- [ ] **Activity per app** (maybe) — the audit trail of one connected app, linked from Connected
-      apps.
+- [x] **Activity per app** — the audit trail of one connected app or API token, linked from
+      Connected apps and API tokens.
 
 ### Milestone G: Integrations
 
