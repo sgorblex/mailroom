@@ -140,12 +140,17 @@ def test_config_says_whether_sso_is_on(
     api_client: TestClient, application: FastAPI, monkeypatch: pytest.MonkeyPatch, idp: FakeIdp
 ) -> None:
     monkeypatch.setattr(application.state, "sso", None, raising=False)
-    assert api_client.get("/api/v1/auth/oidc/config").json() == {"enabled": False, "name": None}
+    assert api_client.get("/api/v1/auth/oidc/config").json() == {
+        "enabled": False,
+        "name": None,
+        "password_sign_in": True,
+    }
     assert sso_error(api_client.get(START, follow_redirects=False)) == "not_configured"
     configure(application, monkeypatch, idp)
     assert api_client.get("/api/v1/auth/oidc/config").json() == {
         "enabled": True,
         "name": "Example ID",
+        "password_sign_in": True,
     }
 
 

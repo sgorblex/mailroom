@@ -13,7 +13,9 @@ from mailroom.api.refusals import refused
 from mailroom.api.token_access import route_groups
 from mailroom.audit import WEB, Origin
 from mailroom.auth.api_tokens import token_access
+from mailroom.auth.password_sign_in import password_sign_in
 from mailroom.auth.sessions import SESSION_COOKIE_NAME, session_user
+from mailroom.auth.sso import Sso
 from mailroom.context import AppContext, app_context
 from mailroom.models import User
 from mailroom.reach import WHOLE, Reach
@@ -38,6 +40,26 @@ def get_db_session(request: Request) -> Iterator[Session]:
 
 
 DbSession = Annotated[Session, Depends(get_db_session)]
+
+
+def configured_sso(request: Request) -> Sso | None:
+    """Web SSO as configured; None when it is off."""
+    sso: Sso | None = getattr(request.app.state, "sso", None)
+    return sso
+
+
+ConfiguredSso = Annotated[Sso | None, Depends(configured_sso)]
+
+
+def require_password_sign_in(db: DbSession, sso: ConfiguredSso) -> None:
+    """Refuse what passwords are for while users sign in through the identity provider alone."""
+    if not password_sign_in(db, sso):
+        logger.info(
+            "password_refused",
+            extra={"event": "password_refused", "outcome": "password_sign_in_off"},
+        )
+        msg = "Passwords are off here: sign in through the identity provider."
+        raise refused(403, "password_sign_in_off", msg)
 
 
 SessionCookie = Annotated[str | None, Cookie(alias=SESSION_COOKIE_NAME)]

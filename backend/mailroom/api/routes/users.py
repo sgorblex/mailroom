@@ -17,6 +17,7 @@ from mailroom.api.deps import (
     DbSession,
     SessionCookie,
     require_admin,
+    require_password_sign_in,
 )
 from mailroom.api.refusals import refused
 from mailroom.auth.password import MAX_PASSWORD_LENGTH, password_matches
@@ -123,7 +124,9 @@ def delete_user(user_id: UserId, db: DbSession, ctx: Context, admin: CurrentAdmi
     )
 
 
-@users_router.post("/{user_id}/password", status_code=204)
+@users_router.post(
+    "/{user_id}/password", status_code=204, dependencies=[Depends(require_password_sign_in)]
+)
 def reset_user_password(
     user_id: UserId, body: NewPassword, db: DbSession, admin: CurrentAdmin
 ) -> None:
@@ -138,7 +141,9 @@ def reset_user_password(
     )
 
 
-@own_password_router.post("/password", status_code=204)
+@own_password_router.post(
+    "/password", status_code=204, dependencies=[Depends(require_password_sign_in)]
+)
 def change_own_password(
     body: PasswordChange,
     request: Request,

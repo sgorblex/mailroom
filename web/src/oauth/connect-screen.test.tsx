@@ -284,7 +284,7 @@ describe('ConnectScreen', () => {
         <RootLayout />
       </AuthContext>,
     )
-    expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Sign in' })).toBeInTheDocument()
     const button = await screen.findByRole('link', { name: 'Sign in with Authentik' })
     const target = new URL(button.getAttribute('href') ?? '', 'https://mailroom.test')
     expect(target.searchParams.get('intent')).toBe('login')

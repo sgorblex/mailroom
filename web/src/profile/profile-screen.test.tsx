@@ -76,7 +76,7 @@ async function fill(current: string, next: string, repeated: string): Promise<vo
     ['New password', next],
     ['New password again', repeated],
   ] as const) {
-    const field = screen.getByLabelText(label)
+    const field = await screen.findByLabelText(label)
     await userEvent.clear(field)
     await userEvent.type(field, value)
   }
@@ -166,6 +166,40 @@ describe('ProfileScreen', () => {
     renderSignedIn(<ProfileScreen />, ALICE)
     await screen.findByLabelText('Current password')
     await expectNoAxeViolations()
+  })
+
+  it('hides the password change while passwords are off', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((path: string) =>
+        path === '/api/v1/auth/oidc/config'
+          ? Promise.resolve(
+              new Response('{"enabled":true,"name":"Authentik","password_sign_in":false}'),
+            )
+          : otherSections(path),
+      ),
+    )
+    renderSignedIn(<ProfileScreen />, ALICE)
+    expect(await screen.findByRole('link', { name: 'Link Authentik' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Current password')).not.toBeInTheDocument()
+  })
+
+  it('says when passwords were turned off meanwhile', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((path: string) =>
+        path === PASSWORD_PATH
+          ? Promise.resolve(
+              new Response('{"detail":{"code":"password_sign_in_off","message":"Off"}}', {
+                status: 403,
+              }),
+            )
+          : otherSections(path),
+      ),
+    )
+    renderSignedIn(<ProfileScreen />, ALICE)
+    await fill(CURRENT, NEXT, NEXT)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Passwords are off here')
   })
 
   it('asks to wait after too many wrong passwords', async () => {

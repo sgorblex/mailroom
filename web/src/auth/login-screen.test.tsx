@@ -1,6 +1,8 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { ApiRequestError } from '@/api/http.ts'
 import { AuthContext } from '@/auth/auth-context.ts'
 
 import { LoginScreen } from './login-screen.tsx'
@@ -9,7 +11,9 @@ function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status })
 }
 
-function stubConfig(config: { enabled: boolean; name: string | null } | 'missing'): void {
+function stubConfig(
+  config: { enabled: boolean; name: string | null; password_sign_in?: boolean } | 'missing',
+): void {
   vi.stubGlobal(
     'fetch',
     vi.fn((path: string) => {
@@ -21,14 +25,15 @@ function stubConfig(config: { enabled: boolean; name: string | null } | 'missing
   )
 }
 
-function renderSignedOut(): void {
-  const reject = (): Promise<void> => Promise.reject(new Error('not in this test'))
+const reject = (): Promise<void> => Promise.reject(new Error('not in this test'))
+
+function renderSignedOut(signIn: () => Promise<void> = reject): void {
   render(
     <AuthContext
       value={{
         status: 'signed-out',
         features: new Set(),
-        signIn: reject,
+        signIn,
         signOut: reject,
         changeTimeZone: reject,
         changeMarkReadSubfolders: reject,
@@ -84,5 +89,31 @@ describe('LoginScreen and SSO', () => {
     const button = await screen.findByRole('link', { name: 'Sign in with Authentik' })
     const target = new URL(button.getAttribute('href') ?? '', 'https://mailroom.test')
     expect(target.searchParams.get('return_to')).toBe('/accounts')
+  })
+
+  it('shows only the provider while passwords are off', async () => {
+    window.history.replaceState(null, '', '/?sso_error=not_linked')
+    stubConfig({ enabled: true, name: 'Authentik', password_sign_in: false })
+    renderSignedOut()
+    expect(await screen.findByRole('link', { name: 'Sign in with Authentik' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Password')).not.toBeInTheDocument()
+    expect(screen.queryByText('or')).not.toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('Ask your administrator.')
+  })
+
+  it('drops the password form when passwords were turned off meanwhile', async () => {
+    stubConfig({ enabled: true, name: 'Authentik' })
+    renderSignedOut(() => {
+      stubConfig({ enabled: true, name: 'Authentik', password_sign_in: false })
+      return Promise.reject(new ApiRequestError(403, { detail: { code: 'password_sign_in_off' } }, 'Off'))
+    })
+    await userEvent.type(await screen.findByLabelText('Username'), 'alice')
+    await userEvent.type(screen.getByLabelText('Password'), 'a long enough password')
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    await vi.waitFor(() => {
+      expect(screen.queryByLabelText('Password')).not.toBeInTheDocument()
+    })
+    expect(screen.getByRole('alert')).toHaveTextContent('Passwords are off here')
+    expect(screen.getByRole('link', { name: 'Sign in with Authentik' })).toBeInTheDocument()
   })
 })

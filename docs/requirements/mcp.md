@@ -459,7 +459,8 @@ for users an admin has already created. **Nobody signs up through SSO.**
   username exactly (no case folding or trimming), and that user has no sign-in linked from this
   issuer yet. Only for a provider whose users cannot choose their usernames. Linking never
   changes an existing link.
-- A user lists and unlinks their linked sign-ins on their *Profile* page.
+- A user lists and unlinks their linked sign-ins on their *Profile* page (not the provider's last
+  one while passwords are off).
 
 ## Endpoints
 
@@ -472,7 +473,7 @@ for users an admin has already created. **Nobody signs up through SSO.**
 | `/connect?request=<id>` | Consent screen (web app). |
 | `/api/v1/oauth/requests/{id}` | `GET` the pending request, with the served tool groups (`name`, `description`, `requires`, `default`) and the user's `accounts` (`id`, `name`); `POST {"decision": "approve" \| "deny", "groups", "account_ids", "send_ceiling"}` (both limits null by default: none) answers `{"redirect_to"}`, the client's redirect URL (session, same origin; 404 for an unknown, expired or another user's request; 400 `groups_not_approvable` for an empty choice, a group not served, or one without a group it requires; 400 `accounts_not_approvable` for accounts that are not all the user's, or none). |
 | `/api/v1/oauth/grants` | `GET` `{"auth", "grants", "groups", "accounts"}`: the MCP auth mode, the user's connected apps (client name, created, last used, the served `groups` it is approved for, `account_ids` and `send_ceiling`, null without), the user's accounts and, with the built-in server, the served tool groups; `PUT /{id}/groups {"groups"}` makes those the served groups approved (400 as for a decision); `PUT /{id}/limits {"account_ids", "send_ceiling"}` sets both limits (400 as for a decision); `DELETE /{id}` revokes one, its tokens with it (404 for another user's, for each). |
-| `/api/v1/auth/oidc/config`, `/start`, `/callback` | Web SSO: whether it is on and its label, start (`intent` `login`, `link`, or `mcp` with `request`), callback. |
+| `/api/v1/auth/oidc/config`, `/start`, `/callback` | Web SSO: whether it is on, its label and whether passwords work, start (`intent` `login`, `link`, or `mcp` with `request`), callback. |
 | `/api/v1/me/identities` | `GET` the user's linked sign-ins; `DELETE /{id}` unlinks one. |
 
 Allowed hosts for the MCP transport come from `MAILROOM_PUBLIC_URL`, never from the request's
@@ -507,6 +508,7 @@ workers; expired rows are swept on writes.
 | `MAILROOM_OAUTH_CIMD_HOSTS` | Hosts whose client ID metadata documents are fetched; default `claude.ai,claude.com`. |
 | `MAILROOM_OIDC_ISSUER`, `MAILROOM_OIDC_CLIENT_ID`, `MAILROOM_OIDC_CLIENT_SECRET` | Web SSO's provider and confidential client; SSO is off without them. |
 | `MAILROOM_OIDC_NAME` | The SSO button's label. |
+| `MAILROOM_PASSWORD_SIGN_IN` | `on` keeps passwords working whatever the *External sign-in only* [instance setting](../GLOSSARY.md) says; anything else is ignored with a warning. |
 | `MAILROOM_OIDC_LINK_CLAIM` | Unset (link from the profile only) or `preferred_username`; anything else is ignored with a warning. |
 | `MAILROOM_MCP_OIDC_ISSUER` | External mode's issuer; defaults to `MAILROOM_OIDC_ISSUER`. |
 | `MAILROOM_MCP_OIDC_AUDIENCES` | Accepted `aud` values; required in external mode. |

@@ -418,6 +418,16 @@ def user_identities(db: Session, user_id: int) -> list[ExternalIdentity]:
     )
 
 
+def is_from(sso: Sso, identity: ExternalIdentity) -> bool:
+    """Whether ``identity`` is the configured provider's."""
+    return identity.issuer.rstrip("/") == sso.settings.issuer.rstrip("/")
+
+
+def provider_identities(db: Session, sso: Sso, user_id: int) -> list[ExternalIdentity]:
+    """The sign-ins linked to the user from the configured provider."""
+    return [identity for identity in user_identities(db, user_id) if is_from(sso, identity)]
+
+
 def unlink(db: Session, user_id: int, identity_id: int) -> bool:
     """Remove one of ``user_id``'s linked sign-ins; ``False`` when they have no such one."""
     removed = db.execute(

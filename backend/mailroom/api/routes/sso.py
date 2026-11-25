@@ -15,8 +15,9 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 
 from mailroom.api.csrf import is_cross_site
-from mailroom.api.deps import CurrentUser, DbSession, SessionCookie
+from mailroom.api.deps import ConfiguredSso, CurrentUser, DbSession, SessionCookie, configured_sso
 from mailroom.auth.oidc import OidcError
+from mailroom.auth.password_sign_in import password_sign_in
 from mailroom.auth.sessions import (
     SESSION_COOKIE_NAME,
     create_session,
@@ -38,6 +39,8 @@ from mailroom.auth.sso import (
     SsoError,
     begin,
     complete,
+    is_from,
+    provider_identities,
     safe_return_to,
     unlink,
     user_identities,
@@ -65,11 +68,8 @@ class SsoConfig(BaseModel):
     enabled: bool
     name: str | None
     """The sign-in button's label, when SSO is on."""
-
-
-def _sso(request: Request) -> Sso | None:
-    sso: Sso | None = getattr(request.app.state, "sso", None)
-    return sso
+    password_sign_in: bool
+    """Whether passwords work; false with external sign-in only."""
 
 
 def _binding_cookie_attributes() -> dict[str, Any]:
@@ -155,9 +155,12 @@ def _claim(request: Request, db: Session, done: Completed, session: str) -> bool
 
 
 @sso_router.get("/config")
-def sso_config(request: Request) -> SsoConfig:
-    sso = _sso(request)
-    return SsoConfig(enabled=sso is not None, name=sso.settings.name if sso else None)
+def sso_config(db: DbSession, sso: ConfiguredSso) -> SsoConfig:
+    return SsoConfig(
+        enabled=sso is not None,
+        name=sso.settings.name if sso else None,
+        password_sign_in=password_sign_in(db, sso),
+    )
 
 
 @sso_router.get("/start")
@@ -186,7 +189,7 @@ def sso_start(
         target = with_query(consent_path, request=authorization)
     else:
         target = safe_return_to(return_to, "/profile" if intent == "link" else "/")
-    sso = _sso(request)
+    sso = configured_sso(request)
     if sso is None:
         return _failed(SsoError("not_configured", target))
     client = client_key(request)
@@ -235,7 +238,7 @@ def sso_callback(
 ) -> Response:
     """Where the provider sends the browser back: signs in (or links) and goes to ``return_to``,
     or goes there with ``sso_error``. A sign-in goes on through :func:`_continue_to`."""
-    sso = _sso(request)
+    sso = configured_sso(request)
     if sso is None:
         return _failed(SsoError("not_configured"))
     try:
@@ -285,7 +288,7 @@ class IdentityOut(BaseModel):
     @classmethod
     def of(cls, identity: ExternalIdentity, sso: Sso | None) -> IdentityOut:
         name = None
-        if sso is not None and identity.issuer.rstrip("/") == sso.settings.issuer.rstrip("/"):
+        if sso is not None and is_from(sso, identity):
             name = sso.settings.name
         return cls(
             id=identity.id,
@@ -298,12 +301,17 @@ class IdentityOut(BaseModel):
 
 
 @identities_router.get("")
-def list_identities(request: Request, db: DbSession, user: CurrentUser) -> list[IdentityOut]:
-    sso = _sso(request)
+def list_identities(db: DbSession, user: CurrentUser, sso: ConfiguredSso) -> list[IdentityOut]:
     return [IdentityOut.of(identity, sso) for identity in user_identities(db, user.id)]
 
 
 @identities_router.delete("/{identity_id}", status_code=204)
-def unlink_identity(identity_id: int, db: DbSession, user: CurrentUser) -> None:
+def unlink_identity(identity_id: int, db: DbSession, user: CurrentUser, sso: ConfiguredSso) -> None:
+    """Refused for the provider's last one while nothing else signs the user in."""
+    if sso is not None and not password_sign_in(db, sso):
+        linked = [identity.id for identity in provider_identities(db, sso, user.id)]
+        if linked == [identity_id]:
+            msg = "This is your only way to sign in while passwords are off."
+            raise Refusal("conflict", "only_sign_in", msg)
     if not unlink(db, user.id, identity_id):
         raise Refusal("not_found", "identity_not_found", "No such linked sign-in")

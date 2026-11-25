@@ -4,12 +4,15 @@ import { useTranslation } from 'react-i18next'
 import { ApiRequestError, apiErrorMessage } from '@/api/http.ts'
 import { ssoStartUrl } from '@/api/sso.ts'
 import { useAuth } from '@/auth/auth-context.ts'
-import { currentReturnTo, ssoErrorMessage, useSsoConfig, useSsoError } from '@/auth/sso.ts'
+import { currentReturnTo, ssoErrorMessage, useSignInWays, useSsoError } from '@/auth/sso.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { buttonVariants } from '@/components/ui/button-variants.ts'
 import { Input } from '@/components/ui/input.tsx'
 
-/** Shown in place of any page while signed out, so the URL survives signing in. */
+/**
+ * Shown in place of any page while signed out, so the URL survives signing in. The password form
+ * waits to know that passwords work, rather than show and go.
+ */
 export function LoginScreen(): ReactElement {
   const { t } = useTranslation()
   const auth = useAuth()
@@ -18,7 +21,8 @@ export function LoginScreen(): ReactElement {
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const sso = useSsoConfig()
+  const [reloadKey, setReloadKey] = useState(0)
+  const { sso, passwords } = useSignInWays(reloadKey)
   const ssoError = useSsoError()
 
   function failureMessage(failure: unknown): string {
@@ -27,6 +31,9 @@ export function LoginScreen(): ReactElement {
     }
     if (failure instanceof ApiRequestError && failure.status === 429) {
       return t('login.tooManyAttempts')
+    }
+    if (failure instanceof ApiRequestError && failure.code === 'password_sign_in_off') {
+      return t('login.passwordsOff')
     }
     return apiErrorMessage(failure, t('login.unknownError'))
   }
@@ -40,6 +47,10 @@ export function LoginScreen(): ReactElement {
     } catch (failure) {
       setError(failureMessage(failure))
       setSubmitting(false)
+      if (failure instanceof ApiRequestError && failure.code === 'password_sign_in_off') {
+        // Turned off since this screen opened: show it as it is now.
+        setReloadKey((value) => value + 1)
+      }
     }
   }
 
@@ -49,56 +60,65 @@ export function LoginScreen(): ReactElement {
       {ended && <p role="status">{t('login.sessionEnded')}</p>}
       {ssoError !== null && (
         <p role="alert" className="text-sm text-destructive">
-          {ssoErrorMessage(t, ssoError)}
+          {ssoErrorMessage(t, ssoError, passwords !== false)}
         </p>
       )}
-      <form className="flex flex-col gap-3" onSubmit={(event) => void submit(event)}>
-        <label htmlFor="login-username" className="text-sm font-medium">
-          {t('login.username')}
-        </label>
-        <Input
-          id="login-username"
-          autoComplete="username"
-          maxLength={64}
-          autoCapitalize="none"
-          spellCheck={false}
-          required
-          value={username}
-          aria-invalid={error !== null}
-          aria-describedby={error === null ? undefined : 'login-error'}
-          onChange={(event) => {
-            setUsername(event.target.value)
-          }}
-        />
-        <label htmlFor="login-password" className="text-sm font-medium">
-          {t('login.password')}
-        </label>
-        <Input
-          id="login-password"
-          type="password"
-          autoComplete="current-password"
-          required
-          value={password}
-          aria-invalid={error !== null}
-          aria-describedby={error === null ? undefined : 'login-error'}
-          onChange={(event) => {
-            setPassword(event.target.value)
-          }}
-        />
-        {error !== null && (
-          <p id="login-error" role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
-        )}
-        <Button type="submit" disabled={submitting || username.trim() === '' || password === ''}>
-          {t('login.signIn')}
-        </Button>
-      </form>
+      {passwords === false && error !== null && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
+      {passwords === true && (
+        <form className="flex flex-col gap-3" onSubmit={(event) => void submit(event)}>
+          <label htmlFor="login-username" className="text-sm font-medium">
+            {t('login.username')}
+          </label>
+          <Input
+            id="login-username"
+            autoComplete="username"
+            maxLength={64}
+            autoCapitalize="none"
+            spellCheck={false}
+            required
+            value={username}
+            aria-invalid={error !== null}
+            aria-describedby={error === null ? undefined : 'login-error'}
+            onChange={(event) => {
+              setUsername(event.target.value)
+            }}
+          />
+          <label htmlFor="login-password" className="text-sm font-medium">
+            {t('login.password')}
+          </label>
+          <Input
+            id="login-password"
+            type="password"
+            autoComplete="current-password"
+            required
+            value={password}
+            aria-invalid={error !== null}
+            aria-describedby={error === null ? undefined : 'login-error'}
+            onChange={(event) => {
+              setPassword(event.target.value)
+            }}
+          />
+          {error !== null && (
+            <p id="login-error" role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
+          <Button type="submit" disabled={submitting || username.trim() === '' || password === ''}>
+            {t('login.signIn')}
+          </Button>
+        </form>
+      )}
       {sso?.enabled === true && sso.name !== null && (
         <>
-          <p className="text-center text-sm text-muted-foreground">{t('sso.or')}</p>
+          {passwords === true && (
+            <p className="text-center text-sm text-muted-foreground">{t('sso.or')}</p>
+          )}
           <a
-            className={buttonVariants({ variant: 'outline' })}
+            className={buttonVariants({ variant: passwords === true ? 'outline' : 'default' })}
             href={ssoStartUrl('login', currentReturnTo())}
           >
             {t('sso.signInWith', { name: sso.name })}

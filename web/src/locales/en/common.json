@@ -72,6 +72,7 @@
     "wrongCredentials": "Wrong username or password.",
     "tooManyAttempts": "Too many failed attempts. Wait a moment, then try again.",
     "unknownError": "Could not sign in.",
+    "passwordsOff": "Passwords are off here: sign in through your identity provider.",
     "sessionEnded": "Your session has ended. Sign in again."
   },
   "sso": {
@@ -87,9 +88,11 @@
     "cancel": "Cancel",
     "subject": "Account {{subject}}",
     "loadFailed": "Could not load your linked sign-ins.",
+    "onlySignIn": "Passwords are off here, so this is your only way to sign in.",
     "unlinkFailed": "Could not unlink it. Try again.",
     "errors": {
       "notLinked": "That sign-in is not linked to a Mailroom user. Sign in with your password, then link it on your profile.",
+      "notLinkedNoPassword": "That sign-in is not linked to a Mailroom user. Ask your administrator.",
       "stateInvalid": "The sign-in expired or was started in another browser. Try again.",
       "denied": "The identity provider did not let you in.",
       "unavailable": "The identity provider cannot be reached. Try again later.",
@@ -249,6 +252,7 @@
     "addButton": "Add user",
     "makeAdmin": "Admin: may manage users and the instance",
     "revokeAccess": "Revoke API tokens and connected apps too",
+    "passwordsOffHint": "Passwords are off here: this one works only if they come back, and the user signs in through the identity provider if it links users by their username.",
     "passwordHint_one": "At least {{count}} character.",
     "passwordHint_other": "At least {{count}} characters."
   },
@@ -265,6 +269,12 @@
     "sessionIpNone": "Not recorded",
     "sessionIpPartial": "Partial: the last part hidden",
     "sessionIpFull": "Full",
+    "externalOnly": "External sign-in only",
+    "externalOnlyHint": "Users sign in through the identity provider alone; passwords stop working and can't be changed. A user without a linked sign-in can't sign in, unless the provider links users by their username. Open sessions stay signed in.",
+    "externalNotLinked": "Link your own sign-in on your profile first, or you couldn't sign in again.",
+    "externalNotConfigured": "No identity provider is configured, so nobody could sign in.",
+    "externalNoProvider": "It has no effect now: no identity provider is configured, so passwords work.",
+    "externalOverridden": "It has no effect now: the server's environment keeps passwords working (MAILROOM_PASSWORD_SIGN_IN=on).",
     "save": "Save settings",
     "saved": "Saved.",
     "saveFailed": "Could not save the instance settings."
@@ -663,6 +673,7 @@
     "cannotResetSelf": "Change your own password on your profile.",
     "removerGone": "You have been removed.",
     "userAccountsBusy": "Their accounts are being saved. Try again.",
+    "passwordsOff": "Passwords are off here: users sign in through the identity provider.",
     "wrongPassword": "Your current password is wrong."
   },
   "accountErrors": {

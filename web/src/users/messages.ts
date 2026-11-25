@@ -24,6 +24,8 @@ export function userErrorMessage(t: TFunction, failure: unknown, fallback: strin
         return t('errors.removerGone')
       case 'user_accounts_busy':
         return t('errors.userAccountsBusy')
+      case 'password_sign_in_off':
+        return t('errors.passwordsOff')
       case 'wrong_password':
         return t('errors.wrongPassword')
     }

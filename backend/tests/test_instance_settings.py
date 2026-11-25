@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 from sqlalchemy import select
 
+from mailroom.auth.password_sign_in import PASSWORD_SIGN_IN_ENV
 from mailroom.config import instance_settings as module
 from mailroom.config.instance_settings import (
     RETENTION_DAYS_ENV,
@@ -30,6 +31,7 @@ PATH = "/api/v1/admin/settings"
 @pytest.fixture(autouse=True)
 def _no_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(RETENTION_DAYS_ENV, raising=False)
+    monkeypatch.delenv(PASSWORD_SIGN_IN_ENV, raising=False)
 
 
 def rows(db: Session) -> dict[str, Any]:
@@ -37,8 +39,26 @@ def rows(db: Session) -> dict[str, Any]:
     return {key: value for key, value in stored}  # noqa: C416
 
 
-def settings(days: int = 90, session_ip: str = "partial") -> dict[str, Any]:
-    return {"audit_retention_days": days, "session_ip": session_ip}
+def settings(
+    days: int = 90, session_ip: str = "partial", *, external: bool = False
+) -> dict[str, Any]:
+    return {
+        "audit_retention_days": days,
+        "session_ip": session_ip,
+        "external_sign_in_only": external,
+    }
+
+
+def answer(days: int = 90, session_ip: str = "partial") -> dict[str, Any]:
+    """The settings as an instance without SSO answers them."""
+    return settings(days, session_ip) | {
+        "external_sign_in": "not_configured",
+        "password_sign_in_forced": False,
+    }
+
+
+def chosen(days: int, session_ip: str) -> InstanceSettings:
+    return InstanceSettings.model_validate(settings(days, session_ip))
 
 
 def test_signed_out_browsers_are_refused(api_client: TestClient) -> None:
@@ -62,12 +82,12 @@ def test_cross_site_changes_are_refused(admin_client: TestClient, db_session: Se
 def test_an_admin_changes_the_settings(
     admin_client: TestClient, db_session: Session, admin: User, caplog: pytest.LogCaptureFixture
 ) -> None:
-    assert admin_client.get(PATH).json() == settings()
+    assert admin_client.get(PATH).json() == answer()
     caplog.set_level(logging.INFO)
     response = admin_client.put(PATH, json=settings(30, "none"))
     assert response.status_code == 200
-    assert response.json() == settings(30, "none")
-    assert admin_client.get(PATH).json() == settings(30, "none")
+    assert response.json() == answer(30, "none")
+    assert admin_client.get(PATH).json() == answer(30, "none")
     [row] = db_session.scalars(
         select(InstanceSetting).where(InstanceSetting.key == "audit_retention_days")
     )
@@ -81,7 +101,7 @@ def test_an_admin_changes_the_settings(
 
 def test_a_setting_changes_again(admin_client: TestClient, db_session: Session) -> None:
     admin_client.put(PATH, json=settings(30))
-    assert admin_client.put(PATH, json=settings(90)).json() == settings(90)
+    assert admin_client.put(PATH, json=settings(90)).json() == answer(90)
     assert rows(db_session) == {"audit_retention_days": 90}
 
 
@@ -89,10 +109,10 @@ def test_a_change_leaves_the_settings_not_given(
     admin_client: TestClient, db_session: Session
 ) -> None:
     admin_client.put(PATH, json=settings(30, "none"))
-    assert admin_client.put(PATH, json={"audit_retention_days": 60}).json() == settings(60, "none")
-    assert admin_client.put(PATH, json={"session_ip": "full"}).json() == settings(60, "full")
-    assert admin_client.put(PATH, json={}).json() == settings(60, "full")
-    assert rows(db_session) == settings(60, "full")
+    assert admin_client.put(PATH, json={"audit_retention_days": 60}).json() == answer(60, "none")
+    assert admin_client.put(PATH, json={"session_ip": "full"}).json() == answer(60, "full")
+    assert admin_client.put(PATH, json={}).json() == answer(60, "full")
+    assert rows(db_session) == {"audit_retention_days": 60, "session_ip": "full"}
 
 
 def test_a_setting_left_as_it_is_keeps_following_the_environment(
@@ -102,7 +122,7 @@ def test_a_setting_left_as_it_is_keeps_following_the_environment(
     admin_client.put(PATH, json=settings(365, "full"))
     assert rows(db_session) == {"session_ip": "full"}
     monkeypatch.setenv(RETENTION_DAYS_ENV, "200")
-    assert admin_client.get(PATH).json() == settings(200, "full")
+    assert admin_client.get(PATH).json() == answer(200, "full")
 
 
 def test_a_change_of_nothing_is_not_logged(
@@ -123,6 +143,9 @@ def test_a_change_of_nothing_is_not_logged(
         settings() | {"audit_retention_days": True},
         settings() | {"audit_retention_days": None},
         settings(session_ip="some"),
+        settings() | {"external_sign_in_only": "true"},
+        settings() | {"external_sign_in_only": None},
+        answer(),
         settings() | {"other": 1},
         {"audit_retention_days": None},
         {"session_ip": None},
@@ -138,7 +161,7 @@ def test_an_invalid_change_is_refused(
 
 @pytest.mark.parametrize("days", [1, 3650])
 def test_the_retention_bounds_are_allowed(admin_client: TestClient, days: int) -> None:
-    assert admin_client.put(PATH, json=settings(days)).json() == settings(days)
+    assert admin_client.put(PATH, json=settings(days)).json() == answer(days)
 
 
 @pytest.mark.parametrize(
@@ -192,8 +215,8 @@ def test_the_settings_are_cached_for_a_moment(
 
 def test_a_read_a_change_overtakes_is_not_kept() -> None:
     cache = module._Cache()  # noqa: SLF001
-    before = InstanceSettings(audit_retention_days=90, session_ip="full")
-    after = InstanceSettings(audit_retention_days=90, session_ip="none")
+    before = chosen(90, "full")
+    after = chosen(90, "none")
 
     def overtaken() -> InstanceSettings:
         cache.drop()

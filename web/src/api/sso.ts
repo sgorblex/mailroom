@@ -2,10 +2,15 @@ import { z } from 'zod'
 import { getApiBaseUrl } from './api-base-url.ts'
 import { apiDelete, apiGetJson } from './http.ts'
 
-export const ssoConfigSchema = z.object({ enabled: z.boolean(), name: z.string().nullable() })
+/** `password_sign_in`: whether passwords work; absent from an older API, where they do. */
+export const ssoConfigSchema = z.object({
+  enabled: z.boolean(),
+  name: z.string().nullable(),
+  password_sign_in: z.boolean().default(true),
+})
 export type SsoConfig = z.infer<typeof ssoConfigSchema>
 
-/** Whether sign-in through the identity provider is on, and its button's label. */
+/** Whether sign-in through the identity provider is on, its button's label, and whether passwords work. */
 export function fetchSsoConfig(signal?: AbortSignal): Promise<SsoConfig> {
   return apiGetJson('/api/v1/auth/oidc/config', { init: { signal }, schema: ssoConfigSchema })
 }

@@ -110,7 +110,14 @@ linked sign-in counts for both.
    Mailroom already; each links their sign-in on their *Profile* page (or set
    `MAILROOM_OIDC_LINK_CLAIM=preferred_username`, [`requirements/mcp.md`](requirements/mcp.md) —
    *Web SSO*: only when Authentik's users cannot choose or change their usernames, since a first
-   sign-in whose username equals a Mailroom username, exactly, becomes that user's).
+   sign-in whose username equals a Mailroom username, exactly, becomes that user's). Once they have, an admin can turn
+   passwords off (*Users*, *Instance*: *External sign-in only*); should the provider break then,
+   set `MAILROOM_PASSWORD_SIGN_IN=on` and restart the API to sign in with a password again.
+   Disabling a user in Authentik ends nothing already open: their sessions, API tokens and connected
+   apps go on. To end them, turn *External sign-in only* off, reset the user's password on *Users*
+   with the option to revoke their tokens and apps ticked, and turn it on again; or remove the user
+   ([`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md) —
+   *External sign-in only*).
 3. **`oidc` mode** (optional: MCP clients connect only through an Authentik sign-in):
    `MAILROOM_MCP_AUTH=oidc`, nothing else. Link each user's sign-in on their *Profile* page
    first (or let `MAILROOM_OIDC_LINK_CLAIM` link it, as for web SSO): an Authentik user linked to
