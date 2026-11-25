@@ -310,7 +310,7 @@ Older than milestone E, seen in its browser check; fix before batch 11.
       folder afterwards, so the app's Sent list misses it until the next sweep.
 - [x] **Draft left after Undo, then Send** — after an Undo and a second Send the draft can stay in
       Drafts, though the message went once.
-- [ ] **Wide HTML on phones** — fit a newsletter laid out wider than the screen to its width,
+- [x] **Wide HTML on phones** — fit a newsletter laid out wider than the screen to its width,
       as phone mail apps do, instead of cutting it at the frame's edge.
 - [ ] **Speed, later** — what the milestone E speed pass left (its measurement found the rest):
   - [ ] **Mail without waiting on mailbox logins** — `/accounts` logs in to every account's IMAP

@@ -46,6 +46,12 @@ and may try to run script, track the reader, phish, or — through the MCP — i
   CSP (`style-src 'unsafe-inline'`) and sandbox: no script in the frame or the app touches the
   message, and nothing of it reaches the app shell, which only picks the URL from its theme and
   the reader's toggle.
+- **Wide HTML is fitted with CSS too.** The document wraps the message in a block of its own
+  (a `class`, which `safe_html` keeps on no element of the message) that scrolls sideways
+  whatever is wider than the frame. Given the message's layout width (`SafeHtml.layout_width`),
+  stepped `@media (width<…)` rules zoom that block out so the layout fits a narrower frame, a
+  phone's, as phone mail apps do (`html_document` in `api/routes/mail/read.py`): no script, and a
+  browser without `zoom` scrolls instead.
 - **HTML views kept:** each API process keeps the sanitised HTML views it made (its inlined
   `cid:` images included) in memory for 60 seconds, 32 MiB in all, the oldest dropped first
   (`mailroom.mail.service.read.HtmlViews`), so that opening a message reads and sanitises its HTML

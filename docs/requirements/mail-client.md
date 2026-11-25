@@ -211,7 +211,10 @@ senders read as text, each removable. In a dark theme the frame asks for the `da
 once that document is framed (never beside an error) and marked with a check when pressed, shows
 the message's own for as long as it is open, never remembered. It switches
 the frame's URL fragment alone (`#mailroom-original`, back to `#mailroom-dark`): the same
-document, with no request and no reload. The HTML view is an
+document, with no request and no reload. A message laid out wider than the frame (a newsletter
+built for a desktop column, on a phone) is zoomed out to fit it, and what is still wider, or of
+no known width, scrolls sideways inside the frame
+([`nonfunctional-requirements.md`](nonfunctional-requirements.md) — *HTML mail*). The HTML view is an
 `<iframe src="/api/v1/mail/messages/{ref}/html">` with `sandbox="allow-popups
 allow-popups-to-escape-sandbox"`, never `allow-scripts` or `allow-same-origin`. Links open
 top-level with `noopener noreferrer`. Security:

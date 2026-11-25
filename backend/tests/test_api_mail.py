@@ -9,6 +9,7 @@ import base64
 import ipaddress
 import logging
 import os
+import re
 import threading
 import time
 from dataclasses import replace
@@ -98,6 +99,7 @@ NO_REMOTE_CSP = (
 DARK = ":root:not(:has(#mailroom-original:target))"
 """What every dark rule waits for: the dark document's URL fragment is not ``#mailroom-original``."""
 TARGET = '<span id="mailroom-original" hidden></span>'
+FIT = '<div class="mailroom-fit">'
 
 pytestmark = pytest.mark.usefixtures("numbered_accounts")
 
@@ -966,8 +968,73 @@ def test_the_dark_document_holds_the_original_colours_behind_a_fragment() -> Non
         dark_rules = style.removeprefix(light_style).removesuffix("img{max-width:100%;height:auto}")
         assert dark_rules.startswith(DARK)
         assert all(rule.startswith(DARK) for rule in dark_rules.split("}")[:-1])
-        assert page.split("<body>", 1)[1] == f"{TARGET}<p>hi</p></body></html>\n"
+        assert page.split("<body>", 1)[1] == f"{TARGET}{FIT}<p>hi</p></div></body></html>\n"
     assert ORIGINAL_TARGET not in light
+
+
+def test_the_document_fits_a_wide_layout_to_a_narrower_frame() -> None:
+    """A layout width zooms the fit block out in steps as the frame narrows, each step's zoom
+    fitting its narrowest frame, down to the floor; CSS alone, in light and dark."""
+    fluid = html_document("<p>hi</p>")
+    assert fluid.split("<body>", 1)[1] == f"{FIT}<p>hi</p></div></body></html>\n"
+    assert ".mailroom-fit{overflow-x:auto}" in fluid
+    assert "@media" not in fluid
+    assert "zoom" not in fluid
+
+    page = html_document("<p>hi</p>", layout_width=600)
+    assert page.split("<body>", 1)[1] == f"{FIT}<p>hi</p></div></body></html>\n"
+    style = page.split("<style>", 1)[1].split("</style>", 1)[0]
+    assert ".mailroom-fit{min-width:600px}" in style
+    steps = [
+        (int(edge), float(zoom))
+        for edge, zoom in re.findall(
+            r"@media \(width<(\d+)px\)\{\.mailroom-fit\{zoom:([\d.]+)\}\}", style
+        )
+    ]
+    # The first step starts where 600 pixels and the body's padding no longer fit.
+    assert steps[0] == (624, 0.966)
+    edges = [edge for edge, _ in steps]
+    assert edges == sorted(edges, reverse=True)
+    assert len(steps) == style.count("@media")
+    for (edge, zoom), lower in zip(steps, [*edges[1:], 280], strict=True):
+        # The zoomed layout fits the narrowest frame of its step, and not by much less.
+        assert 600 * zoom <= lower - 24 < 600 * (zoom + 0.002)
+        assert edge - lower <= 20
+    # On a 390 pixel phone the step below 404 applies: 600 pixels zoomed into 360.
+    assert dict(steps)[404] == 0.6
+    assert "<script" not in page
+
+    for sets_colours in (False, True):
+        dark = html_document("<p>hi</p>", dark=True, sets_colours=sets_colours, layout_width=600)
+        # The same steps, ahead of the dark rules.
+        assert style.removesuffix("img{max-width:100%;height:auto}") in dark
+        assert dark.split("<body>", 1)[1] == TARGET + page.split("<body>", 1)[1]
+
+    # A layout narrower than the floor and its padding fits any frame: no steps.
+    assert "@media" not in html_document("<p>hi</p>", layout_width=256)
+    assert "@media (width<281px)" in html_document("<p>hi</p>", layout_width=257)
+
+
+def test_a_wide_newsletter_is_fitted_to_the_frame(mailbox: Mailbox) -> None:
+    mailbox.seed(
+        related_html(
+            '<table width="640" align="center"><tr><td><img src="cid:logo@x" width="640">'
+            "News</td></tr></table>"
+        )
+    )
+    [wide] = mailbox.refs()
+    mailbox.seed(
+        related_html('<table width="100%" style="width:100%"><tr><td>Hi</td></tr></table>')
+    )
+    [fluid] = set(mailbox.refs()) - {wide}
+    for dark in ("0", "1"):
+        page = mailbox.client.get(f"{MAIL}/messages/{wide}/html", params={"dark": dark}).text
+        assert ".mailroom-fit{min-width:640px}" in page
+        assert "@media (width<664px){.mailroom-fit{zoom:0.968}}" in page
+        assert (
+            "@media"
+            not in mailbox.client.get(f"{MAIL}/messages/{fluid}/html", params={"dark": dark}).text
+        )
 
 
 def test_a_message_without_html_has_no_html_view(mailbox: Mailbox) -> None:
@@ -1023,7 +1090,7 @@ def test_kept_html_views_are_each_users_own_and_bounded(monkeypatch: pytest.Monk
     views = HtmlViews(lambda: clock.now)
     message = MessageRef(account=1, folder="INBOX", uid_validity=7, uid=3)
     mine = HtmlKey.of(1, 0, message, remote=False)
-    view = SafeHtml("<p>mine</p>", 0, 0, sets_colours=False)
+    view = SafeHtml("<p>mine</p>", 0, 0, sets_colours=False, layout_width=600)
     views.put(mine, view)
     assert views.get(mine) is view
     # Another user with the same account id and ref, a changed account, remote content shown,

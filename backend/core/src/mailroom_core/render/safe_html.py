@@ -15,7 +15,9 @@ another page, or load anything except:
 Styles keep layout and colour only: no `url()`, `expression()` or escapes in any declaration.
 `sets_colours` says whether what is kept sets a background or text colour (a `bgcolor` or `color`
 attribute, `background-color` or `color` in a `style`; `<style>` elements are dropped), so that a
-host can choose how to show it in dark mode.
+host can choose how to show it in dark mode. `layout_width` is the widest fixed pixel width the
+kept markup declares (`render._layout`), so that a host can fit a newsletter built for a desktop
+column to a narrower screen.
 Links open a new top-level browsing context, without opener or referrer. Each link's `title` is
 the host it goes to (IDNA form), never the sender's, and a link whose text names another host
 (`render.hosts`) is followed by a marker naming the real one. The host still serves the result
@@ -43,6 +45,7 @@ from mailroom_core.render._html_policy import (
     parsed_body,
     style_declarations,
 )
+from mailroom_core.render._layout import layout_width
 from mailroom_core.render.hosts import (
     browser_url,
     element_text,
@@ -101,6 +104,9 @@ class SafeHtml:
     """Of those, the `<img>` sources: what `remote` would show."""
     sets_colours: bool
     """What is kept sets a background or text colour of its own (module docstring)."""
+    layout_width: int | None = None
+    """The widest fixed pixel width what is kept declares, capped (`render._layout`); None when
+    it declares none."""
 
 
 class _Filter:
@@ -225,15 +231,25 @@ def _prepare(body: lxml.html.HtmlElement, title_prefix: str) -> tuple[int, int]:
     return count, loadable
 
 
-def _normalised(html: str, title_prefix: str) -> tuple[str, tuple[int, int]]:
+@dataclass(frozen=True, slots=True)
+class _Normalised:
+    html: str
+    remote_images: int
+    loadable_remote_images: int
+    layout_width: int | None
+
+
+def _normalised(html: str, title_prefix: str) -> _Normalised:
     """The body as lxml serialises it once `_prepare`d: well-formed, at most libxml2's depth
-    (2048 with `huge_tree`), no comments or processing instructions; and its remote images, all
-    and loadable."""
+    (2048 with `huge_tree`), no comments or processing instructions; with its remote images, all
+    and loadable, and its layout width."""
     body = parsed_body(html)
     if body is None:
-        return "", (0, 0)
-    counts = _prepare(body, title_prefix)
-    return lxml.html.tostring(body, encoding="unicode"), counts
+        return _Normalised("", 0, 0, None)
+    # Before the link markers go in: they are Mailroom's, not the message's layout.
+    width = layout_width(body)
+    remote_images, loadable = _prepare(body, title_prefix)
+    return _Normalised(lxml.html.tostring(body, encoding="unicode"), remote_images, loadable, width)
 
 
 def safe_html(
@@ -250,9 +266,9 @@ def safe_html(
     There is no cap on the size of `html`: the caller bounds it, and calls this from a worker
     thread, since a large body takes a while to parse and clean."""
     attribute_filter = _Filter(inline_images, remote, max_inline_bytes)
-    normalised, (remote_images, loadable) = _normalised(html, attribute_filter.title_prefix)
+    normalised = _normalised(html, attribute_filter.title_prefix)
     cleaned = nh3.clean(
-        normalised,
+        normalised.html,
         tags=set(TAGS),
         clean_content_tags=set(DROPPED_WITH_CONTENT),
         attributes={tag: set(names) for tag, names in ATTRIBUTES.items()},
@@ -264,4 +280,10 @@ def safe_html(
         set_tag_attribute_values={"a": {"target": "_blank"}},
         filter_style_properties=set(CSS_PROPERTIES),
     )
-    return SafeHtml(cleaned, remote_images, loadable, attribute_filter.sets_colours)
+    return SafeHtml(
+        cleaned,
+        normalised.remote_images,
+        normalised.loadable_remote_images,
+        attribute_filter.sets_colours,
+        normalised.layout_width,
+    )
