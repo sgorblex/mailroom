@@ -33,8 +33,9 @@ menu) shows the health check through the Vite proxy. Engineering baseline:
   — *Sign-in*.
 - **Users are separate.** Each user's accounts, filters and suggestions are theirs alone; nothing
   is shared. An [admin](GLOSSARY.md) adds and removes users and resets their passwords on the
-  *Users* page (the first admin comes from `mise run create-user <name> --admin`); there is no
-  public sign-up. Every user changes their own password on their *Profile* page.
+  *Users* page (the first admin comes from `mise run create-user <name> --admin`), and changes the
+  [instance settings](GLOSSARY.md) in its *Instance* section; there is no public
+  sign-up. Every user changes their own password on their *Profile* page.
 - **Time zone.** Each user keeps a time zone (an IANA name), picked on their *Profile* page and
   filled from the browser's zone when they first sign in to the web; over MCP, UTC until set. The
   web's dates (a list's "today" included), the MCP read tools' dates (each answer names the zone),
@@ -283,7 +284,7 @@ authorization server with its `/connect` consent screen, connected apps on the p
   refused attempts included; a move to another account leaves one in each account. It says who acted (the user, an agent and its connected app, or a
   rule set), what, and how it ended; never a subject or a body. The web's draft saves are left
   out, being the user typing.
-- Records outlive a removed account, go with their user, and are kept a year by default.
+- Records outlive a removed account, go with their user, and are kept 90 days unless the instance says otherwise.
 - The user reviews their own trail on the *Activity* page, newest first, filtered by account, who
   acted, action and result; an agent can list it through MCP.
   How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md)

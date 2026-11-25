@@ -4,16 +4,21 @@ import logging
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
-import pytest
 from sqlalchemy import select, update
 
 from mailroom import audit
-from mailroom.audit import WEB, AuditTrail, Entry, Origin, retention, write_records
+from mailroom.audit import WEB, AuditTrail, Entry, Origin, write_records
+from mailroom.config.instance_settings import (
+    RETENTION_DAYS_ENV,
+    InstanceSettingsChange,
+    change_instance_settings,
+)
 from mailroom.models import AuditRecord
 from mailroom.worker.runs import run_records
 from mailroom_core.mail import AuditItem, AuditRecipients, MessageRef, format_ref, subject_sha256
 
 if TYPE_CHECKING:
+    import pytest
     from sqlalchemy.orm import Session, sessionmaker
 
     from mailroom.models import User
@@ -85,7 +90,7 @@ def test_records_older_than_the_retention_are_purged_on_a_later_write(
     user: User,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv(audit.RETENTION_DAYS_ENV, "30")
+    monkeypatch.setenv(RETENTION_DAYS_ENV, "30")
     write_records(sessions, user.id, [_entry(), _entry()])
     old = records(db_session, user.id)[0].id
     db_session.execute(
@@ -99,17 +104,28 @@ def test_records_older_than_the_retention_are_purged_on_a_later_write(
     assert len(records(db_session, user.id)) == 2
 
 
-@pytest.mark.parametrize(
-    ("raw", "days"), [(None, 365), ("", 365), ("x", 365), ("0", 1), ("90", 90), ("99999", 3650)]
-)
-def test_the_retention_is_read_and_clamped(
-    monkeypatch: pytest.MonkeyPatch, raw: str | None, days: int
+def test_the_purge_keeps_what_the_admins_setting_keeps(
+    db_session: Session,
+    sessions: sessionmaker[Session],
+    user: User,
+    admin: User,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    if raw is None:
-        monkeypatch.delenv(audit.RETENTION_DAYS_ENV, raising=False)
-    else:
-        monkeypatch.setenv(audit.RETENTION_DAYS_ENV, raw)
-    assert retention() == timedelta(days=days)
+    monkeypatch.setenv(RETENTION_DAYS_ENV, "365")
+    write_records(sessions, user.id, [_entry(), _entry(), _entry()])
+    kept, old, _new = [record.id for record in records(db_session, user.id)]
+    for record, days in ((kept, 19), (old, 21)):
+        db_session.execute(
+            update(AuditRecord)
+            .where(AuditRecord.id == record)
+            .values(at=AuditRecord.at - timedelta(days=days))
+        )
+    change_instance_settings(db_session, admin, InstanceSettingsChange(audit_retention_days=20))
+    audit.PURGE.reset()
+    write_records(sessions, user.id, [_entry()])
+    left = {record.id for record in records(db_session, user.id)}
+    assert kept in left
+    assert old not in left
 
 
 def test_records_go_with_their_user(

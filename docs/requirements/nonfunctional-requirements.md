@@ -130,8 +130,8 @@ and may try to run script, track the reader, phish, or — through the MCP — i
 ### The app
 
 - **Separate users.** Every account, filter and suggestion belongs to one user, and every query
-  that reads them is scoped to the signed-in user. Admins manage users, not their mail. No sharing.
-  See *Sign-in* below.
+  that reads them is scoped to the signed-in user. Admins manage users and
+  the instance's settings, not their mail. No sharing. See *Sign-in* below.
 - **One service layer.** What a user may do with their accounts and filters (ownership by user id,
   the checks, the guards) lives in `mailroom.accounts.service`, `mailroom.filters.service` and
   `mailroom.mail.service`, which refuse with a `mailroom.errors.Refusal` (a kind, a `code`, a
@@ -437,6 +437,15 @@ bounded to one minor because the server relies on its handlers.
   reset ends all of that user's sessions, and is not for the admin's own password; removing a
   user deletes their sessions with them. A reset lets an admin sign in as that user, so it is
   logged; a reset that the user must complete themselves is a later option, not a promise.
+- **Instance settings** (`GET`/`PUT /api/v1/admin/settings`, admins only, as above;
+  `app.instance_setting`, revision `202611241000`): `audit_retention_days` (a JSON integer, 1-3650;
+  until set, `MAILROOM_AUDIT_RETENTION_DAYS`, 90 without it) and `session_ip` (`none`, `partial`,
+  the default, or `full`: what of the client's IP a session records at sign-in). A `PUT` carries
+  only the settings to change, so that a form left open undoes no other admin's change; anything else
+  (null included) is a 422. Only the settings it changes get a row, with who changed it and when (null once that admin is removed), so the others keep following their defaults; a stored
+  value that is no longer an option reads as its default. Read through a 5-second cache in each
+  process, which a change there drops (`mailroom.config.instance_settings`). The web's form is the
+  *Users* page's *Instance* section.
 - **Own password** (`POST /api/v1/auth/password`): needs the current one, checked through the
   login throttle (the same per-client counter as sign-in) so a borrowed session cannot guess it;
   keeps this session and ends the others.
@@ -488,6 +497,7 @@ bounded to one minor because the server relies on its handlers.
 - **Logs:** `login_succeeded` (with `user_id`; `via="sso"` through SSO), `login_failed`,
   `logout`, `user_created`,
   `user_removed`, `password_reset` (with `user_id`, the admin, and `target_user_id`),
+  `instance_settings_changed` (with `user_id`, the admin, and the `settings`' names),
   `password_changed`, `mark_read_subfolders_changed`, `index_max_age_changed`,
   `conversations_changed`, `appearance_changed`,
   `password_change_failed`, `sso_refused` and `sso_failed` (with the
@@ -787,8 +797,9 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   call's items once its groups are done, so a call cut at its deadline still records what it
   changed), in a transaction of its own; a failure is logged as `audit_write_failed` (counts and
   the error's type) and never changes the write's answer. Records outlive a removed account
-  and go with their user; those older than `MAILROOM_AUDIT_RETENTION_DAYS` (default 365, 1-3650)
-  are purged as new ones are written, at most once an hour in each process, in a transaction
+  and go with their user; those older than the instance's `audit_retention_days` (*Sign-in*,
+  *Instance settings*; 90 days unless set, where it used to be 365) are purged as new ones are
+  written, at most once an hour in each process, in a transaction
   apart (`audit_purge_failed` when it fails). `GET /api/v1/me/audit` (mounted with the mail
   layer or filters; `Cache-Control: private, no-store`) lists the user's own, newest first,
   `limit` (1-100, default 50) at a time with an opaque `cursor` (400 `invalid_cursor` for any

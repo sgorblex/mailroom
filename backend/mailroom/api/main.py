@@ -30,6 +30,7 @@ from mailroom.api.routes.audit import audit_router
 from mailroom.api.routes.auth import auth_router
 from mailroom.api.routes.filters import filters_router
 from mailroom.api.routes.home import home_router
+from mailroom.api.routes.instance_settings import instance_settings_router
 from mailroom.api.routes.limits import limits_router
 from mailroom.api.routes.mail import NotStored, mail_router
 from mailroom.api.routes.oauth_consent import consent_router, grants_router
@@ -357,6 +358,7 @@ def create_application(
     protected_v1 = APIRouter(prefix="/api/v1", dependencies=[Depends(require_user)])
     protected_v1.include_router(own_password_router)
     protected_v1.include_router(users_router)
+    protected_v1.include_router(instance_settings_router)
     protected_v1.include_router(accounts_router)
     protected_v1.include_router(identities_router)
     protected_v1.include_router(home_router)
