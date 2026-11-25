@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from mailroom.api.deps import AccountId, Context, CurrentUser
 from mailroom.api.routes.mail._shared import mail_router
+from mailroom.api.token_access import ACCOUNT_GROUPS, open_to_tokens
 from mailroom.mail import service
 
 if TYPE_CHECKING:
@@ -50,6 +51,7 @@ class FolderList(BaseModel):
 
 
 @mail_router.get("/accounts/{account_id}/folders")
+@open_to_tokens(*ACCOUNT_GROUPS)
 def folders(
     account_id: AccountId,
     ctx: Context,
@@ -57,7 +59,7 @@ def folders(
     all_: Annotated[bool, Query(alias="all")] = False,
 ) -> FolderList:
     """The selectable folders; ``all``: the ``\\Noselect`` ones too."""
-    listed = service.folders(ctx, user.id, account_id, every=all_)
+    listed = service.folders(ctx, user.id, account_id, every=all_, via=ctx.origin.via)
     return FolderList(account_id=account_id, folders=[MailFolder.of(f) for f in listed])
 
 
@@ -136,19 +138,23 @@ class FolderMarkedRead(BaseModel):
 
 
 @mail_router.post("/accounts/{account_id}/folders", status_code=201)
+@open_to_tokens("mail_folders")
 def create_folder(
     account_id: AccountId, request: FolderCreateRequest, ctx: Context, user: CurrentUser
 ) -> FolderCreated:
-    change = service.create_folder(ctx, user.id, account_id, request.parent, request.name)
+    change = service.create_folder(
+        ctx, user.id, account_id, request.parent, request.name, origin=ctx.origin
+    )
     return FolderCreated(account_id=account_id, path=change.path)
 
 
 @mail_router.post("/accounts/{account_id}/folders/rename")
+@open_to_tokens("mail_folders")
 def rename_folder(
     account_id: AccountId, request: FolderRenameRequest, ctx: Context, user: CurrentUser
 ) -> FolderRenamedAnswer:
     renamed = service.rename_folder(
-        ctx, user.id, account_id, request.folder, request.parent, request.name
+        ctx, user.id, account_id, request.folder, request.parent, request.name, origin=ctx.origin
     )
     change = renamed.change
     return FolderRenamedAnswer(
@@ -163,16 +169,18 @@ def rename_folder(
 
 
 @mail_router.post("/accounts/{account_id}/folders/delete")
+@open_to_tokens("mail_folders")
 def delete_folder(
     account_id: AccountId, request: FolderDeleteRequest, ctx: Context, user: CurrentUser
 ) -> FolderDeleted:
     change = service.delete_folder(
-        ctx, user.id, account_id, request.folder, messages=request.messages
+        ctx, user.id, account_id, request.folder, messages=request.messages, origin=ctx.origin
     )
     return FolderDeleted(account_id=account_id, folder=change.path, messages=request.messages)
 
 
 @mail_router.post("/accounts/{account_id}/folders/mark-read")
+@open_to_tokens("mail_organize")
 def mark_folder_read(
     account_id: AccountId, request: FolderMarkReadRequest, ctx: Context, user: CurrentUser
 ) -> FolderMarkedRead:
@@ -183,5 +191,6 @@ def mark_folder_read(
         request.folder,
         uid_validity=request.uid_validity,
         uid_next=request.uid_next,
+        origin=ctx.origin,
     )
     return FolderMarkedRead(account_id=account_id, folder=request.folder, marked=marked)

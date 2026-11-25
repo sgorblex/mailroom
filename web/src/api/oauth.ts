@@ -14,10 +14,10 @@ export const toolGroupSchema = z.object({
 export type ToolGroup = z.infer<typeof toolGroupSchema>
 
 /** One of the user's accounts an app can be narrowed to. */
-const accountChoiceSchema = z.object({ id: accountIdSchema, name: z.string() })
+export const accountChoiceSchema = z.object({ id: accountIdSchema, name: z.string() })
 export type AccountChoice = z.infer<typeof accountChoiceSchema>
 
-const limitsSchema = z.object({
+export const limitsSchema = z.object({
   /** The accounts it sees; `null` for every one, those added later too. */
   account_ids: z.array(accountIdSchema).nullable().default(null),
   /** The most it may do when it sends, whatever an account's mode; `null` for no ceiling. */

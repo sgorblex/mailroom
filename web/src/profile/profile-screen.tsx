@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useFeature, useMailLayer } from '@/auth/auth-context.ts'
 import { useSectionSpy } from '@/lib/use-section-spy.ts'
 import { cn } from '@/lib/utils.ts'
+import { ApiTokens } from '@/profile/api-tokens.tsx'
 import { AppearanceSettings } from '@/profile/appearance-settings.tsx'
 import { ConnectedApps } from '@/profile/connected-apps.tsx'
 import { ConversationsForm } from '@/profile/conversations-form.tsx'
@@ -35,16 +36,19 @@ interface Group {
  * does first on a folder with subfolders, conversations, the senders whose remote images they show
  * and those whose mail they read as text, the mail index and desktop notifications), Sending (how
  * long Send waits for an Undo and each account's vacation reply with the mail client, the
- * identities' signatures and the mail limits where the instance sends) and, with MCP, Apps
- * (connected apps). On a desktop the nav sits on the left and marks the group in view; on a phone
+ * identities' signatures and the mail limits where the instance sends) and Apps
+ * (connected apps with MCP, personal API tokens). On a desktop the nav sits on the left and marks the group in view; on a phone
  * it scrolls sideways above the groups.
  */
 export function ProfileScreen(): ReactElement {
   const { t } = useTranslation()
   const mcp = useFeature('mcp')
   const mail = useFeature('mail')
+  const filters = useFeature('filters')
   const sends = useMailLayer()
   const [passwordChanges, setPasswordChanges] = useState(0)
+  /** In the app sections' keys: what a password change revoked is listed again. */
+  const [revocations, setRevocations] = useState(0)
 
   const groups: Group[] = [
     {
@@ -54,8 +58,11 @@ export function ProfileScreen(): ReactElement {
           key: 'password',
           node: (
             <PasswordForm
-              onChanged={() => {
+              onChanged={(revokedAccess) => {
                 setPasswordChanges((count) => count + 1)
+                if (revokedAccess) {
+                  setRevocations((count) => count + 1)
+                }
               }}
             />
           ),
@@ -94,7 +101,17 @@ export function ProfileScreen(): ReactElement {
           },
         ]
       : []),
-    ...(mcp ? [{ id: 'apps' as const, sections: [{ key: 'connected-apps', node: <ConnectedApps /> }] }] : []),
+    ...(mcp || mail || filters
+      ? [
+          {
+            id: 'apps' as const,
+            sections: [
+              ...(mcp ? [{ key: 'connected-apps', node: <ConnectedApps key={revocations} /> }] : []),
+              { key: 'api-tokens', node: <ApiTokens key={revocations} /> },
+            ],
+          },
+        ]
+      : []),
   ]
   const ids = groups.map((group) => group.id)
   const [current, show] = useSectionSpy(ids)

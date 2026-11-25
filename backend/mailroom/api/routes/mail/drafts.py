@@ -32,6 +32,7 @@ from mailroom.api.routes.mail._shared import (
     Ref,
     mail_router,
 )
+from mailroom.api.token_access import open_to_tokens
 from mailroom.errors import mail_refusal
 from mailroom.mail import service
 from mailroom_core.config import MAX_SAFE_INTEGER
@@ -389,9 +390,9 @@ class ScheduledAnswer(BaseModel):
     state: str
     code: str | None
     by: Literal["user", "agent"]
-    """Who scheduled it: the user, or an agent through MCP."""
+    """Who scheduled it: the user, or an agent."""
     app: str | None
-    """An agent's connected app: its name, or its client id when it gave none."""
+    """An agent's connected app (its name, or its client id when it gave none) or API token."""
 
     @classmethod
     def of(cls, view: service.ScheduledView) -> ScheduledAnswer:
@@ -492,8 +493,11 @@ async def _attachment(upload: UploadFile, content_id: str | None) -> OutgoingAtt
 
 
 @mail_router.post("/drafts/prefill")
+@open_to_tokens("mail_draft")
 def prefill_draft(request: PrefillRequest, ctx: Context, user: CurrentUser) -> PrefillAnswer:
-    prefilled = service.prefill(ctx, user.id, request.ref, request.mode, quote=request.quote)
+    prefilled = service.prefill(
+        ctx, user.id, request.ref, request.mode, quote=request.quote, via=ctx.origin.via
+    )
     return PrefillAnswer.of(prefilled)
 
 
@@ -554,7 +558,9 @@ async def _import(
         except HTTPException:  # how Starlette words a malformed body or too many parts
             raise mail_refusal("invalid_argument", MESSAGES["invalid_argument"]) from None
         fields = draft.fields(eml=eml, html=html)
-        imported = await run_in_threadpool(service.import_draft, ctx, user_id, fields, uploads)
+        imported = await run_in_threadpool(
+            service.import_draft, ctx, user_id, fields, uploads, origin=ctx.origin
+        )
     saved = SavedDraftAnswer.of(imported.saved)
     return ImportedDraftAnswer(
         **saved.model_dump(), findings=[FindingAnswer.of(f) for f in imported.findings]
@@ -562,6 +568,7 @@ async def _import(
 
 
 @mail_router.post("/drafts", status_code=201)
+@open_to_tokens("mail_draft")
 async def save_draft(
     request: Request,
     ctx: Context,
@@ -611,24 +618,30 @@ async def save_draft(
         except HTTPException:  # how Starlette words a malformed body or too many parts
             raise mail_refusal("invalid_argument", MESSAGES["invalid_argument"]) from None
         fields = draft.fields(html)
-        saved = await run_in_threadpool(service.save_draft, ctx, user.id, fields, uploads)
+        saved = await run_in_threadpool(
+            service.save_draft, ctx, user.id, fields, uploads, origin=ctx.origin
+        )
     return SavedDraftAnswer.of(saved)
 
 
 # Ahead of /drafts/{ref}, which would take "find" as a ref.
 @mail_router.get("/drafts/find")
+@open_to_tokens("mail_draft")
 def find_draft(
     account: Annotated[int, Query(ge=1, le=MAX_SAFE_INTEGER)],
     compose_id: Annotated[str, Query(pattern=_COMPOSE_ID)],
     ctx: Context,
     user: CurrentUser,
 ) -> FoundDraftAnswer:
-    return FoundDraftAnswer.of(service.find_draft(ctx, user.id, account, compose_id))
+    return FoundDraftAnswer.of(
+        service.find_draft(ctx, user.id, account, compose_id, via=ctx.origin.via)
+    )
 
 
 @mail_router.get("/drafts/{ref}")
+@open_to_tokens("mail_draft")
 def read_draft(ref: Ref, ctx: Context, user: CurrentUser) -> DraftAnswer:
-    answer = DraftAnswer.of(service.read_draft(ctx, user.id, ref))
+    answer = DraftAnswer.of(service.read_draft(ctx, user.id, ref, via=ctx.origin.via))
     held = service.scheduled_for(ctx, user.id, answer.ref)
     if held is not None:
         answer.scheduled = ScheduledAnswer.of(held)
@@ -636,18 +649,21 @@ def read_draft(ref: Ref, ctx: Context, user: CurrentUser) -> DraftAnswer:
 
 
 @mail_router.get("/drafts/{ref}/findings")
+@open_to_tokens("mail_draft")
 def check_draft(ref: Ref, ctx: Context, user: CurrentUser) -> FindingsAnswer:
     """The checks before sending a draft, from it as stored: an imported one's import included."""
-    findings = service.draft_findings(ctx, user.id, ref)
+    findings = service.draft_findings(ctx, user.id, ref, via=ctx.origin.via)
     return FindingsAnswer(findings=[FindingAnswer.of(finding) for finding in findings])
 
 
 @mail_router.delete("/drafts/{ref}")
+@open_to_tokens("mail_draft")
 def delete_draft(ref: Ref, ctx: Context, user: CurrentUser) -> DraftRemoved:
-    return DraftRemoved(removed=service.delete_draft(ctx, user.id, ref))
+    return DraftRemoved(removed=service.delete_draft(ctx, user.id, ref, origin=ctx.origin))
 
 
 @mail_router.post("/drafts/{ref}/send", status_code=202)
+@open_to_tokens("mail_send")
 def send_draft(
     ref: Ref,
     ctx: Context,
@@ -658,15 +674,19 @@ def send_draft(
     """202 with the send to follow, unless this draft's key has been delivered already: then 200
     with what came of it, and nothing goes out. ``undoable``, while the user's Undo delay is not
     0, 202 with the held send instead (``GET``/``DELETE /scheduled/{id}``), unless a send of the
-    draft began already."""
-    confirm_resend = request is not None and request.confirm_resend
+    draft began already. From an agent the send mode decides, and ``confirm_resend`` is not its to
+    say: a send not confirmed stays refused."""
+    asked_again = request is not None and request.confirm_resend
+    confirm_resend = asked_again and not ctx.origin.agent
     undoable = request is not None and request.undoable and not confirm_resend
     if undoable and user.undo_send_seconds > 0:
         delay = timedelta(seconds=user.undo_send_seconds)
-        held = service.hold_send(ctx, user.id, ref, delay)
+        held = service.hold_send(ctx, user.id, ref, delay, origin=ctx.origin)
         if held is not None:
             return ScheduledAnswer.of(held)
-    send = service.send_draft(ctx, user.id, ref, by="user", confirm_resend=confirm_resend)
+    send = service.send_draft(
+        ctx, user.id, ref, by=ctx.origin.actor, confirm_resend=confirm_resend, origin=ctx.origin
+    )
     if send.state == "sending":
         return SendAccepted(send_id=send.send_id)
     response.status_code = 200
@@ -683,14 +703,18 @@ def send_test(ref: Ref, request: TrialRequest, ctx: Context, user: CurrentUser) 
 
 
 @mail_router.post("/drafts/{ref}/schedule", status_code=201)
+@open_to_tokens("mail_send")
 def schedule_draft(
     ref: Ref, request: ScheduleRequest, ctx: Context, user: CurrentUser
 ) -> ScheduledAnswer:
     """Send later: the draft held for the worker to send at ``send_at``, still to come."""
-    return ScheduledAnswer.of(service.schedule_later(ctx, user.id, ref, request.send_at))
+    return ScheduledAnswer.of(
+        service.schedule_later(ctx, user.id, ref, request.send_at, origin=ctx.origin)
+    )
 
 
 @mail_router.get("/sends")
+@open_to_tokens("mail_send")
 def read_compose_send(
     account: Annotated[int, Query(ge=1, le=MAX_SAFE_INTEGER)],
     compose_id: Annotated[str, Query(pattern=_COMPOSE_ID)],
@@ -702,6 +726,7 @@ def read_compose_send(
 
 
 @mail_router.get("/sends/{send_id}")
+@open_to_tokens("mail_send")
 def read_send(
     send_id: Annotated[str, Path(max_length=64)], ctx: Context, user: CurrentUser
 ) -> SendAnswer:
@@ -709,6 +734,7 @@ def read_send(
 
 
 @mail_router.get("/scheduled")
+@open_to_tokens("mail_send")
 def list_scheduled(ctx: Context, user: CurrentUser) -> ScheduledList:
     """The user's held sends, soonest first, failed ones included until cancelled."""
     return ScheduledList(
@@ -717,6 +743,7 @@ def list_scheduled(ctx: Context, user: CurrentUser) -> ScheduledList:
 
 
 @mail_router.get("/scheduled/{scheduled_id}")
+@open_to_tokens("mail_send")
 def read_scheduled(
     scheduled_id: Annotated[str, Path(max_length=64)], ctx: Context, user: CurrentUser
 ) -> ScheduledAnswer:
@@ -725,8 +752,12 @@ def read_scheduled(
 
 
 @mail_router.delete("/scheduled/{scheduled_id}")
+@open_to_tokens("mail_send")
 def cancel_scheduled(
     scheduled_id: Annotated[str, Path(max_length=64)], ctx: Context, user: CurrentUser
 ) -> ScheduledAnswer:
-    """Cancel a held send, the draft left in Drafts; ``send_started`` once the worker took it."""
-    return ScheduledAnswer.of(service.cancel_scheduled(ctx, user.id, scheduled_id))
+    """Cancel a held send, the draft left in Drafts; ``send_started`` once the worker took it.
+    A token cancels only what it scheduled itself, ``not_found`` otherwise."""
+    return ScheduledAnswer.of(
+        service.cancel_scheduled(ctx, user.id, scheduled_id, origin=ctx.origin)
+    )

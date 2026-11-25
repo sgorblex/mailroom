@@ -313,6 +313,8 @@ def _admit(
     claim and start the send, so a ``timeout`` refusal does not mean nothing went out. An own
     draft's key guards a retry only while the draft exists, and the send removes the draft, so a
     caller must treat that refusal as not confirmed."""
+    if ctx.origin.agent:
+        by = "agent"  # whatever the front end said: an agent is never taken for the user
     zone = ctx.time_zone(user_id)
     with _as_refusals():
         slot = _runner(ctx).reserve(user_id)

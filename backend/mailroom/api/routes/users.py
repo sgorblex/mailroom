@@ -60,11 +60,14 @@ class NewUser(BaseModel):
 
 class NewPassword(BaseModel):
     password: str = Field(max_length=MAX_PASSWORD_LENGTH)
+    revoke_access: bool = False
+    """Whether their API tokens and connected apps are revoked too."""
 
 
 class PasswordChange(BaseModel):
     current_password: str = Field(max_length=MAX_PASSWORD_LENGTH)
     new_password: str = Field(max_length=MAX_PASSWORD_LENGTH)
+    revoke_access: bool = False
 
 
 # A BIGINT, so a larger id is a 422 rather than a database error.
@@ -126,7 +129,7 @@ def reset_user_password(
 ) -> None:
     user = _target(db, user_id)
     try:
-        reset_password(db, user, body.password, by=admin)
+        reset_password(db, user, body.password, by=admin, revoke_access=body.revoke_access)
     except UserError as exc:
         raise _refused(exc) from None
     logger.info(
@@ -162,7 +165,13 @@ def change_own_password(
         raise _refused(UserError("Wrong password", "wrong_password"))
     throttle.record_success(client)
     try:
-        set_password(db, user, body.new_password, keep_session=session_cookie)
+        set_password(
+            db,
+            user,
+            body.new_password,
+            keep_session=session_cookie,
+            revoke_access=body.revoke_access,
+        )
     except UserError as exc:
         raise _refused(exc) from None
     logger.info("password_changed", extra={"event": "password_changed", "user_id": user.id})

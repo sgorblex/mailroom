@@ -16,6 +16,7 @@ from mailroom.filters.transfers import forget_target
 from mailroom.mail.vacation import forget_vacation
 from mailroom.models import (
     AccountFilterSettings,
+    ApiToken,
     FilterRun,
     IdentitySignature,
     MailIndexFolder,
@@ -121,13 +122,14 @@ def forget_account(store: AccountStore, db: Session, user_id: int, account_id: i
 
 
 def _drop_from_grants(db: Session, user_id: int, account_id: int) -> None:
-    """Take the account out of the connected apps narrowed to it; one left without any reaches
-    none (never all of them)."""
-    db.execute(
-        update(OAuthGrant)
-        .where(OAuthGrant.user_id == user_id, OAuthGrant.account_ids.contains([account_id]))
-        .values(account_ids=func.array_remove(OAuthGrant.account_ids, account_id))
-    )
+    """Take the account out of the connected apps and API tokens narrowed to it; one left without
+    any reaches none (never all of them)."""
+    for holder in (OAuthGrant, ApiToken):
+        db.execute(
+            update(holder)
+            .where(holder.user_id == user_id, holder.account_ids.contains([account_id]))
+            .values(account_ids=func.array_remove(holder.account_ids, account_id))
+        )
 
 
 def _drop_from_views(db: Session, user_id: int, account_id: int) -> None:

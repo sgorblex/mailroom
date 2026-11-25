@@ -9,7 +9,8 @@ is instance config.
 
 ``MAILROOM_MCP_AUTH`` picks the verifier: ``builtin`` and ``oidc`` (Mailroom's own authorization
 server; in ``oidc`` its users sign in through web SSO), ``external`` (an OIDC provider's JWTs,
-``ExternalJwtVerifier``) or ``off``.
+``ExternalJwtVerifier``) or ``off``. Before it, in every mode, ``PersonalTokenVerifier`` takes
+the users' personal API tokens.
 """
 
 from __future__ import annotations
@@ -22,6 +23,8 @@ import jwt
 from mcp.server.auth.provider import AccessToken
 from sqlalchemy.exc import SQLAlchemyError
 
+from mailroom.audit import Origin
+from mailroom.auth.api_tokens import is_api_token, token_access
 from mailroom.auth.oidc import DEFAULT_LEEWAY_SECONDS, OidcError
 from mailroom.auth.sso import linked_user_id
 from mailroom.reach import reach_of
@@ -208,6 +211,78 @@ def user_id_of(token: AccessToken) -> int | None:
     if subject is None or not (subject.isascii() and subject.isdigit()):
         return None
     return int(subject)
+
+
+API_TOKEN_CLIENT: Final = "api_token"
+"""The ``client_id`` of a personal API token's ``AccessToken``, which no OAuth client has."""
+TOKEN_ID_CLAIM: Final = "token_id"
+"""The claim carrying a personal API token's id."""
+
+
+class PersonalTokenVerifier:
+    """A personal API token (``mailroom.auth.api_tokens``), in every mode; any other token is the
+    mode's own verifier's to check. Its ``AccessToken`` carries the claims a grant's does."""
+
+    def __init__(
+        self,
+        mode: TokenVerifier,
+        *,
+        resource: str,
+        session_maker: Callable[[], sessionmaker[Session] | None],
+    ) -> None:
+        self._mode = mode
+        self._resource = resource
+        self._session_maker = session_maker
+
+    async def verify_token(self, token: str) -> AccessToken | None:
+        if is_api_token(token):
+            verified = await anyio.to_thread.run_sync(self._verify, token)
+            if verified is not None:
+                return verified
+        return await self._mode.verify_token(token)
+
+    def _verify(self, token: str) -> AccessToken | None:
+        sessions = self._session_maker()
+        if sessions is None:
+            logger.warning("API token refused: the database is unavailable")
+            return None
+        try:
+            with sessions() as db:
+                access = token_access(db, token)
+        except SQLAlchemyError:
+            logger.warning("API token refused: its lookup failed", exc_info=True)
+            return None
+        if access is None:
+            return None
+        return AccessToken(
+            token=token,
+            client_id=API_TOKEN_CLIENT,
+            scopes=[],
+            expires_at=None if access.expires_at is None else int(access.expires_at.timestamp()),
+            resource=self._resource,
+            subject=str(access.user.id),
+            claims={
+                TOKEN_ID_CLAIM: access.token_id,
+                TOOL_GROUPS_CLAIM: sorted(access.tool_groups),
+                ACCOUNT_IDS_CLAIM: access.reach.account_ids,
+                SEND_CEILING_CLAIM: access.reach.ceiling,
+            },
+        )
+
+
+def token_id_of(token: AccessToken) -> int | None:
+    """The personal API token ``token`` is, if it is one. The client id says so too, so that no
+    other verifier's claim of the name counts."""
+    claimed = (token.claims or {}).get(TOKEN_ID_CLAIM)
+    return claimed if token.client_id == API_TOKEN_CLIENT and type(claimed) is int else None
+
+
+def origin_of(token: AccessToken) -> Origin:
+    """Where a call with ``token`` comes from, for the audit trail of its writes."""
+    token_id = token_id_of(token)
+    if token_id is not None:
+        return Origin("mcp", token_id=token_id)
+    return Origin("mcp", token.client_id, grant_id_of(token))
 
 
 def grant_id_of(token: AccessToken) -> str | None:

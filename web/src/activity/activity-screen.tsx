@@ -23,7 +23,10 @@ type More = { kind: 'idle' } | { kind: 'loading' } | { kind: 'failed'; message: 
 /** Who acted, as a reader names them: you, the connected app, or the rule set. */
 function who(t: TFunction, record: AuditRecord): string {
   if (record.actor === 'agent') {
-    return record.app === null ? t('who.agentUnnamed') : t('who.agentNamed', { app: record.app })
+    if (record.app === null) {
+      return record.token_id === null ? t('who.agentUnnamed') : t('who.agentToken')
+    }
+    return t('who.agentNamed', { app: record.app })
   }
   if (record.actor === 'filter') {
     return record.rule_set === null ? t('who.filterGone') : t('who.filterNamed', { ruleSet: record.rule_set })

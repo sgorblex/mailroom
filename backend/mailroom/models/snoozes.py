@@ -28,7 +28,7 @@ class Snooze(Base):
     __tablename__ = "snooze"
     __table_args__ = (
         UniqueConstraint("user_id", "account_id", "message_id"),
-        CheckConstraint("via IN ('web', 'mcp')", name="via"),
+        CheckConstraint("via IN ('web', 'mcp', 'api')", name="via"),
         Index("ix_snooze_user_id", "user_id", "until"),
     )
 

@@ -22,18 +22,6 @@ if TYPE_CHECKING:
 
 AccountId = Annotated[BareAccountId, Field(description="An account id, from accounts_list.")]
 
-ACCOUNT_FIELDS: Final = {
-    "id",
-    "name",
-    "display_name",
-    "login",
-    "has_password",
-    "run_filters",
-    "send_mode",
-    "identities",
-    "keywords",
-}
-
 
 class NoArguments(Arguments):
     pass
@@ -58,9 +46,8 @@ class RunFiltersArguments(Arguments):
 async def _accounts_list(_args: NoArguments, call: ToolCall) -> JsonObject:
     keywords = await call.thread(lambda: mail_service.account_keywords(call.ctx, call.user_id))
     listed = await call.db(lambda db: service.listed_accounts(call.ctx, db, call.user_id, keywords))
-    return {
-        "accounts": [account.model_dump(mode="json", include=ACCOUNT_FIELDS) for account in listed]
-    }
+    fields = service.AGENT_ACCOUNT_FIELDS
+    return {"accounts": [account.model_dump(mode="json", include=fields) for account in listed]}
 
 
 async def _folders_list(args: FoldersArguments, call: ToolCall) -> JsonObject:

@@ -10,20 +10,28 @@ from typing import TYPE_CHECKING, Annotated, Literal
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, Path, Request, Response
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field
 
 from mailroom.api.deps import Context, CurrentUser, DbSession, SessionCookie
+from mailroom.api.routes._app_access import (
+    MAX_GROUPS,
+    AccountChoice,
+    GroupNameIn,
+    Limits,
+    ToolGroupOut,
+    account_choices,
+    approvable_groups,
+    group_out,
+    limits_reach,
+)
 from mailroom.errors import Refusal
-from mailroom.mcp.groups import UnapprovableGroupsError, approvable
 from mailroom.oauth import consent
 from mailroom.oauth.grants import user_grants
 from mailroom.oauth.server import OAuthServer
 from mailroom.oauth.tokens import revoke_grant, set_grant_groups, set_grant_reach
-from mailroom.reach import Reach
-from mailroom_core.config import MAX_SAFE_INTEGER, SendMode
+from mailroom_core.config import SendMode
 
 if TYPE_CHECKING:
-    from mailroom.context import AppContext
     from mailroom.mcp.groups import ToolGroup
     from mailroom.mcp.settings import McpSettings
     from mailroom.mcp.verifier import AuthMode
@@ -35,32 +43,10 @@ GrantId = Annotated[int, Path(ge=1, le=2**63 - 1)]
 RequestId = Annotated[str, Path(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")]
 
 _NO_SUCH_REQUEST = Refusal("not_found", "request_not_found", "No such authorization request")
-MAX_GROUPS = 32
-MAX_ACCOUNTS = 1000
-AccountIdIn = Annotated[int, Field(strict=True, ge=1, le=MAX_SAFE_INTEGER)]
-GroupNameIn = Annotated[str, StringConstraints(min_length=1, max_length=64)]
-
 _NO_SUCH_GRANT = Refusal("not_found", "grant_not_found", "No such connected app")
 _SSO_REQUIRED = Refusal(
     "conflict", "sso_required", "Sign in through single sign-on to answer this request"
 )
-
-
-class ToolGroupOut(BaseModel):
-    name: str
-    description: str
-    requires: list[str]
-    """Groups it can be approved only with."""
-    default: bool
-    """Whether the consent screen offers it checked: not for groups that send or delete mail for
-    good."""
-
-
-class AccountChoice(BaseModel):
-    """One of the user's accounts an app can be narrowed to."""
-
-    id: int
-    name: str
 
 
 class ConsentRequestOut(BaseModel):
@@ -76,18 +62,6 @@ class ConsentRequestOut(BaseModel):
     accounts: list[AccountChoice]
     """The user's accounts, for them to choose from."""
     expires_at: datetime
-
-
-class Limits(BaseModel):
-    """What an app is limited to, beyond its tool groups."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    account_ids: list[AccountIdIn] | None = Field(default=None, max_length=MAX_ACCOUNTS)
-    """The accounts it sees, at least one, each the user's; null for every one, those added
-    later too."""
-    send_ceiling: SendMode | None = None
-    """The most it may do when it sends, whatever an account's send mode; null for no ceiling."""
 
 
 class Decision(Limits):
@@ -130,42 +104,6 @@ def _served(request: Request) -> tuple[ToolGroup, ...]:
     return () if settings is None else settings.groups
 
 
-def _group_out(group: ToolGroup) -> ToolGroupOut:
-    return ToolGroupOut(
-        name=group.name,
-        description=group.description,
-        requires=list(group.requires),
-        default=not group.asks_first,
-    )
-
-
-def _approvable(chosen: list[str], served: tuple[ToolGroup, ...]) -> list[str]:
-    try:
-        return list(approvable(chosen, served))
-    except UnapprovableGroupsError as exc:
-        raise Refusal("invalid", "groups_not_approvable", str(exc)) from None
-
-
-def _account_choices(ctx: AppContext, user_id: int) -> list[AccountChoice]:
-    return [
-        AccountChoice(id=account.id, name=account.name or account.login)
-        for account in ctx.accounts(user_id).settings.account
-    ]
-
-
-def _reach(ctx: AppContext, user_id: int, limits: Limits) -> Reach:
-    """The reach ``limits`` give: 400 ``accounts_not_approvable`` for accounts that are not all the
-    user's, or none."""
-    if limits.account_ids is None:
-        return Reach(None, limits.send_ceiling)
-    chosen = frozenset(limits.account_ids)
-    owned = {account.id for account in ctx.accounts(user_id).settings.account}
-    if not chosen or not chosen <= owned:
-        msg = "Choose at least one of your accounts" if not chosen else "Not all your accounts"
-        raise Refusal("invalid", "accounts_not_approvable", msg)
-    return Reach(chosen, limits.send_ceiling)
-
-
 @consent_router.get("/{request_id}")
 def consent_request(
     request: Request,
@@ -194,8 +132,8 @@ def consent_request(
         client_host=_host(pending.client_id) if pending.client_kind == "cimd" else None,
         redirect_host=_host(pending.redirect_origin),
         scopes=pending.scopes,
-        groups=[_group_out(group) for group in _served(request)],
-        accounts=_account_choices(ctx, user.id),
+        groups=[group_out(group) for group in _served(request)],
+        accounts=account_choices(ctx, user.id),
         expires_at=pending.expires_at,
     )
 
@@ -217,14 +155,14 @@ def decide(
     request is touched; 409 ``sso_required`` as for the GET."""
     try:
         if body.decision == "approve":
-            groups = _approvable(body.groups, _served(request))
+            groups = approvable_groups(body.groups, _served(request))
             redirect_to = consent.approve(
                 db,
                 server.settings,
                 request_id,
                 user.id,
                 tool_groups=groups,
-                reach=_reach(ctx, user.id, body),
+                reach=limits_reach(ctx, user.id, body),
                 session=session,
             )
         else:
@@ -286,13 +224,13 @@ def connected_apps(
                 created_at=app.created_at,
                 last_used_at=app.last_used_at,
                 groups=[group.name for group in served if group.name in app.tool_groups],
-                account_ids=None if app.reach.accounts is None else sorted(app.reach.accounts),
+                account_ids=app.reach.account_ids,
                 send_ceiling=app.reach.ceiling,
             )
             for app in user_grants(db, user.id)
         ],
-        groups=[_group_out(group) for group in served] if auth in ("builtin", "oidc") else [],
-        accounts=_account_choices(ctx, user.id),
+        groups=[group_out(group) for group in served] if auth in ("builtin", "oidc") else [],
+        accounts=account_choices(ctx, user.id),
     )
 
 
@@ -303,7 +241,7 @@ def set_connected_app_groups(
     """Make ``groups`` the served tool groups the app is approved for, adding or removing: its
     next call sees them. 400 ``groups_not_approvable`` as for a decision."""
     served = _served(request)
-    groups = _approvable(body.groups, served)
+    groups = approvable_groups(body.groups, served)
     names = {group.name for group in served}
     if set_grant_groups(db, grant_id, user.id, groups, names) is None:
         raise _NO_SUCH_GRANT
@@ -315,7 +253,7 @@ def set_connected_app_limits(
 ) -> None:
     """Make these the app's limits, both of them: its next call sees them. 400
     ``accounts_not_approvable`` as for a decision."""
-    if not set_grant_reach(db, grant_id, user.id, _reach(ctx, user.id, body)):
+    if not set_grant_reach(db, grant_id, user.id, limits_reach(ctx, user.id, body)):
         raise _NO_SUCH_GRANT
 
 

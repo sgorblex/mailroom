@@ -12,13 +12,13 @@ import logging
 import re
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, cast
 
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
 from mailroom.accounts.store import load_accounts
-from mailroom.audit import WEB, Origin
+from mailroom.audit import WEB, AuditTrail, Origin
 from mailroom.errors import Refusal
 from mailroom.mail.service._shared import (
     _Accounts,
@@ -35,7 +35,7 @@ from mailroom.mail.service.compose import (
     _writable,
 )
 from mailroom.mail.service.send import deliver_admitted, draft_unsettled, settled_folders
-from mailroom.models import ScheduledSend
+from mailroom.models import ApiToken, ScheduledSend
 from mailroom.oauth.models import OAuthClient
 from mailroom_core import mail as core
 from mailroom_core import send as gate
@@ -49,7 +49,13 @@ if TYPE_CHECKING:
     from mailroom.context import AppContext
     from mailroom.reach import Reach
     from mailroom_core.config import AccountConfig, TimeZoneName
-    from mailroom_core.mail import Authoriser, MailConnections, MessageRef, Note
+    from mailroom_core.mail import (
+        AuditResult,
+        Authoriser,
+        MailConnections,
+        MessageRef,
+        Note,
+    )
     from mailroom_core.store import AccountStore
 
 logger = logging.getLogger(__name__)
@@ -82,9 +88,10 @@ class ScheduledView:
     ``failed`` when it ended before the gate had a send for it (``code``), or in its delivery."""
     code: str | None = None
     by: Authoriser = "user"
-    """Who scheduled it: the user on the web, or an agent through MCP."""
+    """Who scheduled it: the user on the web, or an agent."""
     app: str | None = None
-    """An agent's connected app: its name, its client id when it gave none."""
+    """An agent's connected app: its name, its client id when it gave none. Or its API token's
+    name, while it has one."""
 
 
 def _view(db: Session, row: ScheduledSend) -> ScheduledView:
@@ -92,6 +99,12 @@ def _view(db: Session, row: ScheduledSend) -> ScheduledView:
     if row.client_id is not None:
         name = db.scalar(
             select(OAuthClient.client_name).where(OAuthClient.client_id == row.client_id)
+        )
+    elif row.token_id is not None:
+        name = db.scalar(
+            select(ApiToken.name).where(
+                ApiToken.id == row.token_id, ApiToken.user_id == row.user_id
+            )
         )
     return ScheduledView(
         scheduled_id=str(row.id),
@@ -102,7 +115,7 @@ def _view(db: Session, row: ScheduledSend) -> ScheduledView:
         send_at=row.send_at,
         state=row.state,
         code=row.code,
-        by="agent" if row.via == "mcp" else "user",
+        by="user" if row.via == "web" else "agent",
         app=name or row.client_id,
     )
 
@@ -151,7 +164,7 @@ def schedule_send(
     account = accounts.config(message.account)
     _writable(account)
 
-    by: Authoriser = "agent" if origin.via == "mcp" else "user"
+    by: Authoriser = origin.actor
 
     def checked(connections: MailConnections) -> tuple[str, str, tuple[str, ...]]:
         ready = gate.prepare_draft(connections, account, message, accounts.write_limits)
@@ -192,6 +205,7 @@ def schedule_send(
             via=origin.via,
             client_id=origin.client_id,
             grant_id=origin.grant_id,
+            token_id=origin.token_id,
             send_at=send_at,
             state="held",
         )
@@ -221,13 +235,15 @@ def schedule_later(
     return schedule_send(ctx, user_id, ref, send_at, origin=origin)
 
 
-def hold_send(ctx: AppContext, user_id: int, ref: str, delay: timedelta) -> ScheduledView | None:
-    """The user's Send of the draft ``ref`` held ``delay`` for an Undo (``schedule_send``). Asked
+def hold_send(
+    ctx: AppContext, user_id: int, ref: str, delay: timedelta, *, origin: Origin = WEB
+) -> ScheduledView | None:
+    """A Send of the draft ``ref`` held ``delay`` for an Undo (``schedule_send``). Asked
     again while it is held or being sent, the same held send; ``already_scheduled`` while the
     draft is held for later than that. None when a send of the draft began already or the draft
     is gone, which ``send_draft`` answers."""
     try:
-        return schedule_send(ctx, user_id, ref, delay)
+        return schedule_send(ctx, user_id, ref, delay, origin=origin)
     except _AlreadyScheduled as refusal:
         held = refusal.existing
         if held is not None and held.send_at <= datetime.now(UTC) + delay:
@@ -251,28 +267,50 @@ def _own(
         )
         row = db.scalar(query.with_for_update() if lock else query)
     if row is None:
-        raise Refusal("not_found", "not_found", _NO_SUCH, coded=True)
+        raise _no_such()
     return row
+
+
+def _no_such() -> Refusal:
+    return Refusal("not_found", "not_found", _NO_SUCH, coded=True)
 
 
 def cancel_scheduled(
     ctx: AppContext, user_id: int, scheduled_id: str, *, origin: Origin = WEB
 ) -> ScheduledView:
     """Delete the user's held send ``scheduled_id`` and its job, the draft left in Drafts; what
-    it was. ``send_started`` once the worker has taken it; another user's is ``not_found``."""
+    it was. ``send_started`` once the worker has taken it; another user's is ``not_found``. An
+    agent cancels only what its API token scheduled, every other being ``not_found`` to it, and
+    leaves an audit record."""
     from mailroom.worker.tasks import cancel_job
 
     with ctx.session_maker() as db:
         row = _own(ctx, db, user_id, scheduled_id)
-        if row.state == "sending":
-            raise Refusal("conflict", "send_started", SEND_STARTED)
-        if row.job_id is not None:
-            cancel_job(db, row.job_id)
-        view = _view(db, row)
-        db.delete(row)
-        db.commit()
-        _log("mail_send_unscheduled", user_id, origin, row)
-        return view
+        if origin.agent and (origin.token_id is None or row.token_id != origin.token_id):
+            raise _no_such()
+        account_id, ref = row.account_id, row.ref
+        view = None if row.state == "sending" else _view(db, row)
+        if view is not None:
+            if row.job_id is not None:
+                cancel_job(db, row.job_id)
+            db.delete(row)
+            db.commit()
+            _log("mail_send_unscheduled", user_id, origin, row)
+    if origin.agent:
+        result = "ok" if view is not None else "send_started"
+        _audit_cancel(ctx, user_id, origin, account_id, ref, cast("AuditResult", result))
+    if view is None:
+        raise Refusal("conflict", "send_started", SEND_STARTED)
+    return view
+
+
+def _audit_cancel(
+    ctx: AppContext, user_id: int, origin: Origin, account_id: int, ref: str, result: AuditResult
+) -> None:
+    draft = core.parse_ref(ref)
+    AuditTrail(ctx.session_maker, user_id, origin, "send_cancel").note(
+        core.AuditItem(account=account_id, folder=draft.folder, uid=draft.uid, result=result)
+    )
 
 
 def read_scheduled(ctx: AppContext, user_id: int, scheduled_id: str) -> ScheduledView:

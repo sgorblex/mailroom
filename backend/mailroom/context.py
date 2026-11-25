@@ -14,6 +14,7 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
 from mailroom.accounts.store import load_accounts, user_store
+from mailroom.audit import WEB, Origin
 from mailroom.auth.users import time_zone_of
 from mailroom.config.features import ALL_FEATURES
 from mailroom.mail.service.read import HtmlViews, KeywordFailures
@@ -56,10 +57,13 @@ class AppContext:
     """Messages' sanitised HTML views, kept a minute (``message_html``)."""
     reach: Reach = WHOLE
     """How far the caller reaches: less than the whole for a connected app with limits."""
+    origin: Origin = WEB
+    """Who calls: the user on the web, or an agent, whose sends the gate takes as an agent's."""
 
-    def within(self, reach: Reach) -> AppContext:
-        """This context for a caller that reaches only so far."""
-        return replace(self, reach=reach)
+    def within(self, reach: Reach, origin: Origin | None = None) -> AppContext:
+        """This context for a caller that reaches only so far, coming from ``origin`` (None: the
+        same as now)."""
+        return replace(self, reach=reach, origin=self.origin if origin is None else origin)
 
     def store(self, user_id: int) -> AccountStore:
         """The user's accounts, as mailroom-core keeps them, whatever the ``reach``: to write

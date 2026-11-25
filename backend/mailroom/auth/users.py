@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Final
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
+from mailroom.auth.app_access import revoke_app_access
 from mailroom.auth.appearance import valid_choices
 from mailroom.auth.password import MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, hash_password
 from mailroom.auth.sessions import end_user_sessions
@@ -91,13 +92,22 @@ def create_user(db: Session, username: str, password: str, *, is_admin: bool = F
 
 
 def set_password(
-    db: Session, user: User, password: str, *, keep_session: str | None = None
+    db: Session,
+    user: User,
+    password: str,
+    *,
+    keep_session: str | None = None,
+    revoke_access: bool = False,
 ) -> None:
     """Replace ``user``'s password and end their sessions but ``keep_session`` (a raw token): a
-    reset signs them out everywhere, their own change everywhere else."""
+    reset signs them out everywhere, their own change everywhere else. With
+    ``revoke_access``, their API tokens and connected apps end in the same transaction."""
     user.password_hash = hash_password(_checked_password(password))
     end_user_sessions(db, user, keep=keep_session)
+    log_revoked = revoke_app_access(db, user.id) if revoke_access else None
     db.commit()
+    if log_revoked is not None:
+        log_revoked()
 
 
 def time_zone_of(db: Session, user_id: int) -> TimeZoneName:
@@ -158,13 +168,15 @@ def set_index_max_age(db: Session, user: User, days: int | None) -> None:
     db.commit()
 
 
-def reset_password(db: Session, user: User, password: str, *, by: User) -> None:
+def reset_password(
+    db: Session, user: User, password: str, *, by: User, revoke_access: bool = False
+) -> None:
     """An admin sets ``user``'s password and signs them out everywhere. Not their own, which needs
     the current password like anyone else's."""
     if user.id == by.id:
         msg = "Change your own password on your profile."
         raise UserError(msg, "cannot_reset_self")
-    set_password(db, user, password)
+    set_password(db, user, password, revoke_access=revoke_access)
 
 
 def remove_user(

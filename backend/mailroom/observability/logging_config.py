@@ -47,6 +47,7 @@ _EXTRA_LOG_KEYS = (
     "tool",
     "client_id",
     "grant_id",
+    "token_id",
     "argument_keys",
     "code",
     "kind",

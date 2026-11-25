@@ -2,20 +2,31 @@
 
 from __future__ import annotations
 
+import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Cookie, Depends, HTTPException, Path, Request
 from sqlalchemy.orm import Session
 
+from mailroom.api.refusals import refused
+from mailroom.api.token_access import route_groups
+from mailroom.audit import WEB, Origin
+from mailroom.auth.api_tokens import token_access
 from mailroom.auth.sessions import SESSION_COOKIE_NAME, session_user
 from mailroom.context import AppContext, app_context
 from mailroom.models import User
+from mailroom.reach import WHOLE, Reach
 from mailroom_core.config import MAX_SAFE_INTEGER
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterable, Iterator
 
     from sqlalchemy.orm import sessionmaker
+
+    from mailroom.mcp.groups import GroupName
+
+logger = logging.getLogger(__name__)
 
 
 def get_db_session(request: Request) -> Iterator[Session]:
@@ -29,25 +40,101 @@ def get_db_session(request: Request) -> Iterator[Session]:
 DbSession = Annotated[Session, Depends(get_db_session)]
 
 
-def get_app_context(request: Request) -> AppContext:
-    context = app_context(request.app.state)
-    if context is None:
-        raise HTTPException(status_code=503, detail="Database unavailable")
-    return context
-
-
-Context = Annotated[AppContext, Depends(get_app_context)]
 SessionCookie = Annotated[str | None, Cookie(alias=SESSION_COOKIE_NAME)]
 
 
-def require_user(db: DbSession, session_cookie: SessionCookie = None) -> User:
-    """Every route but health, readiness, version and sign-in/out sits behind this."""
+@dataclass(frozen=True, slots=True)
+class Caller:
+    """Who a request speaks for: the signed-in user, or a personal API token of theirs, an agent
+    within its reach and tool groups."""
+
+    user: User
+    origin: Origin = WEB
+    reach: Reach = WHOLE
+    groups: frozenset[str] | None = None
+    """A token's tool groups that the instance offers; None for the user, who needs none."""
+
+    def require(self, group: GroupName) -> None:
+        """Refuse a token without ``group``: for a route whose body decides which one it needs."""
+        if self.groups is not None and group not in self.groups:
+            raise _not_approved([group])
+
+
+def _not_approved(groups: Iterable[str]) -> HTTPException:
+    named = " or ".join(sorted(groups))
+    return refused(403, "token_not_approved", f"This API token does not allow {named}.")
+
+
+def _bearer(request: Request) -> str | None:
+    """The bearer token the request carries; another scheme's credentials are not ours to read."""
+    scheme, _, value = request.headers.get("authorization", "").partition(" ")
+    return value.strip() if scheme.lower() == "bearer" else None
+
+
+def _token_caller(request: Request, db: Session, raw: str) -> Caller:
+    access = token_access(db, raw)
+    if access is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    opened_by = route_groups(request)
+    offered = {group.name for group in request.app.state.tool_groups}
+    held = frozenset(access.tool_groups & offered)
+    outcome = "ok"
+    try:
+        if not opened_by:
+            outcome = "token_not_accepted"
+            raise refused(403, outcome, "API tokens cannot do this: sign in to Mailroom instead.")
+        if not opened_by & held:
+            outcome = "token_not_approved"
+            raise _not_approved(opened_by)
+    finally:
+        logger.info(
+            "api_token_request",
+            extra={
+                "event": "api_token_request",
+                "user_id": access.user.id,
+                "token_id": access.token_id,
+                "outcome": outcome,
+            },
+        )
+    return Caller(access.user, Origin("api", token_id=access.token_id), access.reach, held)
+
+
+def require_caller(request: Request, db: DbSession, session_cookie: SessionCookie = None) -> Caller:
+    """Every route but health, readiness, version and sign-in/out sits behind this: the session
+    cookie, or a personal API token as ``Authorization: Bearer`` on the routes open to it
+    (``mailroom.api.token_access``). Both at once is refused, rather than one quietly winning."""
+    raw = _bearer(request)
+    if raw is not None:
+        if session_cookie is not None:
+            msg = "Send the session cookie or an API token, not both."
+            raise refused(400, "two_credentials", msg)
+        return _token_caller(request, db, raw)
     user = session_user(db, session_cookie)
     if user is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    return user
+    return Caller(user)
 
 
+CurrentCaller = Annotated[Caller, Depends(require_caller)]
+
+
+def require_user(caller: CurrentCaller) -> User:
+    return caller.user
+
+
+def get_app_context(request: Request, caller: CurrentCaller) -> AppContext:
+    """The app's context within what the caller reaches, as who they are."""
+    context = app_context(request.app.state)
+    if context is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    return context.within(caller.reach, caller.origin)
+
+
+Context = Annotated[AppContext, Depends(get_app_context)]
 CurrentUser = Annotated[User, Depends(require_user)]
 
 

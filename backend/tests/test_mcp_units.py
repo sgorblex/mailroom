@@ -512,7 +512,7 @@ def _summary(folder: str, uid: int) -> MessageSummary:
 class _AnyContext:
     """A context for tools that use none of it."""
 
-    def within(self, _reach: object) -> _AnyContext:
+    def within(self, _reach: object, _origin: object = None) -> _AnyContext:
         return self
 
 

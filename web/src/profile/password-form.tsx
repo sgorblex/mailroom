@@ -18,13 +18,16 @@ type Outcome =
 
 /**
  * The Profile's password change: the current password, then the new one twice. `onChanged` hears of
- * one, which signed the user's other sessions out.
+ * one, which signed the user's other sessions out, and whether it revoked their API tokens and apps.
  */
-export function PasswordForm({ onChanged }: { onChanged: () => void }): ReactElement {
+export function PasswordForm({ onChanged }: {
+  onChanged: (revokedAccess: boolean) => void
+}): ReactElement {
   const { t } = useTranslation()
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [repeated, setRepeated] = useState('')
+  const [revokeAccess, setRevokeAccess] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [outcome, setOutcome] = useState<Outcome>({ kind: 'idle' })
 
@@ -37,12 +40,13 @@ export function PasswordForm({ onChanged }: { onChanged: () => void }): ReactEle
     setSubmitting(true)
     setOutcome({ kind: 'idle' })
     try {
-      await changePassword(current, next)
+      await changePassword(current, next, revokeAccess)
       setCurrent('')
       setNext('')
       setRepeated('')
+      setRevokeAccess(false)
       setOutcome({ kind: 'changed' })
-      onChanged()
+      onChanged(revokeAccess)
     } catch (failure) {
       const code = failure instanceof ApiRequestError ? failure.code : undefined
       setOutcome({
@@ -114,6 +118,16 @@ export function PasswordForm({ onChanged }: { onChanged: () => void }): ReactEle
           setRepeated(event.target.value)
         }}
       />
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={revokeAccess}
+          onChange={(event) => {
+            setRevokeAccess(event.target.checked)
+          }}
+        />
+        {t('users.revokeAccess')}
+      </label>
       {failed && (
         <p id="profile-error" role="alert" className="text-sm text-destructive">
           {outcome.message}

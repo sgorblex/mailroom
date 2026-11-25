@@ -8,6 +8,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Query, Response
 
 from mailroom.api.deps import Context, CurrentUser, DbSession
+from mailroom.api.token_access import open_to_tokens
 from mailroom.audit import listing
 from mailroom.audit.listing import MAX_PAGE_SIZE, PAGE_SIZE, RecordPage
 from mailroom_core.config import MAX_SAFE_INTEGER
@@ -19,6 +20,7 @@ Short = Annotated[str | None, Query(min_length=1, max_length=64)]
 
 
 @audit_router.get("")
+@open_to_tokens("audit_read")
 def audit_records(
     ctx: Context,
     db: DbSession,

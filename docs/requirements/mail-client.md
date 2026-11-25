@@ -1070,7 +1070,7 @@ clicking *Send* in the web client **overrides it, except for `off`**.
 | `approval` | Sent only if every recipient matches the account's `auto_approve` rules, else the whole message is saved as a draft (nobody gets it); `draft_send` is refused, `invalid_argument`, instead | Sent |
 | `direct` | Sent | Sent |
 
-A [connected app](../GLOSSARY.md) with a send ceiling gets the stricter of it and the account's mode
+A [connected app](../GLOSSARY.md) or [personal API token](../GLOSSARY.md) with a send ceiling gets the stricter of it and the account's mode
 ([`mcp.md`](mcp.md)).
 
 There is no outbox for `approval`: whatever is not auto-approved is drafted. The hourly send limit
@@ -1219,7 +1219,9 @@ user next sends, so a direct send's `GET /sends/{id}` is `not_found` after a day
   `draft_send`, at scheduling and when it goes. Its held send keeps the connected app and grant
   that scheduled it (`client_id`, `grant_id`): the list shows *Scheduled by* the app, the send is
   audited as the app, and once the grant is revoked or no longer approves `mail_send` or the account the held
-  send fails (`grant_revoked`, `not_approved`; refused and audited, the draft kept).
+  send fails (`grant_revoked`, `not_approved`; refused and audited, the draft kept). One
+  scheduled with a personal API token keeps that (`token_id`) instead, the same, and fails with
+  `token_revoked` once it is revoked or expired.
 - **The result** (`GET /sends/{id}`): `state`; `code` (the refusal's code for `failed`, else
   `null`); `filed` (the Sent copy was stored; `null` until known, and known only after `sent`, together with
   the notes); `rejected` (recipients the
@@ -1424,8 +1426,8 @@ CSRF check apply. Bodies are JSON except `POST /drafts`. Unknown fields are 422.
 | `GET /sends?account=&compose_id=` | | 200 the result of the send of that draft's key; 404 `not_found` |
 | `POST /drafts/{ref}/schedule` | `{"send_at"}` | 201 the held send ([send later](#send-later)); 400 `invalid_argument` for a time past or over a year ahead; 409 `already_scheduled`, `send_started` |
 | `GET /scheduled` | | 200 `{scheduled: [...]}`, the user's held sends, soonest first |
-| `GET /scheduled/{id}` | | 200 the held send `{scheduled_id, account, ref, subject, recipients, send_at, remaining_ms, state, code, by, app}` (`by` `user` or `agent`, `app` an agent's connected app); 404 `not_found` once it went or was cancelled |
-| `DELETE /scheduled/{id}` | | 200 the held send it was, the draft left in Drafts; 409 `send_started`; 404 |
+| `GET /scheduled/{id}` | | 200 the held send `{scheduled_id, account, ref, subject, recipients, send_at, remaining_ms, state, code, by, app}` (`by` `user` or `agent`, `app` an agent's connected app or API token); 404 `not_found` once it went or was cancelled |
+| `DELETE /scheduled/{id}` | | 200 the held send it was, the draft left in Drafts; 409 `send_started`; 404 `not_found`, for an API token also when another caller scheduled it |
 
 The static route `GET /drafts/find` is matched before `GET /drafts/{ref}`.
 

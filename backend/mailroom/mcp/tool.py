@@ -29,7 +29,14 @@ from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, ValidationEr
 from mailroom.audit import MCP, Origin
 from mailroom.errors import Refusal
 from mailroom.mcp import audit
-from mailroom.mcp.verifier import approved_groups_of, grant_id_of, reach_of_token, user_id_of
+from mailroom.mcp.verifier import (
+    approved_groups_of,
+    grant_id_of,
+    origin_of,
+    reach_of_token,
+    token_id_of,
+    user_id_of,
+)
 from mailroom_core.config import MAX_SAFE_INTEGER
 
 if TYPE_CHECKING:
@@ -203,8 +210,13 @@ def text_result(text: str) -> types.CallToolResult:
     return content_result(types.TextContent(type="text", text=text))
 
 
-def _not_approved(tool: Tool[Any], served: Collection[str]) -> str:
+def _not_approved(tool: Tool[Any], served: Collection[str], token: AccessToken | None) -> str:
     groups = " or ".join(group for group in tool.groups if group in served)
+    if token is not None and token_id_of(token) is not None:
+        return (
+            f"This API token does not allow the {groups} tools. The user can make another under "
+            "Profile, API tokens, in Mailroom."
+        )
     return (
         f"This app is not approved for the {groups} tools. The user can approve them under "
         "Profile, Connected apps, in Mailroom."
@@ -258,7 +270,7 @@ async def call_tool(
             return _error("The token names no Mailroom user.")
         if served is not None and not tool.approved(token, served):
             outcome, code = "refused", "not_approved"
-            return _error(_not_approved(tool, served))
+            return _error(_not_approved(tool, served, token))
         try:
             parsed = tool.arguments.model_validate(dict(arguments))
         except ValidationError as exc:
@@ -268,8 +280,8 @@ async def call_tool(
         if ctx is None:
             outcome, code = "refused", "database_unavailable"
             return _error("The database is unavailable: try again later.")
-        origin = MCP if token is None else Origin("mcp", token.client_id, grant_id_of(token))
-        call = ToolCall(ctx.within(reach_of_token(token)), user_id, limiter, origin)
+        origin = MCP if token is None else origin_of(token)
+        call = ToolCall(ctx.within(reach_of_token(token), origin), user_id, limiter, origin)
         if slots is None:
             result = await tool.run(parsed, call)
         else:
@@ -290,6 +302,7 @@ async def call_tool(
             user_id=user_id,
             client_id=None if token is None else token.client_id,
             grant_id=None if token is None else grant_id_of(token),
+            token_id=None if token is None else token_id_of(token),
             argument_keys=_logged_keys(arguments),
             outcome=outcome,
             code=code,

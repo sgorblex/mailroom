@@ -44,7 +44,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-Via = Literal["web", "mcp"]
+Via = Literal["web", "mcp", "api"]
+"""How a call came: the web, MCP, or the REST API with a personal API token."""
 """The front end a change came through, as its log line names it."""
 ATTACHMENT_MAX_MB: Final = 25.0
 """The most a written message's attachments may total, whatever the user's limit: the upload
@@ -100,6 +101,20 @@ class ListedAccount(StoredAccount):
     """Whether the account's server keeps keywords, so messages can be marked To sort (never on
     Gmail); None when not known: not asked (the REST listing and an answer to a change, which
     leave it to ``/accounts/keywords``), or the server did not answer the MCP listing."""
+
+
+AGENT_ACCOUNT_FIELDS: Final = {
+    "id",
+    "name",
+    "display_name",
+    "login",
+    "has_password",
+    "run_filters",
+    "send_mode",
+    "identities",
+    "keywords",
+}
+"""What an agent is given of an account: never its servers, nor whom it sends to unasked."""
 
 
 def attachment_limit_mb(limits: Limits) -> float:

@@ -4,6 +4,7 @@
 # the one importing this package, still half-initialised.
 import mailroom.oauth.models  # noqa: F401
 from mailroom.models.account import AccountFilterSettings
+from mailroom.models.api_token import ApiToken
 from mailroom.models.audit import AuditRecord
 from mailroom.models.base import Base
 from mailroom.models.filters import (
@@ -29,6 +30,7 @@ from mailroom.models.views import SavedView
 
 __all__ = [
     "AccountFilterSettings",
+    "ApiToken",
     "AuditRecord",
     "Base",
     "ExternalIdentity",

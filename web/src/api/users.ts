@@ -30,7 +30,14 @@ export function removeUser(id: number): Promise<null> {
   return apiDelete(`/api/v1/users/${String(id)}`)
 }
 
-/** Signs them out everywhere. */
-export function resetPassword(id: number, password: string): Promise<null> {
-  return apiPostJson(`/api/v1/users/${String(id)}/password`, { password })
+/** Signs them out everywhere, their API tokens and connected apps too if `revokeAccess`. */
+export function resetPassword(
+  id: number,
+  password: string,
+  revokeAccess: boolean,
+): Promise<null> {
+  return apiPostJson(`/api/v1/users/${String(id)}/password`, {
+    password,
+    revoke_access: revokeAccess,
+  })
 }

@@ -13,7 +13,7 @@ from sqlalchemy import or_, select
 
 from mailroom.errors import Refusal
 from mailroom.filters.transfers import moving_beyond
-from mailroom.models import AuditRecord, RuleSet
+from mailroom.models import ApiToken, AuditRecord, RuleSet
 from mailroom.oauth.models import OAuthClient
 
 if TYPE_CHECKING:
@@ -39,8 +39,10 @@ class ListedRecord(BaseModel):
     actor: str
     """``user``, ``agent`` or ``filter``."""
     app: str | None
-    """The connected app's name (its client id when it gave none), for an agent's record."""
+    """The connected app's name (its client id when it gave none), or the API token's while it
+    exists, for an agent's record."""
     client_id: str | None
+    token_id: int | None
     rule_set: str | None
     """The rule set's name, for a filter's record while the rule set exists."""
     rule_set_id: int | None
@@ -73,8 +75,9 @@ def records(
     newest first, matching every filter given; ``cursor`` is a page's ``next_cursor``. ``result``
     ``failed`` matches every result but ``ok``."""
     query = (
-        select(AuditRecord, OAuthClient.client_name, RuleSet.name)
+        select(AuditRecord, OAuthClient.client_name, ApiToken.name, RuleSet.name)
         .outerjoin(OAuthClient, OAuthClient.client_id == AuditRecord.client_id)
+        .outerjoin(ApiToken, (ApiToken.id == AuditRecord.token_id) & (ApiToken.user_id == user_id))
         .outerjoin(
             RuleSet,
             (RuleSet.id == AuditRecord.rule_set_id)
@@ -107,8 +110,8 @@ def records(
         db, reach, [row[0].rule_set_id for row in rows if row[0].rule_set_id is not None]
     )
     page = [
-        _listed(record, app, None if record.rule_set_id in beyond else rule_set, reach)
-        for record, app, rule_set in rows[:limit]
+        _listed(record, client or token, None if record.rule_set_id in beyond else rule_set, reach)
+        for record, client, token, rule_set in rows[:limit]
     ]
     more = len(rows) > limit
     return RecordPage(records=page, next_cursor=str(page[-1].id) if more and page else None)
@@ -137,6 +140,7 @@ def _listed(
         actor=record.actor,
         app=app or record.client_id,
         client_id=record.client_id,
+        token_id=record.token_id,
         rule_set=rule_set,
         rule_set_id=rule_set_id,
         run_id=run_id,

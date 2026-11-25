@@ -147,8 +147,28 @@ describe('UsersScreen', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Password reset')
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/v1/users/2/password',
-      expect.objectContaining({ body: '{"password":"a brand new passphrase"}' }),
+      expect.objectContaining({
+        body: '{"password":"a brand new passphrase","revoke_access":true}',
+      }),
     )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Reset the password of alice' }))
+    const revoke = screen.getByRole('checkbox', {
+      name: 'Revoke API tokens and connected apps too',
+    })
+    expect(revoke).toBeChecked()
+    await userEvent.click(revoke)
+    await userEvent.type(screen.getByLabelText('New password for alice'), 'another passphrase')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/v1/users/2/password',
+        expect.objectContaining({
+          body: '{"password":"another passphrase","revoke_access":false}',
+        }),
+      )
+    })
+    await screen.findByRole('status')
 
     await userEvent.click(screen.getByRole('button', { name: 'Remove alice' }))
     expect(screen.getByText('Remove alice and all their data?')).toBeInTheDocument()

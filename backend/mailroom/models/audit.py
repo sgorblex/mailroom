@@ -27,9 +27,10 @@ class AuditRecord(Base):
         DateTime(timezone=True), server_default=func.now(), index=True
     )
     actor: Mapped[str] = mapped_column(Text)
-    """``user`` (the web), ``agent`` (MCP) or ``filter`` (a rule set's run)."""
+    """``user`` (the web), ``agent`` (an app or API token) or ``filter`` (a rule set's run)."""
     client_id: Mapped[str | None] = mapped_column(Text)
     grant_id: Mapped[str | None] = mapped_column(Text)
+    token_id: Mapped[int | None] = mapped_column(BigInteger)
     rule_set_id: Mapped[int | None] = mapped_column(BigInteger)
     run_id: Mapped[int | None] = mapped_column(BigInteger)
     action: Mapped[str] = mapped_column(Text)

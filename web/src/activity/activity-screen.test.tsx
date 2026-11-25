@@ -66,6 +66,16 @@ afterEach(() => {
 })
 
 describe('ActivityScreen', () => {
+  it('names an API token, and says when it was revoked since', async () => {
+    const agent = { actor: 'agent', token_id: 4 }
+    stubApi(() => json({ records: [record(2, { ...agent, app: 'Backup script' }), record(1, agent)], next_cursor: null }))
+    renderSignedIn(<ActivityScreen />, ALICE)
+    const list = await screen.findByRole('list', { name: 'Recorded activity' })
+    const [named, revoked] = within(list).getAllByRole('listitem')
+    expect(named).toHaveTextContent('Backup script')
+    expect(revoked).toHaveTextContent('A revoked API token')
+  })
+
   it('lists who did what, newest first, and opens a record to its fields', async () => {
     stubApi(() =>
       json({

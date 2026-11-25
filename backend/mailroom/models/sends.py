@@ -30,7 +30,7 @@ class ScheduledSend(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "send_key"),
         CheckConstraint("state IN ('held', 'sending', 'failed')", name="state"),
-        CheckConstraint("via IN ('web', 'mcp')", name="via"),
+        CheckConstraint("via IN ('web', 'mcp', 'api')", name="via"),
         Index("ix_scheduled_send_user_id", "user_id", "send_at"),
     )
 
@@ -47,6 +47,9 @@ class ScheduledSend(Base):
     grant_id: Mapped[str | None] = mapped_column(Text)
     """An agent's connected app and grant, as ``Origin`` has them: its send is audited as that
     app, and fails once the grant is revoked or no longer approves ``mail_send``."""
+    token_id: Mapped[int | None] = mapped_column(BigInteger)
+    """The personal API token it came through instead, the same: no foreign key, since the send
+    must fail, not go, once the token is revoked."""
     subject: Mapped[str] = mapped_column(Text, server_default="")
     recipients: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default="{}")
     """The draft's subject and addresses (To, Cc, Bcc) when it was scheduled, for the Scheduled

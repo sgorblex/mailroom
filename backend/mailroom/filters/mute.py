@@ -203,6 +203,7 @@ def mute(
         },
         client_id=origin.client_id,
         grant_id=origin.grant_id,
+        token_id=origin.token_id,
     )
     db.commit()
     # Before the session reads again: no transaction of it stays open around the audit write.
@@ -257,6 +258,7 @@ def unmute(
         detail={"muted_thread_id": muted_thread_id},
         client_id=origin.client_id,
         grant_id=origin.grant_id,
+        token_id=origin.token_id,
     )
     write_records(ctx.session_maker, user_id, [entry])
     _log("thread_unmuted", user_id, account_id, muted_thread_id, origin.via)
