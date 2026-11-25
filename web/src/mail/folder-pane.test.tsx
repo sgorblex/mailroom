@@ -224,7 +224,7 @@ describe('the folder pane', () => {
       within(icons).getByRole('button', { name: 'Open the folder pane' }).focus()
     })
     const peeked = screen.getByRole('navigation', { name: 'Accounts and folders' })
-    await user.click(within(peeked).getByRole('treeitem', { name: 'Sent' }))
+    await user.click(await within(peeked).findByRole('treeitem', { name: 'Sent' }))
     expect(await screen.findByRole('link', { name: /Sent one/ })).toBeInTheDocument()
     expect(pane()).not.toBeInTheDocument()
   })

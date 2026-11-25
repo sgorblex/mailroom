@@ -1,8 +1,9 @@
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import babel from "@rolldown/plugin-babel";
 import tailwindcss from "@tailwindcss/vite";
-import react from "@vitejs/plugin-react";
+import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { defineConfig, loadEnv, type Plugin, type PluginOption } from "vite";
 
 /** Missing, empty, or whitespace-only values are treated as unset (defaults apply). */
@@ -89,7 +90,8 @@ export default defineConfig(({ mode }) => {
     ? deployEnvRaw
     : "";
 
-  const plugins: PluginOption[] = [react(), noEval()];
+  // React Compiler memoises components and hooks at build time, where it can.
+  const plugins: PluginOption[] = [react(), babel({ presets: [reactCompilerPreset()] }), noEval()];
   if (!isTest) {
     plugins.push(tailwindcss());
   }
@@ -102,6 +104,10 @@ export default defineConfig(({ mode }) => {
       "import.meta.env.VITE_MAILROOM_DEPLOY_ENV": JSON.stringify(deployEnv),
     },
     plugins,
+    build: {
+      // React Compiler runs in Babel, which takes most of the build: expected, not worth a warning.
+      rolldownOptions: { checks: { bundlerTimings: false } },
+    },
     resolve: {
       alias: {
         "@": path.resolve(import.meta.dirname, "./src"),

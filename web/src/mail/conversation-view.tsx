@@ -14,6 +14,7 @@ import { MAIL_NS } from './i18n.ts'
 import { MessageView } from './message-view.tsx'
 import { mailErrorMessage } from './messages.ts'
 import { threadKey, threadQuery } from './queries.ts'
+import { useToday } from './today.ts'
 import { useTriage, type Target } from './triage-context.ts'
 
 function conversationRow(rows: Target[], ref: string): Target | undefined {
@@ -36,6 +37,7 @@ export function ConversationView({
 }): ReactElement {
   const { t, i18n } = useTranslation(MAIL_NS)
   const timeZone = useTimeZone()
+  const today = useToday(timeZone)
   const { visibleRows, subscribeVisible } = useTriage()
   const queryClient = useQueryClient()
   const thread = useQuery(threadQuery(threadRef))
@@ -105,7 +107,7 @@ export function ConversationView({
                           {sender === '' ? t('message.noSender') : sender}
                         </span>
                         <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                          {formatListDate(i18n.language, message.date, timeZone)}
+                          {formatListDate(i18n.language, message.date, timeZone, today)}
                         </span>
                       </span>
                       {message.preview !== '' && <span className="line-clamp-1 text-muted-foreground">{message.preview}</span>}

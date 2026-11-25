@@ -34,6 +34,7 @@ import { SelectMatching } from './select-matching.tsx'
 import { SwipeRow } from './swipe-row.tsx'
 import { TOAST_RETURN_ID } from './toast.tsx'
 import { useTriageActions } from './triage-actions.ts'
+import { useToday } from './today.ts'
 import { useTriage, type Flags, type Target } from './triage-context.ts'
 
 type More = { kind: 'idle' } | { kind: 'loading' } | { kind: 'failed'; message: string }
@@ -78,6 +79,9 @@ export const MessageList = memo(function MessageList({
   /** A view's list: its rows name their account and folder, and it is no folder. */
   view?: boolean
 }): ReactElement {
+  // TanStack Virtual's virtualizer changes in place, which React Compiler's memoised values would not
+  // see: this component keeps its own `memo` and callbacks and is left uncompiled. Its rows are not.
+  'use no memo'
   const { t } = useTranslation(MAIL_NS)
   const queryClient = useQueryClient()
   const first = useQuery({
@@ -152,7 +156,7 @@ export const MessageList = memo(function MessageList({
   const nextCursor = page === null ? null : tail === null ? page.next_cursor : tail.cursor
 
   const scroller = useRef<HTMLDivElement>(null)
-  // The app is not built with React Compiler, which this warns of: nothing here is memoised.
+  // Uncompiled, by the 'use no memo' above.
   // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: messages.length,
@@ -687,6 +691,7 @@ function MessageRow({
 }): ReactElement {
   const { t, i18n } = useTranslation(MAIL_NS)
   const timeZone = useTimeZone()
+  const today = useToday(timeZone)
   const accountLabel = useAccountLabel()
   // A conversation stays the current row while another of its messages is read. Only whether it
   // is: opening a message draws its row and the one before again, not every row.
@@ -744,7 +749,7 @@ function MessageRow({
             'group-hover/row:text-transparent group-focus-within/row:text-transparent pointer-coarse:text-muted-foreground',
           )}
         >
-          {formatListDate(i18n.language, message.date, timeZone)}
+          {formatListDate(i18n.language, message.date, timeZone, today)}
         </span>
       </span>
       <span className={cn('truncate', unread ? 'font-semibold' : 'text-foreground')}>
