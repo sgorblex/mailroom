@@ -24,6 +24,7 @@ from mailroom.mail import events
 from mailroom.mail.events import EventHub, IndexNote, MailEvent, folder_events
 from mailroom.mail.index import NOTIFY_CHANNEL, notify
 from mailroom.models import MailIndexFolder, MailViewInterest
+from mailroom.observability.logging_config import configure_logging
 from mailroom_core import mail as core
 from tests.test_api_mail import MAIL
 from tests.test_mail_index_rows import indexed, message
@@ -359,6 +360,9 @@ def run_stream(
 ) -> Callable[[Scenario], None]:
     """Runs a scenario on an application of its own with the mail client, its lifespan in the
     scenario's loop, its routes and its hub's reads inside the test's transaction."""
+    # Before the test runs: pytest captures a logger that stops propagating only if it already had
+    # when the test started, and the lifespan would configure it in the middle.
+    configure_logging()
     cookie = create_session(db_session, user)
 
     def run(scenario: Scenario) -> None:
