@@ -2236,7 +2236,9 @@ Mailroom tab is open: no push service.
   switch). A failure closes it and opens it again after 1 s, doubled each time up to a minute;
   meanwhile a quiet line above the list says *Reconnecting to live updates…*, and once open again
   it reads the folders, lists and index statuses again. `folder_changed` sets the folder's counts
-  in the sidebar (on Gmail, All Mail's: the account's folders are read again). `folder_changed` and
+  in the sidebar (on Gmail, All Mail's: the account's folders are read again), and they stand over
+  the counts the screen guesses from an action's answer: a folder whose live count arrived after
+  the action's request started keeps it, as it already holds that change. `folder_changed` and
   `new_mail` for a folder the list reads (with its subfolders, every folder of an all-folders
   search, any on Gmail through All Mail) read its first page again: new rows come in at the top and
   the rows loaded below stay (those new mail pushed off the first page too; those gone from it are

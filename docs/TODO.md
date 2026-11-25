@@ -299,7 +299,7 @@ First, fixes carried over from 0.14.0 testing:
 
 Older than milestone E, seen in its browser check; fix before batch 11.
 
-- [ ] **Unread count drops by two** — opening an unread message lowers the folder's count twice:
+- [x] **Unread count drops by two** — opening an unread message lowers the folder's count twice:
       once by the client's guess when the mark-read answers, once by the live count the server
       sent for the same change. The guess should yield to a newer live count.
 - [ ] **Import, then Send refused** — an imported HTML draft whose `style` attribute is left

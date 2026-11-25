@@ -5,6 +5,7 @@ import { LIVE_EVENT_TYPES, mailEventsUrl, parseLiveEvent, type IndexStatus, type
 
 import { DesktopNotifications } from './desktop-notifications.tsx'
 import { LiveUpdatesContext, type LiveStatus, type LiveUpdates, type Viewing } from './live-context.ts'
+import { liveCountReach } from './live-counts.ts'
 import { ALL_FOLDERS_KEY, ALL_MESSAGES_KEY, foldersKey, INDEX_KEY, indexStatusKey } from './queries.ts'
 import { isSameFolder } from './triage-context.ts'
 
@@ -16,18 +17,18 @@ const MAX_BACKOFF_MS = 60_000
 function applyEvent(queryClient: QueryClient, event: LiveEvent): void {
   if (event.type === 'folder_changed') {
     const folders = queryClient.getQueryData<MailFolder[]>(foldersKey(event.account))
-    const changed = folders?.find((folder) => isSameFolder(folder.path, event.folder))
-    if (folders === undefined || changed === undefined) {
+    const reach = liveCountReach(folders, event)
+    if (folders === undefined || reach === null) {
       return
     }
-    if (changed.role === 'all') {
+    if (reach.kind === 'account') {
       // On Gmail INBOX and the labels read from All Mail: their counts are not in the event.
       void queryClient.invalidateQueries({ queryKey: foldersKey(event.account) })
       return
     }
     queryClient.setQueryData<MailFolder[]>(
       foldersKey(event.account),
-      folders.map((folder) => (folder === changed ? { ...folder, unread: event.unread, total: event.total } : folder)),
+      folders.map((folder) => (folder === reach.folder ? { ...folder, unread: event.unread, total: event.total } : folder)),
     )
   } else if (event.type === 'sync') {
     queryClient.setQueriesData<IndexStatus>({ queryKey: indexStatusKey(event.account) }, (status) =>

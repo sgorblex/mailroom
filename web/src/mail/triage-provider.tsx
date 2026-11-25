@@ -21,6 +21,8 @@ import { useUnmountSignal } from '@/lib/use-unmount-signal.ts'
 
 import { asksFirst, isConversation, listedFolderOf, mixedFlags, newSenderIn, refsOf, shownOnly } from './conversations.ts'
 import { MAIL_NS } from './i18n.ts'
+import { useLiveEvents } from './live-context.ts'
+import { isLiveCountNewer, liveCountClock, liveCountReach, recordLiveCount } from './live-counts.ts'
 import {
   ALL_MESSAGES_KEY,
   ALL_THREADS_KEY,
@@ -319,10 +321,26 @@ export function TriageProvider({
     [queryClient],
   )
 
+  // When the live stream last set each folder's counts (`applyEvent` in `live-provider.tsx`).
+  const liveCounts = useRef(liveCountClock())
+  useLiveEvents((event) => {
+    if (event.type !== 'folder_changed') {
+      return
+    }
+    const reach = liveCountReach(queryClient.getQueryData<MailFolder[]>(foldersKey(event.account)), event)
+    if (reach !== null) {
+      recordLiveCount(liveCounts.current, event.account, reach.kind === 'account' ? null : event.folder)
+    }
+  })
+
+  /**
+   * Moves a folder's counts by what a request changed, a guess; a live count that arrived since
+   * the request started (`asked`, a tick of `liveCounts`) already holds the change and stands.
+   */
   const adjustFolder = useCallback(
-    (account: AccountId, path: string, unread: number, total: number) => {
+    (account: AccountId, path: string, unread: number, total: number, asked: number) => {
       const list = loadedFoldersOf(account)
-      if (list === undefined || (unread === 0 && total === 0)) {
+      if (list === undefined || (unread === 0 && total === 0) || isLiveCountNewer(liveCounts.current, account, path, asked)) {
         return
       }
       queryClient.setQueryData<MailFolder[]>(
@@ -533,6 +551,7 @@ export function TriageProvider({
         for (const batch of batches(items)) {
           const rows = [...new Set(batch.map((item) => item.target))]
           let groups: OrganizeGroup[]
+          const asked = liveCounts.current.tick
           try {
             groups = await request(
               action,
@@ -580,9 +599,9 @@ export function TriageProvider({
               (target) => !isConversation(target) && target.account_id === group.account && target.folder === group.folder,
             )
             if (action.kind === 'flag') {
-              applyFlags(group, members, action.change)
+              applyFlags(group, members, action.change, asked)
             } else {
-              applyMove(group, members, action)
+              applyMove(group, members, action, asked)
               undo = undoMove(undo, group)
             }
           }
@@ -663,7 +682,7 @@ export function TriageProvider({
         return plan
       }
 
-      function applyFlags(group: OrganizeGroup, members: Target[], change: FlagChange): void {
+      function applyFlags(group: OrganizeGroup, members: Target[], change: FlagChange, asked: number): void {
         let unread = 0
         const changed = overridesOf(key)
         const next = new Map(changed)
@@ -696,10 +715,10 @@ export function TriageProvider({
           undo.accounts.push(group.account)
         }
         updateScope(key, () => ({ overrides: next }))
-        adjustFolder(group.account, group.folder, unread, 0)
+        adjustFolder(group.account, group.folder, unread, 0, asked)
       }
 
-      function applyMove(group: OrganizeGroup, members: Target[], move: Action): void {
+      function applyMove(group: OrganizeGroup, members: Target[], move: Action, asked: number): void {
         const refs = new Set(members.map((target) => target.ref))
         forgetCachedReads(queryClient, refs)
         const changed = overridesOf(key)
@@ -708,17 +727,17 @@ export function TriageProvider({
         updateScope(key, (current) => ({
           selection: new Map([...current.selection].filter(([ref]) => !refs.has(ref))),
         }))
-        adjustFolder(group.account, group.folder, -unread, -members.length)
+        adjustFolder(group.account, group.folder, -unread, -members.length, asked)
         if (move.kind === 'moveToAccount') {
-          adjustFolder(move.account, move.folder.path, unread, members.length)
+          adjustFolder(move.account, move.folder.path, unread, members.length, asked)
           const trash = roleFolder(loadedFoldersOf(group.account), 'trash')?.path
           if (move.removal === 'trash' && trash !== undefined && !isSameFolder(trash, group.folder)) {
-            adjustFolder(group.account, trash, unread, members.length)
+            adjustFolder(group.account, trash, unread, members.length, asked)
           }
         } else {
           const where = destination(move, loadedFoldersOf(group.account))
           if (where !== undefined) {
-            adjustFolder(group.account, where, unread, members.length)
+            adjustFolder(group.account, where, unread, members.length, asked)
           }
         }
         closeOpen(refs)
