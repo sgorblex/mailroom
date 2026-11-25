@@ -125,10 +125,10 @@ def test_a_folder_whose_mailbox_fails_records_its_code(
     db_session.commit()
 
     tasks.sync_account(user.id, work)
-    [job] = jobs(db_session, tasks.SYNC_FOLDER)
-    assert job == {"user_id": user.id, "account_id": work, "folder_id": folder_id}
+    [job] = jobs(db_session, tasks.SYNC_DUE_FOLDERS)
+    assert job == {"user_id": user.id, "account_id": work, "folder_ids": [folder_id]}
 
-    tasks.sync_folder(user.id, work, folder_id)
+    tasks.sync_due_folders(**job)
     row = folder_row(db_session, user, "INBOX")
     assert (row.state, row.error) == ("failed", "unreachable")
 
@@ -186,6 +186,186 @@ def test_on_gmail_only_all_mail_gets_a_row(
     assert discover_folders(db_session, cast("MailConnections", gmail), user.id, work) == 1
     assert list(db_session.scalars(select(MailIndexFolder.path))) == ["[Gmail]/All Mail"]
     assert list(db_session.scalars(select(MailIndexMessage.uid))) == []
+
+
+# The turn over an account's due folders, each folder's sync a stub.
+
+
+def pending(db: Session, user: User, account: int, *paths: str) -> list[int]:
+    """Folders due a sync, in order."""
+    ids = [indexed(db, user.id, account, path, uids=()) for path in paths]
+    for folder_id in ids:
+        row = db.get(MailIndexFolder, folder_id)
+        assert row is not None
+        row.state = "pending"
+    db.commit()
+    return ids
+
+
+@pytest.fixture
+def syncs(monkeypatch: pytest.MonkeyPatch, worker: None) -> list[int]:
+    """The folders synced, in order; none has more to fetch."""
+    ran: list[int] = []
+
+    def run_folder_sync(
+        _db: Session, _mailboxes: Mailboxes, _user: int, _account: int, folder_id: int, **_: Any
+    ) -> bool:
+        ran.append(folder_id)
+        return False
+
+    monkeypatch.setattr(worker_index, "run_folder_sync", run_folder_sync)
+    monkeypatch.setattr(tasks, "run_folder_sync", run_folder_sync)
+    return ran
+
+
+def next_job(db: Session) -> tuple[str, dict[str, Any]] | None:
+    """The job the worker would take now: its name and arguments, gone from the queue."""
+    with tasks.procrastinate_sql(db):
+        found = db.execute(
+            text("SELECT id, task_name, args FROM procrastinate_fetch_job_v2(NULL, NULL)")
+        ).one()
+        if found.id is None:
+            return None
+        db.execute(text("DELETE FROM procrastinate_jobs WHERE id = :id"), {"id": found.id})
+    return found.task_name, found.args
+
+
+def test_a_turn_syncs_every_due_folder_in_one_job(
+    user_client: TestClient, db_session: Session, user: User, syncs: list[int]
+) -> None:
+    work = add_account(user_client)
+    ids = pending(db_session, user, work, "INBOX", "A", "B")
+    tasks.sync_account(user.id, work)
+    [job] = jobs(db_session, tasks.SYNC_DUE_FOLDERS)
+    tasks.sync_due_folders(**job)
+    assert syncs == ids
+    assert jobs(db_session, tasks.SYNC_FOLDER) == []
+    assert len(jobs(db_session, tasks.SYNC_DUE_FOLDERS)) == 1
+
+
+def test_an_account_with_nothing_due_queues_no_turn(
+    user_client: TestClient, db_session: Session, user: User, worker: None
+) -> None:
+    tasks.sync_account(user.id, add_account(user_client))
+    assert jobs(db_session, tasks.SYNC_DUE_FOLDERS) == []
+
+
+def test_a_long_turn_holds_back_neither_an_inbox_sync_nor_a_filter_run(
+    user_client: TestClient,
+    db_session: Session,
+    user: User,
+    syncs: list[int],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each share past its time with its first folder: what is asked during it goes before the
+    rest, and the rest goes on from where it was."""
+    monkeypatch.setattr(worker_index, "SHARE_SECONDS", 0)
+    work = add_account(user_client)
+    first, second, inbox, last = pending(db_session, user, work, "A", "B", "INBOX", "C")
+    tasks.sync_account(user.id, work)
+    taken = next_job(db_session)
+    assert taken is not None
+    name, args = taken
+    assert name == tasks.SYNC_DUE_FOLDERS
+    tasks.sync_due_folders(**args)
+    assert syncs == [first]
+
+    assert tasks.queue_folder_sync(db_session, user.id, work, inbox)
+    tasks.defer_rule_set_run(db_session, run_id=1, rule_set_id=1, user_id=user.id, account_id=work)
+    db_session.commit()
+    order = [next_job(db_session) for _ in range(4)]
+    assert order == [
+        (tasks.SYNC_FOLDER, {"user_id": user.id, "account_id": work, "folder_id": inbox}),
+        (tasks.RUN_RULE_SET, {"run_id": 1}),
+        (
+            tasks.SYNC_DUE_FOLDERS,
+            {"user_id": user.id, "account_id": work, "folder_ids": [second, inbox, last]},
+        ),
+        None,
+    ]
+
+
+def test_a_share_passes_over_folders_no_longer_due(
+    user_client: TestClient, db_session: Session, user: User, syncs: list[int]
+) -> None:
+    work = add_account(user_client)
+    synced_since, off, due = pending(db_session, user, work, "A", "B", "C")
+    row = db_session.get(MailIndexFolder, synced_since)
+    assert row is not None
+    row.state, row.last_synced_at = "ready", datetime.now(UTC)
+    row = db_session.get(MailIndexFolder, off)
+    assert row is not None
+    row.enabled = False
+    db_session.commit()
+    gone = due + 1000
+    tasks.sync_due_folders(user.id, work, [synced_since, off, gone, due])
+    assert syncs == [due]
+    tasks.sync_due_folders(user.id + 1, work, [due])
+    assert syncs == [due]
+
+
+def test_a_new_turn_leaves_the_one_still_waiting_to_go_on(
+    user_client: TestClient,
+    db_session: Session,
+    user: User,
+    syncs: list[int],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(worker_index, "SHARE_SECONDS", 0)
+    work = add_account(user_client)
+    first, second, third = pending(db_session, user, work, "A", "B", "C")
+    tasks.sync_due_folders(user.id, work, [first, second, third])
+    tasks.sync_account(user.id, work)
+    [job] = jobs(db_session, tasks.SYNC_DUE_FOLDERS)
+    assert job["folder_ids"] == [second, third]
+
+
+def test_a_folder_of_a_turn_that_breaks_or_has_more_holds_up_no_other(
+    user_client: TestClient,
+    db_session: Session,
+    user: User,
+    worker: None,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    work = add_account(user_client)
+    broken, large, last = pending(db_session, user, work, "A", "B", "C")
+    ran: list[int] = []
+
+    def run_folder_sync(
+        _db: Session, _mailboxes: Mailboxes, _user: int, _account: int, folder_id: int, **_: Any
+    ) -> bool:
+        ran.append(folder_id)
+        if folder_id == broken:
+            raise RuntimeError("the sender's text")
+        return folder_id == large
+
+    monkeypatch.setattr(worker_index, "run_folder_sync", run_folder_sync)
+    tasks.sync_due_folders(user.id, work, [broken, large, last])
+    assert ran == [broken, large, last]
+    assert [job["folder_id"] for job in jobs(db_session, tasks.SYNC_FOLDER)] == [large]
+    assert "RuntimeError" in caplog.text
+    assert "the sender's text" not in caplog.text
+    # What it left is routine: a sync asked for goes first.
+    assert tasks.queue_folder_sync(db_session, user.id, work, last)
+    taken = next_job(db_session)
+    assert taken is not None
+    assert taken[1]["folder_id"] == last
+
+
+def test_a_sync_asked_for_takes_its_folders_routine_job_ahead(
+    user_client: TestClient, db_session: Session, user: User
+) -> None:
+    work = add_account(user_client)
+    other, inbox = pending(db_session, user, work, "A", "INBOX")
+    routine = tasks.ROUTINE_PRIORITY
+    for folder_id in (other, inbox):
+        assert tasks.queue_folder_sync(db_session, user.id, work, folder_id, priority=routine)
+    assert not tasks.queue_folder_sync(db_session, user.id, work, inbox)
+    # A routine one queued after leaves it where it is.
+    assert not tasks.queue_folder_sync(db_session, user.id, work, inbox, priority=routine)
+    taken = [next_job(db_session), next_job(db_session), next_job(db_session)]
+    assert [None if job is None else job[1]["folder_id"] for job in taken] == [inbox, other, None]
 
 
 # Against the test Dovecot.
@@ -470,6 +650,7 @@ class FakeServer:
         self.labels: dict[int, tuple[str, ...]] | None = None
         self.broken: set[int] = set()
         self.stale = False
+        self.flag_reads = 0
 
     def context(self) -> SimpleNamespace:
         return SimpleNamespace(uid_validity=self.uid_validity, uid_next=None, highest_modseq=None)
@@ -488,6 +669,7 @@ class FakeServer:
         return IndexPlan(self.uid_validity, None, (tuple(sorted(self.uids, reverse=True)),))
 
     def every_flag(self, _context: object) -> FolderFlags:
+        self.flag_reads += 1
         return FolderFlags(self.uid_validity, None, dict(self.flags), self.labels)
 
     def fetched(
@@ -555,6 +737,92 @@ def test_a_resync_brings_gmail_labels_up_to_date(
     assert not run(db_session, server, user, work, folder_id)
     db_session.expire_all()
     assert db_session.scalars(select(MailIndexMessage.labels)).all() == [["Work"]]
+
+
+def test_a_sync_past_its_time_stores_a_batch_and_asks_for_another_job(
+    user_client: TestClient,
+    db_session: Session,
+    user: User,
+    server: FakeServer,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(index_sync, "INDEX_BATCH", 2)
+    work = add_account(user_client)
+    folder_id = indexed(db_session, user.id, work, uids=())
+    server.uids = (1, 2, 3)
+
+    def share() -> bool:
+        return index_sync.sync_folder(
+            db_session, server.connections(), user.id, work, folder_id, now=NOW, until=0.0
+        )
+
+    assert share()
+    assert set(stored(db_session, folder_id)) == {2, 3}
+    assert not share()
+    assert set(stored(db_session, folder_id)) == {1, 2, 3}
+    assert folder_row(db_session, user, "INBOX").state == "ready"
+
+
+@pytest.mark.parametrize("missing", [2, 8], ids=["a_batch", "several_batches"])
+def test_a_pass_reads_the_flags_once_whatever_its_jobs(
+    user_client: TestClient,
+    db_session: Session,
+    user: User,
+    server: FakeServer,
+    monkeypatch: pytest.MonkeyPatch,
+    missing: int,
+) -> None:
+    """Only the job that ends a pass cut short by its time reads the flags, also of rows its
+    earlier jobs stored."""
+    monkeypatch.setattr(index_sync, "INDEX_BATCH", 2)
+    work = add_account(user_client)
+    folder_id = indexed(db_session, user.id, work, uids=())
+    db_session.add(message(folder_id, user.id, 1))
+    row = db_session.get(MailIndexFolder, folder_id)
+    assert row is not None
+    row.uid_validity = 7
+    db_session.commit()
+    server.uids = tuple(range(1, missing + 2))
+
+    def share(until: float) -> bool:
+        return index_sync.sync_folder(
+            db_session, server.connections(), user.id, work, folder_id, now=NOW, until=until
+        )
+
+    for _ in range(missing // 2 - 1):
+        assert share(0.0)
+        assert server.flag_reads == 0
+    server.flags = {1: frozenset({"\\Seen"}), missing + 1: frozenset({"\\Seen"})}
+    assert not share(0.0)
+    assert server.flag_reads == 1
+    rows = stored(db_session, folder_id)
+    assert {uid for uid, (_, flags, _) in rows.items() if flags} == {1, missing + 1}
+    assert folder_row(db_session, user, "INBOX").state == "ready"
+
+
+def test_a_job_that_fetches_several_batches_reads_the_flags_after_them(
+    user_client: TestClient,
+    db_session: Session,
+    user: User,
+    server: FakeServer,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(index_sync, "INDEX_BATCH", 2)
+    work = add_account(user_client)
+    folder_id = indexed(db_session, user.id, work, uids=())
+    db_session.add(message(folder_id, user.id, 1))
+    row = db_session.get(MailIndexFolder, folder_id)
+    assert row is not None
+    row.uid_validity = 7
+    db_session.commit()
+    server.uids = (1, 2, 3, 4, 5, 6)
+    server.flags = {1: frozenset({"\\Seen"})}
+
+    assert not run(db_session, server, user, work, folder_id)
+    assert server.flag_reads == 1
+    assert stored(db_session, folder_id)[1][1] == ["\\Seen"]
+    row = folder_row(db_session, user, "INBOX")
+    assert (row.state, row.message_count, row.unread_count) == ("ready", 6, 5)
 
 
 def test_the_age_limit_counts_days_in_the_users_time_zone(
@@ -675,7 +943,9 @@ def test_without_the_mail_client_no_index_job_runs(
     monkeypatch.setenv("MAILROOM_FEATURES", "filters")
     tasks.sync_account(user.id, work)
     tasks.sync_folder(user.id, work, folder_id)
+    tasks.sync_due_folders(user.id, work, [folder_id])
     assert jobs(db_session, tasks.SYNC_FOLDER) == []
+    assert jobs(db_session, tasks.SYNC_DUE_FOLDERS) == []
     assert folder_row(db_session, user, "INBOX").state == "pending"
 
 

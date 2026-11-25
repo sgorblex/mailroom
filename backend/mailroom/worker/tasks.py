@@ -6,9 +6,12 @@ below, and by the IDLE supervisor (``mailroom.worker.idle``) when a folder gets 
 only with the ``filters`` feature.
 
 With the ``mail`` feature, the index dispatcher queues ``sync_account`` for every account every 5
-minutes; it brings the account's index folders in step with its listing and queues ``sync_folder``
-for each one due. A folder's job fetches a bounded share and queues the next one behind every
-other job, so a large mailbox takes turns with the others, its own filter runs included.
+minutes; it brings the account's index folders in step with its listing and queues one
+``sync_due_folders`` for all those due: the turn, gone through in shares of a few seconds, each
+queueing the next. ``sync_folder`` syncs one folder: one that IDLE, a write of the app or a held
+send asks for, or one a job left with more to fetch. The index's routine work (the turn, and what a
+job left) is queued at ``ROUTINE_PRIORITY``, so a sync asked for and a filter run wait at most for
+the share under way, however long the turn.
 
 A held send's ``send_draft`` is queued by the mail service (``defer_scheduled_send``) in the
 transaction writing its ``app.scheduled_send`` row, to run at its time (``mailroom.worker.sends``);
@@ -35,7 +38,12 @@ from mailroom.filters.runs import prune_runs
 from mailroom.models import AccountFilterSettings, FilterRun, RuleSet, ScheduledSend, Snooze
 from mailroom.worker.app import PROCRASTINATE_SCHEMA, app
 from mailroom.worker.context import worker_context
-from mailroom.worker.index import account_folders_due, index_accounts, run_folder_sync
+from mailroom.worker.index import (
+    account_folders_due,
+    index_accounts,
+    run_folder_sync,
+    run_turn_share,
+)
 from mailroom.worker.runs import execute_run
 from mailroom.worker.sends import send_scheduled
 from mailroom.worker.snoozes import wake_snooze as wake_snoozed
@@ -44,6 +52,7 @@ from mailroom.worker.vacation import reply_vacation
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
 
+    from procrastinate.types import JSONValue
     from sqlalchemy import Select
     from sqlalchemy.engine import Engine
     from sqlalchemy.orm import Session
@@ -57,7 +66,9 @@ DISPATCH_SCHEDULED: Final = "dispatch_scheduled"
 DISPATCH_INDEX: Final = "dispatch_index"
 """The periodic job queueing ``sync_account`` for every account."""
 SYNC_ACCOUNT: Final = "sync_account"
-"""The job bringing one account's index folders in step and queueing the syncs due."""
+"""The job bringing one account's index folders in step and queueing the turn of those due."""
+SYNC_DUE_FOLDERS: Final = "sync_due_folders"
+"""The job running one share of the turn over an account's due folders (its ``folder_ids``)."""
 SYNC_FOLDER: Final = "sync_folder"
 """The job running one share of an indexed folder's sync."""
 SEND_DRAFT: Final = "send_draft"
@@ -66,6 +77,11 @@ WAKE_SNOOZE: Final = "wake_snooze"
 """The job bringing one snoozed message (its ``app.snooze`` row) back to its folder."""
 VACATION_REPLY: Final = "vacation_reply"
 """The job answering one new message (its ref) with its account's vacation reply."""
+ASKED_PRIORITY: Final = 0
+"""procrastinate's default priority: what someone waits for (a filter run, a sync of a folder that
+changed)."""
+ROUTINE_PRIORITY: Final = -1
+"""The priority of the index's routine work, which every other job goes ahead of."""
 _IN_TRANSACTION: Final = JobManager(SyncPsycopgConnector())
 """Defers jobs on a connection the caller passes, never its own (it is never opened): the app's
 connector, once the worker opens it asynchronously, would take that connection for an async one."""
@@ -120,15 +136,30 @@ def dispatch_index(timestamp: int) -> None:
 
 @app.task(name=SYNC_ACCOUNT)
 def sync_account(user_id: int, account_id: int) -> None:
-    """Bring the account's index folders in step with its listing, then queue ``sync_folder``
-    for each one due."""
+    """Bring the account's index folders in step with its listing, then queue the turn of those
+    due. While an earlier turn still waits, it goes on instead: begun again every time, a turn
+    longer than the 5 minutes would never reach its last folders."""
     if not features_from_env().mail:
         return
     context = worker_context()
     with context.sessions() as db:
         due = account_folders_due(db, context.mailboxes, user_id, account_id, datetime.now(UTC))
-        for folder_id in due:
-            queue_folder_sync(db, user_id, account_id, folder_id)
+        queue_turn(db, user_id, account_id, due)
+        db.commit()
+
+
+@app.task(name=SYNC_DUE_FOLDERS)
+def sync_due_folders(user_id: int, account_id: int, folder_ids: list[int]) -> None:
+    """One share of the turn over the account's due folders; the rest queued as the next one, and
+    each folder with more to fetch as a ``sync_folder`` of its own."""
+    if not features_from_env().mail:
+        return
+    context = worker_context()
+    with context.sessions() as db:
+        left = run_turn_share(db, context.mailboxes, user_id, account_id, folder_ids)
+        queue_turn(db, user_id, account_id, left.rest)
+        for folder_id in left.unfinished:
+            queue_folder_sync(db, user_id, account_id, folder_id, priority=ROUTINE_PRIORITY)
         db.commit()
 
 
@@ -140,7 +171,8 @@ def sync_folder(user_id: int, account_id: int, folder_id: int) -> None:
     context = worker_context()
     with context.sessions() as db:
         if run_folder_sync(db, context.mailboxes, user_id, account_id, folder_id):
-            queue_folder_sync(db, user_id, account_id, folder_id)
+            # A first sync's, or a burst's older mail: its newest is in.
+            queue_folder_sync(db, user_id, account_id, folder_id, priority=ROUTINE_PRIORITY)
             db.commit()
 
 
@@ -185,7 +217,7 @@ def rule_set_queueing_lock(rule_set_id: int, account_id: int) -> str:
 
 
 @contextmanager
-def _procrastinate_sql(db: Session) -> Iterator[Any]:
+def procrastinate_sql(db: Session) -> Iterator[Any]:
     """``db``'s psycopg connection with procrastinate's schema first on its search path, for the
     block: procrastinate's SQL names its tables and functions unqualified."""
     connection = db.connection()
@@ -205,19 +237,21 @@ def _defer(
     lock: str | None,
     queueing_lock: str,
     schedule_at: datetime | None = None,
-    arguments: Mapping[str, int | str],
+    priority: int = ASKED_PRIORITY,
+    arguments: Mapping[str, JSONValue],
 ) -> int:
     """Queue the task ``name`` with ``arguments`` inside ``db``'s transaction, to run from
     ``schedule_at`` (else at once); its job id. Raises procrastinate's ``AlreadyEnqueued`` when a
     job with ``queueing_lock`` is already waiting (the transaction is then unusable: run this
     inside a savepoint)."""
-    with _procrastinate_sql(db) as connection:
+    with procrastinate_sql(db) as connection:
         return configure_task(
             name=name,
             job_manager=_IN_TRANSACTION,
             lock=lock,
             queueing_lock=queueing_lock,
             schedule_at=schedule_at,
+            priority=priority,
             connection=connection,
         ).defer(**arguments)
 
@@ -225,7 +259,7 @@ def _defer(
 def cancel_job(db: Session, job_id: int) -> bool:
     """Delete the job ``job_id`` inside ``db``'s transaction while it is waiting; whether it
     was."""
-    with _procrastinate_sql(db) as connection:
+    with procrastinate_sql(db) as connection:
         return _IN_TRANSACTION.cancel_job_by_id(job_id, delete_job=True, connection=connection)
 
 
@@ -330,14 +364,36 @@ def requeue_lost_snoozes(db: Session) -> list[int]:
 
 
 def _defer_once(
-    db: Session, name: str, *, lock: str, queueing_lock: str, **arguments: int | str
+    db: Session,
+    name: str,
+    *,
+    lock: str,
+    queueing_lock: str,
+    priority: int = ASKED_PRIORITY,
+    **arguments: JSONValue,
 ) -> bool:
     """``_defer`` in a savepoint of ``db``'s transaction (the caller commits); False when a job
-    with ``queueing_lock`` was already waiting."""
+    with ``queueing_lock`` was already waiting, which then takes ``priority`` if that is higher."""
     try:
         with db.begin_nested():
-            _defer(db, name, lock=lock, queueing_lock=queueing_lock, arguments=arguments)
+            _defer(
+                db,
+                name,
+                lock=lock,
+                queueing_lock=queueing_lock,
+                priority=priority,
+                arguments=arguments,
+            )
     except AlreadyEnqueued:
+        # One that has started meanwhile keeps its own: it reads the mailbox after this call.
+        db.execute(
+            text(
+                f"UPDATE {PROCRASTINATE_SCHEMA}.procrastinate_jobs SET priority = :priority"
+                " WHERE queueing_lock = :queueing_lock AND status = 'todo'"
+                " AND priority < :priority"
+            ),
+            {"priority": priority, "queueing_lock": queueing_lock},
+        )
         return False
     return True
 
@@ -365,6 +421,7 @@ def queue_index_accounts(db: Session, engine: Engine) -> int:
             SYNC_ACCOUNT,
             lock=mailbox_lock(user_id, account_id),
             queueing_lock=f"index_account:{user_id}:{account_id}",
+            priority=ROUTINE_PRIORITY,
             user_id=user_id,
             account_id=account_id,
         )
@@ -372,14 +429,39 @@ def queue_index_accounts(db: Session, engine: Engine) -> int:
     )
 
 
-def queue_folder_sync(db: Session, user_id: int, account_id: int, folder_id: int) -> bool:
+def queue_turn(db: Session, user_id: int, account_id: int, folder_ids: Sequence[int]) -> bool:
+    """Queue ``sync_due_folders`` for the account's folders ``folder_ids``, if any (the caller
+    commits), one waiting per account at most; whether it was queued."""
+    if not folder_ids:
+        return False
+    return _defer_once(
+        db,
+        SYNC_DUE_FOLDERS,
+        lock=mailbox_lock(user_id, account_id),
+        queueing_lock=f"index_turn:{user_id}:{account_id}",
+        priority=ROUTINE_PRIORITY,
+        user_id=user_id,
+        account_id=account_id,
+        folder_ids=list(folder_ids),
+    )
+
+
+def queue_folder_sync(
+    db: Session,
+    user_id: int,
+    account_id: int,
+    folder_id: int,
+    *,
+    priority: int = ASKED_PRIORITY,
+) -> bool:
     """Queue ``sync_folder`` for the indexed folder (the caller commits), one waiting per folder
-    at most; whether it was queued."""
+    at most, at the highest ``priority`` asked of it; whether it was queued."""
     return _defer_once(
         db,
         SYNC_FOLDER,
         lock=mailbox_lock(user_id, account_id),
         queueing_lock=f"index_folder:{folder_id}",
+        priority=priority,
         user_id=user_id,
         account_id=account_id,
         folder_id=folder_id,
@@ -387,16 +469,22 @@ def queue_folder_sync(db: Session, user_id: int, account_id: int, folder_id: int
 
 
 def folder_syncs_running(db: Session, folder_ids: Sequence[int]) -> set[int]:
-    """Which of the indexed folders ``folder_ids`` have a ``sync_folder`` job running now: one
-    that surveyed its folder before a write may store the flags it read over that write's."""
+    """Which of the indexed folders ``folder_ids`` may be syncing now: those of a ``sync_folder``
+    running, and every one of a turn's share running. A sync that surveyed its folder before a
+    write may store the flags it read over that write's."""
     if not folder_ids:
         return set()
     query = text(
-        f"SELECT (args->>'folder_id')::bigint FROM {PROCRASTINATE_SCHEMA}.procrastinate_jobs"
-        " WHERE task_name = :name AND status = 'doing'"
-        " AND (args->>'folder_id')::bigint = ANY(:ids)"
+        "SELECT folder.id::bigint"
+        f" FROM {PROCRASTINATE_SCHEMA}.procrastinate_jobs AS job,"
+        " jsonb_array_elements_text(CASE job.task_name"
+        " WHEN :folder THEN jsonb_build_array(job.args->'folder_id')"
+        " WHEN :turn THEN job.args->'folder_ids' END) AS folder(id)"
+        " WHERE job.task_name IN (:folder, :turn) AND job.status = 'doing'"
+        " AND folder.id::bigint = ANY(:ids)"
     )
-    return set(db.scalars(query, {"name": SYNC_FOLDER, "ids": list(folder_ids)}))
+    names = {"folder": SYNC_FOLDER, "turn": SYNC_DUE_FOLDERS}
+    return set(db.scalars(query, {**names, "ids": list(folder_ids)}))
 
 
 def queue_run(db: Session, rule_set: RuleSet, account_id: int, trigger: str) -> int | None:
