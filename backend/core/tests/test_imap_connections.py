@@ -17,10 +17,12 @@ from mailroom_core.mail import (
     Quota,
     QuotaUsage,
     Reachability,
+    StructureCache,
     Timeouts,
+    analyse_structure,
     retriable,
 )
-from mailroom_core.mail.imap import _capabilities, _keywords, _quota, folders_from
+from mailroom_core.mail.imap import _announced, _capabilities, _keywords, _quota, folders_from
 from mailroom_core.testing import (
     ImapTestServer,
     connections_for,
@@ -109,6 +111,44 @@ def test_mime_builds_a_multipart_message() -> None:
     assert parts[0].get_content() == "plain"
     assert parts[1].get_filename() == "a.pdf"
     assert parts[1].get_content() == b"%PDF"
+
+
+def test_a_structure_cache_keeps_the_most_recently_used() -> None:
+    cache = StructureCache(2)
+    one, two = analyse_structure(()), analyse_structure((b"text", b"plain"))
+    cache.put((1, "INBOX", 7, 1), one)
+    cache.put((1, "INBOX", 7, 2), two)
+    assert cache.get((1, "INBOX", 7, 1)) is one  # now the most recently used
+    cache.put((2, "INBOX", 7, 1), two)
+    assert cache.get((1, "INBOX", 7, 2)) is None
+    assert len(cache) == 2
+    # Another UIDVALIDITY or folder is another message.
+    assert cache.get((1, "INBOX", 8, 1)) is None
+    assert cache.get((1, "Work", 7, 1)) is None
+    cache.forget(1)
+    assert cache.get((1, "INBOX", 7, 1)) is None
+    assert cache.get((2, "INBOX", 7, 1)) is two
+    with pytest.raises(ValueError, match="at least 1"):
+        StructureCache(0)
+
+
+def test_announcements_are_spent_once_and_others_left_alone() -> None:
+    class Imaplib:
+        def __init__(self, pending: dict[str, list[bytes]]) -> None:
+            self.untagged_responses = pending
+
+    class Client:
+        def __init__(self, pending: dict[str, list[bytes]]) -> None:
+            self._imap = Imaplib(pending)
+
+    quiet = Client({"FLAGS": [b"(\\Seen)"], "READ-ONLY": [b""]})
+    assert _announced(quiet) is False  # type: ignore[arg-type]
+    for name in ("EXISTS", "EXPUNGE", "FETCH", "UIDVALIDITY", "BYE", "VANISHED"):
+        pending = {name: [b"1"], "FLAGS": [b"()"]}
+        client = Client(pending)
+        assert _announced(client) is True  # type: ignore[arg-type]
+        assert pending == {"FLAGS": [b"()"]}
+        assert _announced(client) is False  # type: ignore[arg-type]
 
 
 # Against Dovecot
@@ -641,6 +681,163 @@ def test_close_drops_idle_connections_and_busy_ones_once_released(imap_server, c
     assert third is second
     assert _client_of(mail) is not third
     mail.close("unknown")
+
+
+@pytest.fixture
+def commands(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """The SELECT, EXAMINE and NOOP commands every connection sends, in order."""
+    from imapclient import IMAPClient
+
+    sent: list[str] = []
+    select, noop = IMAPClient.select_folder, IMAPClient.noop
+
+    def selecting(self: IMAPClient, folder: str, readonly: bool = False) -> object:
+        sent.append(f"{'EXAMINE' if readonly else 'SELECT'} {folder}")
+        return select(self, folder, readonly)
+
+    def nooping(self: IMAPClient) -> object:
+        sent.append("NOOP")
+        return noop(self)
+
+    monkeypatch.setattr(IMAPClient, "select_folder", selecting)
+    monkeypatch.setattr(IMAPClient, "noop", nooping)
+    return sent
+
+
+@pytest.mark.integration
+def test_a_read_reuses_the_folder_the_last_read_examined(
+    imap_server, connections, commands
+) -> None:
+    user = imap_server.unique_user("reuse")
+    create_folders(imap_server, user, "Projects")
+    seed(imap_server, user, "INBOX", mime("one"))
+    mail = connections(test_account(1, user, imap_server))
+    commands.clear()
+
+    first = mail.with_mailbox(1, "INBOX", True, lambda ctx: ctx)
+    second = mail.with_mailbox(1, "INBOX", True, lambda ctx: ctx)
+    assert commands == ["EXAMINE INBOX", "NOOP"]
+    assert second == first
+    assert (second.exists, second.uid_next) == (1, first.uid_next)
+
+    commands.clear()
+    mail.with_mailbox(1, "Projects", True, lambda _ctx: None)
+    mail.with_mailbox(1, "INBOX", True, lambda _ctx: None)
+    # A write selects; the read after it examines, never reusing a read-write selection.
+    mail.with_mailbox(1, "INBOX", False, lambda _ctx: None)
+    mail.with_mailbox(1, "INBOX", False, lambda _ctx: None)
+    mail.with_mailbox(1, "INBOX", True, lambda _ctx: None)
+    mail.with_mailbox(1, "INBOX", True, lambda _ctx: None, reselect=True)
+    assert commands == [
+        "EXAMINE Projects",
+        "EXAMINE INBOX",
+        "SELECT INBOX",
+        "SELECT INBOX",
+        "EXAMINE INBOX",
+        "EXAMINE INBOX",
+    ]
+
+    # A read that failed leaves nothing to reuse; nor does a folder command's UNSELECT.
+    commands.clear()
+    with pytest.raises(MailError):
+        mail.with_mailbox(1, "INBOX", True, _not_found)
+    mail.with_mailbox(1, "INBOX", True, lambda _ctx: None)
+    mail.with_connection(1, lambda _client: None)
+    mail.with_mailbox(1, "INBOX", True, lambda _ctx: None)
+    assert commands == ["NOOP", "EXAMINE INBOX", "EXAMINE INBOX"]
+
+
+def _not_found(_ctx: MailboxContext) -> None:
+    raise MailError("not_found")
+
+
+@pytest.mark.integration
+def test_the_changed_flags_and_index_reads_always_examine_afresh(
+    imap_server, connections, commands
+) -> None:
+    user = imap_server.unique_user("afresh")
+    seed(imap_server, user, "INBOX", mime("one"))
+    mail = connections(test_account(1, user, imap_server))
+    commands.clear()
+    mail.with_mailbox(1, "INBOX", True, lambda _ctx: None)
+    mail.folder_uids(1, "INBOX")
+    mail.folder_flags(1, "INBOX")
+    mail.changed_flags(1, "INBOX", 1)
+    assert commands == ["EXAMINE INBOX"] * 4
+
+
+@pytest.mark.integration
+def test_examines_again_once_the_server_announces_a_change(
+    imap_server, connections, commands
+) -> None:
+    user = imap_server.unique_user("announced")
+    uid = seed(imap_server, user, "INBOX", mime("one"))
+    mail = connections(test_account(1, user, imap_server))
+    before = mail.with_mailbox(1, "INBOX", True, lambda ctx: ctx)
+
+    # New mail, announced on the NOOP.
+    added = seed(imap_server, user, "INBOX", mime("two"))
+    commands.clear()
+    after = mail.with_mailbox(1, "INBOX", True, lambda ctx: ctx)
+    assert commands == ["NOOP", "EXAMINE INBOX"]
+    assert (after.exists, after.uid_next) == (2, added + 1)
+
+    # A flag set elsewhere, announced as a FETCH: HIGHESTMODSEQ moves on.
+    with raw_client(imap_server, user) as other:
+        other.select_folder("INBOX")
+        other.add_flags([uid], [b"\\Flagged"])
+    commands.clear()
+    flagged = mail.with_mailbox(1, "INBOX", True, lambda ctx: ctx)
+    assert commands == ["NOOP", "EXAMINE INBOX"]
+    if before.highest_modseq is not None:
+        assert flagged.highest_modseq is not None
+        assert flagged.highest_modseq > before.highest_modseq
+
+    # Mail that arrives while a call runs is announced inside its FETCH: kept for the next one.
+
+    def arrive(ctx: MailboxContext) -> None:
+        seed(imap_server, user, "INBOX", mime("three"))
+        ctx.client.fetch([uid], ["FLAGS"])
+
+    mail.with_mailbox(1, "INBOX", True, arrive)
+    commands.clear()
+    third = mail.with_mailbox(1, "INBOX", True, lambda ctx: ctx)
+    assert commands == ["EXAMINE INBOX"]  # no NOOP needed to know
+    assert third.exists == 3
+
+    # An expunge elsewhere.
+    with raw_client(imap_server, user) as other:
+        other.select_folder("INBOX")
+        other.delete_messages([uid])
+        other.expunge()
+    commands.clear()
+    assert mail.with_mailbox(1, "INBOX", True, lambda ctx: ctx.exists) == 2
+    assert commands == ["NOOP", "EXAMINE INBOX"]
+
+
+@pytest.mark.integration
+def test_prefers_the_connection_that_examined_the_folder(imap_server, connections) -> None:
+    user = imap_server.unique_user("prefer")
+    create_folders(imap_server, user, "Projects")
+    mail = connections(test_account(1, user, imap_server), pool_size=2)
+    both = threading.Barrier(2, timeout=5)
+    clients: dict[str, object] = {}
+
+    def job(path: str) -> None:
+        def fn(ctx: MailboxContext) -> None:
+            clients[path] = ctx.client
+            both.wait()
+
+        mail.with_mailbox(1, path, True, fn)
+
+    threads = [threading.Thread(target=job, args=(path,)) for path in ("INBOX", "Projects")]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert clients["INBOX"] is not clients["Projects"]
+    for path in ("Projects", "INBOX", "Projects"):
+        assert _client_of(mail, path) is clients[path]
 
 
 @pytest.mark.integration

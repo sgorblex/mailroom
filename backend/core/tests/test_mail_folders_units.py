@@ -3,6 +3,7 @@ server's answers mapped here, the write whose answer was lost looked for again, 
 best effort, and `with_connection` readying a connection: UNSELECT or a new connection, never
 CLOSE, one retry while readying and none of `fn`."""
 
+import contextlib
 import logging
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
@@ -554,7 +555,9 @@ class SessionClient:
         self.caps = capabilities
         self.log = log
         self.fail: dict[str, BaseException] = {}
-        self._imap = SimpleNamespace(state="AUTH", _simple_command=self._simple_command)
+        self._imap = SimpleNamespace(
+            state="AUTH", _simple_command=self._simple_command, untagged_responses={}
+        )
 
     def _record(self, name: str) -> None:
         self.log.append((name, id(self)))
@@ -606,8 +609,12 @@ class SessionClient:
 def pool(monkeypatch: pytest.MonkeyPatch):
     """MailConnections over SessionClients, each opened with the capabilities asked for."""
 
-    def make(*capabilities: bytes) -> tuple[MailConnections, list[SessionClient], list[Any]]:
-        connections = MailConnections(lambda _id: cast("Any", SimpleNamespace()), lambda _id: "pw")
+    def make(
+        *capabilities: bytes, pool_size: int = 1
+    ) -> tuple[MailConnections, list[SessionClient], list[Any]]:
+        connections = MailConnections(
+            lambda _id: cast("Any", SimpleNamespace()), lambda _id: "pw", pool_size=pool_size
+        )
         opened: list[SessionClient] = []
         log: list[tuple[object, ...]] = []
 
@@ -677,6 +684,46 @@ class TestWithConnection:
         calls: list[object] = []
         connections.with_connection(1, calls.append)
         assert calls == [opened[1]]
+
+    @pytest.mark.parametrize("fails", [False, True])
+    def test_forgets_a_folder_another_slot_holds_examined(self, pool, fails: bool) -> None:
+        connections, opened, log = pool(b"IMAP4REV1", b"UNSELECT", pool_size=2)
+
+        def read() -> object:
+            return connections.with_mailbox(1, "Projects", True, lambda context: context.client)
+
+        def rename(_client: object) -> None:
+            if fails:
+                raise MailError("timeout")
+
+        def command() -> None:
+            # Beside a read, so on the other slot.
+            with contextlib.suppress(MailError):
+                connections.with_connection(1, rename)
+
+        assert read() is read()
+        assert names(log, opened) == ["select@0", "noop@0"]
+        # A read in progress while it runs leaves nothing to reuse.
+        connections.with_mailbox(1, "Projects", True, lambda _context: command())
+        log.clear()
+        read()
+        assert names(log, opened) == ["select@0"]
+        log.clear()
+        read()
+        assert names(log, opened) == ["noop@0"]
+
+    def test_forgets_a_folder_an_idle_slot_holds_examined(self, pool) -> None:
+        connections, opened, log = pool(b"IMAP4REV1", b"UNSELECT", pool_size=2)
+
+        def beside(_context: object) -> None:
+            connections.with_mailbox(1, "Work", True, lambda _context: None)
+
+        connections.with_mailbox(1, "Projects", True, beside)
+        log.clear()
+        # On the first slot, which is free; the second goes on holding Work.
+        connections.with_connection(1, lambda _client: None)
+        connections.with_mailbox(1, "Work", True, lambda _context: None)
+        assert names(log, opened) == ["unselect@0", "select@0"]
 
     def test_never_retries_fn(self, pool) -> None:
         connections, opened, _log = pool(b"IMAP4REV1", b"UNSELECT")

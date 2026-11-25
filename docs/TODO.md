@@ -316,7 +316,7 @@ Older than milestone E, seen in its browser check; fix before batch 11.
   - [x] **Mail without waiting on mailbox logins** — `/accounts` logs in to every account's IMAP
         server for its keywords before the mail screen draws anything; answer first and fill the
         keywords in later, and start the list from the remembered account.
-  - [ ] **Fewer IMAP round trips per read** — skip selecting a folder that is already selected
+  - [x] **Fewer IMAP round trips per read** — skip selecting a folder that is already selected
         with the same UIDVALIDITY, and keep a message's BODYSTRUCTURE for a while (mailroom-core).
   - [ ] **Mail code sooner** — load the mail screen's chunk without waiting for `/auth/me`, or
         ship it with the shell.

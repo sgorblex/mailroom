@@ -10,8 +10,11 @@ discarded. Without that, the deadlines are the socket timeouts here.
 
 Each account has `pool_size` slots (1 by default), each owning one lazily opened connection and
 the mailbox selected on it, so a slot is the TypeScript mailbox lock: concurrent callers never read
-from each other's folder. Every `with_mailbox` selects its folder again (imapflow skips a SELECT
-of the folder already selected), which also refreshes UIDVALIDITY and EXISTS.
+from each other's folder. A read-only `with_mailbox` of the folder a slot left examined reuses
+that selection after a NOOP, as imapflow skips a SELECT of the folder already selected: only when
+the server announced no change since (`_announced`) and no `with_connection` ran, else it
+examines the folder again, which refreshes UIDVALIDITY, EXISTS, UIDNEXT and HIGHESTMODSEQ. Every
+other `with_mailbox` selects.
 """
 
 import imaplib
@@ -44,6 +47,7 @@ from mailroom_core.mail.errors import (
     is_temporary,
     mail_error,
 )
+from mailroom_core.mail.structure_cache import StructureCache
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator, Mapping
@@ -56,6 +60,21 @@ GMAIL: Final = "X-GM-EXT-1"
 """The capability Gmail is told by: its quirks go by it, never by the hostname."""
 _HEALTH_WAIT: Final = 1.0
 """Seconds a `reachability` probe waits for a connection of a busy account."""
+_ANNOUNCEMENTS: Final = frozenset(
+    {
+        "BYE",
+        "EXISTS",
+        "EXPUNGE",
+        "FETCH",
+        "HIGHESTMODSEQ",
+        "RECENT",
+        "UIDNEXT",
+        "UIDVALIDITY",
+        "VANISHED",
+    }
+)
+"""Untagged responses (and response codes, which imaplib files alike) that tell of a change to
+the selected mailbox, or of its end: after one, a selection is not reused."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,7 +143,11 @@ class MailboxContext:
     answer allows no change) and the server is not Gmail, which turns keywords into labels."""
     highest_modseq: int | None = None
     """HIGHESTMODSEQ from the SELECT or EXAMINE answer; None without CONDSTORE, or in a folder
-    the server keeps no mod-sequences for (NOMODSEQ)."""
+    the server keeps no mod-sequences for (NOMODSEQ). In a reused selection it may lag a flag
+    change the server announced inside an earlier call's FETCH: `with_mailbox(reselect=True)`
+    for a caller that asks changes since it."""
+    structures: StructureCache | None = None
+    """The connections' kept message structures (`read.fetch_structure`); None outside them."""
 
     @property
     def gmail(self) -> bool:
@@ -203,6 +226,23 @@ class _Slot:
     """The thread using it, while busy."""
     interrupted: bool = False
     """Set by `interrupt` while busy: the attempt is not retried and the connection is dropped."""
+    examined: MailboxContext | None = None
+    """The read-only selection the last `with_mailbox` left on the connection, which the next
+    read of that folder may reuse; it counts only while its `client` is the slot's."""
+
+    folders_epoch: int = 0
+    """The account's `folders_epoch` when `examined` was selected."""
+
+    def examines(self, path: str, folders_epoch: int) -> bool:
+        """Whether the slot's connection holds `path` examined by an earlier read, no folder
+        command run since."""
+        kept = self.examined
+        return (
+            kept is not None
+            and kept.client is self.client
+            and kept.path == path
+            and self.folders_epoch == folders_epoch
+        )
 
 
 @dataclass(eq=False)
@@ -211,6 +251,9 @@ class _Account:
     free: threading.Condition = field(default_factory=threading.Condition)
     generation: int = 0
     """Bumped by `close`: a connection opened under an older one is dropped when released."""
+    folders_epoch: int = 0
+    """Bumped by `with_connection`, whose commands may rename or delete a folder another slot
+    holds examined (RFC 2180 lets the server keep it open): no older selection is reused."""
     capabilities: Capabilities | None = None
     delimiter: tuple[str | None] | None = None
     """Once asked: a one-tuple, since a server without a hierarchy has None."""
@@ -250,6 +293,7 @@ class MailConnections:
         self._health_cache = health_cache
         self._lock = threading.Lock()
         self._accounts: dict[int, _Account] = {}
+        self._structures = StructureCache()
 
     @classmethod
     def from_accounts(
@@ -292,22 +336,31 @@ class MailConnections:
         fn: Callable[[MailboxContext], T],
         *,
         wait: float | None = None,
+        reselect: bool = False,
     ) -> T:
         """Runs `fn` with `path` selected on a connection of its own.
 
         Read-only opens use EXAMINE, so nothing in the mailbox (not even `\\Seen`) can change.
-        Errors come out as MailErrors, `busy` when no connection of the account is free within
-        `wait` (`Timeouts.lock`). A connection can look usable and be dead, or the folder can
-        have been deleted by another client: see `retriable` for when one more attempt is made,
-        always on a newly opened connection. An attempt cut short by `interrupt` is never retried.
+        A read of the folder an earlier read left examined reuses that selection after a NOOP
+        when the server announced no change (see the module); `reselect` examines it again
+        regardless, for a caller that needs HIGHESTMODSEQ as of now. `fn` must not select
+        another folder. Errors come out as MailErrors, `busy` when no connection of the account
+        is free within `wait` (`Timeouts.lock`). A connection can look usable and be dead, or
+        the folder can have been deleted by another client: see `retriable` for when one more
+        attempt is made, always on a newly opened connection. An attempt cut short by
+        `interrupt` is never retried.
         """
         try:
-            return self._attempt(account_id, path, read_only, fn, fresh=False, wait=wait)
+            return self._attempt(
+                account_id, path, read_only, fn, fresh=False, wait=wait, reselect=reselect
+            )
         except _AttemptFailedError as failure:
             if not failure.retry:
                 raise failure.error from None
         try:
-            return self._attempt(account_id, path, read_only, fn, fresh=True, wait=wait)
+            return self._attempt(
+                account_id, path, read_only, fn, fresh=True, wait=wait, reselect=True
+            )
         except _AttemptFailedError as failure:
             raise failure.error from None
 
@@ -403,17 +456,17 @@ class MailConnections:
 
     def folder_uids(self, account_id: int, path: str) -> FolderUids:
         """Every UID in the folder (`changes.uids_of`), read under EXAMINE."""
-        return self.with_mailbox(account_id, path, True, uids_of)
+        return self.with_mailbox(account_id, path, True, uids_of, reselect=True)
 
     def folder_flags(self, account_id: int, path: str) -> FolderFlags:
         """Every message's flags in the folder (`changes.flags_of`), read under EXAMINE."""
-        return self.with_mailbox(account_id, path, True, flags_of)
+        return self.with_mailbox(account_id, path, True, flags_of, reselect=True)
 
     def changed_flags(self, account_id: int, path: str, since: int) -> FolderFlags:
         """The flags changed in the folder since the mod-sequence `since`
         (`changes.changed_flags_of`), read under EXAMINE; `unsupported` without CONDSTORE."""
         return self.with_mailbox(
-            account_id, path, True, lambda context: changed_flags_of(context, since)
+            account_id, path, True, lambda context: changed_flags_of(context, since), reselect=True
         )
 
     def quota(self, account_id: int) -> Quota | None:
@@ -502,11 +555,13 @@ class MailConnections:
         return len(cut)
 
     def close(self, account_id: int) -> None:
-        """Logs out the account's connections and forgets what was learnt from them.
+        """Logs out the account's connections and forgets what was learnt from them, the kept
+        message structures included.
 
         Never waits: a connection in use is dropped when its caller is done with it. The next
         call opens a new connection, looking the account and its password up again.
         """
+        self._structures.forget(account_id)
         with self._lock:
             state = self._accounts.get(account_id)
         if state is not None:
@@ -515,8 +570,9 @@ class MailConnections:
     def close_all(self) -> None:
         """Logs out every account's connections, as ``close`` does for one."""
         with self._lock:
-            states = list(self._accounts.values())
-        for state in states:
+            states = list(self._accounts.items())
+        for account_id, state in states:
+            self._structures.forget(account_id)
             self._close(state)
 
     # Connections
@@ -537,9 +593,15 @@ class MailConnections:
 
     @contextmanager
     def _slot(
-        self, account_id: int, *, fresh: bool = False, wait: float | None = None
+        self,
+        account_id: int,
+        *,
+        fresh: bool = False,
+        wait: float | None = None,
+        examining: str | None = None,
     ) -> Iterator[tuple[_Account, _Slot]]:
-        """A free slot of the account, waiting up to `wait` (`Timeouts.lock`) for one.
+        """A free slot of the account, waiting up to `wait` (`Timeouts.lock`) for one; one that
+        holds `examining` examined first, if any.
 
         `fresh` (a retry) wants a connection opened for it: an idle one is no better than the
         one that just failed. A connection unused for `Timeouts.idle` is not reused either.
@@ -553,7 +615,14 @@ class MailConnections:
                 if idle:
                     # An open connection before a closed one, so the pool grows only under
                     # load; for a retry, the other way round.
-                    slot = next((s for s in idle if (s.client is None) == fresh), idle[0])
+                    slot = next(
+                        (
+                            s
+                            for s in idle
+                            if examining is not None and s.examines(examining, state.folders_epoch)
+                        ),
+                        None,
+                    ) or next((s for s in idle if (s.client is None) == fresh), idle[0])
                     slot.busy = True
                     slot.thread = threading.get_ident()
                     slot.interrupted = False
@@ -670,21 +739,23 @@ class MailConnections:
         *,
         fresh: bool,
         wait: float | None,
+        reselect: bool,
     ) -> T:
-        with self._slot(account_id, fresh=fresh, wait=wait) as (state, slot):
+        reusable = read_only and not reselect
+        examining = path if reusable and not fresh else None
+        with self._slot(account_id, fresh=fresh, wait=wait, examining=examining) as (state, slot):
             client = self._client(account_id, state, slot)
+            epoch = state.folders_epoch
+            current = slot.folders_epoch == epoch
+            kept, slot.examined = slot.examined, None
             try:
-                selected = client.select_folder(path, readonly=read_only)
-                context = MailboxContext(
-                    client=client,
-                    path=path,
-                    read_only=read_only,
-                    uid_validity=int(selected[b"UIDVALIDITY"]),
-                    exists=int(selected[b"EXISTS"]),
-                    uid_next=int(selected[b"UIDNEXT"]) if b"UIDNEXT" in selected else None,
-                    account=account_id,
-                    keywords=_keywords(client, selected),
-                    highest_modseq=_highest_modseq(selected),
+                context = (
+                    kept
+                    if reusable
+                    and current
+                    and kept is not None
+                    and _still_examined(kept, client, path)
+                    else self._select(account_id, client, path, read_only)
                 )
             except Exception as error:
                 raise self._failure(account_id, state, slot, error, "lock", read_only) from None
@@ -692,7 +763,10 @@ class MailConnections:
                 self._discard(slot)
                 raise
             try:
-                return fn(context)
+                result = fn(context)
+                if read_only:
+                    slot.examined, slot.folders_epoch = context, epoch
+                return result
             except Exception as error:
                 raise self._failure(account_id, state, slot, error, "fn", read_only) from None
             except BaseException:
@@ -700,8 +774,28 @@ class MailConnections:
                 self._discard(slot)
                 raise
 
+    def _select(
+        self, account_id: int, client: IMAPClient, path: str, read_only: bool
+    ) -> MailboxContext:
+        """SELECT or EXAMINE `path`, its answer as a context; what it announced is spent."""
+        selected = client.select_folder(path, readonly=read_only)
+        _announced(client)
+        return MailboxContext(
+            client=client,
+            path=path,
+            read_only=read_only,
+            uid_validity=int(selected[b"UIDVALIDITY"]),
+            exists=int(selected[b"EXISTS"]),
+            uid_next=int(selected[b"UIDNEXT"]) if b"UIDNEXT" in selected else None,
+            account=account_id,
+            keywords=_keywords(client, selected),
+            highest_modseq=_highest_modseq(selected),
+            structures=self._structures,
+        )
+
     def _bare_attempt[T](self, account_id: int, fn: Callable[[IMAPClient], T], *, fresh: bool) -> T:
         with self._slot(account_id, fresh=fresh) as (state, slot):
+            slot.examined = None
             reused = slot.client is not None
             client = self._client(account_id, state, slot)
             try:
@@ -719,6 +813,9 @@ class MailConnections:
                 # Interrupted mid-command, the connection's state is unknown.
                 self._discard(slot)
                 raise
+            finally:
+                with state.free:
+                    state.folders_epoch += 1
 
     def _unselected(
         self, account_id: int, state: _Account, slot: _Slot, client: IMAPClient, *, reused: bool
@@ -879,6 +976,29 @@ def _log_in(client: IMAPClient, login: str, password: str) -> None:
         raise MailError(
             "auth_failed", "The server accepts only ASCII logins and passwords (no AUTH=PLAIN)."
         )
+
+
+def _announced(client: IMAPClient) -> bool:
+    """Whether the server announced a change to the selected mailbox (`_ANNOUNCEMENTS`) since
+    this was last asked; the announcements are spent. imaplib files every untagged response
+    by its name until a command takes it, and a FETCH takes only FETCH responses: an EXISTS or
+    an EXPUNGE that came in the middle of one waits here."""
+    pending = client._imap.untagged_responses  # noqa: SLF001
+    found = [name for name in pending if str(name).upper() in _ANNOUNCEMENTS]
+    for name in found:
+        del pending[name]
+    return bool(found)
+
+
+def _still_examined(kept: MailboxContext, client: IMAPClient, path: str) -> bool:
+    """Whether `kept`, a read-only selection of `path` on `client`, still stands: nothing was
+    announced since, through to a NOOP, which also finds a dead connection before `fn` runs."""
+    if kept.client is not client or kept.path != path or not kept.read_only:
+        return False
+    if client._imap.state != "SELECTED" or _announced(client):  # noqa: SLF001
+        return False
+    client.noop()
+    return not _announced(client)
 
 
 def _drop(client: IMAPClient) -> None:

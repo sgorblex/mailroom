@@ -154,9 +154,14 @@ def folder_index_plan(
     since: date | None = None,
     size: int = INDEX_BATCH,
 ) -> IndexPlan:
-    """`plan_index` of the folder, under EXAMINE."""
+    """`plan_index` of the folder, under an EXAMINE of its own: changes are asked since its
+    HIGHESTMODSEQ."""
     return connections.with_mailbox(
-        account, folder, True, lambda context: plan_index(context, since=since, size=size)
+        account,
+        folder,
+        True,
+        lambda context: plan_index(context, since=since, size=size),
+        reselect=True,
     )
 
 

@@ -58,7 +58,7 @@ def _read(
 
     def run(context: MailboxContext) -> OutgoingAttachment:
         check_fresh(ref, context.uid_validity)
-        _data, structure = fetch_structure(context.client, ref.uid, [])
+        _data, structure = fetch_structure(context, ref.uid, [])
         calendar = () if structure.calendar is None else (structure.calendar,)
         attached = (*structure.attachments, *calendar)
         candidates = structure.inline_parts if source.inline else attached

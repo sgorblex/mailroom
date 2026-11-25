@@ -58,16 +58,32 @@ def _message(ref: str | MessageRef) -> MessageRef:
 
 
 def fetch_structure(
-    client: IMAPClient, uid: int, items: list[str]
+    context: MailboxContext, uid: int, items: list[str]
 ) -> tuple[dict[bytes, object], Structure]:
-    """The message's BODYSTRUCTURE analysed, with the other `items` fetched alongside it."""
-    data = client.fetch([uid], ["BODYSTRUCTURE", *items]).get(uid)
+    """The message's BODYSTRUCTURE analysed, with the other `items` fetched alongside it.
+
+    A structure the connections keep (`MailboxContext.structures`) is not fetched again; with
+    no other `items` there is then no FETCH at all, and a message gone meanwhile is found by
+    the part fetch that follows (`not_found`)."""
+    key = (context.account, context.path, context.uid_validity, uid)
+    kept = None if context.structures is None else context.structures.get(key)
+    if kept is not None:
+        if not items:
+            return {}, kept
+        data = context.client.fetch([uid], items).get(uid)
+        if data is None:
+            raise MailError("not_found")
+        return data, kept
+    data = context.client.fetch([uid], ["BODYSTRUCTURE", *items]).get(uid)
     if data is None:
         raise MailError("not_found")
     body = data.get(b"BODYSTRUCTURE")
     if not isinstance(body, tuple | list):
         raise MailError("not_found")
-    return data, analyse_structure(body)
+    structure = analyse_structure(body)
+    if context.structures is not None:
+        context.structures.put(key, structure)
+    return data, structure
 
 
 def fetched_headers(data: Mapping[bytes, object]) -> bytes:
@@ -192,7 +208,7 @@ def read_message(
         items = ["ENVELOPE", "FLAGS", "INTERNALDATE", "RFC822.SIZE", FETCH_ITEM]
         if raw_headers:
             items.append("BODY.PEEK[HEADER]")
-        data, structure = fetch_structure(client, message.uid, items)
+        data, structure = fetch_structure(context, message.uid, items)
         envelope = data.get(b"ENVELOPE")
         body: RenderedBody | None = None
         html: str | None = None
@@ -329,7 +345,7 @@ def read_attachment(
 
     def run(context: MailboxContext) -> Attachment:
         check_fresh(message, context.uid_validity)
-        _data, structure = fetch_structure(context.client, message.uid, [])
+        _data, structure = fetch_structure(context, message.uid, [])
         info = next((p for p in structure.downloadable if p.part == part), None)
         leaf = structure.parts.get(part)
         if info is None or leaf is None:
@@ -416,7 +432,7 @@ def html_view(
     def run(context: MailboxContext) -> SafeHtml:
         check_fresh(message, context.uid_validity)
         client = context.client
-        _data, structure = fetch_structure(client, message.uid, [])
+        _data, structure = fetch_structure(context, message.uid, [])
         html = _html(client, message.uid, structure)
         if html is None:
             raise MailError("not_found", "This message has no HTML body.")

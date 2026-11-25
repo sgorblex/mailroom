@@ -382,6 +382,11 @@ def _fetch_candidates(
     for uid, data in fetched.items():
         body = data.get(b"BODYSTRUCTURE")
         structure = analyse_structure(body if isinstance(body, tuple | list) else ())
+        if isinstance(body, tuple | list) and context.structures is not None:
+            # Kept for the message's opening (`read.fetch_structure`).
+            context.structures.put(
+                (context.account, context.path, context.uid_validity, int(uid)), structure
+            )
         received = aware_date(data.get(b"INTERNALDATE"))
         envelope_date = aware_date(getattr(data.get(b"ENVELOPE"), "date", None))
         candidates.append(

@@ -477,7 +477,11 @@ class FakeServer:
     def connections(self) -> MailConnections:
         return cast("MailConnections", SimpleNamespace(with_mailbox=self._with_mailbox))
 
-    def _with_mailbox(self, _account: int, _path: str, _read_only: bool, fn: Any) -> Any:
+    def _with_mailbox(
+        self, _account: int, _path: str, _read_only: bool, fn: Any, *, reselect: bool = False
+    ) -> Any:
+        # The survey asks changes since the HIGHESTMODSEQ it reads: never a reused selection.
+        assert reselect
         return fn(self.context())
 
     def plan(self, _context: object, *, since: object = None) -> IndexPlan:

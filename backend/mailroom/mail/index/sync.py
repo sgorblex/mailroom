@@ -155,7 +155,8 @@ def sync_folder(
         return _survey(context, since, stored, (validity, modseq, uid_next), capacity)
 
     try:
-        found = connections.with_mailbox(account_id, path, True, survey)
+        # An EXAMINE of its own: changes are asked since the HIGHESTMODSEQ it gives.
+        found = connections.with_mailbox(account_id, path, True, survey, reselect=True)
         rebuilt, removed, changed = _reconcile(db, user_id, account_id, folder_id, found)
         if rebuilt is None:
             return False

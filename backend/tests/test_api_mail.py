@@ -1703,7 +1703,9 @@ class _SearchConnections:
         self.cut = threading.Event()
         self.interrupted: list[str] = []
 
-    def with_mailbox(self, account_id: str, _path: str, _read_only: bool, _fn: Any) -> Any:
+    def with_mailbox(
+        self, account_id: str, _path: str, _read_only: bool, _fn: Any, **_options: Any
+    ) -> Any:
         if account_id == "slow":
             self.cut.wait(5)
             raise MailError("unreachable")
@@ -1745,7 +1747,9 @@ class _PagedConnections:
             raise MailError("unreachable")
         return [cast("Folder", SimpleNamespace(path="INBOX", role=None, selectable=True))]
 
-    def with_mailbox(self, account_id: int, path: str, read_only: bool, fn: Any) -> Any:
+    def with_mailbox(
+        self, account_id: int, path: str, read_only: bool, fn: Any, **_options: Any
+    ) -> Any:
         if account_id == 3:
             self.cut.wait(5)
             raise MailError("unreachable")
@@ -2158,13 +2162,13 @@ def test_a_call_cut_at_its_deadline_writes_no_group_after_the_cut(
     real_move = service_organize.core.move_messages
 
     def slow_inbox(
-        self: MailConnections, account_id: str, path: str, read_only: bool, fn: Any
+        self: MailConnections, account_id: str, path: str, read_only: bool, fn: Any, **options: Any
     ) -> Any:
         # A server that answers the INBOX group only once the caller has had its 504: nothing in
         # use for the pool to cut, so only the call's own stop keeps the groups from writing.
         if path == "INBOX" and not read_only:
             assert answered.wait(10)
-        return real_with_mailbox(self, account_id, path, read_only, fn)
+        return real_with_mailbox(self, account_id, path, read_only, fn, **options)
 
     def move_then_end(*args: Any, **kwargs: Any) -> Any:
         try:

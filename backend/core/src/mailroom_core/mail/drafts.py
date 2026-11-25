@@ -54,8 +54,6 @@ from mailroom_core.render import html_to_text, outgoing_html
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
-    from imapclient import IMAPClient
-
     from mailroom_core.config import AccountConfig, Limits
     from mailroom_core.mail.attachments import AttachmentSource
     from mailroom_core.mail.compose import Composed, MessageInput
@@ -146,10 +144,10 @@ class SavedDraft:
     """False without UIDPLUS, where every replaced version lands in Trash: save only on request."""
 
 
-def _structure_if(client: IMAPClient, uid: int, message_id: str) -> Structure | None:
+def _structure_if(context: MailboxContext, uid: int, message_id: str) -> Structure | None:
     """The message's structure, if `uid` is there and carries `message_id`."""
     try:
-        data, structure = fetch_structure(client, uid, ["ENVELOPE"])
+        data, structure = fetch_structure(context, uid, ["ENVELOPE"])
     except MailError:
         return None
     found = getattr(data.get(b"ENVELOPE"), "message_id", None)
@@ -168,13 +166,13 @@ def _read_back(
     # RFC 3501, 6.3.11: the new message need not be in view until a NOOP.
     client.noop()
     if appended is not None:
-        structure = _structure_if(client, appended, message_id)
+        structure = _structure_if(context, appended, message_id)
         if structure is not None:
             return appended, structure
     newest = max(message_id_uids(context, message_id, since_uid=first), default=None)
     if newest is None:
         return None
-    structure = _structure_if(client, newest, message_id)
+    structure = _structure_if(context, newest, message_id)
     return None if structure is None else (newest, structure)
 
 
@@ -253,7 +251,7 @@ def read_draft(connections: MailConnections, ref: MessageRef) -> Draft:
         check_fresh(ref, context.uid_validity)
         client = context.client
         fields = f"BODY.PEEK[HEADER.FIELDS (REFERENCES {DRAFT_HEADER.upper()})]"
-        data, structure = fetch_structure(client, ref.uid, ["ENVELOPE", fields])
+        data, structure = fetch_structure(context, ref.uid, ["ENVELOPE", fields])
         headers = fetched_headers(data)
         own = is_own_draft(headers)
         text = ""
