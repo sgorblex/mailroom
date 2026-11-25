@@ -228,7 +228,7 @@ def test_the_wire_copy_has_no_bcc_while_the_envelope_names_it() -> None:
         ).send(1, composed.envelope, composed.wire)
     assert any("hidden@example.org" in command for command in stub.commands)
     assert b"hidden" not in stub.messages[0]
-    assert b"bcc" not in stub.messages[0].lower()
+    assert message_from_bytes(stub.messages[0])["Bcc"] is None
 
 
 def test_threading_reaches_the_recipient(
