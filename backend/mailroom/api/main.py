@@ -29,6 +29,7 @@ from mailroom.api.routes.accounts import accounts_router
 from mailroom.api.routes.api_tokens import api_tokens_router
 from mailroom.api.routes.audit import audit_router
 from mailroom.api.routes.auth import auth_router
+from mailroom.api.routes.export import audit_export_router, rule_sets_export_router
 from mailroom.api.routes.filters import filters_router
 from mailroom.api.routes.home import home_router
 from mailroom.api.routes.instance_settings import instance_settings_router
@@ -380,10 +381,12 @@ def create_application(
     protected_v1.include_router(home_router)
     if features.filters:
         protected_v1.include_router(filters_router)
+        protected_v1.include_router(rule_sets_export_router)
     if features.mail_layer:
         protected_v1.include_router(limits_router)
     if features.mail_layer or features.filters:
         protected_v1.include_router(audit_router)
+        protected_v1.include_router(audit_export_router)
     if features.mail:
         protected_v1.include_router(mail_router)
     if features.mcp:

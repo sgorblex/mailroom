@@ -554,9 +554,9 @@ Code: `mailroom.auth.api_tokens`, `mailroom.api.deps`, `mailroom.api.token_acces
   `two_credentials` rather than one quietly winning (other schemes' credentials are not read). A
   route refuses every token (403 `token_not_accepted`) unless marked `open_to_tokens` with the
   tool groups that open it, one of which the token must hold (403 `token_not_approved`): those
-  with an MCP counterpart, and reads and organize writes of the same kind; and cancelling a held send the same
-  token scheduled, any other being `not_found` to it (audited as `send_cancel`, refused
-  ones too once the worker has taken it). Closed, so the
+  with an MCP counterpart, and reads and organize writes of the same kind (the exports too); and
+  cancelling a held send the same token scheduled, any other being `not_found` to it (audited as
+  `send_cancel`, refused ones too once the worker has taken it). Closed, so the
   cookie's only: password, profile settings, sessions, linked sign-ins, users, instance settings,
   grants and consent, tokens; an account's settings, test, quota, signatures and vacation reply, and
   the user's limits (a token could widen itself through them); the test send, one-click
@@ -881,7 +881,16 @@ What it does and the routes: [`mail-client.md`](mail-client.md). How:
   exist; the web's *Activity* page (`/activity`, with mail, MCP or filters) reads it, its
   filters in the query string (`account`, `actor`, `action`, `result`, and `app`: `grant:`, `token:`
   or `client:` with the id). MCP's
-  `audit_list` lists the same ([`mcp.md`](mcp.md)).
+  `audit_list` lists the same ([`mcp.md`](mcp.md)). `GET /api/v1/me/export/audit.csv` (the same
+  mount, caches and reach; a token needs `audit_read`) downloads it as CSV, newest first: the
+  list's fields (so never a subject, only its hash), the account's login while there is one, `at` in
+  UTC and `detail` as JSON, of the days `since` to `until` in the user's time zone, both included
+  (400 `invalid_range`). Streamed by keyset pages of 500, each a transaction of its own, so a slow
+  download holds neither memory nor a connection. Text a spreadsheet would run as a formula (an
+  app names itself) has an apostrophe before it, also where one splitting on `;`, a tab or a line
+  break would start a cell; `detail` escapes its `;` as `\u003b`. Each export, this and the rule sets'
+  ([`filters.md`](filters.md#export)), logs `data_exported` with `user_id`, `token_id` and
+  `what`, nothing of its content.
 
 ### Mail index sync
 

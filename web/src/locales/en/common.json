@@ -119,6 +119,18 @@
     "cancel": "Cancel",
     "endFailed": "Could not sign it out. Try again."
   },
+  "yourData": {
+    "title": "Your data",
+    "ruleSets": "Rule sets",
+    "ruleSetsHint": "All your rule sets with their filters. Accounts are named by their login.",
+    "downloadRuleSets": "Download rule sets (JSON)",
+    "activity": "Activity",
+    "activityHint": "What was done to your mail, as the Activity page lists it. Leave the days empty for all of it.",
+    "since": "From",
+    "until": "To",
+    "reversed": "The last day is before the first.",
+    "downloadActivity": "Download activity (CSV)"
+  },
   "apiTokens": {
     "title": "API tokens",
     "activity": "Activity",

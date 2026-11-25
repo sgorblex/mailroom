@@ -340,6 +340,8 @@ OPEN: dict[tuple[str, str], str] = {
     ("POST", "/rule-sets/{rule_set_id}/run"): "filters_run",
     ("GET", "/rule-sets/{rule_set_id}/runs"): "filters_read",
     ("GET", "/me/audit"): "audit_read",
+    ("GET", "/me/export/rule-sets"): "filters_read",
+    ("GET", "/me/export/audit.csv"): "audit_read",
     ("GET", "/mail/accounts/{account_id}/folders"): ACCOUNTS_OF,
     ("POST", "/mail/accounts/{account_id}/folders"): "mail_folders",
     ("POST", "/mail/accounts/{account_id}/folders/rename"): "mail_folders",

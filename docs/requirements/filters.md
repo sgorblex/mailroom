@@ -297,6 +297,18 @@ picks what it does.
   ([mail client](mail-client.md#web-client)), added only on the user's word, and turns its rule set
   or Run filters on only by a button of their own.
 
+### Export
+
+`GET /me/export/rule-sets` downloads every rule set the caller may list (a token's within its
+reach) with its filters, oldest first, as `mailroom-rule-sets-<day>.json`, the hidden mute ones left
+out. It holds no id of the instance's: `{"format": "mailroom-rule-sets", "version": 1,
+"exported_at", "rule_sets": [{"name", "account", "folder", "trigger", "interval_minutes", "marker",
+"enabled", "filters": [{"name", "enabled", "spec"}]}]}`. An `account` is `{"login", "name"}` (what
+an agent may know of one too, so no server), `"all"`, or null for one that is gone; a spec is the
+stored one but for a `move_to_account`'s `account`, named the same way. Two unnamed accounts with
+the same login are not told apart. `version` is raised when a reader of the last would misread the
+next. Only an export: nothing reads it back.
+
 ## Data model
 
 Schema `app`; every row belongs to the user who owns the account.
@@ -329,6 +341,7 @@ Under `/api/v1`, signed-in user's own data only (another user's id is a 404).
 | `PUT /rule-sets/{id}/order` | Reorder: the rule set's filter ids, in the new order |
 | `POST /rule-sets/{id}/dry-run` | Dry run, synchronous and bounded; returns the run, with its report; `?account_id=` for a rule set for all accounts |
 | `POST /rule-sets/{id}/run` | Run now: enqueues a run, `202` with the queued run; for a rule set for all accounts, `202` with the list of runs queued (one per account without `?account_id=`) |
+| `GET /me/export/rule-sets` | [Export](#export) |
 | `GET /rule-sets/{id}/runs` | Run history, newest first, each run with its `account_id` |
 
 An unknown or foreign id is a `404` with a plain `detail` (`"No such rule set"`). Refusals answer

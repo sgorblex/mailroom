@@ -20,6 +20,7 @@ import { SignatureSettings } from '@/profile/signature-settings.tsx'
 import { TimeZoneForm } from '@/profile/time-zone-form.tsx'
 import { UndoSendForm } from '@/profile/undo-send-form.tsx'
 import { VacationSettings } from '@/profile/vacation-settings.tsx'
+import { YourData } from '@/profile/your-data.tsx'
 
 /** The Profile's groups of sections, in page order; each id is also its anchor (`/profile#mail`). */
 type GroupId = 'account' | 'appearance' | 'mail' | 'sending' | 'apps'
@@ -32,7 +33,7 @@ interface Group {
 
 /**
  * The signed-in user's own page, its sections in groups with a nav to them: Account (password,
- * time zone, linked sign-ins, signed-in sessions), Appearance, Mail with the mail client (what "Mark all as read"
+ * time zone, linked sign-ins, signed-in sessions, the user's data to download where there is any), Appearance, Mail with the mail client (what "Mark all as read"
  * does first on a folder with subfolders, conversations, the senders whose remote images they show
  * and those whose mail they read as text, the mail index and desktop notifications), Sending (how
  * long Send waits for an Undo and each account's vacation reply with the mail client, the
@@ -70,6 +71,7 @@ export function ProfileScreen(): ReactElement {
         { key: 'time-zone', node: <TimeZoneForm /> },
         { key: 'linked-sign-in', node: <LinkedSignIn /> },
         { key: 'sessions', node: <Sessions reloadKey={passwordChanges} /> },
+        ...(mcp || mail || filters ? [{ key: 'your-data', node: <YourData /> }] : []),
       ],
     },
     { id: 'appearance', sections: [{ key: 'appearance', node: <AppearanceSettings /> }] },
