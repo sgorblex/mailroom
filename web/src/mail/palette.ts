@@ -1,8 +1,8 @@
-/** What the command palette offers: a place to go to, or an action to run. */
+/** What the command palette offers: a place to go to, an action to run or a setting to change. */
 export interface PaletteItem {
   /** Stable across visits, for the recents. */
   id: string
-  group: 'actions' | 'folders' | 'accounts' | 'pages'
+  group: 'actions' | 'folders' | 'accounts' | 'pages' | 'settings'
   label: string
   /** Shown beside the label and matched too: a folder's account. */
   detail?: string

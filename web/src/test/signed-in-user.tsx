@@ -1,10 +1,10 @@
 import { useState, type ReactElement, type ReactNode } from 'react'
 import { vi } from 'vitest'
 
-import { changeInboxSubfolders, type Feature, type User } from '@/api/auth.ts'
+import { changeAppearance, changeInboxSubfolders, type Feature, type User } from '@/api/auth.ts'
 import { AuthContext } from '@/auth/auth-context.ts'
 
-/** Signed in as `user`, whose All inboxes choice is saved as the app saves it. */
+/** Signed in as `user`, whose All inboxes and appearance choices are saved as the app saves them. */
 export function SignedIn({ user, features, children }: { user: User; features: ReadonlySet<Feature>; children: ReactNode }): ReactElement {
   const [shown, setShown] = useState(user)
   const reject = (): Promise<void> => Promise.reject(new Error('not in this test'))
@@ -24,7 +24,9 @@ export function SignedIn({ user, features, children }: { user: User; features: R
           setShown(await changeInboxSubfolders(included))
         },
         changeUndoSend: reject,
-        changeAppearance: reject,
+        changeAppearance: async (change) => {
+          setShown(await changeAppearance(change))
+        },
         recheck: vi.fn(),
       }}
     >

@@ -350,8 +350,8 @@ Older than milestone E, seen in its browser check; fix before batch 11.
 - [x] **Handled mark** — *To sort* becomes *Handled* ("dealt with, the filters may sort it"), kept
       per account as the star, an IMAP keyword or a Gmail label; rule sets marked by Handled or by
       the star, and no rule set acting on different mail after the migration.
-- [ ] **Row actions chosen** — which actions a row shows on hover, and in the swipe menu on touch,
-      an appearance setting (up to three, star and Handled by default).
+- [x] **Row actions chosen** — which actions a row shows on hover, and on touch by a swipe set to
+      show them, an appearance setting (up to three, star and Handled by default).
 - [x] **Search scope** — a search stays in the folder or view it was started from (from *All
       inboxes* it searches the remembered account's folder), shows its scope beside the box, and a
       *Search all mail* button widens it, with a way back.

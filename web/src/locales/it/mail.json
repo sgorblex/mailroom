@@ -142,6 +142,7 @@
     "forwarded": "Inoltrato",
     "hasAttachments": "Con allegati",
     "menu": "Azioni per {{subject}}",
+    "rowActions": "Azioni della riga",
     "dragging_one": "{{count}} messaggio",
     "dragging_other": "{{count}} messaggi",
     "conversation_one": "{{count}} messaggio nella conversazione",
@@ -649,7 +650,12 @@
     "actions": "Azioni",
     "folders": "Cartelle",
     "accounts": "Account",
-    "pages": "Pagine"
+    "pages": "Pagine",
+    "settings": "Impostazioni",
+    "showRowAction": "Mostra sulle righe dei messaggi: {{action}}",
+    "hideRowAction": "Nascondi dalle righe dei messaggi: {{action}}",
+    "rowActionShown": "Le righe dei messaggi ora mostrano: {{action}}.",
+    "rowActionHidden": "Le righe dei messaggi non mostrano più: {{action}}."
   },
   "scheduled": {
     "title": "Programmati",

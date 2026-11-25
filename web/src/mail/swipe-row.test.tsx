@@ -91,6 +91,62 @@ afterEach(() => {
   Reflect.deleteProperty(HTMLElement.prototype, 'setPointerCapture')
 })
 
+describe('a swipe set to show the row actions', () => {
+  const menu = (row_actions: Appearance['row_actions']): UserJson => ({
+    ...alice(),
+    appearance: { ...DEFAULT_APPEARANCE, swipe_left: 'menu', row_actions },
+  })
+  const bar = (row: HTMLElement): Element | null => row.querySelector('[data-row-actions]')
+
+  it('leaves them on the row until a tap elsewhere, or Escape', async () => {
+    const fetchMock = stubMailApi(state())
+    renderMailApp('/mail', { user: menu(['star', 'trash']) })
+    const row = await surface('Message 9')
+    expect(bar(row)).toHaveClass('pointer-coarse:sr-only')
+
+    swipe(row, [-20, -80, -160])
+    expect(row.style.transform).toBe('')
+    expect(bar(row)).not.toHaveClass('pointer-coarse:sr-only')
+    expect(bar(row)).not.toHaveClass('opacity-0')
+    fireEvent.pointerDown(document.body)
+    await waitFor(() => {
+      expect(bar(row)).toHaveClass('pointer-coarse:sr-only')
+    })
+
+    swipe(row, [-20, -80, -160])
+    expect(bar(row)).not.toHaveClass('opacity-0')
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+    await waitFor(() => {
+      expect(bar(row)).toHaveClass('opacity-0')
+    })
+    expect(calls(fetchMock, TRASH)).toHaveLength(0)
+  })
+
+  it('runs the one tapped, on that row, and hides them', async () => {
+    const fetchMock = stubMailApi(state())
+    renderMailApp('/mail', { user: menu(['star']) })
+    const row = await surface('Message 9')
+    swipe(row, [-20, -80, -160])
+    const star = within(row).getByRole('button', { name: 'Star' })
+    fireEvent.pointerDown(star, { pointerId: 2, pointerType: 'touch' })
+    expect(bar(row)).not.toHaveClass('opacity-0')
+    fireEvent.click(star, { detail: 1 })
+    await waitFor(() => {
+      expect(calls(fetchMock, FLAG)).toHaveLength(1)
+    })
+    expect(bar(row)).toHaveClass('opacity-0')
+  })
+
+  it('does not move towards that side when the row has none', async () => {
+    stubMailApi(state())
+    renderMailApp('/mail', { user: menu([]) })
+    const row = await surface('Message 9')
+    swipe(row, [-20, -80, -300])
+    expect(row.style.transform).toBe('')
+    expect(bar(row)).toBeNull()
+  })
+})
+
 describe('swiping a row', () => {
   it('archives a row swiped right past the threshold, with Undo', async () => {
     const fetchMock = stubMailApi(state())

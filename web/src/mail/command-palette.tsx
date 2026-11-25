@@ -4,7 +4,9 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 
 import type { Account, AccountId } from '@/api/accounts.ts'
-import { AuthContext } from '@/auth/auth-context.ts'
+import { MAX_ROW_ACTIONS, ROW_ACTIONS, withRowAction } from '@/api/auth.ts'
+import { apiErrorMessage } from '@/api/http.ts'
+import { AuthContext, useAppearance } from '@/auth/auth-context.ts'
 import { navPages } from '@/auth/nav-pages.ts'
 import { cn } from '@/lib/utils.ts'
 import { Dialog } from '@/components/ui/dialog.tsx'
@@ -20,14 +22,16 @@ import { useUGoesBack } from './reading-pane.ts'
 import { folderName } from './messages.ts'
 import { matchItems, storedRecents, storeRecent, type PaletteItem } from './palette.ts'
 import { screenContext } from './shortcuts.ts'
+import { useToast } from './toast-context.ts'
 import { useTriageActions } from './triage-actions.ts'
 import { loadedFolders, useOpenMessage, useTriage } from './triage-context.ts'
 
-const GROUPS = ['recent', 'actions', 'folders', 'accounts', 'pages'] as const
+const GROUPS = ['recent', 'actions', 'folders', 'accounts', 'pages', 'settings'] as const
 
 /**
  * The command palette (Ctrl/⌘+K): a combobox over the actions the open or selected messages can
- * take now, the folders and the accounts, and the app's pages. Its words match by the start of a
+ * take now, the folders and the accounts, the app's pages, and
+ * which actions message rows show. Its words match by the start of a
  * word, else anywhere; on no query it lists the recent choices first.
  */
 export function CommandPalette({
@@ -263,5 +267,30 @@ function usePaletteItems(accounts: readonly Account[], accountId: AccountId): Pa
       },
     }),
   )
-  return [...actionItems, ...refreshItems, ...folderItems, ...accountItems, ...pageItems]
+  const { appearance, save } = useAppearance()
+  const toast = useToast()
+  const chosen = appearance.row_actions
+  // No more to show once the rows have as many as they take: hiding one makes room.
+  const rowActionItems = (signedIn === null ? [] : ROW_ACTIONS)
+    .filter((action) => chosen.includes(action) || chosen.length < MAX_ROW_ACTIONS)
+    .map((action): PaletteItem => {
+      const included = !chosen.includes(action)
+      const name = { action: t(`appearance.rowActionNames.${action}`) }
+      return {
+        id: `rowAction:${action}`,
+        group: 'settings',
+        label: included ? t('palette.showRowAction', name) : t('palette.hideRowAction', name),
+        run: () => {
+          save({ row_actions: withRowAction(chosen, action, included) }).then(
+            () => {
+              toast.show({ message: included ? t('palette.rowActionShown', name) : t('palette.rowActionHidden', name) })
+            },
+            (error: unknown) => {
+              toast.show({ message: apiErrorMessage(error, t('appearance.saveFailed')), tone: 'error' })
+            },
+          )
+        },
+      }
+    })
+  return [...actionItems, ...refreshItems, ...folderItems, ...accountItems, ...pageItems, ...rowActionItems]
 }

@@ -7,13 +7,30 @@ export const DENSITIES = ['comfortable', 'compact'] as const
 export const TEXT_SIZES = ['small', 'default', 'large'] as const
 export const READING_PANES = ['right', 'below', 'off'] as const
 export const HOMES = ['dashboard', 'mail', 'filters', 'accounts', 'activity'] as const
-export const SWIPE_ACTIONS = ['none', 'archive', 'trash', 'read', 'star', 'handled'] as const
+export const SWIPE_ACTIONS = ['none', 'archive', 'trash', 'read', 'star', 'handled', 'menu'] as const
+export const ROW_ACTIONS = [
+  'star',
+  'handled',
+  'read',
+  'reply',
+  'forward',
+  'archive',
+  'report_spam',
+  'trash',
+  'move',
+  'snooze',
+  'mute',
+] as const
+export type RowAction = (typeof ROW_ACTIONS)[number]
+/** How many actions a message row shows at most. */
+export const MAX_ROW_ACTIONS = 3
 
 /**
  * How the app looks to the user, kept on the server so every device shows the same; choices of one
  * device alone (pane widths) stay in its browser (`lib/device-prefs.ts`). An option this app does
  * not know (a newer or older server) reads as that choice's default, so sign-in never fails on it.
- * `home`: the page the app opens on; `swipe_left`, `swipe_right`: what swiping a message row does.
+ * `home`: the page the app opens on; `swipe_left`, `swipe_right`: what swiping a message row does;
+ * `row_actions`: the actions a message row shows, at most `MAX_ROW_ACTIONS`, in `ROW_ACTIONS`' order.
  */
 export const appearanceSchema = z.object({
   theme: z.enum(THEMES).catch('system'),
@@ -24,10 +41,20 @@ export const appearanceSchema = z.object({
   home: z.enum(HOMES).catch('dashboard'),
   swipe_left: z.enum(SWIPE_ACTIONS).catch('trash'),
   swipe_right: z.enum(SWIPE_ACTIONS).catch('archive'),
+  row_actions: z
+    .array(z.enum(ROW_ACTIONS))
+    .max(MAX_ROW_ACTIONS)
+    .catch(['star', 'handled'])
+    .transform((chosen) => ROW_ACTIONS.filter((action) => chosen.includes(action))),
 })
 export type Appearance = z.infer<typeof appearanceSchema>
 
 export const DEFAULT_APPEARANCE: Readonly<Appearance> = Object.freeze(appearanceSchema.parse({}))
+
+/** `chosen` with `action` in or out of it, in `ROW_ACTIONS`' order. */
+export function withRowAction(chosen: readonly RowAction[], action: RowAction, included: boolean): RowAction[] {
+  return ROW_ACTIONS.filter((each) => (each === action ? included : chosen.includes(each)))
+}
 
 /**
  * `time_zone`: an IANA name, `null` until the user (or their first sign-in) sets one.

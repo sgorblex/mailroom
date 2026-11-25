@@ -142,6 +142,7 @@
     "forwarded": "Forwarded",
     "hasAttachments": "Has attachments",
     "menu": "Actions for {{subject}}",
+    "rowActions": "Row actions",
     "dragging_one": "{{count}} message",
     "dragging_other": "{{count}} messages",
     "conversation_one": "{{count}} message in the conversation",
@@ -649,7 +650,12 @@
     "actions": "Actions",
     "folders": "Folders",
     "accounts": "Accounts",
-    "pages": "Pages"
+    "pages": "Pages",
+    "settings": "Settings",
+    "showRowAction": "Show on message rows: {{action}}",
+    "hideRowAction": "Hide from message rows: {{action}}",
+    "rowActionShown": "Message rows now show: {{action}}.",
+    "rowActionHidden": "Message rows no longer show: {{action}}."
   },
   "scheduled": {
     "title": "Scheduled",

@@ -6,7 +6,7 @@ import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual'
 import { Bookmark, Forward, Paperclip, Reply, Star } from 'lucide-react'
 
 import { AccountName } from '@/accounts/account-name.tsx'
-import { useAccountHandled, useAccountLabel, useAccountName, useCannotKeepHandled } from '@/accounts/accounts-context.ts'
+import { useAccountHandled, useAccountLabel, useAccountName } from '@/accounts/accounts-context.ts'
 import type { MatchScope, MessageItem, MessagePage, SourceFailure } from '@/api/mail.ts'
 import { useAppearance, useTimeZone } from '@/auth/auth-context.ts'
 import { Button } from '@/components/ui/button.tsx'
@@ -370,7 +370,7 @@ export const MessageList = memo(function MessageList({
                       }
                     }}
                   >
-                    <SwipeRow message={message}>
+                    <SwipeRow message={message} compact={density === 'compact'}>
                       <input
                         type="checkbox"
                         name="message"
@@ -401,22 +401,6 @@ export const MessageList = memo(function MessageList({
                         source={searching || view ? 'account' : subfolders ? 'folder' : null}
                         compact={density === 'compact'}
                       />
-                      {/* Over the row's end, taking no width, while the row is hovered or has focus; not on a
-                          touch screen, where the message's actions and a swipe star or mark it instead. */}
-                      <span
-                        className={cn(
-                          'absolute right-2 flex items-center gap-0.5 rounded-md border bg-background shadow-xs',
-                          density === 'compact' ? 'top-1' : 'top-2',
-                          // Hidden, it takes no click: a tap on the date opens the message.
-                          'pointer-events-none opacity-0 group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100',
-                          'group-hover/row:pointer-events-auto group-hover/row:opacity-100',
-                          // Still there for screen readers.
-                          'pointer-coarse:sr-only',
-                        )}
-                      >
-                        <StarToggle message={message} />
-                        <HandledToggle message={message} />
-                      </span>
                     </SwipeRow>
                   </li>
                 )
@@ -609,82 +593,9 @@ function SelectAll({ messages }: { messages: Target[] }): ReactElement {
 }
 
 /**
- * Stars or unstars this one message, whatever is selected or open, through the triage flag path:
- * its outcome is the toolbar's. A sibling of the row's link, so a click opens nothing. Shown over
- * the row on hover and focus (not on a touch screen), always there for screen readers; a starred
- * row says so by its mark.
- */
-function StarToggle({ message }: { message: MessageItem }): ReactElement {
-  const { t } = useTranslation(MAIL_NS)
-  const { flagsOf, run, busy } = useTriage()
-  const { flagged } = flagsOf(message)
-  const handled = useAccountHandled()(message.account_id).kind === 'star'
-  const action = flagged ? t('triage.unstar') : t('triage.star')
-  return (
-    <Button
-      variant="ghost"
-      size="icon-xs"
-      // A toggle keeps one name; its state is aria-pressed. The tooltip says what a click does.
-      aria-label={t('triage.star')}
-      title={handled ? t('triage.starIsHandled', { action }) : action}
-      aria-pressed={flagged}
-      aria-disabled={busy}
-      className={cn(
-        'shrink-0 text-muted-foreground hover:text-foreground',
-        'aria-disabled:cursor-not-allowed aria-disabled:text-muted-foreground/50 aria-disabled:hover:text-muted-foreground/50',
-      )}
-      onClick={() => {
-        if (!busy) {
-          void run({ kind: 'flag', change: { flagged: !flagged } }, [message])
-        }
-      }}
-    >
-      <Star aria-hidden="true" className={cn('size-3.5', flagged && 'fill-current text-star')} />
-    </Button>
-  )
-}
-
-/**
- * Marks this one message Handled, or clears the mark, as `StarToggle` stars it. Greyed out, saying
- * why, where the account's server cannot keep it; not there where Handled is the star.
- */
-function HandledToggle({ message }: { message: MessageItem }): ReactElement | null {
-  const { t } = useTranslation(MAIL_NS)
-  const { flagsOf, run, busy } = useTriage()
-  const unsupported = useCannotKeepHandled()(message.account_id)
-  const star = useAccountHandled()(message.account_id).kind === 'star'
-  if (star) {
-    return null
-  }
-  const marked = flagsOf(message).handled
-  const action = marked ? t('triage.unmarkHandled') : t('triage.markHandled')
-  return (
-    <Button
-      variant="ghost"
-      size="icon-xs"
-      aria-label={t('list.handled')}
-      title={unsupported ? `${action}: ${t('triage.handledUnsupported')}` : action}
-      aria-pressed={marked}
-      aria-disabled={busy || unsupported}
-      className={cn(
-        'shrink-0 text-muted-foreground hover:text-foreground',
-        'aria-disabled:cursor-not-allowed aria-disabled:text-muted-foreground/50 aria-disabled:hover:text-muted-foreground/50',
-      )}
-      onClick={() => {
-        if (!busy && !unsupported) {
-          void run({ kind: 'flag', change: { handled: !marked } }, [message])
-        }
-      }}
-    >
-      <Bookmark aria-hidden="true" className={cn('size-3.5', marked && 'fill-current text-primary')} />
-    </Button>
-  )
-}
-
-/**
  * A message's row, or a conversation's: its first writers, how many messages it has, and its
  * latest message's subject, date and opening (not in a compact row). A star and a Handled mark
- * by the date say the row's flags, which its toggles change.
+ * by the date say the row's flags.
  */
 function MessageRow({
   message,
@@ -748,12 +659,13 @@ function MessageRow({
         {flags.flagged && (
           <Star role="img" aria-label={t('list.flagged')} className="size-3 shrink-0 self-center fill-current text-star" />
         )}
-        {/* Under the row's toggles while they show: none of it shows past their edge, though a
-            screen reader still reads it. */}
+        {/* Under the row's actions, if any, while they show: none of it shows past their edge, though
+            a screen reader still reads it. */}
         <span
           className={cn(
             'shrink-0 text-xs text-muted-foreground tabular-nums',
-            'group-hover/row:text-transparent group-focus-within/row:text-transparent pointer-coarse:text-muted-foreground',
+            'group-has-data-row-actions/row:group-hover/row:text-transparent group-has-data-row-actions/row:group-focus-within/row:text-transparent',
+            'pointer-coarse:text-muted-foreground!',
           )}
         >
           {formatListDate(i18n.language, message.date, timeZone, today)}

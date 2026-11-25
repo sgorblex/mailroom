@@ -164,6 +164,23 @@ describe('AppearanceSettings', () => {
     expect(right).toHaveValue('star')
   })
 
+  it('saves the actions a row shows, three at most', async () => {
+    const fetchMock = stubApi(200)
+    renderSignedIn(<AppearanceSettings />, ALICE)
+    const group = within(screen.getByRole('group', { name: 'Row actions' }))
+    expect(group.getByRole('checkbox', { name: 'Star' })).toBeChecked()
+    expect(group.getByRole('checkbox', { name: 'Handled' })).toBeChecked()
+
+    await userEvent.click(group.getByRole('checkbox', { name: 'Archive' }))
+    const saved = (row_actions: string[]): unknown => expect.objectContaining({ body: JSON.stringify({ row_actions }) })
+    expect(fetchMock).toHaveBeenLastCalledWith(PATH, saved(['star', 'handled', 'archive']))
+    expect(group.getByRole('checkbox', { name: 'Snooze' })).toBeDisabled()
+    expect(group.getByRole('checkbox', { name: 'Archive' })).toBeEnabled()
+    await userEvent.click(group.getByRole('checkbox', { name: 'Star' }))
+    expect(fetchMock).toHaveBeenLastCalledWith(PATH, saved(['handled', 'archive']))
+    expect(group.getByRole('checkbox', { name: 'Snooze' })).toBeEnabled()
+  })
+
   it('puts the saved look back when the choice could not be saved', async () => {
     stubApi(500)
     renderSignedIn(<AppearanceSettings />, ALICE)
