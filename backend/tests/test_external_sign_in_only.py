@@ -11,7 +11,7 @@ import pytest
 from mailroom.auth.oidc import OidcProvider
 from mailroom.auth.password import password_matches
 from mailroom.auth.password_sign_in import PASSWORD_SIGN_IN_ENV, warn_about_environment
-from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
+from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session, session_user
 from mailroom.auth.sso import CALLBACK_PATH, Sso, SsoSettings
 from mailroom.auth.users import create_user, user_by_username
 from mailroom.config.instance_settings import stored_settings
@@ -199,6 +199,16 @@ def test_an_admin_resets_no_password(
     path = f"/api/v1/users/{user.id}/password"
     assert is_off(admin_client.post(path, json={"password": NEW_PASSWORD}))
     assert password_matches(user.password_hash, PASSWORD)
+
+
+@pytest.mark.usefixtures("external_only")
+def test_an_admin_still_signs_a_user_out(
+    admin_client: TestClient, user: User, db_session: Session
+) -> None:
+    session = create_session(db_session, user)
+    path = f"/api/v1/users/{user.id}/sign-out"
+    assert admin_client.post(path, json={"revoke_access": True}).status_code == 204
+    assert session_user(db_session, session) is None
 
 
 @pytest.mark.usefixtures("external_only", "admin")

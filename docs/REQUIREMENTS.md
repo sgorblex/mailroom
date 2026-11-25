@@ -32,10 +32,10 @@ menu) shows the health check through the Vite proxy. Engineering baseline:
   How: [`requirements/nonfunctional-requirements.md`](requirements/nonfunctional-requirements.md)
   — *Sign-in*.
 - **Users are separate.** Each user's accounts, filters and suggestions are theirs alone; nothing
-  is shared. An [admin](GLOSSARY.md) adds and removes users and resets their passwords on the
+  is shared. An [admin](GLOSSARY.md) adds and removes users and resets their passwords, or signs them out, on the
   *Users* page (the first admin comes from `mise run create-user <name> --admin`), and changes the
   [instance settings](GLOSSARY.md) in its *Instance* section; there is no public
-  sign-up. Every user changes their own password on their *Profile* page. Either can revoke the
+  sign-up. Every user changes their own password on their *Profile* page. Each can revoke the
   user's API tokens and connected apps too.
 - **Sessions.** Each user sees on their *Profile* page the browsers they are signed in on (browser
   and system, when last seen and signed in, the IP address as far as the instance's setting goes,

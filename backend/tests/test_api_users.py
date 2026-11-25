@@ -44,6 +44,7 @@ def test_users_who_are_not_admins_are_refused(user_client: TestClient) -> None:
     assert user_client.delete("/api/v1/users/1").status_code == 403
     reset = user_client.post("/api/v1/users/1/password", json={"password": NEW_PASSWORD})
     assert reset.status_code == 403
+    assert user_client.post("/api/v1/users/1/sign-out", json={}).status_code == 403
     new = {"username": "bob", "password": NEW_PASSWORD}
     assert user_client.post("/api/v1/users", json=new).status_code == 403
 
@@ -274,3 +275,41 @@ def test_a_refused_password_revokes_nothing(
     body = {"current_password": PASSWORD, "new_password": "short", "revoke_access": True}
     assert user_client.post("/api/v1/auth/password", json=body).status_code == 400
     assert _works(db_session, user, access) == {True}
+
+
+@pytest.mark.parametrize("revoke", [True, False, None])
+def test_an_admin_signs_a_user_out(
+    admin_client: TestClient,
+    db_session: Session,
+    user: User,
+    admin: User,
+    revoke: bool | None,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    sessions = [create_session(db_session, user) for _ in range(2)]
+    theirs, admins = _access(db_session, user), _access(db_session, admin)
+    body = {} if revoke is None else {"revoke_access": revoke}
+    with caplog.at_level(logging.INFO):
+        response = admin_client.post(f"/api/v1/users/{user.id}/sign-out", json=body)
+    assert response.status_code == 204
+    assert [session_user(db_session, raw) for raw in sessions] == [None, None]
+    assert password_matches(user.password_hash, PASSWORD)
+    assert admin_client.get("/api/v1/auth/me").json()["user"]["username"] == ADMIN_USERNAME
+    assert _works(db_session, user, theirs) == {not revoke}
+    assert _works(db_session, admin, admins) == {True}
+    assert caplog.messages.count("user_signed_out") == 1
+    assert caplog.messages.count("api_token_revoked") == (1 if revoke else 0)
+
+
+def test_an_admin_cannot_sign_themselves_out_there(
+    admin_client: TestClient, db_session: Session, admin: User
+) -> None:
+    access = _access(db_session, admin)
+    path = f"/api/v1/users/{admin.id}/sign-out"
+    response = admin_client.post(path, json={"revoke_access": True})
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "cannot_sign_out_self"
+    assert _works(db_session, admin, access) == {True}
+    assert admin_client.get("/api/v1/auth/me").status_code == 200
+    missing = admin_client.post("/api/v1/users/999999999/sign-out", json={})
+    assert missing.status_code == 404

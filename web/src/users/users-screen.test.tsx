@@ -62,6 +62,9 @@ function stubApi(
       users = users.filter((user) => user.id !== 2)
       return Promise.resolve(new Response(null, { status: 204 }))
     }
+    if (path === '/api/v1/users/2/sign-out' && method === 'POST') {
+      return Promise.resolve(new Response(null, { status: 204 }))
+    }
     if (path === '/api/v1/users/2/password' && method === 'POST') {
       return Promise.resolve(new Response(null, { status: 204 }))
     }
@@ -189,6 +192,33 @@ describe('UsersScreen', () => {
     await vi.waitFor(() => {
       expect(screen.queryByText('alice')).not.toBeInTheDocument()
     })
+  })
+
+  it.each([true, false])('signs a user out, with passwords on or off (%s)', async (passwords) => {
+    const fetchMock = stubApi(undefined, passwords)
+    renderSignedIn(<UsersScreen />, ROOT)
+
+    const open = { name: 'Sign alice out everywhere' }
+    await userEvent.click(await screen.findByRole('button', open))
+    expect(screen.getByRole('button', { name: 'Sign out everywhere' })).toHaveFocus()
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.getByRole('button', open)).toHaveFocus()
+    expect(screen.queryByRole('button', { name: 'Sign root out everywhere' })).toBeNull()
+
+    for (const revoke of [true, false]) {
+      await userEvent.click(screen.getByRole('button', open))
+      const box = screen.getByRole('checkbox', { name: 'Revoke API tokens and connected apps too' })
+      expect(box).toBeChecked()
+      if (!revoke) {
+        await userEvent.click(box)
+      }
+      await userEvent.click(screen.getByRole('button', { name: 'Sign out everywhere' }))
+      expect(await screen.findByRole('status')).toHaveTextContent('Signed out everywhere.')
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/v1/users/2/sign-out',
+        expect.objectContaining({ body: JSON.stringify({ revoke_access: revoke }) }),
+      )
+    }
   })
 
   it('words a removal refused while their accounts are being saved', async () => {

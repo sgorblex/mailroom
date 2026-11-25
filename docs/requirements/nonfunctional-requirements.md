@@ -464,14 +464,17 @@ bounded to one minor because the server relies on its handlers.
   which the web container's nginx passes on and uvicorn trusts from loopback. In memory, per API
   process.
 - **Managing users** (`/api/v1/users`, admins only: 401 signed out, 403 otherwise): add,
-  remove, reset a password. Nobody removes themselves, and a removal locks both users' rows in id
+  remove, reset a password, sign out. Nobody removes themselves, and a removal locks both users' rows in id
   order first, so two admins removing each other at once leave one: there is always an admin. A
   reset ends all of that user's sessions, and is not for the admin's own password; removing a
   user deletes their sessions with them. A reset lets an admin sign in as that user, so it is
   logged; a reset that the user must complete themselves is a later option, not a promise. With
   `revoke_access` (false when absent; the web's form has it ticked) it also revokes all their API
   tokens and their grants, in the same transaction (`mailroom.auth.app_access`), logged as each
-  is alone (an external issuer's tokens are not Mailroom's to revoke).
+  is alone (an external issuer's tokens are not Mailroom's to revoke). *Sign out*
+  (`POST users/{id}/sign-out`) ends all of a user's sessions, with `revoke_access` as in a reset,
+  and leaves the password; it works while passwords are off, and is not for the admin's own
+  sessions (400 `cannot_sign_out_self`). They can sign in again.
 - **Instance settings** (`GET`/`PUT /api/v1/admin/settings`, admins only, as above;
   `app.instance_setting`, revision `202611241000`): `audit_retention_days` (a JSON integer, 1-3650;
   until set, `MAILROOM_AUDIT_RETENTION_DAYS`, 90 without it), `session_ip` (`none`, `partial`,
@@ -503,10 +506,8 @@ bounded to one minor because the server relies on its handlers.
   - **Cutting a user off:** disabling them at the provider only stops new sign-ins through it. Their
     sessions live to their end (`MAILROOM_SESSION_TTL_DAYS`), their API tokens until they expire (some
     never do) and their connected apps for as long as they keep refreshing. The user ends theirs on
-    *Profile*; an admin has only the password reset, refused while the setting is on. So: turn the
-    setting off, reset the password with `revoke_access`, and turn it on again (passwords work for
-    everyone in between), or remove the user, with all their data. `MAILROOM_PASSWORD_SIGN_IN=on`
-    and a restart allow the reset too.
+    *Profile*, and an admin ends all of them with *Sign out* and `revoke_access` on the *Users*
+    page: disable the user at the provider first.
 - **Own password** (`POST /api/v1/auth/password`): needs the current one, checked through the
   login throttle (the same per-client counter as sign-in) so a borrowed session cannot guess it;
   keeps this session and ends the others. `revoke_access` as in a reset, unticked in the web.
@@ -562,7 +563,7 @@ bounded to one minor because the server relies on its handlers.
 - **Logs:** `login_succeeded` (with `user_id`; `via="sso"` through SSO), `login_failed`,
   `logout`, `session_ended` and `other_sessions_ended` (with `user_id`, the latter with the
   `count`), `user_created`,
-  `user_removed`, `password_reset` (with `user_id`, the admin, and `target_user_id`),
+  `user_removed`, `password_reset` and `user_signed_out` (with `user_id`, the admin, and `target_user_id`),
   `instance_settings_changed` (with `user_id`, the admin, and the `settings`' names),
   `password_changed`, `mark_read_subfolders_changed`, `index_max_age_changed`,
   `conversations_changed`, `inbox_subfolders_changed`, `appearance_changed`,
