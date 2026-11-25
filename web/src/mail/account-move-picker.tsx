@@ -1,9 +1,10 @@
-import { useEffect, useId, useRef, useState, type ReactElement, type SubmitEvent } from 'react'
+import { use, useEffect, useId, useRef, useState, type ReactElement, type SubmitEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { AccountId } from '@/api/accounts.ts'
 import { AccountName } from '@/accounts/account-name.tsx'
-import { useAccountLabel, useAccountName } from '@/accounts/accounts-context.ts'
+import { AccountsContext, useAccountLabel, useAccountName } from '@/accounts/accounts-context.ts'
+import { isHandledLabel } from '@/accounts/handled.ts'
 import type { MailFolder, MoveRemoval } from '@/api/mail.ts'
 import { Button } from '@/components/ui/button.tsx'
 import { Dialog } from '@/components/ui/dialog.tsx'
@@ -105,11 +106,12 @@ function FolderStep({
   const { t } = useTranslation(MAIL_NS)
   const accountName = useAccountName()
   const { state, retry } = useAccountFolders(account)
+  const known = use(AccountsContext)?.find((each) => each.id === account)
   const [removal, setRemoval] = useState<MoveRemoval>('trash')
   const name = useId()
   const heading = useRef<HTMLParagraphElement>(null)
   const presetPath = preset?.path ?? null
-  const movable = state.kind === 'loaded' ? state.value.filter(movableInto) : null
+  const movable = state.kind === 'loaded' ? state.value.filter((folder) => movableInto(folder) && !isHandledLabel(known, folder.path)) : null
   // The heading has focus unless the preset folder is listed: while loading, on a failure, or when
   // it is gone since the sidebar was read.
   const presetListed = presetPath !== null && movable?.some((folder) => isSameFolder(folder.path, presetPath)) === true

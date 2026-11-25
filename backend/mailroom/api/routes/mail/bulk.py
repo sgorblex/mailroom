@@ -22,7 +22,7 @@ class FlagAction(BaseModel):
     kind: Literal["flag"]
     seen: bool | None = None
     flagged: bool | None = None
-    to_sort: bool | None = None
+    handled: bool | None = None
 
 
 class MoveAction(BaseModel):
@@ -43,7 +43,7 @@ Action = Annotated[FlagAction | MoveAction | TrashAction, Field(discriminator="k
 
 def _action(action: FlagAction | MoveAction | TrashAction) -> BulkAction:
     if isinstance(action, FlagAction):
-        return BulkFlag(seen=action.seen, flagged=action.flagged, to_sort=action.to_sort)
+        return BulkFlag(seen=action.seen, flagged=action.flagged, handled=action.handled)
     if isinstance(action, MoveAction):
         return BulkMove(action.folder)
     return BulkTrash()

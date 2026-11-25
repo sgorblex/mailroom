@@ -70,7 +70,7 @@ notifications](#desktop-notifications).
   turn below them, the row staying the current one; they are read again after an action and when
   one of their accounts' folders changes. Opened, the conversation's every message is marked
   read, also when followed by a link and the list shows its row only after the message loaded.
-  A row loaded further down that a newer message brought into the first page goes from below. A row's actions (its checkbox, star, To sort, menu, a drag, the toolbar and keys on
+  A row loaded further down that a newer message brought into the first page goes from below. A row's actions (its checkbox, star, Handled, menu, a drag, the toolbar and keys on
   it or on its latest message open) act on every message of it, each ref checked as any other;
   their rows go or change together, but for the user's own Sent and Drafts copies, which only
   show in the thread. Trash, archive, a move or a spam report of a conversation of several whose
@@ -78,8 +78,8 @@ notifications](#desktop-notifications).
   *All N messages*, *Only the message shown* (its latest, alone) or *Cancel*, focused (with
   several such rows: the whole conversations or only their newest messages). Each Gmail message
   of it goes from the label folder it was listed under (`listed_folders`). Undo takes back a move as always, and a flag change where the
-  row said each message's flag (not a read mark over a partly read conversation, nor a star or To
-  sort mark on one starred or marked in part). A source read live is listed message by message.
+  row said each message's flag (not a read mark over a partly read conversation, nor a star or
+  Handled mark on one starred or marked in part). A source read live is listed message by message.
 - **Message view:** headers, the text body (quotes and signatures collapsed), attachments and a
   calendar note; a **standalone HTML view** when the message has an HTML body; attachment download.
 - **Sender checks** in the message view's headers, from the read's `sender_mismatch`, `sent_to` and
@@ -168,7 +168,7 @@ rail and no shortcut button; the desktop layout is unchanged.
 
 On a touch screen (whatever its width) a **swipe** of a message row runs the action the user chose
 for that side on the *Profile* (the same on every device): left moves to Trash and right archives
-unless changed; each side may instead mark read or unread, star or unstar, mark To sort or sorted,
+unless changed; each side may instead mark read or unread, star or unstar, mark Handled or clear it,
 or do nothing. It acts on that row alone, whatever is selected, through the same path as the
 toolbar, with its toast and Undo. While the finger moves, the action's icon and name show behind
 the row, in its colour once letting go would run it: past 35% of the row's width, or a quick
@@ -238,7 +238,7 @@ it (`from:"Ada Lovelace"`), with no escapes.
 | `from:`, `to:`, `subject:` | `from`, `to`, `subject`: contains the value. |
 | `is:unread`, `is:read` | `unread` true, false. |
 | `is:flagged` | `flagged` true. |
-| `is:to_sort` | `to_sort` true: marked To sort. |
+| `is:handled` (or `is:to_sort`, its former name) | `handled` true: marked Handled. |
 | `has:attachment` | `has_attachment` true. |
 | `after:YYYY-MM-DD`, `before:YYYY-MM-DD` | `since` (that day on), `before` (up to that day, not included), compared as those fields are. |
 | `in:` | `folder`: a folder path as the server names it, or `*` for every folder. |
@@ -303,10 +303,10 @@ Behaviour is mailroom-core's `mail.organize` (`move_messages`, `archive_messages
 - **Trash:** move to the account's folder with role `trash`. This is never a permanent delete:
   organizing deletes no mail (deleting a whole folder is [its own action](#folder-management)).
 - **Flag:** set or clear `\Seen` (read/unread), `\Flagged` (star/unstar) and the
-  [To sort](../GLOSSARY.md) keyword `$MailroomSort`; `seen`, `flagged`, `to_sort`, at least one.
-  Only these can be changed. To sort is `unsupported` in a folder whose server keeps no keywords
-  (and on Gmail); `GET /api/v1/accounts/keywords` says which do. The answer reads them back
-  per message.
+  [Handled](filters.md#handled) mark as each account keeps it; `seen`, `flagged`,
+  `handled`, at least one. Only these can be changed. Handled is `unsupported` where the account's
+  server cannot keep its mark, such as a keyword where none is kept (`GET /api/v1/accounts/keywords`
+  says where they are). The answer reads them back per message.
 
 A **batch** is 1 to 50 refs, from any folders and accounts of the user (not 0, not 51: 422 on the
 REST routes, `invalid_argument` from mailroom-core). Every ref is parsed and its account checked
@@ -329,7 +329,7 @@ The answer has one **result per group**: `account`, `folder` (the source folder)
 - `destination_account`: on a move to another account, that account (`new_refs` are its), else
   `null`.
 - `junk`: `"spam"` or `"ham"` when the move trained the account's Junk (below), else `null`.
-- `flags`: for the flag route, each message's `seen`, `flagged` and `to_sort` read back (`null`
+- `flags`: for the flag route, each message's `seen`, `flagged` and `handled` read back (`null`
   when the read failed; the change stands).
 - `error`: `{code, message}` of the group's failure, else `null`.
 
@@ -351,8 +351,9 @@ shows each failed group with the mail error wording and updates the rows of the 
 | Trash, and the account has no Trash folder | `unsupported` |
 | Archive, and the account has no Archive folder | `unsupported`: "<account> has no Archive folder." |
 | Report spam, and the account has no Junk folder | `unsupported`: "<account> has no Junk folder." |
-| None of `seen`, `flagged`, `to_sort` given | `invalid_argument`: "Give `seen`, `flagged`, `to_sort` or several." |
-| `to_sort` in a folder that keeps no keywords | `unsupported` |
+| None of `seen`, `flagged`, `handled` given | `invalid_argument`: "Give `seen`, `flagged`, `handled` or several." |
+| `flagged` set and `handled` cleared, or the reverse, where Handled is the star | `invalid_argument` |
+| `handled` where the server cannot keep the account's mark | `unsupported` |
 | The server has neither MOVE nor UIDPLUS | `unsupported` |
 | A move without MOVE copied the messages but could not remove them from the source | The connection's failure code (`server_error` for a refusal, as something was written), with `new_refs`: "They were copied to the destination but may not have been removed from this folder: do not repeat the move. New refs: …" |
 
@@ -433,9 +434,9 @@ MCP `message_read` still never set `\Seen`.
   menu and a drag act as on the selection), and changing the selection or any action on rows
   leaves this mode. Only the flag changes, Move to… and Trash act on them; the
   other actions are greyed out, saying why, and their keys do nothing. Since the loaded rows do
-  not tell which way a flag change should go, each is offered both ways: Star and Unstar, Mark To
-  sort and Mark sorted, Mark as read and Mark as unread (the keys set: `s` stars, `t` marks To
-  sort; `u` marks unread). Each asks first in a dialog stating how many messages it would change,
+  not tell which way a flag change should go, each is offered both ways: Star and Unstar, Mark
+  Handled and Clear Handled, Mark as read and Mark as unread (the keys set: `s` stars, `t` marks
+  Handled; `u` marks unread). Each asks first in a dialog stating how many messages it would change,
   counted by the server with the action (for a flag change, only those not already so; for a
   move, over the folders it moves from), then calls
   `POST /messages/bulk` with that count, and again with each answer's `remaining` until none
@@ -449,7 +450,7 @@ MCP `message_read` still never set `\Seen`.
   its key; and *More actions*, a menu of the rest (Print, Download
   .eml, Filter messages like this, Mute or Unmute conversation, Snooze). It keeps to one row: as
   the pane narrows, the buttons that do not fit move to the top of *More actions*, still naming
-  their key, To sort first, then Report spam, Move to…, Move to another account…, Reply all and
+  their key, Handled first, then Report spam, Move to…, Move to another account…, Reply all and
   Forward; Reply, Archive, Trash, Star and Mark read or unread stay, giving way only on a bar too
   narrow even for them (Reply never); on a phone, the same at the screen's width. It acts on the open
   message (or the conversation its row stands for) whatever is selected in the list; with a
@@ -461,7 +462,7 @@ MCP `message_read` still never set `\Seen`.
   Move to another account… (when the user has an account none of them is in: the account, then
   whether the originals go to Trash, the default, or are deleted for good, then the folder;
   deleting for good asks first, naming how many and from which account to which),
-  Star/Unstar, Mark To sort/Mark sorted ([To sort](../GLOSSARY.md)), Mark read/unread.
+  Star/Unstar, Mark Handled/Clear Handled ([Handled](filters.md#handled)), Mark read/unread.
 - **A context menu on each row** (a right-click, or Shift+F10 or the context-menu key on it)
   offers the toolbar's actions, with Reply, Reply all, Forward, Print and Download .eml when it
   acts on one message,
@@ -487,15 +488,16 @@ MCP `message_read` still never set `\Seen`.
   state says whether the message is starred (its tooltip says *Star* or *Unstar*). While another
   action runs it is disabled and looks it, and a click sends nothing. Its result shows as any
   action's (below).
-- **A To sort mark on each row**, next to the star, marks that one message To sort or sorted the
-  same way: a toggle named *To sort*, filled when marked (its tooltip says *Mark To sort* or
-  *Mark sorted*). A starred or To sort row shows it by small marks next to its date (a star in the
-  star colour, a bookmark), named *Starred* and *To sort* for screen readers.
-- Where the account's server keeps no keywords (`GET /api/v1/accounts/keywords` says `false`),
-  the toolbar's To sort action and the row's mark are greyed out, their tooltip saying why, and
+- **A Handled mark on each row**, next to the star, marks that one message Handled or clears the
+  mark the same way: a toggle named *Handled*, filled when marked (its tooltip says *Mark Handled*
+  or *Clear Handled*). Where the account keeps Handled as the star, the star is the one toggle and
+  the one mark, its tooltip saying so, and `s` and `t` do the same. A starred or Handled row
+  shows it by small marks next to its date (a star in the star colour, a bookmark), named *Starred* and *Handled* for screen readers.
+- Where the account keeps Handled as a keyword its server cannot keep (`GET /api/v1/accounts/keywords`
+  says `false`), the toolbar's Handled action and the row's mark are greyed out, their tooltip saying why, and
   neither they nor `t` send anything; where it is not known, they are offered and the server's
   `unsupported` is shown as any failure. The mail is drawn without waiting for that answer,
-  asked apart from the accounts: until it comes, To sort is not known.
+  asked apart from the accounts: until it comes, that is not known.
 - Results update the list in place: moved or trashed rows disappear, flags change on the row, and
   failed groups are shown with the mail error wording; a group of a move to another account
   whose copies were made but whose originals stayed says they are in both.
@@ -506,7 +508,7 @@ MCP `message_read` still never set `\Seen`.
   report of spam or trash the toast offers **Undo**, which moves each source folder's messages
   back from the `new_refs` the action answered (50 refs a request) and reads the list again; when a group
   answered no `new_refs` (or fewer than it moved) the toast says it cannot be undone instead.
-  For a flag change (star, To sort, read) Undo sets back the flags it changed on each message,
+  For a flag change (star, Handled, read) Undo sets back the flags it changed on each message,
   the refs being the same. A move to another account offers no Undo. Undo sends its own requests,
   audited as any action of the user's: undoing a move out of Junk is a move into it, which trains
   the account as that move would ([Junk training](#junk-training)). Undo's own failure shows in
@@ -541,7 +543,7 @@ MCP `message_read` still never set `\Seen`.
 | `#` | Trash |
 | `v` | Open the move picker |
 | `s` | Star or unstar |
-| `t` | Mark To sort or sorted |
+| `t` | Mark Handled or clear the mark |
 | `u` | Mark unread; with nothing selected and a message open in place of the list, go back to the list |
 
   Shortcuts are ignored while focus is in a text field (an input that takes text, a textarea, a
@@ -577,7 +579,7 @@ MCP `message_read` still never set `\Seen`.
   older than 30 seconds. A message read is kept for five minutes once nothing shows it, and read
   again when opened after 30 seconds (after 5 when it says its sender's remote content is shown),
   shown meanwhile as kept; the screen's own flag changes (a
-  mark-read, a star, To sort, Undo, a folder marked read), the flags a list read again carries,
+  mark-read, a star, Handled, Undo, a folder marked read), the flags a list read again carries,
   and the sender choices (remote images, Text or HTML) are written into it, and a message moved
   away is dropped from it. A kept read never decides remote content: see *Remote content* above.
   A row the mouse rests on, a row pressed, and the row after the one j or k opened are read ahead
@@ -600,7 +602,7 @@ JSON bodies (unknown fields are 422), CSRF as for every state-changing route.
 | `POST /messages/archive` | `{"refs": ["…"]}` |
 | `POST /messages/junk` | `{"refs": ["…"]}` |
 | `POST /messages/trash` | `{"refs": ["…"]}` |
-| `POST /messages/flag` | `{"refs": ["…"], "seen": true, "flagged": false, "to_sort": true}` (`seen`, `flagged`, `to_sort` optional, at least one) |
+| `POST /messages/flag` | `{"refs": ["…"], "seen": true, "flagged": false, "handled": true}` (`seen`, `flagged`, `handled` optional, at least one) |
 
 `refs` holds 1 to 50 strings of at most 4096 characters. `source_folder` (move, archive, junk
 and trash; optional) is the folder the user acted from, where a Gmail All Mail ref is acted on
@@ -620,7 +622,7 @@ search over several folders is acted on in the label folder it was listed under.
       "new_refs": ["WzIsMSwiSU5CT1gi…"],      // null when the server gave no COPYUID; [] for flags
       "destination_account": null,          // a move to another account: that account
       "junk": null,                         // "spam" | "ham" | null
-      "flags": [],                          // flag route: [{ "ref", "seen", "flagged", "to_sort" }]
+      "flags": [],                          // flag route: [{ "ref", "seen", "flagged", "handled" }]
       "error": null                         // or { "code": "not_found", "message": "…" }
     }
   ]
@@ -638,7 +640,7 @@ client has loaded, with mailroom-core's `count_matching` and `act_on_matching`
 ([`../core.md`](../core.md) — *Organize*). The scope and criteria are those of
 [`POST /search`](#post-search) without `limit` and `cursor` (`account` a number or `*`, `folder`
 a path or `*`, `subfolders`, the criteria); a list is a search with no criteria. The action is
-`{"kind": "flag", "seen", "flagged", "to_sort"}` (at least one), `{"kind": "move", "folder"}`
+`{"kind": "flag", "seen", "flagged", "handled"}` (at least one), `{"kind": "move", "folder"}`
 (of each message's account, never Drafts or Sent) or `{"kind": "trash"}`.
 
 | Route | Body | Answer |
@@ -774,7 +776,8 @@ connection with no mailbox selected, every check there. Marking a folder read is
   the count again (STATUS) and refuses with `folder_changed`, carrying the new `messages`, when
   it differs. Refused, before the folder is touched, while any rule set or filter action of the
   account, or of a rule set for all accounts, names the folder or one under it (`folder_in_use`, listing up to 10 of them as
-  `rule_sets: [{id, name}]`), and while the folder has subfolders (`\Noselect` ones too). On
+  `rule_sets: [{id, name}]`), while it is the label the account keeps Handled as or holds it
+  (`folder_is_handled`, as is a rename to a path that label cannot have), and while the folder has subfolders (`\Noselect` ones too). On
   Gmail a folder is a label: its mail stays in All Mail. Mail that arrives between the count and
   the delete goes with the folder; IMAP cannot close that window, the count keeps it to seconds.
 - **Mark read** every unread message of a folder. The caller sends the `uid_validity` and
@@ -841,7 +844,7 @@ required (`null` for the top level), so that a rename names where the folder goe
 `parent` are at most 1,000 characters and `name` 255; `messages` is a JSON integer, 0 or more;
 `uid_validity` and `uid_next` JSON integers from 1 to 2³², or `null` (both required). CSRF as
 for every state-changing route. Errors: 400 `invalid_argument`, 404 `not_found` (account) and
-`mailbox_missing`, 409 `folder_exists`, `folder_changed`, `folder_in_use` and
+`mailbox_missing`, 409 `folder_exists`, `folder_changed`, `folder_in_use`, `folder_is_handled` and
 `stale_reference`, 422, 429, 502, 504. A create, rename, delete or mark read that outlives the 30 s deadline answers
 `timeout` while the server may finish it: the next listing shows the outcome, and a rename that
 finished late still points its rule sets at the new path.
@@ -1617,7 +1620,7 @@ to slice C; slices A and B never answer them, nor the folder group (`folder_exis
 `folder_changed`, [folder management](#folder-management)), nor the bulk group (`count_changed`,
 `too_many`, [every message a search matches](#every-message-a-search-matches)). The app's own codes keep their
 statuses: `password_missing`, `draft_not_editable` and `folder_in_use` (a rule set names the
-folder: `detail.rule_sets`, up to 10 `{id, name}`) 409, `secrets_key_missing` 503, an unknown account `not_found` 404
+folder: `detail.rule_sets`, up to 10 `{id, name}`) and `folder_is_handled` 409, `secrets_key_missing` 503, an unknown account `not_found` 404
 (coded). A mailbox failure carrying a code not in this table keeps its code, with status 502. The
 account's login test, its folder listing and the filters' runs report mailbox failures with the
 same codes and messages. An `unreachable` whose cause is a TLS certificate that did not verify ends
@@ -1640,7 +1643,7 @@ even once it is back.
 { "name": "Ada Lovelace", "address": "ada@example.org" }   // name "" when absent
 
 // Flags
-{ "seen": true, "flagged": false, "answered": false, "forwarded": false, "draft": false, "to_sort": false }
+{ "seen": true, "flagged": false, "answered": false, "forwarded": false, "draft": false, "handled": false }
 ```
 
 `forwarded` is the `$Forwarded` keyword a sent forward sets.
@@ -1704,7 +1707,7 @@ mode a folder that cannot be read is reported in `failures`, as in a search, nev
       "date": "2026-10-30T09:12:00Z",
       "from": { "name": "Ada Lovelace", "address": "ada@example.org" },
       "subject": "Notes on the engine",
-      "flags": { "seen": false, "flagged": false, "answered": false, "forwarded": false, "draft": false, "to_sort": false },
+      "flags": { "seen": false, "flagged": false, "answered": false, "forwarded": false, "draft": false, "handled": false },
       "has_attachments": true,
       "preview": "Dear Charles, the notes are attached…",
       "size": 48213,
@@ -1750,7 +1753,7 @@ same page shape.
 | `text` | Headers or body contain this. |
 | `since`, `before` | `YYYY-MM-DD` (a real calendar date; `since` inclusive, `before` exclusive), compared with the arrival date (INTERNALDATE), not the `Date` header: a day of the user's time zone when read from the [index](#index) (with the live read of what its age limit leaves out), the server's day when read live (IMAP `SINCE` and `BEFORE` compare dates only, as the server dates its mail). |
 | `unread`, `flagged` | Booleans. |
-| `to_sort` | Boolean: marked [To sort](../GLOSSARY.md) (`$MailroomSort`), or not; where the server keeps no keywords, no message is marked, so `true` matches nothing. |
+| `handled` | Boolean: marked [Handled](filters.md#handled), as each account keeps it, or not; where the server cannot keep the mark, no message is marked, so `true` matches nothing. |
 | `has_attachment` | `true` only (approximate: `multipart/mixed`; on Gmail, which ignores that header search, `has:attachment` through X-GM-RAW, over one account or all); `false` is ignored, not a criterion. |
 | `gmail_query` | Gmail search syntax (X-GM-RAW); Gmail accounts only, else `unsupported`. |
 | `subfolders` | `true`: the folder's subfolders too, as for the list (default `false`); with `folder` `*`, 400 `invalid_argument`. |
@@ -1784,7 +1787,7 @@ a failure too, with the app's code `password_missing`.
   "date": "2026-10-30T09:12:00Z",
   "subject": "Notes on the engine",
   "message_id": "<a1b2@example.org>",                                        // null when absent
-  "flags": { "seen": false, "flagged": false, "answered": false, "forwarded": false, "draft": false, "to_sort": false },
+  "flags": { "seen": false, "flagged": false, "answered": false, "forwarded": false, "draft": false, "handled": false },
   "text": {
     "content": "Dear Charles, …",
     "removed_chars": 0,
@@ -2075,7 +2078,7 @@ in the user menu. Cards, each left out where the instance does not run its featu
   folder. A count is the index's: an INBOX's own row, or on Gmail All Mail's unread rows carrying
   INBOX's label; a dash while the index holds no readable copy (the account is not indexed yet)
   or holds it only under an age limit, whose rows leave out the older unread mail.
-- **Waiting on you**: Starred and To sort (the marks in the indexed folders of every account,
+- **Waiting on you**: Starred and Handled (the marks in the indexed folders of every account,
   linking to a search of every folder), Snoozed coming back today (before midnight in the user's
   time zone, overdue ones included; with how many are snoozed in all) and Scheduled (held sends,
   the next one's time, and those that failed in red). Snoozed and Scheduled open their lists over
@@ -2090,7 +2093,7 @@ in the user menu. Cards, each left out where the instance does not run its featu
 `GET /api/v1/home` answers it from the app's tables only (the index, snoozes, scheduled sends,
 runs and match counts), never a mail server, so it answers at once on any instance: `mail` (null
 without the mail client: `inboxes` `[{account_id, display_name, colour, unread}]`, `unread`,
-`starred`, `to_sort`, `snoozed`, `snoozed_today`, `scheduled`, `next_scheduled_at`,
+`starred`, `handled`, `snoozed`, `snoozed_today`, `scheduled`, `next_scheduled_at`,
 `scheduled_failed`) and `filters` (null without filters: `rule_sets` `[{id, name, account_id,
 enabled, disabled_reason, runs, failed_runs, last_run_at, last_run_failed, acted_on}]`). Only the
 signed-in user's own.

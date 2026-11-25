@@ -7,7 +7,7 @@ export const TRIGGERS = ['new_mail', 'scheduled', 'manual'] as const
 export type Trigger = (typeof TRIGGERS)[number]
 
 /** The mark a rule set limits itself to, cleared once a message is handled: none is every message. */
-export const MARKERS = ['none', 'star', 'to_sort'] as const
+export const MARKERS = ['none', 'starred', 'handled'] as const
 export type Marker = (typeof MARKERS)[number]
 
 /**

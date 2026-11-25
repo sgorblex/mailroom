@@ -162,12 +162,12 @@ function WaitingCard({ mail }: { mail: MailSummary }): ReactElement {
           </Link>
         </li>
         <li>
-          <Link to="/mail" search={{ q: { account: '*', folder: '*', to_sort: true } }} className={ROW}>
+          <Link to="/mail" search={{ q: { account: '*', folder: '*', handled: true } }} className={ROW}>
             <span className="flex items-center gap-2">
               <Tag aria-hidden="true" className="size-4" />
-              {t('home.waiting.toSort')}
+              {t('home.waiting.handled')}
             </span>
-            <Count value={mail.to_sort} />
+            <Count value={mail.handled} />
           </Link>
         </li>
         <li>

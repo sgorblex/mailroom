@@ -4,6 +4,7 @@ import { Link, useNavigate } from '@tanstack/react-router'
 
 import { AccountName } from '@/accounts/account-name.tsx'
 import { useAccountKeywords } from '@/accounts/accounts-context.ts'
+import { cannotKeepHandled } from '@/accounts/handled.ts'
 import { listAccounts, type Account } from '@/api/accounts.ts'
 import {
   ALL_ACCOUNTS,
@@ -132,7 +133,7 @@ function AccountRuleSets({
         owner={account.id}
         listLabel={t('filters.ruleSetsOf', { account: account.display_name })}
         addLabel={t('filters.ruleSet.addTo', { account: account.display_name })}
-        keywords={keywordsOf(account.id)}
+        handledUnsupported={cannotKeepHandled(account, keywordsOf(account.id))}
         addTrigger={addTrigger}
       />
       {muted.length > 0 && (
@@ -183,13 +184,13 @@ function RuleSets({
   owner,
   listLabel,
   addLabel,
-  keywords,
+  handledUnsupported,
   addTrigger: given,
 }: {
   owner: RuleSetAccount
   listLabel: string
   addLabel: string
-  keywords?: boolean | null
+  handledUnsupported?: boolean
   addTrigger?: RefObject<HTMLButtonElement | null>
 }): ReactElement {
   const { t } = useTranslation(FILTERS_NS)
@@ -240,7 +241,7 @@ function RuleSets({
       {adding ? (
         <NewRuleSetForm
           owner={owner}
-          keywords={keywords}
+          handledUnsupported={handledUnsupported}
           save={async (fields) => {
             const created = await addRuleSet(owner, fields)
             await navigate({ to: '/filters/$ruleSetId', params: { ruleSetId: String(created.id) } })
@@ -270,16 +271,16 @@ function RuleSets({
 /** The rule set form for a new rule set, with the account's folders to pick from (INBOX for all accounts). */
 function NewRuleSetForm({
   owner,
-  keywords,
+  handledUnsupported,
   save,
   onCancel,
 }: {
   owner: RuleSetAccount
-  keywords: boolean | null | undefined
+  handledUnsupported: boolean | undefined
   save: (fields: RuleSetFields) => Promise<unknown>
   onCancel: () => void
 }): ReactElement {
-  return <RuleSetForm folders={useFolders(owner)} keywords={keywords} save={save} onCancel={onCancel} />
+  return <RuleSetForm folders={useFolders(owner)} handledUnsupported={handledUnsupported} save={save} onCancel={onCancel} />
 }
 
 function RuleSetRow({ ruleSet, onRemoved }: { ruleSet: RuleSet; onRemoved: () => void }): ReactElement {

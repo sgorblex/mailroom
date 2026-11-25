@@ -36,15 +36,15 @@ export function FilterList({
   filters,
   vocabulary,
   folders,
-  keywords,
+  handledUnsupported,
   setFilters,
 }: {
   ruleSet: RuleSet
   filters: Filter[]
   vocabulary: Vocabulary
   folders: FoldersState
-  /** Whether the account's server keeps keywords (`Account.keywords`): where not, To sort is greyed out. */
-  keywords?: boolean | null
+  /** The account's server cannot keep its Handled mark: Handled is greyed out. */
+  handledUnsupported?: boolean
   setFilters: Dispatch<SetStateAction<Filter[]>>
 }): ReactElement {
   const { t, i18n } = useTranslation(FILTERS_NS)
@@ -123,7 +123,7 @@ export function FilterList({
               last={index === filters.length - 1}
               wording={wording}
               folders={folders}
-              keywords={keywords}
+              handledUnsupported={handledUnsupported}
               targets={targets}
               moveButtonRef={(direction, button) => {
                 const key = `${String(filter.id)}-${direction}`
@@ -154,7 +154,7 @@ export function FilterList({
         <FilterEditor
           vocabulary={vocabulary}
           folders={folders}
-          keywords={keywords}
+          handledUnsupported={handledUnsupported}
           targets={targets}
           save={async (fields) => {
             const created = await addFilter(ruleSet.id, fields)
@@ -197,7 +197,7 @@ function FilterRow({
   last,
   wording,
   folders,
-  keywords,
+  handledUnsupported,
   targets,
   moveButtonRef,
   onMove,
@@ -209,7 +209,7 @@ function FilterRow({
   last: boolean
   wording: Wording
   folders: FoldersState
-  keywords: boolean | null | undefined
+  handledUnsupported: boolean | undefined
   targets: readonly Account[]
   moveButtonRef: (direction: Direction, button: HTMLButtonElement | null) => void
   onMove: (direction: Direction) => void
@@ -264,7 +264,7 @@ function FilterRow({
           filter={filter}
           vocabulary={wording.vocabulary}
           folders={folders}
-          keywords={keywords}
+          handledUnsupported={handledUnsupported}
           targets={targets}
           save={async (fields) => {
             onChanged(await changeFilter(filter.id, fields))

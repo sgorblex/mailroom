@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Final
 
 from mailroom_core.mail.audit import AuditItem
 from mailroom_core.mail.errors import MailError
+from mailroom_core.mail.handled import HandledKey
 from mailroom_core.mail.organize import (
     _each_group,
     _flag_group,
@@ -30,7 +31,7 @@ from mailroom_core.mail.organize import (
 from mailroom_core.mail.pages import PageFailure
 from mailroom_core.mail.ref import MessageRef
 from mailroom_core.mail.search import ALL_FOLDERS, _any_of, check_subfolders, search_sources
-from mailroom_core.mail.selected import TO_SORT, move_target, search_uids, special_folder_in
+from mailroom_core.mail.selected import move_target, search_uids, special_folder_in
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -56,11 +57,11 @@ _IMPORTANT: Final = "\\important"
 
 @dataclass(frozen=True, slots=True)
 class BulkFlag:
-    """Set (True) or clear (False) `\\Seen`, `\\Flagged` and the To sort mark; at least one."""
+    """Set (True) or clear (False) `\\Seen`, `\\Flagged` and the Handled mark; at least one."""
 
     seen: bool | None = None
     flagged: bool | None = None
-    to_sort: bool | None = None
+    handled: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,7 +214,7 @@ def act_on_matching(
                 noted,
                 seen=action.seen,
                 flagged=action.flagged,
-                to_sort=action.to_sort,
+                handled=action.handled,
             )
             return replace(flagged, flags=())
         plan = plans[group.account]
@@ -239,9 +240,9 @@ def act_on_matching(
 
 def _check(action: BulkAction | None) -> None:
     if isinstance(action, BulkFlag) and (
-        action.seen is None and action.flagged is None and action.to_sort is None
+        action.seen is None and action.flagged is None and action.handled is None
     ):
-        raise MailError("invalid_argument", "Give `seen`, `flagged`, `to_sort` or several.")
+        raise MailError("invalid_argument", "Give `seen`, `flagged`, `handled` or several.")
 
 
 def _find(
@@ -305,8 +306,8 @@ def _pending(action: BulkAction | None) -> list[object]:
         keys.append(["UNSEEN" if action.seen else "SEEN"])
     if action.flagged is not None:
         keys.append(["UNFLAGGED" if action.flagged else "FLAGGED"])
-    if action.to_sort is not None:
-        keys.append(["UNKEYWORD" if action.to_sort else "KEYWORD", TO_SORT])
+    if action.handled is not None:
+        keys.append([HandledKey(not action.handled)])
     return [_any_of(keys)]
 
 

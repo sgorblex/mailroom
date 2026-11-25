@@ -30,6 +30,7 @@ interface StoredAccount {
   auto_approve: string[]
   has_password: boolean
   run_filters?: boolean
+  handled?: string
 }
 
 const WORK: StoredAccount = {
@@ -91,6 +92,14 @@ type Autoconfig = (address: string) => Response | Promise<Response>
 const NOTHING_FOUND: Autoconfig = (address) =>
   json(200, { domain: address.slice(address.indexOf('@') + 1), suggestion: null })
 
+/** A rule set whose meaning follows what an account keeps Handled as. */
+interface HandledRuleSet {
+  id: number
+  account_id: number | 'all'
+  name: string
+  enabled: boolean
+}
+
 /** What the fake quota route answers for an account; by default, that the server reports none. */
 type QuotaAnswer = (account: StoredAccount) => Response
 
@@ -105,8 +114,11 @@ function stubApi(
   initial: StoredAccount[] = [WORK],
   autoconfig: Autoconfig = NOTHING_FOUND,
   quota: QuotaAnswer = NO_QUOTA,
+  handled: { ruleSets?: HandledRuleSet[]; next?: HandledRuleSet[] } = {},
 ): ReturnType<typeof vi.fn> {
-  let accounts = [...initial]
+  let accounts = initial.map((account) => ({ ...account }))
+  let ruleSets = handled.ruleSets ?? []
+  const nextRuleSets = handled.next
   let lastId = Math.max(0, ...initial.map((account) => account.id))
   const fetchMock = vi.fn((path: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET'
@@ -169,6 +181,26 @@ function stubApi(
     if (rest === '/quota' && method === 'GET') {
       return Promise.resolve(quota(account))
     }
+    if (rest === '/handled' && method === 'GET') {
+      return Promise.resolve(json(200, { mark: account.handled ?? 'star', rule_sets: ruleSets }))
+    }
+    if (rest === '/handled' && method === 'PUT') {
+      const mark = body['mark'] as string
+      if (mark.startsWith('label:')) {
+        return Promise.resolve(json(400, { detail: { code: 'handled_unsupported', message: 'No labels.' } }))
+      }
+      if (mark.includes(' ')) {
+        return Promise.resolve(json(400, { detail: { code: 'invalid_argument', message: 'A keyword is…' } }))
+      }
+      const confirmed = body['rule_sets'] as number[]
+      const latest = nextRuleSets ?? ruleSets
+      if (!latest.every((ruleSet) => confirmed.includes(ruleSet.id))) {
+        ruleSets = latest
+        return Promise.resolve(json(409, { detail: { code: 'handled_rule_sets', message: 'Check again.' } }))
+      }
+      account.handled = mark
+      return Promise.resolve(json(200, { mark, rule_sets: ruleSets }))
+    }
     if (rest === '/filter-settings' && method === 'PUT') {
       account.run_filters = body['run_filters'] as boolean
       return Promise.resolve(json(200, { run_filters: account.run_filters }))
@@ -217,6 +249,61 @@ describe('AccountsScreen', () => {
     await userEvent.type(within(form).getByLabelText('Email address'), 'me@home.example')
     await userEvent.click(within(form).getByRole('button', { name: 'Enter settings manually' }))
     await expectNoAxeViolations()
+  })
+
+  it('keeps Handled as something else, naming first the rule sets that changes the meaning of', async () => {
+    const first = { id: 7, account_id: 1, name: 'Sorting', enabled: true }
+    const every = { id: 8, account_id: 'all' as const, name: 'Everywhere', enabled: false }
+    const fetchMock = stubApi([WORK], NOTHING_FOUND, NO_QUOTA, { ruleSets: [first], next: [first, every] })
+    renderSignedIn(<AccountsScreen />, ALICE)
+
+    expect(await screen.findByText('Handled is the star.')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Change what work keeps Handled as' }))
+    const form = screen.getByRole('form', { name: 'What work keeps Handled as' })
+    const save = within(form).getByRole('button', { name: 'Save' })
+    expect(within(form).getByLabelText('Star')).toBeChecked()
+    expect(within(form).getByLabelText('Star')).toHaveFocus()
+    expect(within(form).queryByText('Sorting')).not.toBeInTheDocument()
+    await userEvent.click(within(form).getByRole('radio', { name: 'Keyword' }))
+    expect(await within(form).findByText('Sorting')).toBeInTheDocument()
+    await expectNoAxeViolations()
+    const name = within(form).getByRole('textbox', { name: 'Keyword' })
+    expect(name).toHaveValue('$MailroomHandled')
+    await userEvent.clear(name)
+    await userEvent.type(name, 'Done')
+
+    // One was added meanwhile: shown, before it is saved.
+    await userEvent.click(save)
+    expect(await within(form).findByRole('alert')).toHaveTextContent('The rule sets changed meanwhile')
+    expect(await within(form).findByText('Everywhere (all accounts)')).toBeInTheDocument()
+    await userEvent.click(save)
+    expect(await screen.findByText('Handled is the keyword Done.')).toBeInTheDocument()
+    expect(sent(fetchMock, 'PUT', '/api/v1/accounts/1/handled')).toEqual({ mark: 'keyword:Done', rule_sets: [7, 8] })
+  })
+
+  it('says why Handled cannot be kept so, and leaves it on Cancel', async () => {
+    stubApi([{ ...WORK, handled: 'keyword:$MailroomSort' }])
+    renderSignedIn(<AccountsScreen />, ALICE)
+
+    expect(await screen.findByText('Handled is the keyword $MailroomSort.')).toBeInTheDocument()
+    const change = screen.getByRole('button', { name: 'Change what work keeps Handled as' })
+    await userEvent.click(change)
+    const form = screen.getByRole('form', { name: 'What work keeps Handled as' })
+    await userEvent.click(within(form).getByRole('radio', { name: 'Gmail label' }))
+    expect(within(form).getByRole('textbox', { name: 'Label' })).toHaveValue('Handled')
+    expect(await within(form).findByText('No rule set uses Handled on this account.')).toBeInTheDocument()
+    await userEvent.click(within(form).getByRole('button', { name: 'Save' }))
+    expect(await within(form).findByRole('alert')).toHaveTextContent(
+      "This account's mail server cannot keep Handled that way.",
+    )
+    await userEvent.click(within(form).getByRole('radio', { name: 'Keyword' }))
+    const name = within(form).getByRole('textbox', { name: 'Keyword' })
+    expect(name).toHaveValue('$MailroomSort')
+    await userEvent.type(name, ' two')
+    await userEvent.click(within(form).getByRole('button', { name: 'Save' }))
+    expect(await within(form).findByRole('alert')).toHaveTextContent('That name cannot be used')
+    await userEvent.click(within(form).getByRole('button', { name: 'Cancel' }))
+    expect(screen.getByText('Handled is the keyword $MailroomSort.')).toBeInTheDocument()
   })
 
   it('says when there are no accounts yet', async () => {

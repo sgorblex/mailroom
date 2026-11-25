@@ -293,17 +293,18 @@ class TestMessageFormatting:
             "unread,flagged,attachments · Shall we meet?"
         )
 
-    def test_shows_to_sort_whatever_the_keywords_case(self):
+    def test_shows_handled(self):
         item = ListItem(
             ref="REF",
             date=datetime(2026, 10, 3, 12, 12, tzinfo=UTC),
             sender=[Address(address="maria@example.org")],
             subject="Sort me",
-            flags={"\\SEEN", "$mailroomsort"},
+            flags={"\\SEEN"},
             has_attachments=False,
+            handled=True,
         )
         assert list_line(item, "UTC") == (
-            "REF · 2026-10-03 12:12 · maria@example.org · Sort me · to sort"
+            "REF · 2026-10-03 12:12 · maria@example.org · Sort me · handled"
         )
 
     def test_shows_answered_and_forwarded(self):

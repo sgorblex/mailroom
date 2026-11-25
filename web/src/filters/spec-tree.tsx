@@ -28,14 +28,14 @@ export function SpecTree({
   model,
   vocabulary,
   folders,
-  keywords,
+  handledUnsupported,
   onChange,
 }: {
   model: SpecModel
   vocabulary: Vocabulary
   folders: FoldersState
-  /** Whether the account's server keeps keywords: where not, the To sort actions are greyed out. */
-  keywords?: boolean | null
+  /** The account's server cannot keep its Handled mark: the actions on it are greyed out. */
+  handledUnsupported?: boolean
   onChange: (model: SpecModel) => void
 }): ReactElement {
   const { t } = useTranslation(FILTERS_NS)
@@ -59,7 +59,7 @@ export function SpecTree({
           actions={model.actions}
           vocabulary={vocabulary}
           folders={folders}
-          keywords={keywords}
+          handledUnsupported={handledUnsupported}
           onChange={(actions) => {
             onChange({ ...model, actions })
           }}
@@ -69,8 +69,11 @@ export function SpecTree({
   )
 }
 
-/** The actions an account whose server keeps no keywords, or a rule set for all accounts, cannot take. */
-const TO_SORT_ACTIONS: readonly string[] = ['mark_to_sort', 'unmark_to_sort']
+/** The actions an account whose server cannot keep its Handled mark cannot take. */
+const HANDLED_ACTIONS: readonly string[] = ['mark_handled', 'unmark_handled']
+
+/** What Handled replaced: shown in a filter that has it, never offered. */
+const FORMER: ReadonlySet<string> = new Set(['is_to_sort', 'is_not_to_sort', 'mark_to_sort', 'unmark_to_sort'])
 
 /** The action a rule set for all accounts, or a user with no other account, cannot take. */
 const MOVE_TO_ACCOUNT = 'move_to_account'
@@ -78,14 +81,13 @@ const MOVE_TO_ACCOUNT = 'move_to_account'
 /** The actions greyed out, each with the key of its label, which takes the type's as `label`. */
 function unavailableActions(
   allAccounts: boolean,
-  keywords: boolean | null | undefined,
+  handledUnsupported: boolean | undefined,
   targets: number,
 ): ReadonlyMap<string, string> {
   const greyed = new Map<string, string>()
-  if (allAccounts || keywords === false) {
-    const reason = allAccounts ? 'filters.allAccounts.toSortUnavailable' : 'filters.tree.toSortUnavailable'
-    for (const type of TO_SORT_ACTIONS) {
-      greyed.set(type, reason)
+  if (handledUnsupported === true) {
+    for (const type of HANDLED_ACTIONS) {
+      greyed.set(type, 'filters.tree.handledUnavailable')
     }
   }
   if (allAccounts) {
@@ -111,7 +113,7 @@ function LeafOptions({
   return (
     <>
       {!known && <option value={`leaf:${current}`}>{current}</option>}
-      {defs.map((def) => {
+      {defs.filter((def) => def.type === current || !FORMER.has(def.type)).map((def) => {
         const reason = def.type === current ? undefined : unavailable.get(def.type)
         return (
           <option key={def.type} value={`leaf:${def.type}`} disabled={reason !== undefined}>
@@ -256,19 +258,19 @@ function ActionList({
   actions,
   vocabulary,
   folders,
-  keywords,
+  handledUnsupported,
   onChange,
 }: {
   actions: Leaf[]
   vocabulary: Vocabulary
   folders: FoldersState
-  keywords: boolean | null | undefined
+  handledUnsupported: boolean | undefined
   onChange: (actions: Leaf[]) => void
 }): ReactElement {
   const { t } = useTranslation(FILTERS_NS)
   const idPrefix = useId()
   const targets = useContext(TargetAccountsContext)
-  const unavailable = unavailableActions(folders.kind === 'all-accounts', keywords, targets.length)
+  const unavailable = unavailableActions(folders.kind === 'all-accounts', handledUnsupported, targets.length)
 
   function move(from: number, to: number): void {
     const next = [...actions]

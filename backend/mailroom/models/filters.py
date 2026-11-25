@@ -33,7 +33,7 @@ a dry run)."""
 
 _TRIGGER_CHECK: Final = "trigger IN ('new_mail', 'scheduled', 'manual')"
 
-_MARKER_CHECK: Final = "marker IN ('none', 'star', 'to_sort')"
+_MARKER_CHECK: Final = "mark IN ('none', 'starred', 'handled')"
 
 
 class RuleSet(Base):
@@ -44,7 +44,7 @@ class RuleSet(Base):
     __tablename__ = "rule_set"
     __table_args__ = (
         CheckConstraint(_TRIGGER_CHECK, name="trigger"),
-        CheckConstraint(_MARKER_CHECK, name="marker"),
+        CheckConstraint(_MARKER_CHECK, name="mark"),
         # An interval exactly when scheduled, and a positive one.
         CheckConstraint(
             "(trigger = 'scheduled') = (interval_minutes IS NOT NULL)", name="interval"
@@ -72,9 +72,9 @@ class RuleSet(Base):
     name: Mapped[str] = mapped_column(String(200))
     trigger: Mapped[str] = mapped_column(Text)
     interval_minutes: Mapped[int | None] = mapped_column(Integer)
-    marker: Mapped[str] = mapped_column(Text, server_default="none")
-    """The mark the rule set limits itself to, cleared once a message is handled: ``none`` (every
-    message), ``star`` (``\\Flagged``) or ``to_sort`` (the ``$MailroomSort`` keyword)."""
+    marker: Mapped[str] = mapped_column("mark", Text, server_default="none")
+    """The mark the rule set limits itself to, cleared once its filters acted: ``none`` (every
+    message), ``starred`` (``\\Flagged``) or ``handled`` (as the account it runs on keeps it)."""
     enabled: Mapped[bool] = mapped_column(Boolean, server_default=false())
     kind: Mapped[str] = mapped_column(Text, server_default="user")
     """``user``, or ``mute``: the account's hidden one muting threads (``mailroom.filters.mute``),

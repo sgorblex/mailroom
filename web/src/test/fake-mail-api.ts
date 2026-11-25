@@ -67,7 +67,9 @@ export interface FakeMailState {
   copiedNotRemoved?: Record<string, string>
   /** Called with each request (`"POST /api/v1/mail/messages/flag"`, its body); the answer waits for the promise it returns. */
   hold?: (request: string, body: unknown) => Promise<void> | undefined
-  /** Whether each account's server keeps keywords (To sort); `null` unless it says otherwise. */
+  /** What each account keeps Handled as; a keyword unless it says otherwise. */
+  handled?: Record<string, string>
+  /** Whether each account's server keeps keywords; `null` unless it says otherwise. */
   keywords?: Record<string, boolean | null>
   /** Each account's send mode; `drafts` unless it says otherwise. */
   sendModes?: Record<string, string>
@@ -203,7 +205,7 @@ export function messageItem(account: AccountId, folder: string, uid: number, fie
     date: '2026-10-30T09:12:00+00:00',
     from: { name: `Sender ${String(uid)}`, address: `sender${String(uid)}@example.org` },
     subject: `Message ${String(uid)}`,
-    flags: { seen: true, flagged: false, answered: false, forwarded: false, draft: false, to_sort: false },
+    flags: { seen: true, flagged: false, answered: false, forwarded: false, draft: false, handled: false },
     has_attachments: false,
     preview: `Preview of ${String(uid)}`,
     size: 1000,
@@ -301,7 +303,7 @@ function organize(
     removal?: string
     seen?: boolean
     flagged?: boolean
-    to_sort?: boolean
+    handled?: boolean
   },
 ): Response {
   if (body.refs.length === 0 || body.refs.length > 50) {
@@ -349,6 +351,7 @@ function organize(
       return failed(code)
     }
     if (route === 'flag') {
+      const starred = state.handled?.[String(account)] === 'star'
       // Written anew, never in place: tests share their items.
       const changed = new Map(
         items.map((item) => [
@@ -356,8 +359,8 @@ function organize(
           {
             ...item.flags,
             seen: body.seen ?? item.flags.seen,
-            flagged: body.flagged ?? item.flags.flagged,
-            to_sort: body.to_sort ?? item.flags.to_sort,
+            flagged: body.flagged ?? (starred ? body.handled : undefined) ?? item.flags.flagged,
+            handled: body.handled ?? (starred ? body.flagged : undefined) ?? item.flags.handled,
           },
         ]),
       )
@@ -378,7 +381,7 @@ function organize(
           ref,
           seen: flags.seen,
           flagged: flags.flagged,
-          to_sort: flags.to_sort,
+          handled: flags.handled,
         })),
       }
     }
@@ -1280,6 +1283,7 @@ export function stubMailApi(state: FakeMailState): Mock {
           return {
             id,
             name: state.names?.[id]?.name ?? ACCOUNT_NAMES[id] ?? null,
+            handled: state.handled?.[String(id)] ?? 'keyword:$MailroomHandled',
             display_name: state.names?.[id]?.name ?? ACCOUNT_NAMES[id] ?? `me@${String(id)}.example`,
             colour: state.names?.[id]?.colour ?? null,
             authserv_id: null,

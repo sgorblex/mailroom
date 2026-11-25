@@ -10,7 +10,9 @@ export interface FakeAccount {
   /** Its own name: `ACCOUNT_NAMES`' unless it says otherwise, else unnamed and shown by its login. */
   name?: string
   colour?: string
-  /** Whether its server keeps keywords (To sort); `null` when not known. */
+  /** What it keeps Handled as; the star unless it says otherwise. */
+  handled?: string
+  /** Whether its server keeps keywords; `null` when not known. */
   keywords?: boolean | null
 }
 
@@ -22,7 +24,7 @@ export interface FakeRuleSet {
   name: string
   trigger: 'new_mail' | 'scheduled' | 'manual'
   interval_minutes: number | null
-  marker: 'none' | 'star' | 'to_sort'
+  marker: 'none' | 'starred' | 'handled'
   enabled: boolean
 }
 
@@ -96,7 +98,7 @@ export const WORK = 1
 export const HOME = 2
 const ACCOUNT_NAMES: Record<number, string> = { [WORK]: 'work', [HOME]: 'home' }
 
-function account({ id, run_filters: runFilters, name, colour }: FakeAccount): Body {
+function account({ id, run_filters: runFilters, name, colour, handled }: FakeAccount): Body {
   const endpoint = { host: `imap.${String(id)}.example`, port: 993, tls: 'implicit' }
   return {
     id,
@@ -112,6 +114,7 @@ function account({ id, run_filters: runFilters, name, colour }: FakeAccount): Bo
     auto_approve: [],
     has_password: true,
     run_filters: runFilters,
+    handled: handled ?? 'star',
   }
 }
 

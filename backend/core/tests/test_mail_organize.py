@@ -291,16 +291,17 @@ def test_marks_messages_read_unread_and_flagged_idempotently(imap_server, harnes
     assert set_flags(mail, [ref], seen=True, flagged=True).outcome == "ok"
 
     unread = set_flags(mail, [ref], seen=False)
-    assert organize_text(unread) == f"1/INBOX: updated 1: {ref} unread, flagged"
+    assert organize_text(unread) == f"1/INBOX: updated 1: {ref} unread, flagged, handled"
     assert contents(imap_server, user, "INBOX") == [("flag me", {"\\Flagged"})]
     assert parse_ref(unread.groups[0].flags[0].ref) == parse_ref(ref)
 
     with pytest.raises(MailError, match="Give `seen`"):
         set_flags(mail, [ref])
 
-    marked = set_flags(mail, [ref], to_sort=True)
-    assert organize_text(marked) == f"1/INBOX: updated 1: {ref} unread, flagged, to sort"
-    assert contents(imap_server, user, "INBOX") == [("flag me", {"\\Flagged", "$MailroomSort"})]
+    assert set_flags(mail, [ref], flagged=False).outcome == "ok"
+    marked = set_flags(mail, [ref], handled=True)
+    assert organize_text(marked) == f"1/INBOX: updated 1: {ref} unread, flagged, handled"
+    assert contents(imap_server, user, "INBOX") == [("flag me", {"\\Flagged"})]
 
 
 def test_marks_a_folder_read_up_to_the_uidnext_it_was_given(

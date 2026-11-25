@@ -50,11 +50,13 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import aliased
 
+from mailroom.accounts.handled import handled_marks
 from mailroom.mail.index import settings as index_settings
 from mailroom.models import MailIndexFolder, MailIndexMessage
 from mailroom_core import mail as core
 from mailroom_core.mail import (
-    TO_SORT,
+    STAR,
+    HandledMark,
     MailError,
     MessageRef,
     MessageSummary,
@@ -135,6 +137,8 @@ class IndexSource:
     listed: tuple[tuple[str, str], ...] = ()
     """With ``labels``, each label and the folder it lists, in the order the read named them: a
     row is listed under the first whose label it carries (``ListedSummary``)."""
+    handled: HandledMark = STAR
+    """What its account keeps Handled as, read afresh for each page (never in the cursor)."""
 
     def json(self) -> list[object]:
         labels = None if self.labels is None else list(self.labels)
@@ -242,6 +246,7 @@ def index_sources(
             labels.add(label)
             listed.setdefault(row.id, {}).setdefault(label, source.folder)
         live.append(source.folder)
+    marks = handled_marks(db, user_id)
     return [
         IndexSource(
             account=row.account_id,
@@ -252,6 +257,7 @@ def index_sources(
             oldest=row.oldest_indexed,
             live=tuple(dict.fromkeys(live)),
             listed=() if labels is None else tuple(listed.get(row.id, {}).items()),
+            handled=marks.get(row.account_id, STAR),
         )
         for row, labels, live in picked.values()
     ]
@@ -303,6 +309,7 @@ def resumed_sources(
     (another account's cursor). Each folder row once, as a cursor the index gave names it: a
     forged one repeating a source costs no more."""
     rows = ready_rows(db, user_id, accounts)
+    marks = handled_marks(db, user_id)
     out: dict[int, IndexSource] = {}
     for source in cursor.sources:
         if source.account not in accounts:
@@ -310,7 +317,8 @@ def resumed_sources(
         row = rows.get((source.account, source.folder))
         if row is None or row.id != source.folder_id or row.uid_validity != source.uid_validity:
             raise MailError("stale_reference", _STALE)
-        out.setdefault(row.id, replace(source, oldest=row.oldest_indexed))
+        mark = marks.get(source.account, STAR)
+        out.setdefault(row.id, replace(source, oldest=row.oldest_indexed, handled=mark))
     if cursor.sources and not out:
         raise MailError("stale_reference", _STALE)
     return list(out.values())
@@ -325,6 +333,18 @@ def _has(column: InstrumentedAttribute[list[str]], flag: str) -> ColumnElement[b
     return literal(flag) == any_(column)
 
 
+def _is_handled(
+    mark: HandledMark, message: type[MailIndexMessage] = MailIndexMessage
+) -> ColumnElement[bool]:
+    """Whether a row is marked Handled, kept as ``mark``; a keyword is compared in any case."""
+    if mark.kind == "star":
+        return _has(message.flags, _FLAGGED)
+    if mark.kind == "label":
+        return _has(message.labels, mark.name)
+    kept = func.string_to_array(func.lower(func.array_to_string(message.keywords, " ")), " ")
+    return literal(mark.name.lower()) == any_(kept)
+
+
 def _criteria(
     query: SearchQuery | None,
     zone: TimeZoneName,
@@ -332,7 +352,7 @@ def _criteria(
 ) -> list[ColumnElement[bool]]:
     """The query's criteria on the rows (``message``, or an alias of it): substrings of From, To
     and the subject (any case), the arrival day (the user's, in ``zone``), the flags, an
-    attachment."""
+    attachment; Handled, which each account keeps its own way, is ``_of_sources``'."""
     if query is None:
         return []
     out: list[ColumnElement[bool]] = []
@@ -350,7 +370,6 @@ def _criteria(
     marks: list[tuple[str, bool | None, InstrumentedAttribute[list[str]]]] = [
         (_SEEN, None if query.unread is None else not query.unread, message.flags),
         (_FLAGGED, query.flagged, message.flags),
-        (TO_SORT, query.to_sort, message.keywords),
     ]
     for flag, wanted, kept in marks:
         if wanted is not None:
@@ -379,6 +398,9 @@ def _of_sources(
         own = message.folder_id == source.folder_id
         if source.labels is not None:
             own = and_(own, message.labels.overlap(literal(list(source.labels), ARRAY(Text))))
+        if query is not None and query.handled is not None:
+            held = _is_handled(source.handled, message)
+            own = and_(own, held if query.handled else not_(held))
         where.append(own)
     return [message.user_id == user_id, or_(*where), *_criteria(query, zone, message)]
 
@@ -464,6 +486,7 @@ def _summary(source: IndexSource, row: MailIndexMessage) -> MessageSummary:
         preview=row.snippet,
         size=row.size,
         listed_folder=_listed_folder(source, row),
+        handled=core.holds_handled(source.handled, (*row.flags, *row.keywords), row.labels or ()),
     )
 
 
@@ -1114,17 +1137,25 @@ def inbox_subfolders_unread(db: Session, user_id: int, accounts: Sequence[int]) 
 
 
 def marked(db: Session, user_id: int, accounts: Sequence[int]) -> tuple[int, int]:
-    """Messages starred, and marked To sort, among the rows of the readable folders of
+    """Messages starred, and marked Handled, among the rows of the readable folders of
     ``accounts`` (under an age limit, those since its day)."""
     if not accounts:
         return 0, 0
+    marks = handled_marks(db, user_id)
+    by_mark: dict[HandledMark, list[int]] = {}
+    for account in sorted(set(accounts)):
+        by_mark.setdefault(marks.get(account, STAR), []).append(account)
+    held = [
+        and_(MailIndexFolder.account_id.in_(theirs), _is_handled(mark))
+        for mark, theirs in by_mark.items()
+    ]
     query = (
         select(
             func.count().filter(_has(MailIndexMessage.flags, _FLAGGED)),
-            func.count().filter(_has(MailIndexMessage.keywords, TO_SORT)),
+            func.count().filter(or_(*held)),
         )
         .select_from(_rows_with_folders())
         .where(*_ready(user_id), MailIndexFolder.account_id.in_(sorted(set(accounts))))
     )
-    starred, to_sort = db.execute(query).one()
-    return starred, to_sort
+    starred, handled = db.execute(query).one()
+    return starred, handled

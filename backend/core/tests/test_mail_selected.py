@@ -9,6 +9,7 @@ import pytest
 
 from mailroom_core.mail import (
     TO_SORT,
+    HandledMark,
     MailboxContext,
     MailConnections,
     MailError,
@@ -202,8 +203,10 @@ def test_sets_searches_and_clears_the_to_sort_keyword(imap_server, mail) -> None
     other = seed(imap_server, user, "INBOX", mime("leave me"))
     connections = mail(user)
 
-    def search(context: MailboxContext, to_sort: bool) -> list[int]:
-        return sorted(search_uids(context, SearchQuery(to_sort=to_sort).criteria()))
+    connections._lookup_handled = lambda _: HandledMark("keyword", "$MailroomSort")  # noqa: SLF001
+
+    def search(context: MailboxContext, handled: bool) -> list[int]:
+        return sorted(search_uids(context, SearchQuery(handled=handled).criteria()))
 
     def mark(context: MailboxContext) -> tuple[list[int], list[int]]:
         store_flags(context, [marked], add=[TO_SORT])

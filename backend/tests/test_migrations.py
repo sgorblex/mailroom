@@ -476,3 +476,224 @@ def test_starred_only_becomes_a_rule_set_s_marker_and_comes_back(
             ("to sort", True, False),
             ("to sort, off", True, False),
         ]
+
+
+SORT = "keyword:$MailroomSort"
+
+
+def test_handled_replaces_to_sort_and_no_rule_set_acts_on_other_mail(
+    throwaway_databases: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``202611251000``: an account that used To sort keeps Handled as its keyword, every other one
+    as the star; a marker becomes Handled only where that means what it meant on every account
+    the rule set can run on, and the downgrade gives each its own back."""
+    import json
+
+    from alembic import command
+    from alembic.config import Config
+
+    from mailroom.db_migrations import alembic_ini_path
+    from mailroom_core.store import upgrade
+
+    with throwaway_databases.migrated(lambda _: None) as engine:
+        monkeypatch.setenv("DATABASE_URL", engine.url.render_as_string(hide_password=False))
+        config = Config(str(alembic_ini_path()))
+        config.attributes["quiet"] = True
+        upgrade(engine, CORE_MIGRATIONS)
+        command.upgrade(config, "202611241400")
+
+        def add_user(name: str, accounts: list[int], **appearance: str) -> int:
+            user_id = int(
+                _insert(
+                    engine,
+                    "insert into app.user (username, password_hash, appearance) "
+                    "values (:u, 'x', cast(:a as jsonb)) returning id",
+                    u=name,
+                    a=json.dumps(appearance),
+                )
+            )
+            for revision, ids in enumerate(([*accounts, 900], accounts), 1):  # 900: removed since
+                _insert(
+                    engine,
+                    "insert into core.settings (user_id, revision, doc, saved_at) "
+                    "values (:u, :r, cast(:d as jsonb), now())",
+                    u=str(user_id),
+                    r=revision,
+                    d=json.dumps({"account": [{"id": account} for account in ids]}),
+                )
+            return user_id
+
+        def add_rule_set(
+            user: int, account: int | None, name: str, marker: str, enabled: bool = True
+        ) -> int:
+            return int(
+                _insert(
+                    engine,
+                    "insert into app.rule_set "
+                    "(user_id, account_id, folder, name, trigger, marker, enabled) "
+                    "values (:u, :a, '{INBOX}', :n, 'manual', :m, :e) returning id",
+                    u=user,
+                    a=account,
+                    n=name,
+                    m=marker,
+                    e=enabled,
+                )
+            )
+
+        def index_row(user: int, account: int, keywords: list[str]) -> None:
+            folder = _insert(
+                engine,
+                "insert into app.mail_index_folder (user_id, account_id, path, enabled) "
+                "values (:u, :a, 'INBOX', false) returning id",
+                u=user,
+                a=account,
+            )
+            _insert(
+                engine,
+                "insert into app.mail_index_message (folder_id, uid, user_id, received, sender, "
+                "recipients, sender_text, to_text, subject, flags, keywords, size, "
+                "has_attachments) values (:f, 1, :u, now(), '[]', '{}', '', '', '', "
+                "'{\\\\Flagged}', :k, 1, false)",
+                f=folder,
+                u=user,
+                k=keywords,
+            )
+
+        # Stars alone: every account keeps the star.
+        stars = add_user("stars", [1, 2], swipe_left="to_sort", swipe_right="star")
+        add_rule_set(stars, 1, "own star", "star")
+        add_rule_set(stars, None, "all star", "star")
+        add_rule_set(stars, 2, "none", "none")
+        index_row(stars, 1, ["$Forwarded", "$MailroomSorted"])
+        # A keyword account (by its disabled rule set), and a star account beside it.
+        mixed = add_user("mixed", [1, 2, 3], swipe_right="to_sort")
+        add_rule_set(mixed, 1, "own to sort, off", "to_sort", enabled=False)
+        add_rule_set(mixed, 1, "own star beside to sort", "star")
+        add_rule_set(mixed, 2, "own star elsewhere", "star")
+        add_rule_set(mixed, None, "all star across both", "star")
+        # A keyword account by an index row alone, in any case, its folder off the index.
+        indexed = add_user("indexed", [1])
+        index_row(indexed, 1, ["$mailroomSORT"])
+        add_rule_set(indexed, 1, "star where rows are to sort", "star")
+        # To sort for every account, those without keywords or with Run filters off too.
+        every = add_user("every", [1, 2])
+        add_rule_set(every, None, "all to sort", "to_sort")
+        add_rule_set(every, 2, "own star under all to sort", "star")
+        add_rule_set(every, None, "all star under all to sort", "star")
+        # Keyword accounts by a filter that looks at the keyword or sets it, anywhere in its spec.
+        # Accounts and rule sets of different users do not meet.
+        specs = add_user("specs", [1, 2, 3, 4, 5, 6])
+        shop = {"type": "from_contains", "args": {"addr": "shop"}}
+        no_op = {"type": "no_op"}
+        keyword = {"flag": "TO_SORT"}
+        filters = [
+            {"criterion": {"type": "is_to_sort"}, "action": no_op},
+            {"criterion": {"not": {"or": [shop, {"type": "is_not_to_sort"}]}}, "action": no_op},
+            {"criterion": shop, "action": {"seq": [no_op, {"type": "unmark_to_sort"}]}},
+            {"criterion": {"type": "lacks_flag", "args": keyword}, "action": no_op},
+            {"criterion": {"and": [shop, {"type": "has_flag", "args": keyword}]}, "action": no_op},
+            {"criterion": {"type": "has_flag", "args": {"flag": "FLAGGED"}}, "action": no_op},
+        ]
+
+        def add_spec(rule_set: int, spec: object) -> None:
+            _insert(
+                engine,
+                "insert into app.filter (rule_set_id, position, name, spec) "
+                "values (:r, 0, 'F', cast(:s as jsonb))",
+                r=rule_set,
+                s=json.dumps(spec),
+            )
+
+        for account, spec in enumerate(filters, 1):
+            add_spec(add_rule_set(specs, account, f"star, filter {account}", "star"), spec)
+        all_specs = add_user("all specs", [1, 2])
+        add_spec(add_rule_set(all_specs, None, "every, looks at to sort", "none"), filters[0])
+        add_rule_set(all_specs, 2, "own star under it", "star")
+        # No account left: the star, as a later one would keep it.
+        add_rule_set(add_user("none left", []), None, "all star, no account", "star")
+        users = {
+            stars: "stars",
+            mixed: "mixed",
+            indexed: "indexed",
+            every: "every",
+            specs: "specs",
+            all_specs: "all specs",
+        }
+        before = _rows(engine, "select name, marker, enabled from app.rule_set order by id")
+
+        command.upgrade(config, "202611251000")
+
+        kept = _rows(
+            engine, "select user_id, account_id, mark from app.account_handled order by 1, 2"
+        )
+        assert [(users[user], account, mark) for user, account, mark in kept] == [
+            ("mixed", 1, SORT),
+            ("indexed", 1, SORT),
+            ("every", 1, SORT),
+            ("every", 2, SORT),
+            *(("specs", account, SORT) for account in range(1, 6)),
+            ("all specs", 1, SORT),
+            ("all specs", 2, SORT),
+        ]
+        assert dict(_rows(engine, "select name, mark from app.rule_set")) == {
+            "own star": "handled",
+            "all star": "handled",
+            "none": "none",
+            "own to sort, off": "handled",
+            "own star beside to sort": "starred",
+            "own star elsewhere": "handled",
+            "all star across both": "starred",
+            "star where rows are to sort": "starred",
+            "all to sort": "handled",
+            "own star under all to sort": "starred",
+            "all star under all to sort": "starred",
+            **{f"star, filter {account}": "starred" for account in range(1, 6)},
+            "star, filter 6": "handled",
+            "every, looks at to sort": "none",
+            "own star under it": "starred",
+            "all star, no account": "handled",
+        }
+        specs_kept = _rows(engine, "select spec from app.filter order by id")
+        assert specs_kept == [(spec,) for spec in [*filters, filters[0]]]
+        swipes = "select username, appearance from app.user where appearance <> '{}' order by id"
+        assert _rows(engine, swipes) == [
+            ("stars", {"swipe_left": "handled", "swipe_right": "star"}),
+            ("mixed", {"swipe_right": "handled"}),
+        ]
+        # A process of the version before fails, rather than run a marker it does not know on
+        # every message.
+        columns = _rows(
+            engine,
+            "select column_name from information_schema.columns where table_schema = 'app' "
+            "and table_name = 'rule_set' and column_name in ('marker', 'mark')",
+        )
+        assert columns == [("mark",)]
+
+        command.downgrade(config, "202611241400")
+        after = _rows(engine, "select name, marker, enabled from app.rule_set order by id")
+        assert after == before
+        assert ("stars", {"swipe_left": "to_sort", "swipe_right": "star"}) in _rows(engine, swipes)
+
+        # Marks the version before cannot keep wait, disabled: they never fall to the star.
+        command.upgrade(config, "202611251000")
+        with engine.begin() as connection:
+            connection.execute(
+                text("update app.account_handled set mark = 'label:Handled' where user_id = :u"),
+                {"u": every},
+            )
+            connection.execute(
+                text("insert into app.account_handled values (:u, 1, 'keyword:Done')"),
+                {"u": stars},
+            )
+        command.downgrade(config, "202611241400")
+        downgraded = {
+            name: (marker, enabled)
+            for name, marker, enabled in _rows(
+                engine, "select name, marker, enabled from app.rule_set"
+            )
+        }
+        assert downgraded["own star"] == ("to_sort", False)
+        assert downgraded["all star"] == ("to_sort", False)
+        assert downgraded["all to sort"] == ("to_sort", False)
+        assert downgraded["own star under all to sort"] == ("star", True)
+        assert downgraded["own star elsewhere"] == ("star", True)

@@ -21,7 +21,7 @@ from mailroom_core.mail.message_headers import (
     parse_headers,
 )
 from mailroom_core.mail.ref import MessageRef, check_fresh, format_ref, parse_ref
-from mailroom_core.mail.selected import fetch_envelopes, fetch_source
+from mailroom_core.mail.selected import fetch_envelopes, fetch_source, fetched_handled, label_items
 from mailroom_core.mail.structure import MimePart, Structure, analyse_structure
 from mailroom_core.render import (
     Address,
@@ -120,6 +120,8 @@ class MessageView:
     """`""` when absent."""
     message_id: str | None
     flags: frozenset[str]
+    handled: bool
+    """Marked Handled, as its account keeps it."""
     size: int
     body: RenderedBody | None
     """The body part (text/plain, else HTML as text) rendered and windowed; None when the
@@ -206,6 +208,7 @@ def read_message(
         check_fresh(message, context.uid_validity)
         client = context.client
         items = ["ENVELOPE", "FLAGS", "INTERNALDATE", "RFC822.SIZE", FETCH_ITEM]
+        items += label_items(context)
         if raw_headers:
             items.append("BODY.PEEK[HEADER]")
         data, structure = fetch_structure(context, message.uid, items)
@@ -278,6 +281,7 @@ def read_message(
             flags=frozenset(
                 text_value(f) for f in (flags if isinstance(flags, tuple | list) else ())
             ),
+            handled=fetched_handled(context, data),
             size=size if isinstance(size, int) else 0,
             body=body,
             body_format=fmt,

@@ -13,8 +13,6 @@
       "list": "Regole per tutti gli account",
       "add": "Aggiungi una regola per tutti gli account",
       "inboxOnly": "Una regola per tutti gli account smista la posta in arrivo di ciascuno.",
-      "toSortUnsupported": "Da smistare vale per un account solo: una regola per tutti gli account usa la stella.",
-      "toSortUnavailable": "{{label}} (vale per un account solo, non per tutti)",
       "moveToAccountUnavailable": "{{label}} (una regola per tutti gli account agisce anche sull'altro account: metti lo spostamento in una regola di ciascun account)",
       "byRole": "Il cestino di ciascun account",
       "byPath": "Una cartella indicata dal percorso",
@@ -91,20 +89,20 @@
       "trigger": "Quando gira",
       "interval": "Ogni (minuti)",
       "markedOnly": "Solo i messaggi segnati",
-      "markedOnlyHint": "Smista solo i messaggi con il segno qui sotto, e lo toglie a ciascuno una volta gestito: segna un messaggio per farlo smistare.",
+      "markedOnlyHint": "Smista solo i messaggi con il segno qui sotto, e lo toglie a ciascuno una volta che i filtri hanno agito: segna un messaggio per farlo smistare.",
       "marker": "Segno",
       "markers": {
-        "star": "Stella",
-        "to_sort": "Da smistare"
+        "starred": "Stella",
+        "handled": "Gestito"
       },
       "markerHints": {
-        "star": "La stella che usi anche per mettere in evidenza i messaggi.",
-        "to_sort": "Un segno a parte, distinto dalla stella."
+        "starred": "La stella, qualunque sia il segno Gestito dell'account.",
+        "handled": "Ciò che hai segnato come gestito, come lo conserva l'account."
       },
-      "toSortUnsupported": "Il server di posta di questo account non può conservare il segno Da smistare.",
+      "handledUnsupported": "Il server di posta di questo account non può conservare il suo segno Gestito.",
       "markerShort": {
-        "star": "solo con stella",
-        "to_sort": "solo da smistare"
+        "starred": "solo con la stella",
+        "handled": "solo gestiti"
       },
       "enabled": "Abilitata",
       "enabledHint": "Lasciala spenta finché una simulazione non mostra che i suoi filtri fanno ciò che vuoi.",
@@ -148,7 +146,7 @@
       "root": "Condizione",
       "condition": "Condizione {{n}}",
       "typeOf": "Tipo di {{name}}",
-      "toSortUnavailable": "{{label}} (il server di posta di questo account non può conservare il segno Da smistare)",
+      "handledUnavailable": "{{label}} (il server di posta di questo account non può conservare il suo segno Gestito)",
       "noOtherAccount": "{{label}} (aggiungi prima un altro account)",
       "groups": "Gruppi",
       "and": "Tutte queste",
@@ -285,8 +283,10 @@
     "is_unstarred": "Non ha la stella",
     "is_answered": "Ha risposta",
     "is_unanswered": "Non ha risposta",
-    "is_to_sort": "È da smistare",
-    "is_not_to_sort": "Non è da smistare",
+    "is_handled": "È gestito",
+    "is_to_sort": "Ha la keyword Da smistare",
+    "is_not_handled": "Non è gestito",
+    "is_not_to_sort": "Non ha la keyword Da smistare",
     "from_contains": "Mittente contiene",
     "from_is": "Mittente è",
     "from_matches": "Mittente corrisponde (regex)",
@@ -318,8 +318,10 @@
     "mark_as_unanswered": "Segna come senza risposta",
     "star": "Metti la stella",
     "unstar": "Togli la stella",
-    "mark_to_sort": "Segna da smistare",
-    "unmark_to_sort": "Togli da smistare",
+    "mark_handled": "Segna come gestito",
+    "mark_to_sort": "Imposta la keyword Da smistare",
+    "unmark_handled": "Togli Gestito",
+    "unmark_to_sort": "Togli la keyword Da smistare",
     "move_to": "Sposta in",
     "trash": "Sposta nel cestino",
     "junk": "Sposta nella posta indesiderata",
@@ -346,11 +348,12 @@
     "SEEN": "Letto",
     "FLAGGED": "Con stella",
     "ANSWERED": "Con risposta",
-    "TO_SORT": "Da smistare"
+    "TO_SORT": "Keyword Da smistare"
   },
   "filterErrors": {
     "invalidSpec": "Il filtro non è valido: {{message}}",
-    "toSortUnsupported": "Il server di posta di questo account non può conservare il segno Da smistare: usa la stella.",
+    "handledUnsupported": "Il server di posta di questo account non può conservare il suo segno Gestito.",
+    "toSortUnsupported": "Il server di posta di questo account non può conservare la keyword Da smistare: usa Gestito.",
     "runFiltersOff": "Esegui filtri è spento per questo account: prima attivalo negli account.",
     "ruleSetDisabled": "Questa regola è disabilitata: prima abilitala.",
     "notFound": "Non c'è più: potrebbe essere stato rimosso nel frattempo. Ricarica la pagina.",
@@ -380,8 +383,10 @@
     "is_unstarred": "non ha la stella",
     "is_answered": "ha avuto risposta",
     "is_unanswered": "non ha avuto risposta",
-    "is_to_sort": "è da smistare",
-    "is_not_to_sort": "non è da smistare",
+    "is_handled": "è gestito",
+    "is_to_sort": "ha la keyword Da smistare",
+    "is_not_handled": "non è gestito",
+    "is_not_to_sort": "non ha la keyword Da smistare",
     "from_contains": "il mittente contiene “{{addr}}”",
     "from_is": "il mittente è “{{addr}}”",
     "from_matches": "il mittente corrisponde a “{{pattern}}”",
@@ -415,8 +420,10 @@
     "mark_as_unanswered": "segna come non risposto",
     "star": "metti la stella",
     "unstar": "togli la stella",
-    "mark_to_sort": "segna da smistare",
-    "unmark_to_sort": "togli da smistare",
+    "mark_handled": "segna come gestito",
+    "mark_to_sort": "imposta la keyword Da smistare",
+    "unmark_handled": "togli Gestito",
+    "unmark_to_sort": "togli la keyword Da smistare",
     "move_to": "sposta in {{folder}}",
     "trash": "sposta nel cestino",
     "trash_to": "sposta nel cestino ({{folder}})",
@@ -428,7 +435,7 @@
     "SEEN": "è letto",
     "FLAGGED": "ha la stella",
     "ANSWERED": "ha avuto risposta",
-    "TO_SORT": "è da smistare"
+    "TO_SORT": "ha la keyword Da smistare"
   },
   "filterPhraseParts": {
     "quoted": "“{{value}}”",

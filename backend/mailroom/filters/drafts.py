@@ -116,7 +116,7 @@ def search_draft(query: SearchQuery) -> SearchDraft:
             else _criterion("subject_contains", substring=query.subject),
             _flag(query.unread, "is_unread", "is_read"),
             _flag(query.flagged, "is_starred", "is_unstarred"),
-            _flag(query.to_sort, "is_to_sort", "is_not_to_sort"),
+            _flag(query.handled, "is_handled", "is_not_handled"),
         )
         if criterion is not None
     ]

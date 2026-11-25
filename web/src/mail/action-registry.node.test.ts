@@ -16,7 +16,7 @@ import {
 import { NO_TRIAGE_ACTIONS, type TriageActions } from './triage-actions.ts'
 import type { Target } from './triage-context.ts'
 
-const target: Target = { ref: 'r1', account_id: 1, folder: 'INBOX', flags: { seen: true, flagged: false, to_sort: false } }
+const target: Target = { ref: 'r1', account_id: 1, folder: 'INBOX', flags: { seen: true, flagged: false, handled: false } }
 
 function context(actions: Partial<TriageActions> = {}, overrides: Partial<ActionContext> = {}): ActionContext {
   return {
@@ -29,14 +29,14 @@ function context(actions: Partial<TriageActions> = {}, overrides: Partial<Action
   }
 }
 
-/** Every triage action offered, on read targets none of which is starred or To sort. */
+/** Every triage action offered, on read targets none of which is starred or Handled. */
 const offered: Partial<TriageActions> = {
   targets: [target],
   archive: vi.fn(),
   junk: vi.fn(),
   trash: vi.fn(),
   star: { flagged: true, run: vi.fn() },
-  toSort: { toSort: true, unsupported: false, run: vi.fn() },
+  handled: { handled: true, unsupported: false, run: vi.fn() },
   read: { seen: false, run: vi.fn() },
   markUnread: vi.fn(),
   moveChoices: [],
@@ -59,7 +59,7 @@ describe('the action registry', () => {
   })
 
   it('lists both ways of each flag change when every matching message is selected', () => {
-    const both = context({ ...offered, read: { seen: true, run: vi.fn() }, matching: 1200, unstar: vi.fn(), markSorted: vi.fn() })
+    const both = context({ ...offered, read: { seen: true, run: vi.fn() }, matching: 1200, unstar: vi.fn(), unmarkHandled: vi.fn() })
     expect(ids('triage', both)).toEqual([
       'archive',
       'reportSpam',
@@ -68,8 +68,8 @@ describe('the action registry', () => {
       'moveToAccount',
       'star',
       'unstar',
-      'toSort',
-      'markSorted',
+      'handled',
+      'unmarkHandled',
       'markRead',
       'markUnread',
     ])
@@ -90,26 +90,26 @@ describe('the action registry', () => {
       'move',
       'moveToAccount',
       'star',
-      'toSort',
+      'handled',
       'markUnread',
     ])
     expect(ids('triage', context({ ...offered, archive: null, junk: null, otherAccounts: null, read: { seen: true, run: vi.fn() } }))).toEqual([
       'trash',
       'move',
       'star',
-      'toSort',
+      'handled',
       'markRead',
     ])
   })
 
   it('names the toggles by what they set', () => {
-    const starred = context({ ...offered, star: { flagged: false, run: vi.fn() }, toSort: { toSort: false, unsupported: false, run: vi.fn() } })
+    const starred = context({ ...offered, star: { flagged: false, run: vi.fn() }, handled: { handled: false, unsupported: false, run: vi.fn() } })
     const label = (id: string, each: ActionContext): string | undefined =>
       MAIL_ACTIONS.find((action) => action.id === id)?.label(each)
     expect(label('star', context(offered))).toBe('triage.star')
     expect(label('star', starred)).toBe('triage.unstar')
-    expect(label('toSort', context(offered))).toBe('triage.toSort')
-    expect(label('toSort', starred)).toBe('triage.sorted')
+    expect(label('handled', context(offered))).toBe('triage.markHandled')
+    expect(label('handled', starred)).toBe('triage.unmarkHandled')
   })
 
   it('offers a reply only on a message, and a new message only on an account', () => {
@@ -180,7 +180,7 @@ describe('the action registry', () => {
     expect(shortcutAction('e', context(offered), { busy: true, composing: false })).toBeUndefined()
     // `u` marks unread even where the toolbar offers Mark as read.
     expect(shortcutAction('u', context({ ...offered, read: { seen: true, run: vi.fn() } }), idle)?.id).toBe('markUnread')
-    expect(shortcutAction('t', context({ ...offered, toSort: { toSort: true, unsupported: true, run: vi.fn() } }), idle)).toBeUndefined()
+    expect(shortcutAction('t', context({ ...offered, handled: { handled: true, unsupported: true, run: vi.fn() } }), idle)).toBeUndefined()
 
     const replying = context({}, { message: target, account: 1 })
     expect(shortcutAction('r', replying, idle)?.id).toBe('reply')

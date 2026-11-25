@@ -12,10 +12,11 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Annotated, Any, Final, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, BeforeValidator, Field, field_validator
 from sqlalchemy import func, or_, select
 
 from mailroom.accounts import app_data
+from mailroom.accounts.handled import handled_mark
 from mailroom.accounts.service import Via, require_account
 from mailroom.errors import Refusal, mail_refusal
 from mailroom.filters.providers import covers_public_provider, names_public_provider
@@ -43,12 +44,17 @@ if TYPE_CHECKING:
 
     from mailroom.context import AppContext
     from mailroom.errors import RefusalKind
+    from mailroom_core.mail import HandledMark
 
 logger = logging.getLogger(__name__)
 
 Trigger = Literal["new_mail", "scheduled", "manual"]
-Marker = Literal["none", "star", "to_sort"]
-"""The mark a rule set limits itself to, cleared once a message is handled (``RuleSet.marker``)."""
+Marker = Annotated[
+    Literal["none", "starred", "handled"],
+    BeforeValidator(lambda value: "starred" if value == "star" else value),
+]
+"""The mark a rule set limits itself to, cleared once its filters acted (``RuleSet.marker``);
+``star`` is what ``starred`` was called, taken from a client that has not read the new names."""
 Segment = Annotated[str, Field(min_length=1, max_length=255, pattern=r"^[^\x00-\x1f\x7f]+$")]
 Name = Annotated[str, Field(min_length=1, max_length=200)]
 IntervalMinutes = Annotated[int, Field(ge=1, le=7 * 24 * 60)]
@@ -75,7 +81,7 @@ class RuleSetFields(BaseModel):
     interval_minutes: IntervalMinutes | None = None
     """``scheduled`` only, and required there."""
     marker: Marker = "none"
-    """``to_sort`` only on an account whose server keeps keywords (``to_sort_unsupported``)."""
+    """``handled`` only where the account's server can keep its mark (``handled_unsupported``)."""
     enabled: bool = False
 
 
@@ -270,43 +276,84 @@ def check_schedule(trigger: str, interval_minutes: int | None) -> None:
         raise Refusal("invalid", "invalid_rule_set", msg)
 
 
-def check_marker(ctx: AppContext, user_id: int, account_id: int, via: Via) -> None:
-    """Refuse To sort (``to_sort_unsupported``) on an account whose server keeps no keywords; a
-    mailbox failure while asking is refused as the mail client's."""
+def check_mark(ctx: AppContext, user_id: int, account_id: int, mark: HandledMark, via: Via) -> None:
+    """Refuse (``handled_unsupported``) a Handled mark the account's server cannot keep; a mailbox
+    failure while asking is refused as the mail client's. The star is kept by every server."""
+    if mark.kind == "keyword" and not mail_service.keywords(ctx, user_id, account_id, via=via):
+        msg = "This account's server keeps no keywords, so it cannot keep Handled as one."
+        raise Refusal("invalid", "handled_unsupported", msg)
+    if mark.kind == "label" and not mail_service.gmail(ctx, user_id, account_id, via=via):
+        msg = "Only Gmail keeps labels, so this account cannot keep Handled as one."
+        raise Refusal("invalid", "handled_unsupported", msg)
+
+
+def check_handled_kept(
+    ctx: AppContext, db: Session, user_id: int, account_id: int | None, via: Via
+) -> None:
+    """Refuse (``check_mark``) Handled, as a marker or an action, on an account whose server cannot
+    keep it as the account does. One for all accounts takes it: where a server cannot keep it,
+    it matches nothing there, and a filter marking it fails there."""
+    if account_id is None:
+        return
+    mark = handled_mark(db, user_id, account_id)
+    # Not idle in a transaction, a row locked, while the mailbox answers.
+    db.commit()
+    check_mark(ctx, user_id, account_id, mark, via)
+
+
+def check_to_sort(ctx: AppContext, user_id: int, account_id: int, via: Via) -> None:
+    """Refuse a To sort action (``to_sort_unsupported``) on an account whose server keeps no
+    keywords; a mailbox failure while asking is refused as the mail client's."""
     if not mail_service.keywords(ctx, user_id, account_id, via=via):
-        msg = "This account's server cannot keep the To sort mark: use the star instead."
+        msg = "This account's server cannot keep the To sort keyword: use Handled instead."
         raise Refusal("invalid", "to_sort_unsupported", msg)
 
 
 _TO_SORT_ACTIONS: Final = frozenset({"mark_to_sort", "unmark_to_sort"})
+_HANDLED_ACTIONS: Final = frozenset({"mark_handled", "unmark_handled"})
 
 
-def marks_to_sort(spec: object) -> bool:
-    """Whether a filter spec's action marks or unmarks To sort: refused, as the marker, on an
-    account whose server keeps no keywords (its criteria only match nothing there)."""
-
-    def acts(node: object) -> bool:
-        if isinstance(node, list):
-            return any(acts(each) for each in node)
-        if isinstance(node, dict):
-            return node.get("type") in _TO_SORT_ACTIONS or any(acts(v) for v in node.values())
-        return False
-
-    return isinstance(spec, dict) and acts(spec.get("action"))
+def has_node(node: object, types: frozenset[str]) -> bool:
+    """Whether a node of one of ``types`` is anywhere in ``node``, a filter spec or a part."""
+    if isinstance(node, list):
+        return any(has_node(each, types) for each in node)
+    if isinstance(node, dict):
+        return node.get("type") in types or any(has_node(v, types) for v in node.values())
+    return False
 
 
-def _check_to_sort_actions(
-    ctx: AppContext, db: Session, user_id: int, account_id: int | None, via: Via
+def _marking(spec: Spec, stored: Spec | None = None) -> frozenset[str]:
+    """Those of the actions that mark To sort or Handled which ``spec`` has and ``stored``, the
+    filter's own spec before, did not: refused, as a Handled marker is, on an account whose
+    server cannot keep them (their criteria only match nothing there)."""
+    before = {} if stored is None else stored.get("action")
+    return frozenset(
+        kind
+        for kinds in (_TO_SORT_ACTIONS, _HANDLED_ACTIONS)
+        if has_node(spec.get("action"), kinds) and not has_node(before, kinds)
+        for kind in kinds
+    )
+
+
+def _check_marking(
+    ctx: AppContext,
+    db: Session,
+    user_id: int,
+    account_id: int | None,
+    marking: frozenset[str],
+    via: Via,
 ) -> None:
-    if account_id is None:
-        raise _to_sort_all_accounts()
-    # Not idle in a transaction, the row locked, while the mailbox answers.
-    db.commit()
-    check_marker(ctx, user_id, account_id, via)
+    if marking & _HANDLED_ACTIONS:
+        check_handled_kept(ctx, db, user_id, account_id, via)
+    if marking & _TO_SORT_ACTIONS:
+        if account_id is None:
+            raise _to_sort_all_accounts()
+        db.commit()  # as above
+        check_to_sort(ctx, user_id, account_id, via)
 
 
 def _to_sort_all_accounts() -> Refusal:
-    msg = "To sort is kept per account: a rule set for all accounts takes the star instead."
+    msg = "To sort is kept per account: a rule set for all accounts takes Handled instead."
     return Refusal("invalid", "to_sort_unsupported", msg)
 
 
@@ -381,10 +428,14 @@ def checked_spec(spec: Spec, *, stored: Spec | None = None) -> Spec:
 def account_folders(ctx: AppContext, user_id: int, account_id: int) -> list[list[str]]:
     """The account's selectable folders, each as its path segments split on the server's
     delimiter (``["Archive", "2026"]``), in mailroom-core's order: ``mailroom.mail.service``'s
-    listing, under the mail pool's gates and deadline, as MCP's ``folders_list`` gives them."""
+    listing, under the mail pool's gates and deadline, as MCP's ``folders_list`` gives them;
+    without the label Handled is kept as."""
     require_account(ctx, user_id, account_id)  # a plain 404, as the filters' other routes
     listed = mail_service.folders(ctx, user_id, account_id, counts=False)
-    return [mail_service.folder_segments(folder) for folder in listed]
+    with ctx.session_maker() as db:
+        mark = handled_mark(db, user_id, account_id)
+    label = mark.name if mark.kind == "label" else None
+    return [mail_service.folder_segments(folder) for folder in listed if folder.path != label]
 
 
 def run_filters(ctx: AppContext, db: Session, user_id: int, account_id: int) -> bool:
@@ -475,8 +526,8 @@ def add_rule_set(
     via: Via = "web",
 ) -> RuleSetDetail:
     """A rule set on a folder of the account, or on INBOX of every account (``ALL_ACCOUNTS``:
-    ``all_accounts_inbox_only`` for another folder, ``to_sort_unsupported`` for the To sort
-    marker)."""
+    ``all_accounts_inbox_only`` for another folder). A ``handled`` marker is checked
+    (``check_handled_kept``)."""
     account_id = account if isinstance(account, int) else None
     if account_id is not None:
         require_account(ctx, user_id, account_id)
@@ -486,10 +537,8 @@ def add_rule_set(
     values = fields.model_dump()
     if account_id is None:
         values["folder"] = _inbox_only(fields.folder)
-        if fields.marker == "to_sort":
-            raise _to_sort_all_accounts()
-    elif fields.marker == "to_sort":
-        check_marker(ctx, user_id, account_id, via)
+    if fields.marker == "handled":
+        check_handled_kept(ctx, db, user_id, account_id, via)
     rule_set = RuleSet(user_id=user_id, account_id=account_id, **values)
     db.add(rule_set)
     db.commit()
@@ -515,18 +564,14 @@ def change_rule_set(
 ) -> RuleSetOut:
     """Change the fields ``patch`` sets (a None one stays, but for ``interval_minutes``).
     ``disabled_only``: refuse an enabled rule set (``refuse_enabled``). A marker changed to
-    ``to_sort``, and an all-accounts rule set's folder, are checked as a new rule set's are;
+    ``handled``, and an all-accounts rule set's folder, are checked as a new rule set's are;
     turning it on checks its filters' moves to another account again (``check_targets``) and
     clears its ``disabled_reason``."""
-    if patch.marker == "to_sort":
+    if patch.marker == "handled":
         current = _owned_for_change(ctx, db, user_id, rule_set_id, disabled_only=disabled_only)
         account_id, marker = current.account_id, current.marker
-        # Not idle in a transaction, the row locked, while the mailbox answers.
-        db.commit()
-        if marker != "to_sort":
-            if account_id is None:
-                raise _to_sort_all_accounts()
-            check_marker(ctx, user_id, account_id, via)
+        if marker != "handled":
+            check_handled_kept(ctx, db, user_id, account_id, via)
     rule_set = _owned_for_change(ctx, db, user_id, rule_set_id, disabled_only=disabled_only)
     changes = patch.model_dump(exclude_unset=True)
     for field in ("name", "folder", "trigger", "marker", "enabled"):
@@ -581,14 +626,15 @@ def add_filter(
     disabled_only: bool = False,
     via: Via = "web",
 ) -> FilterOut:
-    """Add a filter after the rule set's last one. One that marks or unmarks To sort is checked
-    as a To sort marker is (``check_marker``); one that moves to another account, its target
-    (``check_targets``)."""
+    """Add a filter after the rule set's last one. One that marks or unmarks Handled is checked
+    as a Handled marker is (``check_handled_kept``), To sort likewise; one that moves to another
+    account, its target (``check_targets``)."""
     rule_set = _owned_for_change(ctx, db, user_id, rule_set_id, disabled_only=disabled_only)
     spec = checked_spec(fields.spec)
     check_targets(ctx.accounts(user_id), spec, rule_set.account_id)
-    if marks_to_sort(spec):
-        _check_to_sort_actions(ctx, db, user_id, rule_set.account_id, via)
+    marking = _marking(spec)
+    if marking:
+        _check_marking(ctx, db, user_id, rule_set.account_id, marking, via)
         rule_set = _owned_for_change(ctx, db, user_id, rule_set_id, disabled_only=disabled_only)
     count, last = db.execute(
         select(func.count(), func.max(Filter.position)).where(Filter.rule_set_id == rule_set.id)
@@ -620,17 +666,18 @@ def change_filter(
     disabled_only: bool = False,
     via: Via = "web",
 ) -> FilterOut:
-    """Change the fields ``patch`` sets (a None one stays). A spec changed to mark or unmark To
-    sort, or to move to another account, is checked as a new filter's is; so is the spec of a
-    filter turned on, whose target may have gone while it was off."""
+    """Change the fields ``patch`` sets (a None one stays). A spec changed to mark or unmark
+    Handled or To sort, or to move to another account, is checked as a new filter's is; so is the
+    spec of a filter turned on, whose target may have gone while it was off."""
     row, rule_set = owned_filter(ctx, db, user_id, filter_id)
     if disabled_only:
         refuse_enabled(rule_set)
     spec = None if patch.spec is None else checked_spec(patch.spec, stored=row.spec)
     if spec is not None or (patch.enabled and not row.enabled):
         check_targets(ctx.accounts(user_id), spec or row.spec, rule_set.account_id)
-    if spec is not None and marks_to_sort(spec) and not marks_to_sort(row.spec):
-        _check_to_sort_actions(ctx, db, user_id, rule_set.account_id, via)
+    marking = frozenset() if spec is None else _marking(spec, row.spec)
+    if marking:
+        _check_marking(ctx, db, user_id, rule_set.account_id, marking, via)
         row, rule_set = owned_filter(ctx, db, user_id, filter_id)
         if disabled_only:
             refuse_enabled(rule_set)

@@ -15,8 +15,10 @@ from mailroom_core.filters.actions.flags import (
     MarkAsRead,
     MarkAsUnanswered,
     MarkAsUnread,
+    MarkHandled,
     MarkToSort,
     Star,
+    UnmarkHandled,
     UnmarkToSort,
     Unstar,
 )
@@ -45,6 +47,8 @@ from mailroom_core.filters.criteria.date import OlderThan, OlderThanDays
 from mailroom_core.filters.criteria.flags import (
     HasFlag,
     IsAnswered,
+    IsHandled,
+    IsNotHandled,
     IsNotToSort,
     IsRead,
     IsStarred,
@@ -75,7 +79,14 @@ from mailroom_core.filters.report import (
     TransferredMessage,
     TransferReport,
 )
-from mailroom_core.filters.runner import Rules, RunRulesError, marked_only, monitor, run_rules
+from mailroom_core.filters.runner import (
+    Marker,
+    Rules,
+    RunRulesError,
+    marked_only,
+    monitor,
+    run_rules,
+)
 from mailroom_core.filters.selected import Selected
 from mailroom_core.filters.spec import (
     NotSerializableError,
@@ -120,6 +131,8 @@ __all__ = [
     "If",
     "InThread",
     "IsAnswered",
+    "IsHandled",
+    "IsNotHandled",
     "IsNotToSort",
     "IsRead",
     "IsStarred",
@@ -134,7 +147,9 @@ __all__ = [
     "MarkAsRead",
     "MarkAsUnanswered",
     "MarkAsUnread",
+    "MarkHandled",
     "MarkToSort",
+    "Marker",
     "MatchTimeoutError",
     "Message",
     "MessageSummary",
@@ -164,6 +179,7 @@ __all__ = [
     "TransferReport",
     "TransferredMessage",
     "Trash",
+    "UnmarkHandled",
     "UnmarkToSort",
     "Unstar",
     "get_match_timeout",

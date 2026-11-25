@@ -1,6 +1,6 @@
 """Each user's mail accounts: list, add, edit, remove, test the login, read the quota and the
-servers' keywords, keep each identity's signature and the account's vacation reply. Only the
-signed-in user's own: another user's account id is a 404."""
+servers' keywords, choose what it keeps Handled as, keep each identity's signature and the
+account's vacation reply. Only the signed-in user's own: another user's account id is a 404."""
 
 from __future__ import annotations
 
@@ -24,8 +24,10 @@ from mailroom.accounts.service import (
 from mailroom.api.deps import AccountId, Context, CurrentUser, DbSession
 from mailroom.api.token_access import ACCOUNT_GROUPS, open_to_tokens
 from mailroom.errors import Refusal
+from mailroom.filters.handled import HandledSetting, change_handled, handled_setting
 from mailroom.mail import service as mail
 from mailroom.mail import signatures, vacation
+from mailroom_core.mail import MAX_HANDLED_NAME
 
 if TYPE_CHECKING:
     from mailroom_core.mail import QuotaUsage
@@ -78,7 +80,7 @@ class LoginTest(BaseModel):
 class AccountKeywords(BaseModel):
     account_id: int
     keywords: bool | None
-    """Whether the account's server keeps keywords, so messages can be marked To sort (never on
+    """Whether the account's server keeps keywords, so Handled can be kept as one (never on
     Gmail); null when not known: it cannot log in, failed lately or did not answer in time."""
 
 
@@ -116,6 +118,15 @@ class SignatureChange(BaseModel):
     address: str = Field(max_length=320)
     html: str = Field(max_length=signatures.MAX_SIGNATURE_CHARS)
     """Without text: the signature is removed."""
+
+
+class HandledChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mark: str = Field(max_length=MAX_HANDLED_NAME + 16)
+    """``star``, ``keyword:<name>`` or ``label:<name>``."""
+    rule_sets: list[int] = Field(default=[], max_length=1000)
+    """The rule sets whose meaning changes, as the user was shown them."""
 
 
 class VacationReply(BaseModel):
@@ -260,6 +271,23 @@ def account_quota(
         storage=None if found is None else Usage.of(found.storage),
         messages=None if found is None else Usage.of(found.messages),
     )
+
+
+@accounts_router.get("/{account_id}/handled")
+def account_handled(
+    account_id: AccountId, ctx: Context, db: DbSession, user: CurrentUser
+) -> HandledSetting:
+    """What the account keeps the Handled mark as, and the rule sets whose meaning follows it."""
+    return handled_setting(ctx, db, user.id, account_id)
+
+
+@accounts_router.put("/{account_id}/handled")
+def change_account_handled(
+    account_id: AccountId, body: HandledChange, ctx: Context, db: DbSession, user: CurrentUser
+) -> HandledSetting:
+    """Keep the Handled mark as ``mark``: ``handled_unsupported`` (400) where its server cannot,
+    ``handled_rule_sets`` (409) unless ``rule_sets`` names every rule set whose meaning changes."""
+    return change_handled(ctx, db, user.id, account_id, body.mark, body.rule_sets)
 
 
 @accounts_router.get("/{account_id}/signatures")

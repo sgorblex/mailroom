@@ -13,14 +13,23 @@ from datetime import date
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
+from mailroom.accounts.handled import store_handled_mark
 from mailroom.mail.index import writes
-from mailroom.models import MailIndexFolder
+from mailroom.models import MailIndexFolder, MailIndexMessage
 from mailroom.worker import tasks
 from mailroom.worker.app import PROCRASTINATE_SCHEMA
-from mailroom_core.mail import AuditItem, GroupResult, MailError, MessageRef, format_ref
+from mailroom_core.mail import (
+    AuditItem,
+    GroupResult,
+    HandledMark,
+    MailError,
+    MessageRef,
+    format_ref,
+    parse_handled,
+)
 from mailroom_core.testing import create_folders, mime, raw_client, seed
 from tests.test_api_compose import MAIL, Composer, address
 from tests.test_filter_runner import add_account
@@ -167,8 +176,9 @@ def test_a_flag_change_sets_the_flags_asked(
     db_session: Session, sessions: sessionmaker[Session], user: User, account: int
 ) -> None:
     inbox = folder(db_session, user, account, "INBOX", (1, 2, 3))
+    store_handled_mark(db_session, user.id, account, HandledMark("keyword", "$MailroomSort"))
     items = [
-        AuditItem(account=account, folder="INBOX", uid=uid, seen=True, to_sort=True, result="ok")
+        AuditItem(account=account, folder="INBOX", uid=uid, seen=True, handled=True, result="ok")
         for uid in (1, 2)
     ]
     writes.organized(
@@ -189,6 +199,39 @@ def test_a_flag_change_sets_the_flags_asked(
     writes.organized(sessions, user.id, [unread], [], refs=[ref(account, "INBOX", 1)])
     assert stored(db_session, inbox)[1] == ("s1", [], ["$MailroomSort"])
     assert queued(db_session) == []
+
+
+@pytest.mark.parametrize(
+    ("mark", "flags", "labels"),
+    [("star", ["\\Flagged"], ["\\Inbox"]), ("label:Handled", [], ["\\Inbox", "Handled"])],
+)
+def test_a_handled_mark_is_indexed_as_the_account_keeps_it(
+    db_session: Session,
+    sessions: sessionmaker[Session],
+    user: User,
+    account: int,
+    mark: str,
+    flags: list[str],
+    labels: list[str],
+) -> None:
+    path = "[Gmail]/All Mail"
+    folder_id = folder(db_session, user, account, path, (1,))
+    message = db_session.scalars(
+        select(MailIndexMessage).where(MailIndexMessage.folder_id == folder_id)
+    ).one()
+    message.labels = ["\\Inbox"]
+    store_handled_mark(db_session, user.id, account, parse_handled(mark))
+    db_session.commit()
+
+    def flag(handled: bool) -> tuple[list[str], list[str]]:
+        item = AuditItem(account=account, folder=path, uid=1, handled=handled, result="ok")
+        writes.organized(sessions, user.id, [item], [], refs=[ref(account, path, 1)])
+        db_session.refresh(message)
+        return message.flags, message.labels
+
+    assert flag(True) == (flags, labels)
+    assert flag(True) == (flags, labels)
+    assert flag(False) == ([], ["\\Inbox"])
 
 
 def test_a_bulk_call_changes_the_rows_and_syncs_them_again(

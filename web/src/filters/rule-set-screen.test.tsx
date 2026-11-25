@@ -430,24 +430,24 @@ describe('RuleSetScreen', () => {
     })
   })
 
-  it('keeps To sort on a rule set that has it, though the server now keeps no keywords', async () => {
-    const fake = state({ accounts: [{ id: WORK, run_filters: true, keywords: false }] })
+  it('keeps Handled on a rule set that has it, though the server cannot keep it', async () => {
+    const fake = state({ accounts: [{ id: WORK, run_filters: true, handled: 'keyword:$MailroomSort', keywords: false }] })
     for (const ruleSet of fake.ruleSets) {
-      ruleSet.marker = 'to_sort'
+      ruleSet.marker = 'handled'
     }
     const fetchMock = stubFiltersApi(fake)
     renderFiltersApp('/filters/1')
 
-    expect(await screen.findByText('work · INBOX · on new mail · to sort only · enabled')).toBeInTheDocument()
+    expect(await screen.findByText('work · INBOX · on new mail · Handled only · enabled')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Edit settings' }))
     const form = screen.getByRole('form', { name: 'Edit Inbox sorting' })
     expect(within(form).getByLabelText('Only marked messages')).toBeChecked()
-    expect(within(form).getByLabelText('To sort')).toBeEnabled()
+    expect(within(form).getByLabelText('Handled')).toBeEnabled()
     await userEvent.click(within(form).getByLabelText('Star'))
     await userEvent.click(within(form).getByRole('button', { name: 'Save' }))
 
     expect(await screen.findByText('work · INBOX · on new mail · starred only · enabled')).toBeInTheDocument()
-    expect(sentBody(fetchMock, 'PATCH', '/api/v1/rule-sets/1')).toMatchObject({ marker: 'star' })
+    expect(sentBody(fetchMock, 'PATCH', '/api/v1/rule-sets/1')).toMatchObject({ marker: 'starred' })
   })
 
   it('moves to a folder of another account, picked once the account is', async () => {
@@ -582,17 +582,36 @@ describe('RuleSetScreen', () => {
     )
   })
 
-  it('greys out the To sort actions where the server keeps no keywords', async () => {
-    stubFiltersApi(state({ accounts: [{ id: WORK, run_filters: true, keywords: false }] }))
+  it('greys out the Handled actions where the server cannot keep the mark', async () => {
+    stubFiltersApi(state({ accounts: [{ id: WORK, run_filters: true, handled: 'keyword:$MailroomSort', keywords: false }] }))
     renderFiltersApp('/filters/1')
 
     await userEvent.click(await screen.findByRole('button', { name: 'Add a filter' }))
     const form = screen.getByRole('form', { name: 'Add a filter' })
     const type = within(within(form).getByRole('group', { name: 'Action 1' })).getByLabelText('Type of Action 1')
-    const reason = "(this account's mail server cannot keep the To sort mark)"
-    expect(within(type).getByRole('option', { name: `Mark to sort ${reason}` })).toBeDisabled()
-    expect(within(type).getByRole('option', { name: `Clear to sort ${reason}` })).toBeDisabled()
+    const reason = "(this account's mail server cannot keep its Handled mark)"
+    expect(within(type).getByRole('option', { name: `Mark Handled ${reason}` })).toBeDisabled()
+    expect(within(type).getByRole('option', { name: `Clear Handled ${reason}` })).toBeDisabled()
     expect(within(type).getByRole('option', { name: 'Star' })).toBeEnabled()
+  })
+
+  it('shows a filter’s own To sort, which no other is offered', async () => {
+    const filter = { criterion: { type: 'is_to_sort' }, action: { type: 'mark_to_sort' } }
+    const fake = state()
+    const [first] = fake.filters
+    if (first === undefined) {
+      throw new Error('no filter')
+    }
+    fake.filters = [{ ...first, name: 'Old', spec: filter }]
+    stubFiltersApi(fake)
+    renderFiltersApp('/filters/1')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit Old' }))
+    const form = screen.getByRole('form', { name: 'Edit Old' })
+    expect(within(form).getByRole('option', { name: 'Has the To sort keyword', selected: true })).toBeInTheDocument()
+    expect(within(form).getByRole('option', { name: 'Set the To sort keyword', selected: true })).toBeInTheDocument()
+    expect(within(form).queryByRole('option', { name: 'Lacks the To sort keyword' })).not.toBeInTheDocument()
+    expect(within(form).getByRole('option', { name: 'Is Handled' })).toBeInTheDocument()
   })
 
   it('shows mail content as text, never as markup', async () => {

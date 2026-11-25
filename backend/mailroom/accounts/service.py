@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Final, Literal
 from pydantic import BaseModel, Field
 
 from mailroom.accounts import app_data
+from mailroom.accounts.handled import handled_mark, handled_marks
 from mailroom.accounts.store import (
     ACCOUNT_NAME_TAKEN,
     AccountError,
@@ -28,7 +29,7 @@ from mailroom.mail.connections import (
 )
 from mailroom.mail.pool import DeadlineExceeded
 from mailroom_core.config import AccountColour
-from mailroom_core.mail import MESSAGES, MailError
+from mailroom_core.mail import MESSAGES, STAR, MailError
 from mailroom_core.mail import move_cap as core_move_cap
 from mailroom_core.store import RevisionConflict, SettingsBusy
 
@@ -40,6 +41,7 @@ if TYPE_CHECKING:
     from mailroom.context import AppContext
     from mailroom_core.config import AccountConfig, Limits
     from mailroom_core.crypto import SecretsSubkey
+    from mailroom_core.mail import HandledMark
     from mailroom_core.store import Json
 
 logger = logging.getLogger(__name__)
@@ -97,8 +99,11 @@ class ListedAccount(StoredAccount):
     """The user's limit on a written message's attachments, at most ``ATTACHMENT_MAX_MB``."""
     max_recipients: int
     """The user's limit on To, Cc and Bcc together."""
+    handled: str = "star"
+    """What the account keeps the Handled mark as: ``star``, ``keyword:<name>`` or
+    ``label:<name>``."""
     keywords: bool | None = None
-    """Whether the account's server keeps keywords, so messages can be marked To sort (never on
+    """Whether the account's server keeps keywords, so Handled can be kept as one (never on
     Gmail); None when not known: not asked (the REST listing and an answer to a change, which
     leave it to ``/accounts/keywords``), or the server did not answer the MCP listing."""
 
@@ -112,6 +117,7 @@ AGENT_ACCOUNT_FIELDS: Final = {
     "run_filters",
     "send_mode",
     "identities",
+    "handled",
     "keywords",
 }
 """What an agent is given of an account: never its servers, nor whom it sends to unasked."""
@@ -176,6 +182,7 @@ def _listed(
     *,
     has_password: bool,
     run_filters: bool | None,
+    handled: HandledMark = STAR,
     keywords: bool | None = None,
 ) -> ListedAccount:
     return ListedAccount.model_validate(
@@ -186,6 +193,7 @@ def _listed(
             "run_filters": run_filters,
             "attachment_max_mb": attachment_limit_mb(limits),
             "max_recipients": limits.max_recipients,
+            "handled": str(handled),
             "keywords": keywords,
         }
     )
@@ -221,12 +229,14 @@ def listed_accounts(
     passwords = accounts_with_password(store)
     by_account = _run_filters_by_account(ctx, db, user_id)
     settings = ctx.accounts(user_id).settings
+    marks = handled_marks(db, user_id)
     return [
         _listed(
             account,
             settings.limits,
             has_password=account.id in passwords,
             run_filters=_switch(by_account, account.id),
+            handled=marks.get(account.id, STAR),
             keywords=None if keywords is None else keywords.get(account.id),
         )
         for account in settings.account
@@ -295,6 +305,7 @@ def change_account(
         load_accounts(store).settings.limits,
         has_password=account_id in accounts_with_password(store),
         run_filters=_switch(by_account, account_id),
+        handled=handled_mark(db, user_id, account_id),
     )
 
 

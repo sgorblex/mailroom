@@ -13,8 +13,6 @@
       "list": "Rule sets for all accounts",
       "add": "Add a rule set for all accounts",
       "inboxOnly": "A rule set for all accounts sorts each account's inbox.",
-      "toSortUnsupported": "To sort is kept per account: a rule set for all accounts takes the star.",
-      "toSortUnavailable": "{{label}} (kept per account, not for all accounts)",
       "moveToAccountUnavailable": "{{label}} (a rule set for all accounts also runs on the other account: put the move in a rule set of each account)",
       "byRole": "Each account's own trash",
       "byPath": "A folder by its path",
@@ -91,20 +89,20 @@
       "trigger": "Runs",
       "interval": "Every (minutes)",
       "markedOnly": "Only marked messages",
-      "markedOnlyHint": "Only messages with the mark below are sorted, and each loses it once handled: mark a message to have it sorted.",
+      "markedOnlyHint": "Only messages with the mark below are sorted, and each loses it once its filters acted: mark a message to have it sorted.",
       "marker": "Mark",
       "markers": {
-        "star": "Star",
-        "to_sort": "To sort"
+        "starred": "Star",
+        "handled": "Handled"
       },
       "markerHints": {
-        "star": "The star you also use to pick out messages.",
-        "to_sort": "A mark of its own, kept apart from the star."
+        "starred": "The star, whatever the account keeps Handled as.",
+        "handled": "What you marked as dealt with, as the account keeps it."
       },
-      "toSortUnsupported": "This account's mail server cannot keep the To sort mark.",
+      "handledUnsupported": "This account's mail server cannot keep its Handled mark.",
       "markerShort": {
-        "star": "starred only",
-        "to_sort": "to sort only"
+        "starred": "starred only",
+        "handled": "Handled only"
       },
       "enabled": "Enabled",
       "enabledHint": "Leave it off until a dry run shows its filters do what you want.",
@@ -148,7 +146,7 @@
       "root": "Condition",
       "condition": "Condition {{n}}",
       "typeOf": "Type of {{name}}",
-      "toSortUnavailable": "{{label}} (this account's mail server cannot keep the To sort mark)",
+      "handledUnavailable": "{{label}} (this account's mail server cannot keep its Handled mark)",
       "noOtherAccount": "{{label}} (add another account first)",
       "groups": "Groups",
       "and": "All of these",
@@ -285,8 +283,10 @@
     "is_unstarred": "Is not starred",
     "is_answered": "Is answered",
     "is_unanswered": "Is not answered",
-    "is_to_sort": "Is to sort",
-    "is_not_to_sort": "Is not to sort",
+    "is_handled": "Is Handled",
+    "is_to_sort": "Has the To sort keyword",
+    "is_not_handled": "Is not Handled",
+    "is_not_to_sort": "Lacks the To sort keyword",
     "from_contains": "From contains",
     "from_is": "From is",
     "from_matches": "From matches (regex)",
@@ -318,8 +318,10 @@
     "mark_as_unanswered": "Mark as not answered",
     "star": "Star",
     "unstar": "Unstar",
-    "mark_to_sort": "Mark to sort",
-    "unmark_to_sort": "Clear to sort",
+    "mark_handled": "Mark Handled",
+    "mark_to_sort": "Set the To sort keyword",
+    "unmark_handled": "Clear Handled",
+    "unmark_to_sort": "Clear the To sort keyword",
     "move_to": "Move to",
     "trash": "Move to the trash",
     "junk": "Move to junk",
@@ -346,11 +348,12 @@
     "SEEN": "Read",
     "FLAGGED": "Starred",
     "ANSWERED": "Answered",
-    "TO_SORT": "To sort"
+    "TO_SORT": "To sort keyword"
   },
   "filterErrors": {
     "invalidSpec": "The filter is not valid: {{message}}",
-    "toSortUnsupported": "This account's mail server cannot keep the To sort mark: use the star instead.",
+    "handledUnsupported": "This account's mail server cannot keep its Handled mark.",
+    "toSortUnsupported": "This account's mail server cannot keep the To sort keyword: use Handled instead.",
     "runFiltersOff": "Run filters is off for this account: turn it on in Accounts first.",
     "ruleSetDisabled": "This rule set is disabled: enable it first.",
     "notFound": "It is not there any more: it may have been removed meanwhile. Reload the page.",
@@ -380,8 +383,10 @@
     "is_unstarred": "not starred",
     "is_answered": "answered",
     "is_unanswered": "not answered",
-    "is_to_sort": "to sort",
-    "is_not_to_sort": "not to sort",
+    "is_handled": "Handled",
+    "is_to_sort": "has the To sort keyword",
+    "is_not_handled": "not Handled",
+    "is_not_to_sort": "lacks the To sort keyword",
     "from_contains": "the sender contains “{{addr}}”",
     "from_is": "the sender is “{{addr}}”",
     "from_matches": "the sender matches “{{pattern}}”",
@@ -415,8 +420,10 @@
     "mark_as_unanswered": "mark as not answered",
     "star": "star",
     "unstar": "unstar",
-    "mark_to_sort": "mark to sort",
-    "unmark_to_sort": "clear to sort",
+    "mark_handled": "mark Handled",
+    "mark_to_sort": "set the To sort keyword",
+    "unmark_handled": "clear Handled",
+    "unmark_to_sort": "clear the To sort keyword",
     "move_to": "move to {{folder}}",
     "trash": "move to the trash",
     "trash_to": "move to the trash ({{folder}})",
@@ -428,7 +435,7 @@
     "SEEN": "read",
     "FLAGGED": "starred",
     "ANSWERED": "answered",
-    "TO_SORT": "to sort"
+    "TO_SORT": "has the To sort keyword"
   },
   "filterPhraseParts": {
     "quoted": "“{{value}}”",

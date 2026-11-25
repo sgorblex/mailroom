@@ -1049,7 +1049,7 @@ def quota(
 
 
 def keywords(ctx: AppContext, user_id: int, account_id: int, *, via: Via = "web") -> bool:
-    """Whether the account's server keeps keywords such as To sort: mailroom-core's
+    """Whether the account's server keeps keywords: mailroom-core's
     ``MailConnections.keywords`` (a read-write SELECT of INBOX, asked once while the user's
     connections last; never on Gmail)."""
     accounts = _accounts(ctx, user_id)
@@ -1062,6 +1062,22 @@ def keywords(ctx: AppContext, user_id: int, account_id: int, *, via: Via = "web"
         via,
         account_id,
         lambda connections: connections.keywords(account_id),
+    )
+
+
+def gmail(ctx: AppContext, user_id: int, account_id: int, *, via: Via = "web") -> bool:
+    """Whether the account's server is Gmail (its capability, asked once while the user's
+    connections last)."""
+    accounts = _accounts(ctx, user_id)
+    _usable(ctx, user_id, accounts, account_id)
+    return _call(
+        ctx,
+        user_id,
+        accounts,
+        "mail_capabilities",
+        via,
+        account_id,
+        lambda connections: connections.capabilities(account_id).gmail,
     )
 
 

@@ -49,7 +49,7 @@ function lineOfQuery(query: SearchQuery | undefined, accounts: Account[], scope:
   const searched = searchedIn(query)
   // Beside a view's folders, any account and folder are written.
   const own = scope.view === null ? scope : null
-  const { from, to, subject, text, since, before, unread, flagged, to_sort, has_attachment } = query
+  const { from, to, subject, text, since, before, unread, flagged, handled, has_attachment } = query
   return lineOf({
     from,
     to,
@@ -59,7 +59,7 @@ function lineOfQuery(query: SearchQuery | undefined, accounts: Account[], scope:
     before,
     unread,
     flagged,
-    to_sort,
+    handled,
     has_attachment,
     account: searched === null || searched.account === own?.account ? undefined : accountTerm(accounts, searched.account),
     folder: searched === null || searched.folder === own?.folder ? undefined : searched.folder,

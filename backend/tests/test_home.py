@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
+from mailroom.accounts.handled import store_handled_mark
 from mailroom.accounts.store import load_accounts, user_store
 from mailroom.auth.users import create_user
 from mailroom.config.features import ALL_FEATURES, Features
@@ -24,7 +25,7 @@ from mailroom.models import (
     Snooze,
 )
 from mailroom.reach import WHOLE
-from mailroom_core.mail import TO_SORT
+from mailroom_core.mail import TO_SORT, HandledMark
 from tests.conftest import PASSWORD
 from tests.test_api_accounts import added, new_account
 from tests.test_mail_index_rows import message
@@ -112,6 +113,8 @@ def test_unread_per_inbox_and_the_marks_of_the_users_own_mail(
             message(all_mail.id, user.id, 3, gm_msgid=13, labels=["Work"]),
         ]
     )
+    store_handled_mark(db_session, user.id, work, HandledMark("keyword", TO_SORT.lower()))
+    store_handled_mark(db_session, user.id, gmail, HandledMark("label", "Work"))
     # Another user's mail and marks are not counted.
     other = create_user(db_session, "other", PASSWORD)
     theirs = folder(db_session, other, work, "INBOX", unread_count=50)
@@ -125,7 +128,7 @@ def test_unread_per_inbox_and_the_marks_of_the_users_own_mail(
         (gmail, "gmail@example.org", 1),
         (unindexed, "home@example.org", None),
     ]
-    assert (mail.unread, mail.starred, mail.to_sort) == (4, 2, 1)
+    assert (mail.unread, mail.starred, mail.handled) == (4, 2, 2)
 
     answer = user_client.get(HOME)
     assert answer.status_code == 200

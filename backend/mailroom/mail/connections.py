@@ -13,6 +13,7 @@ import os
 import ssl
 from typing import TYPE_CHECKING, Final, Protocol
 
+from mailroom.accounts.handled import handled_mark
 from mailroom.accounts.store import AccountNotFound, account_password, load_accounts, user_store
 from mailroom.errors import SECRETS_KEY_MISSING
 from mailroom_core.mail import MailConnections
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
 
     from mailroom_core.config import AccountConfig
     from mailroom_core.crypto import SecretsSubkey
-    from mailroom_core.mail import Timeouts
+    from mailroom_core.mail import HandledMark, Timeouts
     from mailroom_core.store import AccountStore
 
 logger = logging.getLogger(__name__)
@@ -77,7 +78,7 @@ def user_connections(
 ) -> MailConnections:
     """The user's connections, each account and password looked up in their store whenever a
     connection opens: an account gone is unknown to them, a password that no longer opens raises
-    ``PasswordMissing``."""
+    ``PasswordMissing``. What each keeps Handled as is looked up as it is needed."""
     store = user_store(source.engine, user_id)
     subkey = source.subkey
 
@@ -93,8 +94,17 @@ def user_connections(
             raise PasswordMissing
         return found
 
+    def handled(account_id: int) -> HandledMark:
+        with source.engine.connect() as connection:
+            return handled_mark(connection, user_id, account_id)
+
     return MailConnections(
-        account, password, ssl_context=source.ssl_context, pool_size=pool_size, timeouts=timeouts
+        account,
+        password,
+        ssl_context=source.ssl_context,
+        pool_size=pool_size,
+        timeouts=timeouts,
+        handled=handled,
     )
 
 

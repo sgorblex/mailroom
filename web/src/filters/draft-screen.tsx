@@ -6,6 +6,7 @@ import { ArrowLeft } from 'lucide-react'
 
 import { AccountName } from '@/accounts/account-name.tsx'
 import { useAccountKeywords } from '@/accounts/accounts-context.ts'
+import { cannotKeepHandled } from '@/accounts/handled.ts'
 import { listAccounts, type Account, type AccountId } from '@/api/accounts.ts'
 import {
   addFilter,
@@ -337,7 +338,7 @@ function DraftTarget({
       criterion={criterion}
       vocabulary={vocabulary}
       folders={folders}
-      keywords={keywordsOf(account.id)}
+      handledUnsupported={cannotKeepHandled(account, keywordsOf(account.id))}
       targets={targets}
       save={save}
       onCancel={() => {

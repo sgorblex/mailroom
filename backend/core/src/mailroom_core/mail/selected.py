@@ -21,12 +21,14 @@ from imapclient.response_parser import parse_message_list
 
 from mailroom_core.mail._mime import text_value
 from mailroom_core.mail.audit import REFUSALS
+from mailroom_core.mail.changes import stored_labels
 from mailroom_core.mail.errors import MailError, is_connection_error, mail_error
+from mailroom_core.mail.handled import HandledKey, handled_criteria, holds_handled
 from mailroom_core.mail.imap import folders_from
 from mailroom_core.render import clean_header
 
 if TYPE_CHECKING:
-    from collections.abc import Collection, Iterable, Mapping, Sequence
+    from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 
     from imapclient.response_types import Envelope
 
@@ -38,7 +40,9 @@ type Criteria = Sequence[object]
 `["SUBJECT", "invoice", "UNSEEN"]`; nested lists are parenthesised groups."""
 
 TO_SORT: Final = "$MailroomSort"
-"""The keyword that marks a message "To sort"; servers compare keywords ignoring case."""
+"""The keyword To sort, which Handled replaced, was kept as: what the accounts that used it keep
+Handled as, and what a filter's To sort criteria and actions still mean. Servers compare keywords
+ignoring case."""
 FORWARDED: Final = "$Forwarded"
 """The keyword (RFC 5788) a sent forward sets on its original; only `store_forwarded` sets it,
 so it is not among `SETTABLE_FLAGS`."""
@@ -85,11 +89,14 @@ def _token(item: object) -> bytes:
     return literal
 
 
-def search_arguments(criteria: Criteria) -> tuple[list[bytes], bool]:
+def search_arguments(
+    criteria: Criteria, resolve: Callable[[HandledKey], Criteria] = lambda _: ["ALL"]
+) -> tuple[list[bytes], bool]:
     """`criteria` as UID SEARCH arguments, and whether they need CHARSET UTF-8; nested lists
     become parenthesised groups. A group ending in non-ASCII text gets `ALL` before its closing
-    parenthesis, which cannot follow a literal. `invalid_argument` for text with a line break,
-    for an empty group, or for non-ASCII text opening a group."""
+    parenthesis, which cannot follow a literal. `resolve` gives a `HandledKey`'s own criteria, sent
+    as a group (without it, to check criteria only, `ALL` stands for them). `invalid_argument` for
+    text with a line break, for an empty group, or for non-ASCII text opening a group."""
     out: list[bytes] = []
 
     def walk(items: Sequence[object], depth: int) -> None:
@@ -97,7 +104,9 @@ def search_arguments(criteria: Criteria) -> tuple[list[bytes], bool]:
             raise MailError("invalid_argument", "A search group cannot be empty.")
         start = len(out)
         for item in items:
-            if isinstance(item, list | tuple):
+            if isinstance(item, HandledKey):
+                walk(resolve(item), depth + 1)
+            elif isinstance(item, list | tuple):
                 walk(item, depth + 1)
             else:
                 out.append(_token(item))
@@ -115,7 +124,11 @@ def search_arguments(criteria: Criteria) -> tuple[list[bytes], bool]:
 
 def search_uids(context: MailboxContext, criteria: Criteria) -> list[int]:
     """UID SEARCH in the selected folder: the matching UIDs, as the server ordered them."""
-    arguments, utf8 = search_arguments(criteria)
+
+    def resolve(key: HandledKey) -> Criteria:
+        return handled_criteria(key, context.handled, gmail=context.gmail, folder=context.path)
+
+    arguments, utf8 = search_arguments(criteria, resolve)
     charset = [b"CHARSET", b"UTF-8"] if utf8 else []
     # imapclient's own sender, which writes a `_literal` as an IMAP literal (LITERAL+ when the
     # server has it) and the other arguments as they are.
@@ -260,6 +273,8 @@ class FetchedMessage:
     """As the server has them, `\\Seen`."""
     gmail_thread: int | None = None
     """Gmail's thread id (`X-GM-THRID`), on a server with `X-GM-EXT-1`."""
+    handled: bool = False
+    """Marked Handled, in the account's own way."""
 
 
 def fetch_sources(context: MailboxContext, uids: Iterable[int]) -> dict[int, FetchedMessage]:
@@ -269,7 +284,7 @@ def fetch_sources(context: MailboxContext, uids: Iterable[int]) -> dict[int, Fet
     if not wanted:
         return {}
     gmail = context.client.has_capability("X-GM-EXT-1")
-    items = ["BODY.PEEK[]", "FLAGS", *(["X-GM-THRID"] if gmail else [])]
+    items = ["BODY.PEEK[]", "FLAGS", *(["X-GM-THRID"] if gmail else []), *label_items(context)]
     fetched = context.client.fetch(wanted, items)
     out: dict[int, FetchedMessage] = {}
     for uid, data in fetched.items():
@@ -282,8 +297,27 @@ def fetch_sources(context: MailboxContext, uids: Iterable[int]) -> dict[int, Fet
             source=source,
             flags=_flags(data),
             gmail_thread=thread if isinstance(thread, int) else None,
+            handled=fetched_handled(context, data),
         )
     return out
+
+
+def label_items(context: MailboxContext) -> list[str]:
+    """What a FETCH asks besides FLAGS to tell whether a message is marked Handled: Gmail's
+    labels, where the account keeps it as one."""
+    return ["X-GM-LABELS"] if context.handled.kind == "label" and context.gmail else []
+
+
+def fetched_handled(context: MailboxContext, data: Mapping[bytes, object]) -> bool:
+    """Whether the message a FETCH of FLAGS and `label_items` answered for is marked Handled."""
+    flags = data.get(b"FLAGS")
+    texts = [text_value(flag) for flag in (flags if isinstance(flags, tuple | list) else ())]
+    mark = context.handled
+    if mark.kind != "label":
+        return holds_handled(mark, texts)
+    if not context.gmail:
+        return False
+    return holds_handled(mark, texts, stored_labels(data), folder=context.path)
 
 
 def fetch_envelopes(context: MailboxContext, uids: Iterable[int]) -> dict[int, Envelope | None]:
@@ -437,7 +471,7 @@ def store_flags(
     if TO_SORT in (*add, *remove) and not context.keywords:
         raise MailError(
             "unsupported",
-            "This mail server keeps no keywords in this folder, so it cannot mark To sort.",
+            "This mail server keeps no keywords in this folder, so it cannot keep To sort.",
         )
     if not uids:
         return

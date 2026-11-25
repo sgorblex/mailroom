@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { addAccount, changeAccount, listAccounts, removeAccount, testAccount, type Account } from '@/api/accounts.ts'
 import { setRunFilters } from '@/api/filters.ts'
 import { apiErrorMessage } from '@/api/http.ts'
+import { AccountHandled } from '@/accounts/account-handled.tsx'
 import { AccountForm } from '@/accounts/account-form.tsx'
 import { AccountName } from '@/accounts/account-name.tsx'
 import { AccountQuotaBars } from '@/accounts/account-quota.tsx'
@@ -114,6 +115,7 @@ type RowMode = 'idle' | 'editing' | 'confirming-removal'
 function AccountRow({ account, onChange }: { account: Account; onChange: () => void }): ReactElement {
   const { t } = useTranslation()
   const filters = useFeature('filters')
+  const mail = useFeature('mail')
   const [mode, setMode] = useState<RowMode>('idle')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -250,6 +252,7 @@ function AccountRow({ account, onChange }: { account: Account; onChange: () => v
         )}
       </div>
       <AccountQuotaBars account={account} />
+      {(mail || filters) && <AccountHandled account={account} onChange={onChange} />}
       {filters && (
         <div className="flex items-center gap-3">
           <Switch

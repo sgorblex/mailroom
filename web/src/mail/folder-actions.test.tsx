@@ -277,6 +277,25 @@ describe('folder actions', () => {
     ])
   })
 
+  it('says why the label an account keeps Handled as is not deleted', async () => {
+    stubMailApi(
+      state({
+        refuse: {
+          'POST /api/v1/mail/accounts/1/folders/delete': {
+            status: 409,
+            body: { detail: { code: 'folder_is_handled', message: 'The account keeps Handled as this label.' } },
+          },
+        },
+      }),
+    )
+    renderMailApp('/mail')
+
+    await userEvent.click(within(await menuOf('Projects')).getByRole('menuitem', { name: 'Delete…' }))
+    const dialog = screen.getByRole('dialog')
+    await userEvent.click(await within(dialog).findByRole('button', { name: 'Delete for good' }))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('This account keeps Handled as this label')
+  })
+
   it('lists the rule sets that keep a folder from being deleted', async () => {
     stubMailApi(
       state({
@@ -300,7 +319,7 @@ describe('folder actions', () => {
   })
 
   describe('mark all as read', () => {
-    const unseen = { flags: { seen: false, flagged: false, answered: false, forwarded: false, draft: false, to_sort: false } }
+    const unseen = { flags: { seen: false, flagged: false, answered: false, forwarded: false, draft: false, handled: false } }
     /** News: `unread` as listed, its three messages unread, UIDNEXT 3 when listed (so 3 came after). */
     function news(unread: number): FakeMailState {
       const fake = state()

@@ -6,18 +6,20 @@ import logging
 import signal
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, Literal
 
 from mailroom_core.filters.account import Folder
-from mailroom_core.filters.actions.flags import UnmarkToSort, Unstar
-from mailroom_core.filters.criteria.flags import IsStarred, IsToSort
+from mailroom_core.filters.actions.flags import UnmarkHandled, Unstar
+from mailroom_core.filters.criteria.flags import IsHandled, IsStarred
 from mailroom_core.filters.filter import Filter
-from mailroom_core.filters.flags import Flag
 from mailroom_core.mail import IdleWatch, MailError
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from types import FrameType
 
+    from mailroom_core.filters.actions.action import Action
+    from mailroom_core.filters.criteria.criterion import Criterion
     from mailroom_core.filters.report import FolderReport
     from mailroom_core.mail import IdleChange
 
@@ -27,15 +29,19 @@ Rules = list[tuple[Folder, list[Filter]]]
 log = logging.getLogger(__name__)
 
 
-_MARKERS: Final = {Flag.FLAGGED: (IsStarred, Unstar), Flag.TO_SORT: (IsToSort, UnmarkToSort)}
-"""The marks a rule set may limit itself to: the star, and To sort."""
+type Marker = Literal["starred", "handled"]
+"""A mark a rule set may limit itself to: the star, or Handled as the account keeps it."""
+_MARKERS: Final[dict[str, tuple[Callable[[], Criterion], Callable[[], Action]]]] = {
+    "starred": (IsStarred, Unstar),
+    "handled": (IsHandled, UnmarkHandled),
+}
 
 
-def marked_only(rules: Rules, marker: Flag) -> Rules:
-    """Wrap sort rules: only messages with ``marker`` (``Flag.FLAGGED`` or ``Flag.TO_SORT``),
-    the mark cleared before applying each action. ``ValueError`` for any other flag."""
+def marked_only(rules: Rules, marker: Marker) -> Rules:
+    """Wrap sort rules: only messages with ``marker``, the mark cleared before applying each
+    action. ``ValueError`` for any other."""
     if marker not in _MARKERS:
-        msg = f"not a marker: {marker.name}"
+        msg = f"not a marker: {marker}"
         raise ValueError(msg)
     has, clear = _MARKERS[marker]
     return [

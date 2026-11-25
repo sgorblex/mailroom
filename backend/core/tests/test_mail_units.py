@@ -12,6 +12,7 @@ import pytest
 from imapclient.response_types import BodyData
 
 from mailroom_core.mail import (
+    HandledKey,
     MailboxContext,
     MailConnections,
     MailError,
@@ -481,8 +482,8 @@ def test_search_criteria() -> None:
         "X-GM-RAW",
         "has:attachment",
     ]
-    assert SearchQuery(to_sort=True).criteria() == ["KEYWORD", "$MailroomSort"]
-    assert SearchQuery(to_sort=False).criteria() == ["UNKEYWORD", "$MailroomSort"]
+    assert SearchQuery(handled=True).criteria() == [HandledKey.HANDLED]
+    assert SearchQuery(handled=False).criteria() == [HandledKey.NOT_HANDLED]
 
 
 def test_gmail_finds_attachments_through_its_own_search() -> None:

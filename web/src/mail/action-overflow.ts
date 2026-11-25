@@ -1,12 +1,12 @@
 /**
  * The order the message's action bar gives its actions up to its More menu when they do not fit
- * on one row, first first: To sort, Report spam, the move pickers, then Reply all and Forward; Mark
+ * on one row, first first: Handled, Report spam, the move pickers, then Reply all and Forward; Mark
  * read or unread, Star, Trash and Archive only after them, on a bar too narrow even for those.
  * Reply and the More button itself always stay.
  */
 export const OVERFLOW_ORDER: readonly string[] = [
-  'toSort',
-  'markSorted',
+  'handled',
+  'unmarkHandled',
   'reportSpam',
   'move',
   'moveToAccount',

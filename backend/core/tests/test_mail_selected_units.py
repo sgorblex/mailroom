@@ -8,6 +8,7 @@ import pytest
 from imapclient.imapclient import _literal
 
 from mailroom_core.mail import (
+    STAR,
     TO_SORT,
     CopiedNotRemovedError,
     Folder,
@@ -312,7 +313,7 @@ def test_fetch_sources_reads_gmails_thread_id_by_capability(
     gmail: bool, thread: int | None
 ) -> None:
     client = SourceClient(gmail)
-    context = cast("MailboxContext", SimpleNamespace(client=client))
+    context = cast("MailboxContext", SimpleNamespace(client=client, handled=STAR))
     fetched = fetch_sources(context, [5])
     assert fetched[5].gmail_thread == thread
     assert client.items == [["BODY.PEEK[]", "FLAGS", *(["X-GM-THRID"] if gmail else [])]]

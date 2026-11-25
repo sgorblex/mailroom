@@ -7,20 +7,26 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from types import FrameType
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 from unittest.mock import call, patch
 
 import pytest
 
 from mailroom_core.filters.account import Folder
-from mailroom_core.filters.actions.flags import MarkAsRead, UnmarkToSort, Unstar
+from mailroom_core.filters.actions.flags import MarkAsRead, UnmarkHandled, Unstar
 from mailroom_core.filters.actions.move import MoveTo
 from mailroom_core.filters.criteria.address import FromIs
-from mailroom_core.filters.criteria.flags import IsStarred, IsToSort
+from mailroom_core.filters.criteria.flags import IsHandled, IsStarred
 from mailroom_core.filters.filter import Filter
-from mailroom_core.filters.flags import Flag
 from mailroom_core.filters.path import Path
-from mailroom_core.filters.runner import Rules, RunRulesError, marked_only, monitor, run_rules
+from mailroom_core.filters.runner import (
+    Marker,
+    Rules,
+    RunRulesError,
+    marked_only,
+    monitor,
+    run_rules,
+)
 from mailroom_core.mail import IdleChange, MailError
 
 if TYPE_CHECKING:
@@ -104,10 +110,10 @@ class TestMarkedOnly:
 
     @pytest.mark.parametrize(
         ("marker", "has", "clear"),
-        [(Flag.FLAGGED, IsStarred(), Unstar()), (Flag.TO_SORT, IsToSort(), UnmarkToSort())],
+        [("starred", IsStarred(), Unstar()), ("handled", IsHandled(), UnmarkHandled())],
     )
     def test_wraps_criterion_and_action(
-        self, account: Account, marker: Flag, has: Any, clear: Any
+        self, account: Account, marker: Marker, has: Any, clear: Any
     ) -> None:
         rules = _rules(account)
         wrapped = marked_only(rules, marker)
@@ -121,12 +127,12 @@ class TestMarkedOnly:
     def test_does_not_modify_input(self, account: Account) -> None:
         rules = _rules(account)
         before = [(f, list(fs)) for f, fs in rules]
-        marked_only(rules, Flag.FLAGGED)
+        marked_only(rules, "starred")
         assert rules == before
 
-    def test_refuses_another_flag(self, account: Account) -> None:
-        with pytest.raises(ValueError, match="SEEN"):
-            marked_only(_rules(account), Flag.SEEN)
+    def test_refuses_another_marker(self, account: Account) -> None:
+        with pytest.raises(ValueError, match="to_sort"):
+            marked_only(_rules(account), cast("Marker", "to_sort"))
 
 
 SignalHandler = Callable[[int, FrameType | None], Any]

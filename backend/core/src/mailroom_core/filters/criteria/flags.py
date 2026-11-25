@@ -8,6 +8,7 @@ from mailroom_core.filters.criteria.criterion import Criterion
 from mailroom_core.filters.flags import Flag
 from mailroom_core.filters.query import Q
 from mailroom_core.filters.spec.nodes import FLAG, codecs
+from mailroom_core.mail import HandledKey
 
 if TYPE_CHECKING:
     from mailroom_core.filters.message import Message
@@ -125,8 +126,28 @@ class IsUnanswered(LacksFlag):
         super().__init__(Flag.ANSWERED)
 
 
+class IsHandled(Criterion):
+    """Match messages marked Handled, as the account keeps it when the filter runs."""
+
+    spec_type = "is_handled"
+
+    def __init__(self) -> None:
+        """Match the account's Handled mark."""
+        super().__init__(lambda msg: msg.handled, Q(HandledKey.HANDLED), is_efficient=True)
+
+
+class IsNotHandled(Criterion):
+    """Match messages not marked Handled, as the account keeps it when the filter runs."""
+
+    spec_type = "is_not_handled"
+
+    def __init__(self) -> None:
+        """Match absence of the account's Handled mark."""
+        super().__init__(lambda msg: not msg.handled, Q(HandledKey.NOT_HANDLED), is_efficient=True)
+
+
 class IsToSort(HasFlag):
-    """Match messages marked To sort."""
+    """Match messages with the To sort keyword, whatever the account keeps Handled as."""
 
     spec_type = "is_to_sort"
 
@@ -136,7 +157,7 @@ class IsToSort(HasFlag):
 
 
 class IsNotToSort(LacksFlag):
-    """Match messages not marked To sort."""
+    """Match messages without the To sort keyword, whatever the account keeps Handled as."""
 
     spec_type = "is_not_to_sort"
 

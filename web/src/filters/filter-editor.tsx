@@ -60,7 +60,7 @@ export function FilterEditor({
   children,
   vocabulary,
   folders,
-  keywords,
+  handledUnsupported,
   targets = [],
   save,
   onCancel,
@@ -72,8 +72,8 @@ export function FilterEditor({
   children?: ReactNode
   vocabulary: Vocabulary
   folders: FoldersState
-  /** Whether the account's server keeps keywords: where not, the To sort actions are greyed out. */
-  keywords?: boolean | null
+  /** The account's server cannot keep its Handled mark: the actions on it are greyed out. */
+  handledUnsupported?: boolean
   /** The accounts a filter can move mail to: the user's others. */
   targets?: readonly Account[]
   save: (fields: FilterFields) => Promise<unknown>
@@ -276,7 +276,7 @@ export function FilterEditor({
                 model={model}
                 vocabulary={vocabulary}
                 folders={folders}
-                keywords={keywords}
+                handledUnsupported={handledUnsupported}
                 onChange={setModel}
               />
             </TargetAccountsContext>

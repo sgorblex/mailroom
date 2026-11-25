@@ -13,7 +13,7 @@ import logging
 from contextlib import contextmanager
 from datetime import UTC, date, datetime, timedelta
 from functools import partial
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, cast
 
 from sqlalchemy import delete, func, literal, select, text
 from sqlalchemy.dialects.postgresql import insert
@@ -29,7 +29,7 @@ from mailroom.mail.connections import (
 )
 from mailroom.mail.pool import DeadlineExceeded
 from mailroom.models import AccountFilterSettings, Filter, FilterMatchDay, FilterRun
-from mailroom_core.filters import Account, Flag, Folder, MatchTimeoutError, Path, marked_only
+from mailroom_core.filters import Account, Folder, MatchTimeoutError, Path, marked_only
 from mailroom_core.filters import Filter as EngineFilter
 from mailroom_core.mail import MailError
 
@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 
     from mailroom.context import AppContext
     from mailroom.models import RuleSet
-    from mailroom_core.filters import AccountResolver, FolderReport, ThreadResolver
+    from mailroom_core.filters import AccountResolver, FolderReport, Marker, ThreadResolver
     from mailroom_core.mail import MailConnections
 
 logger = logging.getLogger(__name__)
@@ -51,8 +51,6 @@ DRY_RUN_MAX_MESSAGES: Final = 500
 DRY_RUN_SECONDS: Final = 30.0
 """A dry run still going after this long is stopped: the pool cuts the user's connections to the
 account that are in use (``MailPool.call``'s deadline)."""
-_MARKS: Final = {"star": Flag.FLAGGED, "to_sort": Flag.TO_SORT}
-"""The filter engine's flag for each marker a rule set may limit itself to."""
 RUNS_KEPT: Final = 100
 """Run history kept per rule set and account; older runs are pruned as new ones are recorded."""
 MATCH_DAYS: Final = 30
@@ -99,13 +97,14 @@ def engine_filters(
     accounts: AccountResolver | None = None,
 ) -> list[EngineFilter]:
     """``filters`` as the filter engine runs them on ``folder``: limited to the messages with the
-    rule set's marker (the star or To sort), which they clear, unless it is ``none``; ``threads``
+    rule set's marker (the star, or Handled as the account keeps it when it runs), which they
+    clear, unless it is ``none``; ``threads``
     and ``accounts`` as for ``loaded_filter``. Raises ``InvalidSpecError`` for a stored spec the
     filter engine no longer loads."""
     loaded = [loaded_filter(row.spec, threads=threads, accounts=accounts) for row in filters]
-    mark = _MARKS.get(rule_set.marker)
-    if mark is not None:
-        [(_folder, loaded)] = marked_only([(folder, loaded)], mark)
+    if rule_set.marker != "none":
+        # One it does not know is a ValueError, never every message.
+        [(_folder, loaded)] = marked_only([(folder, loaded)], cast("Marker", rule_set.marker))
     return loaded
 
 

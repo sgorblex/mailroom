@@ -158,7 +158,7 @@ def test_rule_sets_name_accounts_by_login_and_hold_no_id(
         folder=["Lists", "Caffè"],
         trigger="scheduled",
         interval_minutes=30,
-        marker="star",
+        marker="starred",
         enabled=True,
     )
     add_rule_set(db_session, user.id, None, name="Everywhere")
@@ -171,7 +171,7 @@ def test_rule_sets_name_accounts_by_login_and_hold_no_id(
         "folder": ["Lists", "Caffè"],
         "trigger": "scheduled",
         "interval_minutes": 30,
-        "marker": "star",
+        "marker": "starred",
         "enabled": True,
     }
     assert filters[0] == {"name": "f0", "enabled": True, "spec": specs[0]}

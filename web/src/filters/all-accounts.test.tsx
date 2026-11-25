@@ -82,7 +82,7 @@ describe('rule sets for all accounts on the Filters screen', () => {
     expect(within(region).getByRole('link', { name: 'Go to Accounts' })).toHaveAttribute('href', '/accounts')
   })
 
-  it('adds one on INBOX, with the star only, and opens it', async () => {
+  it('adds one on INBOX, Handled on each account, and opens it', async () => {
     const fetchMock = stubFiltersApi(state())
     renderFiltersApp('/filters')
 
@@ -94,8 +94,8 @@ describe('rule sets for all accounts on the Filters screen', () => {
     expect(folder).toHaveAttribute('readonly')
     expect(folder).toHaveAccessibleDescription("A rule set for all accounts sorts each account's inbox.")
     await userEvent.click(within(form).getByLabelText('Only marked messages'))
-    expect(within(form).getByLabelText('To sort')).toBeDisabled()
-    expect(within(form).getByLabelText('Star')).toBeChecked()
+    expect(within(form).getByLabelText('Handled')).toBeChecked()
+    expect(within(form).getByLabelText('Star')).toBeEnabled()
     await userEvent.click(within(form).getByRole('button', { name: 'Add rule set' }))
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Spam everywhere' })).toBeInTheDocument()
@@ -104,7 +104,7 @@ describe('rule sets for all accounts on the Filters screen', () => {
       folder: ['INBOX'],
       trigger: 'new_mail',
       interval_minutes: null,
-      marker: 'star',
+      marker: 'handled',
       enabled: false,
     })
     expect(fetchMock.mock.calls.some(([path]) => path === '/api/v1/accounts/all/folders')).toBe(false)
@@ -171,14 +171,15 @@ describe('the editor of a rule set for all accounts', () => {
     })
   })
 
-  it('greys out the To sort actions, kept per account', async () => {
+  it('offers Handled, kept as each account does, and never To sort, which it replaced', async () => {
     stubFiltersApi(state({ accounts: [{ id: WORK, run_filters: true, keywords: true }] }))
     renderFiltersApp('/filters/2')
 
     await userEvent.click(await screen.findByRole('button', { name: 'Add a filter' }))
     const form = screen.getByRole('form', { name: 'Add a filter' })
     const type = within(within(form).getByRole('group', { name: 'Action 1' })).getByLabelText('Type of Action 1')
-    expect(within(type).getByRole('option', { name: 'Mark to sort (kept per account, not for all accounts)' })).toBeDisabled()
+    expect(within(type).getByRole('option', { name: 'Mark Handled' })).toBeEnabled()
+    expect(within(type).queryByRole('option', { name: /To sort/ })).not.toBeInTheDocument()
     expect(
       within(type).getByRole('option', {
         name: 'Move to another account (a rule set for all accounts also runs on the other account: put the move in a rule set of each account)',

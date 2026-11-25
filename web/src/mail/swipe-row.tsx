@@ -64,8 +64,8 @@ function swipeOf(kind: SwipeKind, actions: TriageActions): { id: string; action:
       return { id: 'trash', action: { kind: 'trash' } }
     case 'star':
       return actions.star === null ? null : { id: 'star', action: { kind: 'flag', change: { flagged: actions.star.flagged } } }
-    case 'to_sort':
-      return actions.toSort === null ? null : { id: 'toSort', action: { kind: 'flag', change: { to_sort: actions.toSort.toSort } } }
+    case 'handled':
+      return actions.handled === null ? null : { id: 'handled', action: { kind: 'flag', change: { handled: actions.handled.handled } } }
     case 'read':
       return actions.read === null
         ? null

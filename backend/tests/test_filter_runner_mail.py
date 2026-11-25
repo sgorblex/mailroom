@@ -11,8 +11,10 @@ from typing import TYPE_CHECKING
 import pytest
 from sqlalchemy import select
 
+from mailroom.accounts.handled import handled_mark
 from mailroom.accounts.store import load_accounts, user_store
 from mailroom.context import app_context
+from mailroom.mail import connections
 from mailroom.mail import service as mail_service
 from mailroom.models import AuditRecord, FilterRun, MutedThread
 from mailroom.worker.idle import FolderWatch, WatchedFolder
@@ -252,7 +254,7 @@ def test_a_star_marked_run_handles_starred_mail_only(
     mailbox.append("INBOX", (SHOP, "Autumn sale", False), (SHOP, "Picks", True))
     mailbox.append("Archive")
     set_run_filters(user_client, account, on=True)
-    rule_set_id = add_rule_set(user_client, account, marker="star")
+    rule_set_id = add_rule_set(user_client, account, marker="starred")
     add_filter(user_client, rule_set_id, "Shop", SHOP_SPEC)
 
     run_id = queued_run(user_client, rule_set_id)
@@ -264,7 +266,7 @@ def test_a_star_marked_run_handles_starred_mail_only(
     assert starred(mailbox, "Archive") == []
 
 
-def test_a_to_sort_run_handles_mail_marked_to_sort_only(
+def test_a_handled_run_acts_on_mail_marked_as_the_account_keeps_it_only(
     user_client: TestClient,
     db_session: Session,
     mailbox: Mailbox,
@@ -273,7 +275,7 @@ def test_a_to_sort_run_handles_mail_marked_to_sort_only(
     application: FastAPI,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The test Dovecot keeps keywords, so the account takes a To sort rule set (the API asks)."""
+    """The test Dovecot keeps keywords, so the account takes a Handled keyword (the API asks)."""
     monkeypatch.setattr(application.state, "mail_ssl_context", mail_servers_ssl_context())
     mailbox.append("INBOX", (SHOP, "Autumn sale", True))
     mailbox.append("Archive")
@@ -283,7 +285,17 @@ def test_a_to_sort_run_handles_mail_marked_to_sort_only(
     finally:
         conn.logout()
     set_run_filters(user_client, account, on=True)
-    rule_set_id = add_rule_set(user_client, account, marker="to_sort")
+    put = user_client.put(
+        f"/api/v1/accounts/{account}/handled", json={"mark": f"keyword:{TO_SORT}"}
+    )
+    assert put.status_code == 200, put.json()
+    # The worker reads it on a connection of its own, which does not see the test's transaction.
+    monkeypatch.setattr(
+        connections,
+        "handled_mark",
+        lambda _connection, user_id, account_id: handled_mark(db_session, user_id, account_id),
+    )
+    rule_set_id = add_rule_set(user_client, account, marker="handled")
     add_filter(user_client, rule_set_id, "Shop", SHOP_SPEC)
 
     run_id = queued_run(user_client, rule_set_id)

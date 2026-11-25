@@ -125,7 +125,7 @@ describe('the quick filters', () => {
 
   it('keep a row this screen changed so it no longer matches, read again too, and j goes on from it', async () => {
     stubEventSource()
-    const unreadFlags = { seen: false, flagged: false, answered: false, forwarded: false, draft: false, to_sort: false }
+    const unreadFlags = { seen: false, flagged: false, answered: false, forwarded: false, draft: false, handled: false }
     const unread = [3, 2, 1].map((uid) => messageItem(WORK, 'INBOX', uid, { flags: unreadFlags }))
     const [, second, first] = unread
     const fake = state()

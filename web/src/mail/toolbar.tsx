@@ -363,8 +363,8 @@ function doneMessage(t: TFunction, accountName: (id: AccountId) => string, actio
       if (action.change.flagged !== undefined) {
         return action.change.flagged ? t('triage.starred', { count }) : t('triage.unstarred', { count })
       }
-      if (action.change.to_sort !== undefined) {
-        return action.change.to_sort ? t('triage.markedToSort', { count }) : t('triage.markedSorted', { count })
+      if (action.change.handled !== undefined) {
+        return action.change.handled ? t('triage.markedHandled', { count }) : t('triage.unmarkedHandled', { count })
       }
       return action.change.seen === true ? t('triage.markedRead', { count }) : t('triage.markedUnread', { count })
   }

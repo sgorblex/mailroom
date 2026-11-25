@@ -29,14 +29,14 @@ describe('the search syntax', () => {
       from: 'Ada Lovelace',
       subject: 'a"b',
       unread: false,
-      to_sort: true,
+      handled: true,
       has_attachment: true,
       since: '2026-01-01',
       folder: 'Old Projects',
       account: '*',
     }
     const line = lineOf(parsed)
-    expect(line).toBe('report "from:x" from:"Ada Lovelace" subject:ab is:read is:to_sort has:attachment after:2026-01-01 in:"Old Projects" account:*')
+    expect(line).toBe('report "from:x" from:"Ada Lovelace" subject:ab is:read is:handled has:attachment after:2026-01-01 in:"Old Projects" account:*')
     expect(parseSearch(line)).toEqual({ ok: true, parsed: { ...parsed, subject: 'ab' } })
   })
 

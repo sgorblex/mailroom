@@ -322,14 +322,14 @@ def flag(
     *,
     seen: bool | None = None,
     flagged: bool | None = None,
-    to_sort: bool | None = None,
+    handled: bool | None = None,
     origin: Origin = WEB,
 ) -> OrganizeResult:
-    """Sets (True) or clears (False) ``\\Seen``, ``\\Flagged`` and the To sort mark, at least
+    """Sets (True) or clears (False) ``\\Seen``, ``\\Flagged`` and the Handled mark, at least
     one of them (else refused before anything connects), and reads them back; the refs stay
-    valid. To sort is ``unsupported`` in a folder that keeps no keywords."""
-    if seen is None and flagged is None and to_sort is None:
-        neither = MailError("invalid_argument", "Give `seen`, `flagged`, `to_sort` or several.")
+    valid. Handled is ``unsupported`` where the account's server cannot keep it."""
+    if seen is None and flagged is None and handled is None:
+        neither = MailError("invalid_argument", "Give `seen`, `flagged`, `handled` or several.")
         raise mail_refusal(neither.code, neither.message)
     return _organize(
         ctx,
@@ -339,7 +339,7 @@ def flag(
         origin,
         refs,
         lambda connections, _, acting: core.set_flags(
-            connections, acting, seen=seen, flagged=flagged, to_sort=to_sort
+            connections, acting, seen=seen, flagged=flagged, handled=handled
         ),
     )
 

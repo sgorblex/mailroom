@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect } from 'react'
 import { useQuery, type QueryObserverResult } from '@tanstack/react-query'
 
+import type { HandledMark } from '@/accounts/handled.ts'
 import type { AccountId } from '@/api/accounts.ts'
 import type { FlagChange, FolderRole, MailAddress, MailFolder, MatchScope, MessageItem, MoveRemoval } from '@/api/mail.ts'
 
@@ -9,7 +10,24 @@ import { foldersQuery } from './queries.ts'
 export interface Flags {
   seen: boolean
   flagged: boolean
-  to_sort: boolean
+  handled: boolean
+}
+
+/**
+ * Whether flags, of a message or of a row standing for a conversation, are Handled: where that is
+ * the star, as starred.
+ */
+export function isHandled(flags: Flags, mark: HandledMark): boolean {
+  return mark.kind === 'star' ? flags.flagged : flags.handled
+}
+
+/** `change` with what it also sets: where Handled is the star, each sets the other. */
+export function linkedChange(change: FlagChange, mark: HandledMark): FlagChange {
+  if (mark.kind !== 'star') {
+    return change
+  }
+  const starred = change.flagged ?? change.handled
+  return starred === undefined ? change : { ...change, flagged: starred, handled: starred }
 }
 
 /**

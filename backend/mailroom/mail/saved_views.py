@@ -204,7 +204,7 @@ def _search_query(parsed: ParsedSearch) -> SearchQuery:
         before=parsed.before,
         unread=parsed.unread,
         flagged=parsed.flagged,
-        to_sort=parsed.to_sort,
+        handled=parsed.handled,
         has_attachment=parsed.has_attachment,
     )
 

@@ -9,6 +9,7 @@ import pytest
 from imapclient import IMAPClient
 from sqlalchemy import select, text
 
+from mailroom.accounts.handled import handled_marks, store_handled_mark
 from mailroom.auth.sessions import SESSION_COOKIE_NAME, create_session
 from mailroom.auth.users import create_user
 from mailroom.filters import runs as filter_runs
@@ -26,8 +27,9 @@ from mailroom.filters.service import MAX_FILTERS
 from mailroom.filters.spec import offered_schema
 from mailroom.models import Filter, FilterMatchDay, FilterRun, RuleSet
 from mailroom.worker.app import PROCRASTINATE_SCHEMA
+from mailroom_core import mail as core
 from mailroom_core.filters import MatchTimeoutError, json_schema, load_filter
-from mailroom_core.mail import CERTIFICATE_DETAIL, MESSAGES
+from mailroom_core.mail import CERTIFICATE_DETAIL, MESSAGES, parse_handled
 from mailroom_core.testing import SmtpStub
 from tests.conftest import PASSWORD
 from tests.support.mail import mail_servers_ssl_context
@@ -35,7 +37,7 @@ from tests.test_api_accounts import added, dev_mailbox_account, new_account
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
-    from sqlalchemy.orm import Session
+    from sqlalchemy.orm import Session, sessionmaker
     from starlette.testclient import TestClient
 
     from mailroom.models import User
@@ -212,10 +214,10 @@ def test_a_user_adds_edits_and_removes_a_rule_set(
     assert "filters" not in listed[0]
 
     path = f"/api/v1/rule-sets/{added['id']}"
-    response = user_client.patch(path, json={"name": "News", "enabled": True, "marker": "star"})
+    response = user_client.patch(path, json={"name": "News", "enabled": True, "marker": "starred"})
     assert response.status_code == 200
     changed = response.json()
-    assert (changed["name"], changed["enabled"], changed["marker"]) == ("News", True, "star")
+    assert (changed["name"], changed["enabled"], changed["marker"]) == ("News", True, "starred")
     assert changed["interval_minutes"] == 15
 
     # Leaving the schedule drops its interval.
@@ -230,41 +232,217 @@ def test_a_user_adds_edits_and_removes_a_rule_set(
     assert events == ["rule_set_added", "rule_set_changed", "rule_set_changed", "rule_set_removed"]
 
 
-def test_to_sort_is_taken_only_where_the_server_keeps_keywords(
-    user_client: TestClient, account: int, monkeypatch: pytest.MonkeyPatch
+def keep_handled_as(db: Session, user_id: int, account: int, mark: str) -> None:
+    store_handled_mark(db, user_id, account, parse_handled(mark))
+    db.commit()
+
+
+@pytest.mark.parametrize(
+    ("mark", "asks"), [("keyword:$MailroomHandled", "keywords"), ("label:Handled", "gmail")]
+)
+def test_handled_is_taken_only_where_the_server_keeps_its_mark(
+    user_client: TestClient,
+    db_session: Session,
+    user: User,
+    account: int,
+    monkeypatch: pytest.MonkeyPatch,
+    mark: str,
+    asks: str,
 ) -> None:
     keeps: list[bool] = [False]
     asked: list[int] = []
 
-    def keywords(_ctx: object, _user_id: int, account_id: int, *, via: str) -> bool:
+    def answer(_ctx: object, _user_id: int, account_id: int, *, via: str) -> bool:
         asked.append(account_id)
         return keeps[0]
 
-    monkeypatch.setattr(filters_service.mail_service, "keywords", keywords)
+    monkeypatch.setattr(filters_service.mail_service, asks, answer)
+    keep_handled_as(db_session, user.id, account, mark)
     rule_sets = f"/api/v1/accounts/{account}/rule-sets"
-    response = user_client.post(rule_sets, json=rule_set(marker="to_sort"))
-    assert (response.status_code, response.json()["detail"]["code"]) == (
-        400,
-        "to_sort_unsupported",
-    )
-    starred = user_client.post(rule_sets, json=rule_set(marker="star")).json()
+    response = user_client.post(rule_sets, json=rule_set(marker="handled"))
+    assert code_of(response) == (400, "handled_unsupported")
+    starred = user_client.post(rule_sets, json=rule_set(marker="starred")).json()
     path = f"/api/v1/rule-sets/{starred['id']}"
-    response = user_client.patch(path, json={"marker": "to_sort"})
-    assert response.json()["detail"]["code"] == "to_sort_unsupported"
-    assert user_client.get(path).json()["marker"] == "star"
+    response = user_client.patch(path, json={"marker": "handled"})
+    assert code_of(response) == (400, "handled_unsupported")
+    assert user_client.get(path).json()["marker"] == "starred"
     assert asked == [account, account]
 
     keeps[0] = True
-    assert user_client.patch(path, json={"marker": "to_sort"}).json()["marker"] == "to_sort"
-    added_to_sort = user_client.post(rule_sets, json=rule_set(marker="to_sort"))
-    assert (added_to_sort.status_code, added_to_sort.json()["marker"]) == (201, "to_sort")
+    assert user_client.patch(path, json={"marker": "handled"}).json()["marker"] == "handled"
+    created = user_client.post(rule_sets, json=rule_set(marker="handled"))
+    assert (created.status_code, created.json()["marker"]) == (201, "handled")
     assert len(asked) == 4
 
-    # Kept as it is, To sort is not asked again, whatever the server now says.
+    # Kept as it is, it is not asked again, whatever the server now says.
     keeps[0] = False
-    renamed = user_client.patch(path, json={"name": "Renamed", "marker": "to_sort"}).json()
-    assert (renamed["name"], renamed["marker"]) == ("Renamed", "to_sort")
+    renamed = user_client.patch(path, json={"name": "Renamed", "marker": "handled"}).json()
+    assert (renamed["name"], renamed["marker"]) == ("Renamed", "handled")
     assert len(asked) == 4
+
+    marks = {"criterion": {"type": "is_handled"}, "action": {"type": "mark_handled"}}
+    filters = f"{path}/filters"
+    refused = user_client.post(filters, json={"name": "Mark", "spec": marks})
+    assert code_of(refused) == (400, "handled_unsupported")
+    looks = {"criterion": {"type": "is_handled"}, "action": TO_ARCHIVE}
+    assert add_filter(user_client, starred["id"], "Looks", looks)
+
+
+def test_handled_by_the_star_asks_no_server(user_client: TestClient, account: int) -> None:
+    """The account's server is unreachable."""
+    response = user_client.post(
+        f"/api/v1/accounts/{account}/rule-sets", json=rule_set(marker="handled")
+    )
+    assert (response.status_code, response.json()["marker"]) == (201, "handled")
+    marks = {"criterion": FROM_SHOP, "action": {"type": "mark_handled"}}
+    assert add_filter(user_client, response.json()["id"], "Mark", marks)
+
+
+def test_the_former_markers(user_client: TestClient, account: int) -> None:
+    """``star`` is still taken for ``starred``; To sort, which Handled is not, is refused."""
+    rule_sets = f"/api/v1/accounts/{account}/rule-sets"
+    assert user_client.post(rule_sets, json=rule_set(marker="star")).json()["marker"] == "starred"
+    assert user_client.post(rule_sets, json=rule_set(marker="to_sort")).status_code == 422
+
+
+HANDLED_KEYWORD = "keyword:$MailroomHandled"
+
+
+def test_an_account_s_handled_mark_is_changed_once_its_rule_sets_are_confirmed(
+    user_client: TestClient, account: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    other = added(user_client, new_account("other"))
+    path = f"/api/v1/accounts/{account}/handled"
+    assert user_client.get(path).json() == {"mark": "star", "rule_sets": []}
+
+    def add(owner: object, **fields: Any) -> int:
+        made = user_client.post(f"/api/v1/accounts/{owner}/rule-sets", json=rule_set(**fields))
+        return int(made.json()["id"])
+
+    handled = add(account, marker="handled", enabled=False)
+    starred = add(account, marker="starred")
+    every = add("all", marker="none", folder=["INBOX"])
+    add(other, marker="handled")
+    nested = {
+        "criterion": {"not": {"or": [FROM_SHOP, {"type": "is_not_handled"}]}},
+        "action": TO_ARCHIVE,
+    }
+    add_filter(user_client, every, "Nested", nested)
+    legacy = {"criterion": {"type": "is_to_sort"}, "action": TO_ARCHIVE}
+    add_filter(user_client, starred, "The keyword, not Handled", legacy)
+    listed = user_client.get(path).json()["rule_sets"]
+    assert [(each["id"], each["account_id"]) for each in listed] == [
+        (handled, account),
+        (every, "all"),
+    ]
+
+    monkeypatch.setattr(filters_service.mail_service, "keywords", lambda *_, **__: True)
+    for confirmed in ([], [handled]):
+        refused = user_client.put(path, json={"mark": HANDLED_KEYWORD, "rule_sets": confirmed})
+        assert code_of(refused) == (409, "handled_rule_sets")
+    assert user_client.get(path).json()["mark"] == "star"
+    # Kept as it is, it changes nothing.
+    assert user_client.put(path, json={"mark": "star"}).status_code == 200
+    changed = user_client.put(path, json={"mark": HANDLED_KEYWORD, "rule_sets": [handled, every]})
+    assert (changed.status_code, changed.json()["mark"]) == (200, HANDLED_KEYWORD)
+    marks = {row["id"]: row["handled"] for row in user_client.get("/api/v1/accounts").json()}
+    assert marks == {account: HANDLED_KEYWORD, other: "star"}
+
+    back = user_client.put(path, json={"mark": "star", "rule_sets": [handled, every]})
+    assert back.json()["mark"] == "star"
+
+
+@pytest.mark.parametrize(
+    ("mark", "code"),
+    [
+        (HANDLED_KEYWORD, "handled_unsupported"),
+        ("label:Handled", "handled_unsupported"),
+        ("keyword:two words", "invalid_argument"),
+        ("label:INBOX", "invalid_argument"),
+        ("flag", "invalid_argument"),
+    ],
+)
+def test_a_handled_mark_the_account_cannot_have_is_refused(
+    user_client: TestClient,
+    account: int,
+    monkeypatch: pytest.MonkeyPatch,
+    mark: str,
+    code: str,
+) -> None:
+    monkeypatch.setattr(filters_service.mail_service, "keywords", lambda *_, **__: False)
+    monkeypatch.setattr(filters_service.mail_service, "gmail", lambda *_, **__: False)
+    path = f"/api/v1/accounts/{account}/handled"
+    assert code_of(user_client.put(path, json={"mark": mark})) == (400, code)
+    assert user_client.get(path).json()["mark"] == "star"
+
+
+@pytest.mark.parametrize(
+    ("listed", "kept"),
+    [
+        (["INBOX", "handled"], "label:handled"),
+        (["handled", "Handled"], "label:Handled"),
+        (["INBOX", "Handled/Old"], "label:Handled"),
+    ],
+)
+def test_a_handled_label_there_in_another_case_is_taken_as_spelt(
+    user_client: TestClient,
+    account: int,
+    monkeypatch: pytest.MonkeyPatch,
+    listed: list[str],
+    kept: str,
+) -> None:
+    folders = [core.Folder(path, "/", None, ()) for path in listed]
+    monkeypatch.setattr(filters_service.mail_service, "gmail", lambda *_, **__: True)
+    monkeypatch.setattr(filters_service.mail_service, "folders", lambda *_, **__: folders)
+    path = f"/api/v1/accounts/{account}/handled"
+    assert user_client.put(path, json={"mark": "label:Handled"}).json()["mark"] == kept
+    assert user_client.get(path).json()["mark"] == kept
+
+
+def test_the_handled_mark_of_an_unreachable_server_is_refused_with_its_failure(
+    user_client: TestClient, account: int
+) -> None:
+    response = user_client.put(
+        f"/api/v1/accounts/{account}/handled", json={"mark": HANDLED_KEYWORD}
+    )
+    assert code_of(response) == (502, "unreachable")
+
+
+def test_the_handled_mark_is_the_users_own_accounts_and_goes_with_them(
+    user_client: TestClient, db_session: Session, user: User, account: int
+) -> None:
+    other = create_user(db_session, "mallory", PASSWORD)
+    keep_handled_as(db_session, other.id, account, "label:Theirs")
+    assert user_client.get(f"/api/v1/accounts/{account}/handled").json()["mark"] == "star"
+    assert user_client.get("/api/v1/accounts/999999/handled").status_code == 404
+    unknown = user_client.put("/api/v1/accounts/999999/handled", json={"mark": "star"})
+    assert unknown.status_code == 404
+
+    keep_handled_as(db_session, user.id, account, HANDLED_KEYWORD)
+    assert user_client.delete(f"/api/v1/accounts/{account}").status_code == 204
+    assert handled_marks(db_session, user.id) == {}
+    assert list(handled_marks(db_session, other.id)) == [account]
+
+
+def test_the_folder_picker_leaves_out_handleds_label(
+    user_client: TestClient,
+    db_session: Session,
+    sessions: sessionmaker[Session],
+    application: FastAPI,
+    user: User,
+    account: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(application.state, "session_maker", sessions)
+    listed = [core.Folder(path, "/", None, ()) for path in ("INBOX", "Handled", "Handled/Old")]
+    monkeypatch.setattr(filters_service.mail_service, "folders", lambda *_, **__: listed)
+    path = f"/api/v1/accounts/{account}/folders"
+    assert {"path": ["Handled"]} in user_client.get(path).json()
+    keep_handled_as(db_session, user.id, account, "label:Handled")
+    assert user_client.get(path).json() == [
+        {"path": ["INBOX"]},
+        {"path": ["Handled", "Old"]},
+    ]
 
 
 def test_a_filter_marks_to_sort_only_where_the_server_keeps_keywords(
@@ -303,15 +481,6 @@ def test_a_filter_marks_to_sort_only_where_the_server_keeps_keywords(
     keeps[0] = False
     assert user_client.patch(path, json={"name": "Shop 2", "spec": marks}).status_code == 200
     assert len(asked) == 3
-
-
-def test_to_sort_on_an_unreachable_server_is_refused_with_its_failure(
-    user_client: TestClient, account: int
-) -> None:
-    response = user_client.post(
-        f"/api/v1/accounts/{account}/rule-sets", json=rule_set(marker="to_sort")
-    )
-    assert (response.status_code, response.json()["detail"]["code"]) == (502, "unreachable")
 
 
 @pytest.mark.parametrize(
@@ -939,8 +1108,9 @@ def test_a_rule_set_for_all_accounts_runs_on_inbox_of_each_running_account(
     every = "/api/v1/accounts/all/rule-sets"
     elsewhere = user_client.post(every, json=rule_set(folder=["Archive"]))
     assert code_of(elsewhere) == (400, "all_accounts_inbox_only")
-    to_sort = user_client.post(every, json=rule_set(marker="to_sort"))
-    assert code_of(to_sort) == (400, "to_sort_unsupported")
+    handled = user_client.post(every, json=rule_set(marker="handled"))
+    assert (handled.status_code, handled.json()["marker"]) == (201, "handled")
+    assert user_client.delete(f"/api/v1/rule-sets/{handled.json()['id']}").status_code == 204
     assert user_client.get("/api/v1/accounts/any/rule-sets").status_code == 422
 
     created = user_client.post(every, json=rule_set(folder=["inbox"]))
@@ -954,10 +1124,6 @@ def test_a_rule_set_for_all_accounts_runs_on_inbox_of_each_running_account(
     assert code_of(user_client.patch(path, json={"folder": ["Archive"]})) == (
         400,
         "all_accounts_inbox_only",
-    )
-    assert code_of(user_client.patch(path, json={"marker": "to_sort"})) == (
-        400,
-        "to_sort_unsupported",
     )
     marks = {"criterion": FROM_SHOP, "action": {"type": "mark_to_sort"}}
     added_marks = user_client.post(f"{path}/filters", json={"name": "Mark", "spec": marks})

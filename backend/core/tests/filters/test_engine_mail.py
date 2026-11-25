@@ -16,7 +16,6 @@ from mailroom_core.filters import (
     Anything,
     Delete,
     Filter,
-    Flag,
     FromIs,
     IsNotToSort,
     IsToSort,
@@ -38,7 +37,7 @@ from mailroom_core.filters import (
     run_rules,
     set_match_timeout,
 )
-from mailroom_core.mail import MailError, connections_from
+from mailroom_core.mail import MailError, connections_from, parse_handled
 from mailroom_core.testing import (
     connections_for,
     create_folders,
@@ -52,6 +51,7 @@ from mailroom_core.testing import (
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
+    from mailroom_core.filters import Marker
     from mailroom_core.mail import MailConnections
     from mailroom_core.testing import ImapTestServer
 
@@ -158,16 +158,23 @@ def test_marks_finds_and_clears_to_sort(imap_server: ImapTestServer, mail) -> No
 
 
 @pytest.mark.parametrize(
-    ("marker", "mark"), [(Flag.FLAGGED, "\\Flagged"), (Flag.TO_SORT, "$MailroomSort")]
+    ("marker", "handled", "mark"),
+    [
+        ("starred", "star", "\\Flagged"),
+        ("handled", "star", "\\Flagged"),
+        ("handled", "keyword:$MailroomSort", "$MailroomSort"),
+        ("handled", "keyword:Done", "Done"),
+    ],
 )
 def test_marked_only_moves_marked_mail_and_clears_the_mark(
-    imap_server: ImapTestServer, mail, marker: Flag, mark: str
+    imap_server: ImapTestServer, mail, marker: Marker, handled: str, mark: str
 ) -> None:
     user = imap_server.unique_user("marked")
     create_folders(imap_server, user, "Shop")
     seed(imap_server, user, "INBOX", mime("Sale", sender=SHOP))
     seed(imap_server, user, "INBOX", mime("Picks", sender=SHOP), flags=[mark])
     account = mail(user)
+    account.connections._lookup_handled = lambda _: parse_handled(handled)
 
     rules = marked_only(
         [(account.inbox, [Filter(FromIs("news@shop.example"), MoveTo(Path("Shop")))])], marker
@@ -177,6 +184,22 @@ def test_marked_only_moves_marked_mail_and_clears_the_mark(
     assert [m["subject"] for m in report["filters"][0]["matched"]] == ["Picks"]
     assert subjects(imap_server, user, "INBOX") == ["Sale"]
     assert mark not in flags(imap_server, user, "Shop")["Picks"]
+
+
+def test_handled_kept_as_what_the_server_cannot_keep_matches_nothing(
+    imap_server: ImapTestServer, mail
+) -> None:
+    """Never the star in its place: a former To sort rule set goes on doing nothing there."""
+    user = imap_server.unique_user("unkept")
+    create_folders(imap_server, user, "Shop")
+    seed(imap_server, user, "INBOX", mime("Sale", sender=SHOP), flags=["\\Flagged"])
+    account = mail(user)
+    filters = [Filter(FromIs("news@shop.example"), MoveTo(Path("Shop")))]
+    for handled in ("keyword:$MailroomSort", "label:Handled"):
+        account.connections._lookup_handled = lambda _, mark=handled: parse_handled(mark)
+        [report] = run_rules(marked_only([(account.inbox, filters)], "handled"), dry_run=False)
+        assert report["filters"][0]["matched"] == []
+    assert flags(imap_server, user, "INBOX") == {"Sale": {"\\Flagged"}}
 
 
 def test_an_exact_address_is_not_a_substring_of_another(imap_server: ImapTestServer, mail) -> None:

@@ -5,7 +5,7 @@ import { messageItem } from '@/test/fake-mail-api.ts'
 
 import { asksFirst, isConversation, listedFolderOf, listRow, mixedFlags, opened, refsOf, shownOnly } from './conversations.ts'
 
-const UNREAD = { seen: false, flagged: false, answered: false, forwarded: false, draft: false, to_sort: false }
+const UNREAD = { seen: false, flagged: false, answered: false, forwarded: false, draft: false, handled: false }
 
 function grouped(fields: Partial<Conversation>, item: MessageItem = messageItem(1, 'INBOX', 3)): MessageItem {
   return {
@@ -46,9 +46,9 @@ describe('a conversation row', () => {
   })
 
   it('says which of its flags it does not say for every message', () => {
-    expect(mixedFlags(grouped({ unread: 1 }))).toEqual(['to_sort', 'seen'])
-    expect(mixedFlags(grouped({ unread: 3 }))).toEqual(['to_sort'])
-    expect(mixedFlags(grouped({ flagged: true }))).toEqual(['to_sort', 'flagged'])
+    expect(mixedFlags(grouped({ unread: 1 }))).toEqual(['handled', 'seen'])
+    expect(mixedFlags(grouped({ unread: 3 }))).toEqual(['handled'])
+    expect(mixedFlags(grouped({ flagged: true }))).toEqual(['handled', 'flagged'])
   })
 
   it('names the folder each of its messages was listed under, the row its own', () => {

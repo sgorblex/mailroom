@@ -8,7 +8,7 @@ import { renderMailApp } from '@/test/mail-app.tsx'
 
 const unread = messageItem(WORK, 'INBOX', 100, {
   subject: 'Unread one',
-  flags: { seen: false, flagged: false, answered: false, forwarded: false, draft: false, to_sort: false },
+  flags: { seen: false, flagged: false, answered: false, forwarded: false, draft: false, handled: false },
 })
 const first = messageItem(WORK, 'INBOX', 99, { subject: 'First one' })
 const second = messageItem(WORK, 'INBOX', 98, { subject: 'Second one' })

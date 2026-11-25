@@ -38,7 +38,13 @@ from mailroom_core.mail.ref import (
     js_integer,
     js_json,
 )
-from mailroom_core.mail.selected import Criteria, search_arguments, search_uids
+from mailroom_core.mail.selected import (
+    Criteria,
+    fetched_handled,
+    label_items,
+    search_arguments,
+    search_uids,
+)
 from mailroom_core.mail.structure import Structure, analyse_structure
 from mailroom_core.render import (
     Address,
@@ -240,6 +246,8 @@ class MessageSummary:
     None when there is no text body or previews were not asked for."""
     size: int
     """RFC822.SIZE: the whole message as stored, in bytes (parts are sized decoded)."""
+    handled: bool = field(default=False, kw_only=True)
+    """Marked Handled, as its account keeps it."""
 
     @property
     def message_ref(self) -> MessageRef:
@@ -258,6 +266,7 @@ class MessageSummary:
             has_attachments=self.has_attachments,
             preview=self.preview,
             folder=self.folder if folder else None,
+            handled=self.handled,
         )
 
     def list_line(self, time_zone: str, *, folder: bool = False) -> str:
@@ -322,6 +331,7 @@ class _Candidate:
     data: Mapping[bytes, object]
     structure: Structure
     arrival: float
+    handled: bool
 
 
 def _timestamp(value: datetime | None) -> float:
@@ -367,6 +377,7 @@ def _summary(source: Source, candidate: _Candidate, preview: str | None) -> Mess
         has_attachments=len(candidate.structure.attachments) > 0,
         preview=preview,
         size=size if isinstance(size, int) else 0,
+        handled=candidate.handled,
     )
 
 
@@ -377,7 +388,8 @@ def _fetch_candidates(
     meanwhile are left out."""
     if not uids:
         return []
-    fetched = context.client.fetch(list(uids), list(items))
+    labels = label_items(context) if "FLAGS" in items else []
+    fetched = context.client.fetch(list(uids), [*items, *labels])
     candidates = []
     for uid, data in fetched.items():
         body = data.get(b"BODYSTRUCTURE")
@@ -397,6 +409,7 @@ def _fetch_candidates(
                 data=data,
                 structure=structure,
                 arrival=_timestamp(received or envelope_date),
+                handled=fetched_handled(context, data),
             )
         )
     candidates.sort(key=lambda c: c.uid, reverse=True)

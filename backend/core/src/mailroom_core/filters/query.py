@@ -5,12 +5,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from mailroom_core.mail import HandledKey
+
 if TYPE_CHECKING:
     from collections.abc import Callable
     from datetime import date
 
-type BaseQuery = str | tuple[str, str] | tuple[str, int] | tuple[str, date]
-"""A single search key, alone (`"SEEN"`) or with its value (`("FROM", "a@b.example")`)."""
+type BaseQuery = str | HandledKey | tuple[str, str] | tuple[str, int] | tuple[str, date]
+"""A single search key, alone (`"SEEN"`, a `HandledKey`) or with its value
+(`("FROM", "a@b.example")`)."""
 
 
 class IMAPQuery:
@@ -75,7 +78,7 @@ class IMAPQuery:
 
         def criteria(self) -> list[object]:
             """The key, and its value when it has one."""
-            return [self.query] if isinstance(self.query, str) else list(self.query)
+            return [self.query] if isinstance(self.query, str | HandledKey) else list(self.query)
 
         def __str__(self) -> str:
             return str(self.query)

@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Final, cast
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from mailroom.accounts.handled import handled_folder, renamed_handled, store_handled_mark
 from mailroom.audit import WEB, AuditTrail, Origin
 from mailroom.errors import Refusal
 from mailroom.filters.folders import (
@@ -152,13 +153,19 @@ def create_folder(
 def _rewrite_rule_sets(
     ctx: AppContext, user_id: int, account_id: int, change: FolderChange
 ) -> Rewritten | None:
-    """Points the rule sets and filters naming the renamed folder at its new path, and the ledger
-    of copies moved there from another account; what it changed, or None, logged, when the
+    """Points the rule sets and filters naming the renamed folder at its new path, the label the
+    account keeps Handled as, and the ledger of copies moved there from another account, in one
+    transaction; what it changed, or None, logged, when the
     database step failed (the rename stands)."""
     destination = change.destination if change.destination is not None else change.path
     try:
         with ctx.session_maker() as db:
             rename_in_ledger(db, user_id, account_id, change.path, destination, change.delimiter)
+            mark = renamed_handled(
+                db, user_id, account_id, change.path, destination, change.delimiter
+            )
+            if mark is not None:
+                store_handled_mark(db, user_id, account_id, mark)
             return rewrite_folder(
                 db,
                 user_id,
@@ -230,6 +237,46 @@ def _follow_in_snoozes(
         )
 
 
+def _keeps_handled() -> Refusal:
+    return Refusal(
+        "conflict",
+        "folder_is_handled",
+        "The account keeps Handled as this label, or one under it, and no longer could: change "
+        "what it keeps Handled as first.",
+    )
+
+
+def _check_handled_after(
+    ctx: AppContext,
+    connections: MailConnections,
+    user_id: int,
+    account_id: int,
+    folder: str,
+    parent: str | None,
+    name: str,
+    note: Callable[[AuditItem], None],
+) -> None:
+    """Refuses (``folder_is_handled``), before anything is renamed, a path that the label the
+    account keeps Handled as could not have. A name no folder may have is core's to refuse."""
+    target: str | None = None
+    result: AuditResult
+    try:
+        delimiter = connections.delimiter(account_id)
+        core.check_folder_name(name, delimiter)
+        target = name if parent is None else f"{parent}{delimiter or ''}{name}"
+        try:
+            with ctx.session_maker() as db:
+                renamed_handled(db, user_id, account_id, folder, target, delimiter)
+            return
+        except MailError:
+            refusal: Exception = _keeps_handled()
+            result = cast("MailErrorCode", "folder_is_handled")  # the app's own code
+    except Exception as error:
+        refusal, result = error, core.audit_result(error)
+    note(AuditItem(account=account_id, folder=folder, destination=target, result=result))
+    raise refusal
+
+
 def rename_folder(
     ctx: AppContext,
     user_id: int,
@@ -245,15 +292,19 @@ def rename_folder(
     actions that name it, or a folder under it, at the new path, and the other accounts' filters
     moving there (``move_to_account``): enabled ones too; the rule sets for all accounts naming it
     are left, and listed (``all_accounts_rule_sets``); the account's desktop-notification
-    folders and snoozes follow it too. These run on the pool's thread, so they follow a rename
-    the server did after the call's deadline. A failure of the rule sets' database step does not
-    fail the call: ``rule_sets_updated`` is False.
+    folders and snoozes follow it too, and so does the label it keeps Handled as, with the rule
+    sets; a path that label could not have is refused first (``folder_is_handled``). These run on
+    the pool's thread, so they follow a rename the server did after the call's deadline. A failure
+    of the rule sets' database step does not fail the call: ``rule_sets_updated`` is False.
     Recorded as ``folder_rename``, with the rule sets and filters changed."""
     accounts = _accounts(ctx, user_id)
     _usable(ctx, user_id, accounts, account_id)
     trail = AuditTrail(ctx.session_maker, user_id, origin, "folder_rename")
 
     def work(connections: MailConnections) -> FolderRenamed:
+        _check_handled_after(
+            ctx, connections, user_id, account_id, folder, parent, name, trail.note
+        )
         noted: list[AuditItem] = []
         try:
             change = core.rename_folder(connections, account_id, folder, parent, name, noted.append)
@@ -336,7 +387,8 @@ def delete_folder(
     ``delete_folder``, with ``messages`` the count the user confirmed (``folder_changed``,
     carrying the count it holds now, when it differs). Refused first, before the folder is
     touched, while a rule set or a filter's action names it or a folder under it
-    (``folder_in_use``, listing them). Once deleted, it and the folders under it leave the
+    (``folder_in_use``, listing them), or it is the label the account keeps Handled as, or holds
+    it (``folder_is_handled``). Once deleted, it and the folders under it leave the
     account's desktop-notification folders. Recorded as ``folder_delete``, refusals too."""
     accounts = _accounts(ctx, user_id)
     _usable(ctx, user_id, accounts, account_id)
@@ -347,16 +399,21 @@ def delete_folder(
 
     def work(connections: MailConnections) -> FolderChange:
         try:
-            split = segments(folder, connections.delimiter(account_id))
+            delimiter = connections.delimiter(account_id)
+            split = segments(folder, delimiter)
             with ctx.session_maker() as db:
                 named = naming_rule_sets(db, user_id, account_id, split)
                 told = named_to(db, named, ctx.reach)
+                handled = handled_folder(db, user_id, account_id, folder, delimiter)
         except Exception as error:
             noted(core.audit_result(error))
             raise
         if named:
             noted(cast("MailErrorCode", "folder_in_use"))  # the app's own code
             raise _in_use(len(named), told)
+        if handled is not None:
+            noted(cast("MailErrorCode", "folder_is_handled"))
+            raise _keeps_handled()
         try:
             deleted = core.delete_folder(
                 connections, account_id, folder, messages=messages, note=trail.note

@@ -29,7 +29,7 @@ from mailroom.filters.drafts import MessageDraft, message_draft
 from mailroom.mail import remote_senders, saved_views, sender_views, service, unsubscribe
 from mailroom.mail.print_page import printable_page
 from mailroom_core.config import MAX_SAFE_INTEGER
-from mailroom_core.mail import DISPLAYED_IMAGES, FORWARDED, TO_SORT
+from mailroom_core.mail import DISPLAYED_IMAGES, FORWARDED
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -135,10 +135,10 @@ class Flags(BaseModel):
     answered: bool
     forwarded: bool
     draft: bool
-    to_sort: bool
+    handled: bool
 
     @classmethod
-    def of(cls, flags: Iterable[str]) -> Flags:
+    def of(cls, flags: Iterable[str], *, handled: bool) -> Flags:
         lowered = {flag.lower() for flag in flags}
         return cls(
             seen="\\seen" in lowered,
@@ -146,7 +146,7 @@ class Flags(BaseModel):
             answered="\\answered" in lowered,
             forwarded=FORWARDED.lower() in lowered,
             draft="\\draft" in lowered,
-            to_sort=TO_SORT.lower() in lowered,
+            handled=handled,
         )
 
 
@@ -176,7 +176,7 @@ class MessageItem(BaseModel):
             date=summary.date,
             from_=MailAddress(name="", address="") if sender is None else MailAddress.of(sender),
             subject=summary.subject,
-            flags=Flags.of(summary.flags),
+            flags=Flags.of(summary.flags, handled=summary.handled),
             has_attachments=summary.has_attachments,
             preview=summary.preview or "",
             size=summary.size,
@@ -376,7 +376,7 @@ class MessageDetail(BaseModel):
             date=view.date,
             subject=view.subject,
             message_id=view.message_id,
-            flags=Flags.of(view.flags),
+            flags=Flags.of(view.flags, handled=view.handled),
             text=BodyText(
                 content="",
                 removed_chars=0,

@@ -22,6 +22,7 @@ from sqlalchemy import select
 from starlette.testclient import TestClient
 
 from mailroom.accounts import service as accounts_service
+from mailroom.accounts.handled import store_handled_mark
 from mailroom.accounts.store import load_accounts
 from mailroom.api.main import create_application
 from mailroom.audit import MCP as MCP_ORIGIN
@@ -38,9 +39,16 @@ from mailroom.mcp.settings import McpSettings
 from mailroom.mcp.tool import BUSY_MESSAGE, CALLS_PER_USER, call_tool
 from mailroom.mcp.tools import mail_send
 from mailroom.mcp.tools.filters import RUN_FILTERS_OFF_NOTE
-from mailroom.models import AuditRecord, Filter, Snooze
+from mailroom.models import AuditRecord, Filter, RuleSet, Snooze
 from mailroom_core.config import time_zone_name
-from mailroom_core.mail import MAX_HTML_BYTES, MESSAGES, Folder, MessageRef, format_ref
+from mailroom_core.mail import (
+    MAX_HTML_BYTES,
+    MESSAGES,
+    Folder,
+    MessageRef,
+    format_ref,
+    parse_handled,
+)
 from mailroom_core.store import SEND_CEILING
 from mailroom_core.testing import (
     HANG_UP,
@@ -369,14 +377,25 @@ def test_a_rule_set_created_over_mcp_starts_disabled(
 
 
 def test_a_rule_set_s_marker_is_set_over_mcp(
-    mcp: Mcp, token: str, account: int, rule_set_id: int, monkeypatch: pytest.MonkeyPatch
+    mcp: Mcp,
+    db_session: Session,
+    token: str,
+    account: int,
+    rule_set_id: int,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     assert mcp.call(token, "rule_set_get", rule_set_id=rule_set_id)["marker"] == "none"
     changed = mcp.call(token, "rule_set_update", rule_set_id=rule_set_id, marker="star")
-    assert changed["marker"] == "star"
-    monkeypatch.setattr(filters_service.mail_service, "keywords", lambda *_, **__: False)
+    assert changed["marker"] == "starred"
     refused = mcp.error(token, "rule_set_update", rule_set_id=rule_set_id, marker="to_sort")
-    assert "cannot keep the To sort mark" in refused
+    assert "handled" in refused
+    user_id = db_session.scalars(select(RuleSet.user_id).where(RuleSet.id == rule_set_id)).one()
+    mark = parse_handled("keyword:$MailroomHandled")
+    store_handled_mark(db_session, user_id, account, mark)
+    db_session.commit()
+    monkeypatch.setattr(filters_service.mail_service, "keywords", lambda *_, **__: False)
+    refused = mcp.error(token, "rule_set_update", rule_set_id=rule_set_id, marker="handled")
+    assert "keeps no keywords" in refused
     monkeypatch.setattr(filters_service.mail_service, "keywords", lambda *_, **__: True)
     created = mcp.call(
         token,
@@ -385,9 +404,9 @@ def test_a_rule_set_s_marker_is_set_over_mcp(
         name="Sort",
         folder=["INBOX"],
         trigger="manual",
-        marker="to_sort",
+        marker="handled",
     )
-    assert created["marker"] == "to_sort"
+    assert created["marker"] == "handled"
 
 
 def test_agents_are_not_offered_in_thread(mcp: Mcp, token: str, rule_set_id: int) -> None:
@@ -476,6 +495,7 @@ def test_run_now_and_the_run_filters_switch(
             "send_mode": "drafts",
             "identities": [{"address": "work@example.org", "name": "Alice", "default": True}],
             # The server does not answer.
+            "handled": "star",
             "keywords": None,
         }
     ]
@@ -1731,11 +1751,11 @@ def test_flag_marks_read_unread_and_flagged_idempotently(
     assert f"{ref} read, flagged" in again
     assert f"{ref} unread, flagged" in mcp.text(token, "messages_flag", refs=[ref], seen=False)
     assert stored(mail, login, "INBOX")[0][1] == ("\\Flagged",)
-    sorting = mcp.text(token, "messages_flag", refs=[ref], to_sort=True)
-    assert f"{ref} unread, flagged, to sort" in sorting
-    assert stored(mail, login, "INBOX")[0][1] == ("$MailroomSort", "\\Flagged")
+    handled = mcp.text(token, "messages_flag", refs=[ref], handled=True)
+    assert f"{ref} unread, flagged, handled" in handled
+    assert stored(mail, login, "INBOX")[0][1] == ("\\Flagged",)
     error = mcp.error(token, "messages_flag", refs=[ref])
-    assert "Give `seen`, `flagged`, `to_sort` or several." in error
+    assert "Give `seen`, `flagged`, `handled` or several." in error
 
 
 def test_organize_calls_log_keys_only(
